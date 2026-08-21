@@ -1,5 +1,22 @@
+// src/screens/baby/BabyProfileCreateScreen.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  FlatList,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInUp,
   FadeIn,
+  FadeInDown,
 } from 'react-native-reanimated';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -26,6 +44,19 @@ import { useMeasurementSuggestions, getAgeInMonths } from '../../hooks/useMeasur
 const { width } = Dimensions.get('window');
 
 const BABY_IMAGES_DIR = FileSystem.documentDirectory + 'baby_images/';
+
+const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+const SKIN_TONES = [
+  { id: 0, emoji: '👶', color: '#F5D0C5', label: 'Light' },
+  { id: 1, emoji: '👶🏻', color: '#F5D0C5', label: 'Fair' },
+  { id: 2, emoji: '👶🏼', color: '#E8C4A0', label: 'Medium' },
+  { id: 3, emoji: '👶🏽', color: '#D4A373', label: 'Tan' },
+  { id: 4, emoji: '👶🏾', color: '#A67C52', label: 'Brown' },
+  { id: 5, emoji: '👶🏿', color: '#6B4423', label: 'Dark' },
+];
+
+const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '🌟', '💖'];
 
 const ensureDirExists = async () => {
   const dirInfo = await FileSystem.getInfoAsync(BABY_IMAGES_DIR);
@@ -69,13 +100,6 @@ const copyImageToPermanent = async (
     return permanentUri;
   } catch (error) {
     console.error('Failed to copy image:', error);
-    try {
-      await FileSystem.moveAsync({ from: tempUri, to: permanentUri });
-      const fileInfo = await FileSystem.getInfoAsync(permanentUri);
-      if (fileInfo.exists) return permanentUri;
-    } catch (moveError) {
-      console.error('Move fallback also failed:', moveError);
-    }
     throw error;
   }
 };
@@ -85,41 +109,6 @@ const isImageUri = (value: string | undefined | null): boolean => {
   return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
 };
 
-const isEmoji = (value: string | undefined | null): boolean => {
-  if (!value || typeof value !== 'string') return false;
-  if (value.length > 4) return false;
-  for (const char of value) {
-    const code = char.codePointAt(0) || 0;
-    const isEmojiChar =
-      (code >= 0x1f600 && code <= 0x1f64f) ||
-      (code >= 0x1f300 && code <= 0x1f5ff) ||
-      (code >= 0x1f680 && code <= 0x1f6ff) ||
-      (code >= 0x1f1e0 && code <= 0x1f1ff) ||
-      (code >= 0x2600 && code <= 0x26ff) ||
-      (code >= 0x2700 && code <= 0x27bf) ||
-      (code >= 0x1f900 && code <= 0x1f9ff) ||
-      code === 0x2b50 ||
-      code === 0x2b55 ||
-      code === 0x2764 ||
-      code === 0x2763;
-    if (!isEmojiChar) return false;
-  }
-  return true;
-};
-
-const SKIN_TONES = [
-  { id: 0, emoji: '👶', color: '#F5D0C5', label: 'Light' },
-  { id: 1, emoji: '👶🏻', color: '#F5D0C5', label: 'Fair' },
-  { id: 2, emoji: '👶🏼', color: '#E8C4A0', label: 'Medium' },
-  { id: 3, emoji: '👶🏽', color: '#D4A373', label: 'Tan' },
-  { id: 4, emoji: '👶🏾', color: '#A67C52', label: 'Brown' },
-  { id: 5, emoji: '👶🏿', color: '#6B4423', label: 'Dark' },
-];
-
-const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '🌟', '💖'];
-
-const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-
 type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
 
 export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
@@ -127,7 +116,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
   const { userProfile, completeSetup, isAuthenticated } = useAuth();
   const { createBaby, updateBaby, calculateAge, loadBabies, switchBaby, babies } = useBaby();
-  const { error: showError, success: showSuccess } = useSweetAlert();
+  const { toast, error: showError, success: showSuccess } = useSweetAlert();
 
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState(new Date());
@@ -143,6 +132,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [showBloodTypePicker, setShowBloodTypePicker] = useState(false);
   const [creatorRelationship, setCreatorRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Mother');
 
   const imagePickerLock = useRef(false);
@@ -164,14 +154,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     }
     return ['#667eea', '#764ba2', '#f093fb'];
   }, [isDark, themeColors]);
-
-  const secondaryColor = useMemo(() => {
-    const c = themeColors.colors;
-    if (Array.isArray(c) && c.length >= 2) {
-      return c[1];
-    }
-    return themeColors.secondary || themeColors.primary || '#764ba2';
-  }, [themeColors]);
 
   const statusBarStyle = useMemo(() => (isDark ? 'light-content' : 'dark-content'), [isDark]);
 
@@ -212,24 +194,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     imagePickerLock.current = true;
 
     try {
-      if (Platform.OS === 'android') {
-        try {
-          const pendingResults = await ImagePicker.getPendingResultAsync();
-          if (pendingResults && pendingResults.length > 0 && !pendingResults[0].canceled) {
-            const pending = pendingResults[0];
-            if (pending.assets && pending.assets[0]?.uri) {
-              setAvatar(pending.assets[0].uri);
-              setShowAvatarPicker(false);
-              triggerHaptic('medium');
-              imagePickerLock.current = false;
-              return;
-            }
-          }
-        } catch (pendingError) {
-          console.log('No pending results:', pendingError);
-        }
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
@@ -258,24 +222,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     imagePickerLock.current = true;
 
     try {
-      if (Platform.OS === 'android') {
-        try {
-          const pendingResults = await ImagePicker.getPendingResultAsync();
-          if (pendingResults && pendingResults.length > 0 && !pendingResults[0].canceled) {
-            const pending = pendingResults[0];
-            if (pending.assets && pending.assets[0]?.uri) {
-              setAvatar(pending.assets[0].uri);
-              setShowAvatarPicker(false);
-              triggerHaptic('medium');
-              imagePickerLock.current = false;
-              return;
-            }
-          }
-        } catch (pendingError) {
-          console.log('No pending camera results:', pendingError);
-        }
-      }
-
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         showError('Please allow camera access in settings');
@@ -302,51 +248,46 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     }
   }, [showError, triggerHaptic]);
 
-  const { wasSetupCompleted } = useAuth();
-
   const validateStep1 = useCallback((): boolean => {
     const trimmed = name.trim();
     if (!trimmed) {
-      showError("Please enter your baby's name");
+      toast('Please enter your baby\'s name', 'warning');
       return false;
     }
     if (trimmed.length < 2) {
-      showError('Name must be at least 2 characters');
+      toast('Name must be at least 2 characters', 'warning');
       return false;
     }
     if (trimmed.length > 50) {
-      showError('Name must be 50 characters or less');
+      toast('Name must be 50 characters or less', 'warning');
       return false;
     }
     return true;
-  }, [name]);
+  }, [name, toast]);
 
   const validateStep2 = useCallback((): boolean => {
     if (weight.trim()) {
       const w = parseFloat(weight.trim());
       if (isNaN(w) || w <= 0 || w > 60) {
-        showError('Please enter a valid weight (0.1–60 kg)');
+        toast('Please enter a valid weight (0.1–60 kg)', 'warning');
         return false;
       }
     }
     if (height.trim()) {
       const h = parseFloat(height.trim());
       if (isNaN(h) || h < 20 || h > 220) {
-        showError('Please enter a valid height (20–220 cm)');
+        toast('Please enter a valid height (20–220 cm)', 'warning');
         return false;
       }
     }
-    if (bloodType.trim() && !BLOOD_TYPES.includes(bloodType.trim().toUpperCase())) {
-      showError('Please enter a valid blood type (e.g., A+, O-)');
-      return false;
-    }
     return true;
-  }, [weight, height, bloodType]);
+  }, [weight, height, toast]);
 
   const handleNext = useCallback(() => {
     triggerHaptic('light');
     if (currentStep === 1 && validateStep1()) {
       setCurrentStep(2);
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     }
   }, [currentStep, validateStep1, triggerHaptic]);
 
@@ -354,6 +295,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     triggerHaptic('light');
     if (currentStep > 1) {
       setCurrentStep((s) => s - 1);
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     } else {
       if (navigation.canGoBack()) {
         navigation.goBack();
@@ -365,20 +307,16 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
   const handleCreateProfile = useCallback(async (andContinue = false) => {
     if (isCreatingRef.current) {
-      showError('A profile is already being created');
+      toast('A profile is already being created', 'warning');
       return;
     }
     if (!validateStep1() || !validateStep2()) return;
 
-    // ─── FIX: Use the authenticated user from AuthContext ──────────────
-    // First check if we're authenticated
     if (!isAuthenticated || !userProfile) {
-      showError('Please sign in to create a baby profile');
-      // Try to refresh the session
+      toast('Please sign in to create a baby profile', 'error');
       try {
         const { data, error } = await supabase.auth.getUser();
         if (error || !data?.user) {
-          // Not authenticated, redirect to login
           navigation.replace('Login');
           return;
         }
@@ -396,7 +334,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     const birthIso = birthDate.toISOString();
     const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
     if (duplicate) {
-      showError('A baby with this name and birth date already exists');
+      toast('A baby with this name and birth date already exists', 'warning');
       return;
     }
 
@@ -410,7 +348,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       const hasCustomImage = isImageUri(avatar);
       const avatarToSave = hasCustomImage ? '👶' : avatar;
 
-      // ─── Use userProfile.id from AuthContext ──────────────────────────
       console.log('[BabyProfile] Creating baby with parent1Id from AuthContext:', userId);
 
       babyId = await createBaby({
@@ -426,10 +363,10 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         medicalNotes: medicalNotes.trim() || undefined,
         parent1Id: userId,
       });
-      
+
       if (!babyId) {
         if (isMounted.current) {
-          showError('Failed to create profile. Please try again.');
+          toast('Failed to create profile. Please try again.', 'error');
         }
         isCreatingRef.current = false;
         setIsLoading(false);
@@ -441,18 +378,18 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
           await updateBaby(babyId, { avatar: permanentUri });
           if (isMounted.current) {
-            showSuccess('Profile photo saved successfully');
+            toast('Profile photo saved!', 'success');
           }
         } catch (imgError) {
           console.warn('Failed to persist baby image:', imgError);
           if (isMounted.current) {
-            showError('Profile created but image could not be saved');
+            toast('Profile created but image could not be saved', 'warning');
           }
         }
       }
 
       if (isMounted.current) {
-        showSuccess(`${trimmedName}'s profile created successfully`);
+        toast(`${trimmedName}'s profile created!`, 'success');
       }
 
       if (!isMounted.current) {
@@ -470,18 +407,12 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           return;
         }
 
-        try {
-          await setAppSetting(`parent1_relationship_${babyId}`, creatorRelationship);
-        } catch (e) {
-          console.warn('Failed to save creator relationship:', e);
-        }
-
         const persisted = await getBabyByIdFromDb(babyId);
 
         if (!persisted) {
           console.error('CRITICAL: Baby profile was not persisted to the database!');
           if (isMounted.current) {
-            showError('Profile could not be saved. Please try again.');
+            toast('Profile could not be saved. Please try again.', 'error');
           }
           isCreatingRef.current = false;
           setIsLoading(false);
@@ -516,6 +447,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             }
           }
         } else {
+          // Reset form for another baby
           setName('');
           setBirthDate(new Date());
           setGender('boy');
@@ -529,19 +461,19 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           setCurrentStep(1);
           scrollViewRef.current?.scrollTo({ y: 0, animated: true });
           if (isMounted.current) {
-            showSuccess('You can add another baby now, or tap Continue when done');
+            toast('Baby added! Ready for another?', 'success');
           }
         }
       } catch (navError) {
         console.error('Post-create error:', navError);
         if (isMounted.current) {
-          showError('Could not finalize setup');
+          toast('Could not finalize setup', 'error');
         }
       }
     } catch (error) {
       console.error('Create baby error:', error);
       if (isMounted.current) {
-        showError('An unexpected error occurred. Please try again.');
+        toast('An unexpected error occurred. Please try again.', 'error');
       }
     } finally {
       isCreatingRef.current = false;
@@ -568,18 +500,15 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     navigation,
     validateStep1,
     validateStep2,
-    showError,
-    showSuccess,
+    toast,
     triggerHaptic,
     switchBaby,
-    creatorRelationship,
     wasSetupCompleted,
     isAuthenticated,
     userProfile,
   ]);
 
-  const kbBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
-  const kbEnabled = Platform.OS === 'ios';
+  const { wasSetupCompleted } = useAuth();
 
   const SuggestionPill = ({
     label,
@@ -606,6 +535,51 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         </TouchableOpacity>
       )}
     </View>
+  );
+
+  const renderBloodTypePicker = () => (
+    <Modal
+      transparent
+      animationType="slide"
+      visible={showBloodTypePicker}
+      onRequestClose={() => setShowBloodTypePicker(false)}
+    >
+      <Pressable style={styles.modalOverlay} onPress={() => setShowBloodTypePicker(false)}>
+        <View style={[styles.modalContent, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, isDark && styles.textDark]}>Select Blood Type</Text>
+            <TouchableOpacity onPress={() => setShowBloodTypePicker(false)}>
+              <Ionicons name="close" size={24} color={isDark ? '#fff' : '#333'} />
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={BLOOD_TYPES}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.bloodTypeItem,
+                  bloodType === item && { backgroundColor: themeColors.primary + '20' },
+                ]}
+                onPress={() => {
+                  setBloodType(item);
+                  setShowBloodTypePicker(false);
+                  triggerHaptic('light');
+                }}
+              >
+                <Text style={[styles.bloodTypeText, isDark && styles.textDark, bloodType === item && { color: themeColors.primary, fontWeight: '700' }]}>
+                  {item}
+                </Text>
+                {bloodType === item && (
+                  <Ionicons name="checkmark-circle" size={24} color={themeColors.primary} />
+                )}
+              </TouchableOpacity>
+            )}
+            contentContainerStyle={styles.bloodTypeList}
+          />
+        </View>
+      </Pressable>
+    </Modal>
   );
 
   const renderDatePicker = () => {
@@ -654,13 +628,17 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
   const renderStep1 = () => (
     <Animated.View
-      entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
+      entering={shouldReduceMotion ? undefined : FadeInDown.delay(100)}
       style={styles.stepContainer}
     >
+      {/* Baby Name */}
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>
-          Baby&apos;s Name <Text style={{ color: '#ef4444' }}>*</Text>
-        </Text>
+        <View style={styles.labelRow}>
+          <Text style={[styles.label, isDark && styles.textDark]}>
+            Baby's Name
+          </Text>
+          <Text style={styles.required}>*</Text>
+        </View>
         <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
           <Ionicons name="person-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
           <TextInput
@@ -674,27 +652,26 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             maxLength={50}
             autoCapitalize="words"
             returnKeyType="next"
-            accessibilityLabel="Baby name input"
-            accessibilityHint="Enter your baby's name"
           />
         </View>
       </View>
 
+      {/* Birth Date */}
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>
-          Birth Date <Text style={{ color: '#ef4444' }}>*</Text>
-        </Text>
+        <View style={styles.labelRow}>
+          <Text style={[styles.label, isDark && styles.textDark]}>
+            Birth Date
+          </Text>
+          <Text style={styles.required}>*</Text>
+        </View>
         <TouchableOpacity
           style={[styles.dateButton, isDark && styles.dateButtonDark]}
           onPress={() => setShowDatePicker(true)}
           activeOpacity={0.8}
-          accessibilityLabel="Select birth date"
-          accessibilityRole="button"
         >
           <Ionicons name="calendar-outline" size={20} color={themeColors.primary} />
           <Text style={[styles.dateText, isDark && styles.textDark]}>
             {birthDate.toLocaleDateString('en-US', {
-              weekday: 'long',
               year: 'numeric',
               month: 'long',
               day: 'numeric',
@@ -702,37 +679,41 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           </Text>
           <Text style={[styles.agePreview, { color: themeColors.primary }]}>{ageDisplay}</Text>
         </TouchableOpacity>
-
         {renderDatePicker()}
       </View>
+
+      {/* Relationship */}
       <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>You are the baby&apos;s <Text style={{ color: '#ef4444' }}>*</Text></Text>
-        <View style={styles.genderContainer}>
-          {(['Father', 'Mother', 'Guardian'] as const).map((r) => (
+        <View style={styles.labelRow}>
+          <Text style={[styles.label, isDark && styles.textDark]}>
+            You are the baby's
+          </Text>
+          <Text style={styles.required}>*</Text>
+        </View>
+        <View style={styles.relationshipContainer}>
+          {(['Mother', 'Father', 'Guardian'] as const).map((r) => (
             <TouchableOpacity
               key={r}
               style={[
-                styles.genderButton,
+                styles.relationshipButton,
                 creatorRelationship === r && {
                   borderColor: themeColors.primary,
-                  backgroundColor: themeColors.primary + '1A',
+                  backgroundColor: themeColors.primary + '15',
                 },
-                isDark && styles.genderButtonDark,
+                isDark && styles.relationshipButtonDark,
               ]}
               onPress={() => {
                 setCreatorRelationship(r);
                 triggerHaptic('light');
               }}
               activeOpacity={0.7}
-              accessibilityLabel={`You are ${r}`}
-              accessibilityState={{ selected: creatorRelationship === r }}
             >
-              <Text style={styles.genderEmoji}>
-                {r === 'Father' ? '👨' : r === 'Mother' ? '👩' : '🛡️'}
+              <Text style={styles.relationshipEmoji}>
+                {r === 'Mother' ? '👩' : r === 'Father' ? '👨' : '🛡️'}
               </Text>
               <Text
                 style={[
-                  styles.genderText,
+                  styles.relationshipText,
                   creatorRelationship === r && { color: themeColors.primary, fontWeight: '700' },
                   isDark && styles.textDark,
                 ]}
@@ -744,6 +725,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         </View>
       </View>
 
+      {/* Gender */}
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Gender</Text>
         <View style={styles.genderContainer}>
@@ -754,7 +736,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                 styles.genderButton,
                 gender === g && {
                   borderColor: themeColors.primary,
-                  backgroundColor: themeColors.primary + '1A',
+                  backgroundColor: themeColors.primary + '15',
                 },
                 isDark && styles.genderButtonDark,
               ]}
@@ -763,8 +745,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                 triggerHaptic('light');
               }}
               activeOpacity={0.7}
-              accessibilityLabel={`Select ${g}`}
-              accessibilityState={{ selected: gender === g }}
             >
               <Text style={styles.genderEmoji}>{g === 'boy' ? '👦' : g === 'girl' ? '👧' : '👶'}</Text>
               <Text
@@ -781,6 +761,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         </View>
       </View>
 
+      {/* Skin Tone */}
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Skin Tone</Text>
         <View style={styles.skinToneContainer}>
@@ -791,7 +772,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                 styles.skinToneButton,
                 skinTone === tone.id && {
                   borderColor: themeColors.primary,
-                  backgroundColor: themeColors.primary + '1A',
+                  backgroundColor: themeColors.primary + '15',
                 },
                 isDark && styles.skinToneButtonDark,
               ]}
@@ -801,13 +782,11 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                 triggerHaptic('light');
               }}
               activeOpacity={0.7}
-              accessibilityLabel={`Skin tone: ${tone.label}`}
-              accessibilityState={{ selected: skinTone === tone.id }}
             >
               <Text style={styles.skinToneEmoji}>{tone.emoji}</Text>
               {skinTone === tone.id && (
                 <View style={styles.checkmark}>
-                  <Ionicons name="checkmark-circle" size={16} color={themeColors.primary} />
+                  <Ionicons name="checkmark-circle" size={14} color={themeColors.primary} />
                 </View>
               )}
             </TouchableOpacity>
@@ -815,14 +794,13 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         </View>
       </View>
 
+      {/* Avatar */}
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Avatar</Text>
         <TouchableOpacity
           style={[styles.avatarSelector, isDark && styles.avatarSelectorDark]}
           onPress={() => setShowAvatarPicker((v) => !v)}
           activeOpacity={0.8}
-          accessibilityLabel="Change avatar"
-          accessibilityRole="button"
         >
           <SafeBabyAvatar avatar={avatar} gender={gender} size={80} />
           <Text style={[styles.changeAvatarText, { color: themeColors.primary }]}>
@@ -839,7 +817,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                   styles.avatarOption,
                   avatar === emoji && {
                     borderColor: themeColors.primary,
-                    backgroundColor: themeColors.primary + '1A',
+                    backgroundColor: themeColors.primary + '15',
                   },
                 ]}
                 onPress={() => {
@@ -848,7 +826,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                   triggerHaptic('light');
                 }}
                 activeOpacity={0.7}
-                accessibilityLabel={`Avatar ${emoji}`}
               >
                 <Text style={styles.avatarOptionEmoji}>{emoji}</Text>
               </TouchableOpacity>
@@ -857,7 +834,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
               style={styles.avatarOption}
               onPress={takePhoto}
               activeOpacity={0.7}
-              accessibilityLabel="Take photo"
             >
               <Ionicons name="camera-outline" size={24} color={themeColors.primary} />
               <Text style={[styles.avatarOptionLabel, { color: themeColors.primary }]}>Camera</Text>
@@ -866,7 +842,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
               style={styles.avatarOption}
               onPress={pickImage}
               activeOpacity={0.7}
-              accessibilityLabel="Choose from gallery"
             >
               <Ionicons name="images-outline" size={24} color={themeColors.primary} />
               <Text style={[styles.avatarOptionLabel, { color: themeColors.primary }]}>Gallery</Text>
@@ -879,16 +854,15 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
   const renderStep2 = () => (
     <Animated.View
-      entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
+      entering={shouldReduceMotion ? undefined : FadeInDown.delay(100)}
       style={styles.stepContainer}
     >
       <Text style={[styles.sectionSubtitle, { color: themeColors.primary }]}>
-        Optional Health Information
+        ✨ Optional Health Information
       </Text>
 
       {suggestions && (
-        <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(120)} style={styles.suggestionsCard}>
-          <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.delay(120)} style={[styles.suggestionsCard, isDark && styles.suggestionsCardDark]}>
           <View style={styles.suggestionHeader}>
             <Ionicons name="information-circle" size={18} color={themeColors.primary} />
             <Text style={[styles.suggestionTitle, isDark && styles.textDark]}>
@@ -923,6 +897,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         </Animated.View>
       )}
 
+      {/* Weight */}
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Weight (kg)</Text>
         <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
@@ -936,15 +911,15 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
               const formatted = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
               setWeight(formatted);
             }}
-            placeholder="e.g., 3.5 (newborn) or 12 (toddler)"
+            placeholder="e.g., 3.5"
             placeholderTextColor={isDark ? '#64748b' : '#999'}
             keyboardType="decimal-pad"
             maxLength={5}
-            accessibilityLabel="Weight in kilograms"
           />
         </View>
       </View>
 
+      {/* Height */}
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Height (cm)</Text>
         <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
@@ -953,32 +928,32 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             style={[styles.input, isDark && styles.textDark]}
             value={height}
             onChangeText={(text) => setHeight(text.replace(/[^0-9]/g, '').slice(0, 3))}
-            placeholder="e.g., 50 (newborn) or 85 (toddler)"
+            placeholder="e.g., 50"
             placeholderTextColor={isDark ? '#64748b' : '#999'}
             keyboardType="number-pad"
             maxLength={3}
-            accessibilityLabel="Height in centimeters"
           />
         </View>
       </View>
 
+      {/* Blood Type - Scrollable Picker */}
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Blood Type</Text>
-        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+        <TouchableOpacity
+          style={[styles.inputWrapper, styles.bloodTypeWrapper, isDark && styles.inputWrapperDark]}
+          onPress={() => setShowBloodTypePicker(true)}
+          activeOpacity={0.7}
+        >
           <Ionicons name="water-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-          <TextInput
-            style={[styles.input, isDark && styles.textDark]}
-            value={bloodType}
-            onChangeText={(text) => setBloodType(text.toUpperCase().replace(/[^ABO+-]/g, '').slice(0, 3))}
-            placeholder="e.g., A+"
-            placeholderTextColor={isDark ? '#64748b' : '#999'}
-            autoCapitalize="characters"
-            maxLength={3}
-            accessibilityLabel="Blood type"
-          />
-        </View>
+          <Text style={[styles.input, isDark && styles.textDark, !bloodType && { color: isDark ? '#64748b' : '#999' }]}>
+            {bloodType || 'Select blood type'}
+          </Text>
+          <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
+        </TouchableOpacity>
+        {renderBloodTypePicker()}
       </View>
 
+      {/* Allergies */}
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Allergies (comma separated)</Text>
         <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
@@ -987,13 +962,13 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             style={[styles.input, isDark && styles.textDark]}
             value={allergies}
             onChangeText={setAllergies}
-            placeholder="e.g., peanuts, dairy, eggs"
+            placeholder="e.g., peanuts, dairy"
             placeholderTextColor={isDark ? '#64748b' : '#999'}
-            accessibilityLabel="Allergies"
           />
         </View>
       </View>
 
+      {/* Medical Notes */}
       <View style={styles.inputGroup}>
         <Text style={[styles.label, isDark && styles.textDark]}>Medical Notes</Text>
         <View style={[styles.inputWrapper, styles.textAreaWrapper, isDark && styles.inputWrapperDark]}>
@@ -1007,7 +982,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             numberOfLines={4}
             textAlignVertical="top"
             maxLength={500}
-            accessibilityLabel="Medical notes"
           />
         </View>
         <Text style={styles.charCount}>{medicalNotes.length}/500</Text>
@@ -1020,7 +994,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       <LinearGradient colors={gradientColors} style={styles.gradient}>
         <StatusBar barStyle={statusBarStyle} translucent backgroundColor="transparent" />
 
-        <KeyboardAvoidingView behavior={kbBehavior} enabled={kbEnabled} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <Animated.ScrollView
             ref={scrollViewRef}
             contentContainerStyle={[
@@ -1030,13 +1004,12 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+            {/* Header */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.header}>
               <TouchableOpacity
                 onPress={handleBack}
                 style={styles.backButton}
                 activeOpacity={0.7}
-                accessibilityLabel="Go back"
-                accessibilityRole="button"
               >
                 <BlurView
                   intensity={Platform.OS === 'ios' ? 80 : 100}
@@ -1048,7 +1021,9 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
               </TouchableOpacity>
 
               <View style={styles.headerText}>
-                <Text style={[styles.headerTitle, isDark && styles.textDark]}>Create Profile</Text>
+                <Text style={[styles.headerTitle, isDark && styles.textDark]}>
+                  {userProfile?.fullName?.split(' ')[0] ? `Hey ${userProfile.fullName.split(' ')[0]}! 👋` : 'Create Profile'}
+                </Text>
                 <Text style={[styles.headerSubtitle, isDark && { color: '#94a3b8' }]}>
                   Step {currentStep} of 2
                 </Text>
@@ -1057,6 +1032,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
               <View style={styles.placeholder} />
             </Animated.View>
 
+            {/* Progress Bar */}
             <View style={styles.progressContainer}>
               <View
                 style={[
@@ -1069,23 +1045,26 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
               />
             </View>
 
-            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}>
+            {/* Preview Card */}
+            <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.delay(50)}>
               <BlurView
                 intensity={Platform.OS === 'ios' ? 90 : 100}
                 tint={isDark ? 'dark' : 'light'}
                 style={styles.previewCard}
               >
-                <SafeBabyAvatar avatar={avatar} gender={gender} size={80} />
+                <SafeBabyAvatar avatar={avatar} gender={gender} size={72} />
                 <View style={styles.previewInfo}>
                   <Text style={[styles.previewName, isDark && styles.textDark]}>
                     {name.trim() || 'Baby Name'}
                   </Text>
-                  <Text style={styles.previewDetails}>
+                  <Text style={[styles.previewDetails, isDark && { color: '#94a3b8' }]}>
                     {ageDisplay} • {gender.charAt(0).toUpperCase() + gender.slice(1)}
                   </Text>
-                  {userProfile?.fullName ? (
-                    <Text style={styles.previewParent}>Parent: {userProfile.fullName}</Text>
-                  ) : null}
+                  {userProfile?.fullName && (
+                    <Text style={[styles.previewParent, { color: themeColors.primary }]}>
+                      👤 {userProfile.fullName}
+                    </Text>
+                  )}
                 </View>
               </BlurView>
             </Animated.View>
@@ -1095,6 +1074,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             <View style={{ height: 40 }} />
           </Animated.ScrollView>
 
+          {/* Bottom Actions */}
           <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 20 }]}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 90 : 100}
@@ -1106,11 +1086,9 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                   style={styles.nextButton}
                   onPress={handleNext}
                   activeOpacity={0.8}
-                  accessibilityLabel="Next step"
-                  accessibilityRole="button"
                 >
                   <LinearGradient
-                    colors={[themeColors.primary, secondaryColor]}
+                    colors={[themeColors.primary, themeColors.secondary || themeColors.colors?.[1] || '#764ba2']}
                     style={styles.buttonGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
@@ -1126,8 +1104,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                     onPress={() => setCurrentStep(1)}
                     disabled={isLoading}
                     activeOpacity={0.7}
-                    accessibilityLabel="Go back to step 1"
-                    accessibilityRole="button"
                   >
                     <Text style={[styles.backStepText, { color: themeColors.primary }]}>Back</Text>
                   </TouchableOpacity>
@@ -1137,12 +1113,9 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                     onPress={() => handleCreateProfile(false)}
                     disabled={isLoading}
                     activeOpacity={0.8}
-                    accessibilityLabel="Create profile and add another"
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: isLoading }}
                   >
                     <LinearGradient
-                      colors={[themeColors.primary, secondaryColor]}
+                      colors={[themeColors.primary, themeColors.secondary || themeColors.colors?.[1] || '#764ba2']}
                       style={styles.buttonGradient}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
@@ -1152,7 +1125,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                       ) : (
                         <>
                           <Ionicons name="add-circle" size={20} color="#fff" />
-                          <Text style={styles.buttonText}>Create & Add Another</Text>
+                          <Text style={styles.buttonText}>Add Another</Text>
                         </>
                       )}
                     </LinearGradient>
@@ -1163,9 +1136,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                     onPress={() => handleCreateProfile(true)}
                     disabled={isLoading}
                     activeOpacity={0.8}
-                    accessibilityLabel="Create profile and continue"
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: isLoading }}
                   >
                     <LinearGradient
                       colors={['#10b981', '#059669']}
@@ -1177,8 +1147,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                         <ActivityIndicator color="#fff" />
                       ) : (
                         <>
-                          <Text style={styles.buttonText}>Create & Continue</Text>
-                          <Ionicons name="arrow-forward" size={20} color="#fff" />
+                          <Text style={styles.buttonText}>Create</Text>
+                          <Ionicons name="checkmark" size={20} color="#fff" />
                         </>
                       )}
                     </LinearGradient>
@@ -1224,31 +1194,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   backButton: { borderRadius: 16, overflow: 'hidden' },
   backBlur: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerText: { alignItems: 'center' },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '800',
     color: '#1a1a1a',
     letterSpacing: -0.5,
   },
-  headerSubtitle: { fontSize: 14, color: '#666', marginTop: 4 },
-  placeholder: { width: 48 },
+  headerSubtitle: { fontSize: 13, color: '#666', marginTop: 2 },
+  placeholder: { width: 44 },
   textDark: { color: '#fff' },
 
   progressContainer: {
     height: 4,
     backgroundColor: 'rgba(102,126,234,0.2)',
     borderRadius: 2,
-    marginBottom: 24,
+    marginBottom: 20,
     overflow: 'hidden',
   },
   progressBar: {
@@ -1259,210 +1229,284 @@ const styles = StyleSheet.create({
   previewCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   previewInfo: { flex: 1, marginLeft: 16 },
   previewName: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#1a1a1a',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  previewDetails: { fontSize: 14, color: '#666', marginBottom: 2 },
-  previewParent: { fontSize: 12, color: '#999' },
+  previewDetails: { fontSize: 13, color: '#666', marginBottom: 2 },
+  previewParent: { fontSize: 12, fontWeight: '600' },
 
-  stepContainer: { gap: 20 },
-  sectionSubtitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+  stepContainer: { gap: 18 },
+
+  inputGroup: { marginBottom: 2 },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
   },
-
-  inputGroup: { marginBottom: 4 },
   label: {
     fontSize: 14,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: 8,
-    marginLeft: 4,
   },
+  required: {
+    color: '#ef4444',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 2,
+  },
+  sectionSubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
-    paddingHorizontal: 16,
-    height: 56,
+    borderColor: 'rgba(102,126,234,0.15)',
+    paddingHorizontal: 14,
+    height: 52,
   },
   inputWrapperDark: {
-    backgroundColor: 'rgba(30,30,40,0.6)',
-    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(30,30,40,0.5)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  inputIcon: { marginRight: 12 },
+  inputIcon: { marginRight: 10 },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: '#1a1a1a',
-    fontWeight: '600',
+    fontWeight: '500',
   },
-  textAreaWrapper: { height: 120, alignItems: 'flex-start', paddingTop: 16 },
-  textArea: { height: 100, textAlignVertical: 'top' },
+  textAreaWrapper: { height: 110, alignItems: 'flex-start', paddingTop: 12 },
+  textArea: { height: 90, textAlignVertical: 'top' },
   charCount: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#999',
     textAlign: 'right',
-    marginTop: 4,
-    marginRight: 8,
+    marginTop: 2,
+    marginRight: 4,
   },
 
   dateButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
-    paddingHorizontal: 16,
-    height: 56,
-    gap: 12,
+    borderColor: 'rgba(102,126,234,0.15)',
+    paddingHorizontal: 14,
+    height: 52,
+    gap: 10,
   },
   dateButtonDark: {
-    backgroundColor: 'rgba(30,30,40,0.6)',
-    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(30,30,40,0.5)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  dateText: { flex: 1, fontSize: 16, color: '#1a1a1a', fontWeight: '600' },
-  agePreview: { fontSize: 14, fontWeight: '700' },
+  dateText: { flex: 1, fontSize: 15, color: '#1a1a1a', fontWeight: '500' },
+  agePreview: { fontSize: 13, fontWeight: '700' },
 
-  genderContainer: { flexDirection: 'row', gap: 12 },
+  relationshipContainer: { flexDirection: 'row', gap: 10 },
+  relationshipButton: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  relationshipButtonDark: { backgroundColor: 'rgba(30,30,40,0.3)' },
+  relationshipEmoji: { fontSize: 28, marginBottom: 4 },
+  relationshipText: { fontSize: 13, color: '#666', fontWeight: '600' },
+
+  genderContainer: { flexDirection: 'row', gap: 10 },
   genderButton: {
     flex: 1,
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderRadius: 14,
+    paddingVertical: 12,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  genderButtonDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
-  genderEmoji: { fontSize: 32, marginBottom: 8 },
-  genderText: { fontSize: 14, color: '#666', fontWeight: '600' },
+  genderButtonDark: { backgroundColor: 'rgba(30,30,40,0.3)' },
+  genderEmoji: { fontSize: 28, marginBottom: 4 },
+  genderText: { fontSize: 13, color: '#666', fontWeight: '600' },
 
-  skinToneContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  skinToneContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
   skinToneButton: {
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 16,
+    padding: 6,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: 'transparent',
     position: 'relative',
   },
-  skinToneButtonDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
-  skinToneEmoji: { fontSize: 32 },
+  skinToneButtonDark: { backgroundColor: 'rgba(30,30,40,0.3)' },
+  skinToneEmoji: { fontSize: 28 },
   checkmark: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
+    bottom: -2,
+    right: -2,
     backgroundColor: 'white',
-    borderRadius: 10,
+    borderRadius: 8,
   },
 
   avatarSelector: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
+    borderColor: 'rgba(102,126,234,0.15)',
   },
   avatarSelectorDark: {
-    backgroundColor: 'rgba(30,30,40,0.6)',
-    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(30,30,40,0.5)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  changeAvatarText: { fontSize: 14, fontWeight: '600' },
+  changeAvatarText: { fontSize: 13, fontWeight: '600', marginTop: 8 },
   avatarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
     marginTop: 12,
     justifyContent: 'center',
   },
   avatarOption: {
-    width: 72,
-    height: 72,
-    borderRadius: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.8)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  avatarOptionEmoji: { fontSize: 32 },
-  avatarOptionLabel: { fontSize: 10, marginTop: 4, fontWeight: '600' },
+  avatarOptionEmoji: { fontSize: 28 },
+  avatarOptionLabel: { fontSize: 10, marginTop: 2, fontWeight: '600' },
+
+  suggestionsCard: {
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(102,126,234,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  suggestionsCardDark: {
+    backgroundColor: 'rgba(30,30,40,0.3)',
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  suggestionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  suggestionTitle: { fontSize: 13, fontWeight: '700', color: '#1e293b', flex: 1 },
+  suggestionRow: { flexDirection: 'row', gap: 8 },
+  pill: {
+    flex: 1,
+    backgroundColor: 'rgba(102,126,234,0.08)',
+    borderRadius: 12,
+    padding: 10,
+    alignItems: 'center',
+  },
+  pillLabel: { fontSize: 11, fontWeight: '700', color: '#64748b', marginBottom: 2 },
+  pillValue: { fontSize: 12, fontWeight: '800', color: '#1e293b' },
+  pillUnit: { fontSize: 10, color: '#94a3b8', marginTop: 1 },
+  useMedianBtn: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: 'rgba(102,126,234,0.15)', borderRadius: 6 },
+  useMedianText: { fontSize: 10, color: '#667eea', fontWeight: '700' },
+
+  bloodTypeWrapper: { justifyContent: 'space-between' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+    maxHeight: '60%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(150,150,150,0.15)',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  bloodTypeList: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  bloodTypeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(150,150,150,0.08)',
+  },
+  bloodTypeText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1a1a1a',
+  },
 
   bottomContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingTop: 10,
   },
   bottomBlur: {
-    borderRadius: 24,
+    borderRadius: 20,
     overflow: 'hidden',
-    padding: 16,
+    padding: 12,
   },
-  nextButton: { borderRadius: 16, overflow: 'hidden' },
+  nextButton: { borderRadius: 14, overflow: 'hidden' },
   buttonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     gap: 8,
   },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  buttonRow: { flexDirection: 'row', gap: 12 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  buttonRow: { flexDirection: 'row', gap: 10 },
   backStepButton: {
-    flex: 1,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-  },
-  backStepText: { fontSize: 16, fontWeight: '700' },
-  createButton: { flex: 2, borderRadius: 16, overflow: 'hidden' },
-  buttonDisabled: { opacity: 0.6 },
-
-  suggestionsCard: {
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-  },
-  suggestionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  suggestionTitle: { fontSize: 14, fontWeight: '800', color: '#1e293b', flex: 1 },
-  suggestionRow: { flexDirection: 'row', gap: 10 },
-  pill: {
     flex: 1,
     backgroundColor: 'rgba(102,126,234,0.08)',
     borderRadius: 14,
-    padding: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
   },
-  pillLabel: { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 4 },
-  pillValue: { fontSize: 13, fontWeight: '800', color: '#1e293b' },
-  pillUnit: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
-  useMedianBtn: { marginTop: 6, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: 'rgba(102,126,234,0.15)', borderRadius: 8 },
-  useMedianText: { fontSize: 11, color: '#667eea', fontWeight: '700' },
+  backStepText: { fontSize: 15, fontWeight: '600' },
+  createButton: { flex: 2, borderRadius: 14, overflow: 'hidden' },
+  buttonDisabled: { opacity: 0.5 },
 });

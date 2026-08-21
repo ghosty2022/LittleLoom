@@ -1,5 +1,4 @@
 // src/screens/baby/BabyOnboardingScreen.tsx
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,7 +29,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'BabyOptional'>;
 
 export default function BabyOnboardingScreen({ navigation }: Props) {
   const {
-    babies, currentBabyId, switchBaby, loadBabies, isLoading: babyLoading
+    babies,
+    currentBabyId,
+    switchBaby,
+    loadBabies,
+    isLoading: babyLoading
   } = useBaby();
   const { userProfile, skipSetup, completeSetup, wasSetupCompleted } = useAuth();
   const insets = useSafeAreaInsets();
@@ -52,15 +55,15 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [hasBabies, setHasBabies] = useState(false);
   const [syncInProgress, setSyncInProgress] = useState(false);
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
 
   const isMountedRef = useRef(true);
   const hasCheckedRef = useRef(false);
-  const checkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationAttemptedRef = useRef(false);
   const loadAttemptedRef = useRef(false);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── CHECK NAVIGATION ─────────────────────────────────────────────
+  // ─── CHECK AND NAVIGATE ─────────────────────────────────────────────
   const checkAndNavigate = useCallback(async () => {
     if (navigationAttemptedRef.current) return;
     if (!isMountedRef.current) return;
@@ -197,6 +200,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       if (!userId) {
         console.log('[BabyOnboarding] No user found');
+        setInitialCheckDone(true);
         return;
       }
 
@@ -210,6 +214,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setRemoteBabies(localBabies);
         console.log(`[BabyOnboarding] Found ${localBabies.length} local babies`);
         await checkAndNavigate();
+        setInitialCheckDone(true);
         return;
       }
 
@@ -242,8 +247,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           console.warn('[BabyOnboarding] Could not fetch remote babies for import:', e);
         }
       }
+      setInitialCheckDone(true);
     } catch (error) {
       console.error('[BabyOnboarding] Check error:', error);
+      setInitialCheckDone(true);
     }
   }, [userProfile, loadBabies, syncBabiesFromSupabase, checkAndNavigate]);
 
@@ -253,6 +260,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     loadAttemptedRef.current = false;
     navigationAttemptedRef.current = false;
     hasCheckedRef.current = false;
+    setInitialCheckDone(false);
     
     const loadData = async () => {
       if (loadAttemptedRef.current) return;
@@ -274,6 +282,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           setHasBabies(true);
           setLocalLoading(false);
           await checkAndNavigate();
+          setInitialCheckDone(true);
           return;
         }
         
@@ -281,6 +290,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         await checkAndSyncBabies();
         
         setLocalLoading(false);
+        setInitialCheckDone(true);
         await checkAndNavigate();
         
       } catch (error) {
@@ -288,6 +298,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         if (isMountedRef.current) {
           setLocalLoading(false);
           setLoadError('Failed to load babies');
+          setInitialCheckDone(true);
         }
       }
     };
@@ -297,9 +308,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     return () => {
       isMountedRef.current = false;
       clearTimeout(timer);
-      if (checkTimeoutRef.current) {
-        clearTimeout(checkTimeoutRef.current);
-        checkTimeoutRef.current = null;
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
       }
     };
   }, [loadBabies, checkAndSyncBabies, checkAndNavigate]);
@@ -330,20 +341,20 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       const { hasParent2 } = await wasSetupCompleted();
       
       if (hasParent2 === false) {
-        showInfo('Next Step', 'Invite a co-parent to join the family');
+        toast('Next Step: Invite a co-parent', 'info');
         navigation.replace('CoParentInviteScreen');
       } else {
         await completeSetup('parent2');
-        showSuccess('Welcome Back!', `Imported ${baby.name}'s profile`);
+        toast(`Welcome back! Imported ${baby.name}'s profile`, 'success');
         navigation.replace('Main');
       }
     } catch (error) {
       console.error('Import baby error:', error);
-      showError('Error', 'Could not import baby profile');
+      toast('Could not import baby profile', 'error');
     } finally {
       setIsProcessing(false);
     }
-  }, [loadBabies, switchBaby, completeSetup, wasSetupCompleted, showError, showSuccess, showInfo, triggerHaptic, navigation]);
+  }, [loadBabies, switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
 
   const handleSkip = useCallback(async () => {
     triggerHaptic('light');
@@ -354,10 +365,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       const { hasParent2 } = await wasSetupCompleted();
       
       if (hasParent2 === false) {
-        showInfo('Next Step', 'Let\'s set up family sharing');
+        toast("Let's set up family sharing", 'info');
         navigation.replace('CoParentInviteScreen');
       } else {
-        showInfo('Skipped', 'You can add a baby later from settings');
+        toast('You can add a baby later from settings', 'info');
         const { setupComplete } = await wasSetupCompleted();
         if (setupComplete) {
           navigation.replace('Main');
@@ -365,11 +376,11 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       }
     } catch (error) {
       console.error('handleSkip error:', error);
-      showError('Error', 'Could not skip baby setup');
+      toast('Could not skip baby setup', 'error');
     } finally {
       setIsProcessing(false);
     }
-  }, [skipSetup, wasSetupCompleted, showError, showInfo, triggerHaptic, navigation]);
+  }, [skipSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
 
   const handleCreateBaby = useCallback(() => {
     triggerHaptic('medium');
@@ -386,23 +397,23 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       const { hasParent2 } = await wasSetupCompleted();
       
       if (hasParent2 === false) {
-        showInfo('Next Step', 'Invite a co-parent to join the family');
+        toast('Invite a co-parent to join the family', 'info');
         navigation.replace('CoParentInviteScreen');
       } else if (hasParent2 === 'skipped' || hasParent2 === true) {
         await completeSetup('parent2');
-        showSuccess('Welcome Back!', 'Baby profile selected');
+        toast('Baby profile selected', 'success');
         navigation.replace('Main');
       } else {
-        showSuccess('Welcome Back!', 'Baby profile selected');
+        toast('Baby profile selected', 'success');
         navigation.replace('Main');
       }
     } catch (error) {
       console.error('handleSelectBaby error:', error);
-      showError('Error', 'Could not switch baby');
+      toast('Could not switch baby', 'error');
     } finally {
       setIsProcessing(false);
     }
-  }, [switchBaby, completeSetup, wasSetupCompleted, showError, showSuccess, showInfo, triggerHaptic, navigation]);
+  }, [switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
 
   const handleRetry = useCallback(async () => {
     setLoadError(null);
@@ -410,58 +421,60 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     hasCheckedRef.current = false;
     loadAttemptedRef.current = false;
     navigationAttemptedRef.current = false;
+    setInitialCheckDone(false);
     
     try {
-      const userId = userProfile?.id;
-      if (userId) {
-        const synced = await syncBabiesFromSupabase(userId);
-        if (synced) {
-          await loadBabies();
-          const localBabies = await getAllBabiesFromDb();
-          if (localBabies && localBabies.length > 0) {
-            setHasBabies(true);
-            setLocalLoading(false);
-            await checkAndNavigate();
-            return;
-          }
-        }
-      }
-      
       await loadBabies();
       if (isMountedRef.current) {
+        const localBabies = await getAllBabiesFromDb();
+        if (localBabies && localBabies.length > 0) {
+          setHasBabies(true);
+          setLocalLoading(false);
+          setInitialCheckDone(true);
+          await checkAndNavigate();
+          return;
+        }
+        await checkAndSyncBabies();
         setLocalLoading(false);
+        setInitialCheckDone(true);
         await checkAndNavigate();
       }
     } catch (error) {
       if (isMountedRef.current) {
         setLoadError('Still unable to load');
         setLocalLoading(false);
+        setInitialCheckDone(true);
       }
     }
-  }, [loadBabies, checkAndNavigate, userProfile, syncBabiesFromSupabase]);
+  }, [loadBabies, checkAndSyncBabies, checkAndNavigate]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     hasCheckedRef.current = false;
     navigationAttemptedRef.current = false;
+    setInitialCheckDone(false);
     try {
       await loadBabies();
       await checkAndSyncBabies();
       if (babies.length > 0 || hasBabies) {
         await checkAndNavigate();
       }
+      setInitialCheckDone(true);
     } catch (error) {
       console.warn('[BabyOnboarding] Refresh error:', error);
+      setInitialCheckDone(true);
     } finally {
       setRefreshing(false);
     }
   }, [loadBabies, babies.length, hasBabies, checkAndNavigate, checkAndSyncBabies]);
 
   const showLoading = localLoading || babyLoading || syncInProgress;
-  const hasExistingBabies = (babies && babies.length > 0) || hasBabies || remoteBabies.length > 0;
+
+  // Don't show loading after initial check is done
+  const shouldShowLoading = !initialCheckDone && showLoading;
 
   // ─── ERROR STATE ──────────────────────────────────────────────────
-  if (loadError && !showLoading) {
+  if (loadError && !shouldShowLoading) {
     return (
       <View style={[styles.container]}>
         <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
@@ -483,7 +496,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }
 
   // ─── LOADING STATE ─────────────────────────────────────────────────
-  if (showLoading) {
+  if (shouldShowLoading) {
     return (
       <View style={[styles.container]}>
         <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f0f4ff', '#e0e7ff']} style={styles.gradient}>
@@ -493,12 +506,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
             <Text style={[styles.loadingText, isDark && styles.textDark]}>
               {syncInProgress ? 'Syncing your babies...' : 'Loading your babies...'}
             </Text>
-            <TouchableOpacity 
-              style={[styles.cancelLoadingButton, { marginTop: 20 }]}
-              onPress={handleRetry}
-            >
-              <Text style={[styles.cancelLoadingText, { color: themeColors.primary }]}>Tap to retry</Text>
-            </TouchableOpacity>
           </View>
         </LinearGradient>
       </View>
@@ -507,7 +514,8 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
   // ─── MAIN CONTENT ──────────────────────────────────────────────────
   const displayBabies = babies.length > 0 ? babies : remoteBabies;
-  const displayHasBabies = hasExistingBabies;
+  const displayHasBabies = hasBabies || babies.length > 0 || remoteBabies.length > 0;
+  const firstName = userProfile?.fullName?.split(' ')[0] || 'Parent';
 
   return (
     <View style={[styles.container]}>
@@ -526,11 +534,11 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
               <Text style={styles.icon}>👶</Text>
             </View>
             <Text style={[styles.title, isDark && styles.textDark]}>
-              {displayHasBabies ? 'Select Your Baby' : remoteBabies.length > 0 ? 'Import Your Baby?' : 'Add Your Baby?'}
+              {displayHasBabies ? `Welcome back, ${firstName}!` : `Hey ${firstName}, add your baby!`}
             </Text>
             <Text style={[styles.subtitle, isDark && { color: '#94a3b8' }]}>
               {displayHasBabies
-                ? `Welcome back, ${userProfile?.fullName?.split(' ')[0] || 'Parent'}!`
+                ? 'Select a baby to continue'
                 : remoteBabies.length > 0
                 ? 'We found existing baby profiles linked to your account'
                 : 'Create a profile to start tracking milestones and activities'}
