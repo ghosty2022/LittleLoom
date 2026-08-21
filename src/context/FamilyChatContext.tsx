@@ -423,6 +423,38 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     realtimeChannelRef.current = channel;
   }, [state.familyCode]);
 
+  /* ─── Load Family Code ────────────────────────────────────────── */
+  const loadFamilyCode = useCallback(async () => {
+    try {
+      const { data: settingsData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'family_code')
+        .maybeSingle();
+
+      if (settingsData?.value) {
+        const code = settingsData.value;
+        // Load blocked users from AsyncStorage (since it's user-specific)
+        const blockedKey = `@littleloom_blocked_${code}`;
+        const savedBlocked = await AsyncStorage.getItem(blockedKey);
+        const blockedUsers = savedBlocked ? JSON.parse(savedBlocked) : [];
+        setState(prev => ({ ...prev, familyCode: code, blockedUsers }));
+      } else if (babyContext) {
+        const newCode = `FAM-${babyContext.id.slice(0, 6).toUpperCase()}`;
+        await supabase
+          .from('app_settings')
+          .upsert({
+            key: 'family_code',
+            value: newCode,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'key' });
+        setState(prev => ({ ...prev, familyCode: newCode }));
+      }
+    } catch (error) {
+      console.error('Error loading family code:', error);
+    }
+  }, [babyContext]);
+
   /* ─── Perform Initial Sync ──────────────────────────────────── */
   const performInitialSync = useCallback(async () => {
     if (!state.familyCode) return;
@@ -531,34 +563,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setState(prev => ({ ...prev, isLoading: false }));
     }
   }, [state.familyCode, setupRealtimeListeners]);
-
-  /* ─── Load Family Code ────────────────────────────────────────── */
-  const loadFamilyCode = useCallback(async () => {
-    try {
-      const { data: settingsData } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'family_code')
-        .maybeSingle();
-
-      if (settingsData?.value) {
-        const code = settingsData.value;
-        setState(prev => ({ ...prev, familyCode: code }));
-      } else if (babyContext) {
-        const newCode = `FAM-${babyContext.id.slice(0, 6).toUpperCase()}`;
-        await supabase
-          .from('app_settings')
-          .upsert({
-            key: 'family_code',
-            value: newCode,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'key' });
-        setState(prev => ({ ...prev, familyCode: newCode }));
-      }
-    } catch (error) {
-      console.error('Error loading family code:', error);
-    }
-  }, [babyContext]);
 
   /* ─── Initialize ────────────────────────────────────────────────── */
   useEffect(() => {

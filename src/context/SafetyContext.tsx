@@ -30,7 +30,7 @@ const DOCTOR_REPORTS_KEY = 'littleloom_doctor_reports_v2';
 const MAX_TOPICS_SELECTED = 5;
 
 /* ═══════════════════════════════════════════════════════════════
-   NOTIFICATIONS SETUP
+   NOTIFICATIONS SETUP — Required for reminders
    ═══════════════════════════════════════════════════════════════ */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -530,6 +530,8 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           doctorReports: state.doctorReports,
         });
         await setAppSetting(STORAGE_KEY, data);
+        // Also save to AsyncStorage for backward compatibility
+        await AsyncStorage.setItem(STORAGE_KEY, data);
       } catch (error) {
         console.error('[SafetyContext] Failed to save safety data:', error);
       }
@@ -543,6 +545,8 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         const data = JSON.stringify(state.emergencyLogs);
         await setAppSetting(EMERGENCY_LOG_KEY, data);
+        // Also save to AsyncStorage for backward compatibility
+        await AsyncStorage.setItem(EMERGENCY_LOG_KEY, data);
       } catch (error) {
         console.error('[SafetyContext] Failed to save emergency logs:', error);
       }
@@ -553,6 +557,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   /* ── Load data ── */
   const loadSafetyData = useCallback(async () => {
     try {
+      // Try Supabase first
       const [stored, logsStored, streakStored, reportsStored] = await Promise.all([
         getAppSetting(STORAGE_KEY),
         getAppSetting(EMERGENCY_LOG_KEY),
@@ -560,11 +565,34 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         getAppSetting(DOCTOR_REPORTS_KEY),
       ]);
 
+      // Fallback to AsyncStorage if Supabase returns null
+      let storedData = stored;
+      let logsData = logsStored;
+      let streakData = streakStored;
+      let reportsData = reportsStored;
+
+      if (!storedData) {
+        storedData = await AsyncStorage.getItem(STORAGE_KEY);
+        if (storedData) await setAppSetting(STORAGE_KEY, storedData);
+      }
+      if (!logsData) {
+        logsData = await AsyncStorage.getItem(EMERGENCY_LOG_KEY);
+        if (logsData) await setAppSetting(EMERGENCY_LOG_KEY, logsData);
+      }
+      if (!streakData) {
+        streakData = await AsyncStorage.getItem(STREAK_KEY);
+        if (streakData) await setAppSetting(STREAK_KEY, streakData);
+      }
+      if (!reportsData) {
+        reportsData = await AsyncStorage.getItem(DOCTOR_REPORTS_KEY);
+        if (reportsData) await setAppSetting(DOCTOR_REPORTS_KEY, reportsData);
+      }
+
       const updates: Partial<SafetyState> = {};
 
-      if (stored) {
+      if (storedData) {
         try {
-          const parsed = JSON.parse(stored);
+          const parsed = JSON.parse(storedData);
           updates.emergencyContacts = parsed.emergencyContacts || defaultEmergencyContacts;
           updates.recentTipsViewed = parsed.recentTipsViewed || [];
           updates.checklists = parsed.checklists || defaultChecklists;
@@ -575,17 +603,17 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
       }
 
-      if (logsStored) {
+      if (logsData) {
         try {
-          updates.emergencyLogs = JSON.parse(logsStored);
+          updates.emergencyLogs = JSON.parse(logsData);
         } catch (e) {
           updates.emergencyLogs = [];
         }
       }
 
-      if (streakStored) {
+      if (streakData) {
         try {
-          const { streakDays, lastActiveDate } = JSON.parse(streakStored);
+          const { streakDays, lastActiveDate } = JSON.parse(streakData);
           updates.streakDays = streakDays || 0;
           updates.lastActiveDate = lastActiveDate || null;
         } catch (e) {
@@ -594,9 +622,9 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
       }
 
-      if (reportsStored) {
+      if (reportsData) {
         try {
-          updates.doctorReports = JSON.parse(reportsStored);
+          updates.doctorReports = JSON.parse(reportsData);
         } catch (e) {
           updates.doctorReports = [];
         }
@@ -613,10 +641,14 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   /* ── Reset all data ── */
   const resetSafetyData = useCallback(async () => {
     try {
+      // Delete from Supabase
       await deleteAppSetting(STORAGE_KEY);
       await deleteAppSetting(EMERGENCY_LOG_KEY);
       await deleteAppSetting(STREAK_KEY);
       await deleteAppSetting(DOCTOR_REPORTS_KEY);
+      // Delete from AsyncStorage
+      await AsyncStorage.multiRemove([STORAGE_KEY, EMERGENCY_LOG_KEY, STREAK_KEY, DOCTOR_REPORTS_KEY]);
+      
       setState({
         topics: defaultTopics.map((t) => ({ ...t, isExpanded: false })),
         emergencyContacts: defaultEmergencyContacts,
@@ -1211,6 +1243,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         try {
           const data = JSON.stringify({ streakDays: newStreak, lastActiveDate: today });
           await setAppSetting(STREAK_KEY, data);
+          await AsyncStorage.setItem(STREAK_KEY, data);
         } catch (e) {
           console.error('[SafetyContext] Failed to save streak:', e);
         }
@@ -1274,6 +1307,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setState((prev) => ({ ...prev, emergencyLogs: [] }));
     try {
       await deleteAppSetting(EMERGENCY_LOG_KEY);
+      await AsyncStorage.removeItem(EMERGENCY_LOG_KEY);
     } catch (e) {
       console.error('[SafetyContext] Failed to clear logs:', e);
     }
@@ -1344,6 +1378,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         const data = JSON.stringify([newReport, ...state.doctorReports]);
         await setAppSetting(DOCTOR_REPORTS_KEY, data);
+        await AsyncStorage.setItem(DOCTOR_REPORTS_KEY, data);
       } catch (e) {
         console.error('[SafetyContext] Failed to save doctor report:', e);
       }
@@ -1380,6 +1415,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }));
       try {
         await setAppSetting(DOCTOR_REPORTS_KEY, JSON.stringify(updatedReports));
+        await AsyncStorage.setItem(DOCTOR_REPORTS_KEY, JSON.stringify(updatedReports));
       } catch (e) {
         console.error('[SafetyContext] Failed to delete doctor report:', e);
       }

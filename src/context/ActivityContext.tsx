@@ -12,6 +12,7 @@ import {
   getAppSetting,
   setAppSetting,
 } from '@/database/dbHelpers';
+import { supabase } from '@/lib/supabase';
 
 export type ActivityType = 
   | 'potty' 
@@ -40,46 +41,57 @@ export interface ActivityEntry {
   loggedBy: string;
   loggedByName: string;
 
+  // Potty specific
   pottyType?: 'pee' | 'poop' | 'both' | 'accident' | 'attempt';
   location?: 'potty' | 'toilet' | 'floor' | 'diaper';
   successful?: boolean;
 
+  // Feed specific
   feedType?: 'breast' | 'bottle' | 'solid' | 'snack';
   amount?: string;
   duration?: string;
   side?: 'left' | 'right' | 'both';
   food?: string;
 
+  // Sleep specific
   sleepType?: 'nap' | 'night' | 'wake';
   quality?: number;
 
+  // Growth specific
   measurementType?: 'weight' | 'height' | 'head';
   value?: string;
   unit?: 'kg' | 'lb' | 'oz' | 'cm' | 'in';
   percentile?: number;
 
+  // Medication specific
   medName?: string;
   dosage?: string;
   reason?: string;
   givenBy?: 'parent1' | 'parent2' | 'doctor' | 'other';
 
+  // Milestone specific
   milestoneType?: 'motor' | 'cognitive' | 'social' | 'language' | 'other';
   description?: string;
   firstTime?: boolean;
 
+  // Diaper specific
   diaperType?: 'wet' | 'dirty' | 'both' | 'dry';
   rash?: boolean;
   cream?: 'none' | 'zinc' | 'petroleum' | 'other';
 
+  // General
   content?: string;
   mood?: 'happy' | 'neutral' | 'sad' | 'excited' | 'tired';
 
   notes?: string;
   photo?: string;
+  tags?: string[];
 
+  // System fields
   notificationId?: string;
   reminderScheduled?: boolean;
   syncedAt?: string;
+  deletedAt?: string | null;
 
   [key: string]: unknown;
 }
@@ -92,6 +104,7 @@ interface ActivityContextType {
   addEntry: (entry: Omit<ActivityEntry, 'id'>) => Promise<void>;
   updateEntry: (id: string, updates: Partial<ActivityEntry>) => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
+  restoreEntry: (id: string) => Promise<void>;
 
   getEntriesByType: (type: ActivityType, babyId?: string) => ActivityEntry[];
   getEntriesByBaby: (babyId: string) => ActivityEntry[];
@@ -112,19 +125,24 @@ interface ActivityContextType {
   loadEntries: () => Promise<void>;
   syncEntries: () => Promise<void>;
   clearEntries: () => Promise<void>;
+  refreshEntries: () => Promise<void>;
 
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
 
   syncWithBabyContext: (babyId: string) => Promise<void>;
   getEntriesForNotification: () => ActivityEntry[];
+  
+  // Supabase-specific methods
+  syncWithSupabase: () => Promise<void>;
+  pushToSupabase: (entry: ActivityEntry) => Promise<void>;
+  pullFromSupabase: (babyId: string) => Promise<void>;
 }
 
 const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
 
 const STORAGE_KEY = '@littleloom_activities_v3';
 const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
-const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
 
 const getNotificationService = async () => {
   try {
@@ -216,6 +234,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const initRef = useRef(false);
   const currentBabyIdRef = useRef<string | null>(null);
@@ -224,7 +243,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     if (initRef.current) return;
     initRef.current = true;
     loadEntries();
-  }, [loadEntries]);
+  }, []);
 
   const loadEntries = useCallback(async () => {
     setIsLoading(true);
@@ -244,17 +263,18 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
             babyId: row.baby_id,
             timestamp: row.timestamp,
             title: row.title,
-            details: row.notes,
+            details: row.notes || undefined,
             icon: undefined,
             loggedBy: row.logged_by || '',
             loggedByName: row.logged_by_name || '',
             ...data,
-            notes: row.notes,
+            notes: row.notes || undefined,
             photo: data.photo || (row.photo_uris ? (Array.isArray(row.photo_uris) ? row.photo_uris[0] : JSON.parse(row.photo_uris as any)[0]) : undefined),
             tags: row.tags || undefined,
             notificationId: row.notification_id || undefined,
             reminderScheduled: row.reminder_scheduled || false,
             syncedAt: row.synced_at || undefined,
+            deletedAt: row.deleted_at || undefined,
           } as ActivityEntry;
         });
         setEntries(parsed);
@@ -270,13 +290,17 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, []);
 
+  const refreshEntries = useCallback(async () => {
+    await loadEntries();
+  }, [loadEntries]);
+
   const addEntry = useCallback(async (entry: Omit<ActivityEntry, 'id'>) => {
     try {
       const newId = `activity_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const newEntry: ActivityEntry = { ...entry, id: newId };
 
       const entryData: Record<string, unknown> = {};
-      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
+      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt', 'deletedAt'];
       for (const [key, value] of Object.entries(entry)) {
         if (!skipFields.includes(key) && value !== undefined) {
           entryData[key] = value;
@@ -297,6 +321,13 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         loggedByName: entry.loggedByName,
       });
 
+      // Try to sync with Supabase if online
+      try {
+        await pushToSupabase(newEntry);
+      } catch (syncError) {
+        console.log('Failed to sync entry with Supabase, will retry later:', syncError);
+      }
+
       setEntries(prev => [newEntry, ...prev]);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -311,7 +342,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   const updateEntry = useCallback(async (id: string, updates: Partial<ActivityEntry>) => {
     try {
       const entryData: Record<string, unknown> = {};
-      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
+      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt', 'deletedAt'];
       for (const [key, value] of Object.entries(updates)) {
         if (!skipFields.includes(key) && value !== undefined) {
           entryData[key] = value;
@@ -326,6 +357,17 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         tags: updates.tags,
       });
 
+      // Try to sync with Supabase if online
+      const updatedEntry = entries.find(e => e.id === id);
+      if (updatedEntry) {
+        const updated = { ...updatedEntry, ...updates };
+        try {
+          await pushToSupabase(updated);
+        } catch (syncError) {
+          console.log('Failed to sync update with Supabase, will retry later:', syncError);
+        }
+      }
+
       setEntries(prev => 
         prev.map(entry => 
           entry.id === id ? { ...entry, ...updates } : entry
@@ -339,7 +381,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw err;
     }
-  }, []);
+  }, [entries]);
 
   const deleteEntry = useCallback(async (id: string) => {
     try {
@@ -351,6 +393,23 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
       await softDeleteEntryInDb(id);
 
+      // Try to sync deletion with Supabase if online
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from('activity_entries')
+            .update({ 
+              deleted_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id)
+            .eq('user_id', user.id);
+        }
+      } catch (syncError) {
+        console.log('Failed to sync deletion with Supabase:', syncError);
+      }
+
       setEntries(prev => prev.filter(entry => entry.id !== id));
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -361,6 +420,144 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       throw err;
     }
   }, [entries]);
+
+  const restoreEntry = useCallback(async (id: string) => {
+    try {
+      await updateEntryInDb(id, { deleted_at: null });
+      
+      // Re-fetch entries to get restored entry back
+      await loadEntries();
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to restore entry';
+      setError(message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      throw err;
+    }
+  }, [loadEntries]);
+
+  const pushToSupabase = useCallback(async (entry: ActivityEntry) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+
+      const { error } = await supabase
+        .from('activity_entries')
+        .upsert({
+          id: entry.id,
+          user_id: user.id,
+          baby_id: entry.babyId,
+          tracker_id: entry.type,
+          timestamp: entry.timestamp,
+          title: entry.title,
+          data: entry,
+          notes: entry.notes || entry.details,
+          photo_uris: entry.photo ? [entry.photo] : [],
+          tags: entry.tags || [],
+          logged_by: entry.loggedBy,
+          logged_by_name: entry.loggedByName,
+          notification_id: entry.notificationId,
+          reminder_scheduled: entry.reminderScheduled || false,
+          synced_at: new Date().toISOString(),
+          deleted_at: entry.deletedAt || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error pushing to Supabase:', error);
+      throw error;
+    }
+  }, []);
+
+  const pullFromSupabase = useCallback(async (babyId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+
+      const { data, error } = await supabase
+        .from('activity_entries')
+        .select('*')
+        .eq('baby_id', babyId)
+        .eq('user_id', user.id)
+        .is('deleted_at', null)
+        .order('timestamp', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const parsedEntries: ActivityEntry[] = data.map(row => {
+          const entryData = row.data || {};
+          return {
+            id: row.id,
+            type: row.tracker_id as ActivityType,
+            babyId: row.baby_id,
+            timestamp: row.timestamp,
+            title: row.title,
+            details: row.notes || undefined,
+            icon: undefined,
+            loggedBy: row.logged_by || '',
+            loggedByName: row.logged_by_name || '',
+            ...entryData,
+            notes: row.notes || undefined,
+            photo: entryData.photo || (row.photo_uris ? row.photo_uris[0] : undefined),
+            tags: row.tags || undefined,
+            notificationId: row.notification_id || undefined,
+            reminderScheduled: row.reminder_scheduled || false,
+            syncedAt: row.synced_at || undefined,
+          } as ActivityEntry;
+        });
+
+        // Merge with local entries, preferring Supabase data
+        const existingIds = new Set(entries.map(e => e.id));
+        const newEntries = parsedEntries.filter(e => !existingIds.has(e.id));
+        const updatedEntries = parsedEntries.filter(e => existingIds.has(e.id));
+        
+        setEntries(prev => {
+          // Update existing entries with Supabase data
+          const updated = prev.map(entry => {
+            const supabaseEntry = updatedEntries.find(e => e.id === entry.id);
+            return supabaseEntry || entry;
+          });
+          // Add new entries
+          return [...newEntries, ...updated];
+        });
+      }
+    } catch (error) {
+      console.error('Error pulling from Supabase:', error);
+      throw error;
+    }
+  }, [entries]);
+
+  const syncWithSupabase = useCallback(async () => {
+    if (isSyncing) return;
+    
+    setIsSyncing(true);
+    try {
+      const currentBabyId = await getAppSetting('current_baby_id');
+      if (!currentBabyId) return;
+
+      // Pull latest from Supabase
+      await pullFromSupabase(currentBabyId);
+
+      // Push local entries that haven't been synced
+      const unsyncedEntries = entries.filter(e => !e.syncedAt);
+      for (const entry of unsyncedEntries) {
+        try {
+          await pushToSupabase(entry);
+        } catch (err) {
+          console.log(`Failed to sync entry ${entry.id}:`, err);
+        }
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync with Supabase');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [entries, isSyncing, pullFromSupabase, pushToSupabase]);
 
   const getEntriesByType = useCallback((type: ActivityType, babyId?: string) => {
     return entries.filter(entry => {
@@ -519,6 +716,14 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
   const syncWithBabyContext = useCallback(async (babyId: string) => {
     try {
+      // First try to pull from Supabase
+      try {
+        await pullFromSupabase(babyId);
+      } catch (supabaseError) {
+        console.log('Supabase pull failed, falling back to local DB:', supabaseError);
+      }
+
+      // Then load from local DB
       const rows = await getEntriesByBabyFromDb(babyId);
       const existingIds = new Set(entries.map(e => e.id));
       const newActivities: ActivityEntry[] = [];
@@ -532,11 +737,11 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
             babyId: row.baby_id,
             timestamp: row.timestamp,
             title: row.title,
-            details: row.notes,
+            details: row.notes || undefined,
             loggedBy: row.logged_by || '',
             loggedByName: row.logged_by_name || '',
             ...data,
-            notes: row.notes,
+            notes: row.notes || undefined,
             photo: data.photo || (row.photo_uris ? (Array.isArray(row.photo_uris) ? row.photo_uris[0] : JSON.parse(row.photo_uris as any)[0]) : undefined),
             tags: row.tags || undefined,
             notificationId: row.notification_id || undefined,
@@ -552,7 +757,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     } catch {
       // Ignore sync errors
     }
-  }, [entries]);
+  }, [entries, pullFromSupabase]);
 
   const getEntriesForNotification = useCallback(() => {
     const now = Date.now();
@@ -571,6 +776,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     addEntry,
     updateEntry,
     deleteEntry,
+    restoreEntry,
     getEntriesByType,
     getEntriesByBaby,
     getEntriesByDateRange,
@@ -586,10 +792,14 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     loadEntries,
     syncEntries,
     clearEntries,
+    refreshEntries,
     scheduleActivityReminder,
     cancelActivityReminder,
     syncWithBabyContext,
     getEntriesForNotification,
+    syncWithSupabase,
+    pushToSupabase,
+    pullFromSupabase,
   }), [
     entries,
     isLoading,
@@ -597,6 +807,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     addEntry,
     updateEntry,
     deleteEntry,
+    restoreEntry,
     getEntriesByType,
     getEntriesByBaby,
     getEntriesByDateRange,
@@ -609,10 +820,14 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     loadEntries,
     syncEntries,
     clearEntries,
+    refreshEntries,
     scheduleActivityReminder,
     cancelActivityReminder,
     syncWithBabyContext,
     getEntriesForNotification,
+    syncWithSupabase,
+    pushToSupabase,
+    pullFromSupabase,
   ]);
 
   return (

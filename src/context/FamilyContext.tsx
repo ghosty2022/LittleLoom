@@ -1,21 +1,10 @@
+// src/context/FamilyContext.tsx
+// Full Supabase-compatible family management
+
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
-
-import {
-  getFamilyMembersByBabyFromDb,
-  getFamilyMemberByIdFromDb,
-  getFamilyMemberByEmailAndBabyFromDb,
-  createFamilyMemberInDb,
-  updateFamilyMemberInDb,
-  softDeleteFamilyMemberInDb,
-  getAppSetting,
-} from '../database/dbHelpers';
-import { familyMembers } from '../database/schema';
-
-// IMPORTANT: Use lazy import to avoid circular dependency
-// import { useBaby } from './BabyContext';
-import { useUser } from './UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/utils/supabase';
 import { useAuth } from './AuthContext';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
 
@@ -49,8 +38,10 @@ interface FamilyContextType extends FamilyState {
     inviteeEmail?: string,
     inviteePhone?: string
   ) => Promise<{ code: string; success: boolean; message: string }>;
-  getActiveInviteCodes: () => Promise<import('@/database/dbHelpers').InviteCode[]>;
+  getActiveInviteCodes: () => Promise<any[]>;
   revokeInviteCode: (code: string) => Promise<boolean>;
+  getCurrentBaby: () => any;
+  getBabyId: () => string | null;
 }
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
@@ -70,83 +61,12 @@ const showAlert = (title: string, message: string) => {
 };
 
 export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { profile, permissions: myPermissions, isLoading: userLoading } = useUser();
+  const { userProfile: authProfile, session } = useAuth();
   
-  // ─── FIX: Lazy load BabyContext to avoid circular dependency ──────────
-  // We'll use a ref to store the baby data and update it via a separate effect
+  // ─── Baby state ──────────────────────────────────────────────────────────
   const [currentBaby, setCurrentBaby] = useState<any>(null);
   const [babies, setBabies] = useState<any[]>([]);
   const [babyLoading, setBabyLoading] = useState(true);
-
-  const { userProfile: authProfile } = useAuth();
-
-  // ─── Load baby data separately ─────────────────────────────────────────
-  useEffect(() => {
-    let isMounted = true;
-    
-    const loadBabyData = async () => {
-      try {
-        setBabyLoading(true);
-        
-        // Import dbHelpers directly (not dynamic import to avoid issues)
-        const { getCurrentBabyData, getAllBabiesFromDb, getAppSetting: getSetting } = await import('../database/dbHelpers');
-        
-        // Try to get current baby from app setting
-        const currentBabyId = await getSetting('current_baby_id');
-        console.log('[FamilyProvider] Current baby ID:', currentBabyId);
-        
-        if (currentBabyId) {
-          const baby = await getCurrentBabyData(currentBabyId);
-          console.log('[FamilyProvider] Fetched baby:', baby?.name || 'none');
-          if (baby && isMounted) {
-            setCurrentBaby(baby);
-          }
-        }
-        
-        // Also try to get all babies
-        const allBabies = await getAllBabiesFromDb();
-        console.log('[FamilyProvider] Total babies in DB:', allBabies?.length || 0);
-        if (allBabies && isMounted) {
-          setBabies(allBabies);
-        }
-      } catch (error) {
-        console.warn('[FamilyProvider] Could not load baby data:', error);
-      } finally {
-        if (isMounted) {
-          setBabyLoading(false);
-        }
-      }
-    };
-    
-    loadBabyData();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // ─── Refresh baby data periodically ────────────────────────────────────
-  useEffect(() => {
-    const refreshInterval = setInterval(() => {
-      const loadBabyData = async () => {
-        try {
-          const { getCurrentBabyData } = await import('../database/dbHelpers');
-          const currentBabyId = await getAppSetting('current_baby_id');
-          if (currentBabyId) {
-            const baby = await getCurrentBabyData(currentBabyId);
-            if (baby) {
-              setCurrentBaby(baby);
-            }
-          }
-        } catch (e) {
-          // ignore
-        }
-      };
-      loadBabyData();
-    }, 5000);
-    
-    return () => clearInterval(refreshInterval);
-  }, []);
 
   const [state, setState] = useState<FamilyState>({
     isLoading: false,
@@ -158,18 +78,193 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const initRef = useRef(false);
+  const familyLoadInProgress = useRef(false);
 
-  // FIX: Account creator always has invite rights regardless of permission state
+  // ─── Load baby data from Supabase ──────────────────────────────────────
+  const loadBabyData = useCallback(async () => {
+    if (!authProfile?.id) return;
+
+    try {
+      setBabyLoading(true);
+
+      // Get current baby ID from app_settings
+      const { data: settingData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'current_baby_id')
+        .eq('user_id', authProfile.id)
+        .maybeSingle();
+
+      const currentBabyId = settingData?.value;
+
+      if (currentBabyId) {
+        // Fetch baby data
+        const { data: babyData, error: babyError } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('id', currentBabyId)
+          .maybeSingle();
+
+        if (!babyError && babyData) {
+          setCurrentBaby(babyData);
+        }
+      }
+
+      // Get all babies for this user
+      const { data: allBabies, error: allError } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent1_id', authProfile.id)
+        .order('created_at', { ascending: false });
+
+      if (!allError && allBabies) {
+        setBabies(allBabies);
+      }
+    } catch (error) {
+      console.warn('[FamilyProvider] Could not load baby data:', error);
+    } finally {
+      setBabyLoading(false);
+    }
+  }, [authProfile?.id]);
+
+  // ─── Initial baby load ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (authProfile?.id) {
+      loadBabyData();
+    }
+  }, [authProfile?.id]);
+
+  // ─── FIX: Account creator always has invite rights ────────────────────
   const isOwner = useMemo(() => {
-    const effectiveProfile = profile || authProfile;
+    const effectiveProfile = authProfile;
     if (!effectiveProfile) return false;
     if (effectiveProfile.role === 'parent1' || effectiveProfile.role === UserRole.PARENT_1) return true;
     if (!currentBaby) return false;
-    return currentBaby.parent1Id === effectiveProfile.id || currentBaby.parent1Id === authProfile?.id;
-  }, [profile, authProfile, currentBaby]);
+    return currentBaby.parent1_id === effectiveProfile.id;
+  }, [authProfile, currentBaby]);
 
+  // ─── Load family members ───────────────────────────────────────────────
+  const loadFamily = useCallback(async () => {
+    if (!currentBaby?.id) {
+      setState({
+        isLoading: false,
+        members: [],
+        parent1: null,
+        parent2: null,
+        guardians: [],
+        pendingInvites: [],
+      });
+      return;
+    }
+
+    if (familyLoadInProgress.current) return;
+    familyLoadInProgress.current = true;
+
+    setState(prev => ({ ...prev, isLoading: true }));
+
+    try {
+      const members: FamilyMember[] = [];
+      const effectiveProfile = authProfile;
+
+      // ─── Add Parent 1 ──────────────────────────────────────────────────
+      if (currentBaby.parent1_id) {
+        // Fetch parent1 profile
+        const { data: parentData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentBaby.parent1_id)
+          .maybeSingle();
+
+        members.push({
+          id: currentBaby.parent1_id,
+          userId: currentBaby.parent1_id,
+          fullName: parentData?.full_name || 'Parent',
+          email: parentData?.email || '',
+          avatar: parentData?.avatar || parentData?.community_avatar,
+          role: UserRole.PARENT_1,
+          relationship: 'Parent',
+          permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
+          addedAt: currentBaby.created_at,
+          addedBy: currentBaby.parent1_id,
+          canBeRemoved: false,
+          phoneNumber: parentData?.phone_number,
+          notificationsEnabled: true,
+          lastActive: new Date().toISOString(),
+          status: 'active',
+        });
+      }
+
+      // ─── Fetch family members from Supabase ──────────────────────────
+      const { data: dbMembers, error: membersError } = await supabase
+        .from('family_members')
+        .select('*')
+        .eq('baby_id', currentBaby.id)
+        .eq('deleted_at', null);
+
+      if (!membersError && dbMembers) {
+        for (const dbMember of dbMembers) {
+          if (dbMember.role === 'parent1') continue;
+
+          // Fetch user profile for this member if userId exists
+          let userProfile = null;
+          if (dbMember.user_id) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', dbMember.user_id)
+              .maybeSingle();
+            userProfile = profileData;
+          }
+
+          const member: FamilyMember = {
+            id: dbMember.id,
+            userId: dbMember.user_id || dbMember.id,
+            fullName: userProfile?.full_name || dbMember.full_name || 'Family Member',
+            email: userProfile?.email || dbMember.email || '',
+            avatar: userProfile?.avatar || userProfile?.community_avatar || dbMember.avatar || undefined,
+            role: dbMember.role === 'parent2' ? UserRole.PARENT_2 
+              : dbMember.role === 'guardian' ? UserRole.GUARDIAN 
+              : UserRole.VIEWER,
+            relationship: dbMember.relationship,
+            permissions: dbMember.permissions as Permission || ROLE_PERMISSIONS[UserRole.VIEWER],
+            addedAt: dbMember.added_at,
+            addedBy: dbMember.added_by,
+            canBeRemoved: dbMember.can_be_removed !== false,
+            lastActive: dbMember.last_active || undefined,
+            phoneNumber: userProfile?.phone_number || dbMember.phone_number || undefined,
+            notificationsEnabled: dbMember.notifications_enabled !== false,
+            status: dbMember.status || (dbMember.last_active ? 'active' : 'pending'),
+          };
+          members.push(member);
+        }
+      }
+
+      // ─── Update state ──────────────────────────────────────────────────
+      const nextParent1 = members.find(m => m.role === UserRole.PARENT_1) || null;
+      const nextParent2 = members.find(m => m.role === UserRole.PARENT_2) || null;
+      const nextGuardians = members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
+      const nextPending = members.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1);
+
+      setState(prev => ({
+        isLoading: false,
+        members,
+        parent1: nextParent1,
+        parent2: nextParent2,
+        guardians: nextGuardians,
+        pendingInvites: nextPending,
+      }));
+    } catch (error) {
+      console.error('Error loading family:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
+    } finally {
+      familyLoadInProgress.current = false;
+    }
+  }, [currentBaby, authProfile]);
+
+  // ─── Trigger load when baby changes ────────────────────────────────────
   useEffect(() => {
-    if (userLoading || babyLoading) return;
+    if (babyLoading || !authProfile) return;
+
     if (!currentBaby) {
       setState({
         isLoading: false,
@@ -182,6 +277,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       initRef.current = false;
       return;
     }
+
     if (initRef.current) {
       loadFamily();
       return;
@@ -189,242 +285,136 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     initRef.current = true;
     loadFamily();
-  }, [currentBaby?.id, userLoading, babyLoading, profile, authProfile]);
+  }, [currentBaby?.id, babyLoading, authProfile, loadFamily]);
 
-  const loadFamily = useCallback(async () => {
-    if (!currentBaby) return;
-    if (userLoading || babyLoading) return;
-
-    setState(prev => ({ ...prev, isLoading: true }));
-
-    try {
-      const members: FamilyMember[] = [];
-
-      const effectiveProfile = profile || authProfile;
-
-      let parent1Relationship = 'Parent';
-      try {
-        const savedRel = await getAppSetting(`parent1_relationship_${currentBaby.id}`);
-        if (savedRel) parent1Relationship = savedRel;
-      } catch (e) { /* ignore */ }
-
-      if (currentBaby.parent1Id && effectiveProfile) {
-        members.push({
-          id: currentBaby.parent1Id,
-          userId: currentBaby.parent1Id,
-          fullName: currentBaby.parent1Id === effectiveProfile.id ? effectiveProfile.fullName || parent1Relationship : parent1Relationship,
-          email: effectiveProfile.email || '',
-          avatar: effectiveProfile.avatar || effectiveProfile.communityAvatar,
-          role: UserRole.PARENT_1,
-          relationship: parent1Relationship,
-          permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
-          addedAt: currentBaby.createdAt,
-          addedBy: currentBaby.parent1Id,
-          canBeRemoved: false,
-          phoneNumber: effectiveProfile.phoneNumber,
-          notificationsEnabled: true,
-          lastActive: new Date().toISOString(),
-          status: 'active',
-        });
-      } else if (currentBaby.parent1Id && !effectiveProfile) {
-        members.push({
-          id: currentBaby.parent1Id,
-          userId: currentBaby.parent1Id,
-          fullName: 'Loading...',
-          email: '',
-          role: UserRole.PARENT_1,
-          relationship: parent1Relationship,
-          permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
-          addedAt: currentBaby.createdAt,
-          addedBy: currentBaby.parent1Id,
-          canBeRemoved: false,
-          notificationsEnabled: true,
-          lastActive: new Date().toISOString(),
-          status: 'active',
-        });
-      }
-
-      try {
-        const dbMembers = await getFamilyMembersByBabyFromDb(currentBaby.id);
-
-        for (const dbMember of dbMembers) {
-          if (dbMember.role === 'parent1') continue;
-
-          const member: FamilyMember = {
-            id: dbMember.id,
-            userId: dbMember.userId || dbMember.id,
-            fullName: dbMember.fullName,
-            email: dbMember.email,
-            avatar: dbMember.avatar || undefined,
-            role: dbMember.role === 'parent2' ? UserRole.PARENT_2 
-              : dbMember.role === 'guardian' ? UserRole.GUARDIAN 
-              : UserRole.VIEWER,
-            relationship: dbMember.relationship,
-            permissions: dbMember.permissions as Permission || ROLE_PERMISSIONS[UserRole.VIEWER],
-            addedAt: dbMember.addedAt,
-            addedBy: dbMember.addedBy,
-            canBeRemoved: dbMember.canBeRemoved,
-            lastActive: dbMember.lastActive || undefined,
-            phoneNumber: dbMember.phoneNumber || undefined,
-            notificationsEnabled: dbMember.notificationsEnabled,
-            status: (dbMember as any).status || (dbMember.lastActive ? 'active' : 'pending'),
-          };
-          members.push(member);
-        }
-      } catch (error) {
-        console.error('Error loading family members from DB:', error);
-      }
-
-      setState(prev => {
-        const nextParent1 = members.find(m => m.role === UserRole.PARENT_1) || null;
-        const nextParent2 = members.find(m => m.role === UserRole.PARENT_2) || null;
-        const nextGuardians = members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
-        const nextPending = members.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1);
-
-        const membersChanged =
-          members.length !== prev.members.length ||
-          members.some((m, i) => {
-            const p = prev.members[i];
-            return (
-              !p ||
-              m.id !== p.id ||
-              m.userId !== p.userId ||
-              m.fullName !== p.fullName ||
-              m.email !== p.email ||
-              m.avatar !== p.avatar ||
-              m.role !== p.role ||
-              m.relationship !== p.relationship ||
-              m.lastActive !== p.lastActive ||
-              m.notificationsEnabled !== p.notificationsEnabled
-            );
-          });
-
-        if (!membersChanged && !prev.isLoading) {
-          return prev;
-        }
-
-        return {
-          isLoading: false,
-          members,
-          parent1: nextParent1,
-          parent2: nextParent2,
-          guardians: nextGuardians,
-          pendingInvites: nextPending,
-        };
-      });
-    } catch (error) {
-      console.error('Error loading family:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
-    }
-  }, [currentBaby, profile, userLoading, babyLoading, authProfile]);
-
+  // ─── Update Parent 2 Profile ───────────────────────────────────────────
   const updateParent2Profile = useCallback(async (
     updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>
   ): Promise<boolean> => {
-    if (!currentBaby?.parent2Id) {
+    if (!currentBaby?.parent2_id) {
       showAlert('Error', 'No Parent 2 found');
       return false;
     }
 
-    const canManage = myPermissions?.manageFamily ?? false;
+    const canManage = state.members.some(m => 
+      m.userId === authProfile?.id && m.permissions?.manageFamily
+    );
 
-    if (!canManage) {
+    if (!canManage && authProfile?.role !== 'parent1') {
       showAlert('Error', 'You do not have permission to update family members');
       return false;
     }
 
     try {
-      const parent2Member = await getFamilyMemberByIdFromDb(currentBaby.parent2Id);
-      if (!parent2Member) {
-        showAlert('Error', 'Parent 2 not found in database');
+      // Update family member record
+      const dbUpdates: any = {};
+      if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
+      if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
+      dbUpdates.last_active = new Date().toISOString();
+
+      const { error: updateError } = await supabase
+        .from('family_members')
+        .update(dbUpdates)
+        .eq('id', currentBaby.parent2_id);
+
+      if (updateError) {
+        console.error('Error updating parent2:', updateError);
+        showAlert('Error', 'Failed to update Parent 2 profile');
         return false;
       }
 
-      const dbUpdates: Partial<typeof familyMembers.$inferInsert> = {};
-      if (updates.fullName !== undefined) dbUpdates.fullName = updates.fullName;
-      if (updates.email !== undefined) dbUpdates.email = updates.email;
-      if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
-      if (updates.phoneNumber !== undefined) dbUpdates.phoneNumber = updates.phoneNumber;
-      dbUpdates.lastActive = new Date().toISOString();
+      // Also update profile if userId matches
+      if (currentBaby.parent2_id) {
+        const { data: memberData } = await supabase
+          .from('family_members')
+          .select('user_id')
+          .eq('id', currentBaby.parent2_id)
+          .maybeSingle();
 
-      await updateFamilyMemberInDb(currentBaby.parent2Id, dbUpdates);
+        if (memberData?.user_id) {
+          const profileUpdates: any = {};
+          if (updates.fullName !== undefined) profileUpdates.full_name = updates.fullName;
+          if (updates.avatar !== undefined) profileUpdates.avatar = updates.avatar;
+          if (updates.phoneNumber !== undefined) profileUpdates.phone_number = updates.phoneNumber;
 
-      // Update baby context via dynamic import
-      try {
-        const { updateBabyInDb } = await import('../database/dbHelpers');
-        await updateBabyInDb(currentBaby.id, {
-          parent2Id: currentBaby.parent2Id,
-        });
-      } catch (e) {
-        console.warn('[FamilyProvider] Could not update baby:', e);
+          await supabase
+            .from('profiles')
+            .update(profileUpdates)
+            .eq('id', memberData.user_id);
+        }
       }
 
-      setState(prev => ({
-        ...prev,
-        parent2: prev.parent2 ? {
-          ...prev.parent2,
-          fullName: updates.fullName || prev.parent2.fullName,
-          email: updates.email || prev.parent2.email,
-          avatar: updates.avatar || prev.parent2.avatar,
-          phoneNumber: updates.phoneNumber || prev.parent2.phoneNumber,
-          lastActive: new Date().toISOString(),
-        } : null,
-        members: prev.members.map(m => 
-          m.role === UserRole.PARENT_2 
-            ? { 
-                ...m, 
-                fullName: updates.fullName || m.fullName,
-                email: updates.email || m.email,
-                avatar: updates.avatar || m.avatar,
-                phoneNumber: updates.phoneNumber || m.phoneNumber,
-                lastActive: new Date().toISOString(),
-              }
-            : m
-        ),
-      }));
+      // ─── Update baby's parent2Id if needed ────────────────────────────
+      if (updates.fullName) {
+        await supabase
+          .from('babies')
+          .update({
+            parent2_name: updates.fullName,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', currentBaby.id);
+      }
 
+      await loadFamily();
       return true;
     } catch (error) {
       console.error('Error updating parent2 profile:', error);
       showAlert('Error', 'Failed to update Parent 2 profile');
       return false;
     }
-  }, [currentBaby, myPermissions]);
+  }, [currentBaby, authProfile, state.members, loadFamily]);
 
+  // ─── Update Guardian Profile ───────────────────────────────────────────
   const updateGuardianProfile = useCallback(async (memberId: string, updates: Partial<FamilyMember>): Promise<boolean> => {
-    const canManage = myPermissions?.manageFamily ?? false;
+    const canManage = state.members.some(m => 
+      m.userId === authProfile?.id && m.permissions?.manageFamily
+    );
 
-    if (!canManage) {
+    if (!canManage && authProfile?.role !== 'parent1') {
       showAlert('Error', 'Permission denied');
       return false;
     }
 
     try {
-      const dbUpdates: Partial<typeof familyMembers.$inferInsert> = {};
-      if (updates.fullName !== undefined) dbUpdates.fullName = updates.fullName;
+      const dbUpdates: any = {};
+      if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
       if (updates.email !== undefined) dbUpdates.email = updates.email;
       if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
-      if (updates.phoneNumber !== undefined) dbUpdates.phoneNumber = updates.phoneNumber;
+      if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
       if (updates.relationship !== undefined) dbUpdates.relationship = updates.relationship;
       if (updates.role !== undefined) {
         dbUpdates.role = updates.role === UserRole.PARENT_2 ? 'parent2'
           : updates.role === UserRole.GUARDIAN ? 'guardian'
           : 'viewer';
       }
-      if (updates.notificationsEnabled !== undefined) dbUpdates.notificationsEnabled = updates.notificationsEnabled;
+      if (updates.notificationsEnabled !== undefined) dbUpdates.notifications_enabled = updates.notificationsEnabled;
+      dbUpdates.last_active = new Date().toISOString();
 
-      await updateFamilyMemberInDb(memberId, dbUpdates);
+      const { error } = await supabase
+        .from('family_members')
+        .update(dbUpdates)
+        .eq('id', memberId);
+
+      if (error) {
+        console.error('Error updating guardian:', error);
+        showAlert('Error', 'Failed to update guardian');
+        return false;
+      }
+
       await loadFamily();
-
       return true;
     } catch (error) {
+      console.error('Error updating guardian:', error);
       showAlert('Error', 'Failed to update guardian');
       return false;
     }
-  }, [myPermissions, loadFamily]);
+  }, [authProfile, state.members, loadFamily]);
 
+  // ─── Invite Member ─────────────────────────────────────────────────────
   const inviteMember = useCallback(async (email: string, role: UserRole, relationship: string) => {
-    if (!isOwner || !profile || !currentBaby) {
+    if (!isOwner || !authProfile || !currentBaby) {
       showAlert('Permission Denied', 'Only the account creator can invite family members');
       return false;
     }
@@ -435,8 +425,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      const existingInvite = await getFamilyMemberByEmailAndBabyFromDb(email.toLowerCase(), currentBaby.id);
-      if (existingInvite) {
+      // Check for existing invite
+      const { data: existing } = await supabase
+        .from('family_members')
+        .select('id')
+        .eq('baby_id', currentBaby.id)
+        .eq('email', email.toLowerCase())
+        .eq('deleted_at', null)
+        .maybeSingle();
+
+      if (existing) {
         showAlert('Duplicate Invite', 'An invitation has already been sent to this email');
         return false;
       }
@@ -446,34 +444,52 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         : role === UserRole.GUARDIAN ? 'guardian'
         : 'viewer';
 
-      await createFamilyMemberInDb({
-        id: newId,
-        babyId: currentBaby.id,
-        userId: null,
-        email: email.toLowerCase(),
-        fullName: 'Pending Invitation',
-        role: dbRole,
-        relationship,
-        permissions: ROLE_PERMISSIONS[role] as Record<string, boolean>,
-        addedBy: profile.id,
-        canBeRemoved: true,
-        notificationsEnabled: true,
-        status: 'pending',
-      });
+      // Check if user already has an account with this email
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email.toLowerCase())
+        .maybeSingle();
 
-      // Update baby's guardianIds
-      try {
-        const { updateBabyInDb } = await import('../database/dbHelpers');
-        const currentBabyData = await getAppSetting(`baby_${currentBaby.id}`);
-        const guardianIds = currentBabyData?.guardianIds || [];
-        await updateBabyInDb(currentBaby.id, { guardianIds: [...guardianIds, newId] });
-      } catch (e) {
-        console.warn('[FamilyProvider] Could not update baby guardianIds:', e);
+      const { error: insertError } = await supabase
+        .from('family_members')
+        .insert({
+          id: newId,
+          baby_id: currentBaby.id,
+          user_id: userData?.id || null,
+          email: email.toLowerCase(),
+          full_name: 'Pending Invitation',
+          role: dbRole,
+          relationship,
+          permissions: ROLE_PERMISSIONS[role] as Record<string, boolean>,
+          added_by: authProfile.id,
+          can_be_removed: true,
+          notifications_enabled: true,
+          status: 'pending',
+          added_at: new Date().toISOString(),
+        });
+
+      if (insertError) {
+        console.error('Error creating invitation:', insertError);
+        showAlert('Error', 'Failed to send invitation');
+        return false;
       }
+
+      // Update baby's guardian_ids
+      const guardianIds = [...(currentBaby.guardian_ids || []), newId];
+      await supabase
+        .from('babies')
+        .update({ guardian_ids: guardianIds })
+        .eq('id', currentBaby.id);
 
       await loadFamily();
 
       showAlert('Invitation Sent', 'Family member has been invited');
+
+      // TODO: Send actual email invitation via Supabase Edge Function or email service
+      // await supabase.functions.invoke('send-invite-email', {
+      //   body: { email, role, relationship, babyName: currentBaby.name, inviterName: authProfile.full_name }
+      // });
 
       return true;
     } catch (error) {
@@ -481,38 +497,52 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       showAlert('Error', 'Failed to send invitation');
       return false;
     }
-  }, [isOwner, profile, currentBaby, loadFamily]);
+  }, [isOwner, authProfile, currentBaby, loadFamily]);
 
+  // ─── Remove Member ─────────────────────────────────────────────────────
   const removeMember = useCallback(async (memberId: string) => {
-    const canManage = myPermissions?.manageFamily ?? false;
+    const canManage = state.members.some(m => 
+      m.userId === authProfile?.id && m.permissions?.manageFamily
+    );
 
-    if (!canManage || !currentBaby) return false;
+    if (!canManage && authProfile?.role !== 'parent1') {
+      showAlert('Error', 'Permission denied');
+      return false;
+    }
 
-    if (profile?.id === memberId) {
+    if (!currentBaby) return false;
+
+    if (authProfile?.id === memberId) {
       showAlert('Error', 'You cannot remove yourself from the family');
       return false;
     }
 
     try {
-      await softDeleteFamilyMemberInDb(memberId);
+      // Soft delete - set deleted_at
+      const { error } = await supabase
+        .from('family_members')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', memberId);
 
-      // Update baby's guardianIds
-      try {
-        const { updateBabyInDb } = await import('../database/dbHelpers');
-        const currentBabyData = await getAppSetting(`baby_${currentBaby.id}`);
-        const guardianIds = (currentBabyData?.guardianIds || []).filter((id: string) => id !== memberId);
-        await updateBabyInDb(currentBaby.id, { guardianIds });
-      } catch (e) {
-        console.warn('[FamilyProvider] Could not update baby guardianIds:', e);
+      if (error) {
+        console.error('Error removing member:', error);
+        showAlert('Error', 'Failed to remove member');
+        return false;
       }
 
+      // Remove from baby's guardian_ids
+      const guardianIds = (currentBaby.guardian_ids || []).filter((id: string) => id !== memberId);
+      await supabase
+        .from('babies')
+        .update({ guardian_ids: guardianIds })
+        .eq('id', currentBaby.id);
+
+      // If this was parent2, remove parent2_id
       if (state.parent2?.id === memberId) {
-        try {
-          const { updateBabyInDb } = await import('../database/dbHelpers');
-          await updateBabyInDb(currentBaby.id, { parent2Id: undefined });
-        } catch (e) {
-          console.warn('[FamilyProvider] Could not remove parent2:', e);
-        }
+        await supabase
+          .from('babies')
+          .update({ parent2_id: null })
+          .eq('id', currentBaby.id);
       }
 
       setState(prev => ({
@@ -528,24 +558,33 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       showAlert('Error', 'Failed to remove member');
       return false;
     }
-  }, [myPermissions, currentBaby, state.parent2, profile]);
+  }, [authProfile, currentBaby, state.parent2, state.members]);
 
+  // ─── Resend Invite ─────────────────────────────────────────────────────
   const resendInvite = useCallback(async (memberId: string): Promise<boolean> => {
     const member = state.members.find(m => m.id === memberId);
     if (!member) return false;
+
+    // TODO: Send actual email invitation via Supabase Edge Function
+    // await supabase.functions.invoke('send-invite-email', {
+    //   body: { email: member.email, role: member.role, babyName: currentBaby?.name }
+    // });
 
     showAlert('Invitation Resent', `New invitation sent to ${member.email || 'member'}`);
     return true;
   }, [state.members]);
 
+  // ─── Cancel Invite ─────────────────────────────────────────────────────
   const cancelInvite = useCallback(async (memberId: string): Promise<boolean> => {
     return removeMember(memberId);
   }, [removeMember]);
 
+  // ─── Refresh Member Status ────────────────────────────────────────────
   const refreshMemberStatus = useCallback(async (memberId: string) => {
     await loadFamily();
   }, [loadFamily]);
 
+  // ─── Generate Invite Code ─────────────────────────────────────────────
   const generateInviteCode = useCallback(async (
     role: 'parent2' | 'guardian' | 'viewer',
     relationship?: string,
@@ -553,32 +592,43 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     inviteeEmail?: string,
     inviteePhone?: string
   ): Promise<{ code: string; success: boolean; message: string }> => {
-    if (!isOwner || !profile || !currentBaby) {
+    if (!isOwner || !authProfile || !currentBaby) {
       return { code: '', success: false, message: 'Only the account creator can invite family members' };
     }
 
     try {
       const payload = {
-        familyId: currentBaby.id,
-        babyName: currentBaby.name,
-        babyDob: (currentBaby as any).dateOfBirth,
-        babyGender: (currentBaby as any).gender,
-        creatorId: profile.id,
-        creatorName: profile.fullName,
+        family_id: currentBaby.id,
+        baby_name: currentBaby.name,
+        baby_dob: currentBaby.date_of_birth,
+        baby_gender: currentBaby.gender,
+        creator_id: authProfile.id,
+        creator_name: authProfile.full_name,
         role,
         relationship,
-        inviteeName,
-        inviteeEmail,
-        inviteePhone,
-        createdAt: Date.now(),
-        expiresInDays: 7,
+        invitee_name: inviteeName,
+        invitee_email: inviteeEmail,
+        invitee_phone: inviteePhone,
+        created_at: Date.now(),
+        expires_in_days: 7,
       };
 
-      try {
-        const { createInviteCode } = await import('@/utils/portableInvite');
-        const code = await createInviteCode(payload);
-        return { code, success: true, message: 'Invite code generated successfully' };
-      } catch (dbError) {
+      // Use Supabase to generate invite code
+      const { data, error } = await supabase
+        .from('invite_codes')
+        .insert({
+          code: generateId().substring(0, 8).toUpperCase(),
+          family_id: currentBaby.id,
+          creator_id: authProfile.id,
+          payload: payload,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        })
+        .select('code')
+        .single();
+
+      if (error) {
+        console.error('Error generating invite code:', error);
+        // Fallback to local generation
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         const array = new Uint32Array(6);
         crypto.getRandomValues(array);
@@ -591,68 +641,74 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         return { code, success: true, message: 'Invite code generated successfully' };
       }
+
+      return { code: data.code, success: true, message: 'Invite code generated successfully' };
     } catch (error) {
       console.error('Error generating invite code:', error);
       return { code: '', success: false, message: 'Failed to generate invite code' };
     }
-  }, [isOwner, profile, currentBaby]);
+  }, [isOwner, authProfile, currentBaby]);
 
+  // ─── Get Active Invite Codes ──────────────────────────────────────────
   const getActiveInviteCodes = useCallback(async () => {
+    if (!currentBaby?.id) return [];
+
     try {
-      const { getActiveInvites } = await import('@/utils/portableInvite');
-      const invites = await getActiveInvites(currentBaby?.id);
-      return invites;
-    } catch {
-      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-      const codes = raw ? JSON.parse(raw) : {};
+      const { data, error } = await supabase
+        .from('invite_codes')
+        .select('*')
+        .eq('family_id', currentBaby.id)
+        .eq('used', false)
+        .eq('revoked', false)
+        .gt('expires_at', new Date().toISOString());
 
-      return Object.entries(codes)
-        .filter(([_, v]: [string, any]) => {
-          const notUsed = !v.used;
-          const notRevoked = !v.revoked;
-          const notExpired = (v.expiresAt ?? 0) > Date.now();
-          const belongsToCurrent = !currentBaby || v.familyId === currentBaby.id;
-          return notUsed && notRevoked && notExpired && belongsToCurrent;
-        })
-        .map(([code, data]: [string, any]) => ({ code, ...data }));
+      if (error) {
+        console.error('Error fetching invite codes:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching invite codes:', error);
+      return [];
     }
-  }, [currentBaby]);
+  }, [currentBaby?.id]);
 
+  // ─── Revoke Invite Code ───────────────────────────────────────────────
   const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
     if (!isOwner || !currentBaby) return false;
 
     try {
-      const { validateInviteCode, revokeInviteCode: doRevoke } = await import('@/utils/portableInvite');
+      const { error } = await supabase
+        .from('invite_codes')
+        .update({ revoked: true })
+        .eq('code', code)
+        .eq('family_id', currentBaby.id);
 
-      const check = await validateInviteCode(code);
-      if (check.valid && check.invite.familyId !== currentBaby.id) {
+      if (error) {
+        console.error('Error revoking invite code:', error);
         return false;
       }
 
-      return await doRevoke(code);
-    } catch {
-      const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-      const codes = raw ? JSON.parse(raw) : {};
-
-      if (
-        codes[code] &&
-        (!codes[code].familyId || codes[code].familyId === currentBaby.id)
-      ) {
-        codes[code].revoked = true;
-        await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
-        return true;
-      }
-
+      return true;
+    } catch (error) {
+      console.error('Error revoking invite code:', error);
       return false;
     }
   }, [isOwner, currentBaby]);
 
+  // ─── Get Effective Permissions ────────────────────────────────────────
   const getEffectivePermissions = useCallback((userId?: string): Permission => {
-    const targetId = userId || profile?.id;
+    const targetId = userId || authProfile?.id;
     const member = state.members.find(m => m.userId === targetId || m.id === targetId);
     return member?.permissions || ROLE_PERMISSIONS[UserRole.VIEWER];
-  }, [state.members, profile]);
+  }, [state.members, authProfile]);
 
+  // ─── Getters ───────────────────────────────────────────────────────────
+  const getCurrentBaby = useCallback(() => currentBaby, [currentBaby]);
+  const getBabyId = useCallback(() => currentBaby?.id || null, [currentBaby]);
+
+  // ─── Memoized Value ────────────────────────────────────────────────────
   const value = React.useMemo(() => ({
     ...state,
     loadFamily,
@@ -667,7 +723,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     generateInviteCode,
     getActiveInviteCodes,
     revokeInviteCode,
-  }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode]);
+    getCurrentBaby,
+    getBabyId,
+  }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, 
+      updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, 
+      refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode,
+      getCurrentBaby, getBabyId]);
 
   return (
     <FamilyContext.Provider value={value}>
