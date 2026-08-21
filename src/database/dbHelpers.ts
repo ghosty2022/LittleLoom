@@ -1,5 +1,5 @@
 // src/database/dbHelpers.ts
-// Full Supabase implementation - No local DB
+// Full Supabase implementation - No local DB, No Drizzle
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -92,23 +92,7 @@ export async function updateUserInRegistry(
 
 export async function findUserByEmail(email: string): Promise<UserRegistryEntry | null> {
   try {
-    // First check Supabase
-    const { data: { user }, error } = await supabase.auth.admin.getUserByEmail(email.trim());
-    
-    if (error || !user) {
-      // Clean up local registry
-      const registry = await getUserRegistry();
-      for (const [userId, entry] of Object.entries(registry)) {
-        if (entry.email.toLowerCase() === email.trim().toLowerCase()) {
-          delete registry[userId];
-          await saveUserRegistry(registry);
-          break;
-        }
-      }
-      return null;
-    }
-
-    // Check local registry
+    // Check local registry first
     const registry = await getUserRegistry();
     const searchEmail = email.trim().toLowerCase();
     
@@ -117,20 +101,42 @@ export async function findUserByEmail(email: string): Promise<UserRegistryEntry 
         return entry;
       }
     }
+    
+    // Try to find from Supabase profiles
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', searchEmail)
+      .maybeSingle();
 
-    // Create registry entry if user exists in Supabase
-    const userMeta = user.user_metadata || {};
-    const newEntry: UserRegistryEntry = {
-      userId: user.id,
-      email: user.email || email,
-      fullName: userMeta.full_name || userMeta.fullName || email.split('@')[0],
-      avatar: userMeta.avatar || '👤',
-      role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
-      createdAt: user.created_at || new Date().toISOString(),
-      hasPassword: true,
-    };
-    await registerUser(newEntry);
-    return newEntry;
+    if (error) {
+      console.warn('[DB] Profile query error:', error.message);
+      return null;
+    }
+
+    if (profile) {
+      // Create registry entry
+      const newEntry: UserRegistryEntry = {
+        userId: profile.id,
+        email: profile.email,
+        fullName: profile.full_name || email.split('@')[0],
+        avatar: profile.avatar || '👤',
+        role: profile.role || 'parent1',
+        createdAt: profile.created_at || new Date().toISOString(),
+        communityUsername: profile.community_username || undefined,
+        communityHandle: profile.community_handle || undefined,
+        communityBio: profile.community_bio || undefined,
+        communityAvatar: profile.community_avatar || undefined,
+        communityDisplayName: profile.community_display_name || undefined,
+        communityStats: profile.community_stats || undefined,
+        communitySelectedTopics: profile.community_selected_topics || undefined,
+        hasPassword: true,
+      };
+      await registerUser(newEntry);
+      return newEntry;
+    }
+
+    return null;
   } catch (error) {
     console.error('Error finding user by email:', error);
     return null;
@@ -150,6 +156,40 @@ export async function findUserByUsername(username: string): Promise<UserRegistry
         return entry;
       }
     }
+    
+    // Try to find from Supabase profiles
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('community_username', searchUsername)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[DB] Profile query error:', error.message);
+      return null;
+    }
+
+    if (profile) {
+      const newEntry: UserRegistryEntry = {
+        userId: profile.id,
+        email: profile.email,
+        fullName: profile.full_name || '',
+        avatar: profile.avatar || '👤',
+        role: profile.role || 'parent1',
+        createdAt: profile.created_at || new Date().toISOString(),
+        communityUsername: profile.community_username || undefined,
+        communityHandle: profile.community_handle || undefined,
+        communityBio: profile.community_bio || undefined,
+        communityAvatar: profile.community_avatar || undefined,
+        communityDisplayName: profile.community_display_name || undefined,
+        communityStats: profile.community_stats || undefined,
+        communitySelectedTopics: profile.community_selected_topics || undefined,
+        hasPassword: true,
+      };
+      await registerUser(newEntry);
+      return newEntry;
+    }
+
     return null;
   } catch (error) {
     console.error('Error finding user by username:', error);
@@ -177,6 +217,41 @@ export async function findUserByPhone(phone: string): Promise<UserRegistryEntry 
         return entry;
       }
     }
+    
+    // Try to find from Supabase profiles
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('phone_number', searchPhone)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[DB] Profile query error:', error.message);
+      return null;
+    }
+
+    if (profile) {
+      const newEntry: UserRegistryEntry = {
+        userId: profile.id,
+        email: profile.email,
+        fullName: profile.full_name || '',
+        avatar: profile.avatar || '👤',
+        role: profile.role || 'parent1',
+        createdAt: profile.created_at || new Date().toISOString(),
+        communityUsername: profile.community_username || undefined,
+        communityHandle: profile.community_handle || undefined,
+        communityBio: profile.community_bio || undefined,
+        communityAvatar: profile.community_avatar || undefined,
+        communityDisplayName: profile.community_display_name || undefined,
+        communityStats: profile.community_stats || undefined,
+        communitySelectedTopics: profile.community_selected_topics || undefined,
+        phoneNumber: profile.phone_number || undefined,
+        hasPassword: true,
+      };
+      await registerUser(newEntry);
+      return newEntry;
+    }
+
     return null;
   } catch (error) {
     console.error('Error finding user by phone:', error);
@@ -225,14 +300,24 @@ export async function getAppSetting(key: string): Promise<string | null> {
       .maybeSingle();
 
     if (error) {
+      // Table might not exist yet - try AsyncStorage fallback
       console.warn(`[DB] getAppSetting error for ${key}:`, error.message);
-      return null;
+      try {
+        return await AsyncStorage.getItem(`app_setting_${key}`);
+      } catch {
+        return null;
+      }
     }
 
     return data?.value || null;
   } catch (error) {
     console.error(`[DB] getAppSetting error for ${key}:`, error);
-    return null;
+    // Fallback to AsyncStorage
+    try {
+      return await AsyncStorage.getItem(`app_setting_${key}`);
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -251,9 +336,17 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 
     if (error) {
       console.warn(`[DB] setAppSetting error for ${key}:`, error.message);
+      // Fallback to AsyncStorage
+      await AsyncStorage.setItem(`app_setting_${key}`, value);
     }
   } catch (error) {
     console.error(`[DB] setAppSetting error for ${key}:`, error);
+    // Fallback to AsyncStorage
+    try {
+      await AsyncStorage.setItem(`app_setting_${key}`, value);
+    } catch (e) {
+      console.error(`[DB] setAppSetting AsyncStorage fallback error for ${key}:`, e);
+    }
   }
 }
 
@@ -266,9 +359,16 @@ export async function deleteAppSetting(key: string): Promise<void> {
 
     if (error) {
       console.warn(`[DB] deleteAppSetting error for ${key}:`, error.message);
+      // Fallback to AsyncStorage
+      await AsyncStorage.removeItem(`app_setting_${key}`);
     }
   } catch (error) {
     console.error(`[DB] deleteAppSetting error for ${key}:`, error);
+    try {
+      await AsyncStorage.removeItem(`app_setting_${key}`);
+    } catch (e) {
+      console.error(`[DB] deleteAppSetting AsyncStorage fallback error for ${key}:`, e);
+    }
   }
 }
 
@@ -281,7 +381,16 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
 
     if (error) {
       console.warn('[DB] getMultipleAppSettings error:', error.message);
-      return {};
+      // Fallback to AsyncStorage
+      const result: Record<string, string | null> = {};
+      for (const key of keys) {
+        try {
+          result[key] = await AsyncStorage.getItem(`app_setting_${key}`);
+        } catch {
+          result[key] = null;
+        }
+      }
+      return result;
     }
 
     const result: Record<string, string | null> = {};
@@ -585,7 +694,6 @@ export async function getEntriesByBabyFromDb(babyId: string, trackerId?: string)
       .from('tracker_entries')
       .select('*')
       .eq('baby_id', babyId)
-      .eq('is_deleted', false)
       .order('timestamp', { ascending: false });
 
     if (trackerId) {
@@ -1125,3 +1233,164 @@ export type AppSetting = {
   user_id: string | null;
   updated_at: string;
 };
+
+// ─── BACKUP HELPERS ──────────────────────────────────────────────────────
+
+export async function getLastBackupTime(): Promise<number | null> {
+  try {
+    const last = await AsyncStorage.getItem('@littleloom_last_backup_time');
+    return last ? parseInt(last, 10) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setLastBackupTime(time: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem('@littleloom_last_backup_time', String(time));
+  } catch {
+    // Ignore
+  }
+}
+
+export async function getAllUserDataForBackup(userId: string): Promise<{
+  babies: any[];
+  entries: Record<string, any[]>;
+  familyMembers: Record<string, any[]>;
+  appSettings: Record<string, string>;
+}> {
+  try {
+    const allBabies = await getAllBabiesFromDb();
+    
+    const entries: Record<string, any[]> = {};
+    const familyMembers: Record<string, any[]> = {};
+    const appSettings: Record<string, string> = {};
+    
+    for (const baby of allBabies) {
+      const babyEntries = await getEntriesByBabyFromDb(baby.id);
+      entries[baby.id] = babyEntries;
+      
+      const babyFamily = await getFamilyMembersByBabyFromDb(baby.id);
+      familyMembers[baby.id] = babyFamily;
+    }
+    
+    const settingsKeys = [
+      'current_baby_id',
+      'has_skipped_baby',
+      'community_username',
+      'community_handle',
+      'community_bio',
+      'community_avatar',
+      'community_display_name',
+      'community_stats',
+      'community_selected_topics',
+    ];
+    
+    for (const key of settingsKeys) {
+      const val = await getAppSetting(key);
+      if (val) appSettings[key] = val;
+    }
+    
+    return { babies: allBabies, entries, familyMembers, appSettings };
+  } catch (error) {
+    console.error('Error getting user data for backup:', error);
+    throw error;
+  }
+}
+
+export async function restoreFromBackupData(
+  backupData: any,
+  userId: string
+): Promise<{ restoredBabies: number; restoredEntries: number; restoredFamily: number }> {
+  let restoredBabies = 0;
+  let restoredEntries = 0;
+  let restoredFamily = 0;
+  
+  try {
+    for (const baby of backupData.babies || []) {
+      const exists = await getBabyByIdFromDb(baby.id);
+      if (!exists) {
+        await createBabyInDb({
+          id: baby.id,
+          name: baby.name,
+          avatar: baby.avatar || baby.avatar,
+          dateOfBirth: baby.dateOfBirth || baby.date_of_birth,
+          gender: baby.gender || baby.gender,
+          bloodType: baby.bloodType || baby.blood_type,
+          medicalNotes: baby.medicalNotes || baby.medical_notes,
+          parent1Id: baby.parent1Id || baby.parent1_id || userId,
+          parent2Id: baby.parent2Id || baby.parent2_id,
+        });
+        restoredBabies++;
+      } else {
+        await updateBabyInDb(baby.id, {
+          name: baby.name,
+          avatar: baby.avatar || baby.avatar,
+          dateOfBirth: baby.dateOfBirth || baby.date_of_birth,
+          gender: baby.gender || baby.gender,
+          bloodType: baby.bloodType || baby.blood_type,
+          medicalNotes: baby.medicalNotes || baby.medical_notes,
+          parent2Id: baby.parent2Id || baby.parent2_id,
+        });
+        restoredBabies++;
+      }
+    }
+    
+    for (const [babyId, entries] of Object.entries(backupData.entries || {})) {
+      for (const entry of entries as any[]) {
+        const exists = await getEntryByIdFromDb(entry.id);
+        if (!exists) {
+          await createEntryInDb({
+            id: entry.id,
+            trackerId: entry.trackerId || entry.type || 'unknown',
+            babyId: entry.babyId || babyId,
+            timestamp: entry.timestamp || Date.now(),
+            title: entry.title || 'Untitled',
+            data: entry.data || {},
+            notes: entry.notes || entry.details,
+            photoUris: entry.photoUris || entry.photo_uris || (entry.photo ? [entry.photo] : undefined),
+            tags: entry.tags,
+            loggedBy: entry.loggedBy || userId,
+            loggedByName: entry.loggedByName || 'Restored User',
+            loggedByRole: entry.loggedByRole || 'parent1',
+          });
+          restoredEntries++;
+        }
+      }
+    }
+    
+    for (const [babyId, members] of Object.entries(backupData.familyMembers || {})) {
+      for (const member of members as any[]) {
+        const exists = await getFamilyMemberByIdFromDb(member.id);
+        if (!exists) {
+          await createFamilyMemberInDb({
+            id: member.id,
+            babyId: member.babyId || babyId,
+            email: member.email,
+            fullName: member.fullName,
+            role: member.role,
+            relationship: member.relationship || 'Family',
+            permissions: member.permissions || {},
+            addedBy: member.addedBy || userId,
+            userId: member.userId || null,
+            avatar: member.avatar,
+            phoneNumber: member.phoneNumber,
+            canBeRemoved: member.canBeRemoved ?? true,
+            notificationsEnabled: member.notificationsEnabled ?? true,
+            status: member.status || 'active',
+          });
+          restoredFamily++;
+        }
+      }
+    }
+    
+    for (const [key, value] of Object.entries(backupData.appSettings || {})) {
+      await setAppSetting(key, String(value));
+    }
+    
+    return { restoredBabies, restoredEntries, restoredFamily };
+  } catch (error) {
+    console.error('Error restoring from backup:', error);
+    throw error;
+  }
+}
