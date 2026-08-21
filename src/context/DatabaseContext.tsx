@@ -2,7 +2,7 @@
 // Full Supabase - No local DB initialization needed
 
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet, AppState, Platform } from 'react-native';
+import { View, ActivityIndicator, Text, StyleSheet, AppState } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -40,6 +40,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const retryCountRef = useRef(0);
   const isMountedRef = useRef(true);
   const appStateSubscriptionRef = useRef<any>(null);
+  const initRef = useRef(false);
 
   // Check Supabase connection and session
   const checkConnection = useCallback(async () => {
@@ -88,19 +89,17 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         setUserId(null);
         setSession(null);
-        setIsReady(true); // Still ready, just not authenticated
+        setIsReady(true);
       }
     } catch (err) {
       console.warn('[DatabaseContext] Connection check error:', err);
       setError(err instanceof Error ? err : new Error('Connection failed'));
-      setIsReady(true); // Don't block - app can work offline
+      setIsReady(true);
     }
   }, []);
 
-  // Simple online check - assumes online by default
+  // Simple online check
   const checkOnlineStatus = useCallback(() => {
-    // In React Native, we can't reliably check online status without NetInfo
-    // We'll assume online and let API calls fail gracefully
     setIsOnline(true);
   }, []);
 
@@ -177,6 +176,9 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Initial setup
   useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    
     isMountedRef.current = true;
     
     // Check connection on mount
@@ -186,7 +188,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         console.log('[DatabaseContext] App became active, checking connection...');
-        // Refresh session when app comes back to foreground
         refreshSession();
       }
     });

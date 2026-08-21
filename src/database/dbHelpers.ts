@@ -34,6 +34,18 @@ export interface UserRegistryEntry {
 
 const USER_REGISTRY_KEY = 'littleloom_user_registry';
 
+// ─── USER ID CACHE ────────────────────────────────────────────────────────
+let cachedUserId: string | null = null;
+let cachedUserIdTimestamp: number = 0;
+const USER_ID_CACHE_TTL = 30000; // 30 seconds
+
+// ─── Clear user ID cache (call on logout) ─────────────────────────────
+export function clearUserIdCache(): void {
+  cachedUserId = null;
+  cachedUserIdTimestamp = 0;
+  console.log('[DB] User ID cache cleared');
+}
+
 /* ─── UTILITY ───────────────────────────────────────────────────────────── */
 
 // Safely check if a table exists in Supabase
@@ -58,17 +70,36 @@ export async function tableExists(tableName: string): Promise<boolean> {
   }
 }
 
-// Get current user ID
+// ─── FIXED: Get current user ID with caching ──────────────────────────
 export async function getCurrentUserId(): Promise<string | null> {
+  // Return cached value if fresh
+  const now = Date.now();
+  if (cachedUserId !== null && (now - cachedUserIdTimestamp) < USER_ID_CACHE_TTL) {
+    return cachedUserId;
+  }
+
   try {
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) {
-      console.warn('[DB] No authenticated user found');
+      // Only log on state change, not every time
+      if (cachedUserId !== null) {
+        console.log('[DB] User session ended');
+      }
+      cachedUserId = null;
+      cachedUserIdTimestamp = now;
       return null;
     }
+    
+    if (cachedUserId !== user.id) {
+      console.log('[DB] User authenticated:', user.id);
+    }
+    cachedUserId = user.id;
+    cachedUserIdTimestamp = now;
     return user.id;
   } catch (error) {
     console.error('[DB] getCurrentUserId error:', error);
+    cachedUserId = null;
+    cachedUserIdTimestamp = now;
     return null;
   }
 }
@@ -413,6 +444,7 @@ export async function getAppSetting(key: string): Promise<string | null> {
   }
 }
 
+// ─── FIXED: setAppSetting with proper upsert handling ────────────────
 export async function setAppSetting(key: string, value: string): Promise<void> {
   try {
     const userId = await getCurrentUserId();
@@ -430,21 +462,49 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
     }
 
     const now = new Date().toISOString();
-    const { error } = await supabase
+    
+    // FIX: Use a more compatible upsert approach
+    // First try to update
+    let query = supabase
       .from('app_settings')
-      .upsert({
+      .update({
+        value,
+        updated_at: now,
+      })
+      .eq('key', key);
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { error: updateError, count } = await query;
+
+    // If no rows were updated, insert
+    if (updateError || count === 0) {
+      const insertData: any = {
         key,
         value,
-        user_id: userId,
         updated_at: now,
-      }, {
-        onConflict: 'key, user_id',
-      });
+      };
+      
+      if (userId) {
+        insertData.user_id = userId;
+      } else {
+        insertData.user_id = null;
+      }
 
-    if (error) {
-      console.warn(`[DB] setAppSetting error for ${key}:`, error.message);
-      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
-      await AsyncStorage.setItem(storageKey, value);
+      const { error: insertError } = await supabase
+        .from('app_settings')
+        .insert(insertData);
+
+      if (insertError) {
+        console.warn(`[DB] setAppSetting insert error for ${key}:`, insertError.message);
+        // Fallback to AsyncStorage
+        const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+        await AsyncStorage.setItem(storageKey, value);
+      }
     }
   } catch (error) {
     console.error(`[DB] setAppSetting error for ${key}:`, error);
@@ -458,6 +518,7 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
   }
 }
 
+// ─── FIXED: deleteAppSetting with proper handling ────────────────────
 export async function deleteAppSetting(key: string): Promise<void> {
   try {
     const userId = await getCurrentUserId();
@@ -570,7 +631,7 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
   try {
     const userId = await getCurrentUserId();
     if (!userId) {
-      console.log('[DB] No authenticated user found, returning empty list');
+      // Silent return - this is expected when not logged in
       return [];
     }
 
@@ -618,7 +679,6 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
       }
     }
 
-    console.log(`[DB] Found ${allBabies.length} babies in Supabase`);
     return allBabies;
   } catch (error) {
     console.error('[DB] getAllBabiesFromDb error:', error);
@@ -629,7 +689,6 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
       if (userId) {
         const cached = await AsyncStorage.getItem(`@littleloom_babies_${userId}`);
         if (cached) {
-          console.log('[DB] Returning cached babies');
           return JSON.parse(cached);
         }
       }
@@ -958,7 +1017,6 @@ export async function getEntriesByBabyFromDb(babyId: string, trackerId?: string)
       const cacheKey = `@littleloom_entries_${babyId}`;
       const cached = await AsyncStorage.getItem(cacheKey);
       if (cached) {
-        console.log('[DB] Returning cached entries');
         const entries = JSON.parse(cached);
         if (trackerId) {
           return entries.filter((e: any) => e.tracker_id === trackerId);

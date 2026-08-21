@@ -9,6 +9,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { SocialUser } from '../hooks/useSocialAuth';
 import { supabase } from '@/utils/supabase';
 import { Session, User } from '@supabase/supabase-js';
+import { clearUserIdCache } from '@/database/dbHelpers';
 
 // ─── SINGLE SOURCE OF TRUTH FOR ONBOARDING ─────────────────────────────
 export const ONBOARDING_KEY = '@littleloom_onboarding_complete_v3';
@@ -314,6 +315,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
         ]);
+        
+        // Clear the user ID cache
+        clearUserIdCache();
         
         if (isMounted.current) {
           setState(prev => ({ 
@@ -712,6 +716,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'littleloom_security_lock',
         ]),
       ]);
+
+      // ─── CRITICAL: Clear the user ID cache ────────────────────────────
+      clearUserIdCache();
 
       const hasParent2 = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
       const hasBaby = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
@@ -1477,6 +1484,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
               secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
             ]);
+            // Clear the user ID cache
+            clearUserIdCache();
           }
         }
         
@@ -1599,6 +1608,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }));
         }
       } else if (event === 'SIGNED_OUT') {
+        // Clear the user ID cache on sign out
+        clearUserIdCache();
         if (isMounted.current) {
           setState(prev => ({
             ...prev,
