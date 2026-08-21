@@ -3,7 +3,6 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, AppState, Platform } from 'react-native';
-import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '@/utils/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -40,7 +39,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [showLoading, setShowLoading] = useState(false);
   const retryCountRef = useRef(0);
   const isMountedRef = useRef(true);
-  const netInfoUnsubscribeRef = useRef<(() => void) | null>(null);
   const appStateSubscriptionRef = useRef<any>(null);
 
   // Check Supabase connection and session
@@ -99,15 +97,11 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  // Check online status using NetInfo
+  // Simple online check - assumes online by default
   const checkOnlineStatus = useCallback(() => {
-    NetInfo.fetch().then(state => {
-      const online = state.isConnected ?? true;
-      setIsOnline(online);
-      if (!online) {
-        console.log('[DatabaseContext] App is offline');
-      }
-    });
+    // In React Native, we can't reliably check online status without NetInfo
+    // We'll assume online and let API calls fail gracefully
+    setIsOnline(true);
   }, []);
 
   // Refresh session
@@ -187,48 +181,25 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     // Check connection on mount
     checkConnection();
-    checkOnlineStatus();
-
-    // Listen for online/offline events using NetInfo
-    const unsubscribeNetInfo = NetInfo.addEventListener(state => {
-      const online = state.isConnected ?? true;
-      setIsOnline(online);
-      if (online) {
-        console.log('[DatabaseContext] App is online, checking connection...');
-        checkConnection();
-      } else {
-        console.log('[DatabaseContext] App is offline');
-      }
-    });
-    netInfoUnsubscribeRef.current = unsubscribeNetInfo;
 
     // Retry when app comes back to foreground
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         console.log('[DatabaseContext] App became active, checking connection...');
-        checkOnlineStatus();
-        // Check if online and then check connection
-        NetInfo.fetch().then(state => {
-          if (state.isConnected) {
-            checkConnection();
-          }
-        });
+        // Refresh session when app comes back to foreground
+        refreshSession();
       }
     });
     appStateSubscriptionRef.current = subscription;
 
     return () => {
       isMountedRef.current = false;
-      if (netInfoUnsubscribeRef.current) {
-        netInfoUnsubscribeRef.current();
-        netInfoUnsubscribeRef.current = null;
-      }
       if (appStateSubscriptionRef.current) {
         appStateSubscriptionRef.current.remove();
         appStateSubscriptionRef.current = null;
       }
     };
-  }, [checkConnection, checkOnlineStatus]);
+  }, [checkConnection, refreshSession]);
 
   // Only show loading on initial check
   if (showLoading) {

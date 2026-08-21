@@ -221,6 +221,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     securityQuestions: [],
   });
 
+  // ─── REFS ──────────────────────────────────────────────────────────────
+  // FIX: Added initRef here
+  const initRef = useRef(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const isMounted = useRef(true);
   const lastActiveRef = useRef<number>(Date.now());
@@ -311,7 +314,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     };
 
     init();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadSecurityState]);
 
   // ─── APP STATE HANDLING ──────────────────────────────────────────────
 
