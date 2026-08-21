@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Dimensions,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -37,15 +36,16 @@ import { getBabyByIdFromDb, setAppSetting, getAllBabiesFromDb } from '../../data
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
-
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
-import { useMeasurementSuggestions, getAgeInMonths } from '../../hooks/useMeasurementSuggestions';
 
 const { width } = Dimensions.get('window');
-
 const BABY_IMAGES_DIR = FileSystem.documentDirectory + 'baby_images/';
 
+// ─── CONSTANTS ────────────────────────────────────────────────────────────
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const DELIVERY_TYPES = ['Vaginal', 'C-Section', 'VBAC', 'Other'];
+const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', 'Other'];
+const FEEDING_PLANS = ['Breastfeeding', 'Formula', 'Combination', 'Pumping'];
 
 const SKIN_TONES = [
   { id: 0, emoji: '👶', color: '#F5D0C5', label: 'Light' },
@@ -58,6 +58,7 @@ const SKIN_TONES = [
 
 const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '🌟', '💖'];
 
+// ─── HELPERS ──────────────────────────────────────────────────────────────
 const ensureDirExists = async () => {
   const dirInfo = await FileSystem.getInfoAsync(BABY_IMAGES_DIR);
   if (!dirInfo.exists) {
@@ -96,7 +97,6 @@ const copyImageToPermanent = async (
     if (!fileInfo.exists) {
       throw new Error('File copy verification failed');
     }
-
     return permanentUri;
   } catch (error) {
     console.error('Failed to copy image:', error);
@@ -111,15 +111,18 @@ const isImageUri = (value: string | undefined | null): boolean => {
 
 type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
 
+// ─── COMPONENT ────────────────────────────────────────────────────────────
 export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
   const insets = useSafeAreaInsets();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
-  const { userProfile, completeSetup, isAuthenticated } = useAuth();
+  const { userProfile, completeSetup, isAuthenticated, wasSetupCompleted } = useAuth();
   const { createBaby, updateBaby, calculateAge, loadBabies, switchBaby, babies } = useBaby();
   const { toast, error: showError, success: showSuccess } = useSweetAlert();
 
+  // ─── STATE ──────────────────────────────────────────────────────────────
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState(new Date());
+  const [birthTime, setBirthTime] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [gender, setGender] = useState<'boy' | 'girl' | 'other'>('boy');
   const [skinTone, setSkinTone] = useState(0);
@@ -129,22 +132,33 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const [bloodType, setBloodType] = useState('');
   const [allergies, setAllergies] = useState('');
   const [medicalNotes, setMedicalNotes] = useState('');
+  const [birthWeight, setBirthWeight] = useState('');
+  const [birthHeight, setBirthHeight] = useState('');
+  const [birthHeadCircumference, setBirthHeadCircumference] = useState('');
+  const [gestationalWeeks, setGestationalWeeks] = useState('');
+  const [apgar1Min, setApgar1Min] = useState('');
+  const [apgar5Min, setApgar5Min] = useState('');
+  const [deliveryType, setDeliveryType] = useState('');
+  const [birthAttendant, setBirthAttendant] = useState('');
+  const [birthPlace, setBirthPlace] = useState('');
+  const [multipleBirth, setMultipleBirth] = useState(false);
+  const [birthOrder, setBirthOrder] = useState('');
+  const [feedingPlan, setFeedingPlan] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
-  const [showBloodTypePicker, setShowBloodTypePicker] = useState(false);
+  const [showPicker, setShowPicker] = useState<{
+    type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
+  }>({ type: null });
   const [creatorRelationship, setCreatorRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Mother');
 
   const imagePickerLock = useRef(false);
   const isCreatingRef = useRef(false);
   const isMounted = useRef(true);
-
   const scrollViewRef = useRef<Animated.ScrollView>(null);
   const nameInputRef = useRef<TextInput>(null);
 
   const ageDisplay = useMemo(() => calculateAge(birthDate.toISOString()), [birthDate, calculateAge]);
-  const ageMonths = useMemo(() => getAgeInMonths(birthDate.toISOString()), [birthDate]);
-  const suggestions = useMeasurementSuggestions(gender, ageMonths);
 
   const gradientColors = useMemo<[string, string, string]>(() => {
     if (isDark) return ['#0a0a0a', '#1a1a2e', '#16213e'];
@@ -157,6 +171,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
   const statusBarStyle = useMemo(() => (isDark ? 'light-content' : 'dark-content'), [isDark]);
 
+  // ─── LIFECYCLE ──────────────────────────────────────────────────────────
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -165,6 +180,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     };
   }, []);
 
+  // ─── HANDLERS ──────────────────────────────────────────────────────────
   const onDateChange = useCallback(
     (event: DateTimePickerEvent, selectedDate?: Date) => {
       if (Platform.OS === 'android') {
@@ -178,19 +194,11 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     [triggerHaptic]
   );
 
-  const confirmDateIOS = useCallback(() => {
-    setShowDatePicker(false);
-  }, []);
-
-  const cancelDateIOS = useCallback(() => {
-    setShowDatePicker(false);
-  }, []);
+  const confirmDateIOS = useCallback(() => setShowDatePicker(false), []);
+  const cancelDateIOS = useCallback(() => setShowDatePicker(false), []);
 
   const pickImage = useCallback(async () => {
-    if (imagePickerLock.current) {
-      console.log('Image picker already running, skipping');
-      return;
-    }
+    if (imagePickerLock.current) return;
     imagePickerLock.current = true;
 
     try {
@@ -208,23 +216,20 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       }
     } catch (error) {
       console.error('Image picker error:', error);
-      showError('Failed to pick image');
+      toast('Failed to pick image', 'error');
     } finally {
       imagePickerLock.current = false;
     }
-  }, [showError, triggerHaptic]);
+  }, [toast, triggerHaptic]);
 
   const takePhoto = useCallback(async () => {
-    if (imagePickerLock.current) {
-      console.log('Camera already running, skipping');
-      return;
-    }
+    if (imagePickerLock.current) return;
     imagePickerLock.current = true;
 
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        showError('Please allow camera access in settings');
+        toast('Please allow camera access in settings', 'warning');
         imagePickerLock.current = false;
         return;
       }
@@ -242,16 +247,16 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       }
     } catch (error) {
       console.error('Camera error:', error);
-      showError('Failed to take photo');
+      toast('Failed to take photo', 'error');
     } finally {
       imagePickerLock.current = false;
     }
-  }, [showError, triggerHaptic]);
+  }, [toast, triggerHaptic]);
 
   const validateStep1 = useCallback((): boolean => {
     const trimmed = name.trim();
     if (!trimmed) {
-      toast('Please enter your baby\'s name', 'warning');
+      toast("Please enter your baby's name", 'warning');
       return false;
     }
     if (trimmed.length < 2) {
@@ -280,8 +285,22 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         return false;
       }
     }
+    if (birthWeight.trim()) {
+      const bw = parseFloat(birthWeight.trim());
+      if (isNaN(bw) || bw <= 0 || bw > 10) {
+        toast('Please enter a valid birth weight (0.1–10 kg)', 'warning');
+        return false;
+      }
+    }
+    if (gestationalWeeks.trim()) {
+      const gw = parseInt(gestationalWeeks.trim());
+      if (isNaN(gw) || gw < 22 || gw > 44) {
+        toast('Please enter valid gestational weeks (22-44)', 'warning');
+        return false;
+      }
+    }
     return true;
-  }, [weight, height, toast]);
+  }, [weight, height, birthWeight, gestationalWeeks, toast]);
 
   const handleNext = useCallback(() => {
     triggerHaptic('light');
@@ -348,9 +367,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       const hasCustomImage = isImageUri(avatar);
       const avatarToSave = hasCustomImage ? '👶' : avatar;
 
-      console.log('[BabyProfile] Creating baby with parent1Id from AuthContext:', userId);
-
-      babyId = await createBaby({
+      // ─── CREATE BABY WITH ALL FIELDS ──────────────────────────────────
+      const babyData: any = {
         name: trimmedName,
         birthDate: birthIso,
         gender,
@@ -362,7 +380,23 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
         medicalNotes: medicalNotes.trim() || undefined,
         parent1Id: userId,
-      });
+        // Additional fields
+        birthWeight: birthWeight.trim() || undefined,
+        birthHeight: birthHeight.trim() || undefined,
+        birthHeadCircumference: birthHeadCircumference.trim() || undefined,
+        gestationalWeeks: gestationalWeeks.trim() || undefined,
+        apgar1Min: apgar1Min.trim() || undefined,
+        apgar5Min: apgar5Min.trim() || undefined,
+        deliveryType: deliveryType || undefined,
+        birthAttendant: birthAttendant || undefined,
+        birthPlace: birthPlace.trim() || undefined,
+        multipleBirth: multipleBirth,
+        birthOrder: birthOrder.trim() || undefined,
+        feedingPlan: feedingPlan || undefined,
+        birthTime: birthTime.trim() || undefined,
+      };
+
+      babyId = await createBaby(babyData);
 
       if (!babyId) {
         if (isMounted.current) {
@@ -389,7 +423,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       }
 
       if (isMounted.current) {
-        toast(`${trimmedName}'s profile created!`, 'success');
+        toast(`${trimmedName}'s profile created! 🎉`, 'success');
       }
 
       if (!isMounted.current) {
@@ -450,6 +484,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           // Reset form for another baby
           setName('');
           setBirthDate(new Date());
+          setBirthTime('');
           setGender('boy');
           setSkinTone(0);
           setAvatar('👶');
@@ -458,6 +493,18 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           setBloodType('');
           setAllergies('');
           setMedicalNotes('');
+          setBirthWeight('');
+          setBirthHeight('');
+          setBirthHeadCircumference('');
+          setGestationalWeeks('');
+          setApgar1Min('');
+          setApgar5Min('');
+          setDeliveryType('');
+          setBirthAttendant('');
+          setBirthPlace('');
+          setMultipleBirth(false);
+          setBirthOrder('');
+          setFeedingPlan('');
           setCurrentStep(1);
           scrollViewRef.current?.scrollTo({ y: 0, animated: true });
           if (isMounted.current) {
@@ -484,6 +531,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   }, [
     name,
     birthDate,
+    birthTime,
     gender,
     skinTone,
     avatar,
@@ -492,6 +540,18 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     bloodType,
     allergies,
     medicalNotes,
+    birthWeight,
+    birthHeight,
+    birthHeadCircumference,
+    gestationalWeeks,
+    apgar1Min,
+    apgar5Min,
+    deliveryType,
+    birthAttendant,
+    birthPlace,
+    multipleBirth,
+    birthOrder,
+    feedingPlan,
     babies,
     createBaby,
     updateBaby,
@@ -508,74 +568,57 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     userProfile,
   ]);
 
-  const { wasSetupCompleted } = useAuth();
-
-  const SuggestionPill = ({
-    label,
-    low,
-    median,
-    high,
-    unit,
-    onUseMedian,
-  }: {
-    label: string;
-    low: number;
-    median: number;
-    high: number;
-    unit: string;
-    onUseMedian?: () => void;
-  }) => (
-    <View style={styles.pill}>
-      <Text style={styles.pillLabel}>{label}</Text>
-      <Text style={styles.pillValue}>{low}–{high}</Text>
-      <Text style={styles.pillUnit}>{unit}</Text>
-      {onUseMedian && (
-        <TouchableOpacity onPress={onUseMedian} style={styles.useMedianBtn}>
-          <Text style={styles.useMedianText}>Use {median}</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  const renderBloodTypePicker = () => (
+  // ─── RENDER PICKER MODAL ──────────────────────────────────────────────
+  const renderPickerModal = (
+    title: string,
+    options: string[],
+    selectedValue: string,
+    onSelect: (value: string) => void,
+    isVisible: boolean,
+    onClose: () => void
+  ) => (
     <Modal
       transparent
       animationType="slide"
-      visible={showBloodTypePicker}
-      onRequestClose={() => setShowBloodTypePicker(false)}
+      visible={isVisible}
+      onRequestClose={onClose}
     >
-      <Pressable style={styles.modalOverlay} onPress={() => setShowBloodTypePicker(false)}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View style={[styles.modalContent, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, isDark && styles.textDark]}>Select Blood Type</Text>
-            <TouchableOpacity onPress={() => setShowBloodTypePicker(false)}>
+            <Text style={[styles.modalTitle, isDark && styles.textDark]}>{title}</Text>
+            <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={24} color={isDark ? '#fff' : '#333'} />
             </TouchableOpacity>
           </View>
           <FlatList
-            data={BLOOD_TYPES}
+            data={options}
             keyExtractor={(item) => item}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[
-                  styles.bloodTypeItem,
-                  bloodType === item && { backgroundColor: themeColors.primary + '20' },
+                  styles.pickerItem,
+                  selectedValue === item && { backgroundColor: themeColors.primary + '20' },
                 ]}
                 onPress={() => {
-                  setBloodType(item);
-                  setShowBloodTypePicker(false);
+                  onSelect(item);
+                  onClose();
                   triggerHaptic('light');
                 }}
               >
-                <Text style={[styles.bloodTypeText, isDark && styles.textDark, bloodType === item && { color: themeColors.primary, fontWeight: '700' }]}>
+                <Text style={[
+                  styles.pickerItemText,
+                  isDark && styles.textDark,
+                  selectedValue === item && { color: themeColors.primary, fontWeight: '700' }
+                ]}>
                   {item}
                 </Text>
-                {bloodType === item && (
+                {selectedValue === item && (
                   <Ionicons name="checkmark-circle" size={24} color={themeColors.primary} />
                 )}
               </TouchableOpacity>
             )}
-            contentContainerStyle={styles.bloodTypeList}
+            contentContainerStyle={styles.pickerList}
           />
         </View>
       </Pressable>
@@ -626,17 +669,13 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     );
   };
 
+  // ─── RENDER STEPS ──────────────────────────────────────────────────────
   const renderStep1 = () => (
-    <Animated.View
-      entering={shouldReduceMotion ? undefined : FadeInDown.delay(100)}
-      style={styles.stepContainer}
-    >
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.delay(100)} style={styles.stepContainer}>
       {/* Baby Name */}
       <View style={styles.inputGroup}>
         <View style={styles.labelRow}>
-          <Text style={[styles.label, isDark && styles.textDark]}>
-            Baby's Name
-          </Text>
+          <Text style={[styles.label, isDark && styles.textDark]}>Baby's Name</Text>
           <Text style={styles.required}>*</Text>
         </View>
         <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
@@ -656,38 +695,52 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         </View>
       </View>
 
-      {/* Birth Date */}
-      <View style={styles.inputGroup}>
-        <View style={styles.labelRow}>
-          <Text style={[styles.label, isDark && styles.textDark]}>
-            Birth Date
-          </Text>
-          <Text style={styles.required}>*</Text>
+      {/* Birth Date & Time */}
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <View style={styles.labelRow}>
+            <Text style={[styles.label, isDark && styles.textDark]}>Birth Date</Text>
+            <Text style={styles.required}>*</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}
+            onPress={() => setShowDatePicker(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="calendar-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <Text style={[styles.input, isDark && styles.textDark]}>
+              {birthDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </Text>
+          </TouchableOpacity>
+          {renderDatePicker()}
         </View>
-        <TouchableOpacity
-          style={[styles.dateButton, isDark && styles.dateButtonDark]}
-          onPress={() => setShowDatePicker(true)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="calendar-outline" size={20} color={themeColors.primary} />
-          <Text style={[styles.dateText, isDark && styles.textDark]}>
-            {birthDate.toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </Text>
-          <Text style={[styles.agePreview, { color: themeColors.primary }]}>{ageDisplay}</Text>
-        </TouchableOpacity>
-        {renderDatePicker()}
+
+        <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Birth Time</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="time-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={birthTime}
+              onChangeText={setBirthTime}
+              placeholder="e.g., 3:30 PM"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Age Display */}
+      <View style={[styles.ageChip, { backgroundColor: themeColors.primary + '15' }]}>
+        <Text style={[styles.ageChipText, { color: themeColors.primary }]}>
+          {ageDisplay} {ageDisplay !== 'Not born yet' ? 'old' : ''}
+        </Text>
       </View>
 
       {/* Relationship */}
       <View style={styles.inputGroup}>
         <View style={styles.labelRow}>
-          <Text style={[styles.label, isDark && styles.textDark]}>
-            You are the baby's
-          </Text>
+          <Text style={[styles.label, isDark && styles.textDark]}>You are the baby's</Text>
           <Text style={styles.required}>*</Text>
         </View>
         <View style={styles.relationshipContainer}>
@@ -702,24 +755,17 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                 },
                 isDark && styles.relationshipButtonDark,
               ]}
-              onPress={() => {
-                setCreatorRelationship(r);
-                triggerHaptic('light');
-              }}
+              onPress={() => { setCreatorRelationship(r); triggerHaptic('light'); }}
               activeOpacity={0.7}
             >
               <Text style={styles.relationshipEmoji}>
                 {r === 'Mother' ? '👩' : r === 'Father' ? '👨' : '🛡️'}
               </Text>
-              <Text
-                style={[
-                  styles.relationshipText,
-                  creatorRelationship === r && { color: themeColors.primary, fontWeight: '700' },
-                  isDark && styles.textDark,
-                ]}
-              >
-                {r}
-              </Text>
+              <Text style={[
+                styles.relationshipText,
+                creatorRelationship === r && { color: themeColors.primary, fontWeight: '700' },
+                isDark && styles.textDark,
+              ]}>{r}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -740,22 +786,15 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                 },
                 isDark && styles.genderButtonDark,
               ]}
-              onPress={() => {
-                setGender(g);
-                triggerHaptic('light');
-              }}
+              onPress={() => { setGender(g); triggerHaptic('light'); }}
               activeOpacity={0.7}
             >
               <Text style={styles.genderEmoji}>{g === 'boy' ? '👦' : g === 'girl' ? '👧' : '👶'}</Text>
-              <Text
-                style={[
-                  styles.genderText,
-                  gender === g && { color: themeColors.primary, fontWeight: '700' },
-                  isDark && styles.textDark,
-                ]}
-              >
-                {g.charAt(0).toUpperCase() + g.slice(1)}
-              </Text>
+              <Text style={[
+                styles.genderText,
+                gender === g && { color: themeColors.primary, fontWeight: '700' },
+                isDark && styles.textDark,
+              ]}>{g.charAt(0).toUpperCase() + g.slice(1)}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -776,11 +815,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                 },
                 isDark && styles.skinToneButtonDark,
               ]}
-              onPress={() => {
-                setSkinTone(tone.id);
-                setAvatar(tone.emoji);
-                triggerHaptic('light');
-              }}
+              onPress={() => { setSkinTone(tone.id); setAvatar(tone.emoji); triggerHaptic('light'); }}
               activeOpacity={0.7}
             >
               <Text style={styles.skinToneEmoji}>{tone.emoji}</Text>
@@ -820,151 +855,333 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                     backgroundColor: themeColors.primary + '15',
                   },
                 ]}
-                onPress={() => {
-                  setAvatar(emoji);
-                  setShowAvatarPicker(false);
-                  triggerHaptic('light');
-                }}
+                onPress={() => { setAvatar(emoji); setShowAvatarPicker(false); triggerHaptic('light'); }}
                 activeOpacity={0.7}
               >
                 <Text style={styles.avatarOptionEmoji}>{emoji}</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity
-              style={styles.avatarOption}
-              onPress={takePhoto}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={styles.avatarOption} onPress={takePhoto} activeOpacity={0.7}>
               <Ionicons name="camera-outline" size={24} color={themeColors.primary} />
               <Text style={[styles.avatarOptionLabel, { color: themeColors.primary }]}>Camera</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.avatarOption}
-              onPress={pickImage}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={styles.avatarOption} onPress={pickImage} activeOpacity={0.7}>
               <Ionicons name="images-outline" size={24} color={themeColors.primary} />
               <Text style={[styles.avatarOptionLabel, { color: themeColors.primary }]}>Gallery</Text>
             </TouchableOpacity>
           </Animated.View>
         )}
       </View>
+
+      <Text style={[styles.stepIndicator, isDark && { color: '#94a3b8' }]}>1 of 2 • Basic Info</Text>
     </Animated.View>
   );
 
   const renderStep2 = () => (
-    <Animated.View
-      entering={shouldReduceMotion ? undefined : FadeInDown.delay(100)}
-      style={styles.stepContainer}
-    >
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.delay(100)} style={styles.stepContainer}>
       <Text style={[styles.sectionSubtitle, { color: themeColors.primary }]}>
-        ✨ Optional Health Information
+        ✨ Health & Birth Details
       </Text>
 
-      {suggestions && (
-        <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.delay(120)} style={[styles.suggestionsCard, isDark && styles.suggestionsCardDark]}>
-          <View style={styles.suggestionHeader}>
-            <Ionicons name="information-circle" size={18} color={themeColors.primary} />
-            <Text style={[styles.suggestionTitle, isDark && styles.textDark]}>
-              WHO Growth Reference ({ageMonths === 0 ? 'Newborn' : `${ageMonths} mo`})
+      {/* Current Measurements */}
+      <View style={styles.sectionHeader}>
+        <Ionicons name="fitness-outline" size={18} color={themeColors.primary} />
+        <Text style={[styles.sectionHeaderText, isDark && styles.textDark]}>Current Measurements</Text>
+      </View>
+
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Weight (kg)</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="scale-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={weight}
+              onChangeText={(text) => {
+                const cleaned = text.replace(/[^0-9.]/g, '');
+                const parts = cleaned.split('.');
+                const formatted = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
+                setWeight(formatted);
+              }}
+              placeholder="e.g., 3.5"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="decimal-pad"
+              maxLength={5}
+            />
+          </View>
+        </View>
+        <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Height (cm)</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="resize-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={height}
+              onChangeText={(text) => setHeight(text.replace(/[^0-9]/g, '').slice(0, 3))}
+              placeholder="e.g., 50"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="number-pad"
+              maxLength={3}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Birth Details */}
+      <View style={styles.sectionHeader}>
+        <Ionicons name="medical-outline" size={18} color={themeColors.primary} />
+        <Text style={[styles.sectionHeaderText, isDark && styles.textDark]}>Birth Details</Text>
+      </View>
+
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Birth Weight (kg)</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="scale-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={birthWeight}
+              onChangeText={(text) => {
+                const cleaned = text.replace(/[^0-9.]/g, '');
+                const parts = cleaned.split('.');
+                const formatted = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
+                setBirthWeight(formatted);
+              }}
+              placeholder="e.g., 3.2"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="decimal-pad"
+              maxLength={5}
+            />
+          </View>
+        </View>
+        <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Birth Height (cm)</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="resize-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={birthHeight}
+              onChangeText={(text) => setBirthHeight(text.replace(/[^0-9]/g, '').slice(0, 3))}
+              placeholder="e.g., 48"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="number-pad"
+              maxLength={3}
+            />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Head Circumference (cm)</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="aperture-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={birthHeadCircumference}
+              onChangeText={(text) => setBirthHeadCircumference(text.replace(/[^0-9.]/g, '').slice(0, 5))}
+              placeholder="e.g., 33"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="decimal-pad"
+              maxLength={5}
+            />
+          </View>
+        </View>
+        <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Gestational Weeks</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="calendar-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={gestationalWeeks}
+              onChangeText={(text) => setGestationalWeeks(text.replace(/[^0-9]/g, '').slice(0, 2))}
+              placeholder="e.g., 40"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="number-pad"
+              maxLength={2}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Apgar Scores */}
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Apgar 1 min</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="pulse-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={apgar1Min}
+              onChangeText={(text) => setApgar1Min(text.replace(/[^0-9]/g, '').slice(0, 2))}
+              placeholder="e.g., 8"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="number-pad"
+              maxLength={2}
+            />
+          </View>
+        </View>
+        <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Apgar 5 min</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="pulse-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={apgar5Min}
+              onChangeText={(text) => setApgar5Min(text.replace(/[^0-9]/g, '').slice(0, 2))}
+              placeholder="e.g., 9"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="number-pad"
+              maxLength={2}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Delivery & Attendant */}
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Delivery Type</Text>
+          <TouchableOpacity
+            style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
+            onPress={() => setShowPicker({ type: 'deliveryType' })}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="medkit-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <Text style={[styles.input, isDark && styles.textDark, !deliveryType && { color: isDark ? '#64748b' : '#999' }]}>
+              {deliveryType || 'Select delivery type'}
             </Text>
-          </View>
-          <View style={styles.suggestionRow}>
-            <SuggestionPill
-              label="Weight"
-              low={suggestions.weight.low}
-              median={suggestions.weight.median}
-              high={suggestions.weight.high}
-              unit="kg"
-              onUseMedian={() => setWeight(String(suggestions.weight.median))}
-            />
-            <SuggestionPill
-              label="Height"
-              low={suggestions.height.low}
-              median={suggestions.height.median}
-              high={suggestions.height.high}
-              unit="cm"
-              onUseMedian={() => setHeight(String(suggestions.height.median))}
-            />
-            <SuggestionPill
-              label="Head"
-              low={suggestions.head.low}
-              median={suggestions.head.median}
-              high={suggestions.head.high}
-              unit="cm"
-            />
-          </View>
-        </Animated.View>
-      )}
-
-      {/* Weight */}
-      <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>Weight (kg)</Text>
-        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-          <Ionicons name="scale-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-          <TextInput
-            style={[styles.input, isDark && styles.textDark]}
-            value={weight}
-            onChangeText={(text) => {
-              const cleaned = text.replace(/[^0-9.]/g, '');
-              const parts = cleaned.split('.');
-              const formatted = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
-              setWeight(formatted);
-            }}
-            placeholder="e.g., 3.5"
-            placeholderTextColor={isDark ? '#64748b' : '#999'}
-            keyboardType="decimal-pad"
-            maxLength={5}
-          />
+            <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Birth Attendant</Text>
+          <TouchableOpacity
+            style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
+            onPress={() => setShowPicker({ type: 'birthAttendant' })}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="people-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <Text style={[styles.input, isDark && styles.textDark, !birthAttendant && { color: isDark ? '#64748b' : '#999' }]}>
+              {birthAttendant || 'Select attendant'}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Height */}
-      <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>Height (cm)</Text>
-        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-          <Ionicons name="resize-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-          <TextInput
-            style={[styles.input, isDark && styles.textDark]}
-            value={height}
-            onChangeText={(text) => setHeight(text.replace(/[^0-9]/g, '').slice(0, 3))}
-            placeholder="e.g., 50"
-            placeholderTextColor={isDark ? '#64748b' : '#999'}
-            keyboardType="number-pad"
-            maxLength={3}
-          />
+      {/* Birth Place & Multiple Birth */}
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Birth Place</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="location-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={birthPlace}
+              onChangeText={setBirthPlace}
+              placeholder="e.g., Hospital, Home"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+            />
+          </View>
+        </View>
+        <View style={[styles.halfWidth, { marginLeft: 8, justifyContent: 'flex-end' }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Multiple Birth?</Text>
+          <View style={styles.multipleBirthContainer}>
+            <TouchableOpacity
+              style={[
+                styles.multipleBirthButton,
+                multipleBirth === true && {
+                  borderColor: themeColors.primary,
+                  backgroundColor: themeColors.primary + '15',
+                },
+              ]}
+              onPress={() => { setMultipleBirth(true); triggerHaptic('light'); }}
+            >
+              <Text style={[styles.multipleBirthText, multipleBirth === true && { color: themeColors.primary, fontWeight: '700' }]}>Yes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.multipleBirthButton,
+                multipleBirth === false && {
+                  borderColor: themeColors.primary,
+                  backgroundColor: themeColors.primary + '15',
+                },
+              ]}
+              onPress={() => { setMultipleBirth(false); triggerHaptic('light'); }}
+            >
+              <Text style={[styles.multipleBirthText, multipleBirth === false && { color: themeColors.primary, fontWeight: '700' }]}>No</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      {/* Blood Type - Scrollable Picker */}
-      <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>Blood Type</Text>
-        <TouchableOpacity
-          style={[styles.inputWrapper, styles.bloodTypeWrapper, isDark && styles.inputWrapperDark]}
-          onPress={() => setShowBloodTypePicker(true)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="water-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-          <Text style={[styles.input, isDark && styles.textDark, !bloodType && { color: isDark ? '#64748b' : '#999' }]}>
-            {bloodType || 'Select blood type'}
-          </Text>
-          <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
-        </TouchableOpacity>
-        {renderBloodTypePicker()}
+      {/* Birth Order & Feeding Plan */}
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Birth Order</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="list-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={birthOrder}
+              onChangeText={(text) => setBirthOrder(text.replace(/[^0-9]/g, '').slice(0, 2))}
+              placeholder="e.g., 1"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+              keyboardType="number-pad"
+              maxLength={2}
+            />
+          </View>
+        </View>
+        <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Feeding Plan</Text>
+          <TouchableOpacity
+            style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
+            onPress={() => setShowPicker({ type: 'feedingPlan' })}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="nutrition-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <Text style={[styles.input, isDark && styles.textDark, !feedingPlan && { color: isDark ? '#64748b' : '#999' }]}>
+              {feedingPlan || 'Select feeding plan'}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Allergies */}
-      <View style={styles.inputGroup}>
-        <Text style={[styles.label, isDark && styles.textDark]}>Allergies (comma separated)</Text>
-        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-          <Ionicons name="warning-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-          <TextInput
-            style={[styles.input, isDark && styles.textDark]}
-            value={allergies}
-            onChangeText={setAllergies}
-            placeholder="e.g., peanuts, dairy"
-            placeholderTextColor={isDark ? '#64748b' : '#999'}
-          />
+      {/* Blood Type & Allergies */}
+      <View style={styles.sectionHeader}>
+        <Ionicons name="heart-outline" size={18} color={themeColors.primary} />
+        <Text style={[styles.sectionHeaderText, isDark && styles.textDark]}>Medical Information</Text>
+      </View>
+
+      <View style={styles.rowContainer}>
+        <View style={[styles.halfWidth, { marginRight: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Blood Type</Text>
+          <TouchableOpacity
+            style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
+            onPress={() => setShowPicker({ type: 'bloodType' })}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="water-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <Text style={[styles.input, isDark && styles.textDark, !bloodType && { color: isDark ? '#64748b' : '#999' }]}>
+              {bloodType || 'Select blood type'}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+          <Text style={[styles.label, isDark && styles.textDark]}>Allergies (comma separated)</Text>
+          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+            <Ionicons name="warning-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, isDark && styles.textDark]}
+              value={allergies}
+              onChangeText={setAllergies}
+              placeholder="e.g., peanuts, dairy"
+              placeholderTextColor={isDark ? '#64748b' : '#999'}
+            />
+          </View>
         </View>
       </View>
 
@@ -979,18 +1196,21 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             placeholder="Any important medical information..."
             placeholderTextColor={isDark ? '#64748b' : '#999'}
             multiline
-            numberOfLines={4}
+            numberOfLines={3}
             textAlignVertical="top"
             maxLength={500}
           />
         </View>
         <Text style={styles.charCount}>{medicalNotes.length}/500</Text>
       </View>
+
+      <Text style={[styles.stepIndicator, isDark && { color: '#94a3b8' }]}>2 of 2 • Health Details</Text>
     </Animated.View>
   );
 
+  // ─── MAIN RENDER ──────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { flex: 1 }]}>
+    <View style={styles.container}>
       <LinearGradient colors={gradientColors} style={styles.gradient}>
         <StatusBar barStyle={statusBarStyle} translucent backgroundColor="transparent" />
 
@@ -1006,16 +1226,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           >
             {/* Header */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.header}>
-              <TouchableOpacity
-                onPress={handleBack}
-                style={styles.backButton}
-                activeOpacity={0.7}
-              >
-                <BlurView
-                  intensity={Platform.OS === 'ios' ? 80 : 100}
-                  tint={isDark ? 'dark' : 'light'}
-                  style={styles.backBlur}
-                >
+              <TouchableOpacity onPress={handleBack} style={styles.backButton} activeOpacity={0.7}>
+                <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint={isDark ? 'dark' : 'light'} style={styles.backBlur}>
                   <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
                 </BlurView>
               </TouchableOpacity>
@@ -1028,30 +1240,17 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
                   Step {currentStep} of 2
                 </Text>
               </View>
-
               <View style={styles.placeholder} />
             </Animated.View>
 
             {/* Progress Bar */}
             <View style={styles.progressContainer}>
-              <View
-                style={[
-                  styles.progressBar,
-                  {
-                    width: currentStep === 1 ? '50%' : '100%',
-                    backgroundColor: themeColors.primary,
-                  },
-                ]}
-              />
+              <View style={[styles.progressBar, { width: currentStep === 1 ? '50%' : '100%', backgroundColor: themeColors.primary }]} />
             </View>
 
             {/* Preview Card */}
             <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.delay(50)}>
-              <BlurView
-                intensity={Platform.OS === 'ios' ? 90 : 100}
-                tint={isDark ? 'dark' : 'light'}
-                style={styles.previewCard}
-              >
+              <BlurView intensity={Platform.OS === 'ios' ? 90 : 100} tint={isDark ? 'dark' : 'light'} style={styles.previewCard}>
                 <SafeBabyAvatar avatar={avatar} gender={gender} size={72} />
                 <View style={styles.previewInfo}>
                   <Text style={[styles.previewName, isDark && styles.textDark]}>
@@ -1076,17 +1275,9 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
           {/* Bottom Actions */}
           <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 20 }]}>
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 90 : 100}
-              tint={isDark ? 'dark' : 'light'}
-              style={styles.bottomBlur}
-            >
+            <BlurView intensity={Platform.OS === 'ios' ? 90 : 100} tint={isDark ? 'dark' : 'light'} style={styles.bottomBlur}>
               {currentStep === 1 ? (
-                <TouchableOpacity
-                  style={styles.nextButton}
-                  onPress={handleNext}
-                  activeOpacity={0.8}
-                >
+                <TouchableOpacity style={styles.nextButton} onPress={handleNext} activeOpacity={0.8}>
                   <LinearGradient
                     colors={[themeColors.primary, themeColors.secondary || themeColors.colors?.[1] || '#764ba2']}
                     style={styles.buttonGradient}
@@ -1159,10 +1350,17 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           </View>
         </KeyboardAvoidingView>
       </LinearGradient>
+
+      {/* Picker Modals */}
+      {renderPickerModal('Select Blood Type', BLOOD_TYPES, bloodType, setBloodType, showPicker.type === 'bloodType', () => setShowPicker({ type: null }))}
+      {renderPickerModal('Select Delivery Type', DELIVERY_TYPES, deliveryType, setDeliveryType, showPicker.type === 'deliveryType', () => setShowPicker({ type: null }))}
+      {renderPickerModal('Select Birth Attendant', BIRTH_ATTENDANTS, birthAttendant, setBirthAttendant, showPicker.type === 'birthAttendant', () => setShowPicker({ type: null }))}
+      {renderPickerModal('Select Feeding Plan', FEEDING_PLANS, feedingPlan, setFeedingPlan, showPicker.type === 'feedingPlan', () => setShowPicker({ type: null }))}
     </View>
   );
 }
 
+// ─── STYLES ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { flex: 1 },
@@ -1197,19 +1395,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   backButton: { borderRadius: 16, overflow: 'hidden' },
-  backBlur: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  backBlur: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerText: { alignItems: 'center' },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    letterSpacing: -0.5,
-  },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.5 },
   headerSubtitle: { fontSize: 13, color: '#666', marginTop: 2 },
   placeholder: { width: 44 },
   textDark: { color: '#fff' },
@@ -1221,10 +1409,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     overflow: 'hidden',
   },
-  progressBar: {
-    height: '100%',
-    borderRadius: 2,
-  },
+  progressBar: { height: '100%', borderRadius: 2 },
 
   previewCard: {
     flexDirection: 'row',
@@ -1237,39 +1422,21 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   previewInfo: { flex: 1, marginLeft: 16 },
-  previewName: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    marginBottom: 2,
-  },
+  previewName: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginBottom: 2 },
   previewDetails: { fontSize: 13, color: '#666', marginBottom: 2 },
   previewParent: { fontSize: 12, fontWeight: '600' },
 
   stepContainer: { gap: 18 },
+  stepIndicator: { fontSize: 13, color: '#94a3b8', textAlign: 'center', marginTop: 8 },
 
   inputGroup: { marginBottom: 2 },
-  labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  required: {
-    color: '#ef4444',
-    fontSize: 14,
-    fontWeight: '700',
-    marginLeft: 2,
-  },
-  sectionSubtitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  label: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
+  required: { color: '#ef4444', fontSize: 14, fontWeight: '700', marginLeft: 2 },
+  sectionSubtitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
+
+  rowContainer: { flexDirection: 'row', justifyContent: 'space-between' },
+  halfWidth: { flex: 1 },
 
   inputWrapper: {
     flexDirection: 'row',
@@ -1286,39 +1453,51 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
   },
   inputIcon: { marginRight: 10 },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    color: '#1a1a1a',
-    fontWeight: '500',
-  },
-  textAreaWrapper: { height: 110, alignItems: 'flex-start', paddingTop: 12 },
-  textArea: { height: 90, textAlignVertical: 'top' },
-  charCount: {
-    fontSize: 11,
-    color: '#999',
-    textAlign: 'right',
-    marginTop: 2,
-    marginRight: 4,
-  },
+  input: { flex: 1, fontSize: 15, color: '#1a1a1a', fontWeight: '500' },
+  textAreaWrapper: { height: 100, alignItems: 'flex-start', paddingTop: 12 },
+  textArea: { height: 80, textAlignVertical: 'top' },
+  charCount: { fontSize: 11, color: '#999', textAlign: 'right', marginTop: 2, marginRight: 4 },
 
-  dateButton: {
+  pickerWrapper: { justifyContent: 'space-between' },
+  pickerItem: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.15)',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(150,150,150,0.08)',
+  },
+  pickerItemText: { fontSize: 16, fontWeight: '500', color: '#1a1a1a' },
+  pickerList: { paddingHorizontal: 16, paddingTop: 8 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+    maxHeight: '60%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(150,150,150,0.15)',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+
+  ageChip: {
+    paddingVertical: 6,
     paddingHorizontal: 14,
-    height: 52,
-    gap: 10,
+    borderRadius: 20,
+    alignSelf: 'center',
+    marginVertical: 4,
   },
-  dateButtonDark: {
-    backgroundColor: 'rgba(30,30,40,0.5)',
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  dateText: { flex: 1, fontSize: 15, color: '#1a1a1a', fontWeight: '500' },
-  agePreview: { fontSize: 13, fontWeight: '700' },
+  ageChipText: { fontSize: 14, fontWeight: '600' },
 
   relationshipContainer: { flexDirection: 'row', gap: 10 },
   relationshipButton: {
@@ -1359,13 +1538,7 @@ const styles = StyleSheet.create({
   },
   skinToneButtonDark: { backgroundColor: 'rgba(30,30,40,0.3)' },
   skinToneEmoji: { fontSize: 28 },
-  checkmark: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: 'white',
-    borderRadius: 8,
-  },
+  checkmark: { position: 'absolute', bottom: -2, right: -2, backgroundColor: 'white', borderRadius: 8 },
 
   avatarSelector: {
     alignItems: 'center',
@@ -1400,80 +1573,26 @@ const styles = StyleSheet.create({
   avatarOptionEmoji: { fontSize: 28 },
   avatarOptionLabel: { fontSize: 10, marginTop: 2, fontWeight: '600' },
 
-  suggestionsCard: {
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.15)',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-  },
-  suggestionsCardDark: {
-    backgroundColor: 'rgba(30,30,40,0.3)',
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  suggestionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  suggestionTitle: { fontSize: 13, fontWeight: '700', color: '#1e293b', flex: 1 },
-  suggestionRow: { flexDirection: 'row', gap: 8 },
-  pill: {
-    flex: 1,
-    backgroundColor: 'rgba(102,126,234,0.08)',
-    borderRadius: 12,
-    padding: 10,
+  sectionHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+    marginTop: 4,
   },
-  pillLabel: { fontSize: 11, fontWeight: '700', color: '#64748b', marginBottom: 2 },
-  pillValue: { fontSize: 12, fontWeight: '800', color: '#1e293b' },
-  pillUnit: { fontSize: 10, color: '#94a3b8', marginTop: 1 },
-  useMedianBtn: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: 'rgba(102,126,234,0.15)', borderRadius: 6 },
-  useMedianText: { fontSize: 10, color: '#667eea', fontWeight: '700' },
+  sectionHeaderText: { fontSize: 15, fontWeight: '700', color: '#1a1a1a' },
 
-  bloodTypeWrapper: { justifyContent: 'space-between' },
-  modalOverlay: {
+  multipleBirthContainer: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  multipleBirthButton: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 40,
-    maxHeight: '60%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(150,150,150,0.15)',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  bloodTypeList: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  bloodTypeItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
     borderRadius: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(150,150,150,0.08)',
+    borderWidth: 2,
+    borderColor: 'rgba(102,126,234,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.6)',
   },
-  bloodTypeText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1a1a1a',
-  },
+  multipleBirthText: { fontSize: 14, fontWeight: '600', color: '#666' },
 
   bottomContainer: {
     position: 'absolute',
@@ -1483,11 +1602,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
   },
-  bottomBlur: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    padding: 12,
-  },
+  bottomBlur: { borderRadius: 20, overflow: 'hidden', padding: 12 },
   nextButton: { borderRadius: 14, overflow: 'hidden' },
   buttonGradient: {
     flexDirection: 'row',
