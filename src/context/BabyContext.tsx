@@ -345,56 +345,6 @@ const getDateKey = (date: Date | string): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/* ─── Helper: Get authenticated user with session refresh ───────────────── */
-const getAuthenticatedUser = useCallback(async (): Promise<string | null> => {
-  // Try multiple approaches
-  let userId: string | null = null;
-  
-  // Approach 1: Try getUser first (most reliable)
-  try {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (!error && user?.id) {
-      console.log('[BabyContext] getUser success:', user.id);
-      return user.id;
-    }
-    if (error) {
-      console.log('[BabyContext] getUser error:', error.message);
-    }
-  } catch (e) {
-    console.log('[BabyContext] getUser exception:', e);
-  }
-  
-  // Approach 2: Try getSession
-  try {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (!error && session?.user?.id) {
-      console.log('[BabyContext] getSession success:', session.user.id);
-      return session.user.id;
-    }
-    if (error) {
-      console.log('[BabyContext] getSession error:', error.message);
-    }
-  } catch (e) {
-    console.log('[BabyContext] getSession exception:', e);
-  }
-  
-  // Approach 3: Try refreshSession
-  try {
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-    if (!refreshError && refreshData?.session?.user?.id) {
-      console.log('[BabyContext] refreshSession success:', refreshData.session.user.id);
-      return refreshData.session.user.id;
-    }
-    if (refreshError) {
-      console.log('[BabyContext] refreshSession error:', refreshError.message);
-    }
-  } catch (e) {
-    console.log('[BabyContext] refreshSession exception:', e);
-  }
-  
-  return userId;
-}, []);
-
 /* Lazy imports for notification service */
 const getNotificationService = async () => {
   try {
@@ -470,52 +420,39 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return baby?.age || '';
   }, [state.babies, state.currentBabyId]);
 
-  /* ─── Helper: Get authenticated user with retry ────────────────────── */
-  const getAuthenticatedUser = useCallback(async (): Promise<string | null> => {
-    // Approach 1: Try getUser first
+  /* ─── Helper: get current user ID with fallback ────────────────────── */
+  const getCurrentUserId = useCallback(async (): Promise<string | null> => {
+    // First try: use authProfile from AuthContext
+    if (authProfile?.id) {
+      console.log('[BabyContext] Using authProfile.id:', authProfile.id);
+      return authProfile.id;
+    }
+
+    // Second try: supabase.auth.getUser()
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (!error && user?.id) {
-        console.log('[BabyContext] getUser success:', user.id);
+        console.log('[BabyContext] Using supabase.auth.getUser():', user.id);
         return user.id;
       }
-      if (error) {
-        console.log('[BabyContext] getUser error:', error.message);
-      }
     } catch (e) {
-      console.log('[BabyContext] getUser exception:', e);
+      console.warn('[BabyContext] getUser failed:', e);
     }
 
-    // Approach 2: Try getSession
+    // Third try: supabase.auth.getSession()
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (!error && session?.user?.id) {
-        console.log('[BabyContext] getSession success:', session.user.id);
+        console.log('[BabyContext] Using supabase.auth.getSession():', session.user.id);
         return session.user.id;
       }
-      if (error) {
-        console.log('[BabyContext] getSession error:', error.message);
-      }
     } catch (e) {
-      console.log('[BabyContext] getSession exception:', e);
+      console.warn('[BabyContext] getSession failed:', e);
     }
 
-    // Approach 3: Try refreshSession
-    try {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (!refreshError && refreshData?.session?.user?.id) {
-        console.log('[BabyContext] refreshSession success:', refreshData.session.user.id);
-        return refreshData.session.user.id;
-      }
-      if (refreshError) {
-        console.log('[BabyContext] refreshSession error:', refreshError.message);
-      }
-    } catch (e) {
-      console.log('[BabyContext] refreshSession exception:', e);
-    }
-
+    console.warn('[BabyContext] No user ID found');
     return null;
-  }, []);
+  }, [authProfile]);
 
   /* ─── Helper: map Supabase baby row to BabyProfile ─────────────────── */
   const mapBabyRowToProfile = useCallback((row: any): BabyProfile => ({
@@ -768,21 +705,20 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      // Get authenticated user with retry
-      const userId = await getAuthenticatedUser();
-      
+      // Get current user ID
+      const userId = await getCurrentUserId();
+
       if (!userId) {
-        console.warn('[BabyContext] No authenticated user after all attempts');
+        console.warn('[BabyContext] No authenticated user');
         setState(prev => ({ ...prev, isLoading: false }));
         loadInProgressRef.current = false;
         return;
       }
 
-      console.log('[BabyContext] Authenticated user:', userId);
+      console.log('[BabyContext] Loading babies for user:', userId);
 
       // Fetch babies where user is parent1 or parent2
       let allBabies: any[] = [];
-      let hadRlsError = false;
 
       try {
         const { data: parent1Babies, error: error1 } = await supabase
@@ -792,12 +728,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .eq('is_active', true);
 
         if (error1) {
-          if (error1.message?.includes('infinite recursion')) {
-            console.error('[BabyContext] RLS RECURSION ERROR - Fix your RLS policies!');
-            hadRlsError = true;
-          } else {
-            console.error('[BabyContext] parent1 query error:', error1.message);
-          }
+          console.error('[BabyContext] parent1 query error:', error1.message);
         } else if (parent1Babies) {
           allBabies = parent1Babies;
         }
@@ -805,8 +736,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] parent1 query failed:', e);
       }
 
-      // If no babies as parent1 and no RLS error, try parent2
-      if (allBabies.length === 0 && !hadRlsError) {
+      // If no babies as parent1, try parent2
+      if (allBabies.length === 0) {
         try {
           const { data: parent2Babies, error: error2 } = await supabase
             .from('babies')
@@ -815,12 +746,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('is_active', true);
 
           if (error2) {
-            if (error2.message?.includes('infinite recursion')) {
-              console.error('[BabyContext] RLS RECURSION ERROR - Fix your RLS policies!');
-              hadRlsError = true;
-            } else {
-              console.error('[BabyContext] parent2 query error:', error2.message);
-            }
+            console.error('[BabyContext] parent2 query error:', error2.message);
           } else if (parent2Babies) {
             allBabies = parent2Babies;
           }
@@ -829,27 +755,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // If RLS error, try fallback without is_active
-      if (hadRlsError && allBabies.length === 0) {
-        try {
-          const { data: fallbackBabies, error: fallbackError } = await supabase
-            .from('babies')
-            .select('*')
-            .eq('parent1_id', userId);
-          
-          if (!fallbackError && fallbackBabies) {
-            allBabies = fallbackBabies.filter((b: any) => b.is_active !== false);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] Fallback query failed:', e);
-        }
-      }
-
       console.log(`[BabyContext] Found ${allBabies.length} babies in Supabase`);
 
       const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
 
-      // Get current baby ID from app_settings with user_id
+      // Get current baby ID from app_settings
       let currentId: string | null = null;
       try {
         const { data: settingsData } = await supabase
@@ -882,7 +792,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const currentBaby = babies.find(b => b.id === currentId) || babies[0] || null;
 
-      // Check if user has skipped baby selection with user_id
+      // Check if user has skipped baby selection
       let hasSkippedBaby = false;
       try {
         const { data: skipData } = await supabase
@@ -927,7 +837,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       loadInProgressRef.current = false;
     }
-  }, [mapBabyRowToProfile, loadAllBabyData, getAuthenticatedUser]);
+  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId]);
 
   /* ---- Initial load ---- */
   useEffect(() => {
@@ -975,14 +885,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /* ---- Skip / Clear skip ---- */
   const skipBaby = useCallback(async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+
     try {
       await supabase
         .from('app_settings')
         .upsert({
           key: 'has_skipped_baby',
           value: 'true',
+          user_id: userId,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
+        }, { onConflict: 'key, user_id' });
       
       if (isMounted.current) {
         setState(prev => ({ ...prev, hasSkippedBaby: true }));
@@ -991,14 +905,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error skipping baby:', error);
     }
-  }, []);
+  }, [getCurrentUserId]);
 
   const clearSkipBaby = useCallback(async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+
     try {
       await supabase
         .from('app_settings')
         .delete()
-        .eq('key', 'has_skipped_baby');
+        .eq('key', 'has_skipped_baby')
+        .eq('user_id', userId);
       
       if (isMounted.current) {
         setState(prev => ({ ...prev, hasSkippedBaby: false }));
@@ -1006,166 +924,166 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error clearing skip baby:', error);
     }
-  }, []);
+  }, [getCurrentUserId]);
 
-/* ---- Create baby ---- */
-const createBaby = useCallback(async (
-  data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
-): Promise<string | null> => {
-  if (isCreatingRef.current) {
-    console.log('[BabyContext] Creation already in progress');
-    return null;
-  }
-  isCreatingRef.current = true;
+  /* ---- Create baby ---- */
+  const createBaby = useCallback(async (
+    data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
+  ): Promise<string | null> => {
+    if (isCreatingRef.current) {
+      console.log('[BabyContext] Creation already in progress');
+      return null;
+    }
+    isCreatingRef.current = true;
 
-  const birthDate = new Date(data.birthDate);
-  const now = new Date();
-  if (birthDate > now) {
-    isCreatingRef.current = false;
-    return null;
-  }
-  if (isNaN(birthDate.getTime())) {
-    isCreatingRef.current = false;
-    return null;
-  }
-
-  try {
-    const newId = generateId();
-    
-    // Get current authenticated user using helper
-    const userId = await getAuthenticatedUser();
-    
-    if (!userId) {
-      console.error('[BabyContext] No authenticated user for createBaby');
+    const birthDate = new Date(data.birthDate);
+    const now = new Date();
+    if (birthDate > now) {
+      isCreatingRef.current = false;
+      return null;
+    }
+    if (isNaN(birthDate.getTime())) {
       isCreatingRef.current = false;
       return null;
     }
 
-    console.log('[BabyContext] Creating baby with parent1_id:', userId);
+    try {
+      const newId = generateId();
+      
+      // Get current authenticated user
+      const userId = await getCurrentUserId();
+      
+      if (!userId) {
+        console.error('[BabyContext] No authenticated user for createBaby');
+        isCreatingRef.current = false;
+        return null;
+      }
 
-    // Check for duplicate - use userId
-    const { data: existingBabies } = await supabase
-      .from('babies')
-      .select('id')
-      .eq('name', data.name)
-      .eq('date_of_birth', data.birthDate)
-      .eq('parent1_id', userId)
-      .eq('is_active', true);
+      console.log('[BabyContext] Creating baby with parent1_id:', userId);
 
-    if (existingBabies && existingBabies.length > 0) {
-      console.log('[BabyContext] Duplicate baby found');
+      // Check for duplicate
+      const { data: existingBabies } = await supabase
+        .from('babies')
+        .select('id')
+        .eq('name', data.name)
+        .eq('date_of_birth', data.birthDate)
+        .eq('parent1_id', userId)
+        .eq('is_active', true);
+
+      if (existingBabies && existingBabies.length > 0) {
+        console.log('[BabyContext] Duplicate baby found');
+        isCreatingRef.current = false;
+        return null;
+      }
+
+      // Insert baby
+      const { data: result, error } = await supabase
+        .from('babies')
+        .insert({
+          id: newId,
+          name: data.name,
+          avatar: data.avatar || null,
+          date_of_birth: data.birthDate,
+          gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
+          blood_type: data.bloodType || null,
+          medical_notes: data.medicalNotes || null,
+          parent1_id: userId,
+          parent2_id: data.parent2Id || null,
+          is_active: true,
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[BabyContext] Create baby error:', error);
+        isCreatingRef.current = false;
+        return null;
+      }
+
+      if (!result) {
+        console.error('[BabyContext] No result from insert');
+        isCreatingRef.current = false;
+        return null;
+      }
+
+      console.log('[BabyContext] Baby created successfully:', result.id);
+
+      const newBaby: BabyProfile = {
+        ...data,
+        id: result.id,
+        parent1Id: userId,
+        streak: 0,
+        milestones: 0,
+        photos: 0,
+        createdAt: now.toISOString(),
+        lastUpdated: now.toISOString(),
+        age: calculateAge(data.birthDate),
+      };
+
+      // Check if this is the first baby for this user
+      const { count } = await supabase
+        .from('babies')
+        .select('*', { count: 'exact', head: true })
+        .eq('parent1_id', userId)
+        .eq('is_active', true);
+
+      const isFirstBaby = (count || 0) <= 1;
+      const newCurrentId = isFirstBaby ? result.id : (state.currentBabyId || result.id);
+
+      // Set current baby in app_settings
+      try {
+        await supabase
+          .from('app_settings')
+          .upsert({
+            key: 'current_baby_id',
+            value: newCurrentId,
+            user_id: userId,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'key, user_id' });
+      } catch (e) {
+        console.warn('[BabyContext] Failed to set current_baby_id:', e);
+      }
+
+      // Clear skip baby if set
+      try {
+        await supabase
+          .from('app_settings')
+          .delete()
+          .eq('key', 'has_skipped_baby')
+          .eq('user_id', userId);
+      } catch (e) {
+        console.warn('[BabyContext] Failed to clear skip baby:', e);
+      }
+
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          babies: [...prev.babies, newBaby],
+          currentBabyId: newCurrentId,
+          currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
+          hasSkippedBaby: false,
+        }));
+      }
+
+      // Load tracker data
+      await loadAllBabyData(newCurrentId);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      
+      // Reload babies to ensure consistency
+      await loadBabies();
+
       isCreatingRef.current = false;
-      return null;
-    }
-
-    // Insert baby - using userId directly
-    const { data: result, error } = await supabase
-      .from('babies')
-      .insert({
-        id: newId,
-        name: data.name,
-        avatar: data.avatar || null,
-        date_of_birth: data.birthDate,
-        gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
-        blood_type: data.bloodType || null,
-        medical_notes: data.medicalNotes || null,
-        parent1_id: userId,
-        parent2_id: data.parent2Id || null,
-        is_active: true,
-        created_at: now.toISOString(),
-        updated_at: now.toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error) {
+      return result.id;
+      
+    } catch (error) {
+      isCreatingRef.current = false;
       console.error('[BabyContext] Create baby error:', error);
-      isCreatingRef.current = false;
       return null;
     }
-
-    if (!result) {
-      console.error('[BabyContext] No result from insert');
-      isCreatingRef.current = false;
-      return null;
-    }
-
-    console.log('[BabyContext] Baby created successfully:', result.id);
-
-    const newBaby: BabyProfile = {
-      ...data,
-      id: result.id,
-      parent1Id: userId,
-      streak: 0,
-      milestones: 0,
-      photos: 0,
-      createdAt: now.toISOString(),
-      lastUpdated: now.toISOString(),
-      age: calculateAge(data.birthDate),
-    };
-
-    // Check if this is the first baby for this user
-    const { count } = await supabase
-      .from('babies')
-      .select('*', { count: 'exact', head: true })
-      .eq('parent1_id', userId)
-      .eq('is_active', true);
-
-    const isFirstBaby = (count || 0) <= 1;
-    const newCurrentId = isFirstBaby ? result.id : (state.currentBabyId || result.id);
-
-    // Set current baby in app_settings
-    try {
-      await supabase
-        .from('app_settings')
-        .upsert({
-          key: 'current_baby_id',
-          value: newCurrentId,
-          user_id: userId,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'key, user_id' });
-    } catch (e) {
-      console.warn('[BabyContext] Failed to set current_baby_id:', e);
-    }
-
-    // Clear skip baby if set
-    try {
-      await supabase
-        .from('app_settings')
-        .delete()
-        .eq('key', 'has_skipped_baby')
-        .eq('user_id', userId);
-    } catch (e) {
-      console.warn('[BabyContext] Failed to clear skip baby:', e);
-    }
-
-    if (isMounted.current) {
-      setState(prev => ({
-        ...prev,
-        babies: [...prev.babies, newBaby],
-        currentBabyId: newCurrentId,
-        currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
-        hasSkippedBaby: false,
-      }));
-    }
-
-    // Load tracker data
-    await loadAllBabyData(newCurrentId);
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    
-    // Reload babies to ensure consistency
-    await loadBabies();
-
-    isCreatingRef.current = false;
-    return result.id;
-    
-  } catch (error) {
-    isCreatingRef.current = false;
-    console.error('[BabyContext] Create baby error:', error);
-    return null;
-  }
-}, [calculateAge, loadAllBabyData, state.currentBabyId, loadBabies, getAuthenticatedUser]);
+  }, [calculateAge, loadAllBabyData, state.currentBabyId, loadBabies, getCurrentUserId]);
 
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
@@ -1215,7 +1133,6 @@ const createBaby = useCallback(async (
   /* ---- Delete baby ---- */
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
     try {
-      // Soft delete - set inactive
       const { error } = await supabase
         .from('babies')
         .update({
@@ -1230,28 +1147,33 @@ const createBaby = useCallback(async (
         return false;
       }
 
+      const userId = await getCurrentUserId();
       let newCurrentId = state.currentBabyId;
+      
       if (state.currentBabyId === id) {
         const remainingBabies = state.babies.filter(b => b.id !== id);
         newCurrentId = remainingBabies[0]?.id || null;
         
-        if (newCurrentId) {
+        if (newCurrentId && userId) {
           await supabase
             .from('app_settings')
             .upsert({
               key: 'current_baby_id',
               value: newCurrentId,
+              user_id: userId,
               updated_at: new Date().toISOString(),
-            }, { onConflict: 'key' });
-        } else {
+            }, { onConflict: 'key, user_id' });
+        } else if (userId) {
           await supabase
             .from('app_settings')
             .delete()
-            .eq('key', 'current_baby_id');
+            .eq('key', 'current_baby_id')
+            .eq('user_id', userId);
           await supabase
             .from('app_settings')
             .delete()
-            .eq('key', 'has_skipped_baby');
+            .eq('key', 'has_skipped_baby')
+            .eq('user_id', userId);
         }
       }
 
@@ -1281,11 +1203,17 @@ const createBaby = useCallback(async (
       Alert.alert('Error', 'Failed to delete baby profile');
       return false;
     }
-  }, [state.currentBabyId, state.babies, loadAllBabyData]);
+  }, [state.currentBabyId, state.babies, loadAllBabyData, getCurrentUserId]);
 
   /* ---- Switch baby ---- */
   const switchBaby = useCallback(async (id: string): Promise<boolean> => {
     try {
+      const userId = await getCurrentUserId();
+      if (!userId) {
+        console.warn('[BabyContext] No user for switchBaby');
+        return false;
+      }
+
       const { data: baby, error } = await supabase
         .from('babies')
         .select('*')
@@ -1303,8 +1231,9 @@ const createBaby = useCallback(async (
         .upsert({
           key: 'current_baby_id',
           value: id,
+          user_id: userId,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
+        }, { onConflict: 'key, user_id' });
 
       await loadAllBabyData(id);
 
@@ -1323,13 +1252,19 @@ const createBaby = useCallback(async (
       console.error('Error switching baby:', error);
       return false;
     }
-  }, [loadAllBabyData, mapBabyRowToProfile]);
+  }, [loadAllBabyData, mapBabyRowToProfile, getCurrentUserId]);
 
   /* ---- Refresh current baby ---- */
   const refreshCurrentBaby = useCallback(async () => {
     if (!state.currentBabyId) return;
 
     try {
+      const userId = await getCurrentUserId();
+      if (!userId) {
+        console.warn('[BabyContext] No user for refreshCurrentBaby');
+        return;
+      }
+
       const { data: baby, error } = await supabase
         .from('babies')
         .select('*')
@@ -1357,7 +1292,7 @@ const createBaby = useCallback(async (
     } catch (error) {
       console.error('Error refreshing current baby:', error);
     }
-  }, [state.currentBabyId, mapBabyRowToProfile, loadAllBabyData, loadBabies]);
+  }, [state.currentBabyId, mapBabyRowToProfile, loadAllBabyData, loadBabies, getCurrentUserId]);
 
   /* ---- Growth ---- */
   const addGrowthMeasurement = useCallback(async (
