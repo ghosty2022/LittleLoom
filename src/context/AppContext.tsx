@@ -1,4 +1,5 @@
 // src/context/AppContext.tsx
+// Full Supabase-compatible app context
 
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useColorScheme, AppState, AppStateStatus, Platform } from 'react-native';
@@ -8,6 +9,7 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import * as KeepAwake from 'expo-keep-awake';
 import * as Device from 'expo-device';
+import { supabase } from '@/utils/supabase';
 import { useCustomization, AppearanceMode } from '../hooks/useCustomization';
 
 // ─── TASK DEFINITION ──────────────────────────────────────────────
@@ -301,7 +303,6 @@ async function getDeviceId(): Promise<string> {
 // ─── CONTEXT ──────────────────────────────────────────────────────
 
 const AppContext = createContext<AppContextType>({
-  // Theme defaults
   themeMode: 'system',
   appearance: 'system',
   isDark: false,
@@ -315,8 +316,6 @@ const AppContext = createContext<AppContextType>({
   themeReady: false,
   isCommunityScreen: false,
   setCommunityScreen: () => {},
-
-  // Notification defaults
   notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
   isNotificationReady: false,
   updateNotificationSettings: async () => {},
@@ -365,10 +364,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let mounted = true;
     const load = async () => {
       try {
-        const { getAppSetting } = await import('../database/dbHelpers');
         const [savedTheme, savedAppearance] = await Promise.all([
-          getAppSetting(THEME_STORAGE_KEY),
-          getAppSetting(APPEARANCE_STORAGE_KEY),
+          AsyncStorage.getItem(THEME_STORAGE_KEY),
+          AsyncStorage.getItem(APPEARANCE_STORAGE_KEY),
         ]);
 
         if (!mounted) return;
@@ -422,15 +420,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [customization.isLoaded, customization.settings.appearance]);
 
-  // ─── Initialize Notifications (Lazy - called when needed) ──────
-
-  // CRITICAL FIX: Don't auto-initialize notifications on mount
-  // Initialize them lazily when needed
+  // ─── Initialize Notifications (Lazy) ────────────────────────────
 
   const ensureNotificationsInitialized = useCallback(async () => {
     if (isInitialized.current) return true;
     if (initStarted.current) {
-      // Wait for initialization to complete
       return new Promise<boolean>((resolve) => {
         const check = () => {
           if (isInitialized.current) {
@@ -446,7 +440,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     initStarted.current = true;
 
     try {
-      // Load settings
       const settings = await loadNotificationSettings();
       setNotificationSettings(settings);
 
@@ -457,7 +450,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return true;
       }
 
-      // Request permissions only if device
       if (Device.isDevice) {
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
@@ -485,14 +477,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Setup Android channels
       if (Platform.OS === 'android') {
         const channelConfigs = [
-          { id: 'default', name: 'Default', importance: Notifications.AndroidImportance.MAX, vibrationPattern: [0, 250, 250, 250], lightColor: '#7c6cf1' },
-          { id: 'achievements', name: 'Achievements', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 500, 200, 500], lightColor: '#f59e0b' },
-          { id: 'streaks', name: 'Streak Protection', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 300, 100, 300, 100, 300], lightColor: '#ef4444' },
-          { id: 'chat', name: 'Chat Messages', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 100, 50, 100], lightColor: '#22c55e' },
-          { id: 'safety', name: 'Safety Alerts', importance: Notifications.AndroidImportance.MAX, vibrationPattern: [0, 300, 100, 300], lightColor: '#ef4444' },
-          { id: 'reminders', name: 'Reminders', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 250, 250, 250], lightColor: '#667eea' },
-          { id: 'activities', name: 'Activities', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 200, 100, 200], lightColor: '#3b82f6' },
-          { id: 'community', name: 'Community', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 150, 150, 150], lightColor: '#8b5cf6' },
+          { id: 'default', name: 'Default', importance: Notifications.AndroidImportance.MAX },
+          { id: 'achievements', name: 'Achievements', importance: Notifications.AndroidImportance.HIGH },
+          { id: 'streaks', name: 'Streak Protection', importance: Notifications.AndroidImportance.HIGH },
+          { id: 'chat', name: 'Chat Messages', importance: Notifications.AndroidImportance.HIGH },
+          { id: 'safety', name: 'Safety Alerts', importance: Notifications.AndroidImportance.MAX },
+          { id: 'reminders', name: 'Reminders', importance: Notifications.AndroidImportance.HIGH },
+          { id: 'activities', name: 'Activities', importance: Notifications.AndroidImportance.DEFAULT },
+          { id: 'community', name: 'Community', importance: Notifications.AndroidImportance.DEFAULT },
         ];
 
         for (const config of channelConfigs) {
@@ -500,8 +492,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             await Notifications.setNotificationChannelAsync(config.id, {
               name: config.name,
               importance: config.importance,
-              vibrationPattern: config.vibrationPattern,
-              lightColor: config.lightColor,
               enableVibrate: true,
               enableLights: true,
             });
@@ -511,23 +501,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // Setup notification handler
       Notifications.setNotificationHandler({
-        handleNotification: async (notification) => {
-          const data = notification.request.content.data;
-          const channelId = data?.channelId as string || 'default';
-
-          return {
-            shouldShowAlert: settings.inAppEnabled,
-            shouldPlaySound: settings.soundEnabled,
-            shouldSetBadge: settings.badgeEnabled,
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-            ...(Platform.OS === 'android' && { channelId }),
-          };
-        },
+        handleNotification: async (notification) => ({
+          shouldShowAlert: settings.inAppEnabled,
+          shouldPlaySound: settings.soundEnabled,
+          shouldSetBadge: settings.badgeEnabled,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        }),
       });
 
-      // Setup listeners
       notificationListener.current = Notifications.addNotificationReceivedListener(
         handleNotificationReceived
       );
@@ -556,7 +538,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // App state listener
       appStateListener.current = AppState.addEventListener('change', handleAppStateChange);
 
       isInitialized.current = true;
@@ -585,7 +566,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const data = response.notification.request.content.data;
     if (!data) return;
 
-    // Handle navigation
     if (_navigationRef) {
       handleNavigation(data, _navigationRef);
     }
@@ -593,12 +573,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const handleAppStateChange = (nextAppState: AppStateStatus) => {
     if (nextAppState === 'background') {
-      // Release keep awake
       if (keepAwakeRef) {
         keepAwakeRef.release().catch(() => {});
         setKeepAwakeRef(null);
       }
-      // Perform background sync
       if (notificationSettings.allowBackgroundSync) {
         performBackgroundNotificationSync().catch(() => {});
       }
@@ -656,7 +634,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         read: false,
       });
 
-      // Keep last 100
       while (history.length > 100) {
         history.shift();
       }
@@ -667,18 +644,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // ─── Initialize on demand ───────────────────────────────────────
-
-  // CRITICAL FIX: Only initialize notifications when first needed
-  // Don't auto-initialize on mount
-
   // ─── Theme Functions ─────────────────────────────────────────────
 
   const setThemeMode = useCallback(async (mode: ThemeMode) => {
     setThemeModeState(mode);
     _cachedThemeMode = mode;
-    const { setAppSetting } = await import('../database/dbHelpers');
-    await setAppSetting(THEME_STORAGE_KEY, mode).catch(() => {});
+    await AsyncStorage.setItem(THEME_STORAGE_KEY, mode).catch(() => {});
   }, []);
 
   const setAppearance = useCallback(async (newAppearance: AppearanceMode) => {
@@ -691,9 +662,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     _cachedThemeMode = nextTheme;
 
     customization?.updateSettings?.({ appearance: newAppearance });
-    const { setAppSetting } = await import('../database/dbHelpers');
-    await setAppSetting(APPEARANCE_STORAGE_KEY, newAppearance).catch(() => {});
-    await setAppSetting(THEME_STORAGE_KEY, nextTheme).catch(() => {});
+    await AsyncStorage.multiSet([
+      [APPEARANCE_STORAGE_KEY, newAppearance],
+      [THEME_STORAGE_KEY, nextTheme],
+    ]).catch(() => {});
   }, [customization]);
 
   const toggleTheme = useCallback(() => {
@@ -770,13 +742,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [notificationSettings]);
 
-  // ─── Wrapped notification functions with lazy init ──────────────
+  // ─── Wrapped notification functions ──────────────────────────────
 
   const scheduleNotification = useCallback(async (
     payload: NotificationPayload,
     trigger?: Notifications.NotificationTriggerInput
   ): Promise<string | null> => {
-    // Ensure notifications are initialized before use
     await ensureNotificationsInitialized();
 
     if (!isNotificationReady) {
@@ -788,9 +759,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return null;
     }
 
-    // Check quiet hours
     if (isInQuietHours()) {
-      // Store for later
       const notification: ScheduledNotification = {
         id: `pending_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         payload,
@@ -886,7 +855,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const getBadgeCount = useCallback((): number => {
-    // This should be calculated from your app's state
     return 0;
   }, []);
 
@@ -894,11 +862,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newSettings = { ...notificationSettings, ...updates };
     setNotificationSettings(newSettings);
     await saveNotificationSettings(newSettings);
-
-    // Ensure notifications are initialized before updating
     await ensureNotificationsInitialized();
 
-    // Update background sync if changed
     if (updates.allowBackgroundSync !== undefined) {
       if (updates.allowBackgroundSync) {
         try {
@@ -919,27 +884,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         try {
           await BackgroundFetch.unregisterTaskAsync(BACKGROUND_SYNC_TASK);
-        } catch {
-          // Ignore
-        }
+        } catch {}
       }
     }
-
-    // Update notification handler
-    Notifications.setNotificationHandler({
-      handleNotification: async (notification) => {
-        const data = notification.request.content.data;
-        const channelId = data?.channelId as string || 'default';
-
-        return {
-          shouldShowAlert: newSettings.inAppEnabled,
-          shouldPlaySound: newSettings.soundEnabled,
-          shouldSetBadge: newSettings.badgeEnabled,
-          priority: Notifications.AndroidNotificationPriority.HIGH,
-          ...(Platform.OS === 'android' && { channelId }),
-        };
-      },
-    });
   }, [notificationSettings, ensureNotificationsInitialized]);
 
   const enableKeepAwake = useCallback(async (reason: string = 'Critical') => {
@@ -998,7 +945,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ─── Context Value ──────────────────────────────────────────────
 
   const value = useMemo(() => ({
-    // Theme
     themeMode,
     appearance,
     isDark,
@@ -1012,41 +958,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     themeReady,
     isCommunityScreen,
     setCommunityScreen,
-
-    // Notifications
     notificationSettings,
     isNotificationReady,
-    updateNotificationSettings,
-    scheduleNotification,
-    sendImmediateNotification,
-    cancelNotification,
-    cancelAllNotifications,
-    getScheduledNotifications,
-    getNotificationHistory,
-    markNotificationRead,
-    getBadgeCount,
-    isInQuietHours,
-    enableKeepAwake,
-    releaseKeepAwake,
-
-    // Navigation
-    setNavigationRef,
-  }), [
-    themeMode,
-    appearance,
-    isDark,
-    isTrueBlack,
-    isPureWhite,
-    colors,
-    themeReady,
-    isCommunityScreen,
-    notificationSettings,
-    isNotificationReady,
-    setThemeMode,
-    setAppearance,
-    toggleTheme,
-    setDarkMode,
-    setCommunityScreen,
     updateNotificationSettings,
     scheduleNotification,
     sendImmediateNotification,
@@ -1060,6 +973,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     enableKeepAwake,
     releaseKeepAwake,
     setNavigationRef,
+  }), [
+    themeMode, appearance, isDark, isTrueBlack, isPureWhite, colors,
+    themeReady, isCommunityScreen, notificationSettings, isNotificationReady,
+    setThemeMode, setAppearance, toggleTheme, setDarkMode, setCommunityScreen,
+    updateNotificationSettings, scheduleNotification, sendImmediateNotification,
+    cancelNotification, cancelAllNotifications, getScheduledNotifications,
+    getNotificationHistory, markNotificationRead, getBadgeCount, isInQuietHours,
+    enableKeepAwake, releaseKeepAwake, setNavigationRef,
   ]);
 
   return (
