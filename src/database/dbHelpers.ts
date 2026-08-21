@@ -34,6 +34,30 @@ export interface UserRegistryEntry {
 
 const USER_REGISTRY_KEY = 'littleloom_user_registry';
 
+/* ─── UTILITY ───────────────────────────────────────────────────────────── */
+
+// Safely check if a table exists in Supabase
+export async function tableExists(tableName: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from(tableName)
+      .select('count', { count: 'exact', head: true })
+      .limit(1);
+    
+    // If error contains "relation" or "does not exist", table doesn't exist
+    if (error && (
+      error.message?.includes('relation') || 
+      error.message?.includes('does not exist') ||
+      error.message?.includes('not found')
+    )) {
+      return false;
+    }
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 /* ─── USER REGISTRY ───────────────────────────────────────────────────── */
 
 export async function getUserRegistry(): Promise<Record<string, UserRegistryEntry>> {
@@ -288,11 +312,28 @@ export async function findUserByEmailOrUsernameOrPhone(identifier: string): Prom
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   APP SETTINGS
+   APP SETTINGS - With table existence check
    ═══════════════════════════════════════════════════════════════════════════ */
+
+// Cache for table existence to reduce repeated checks
+let appSettingsTableExists: boolean | null = null;
 
 export async function getAppSetting(key: string): Promise<string | null> {
   try {
+    // Check if table exists (cached)
+    if (appSettingsTableExists === null) {
+      appSettingsTableExists = await tableExists('app_settings');
+    }
+    
+    if (!appSettingsTableExists) {
+      // Table doesn't exist, use AsyncStorage fallback
+      try {
+        return await AsyncStorage.getItem(`app_setting_${key}`);
+      } catch {
+        return null;
+      }
+    }
+
     const { data, error } = await supabase
       .from('app_settings')
       .select('value')
@@ -300,7 +341,6 @@ export async function getAppSetting(key: string): Promise<string | null> {
       .maybeSingle();
 
     if (error) {
-      // Table might not exist yet - try AsyncStorage fallback
       console.warn(`[DB] getAppSetting error for ${key}:`, error.message);
       try {
         return await AsyncStorage.getItem(`app_setting_${key}`);
@@ -312,7 +352,6 @@ export async function getAppSetting(key: string): Promise<string | null> {
     return data?.value || null;
   } catch (error) {
     console.error(`[DB] getAppSetting error for ${key}:`, error);
-    // Fallback to AsyncStorage
     try {
       return await AsyncStorage.getItem(`app_setting_${key}`);
     } catch {
@@ -323,6 +362,17 @@ export async function getAppSetting(key: string): Promise<string | null> {
 
 export async function setAppSetting(key: string, value: string): Promise<void> {
   try {
+    // Check if table exists (cached)
+    if (appSettingsTableExists === null) {
+      appSettingsTableExists = await tableExists('app_settings');
+    }
+    
+    if (!appSettingsTableExists) {
+      // Table doesn't exist, use AsyncStorage fallback
+      await AsyncStorage.setItem(`app_setting_${key}`, value);
+      return;
+    }
+
     const now = new Date().toISOString();
     const { error } = await supabase
       .from('app_settings')
@@ -336,12 +386,10 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 
     if (error) {
       console.warn(`[DB] setAppSetting error for ${key}:`, error.message);
-      // Fallback to AsyncStorage
       await AsyncStorage.setItem(`app_setting_${key}`, value);
     }
   } catch (error) {
     console.error(`[DB] setAppSetting error for ${key}:`, error);
-    // Fallback to AsyncStorage
     try {
       await AsyncStorage.setItem(`app_setting_${key}`, value);
     } catch (e) {
@@ -352,6 +400,16 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 
 export async function deleteAppSetting(key: string): Promise<void> {
   try {
+    // Check if table exists (cached)
+    if (appSettingsTableExists === null) {
+      appSettingsTableExists = await tableExists('app_settings');
+    }
+    
+    if (!appSettingsTableExists) {
+      await AsyncStorage.removeItem(`app_setting_${key}`);
+      return;
+    }
+
     const { error } = await supabase
       .from('app_settings')
       .delete()
@@ -359,7 +417,6 @@ export async function deleteAppSetting(key: string): Promise<void> {
 
     if (error) {
       console.warn(`[DB] deleteAppSetting error for ${key}:`, error.message);
-      // Fallback to AsyncStorage
       await AsyncStorage.removeItem(`app_setting_${key}`);
     }
   } catch (error) {
@@ -374,6 +431,23 @@ export async function deleteAppSetting(key: string): Promise<void> {
 
 export async function getMultipleAppSettings(keys: string[]): Promise<Record<string, string | null>> {
   try {
+    // Check if table exists (cached)
+    if (appSettingsTableExists === null) {
+      appSettingsTableExists = await tableExists('app_settings');
+    }
+    
+    if (!appSettingsTableExists) {
+      const result: Record<string, string | null> = {};
+      for (const key of keys) {
+        try {
+          result[key] = await AsyncStorage.getItem(`app_setting_${key}`);
+        } catch {
+          result[key] = null;
+        }
+      }
+      return result;
+    }
+
     const { data, error } = await supabase
       .from('app_settings')
       .select('key, value')
@@ -381,7 +455,6 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
 
     if (error) {
       console.warn('[DB] getMultipleAppSettings error:', error.message);
-      // Fallback to AsyncStorage
       const result: Record<string, string | null> = {};
       for (const key of keys) {
         try {
