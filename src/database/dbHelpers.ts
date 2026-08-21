@@ -85,29 +85,54 @@ export async function getCurrentUserId(): Promise<string | null> {
   }
 
   try {
-    // First try to get the user
+    // FIRST: Try to get session (most reliable)
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (!sessionError && session?.user?.id) {
+      console.log('[DB] Session user ID:', session.user.id);
+      cachedUserId = session.user.id;
+      cachedUserIdTimestamp = now;
+      return cachedUserId;
+    }
+    
+    // SECOND: Try getUser
     const { data: { user }, error } = await supabase.auth.getUser();
     
     if (error || !user) {
       // If error is session missing, try to refresh
-      if (error?.message?.includes('session') || error?.message?.includes('JWT')) {
+      if (error?.message?.includes('session') || error?.message?.includes('JWT') || error?.message?.includes('Auth session missing')) {
         console.log('[DB] Session expired, attempting refresh...');
         isRefreshingSession = true;
         
-        const { data: { session }, error: refreshError } = await supabase.auth.getSession();
-        
-        if (refreshError || !session?.user) {
+        try {
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          
+          if (!refreshError && refreshData?.session?.user?.id) {
+            console.log('[DB] Session refreshed successfully:', refreshData.session.user.id);
+            cachedUserId = refreshData.session.user.id;
+            cachedUserIdTimestamp = now;
+            isRefreshingSession = false;
+            return cachedUserId;
+          }
+        } catch (refreshErr) {
           console.log('[DB] Session refresh failed');
-          cachedUserId = null;
-          cachedUserIdTimestamp = now;
-          isRefreshingSession = false;
-          return null;
         }
         
-        cachedUserId = session.user.id;
+        // Try getSession one more time after refresh attempt
+        try {
+          const { data: { session: sessionRetry } } = await supabase.auth.getSession();
+          if (sessionRetry?.user?.id) {
+            cachedUserId = sessionRetry.user.id;
+            cachedUserIdTimestamp = now;
+            isRefreshingSession = false;
+            return cachedUserId;
+          }
+        } catch (e) {}
+        
+        cachedUserId = null;
         cachedUserIdTimestamp = now;
         isRefreshingSession = false;
-        return cachedUserId;
+        return null;
       }
       
       cachedUserId = null;
@@ -138,8 +163,20 @@ export async function getCurrentSession() {
     if (error) {
       console.warn('[DB] Session error:', error.message);
       
-      // If error is about missing session, try to get user directly
-      if (error.message?.includes('session') || error.message?.includes('JWT')) {
+      // If error is about missing session, try to refresh
+      if (error.message?.includes('session') || error.message?.includes('JWT') || error.message?.includes('Auth session missing')) {
+        console.log('[DB] Session missing, trying refresh...');
+        try {
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError && refreshData?.session) {
+            console.log('[DB] Session refreshed successfully');
+            return refreshData.session;
+          }
+        } catch (refreshErr) {
+          console.warn('[DB] Refresh attempt failed:', refreshErr);
+        }
+        
+        // Try to get user directly as fallback
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (!userError && user) {
           console.log('[DB] Got user directly, session may be stale but user exists');
@@ -829,11 +866,28 @@ export async function createBabyInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
-    const userId = await getCurrentUserId();
     
-    if (!userId && !data.parent1Id) {
+    // Force refresh session to get fresh user ID
+    let userId = await getCurrentUserId();
+    
+    // If no userId, try to force refresh
+    if (!userId) {
+      console.log('[DB] No userId, forcing session refresh...');
+      const refreshed = await forceRefreshSession();
+      if (refreshed) {
+        userId = await getCurrentUserId();
+      }
+    }
+    
+    // Use provided parent1Id or userId
+    const finalParent1Id = data.parent1Id || userId;
+    
+    if (!finalParent1Id) {
+      console.error('[DB] No authenticated user and no parent1Id provided');
       throw new Error('No authenticated user and no parent1Id provided');
     }
+    
+    console.log('[DB] Creating baby with parent1_id:', finalParent1Id);
     
     const { data: result, error } = await supabase
       .from('babies')
@@ -845,7 +899,7 @@ export async function createBabyInDb(data: {
         gender: data.gender || null,
         blood_type: data.bloodType || null,
         medical_notes: data.medicalNotes || null,
-        parent1_id: data.parent1Id || userId,
+        parent1_id: finalParent1Id,  // Use finalParent1Id instead of data.parent1Id || userId
         parent2_id: data.parent2Id || null,
         created_at: now,
         updated_at: now,

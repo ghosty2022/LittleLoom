@@ -422,32 +422,44 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /* ─── Helper: get current user ID with fallback ────────────────────── */
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    // First try: use authProfile from AuthContext
-    if (authProfile?.id) {
-      console.log('[BabyContext] Using authProfile.id:', authProfile.id);
-      return authProfile.id;
+    // First try: supabase.auth.getSession() - most reliable
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (!error && session?.user?.id) {
+        console.log('[BabyContext] Using session user ID:', session.user.id);
+        return session.user.id;
+      }
+    } catch (e) {
+      console.warn('[BabyContext] getSession failed:', e);
     }
 
     // Second try: supabase.auth.getUser()
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (!error && user?.id) {
-        console.log('[BabyContext] Using supabase.auth.getUser():', user.id);
+        console.log('[BabyContext] Using getUser ID:', user.id);
         return user.id;
       }
     } catch (e) {
       console.warn('[BabyContext] getUser failed:', e);
     }
 
-    // Third try: supabase.auth.getSession()
+    // Third try: use authProfile from AuthContext
+    if (authProfile?.id) {
+      console.log('[BabyContext] Using authProfile ID:', authProfile.id);
+      return authProfile.id;
+    }
+
+    // Fourth try: force refresh session
     try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (!error && session?.user?.id) {
-        console.log('[BabyContext] Using supabase.auth.getSession():', session.user.id);
-        return session.user.id;
+      console.log('[BabyContext] Attempting force session refresh...');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (!refreshError && refreshData?.session?.user?.id) {
+        console.log('[BabyContext] Session refreshed, user ID:', refreshData.session.user.id);
+        return refreshData.session.user.id;
       }
     } catch (e) {
-      console.warn('[BabyContext] getSession failed:', e);
+      console.warn('[BabyContext] Force refresh failed:', e);
     }
 
     console.warn('[BabyContext] No user ID found');
