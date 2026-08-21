@@ -316,7 +316,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
         ]);
         
-        // Clear the user ID cache
         clearUserIdCache();
         
         if (isMounted.current) {
@@ -552,6 +551,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = signUpData.session?.access_token || '';
       const userId = signUpData.user.id;
       
+      // ─── CRITICAL FIX: Wait for session to be established ──────────
+      // Give Supabase a moment to fully establish the session
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Refresh session to ensure it's valid
+      await refreshSession();
+      
       try {
         const { error: resendError } = await supabase.auth.resend({
           type: 'signup',
@@ -620,7 +626,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[Auth] Sign up error:', error);
       return { success: false, message: 'Failed to create account. Please try again.' };
     } finally { releaseSignInLock(); }
-  }, [acquireSignInLock, releaseSignInLock, performSignInInternal]);
+  }, [acquireSignInLock, releaseSignInLock, performSignInInternal, refreshSession]);
 
   // ─── SOCIAL SIGN IN ────────────────────────────────────────────────────
 
@@ -717,7 +723,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ]),
       ]);
 
-      // ─── CRITICAL: Clear the user ID cache ────────────────────────────
       clearUserIdCache();
 
       const hasParent2 = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
@@ -1109,11 +1114,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { available: false, message: 'Username must be at least 3 characters' };
       }
       
-      // Check against community profiles in AsyncStorage
       const registryJson = await AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME);
       const existingUsernames = registryJson ? [registryJson] : [];
       
-      // Also check local registry if it exists
       const allUsernamesJson = await AsyncStorage.getItem('littleloom_username_registry');
       let allUsernames: string[] = [];
       if (allUsernamesJson) {
@@ -1141,7 +1144,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const availability = await isUsernameAvailable(trimmed);
     if (!availability.available) return false;
     
-    // Save to registry
     try {
       const registryJson = await AsyncStorage.getItem('littleloom_username_registry');
       let registry: string[] = registryJson ? JSON.parse(registryJson) : [];
@@ -1376,7 +1378,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const findUserByEmail = useCallback(async (email: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
     try {
-      // First try to get from auth
       const { data: { users }, error } = await supabase.auth.admin.listUsers();
       if (error) {
         console.warn('[Auth] Admin list users error:', error.message);
@@ -1400,12 +1401,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const findUserByEmailOrUsername = useCallback(async (identifier: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
-    // Check if it's an email
     if (identifier.includes('@')) {
       return await findUserByEmail(identifier);
     }
-    // Otherwise check by username - this would require a users table in Supabase
-    // For now, try email lookup as fallback
     return await findUserByEmail(identifier);
   }, [findUserByEmail]);
 
@@ -1484,7 +1482,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
               secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
             ]);
-            // Clear the user ID cache
             clearUserIdCache();
           }
         }
@@ -1608,7 +1605,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }));
         }
       } else if (event === 'SIGNED_OUT') {
-        // Clear the user ID cache on sign out
         clearUserIdCache();
         if (isMounted.current) {
           setState(prev => ({
