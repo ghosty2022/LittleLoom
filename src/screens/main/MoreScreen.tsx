@@ -1008,33 +1008,58 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [loadBabies, loadEntries]);
 
-  // ─── FIXED: Handle Sign Out ─────────────────────────────────────
-  const handleLogout = useCallback(async () => {
-    const confirmed = await sweetAlert.confirm({
-      title: 'Sign Out',
-      message: 'Are you sure you want to sign out? You will need to sign in again to access your data.',
-      confirmText: 'Sign Out',
-      cancelText: 'Cancel',
-      destructive: true,
-    });
-    if (confirmed) {
+// ─── FIXED: Handle Sign Out ─────────────────────────────────────
+const handleLogout = useCallback(async () => {
+  const confirmed = await sweetAlert.confirm({
+    title: 'Sign Out',
+    message: 'Are you sure you want to sign out? You will need to sign in again to access your account.',
+    confirmText: 'Sign Out',
+    cancelText: 'Cancel',
+    destructive: true,
+  });
+  if (confirmed) {
+    try {
+      triggerHaptic('medium');
+      
+      // Clear security lock state before signing out
+      await AsyncStorage.setItem('littleloom_security_lock', 'false');
+      
+      // Clear any navigation state that might persist
+      await AsyncStorage.multiRemove([
+        'littleloom_nav_state_v4',
+        '@littleloom_nav_state_v4',
+        'littleloom_last_auth_state',
+        'littleloom_security_lock',
+      ]);
+      
+      // Call signOut from auth context
+      await signOut();
+      
+      // Force navigation to Login screen with full reset
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' as never }],
+      });
+      
+      // Show success message
+      sweetAlert.toast('Signed Out', 'You have been signed out successfully', 'success');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      
+      // Even if signOut fails, try to force navigation to login
       try {
-        triggerHaptic('medium');
-        // Clear security lock state before signing out
-        await AsyncStorage.setItem('littleloom_security_lock', 'false');
-        await signOut();
-        // Navigate to login screen
         navigation.reset({
           index: 0,
           routes: [{ name: 'Login' as never }],
         });
-        sweetAlert.toast('Signed Out', 'You have been signed out successfully', 'success');
-      } catch (error) {
-        console.error('Sign out error:', error);
-        sweetAlert.alert('Error', 'Failed to sign out. Please try again.', 'error');
+      } catch (navError) {
+        console.error('Navigation reset error:', navError);
       }
+      
+      sweetAlert.alert('Error', 'Failed to sign out. Please try again.', 'error');
     }
-  }, [signOut, sweetAlert, triggerHaptic, navigation]);
+  }
+}, [signOut, sweetAlert, triggerHaptic, navigation]);
 
   // ─── FIXED: Handle Sync / Cloud Backup ─────────────────────────
   const handleSync = useCallback(async () => {

@@ -724,24 +724,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
 
-      // Clear AsyncStorage auth-related keys
+      // Clear all AsyncStorage auth-related keys
       await AsyncStorage.multiRemove([
         ASYNC_KEYS.ONBOARDING_COMPLETE,
         ASYNC_KEYS.NAVIGATION_LOCK,
         'littleloom_security_lock',
         'littleloom_last_auth_state',
-        'littleloom_nav_state_v4', // Clear navigation state
+        'littleloom_nav_state_v4',
         '@littleloom_nav_state_v4',
+        'littleloom_last_active_global',
       ]);
 
       // Clear user ID cache
       clearUserIdCache();
 
-      const hasParent2 = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
-      const hasBaby = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
-      const isSetupComplete = setupComplete === 'true';
-
-      // Reset state to unauthenticated
+      // Reset state to unauthenticated - COMPLETE RESET
       if (isMounted.current) {
         setState({
           isLoading: false,
@@ -750,7 +747,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userProfile: null,
           session: null,
           onboardingComplete: false,
-          hasSeenOnboarding: hasSeenOnboarding === 'true',
+          hasSeenOnboarding: false,
           isBiometricAvailable: state.isBiometricAvailable,
           isBiometricEnabled: false,
           isBiometricLoginEnabled: false,
@@ -762,25 +759,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }
 
-      console.log('[Auth] Sign out completed successfully');
+      console.log('[Auth] Sign out completed successfully - user is now logged out');
     } catch (error) { 
       console.error('[Auth] Sign out error:', error);
       
       // Even if there's an error, try to reset the auth state
       if (isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
+        setState({
           isLoading: false,
           isAuthenticated: false,
           userToken: null,
           userProfile: null,
           session: null,
           onboardingComplete: false,
-          setupComplete: false,
+          hasSeenOnboarding: false,
+          isBiometricAvailable: state.isBiometricAvailable,
+          isBiometricEnabled: false,
           isBiometricLoginEnabled: false,
+          setupComplete: false,
           hasParent2: false,
           hasBaby: false,
-        }));
+          availableBiometricTypes: state.availableBiometricTypes,
+          biometricTypeName: state.biometricTypeName,
+        });
       }
     }
   }, [state.isBiometricAvailable, state.availableBiometricTypes, state.biometricTypeName]);
@@ -1646,14 +1647,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('[Auth] SIGNED_OUT event received, clearing state');
         clearUserIdCache();
         if (isMounted.current) {
-          setState(prev => ({
-            ...prev,
+          setState({
+            isLoading: false,
             isAuthenticated: false,
             userToken: null,
             userProfile: null,
             session: null,
-            isLoading: false,
-          }));
+            onboardingComplete: false,
+            hasSeenOnboarding: false,
+            isBiometricAvailable: state.isBiometricAvailable,
+            isBiometricEnabled: false,
+            isBiometricLoginEnabled: false,
+            setupComplete: false,
+            hasParent2: false,
+            hasBaby: false,
+            availableBiometricTypes: state.availableBiometricTypes,
+            biometricTypeName: state.biometricTypeName,
+          });
         }
       } else if (event === 'TOKEN_REFRESHED' && session) {
         if (isMounted.current) {

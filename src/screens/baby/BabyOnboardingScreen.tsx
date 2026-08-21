@@ -111,30 +111,32 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     try {
       console.log('[BabyOnboarding] Syncing babies from Supabase for user:', userId);
       
-      // SIMPLE query - no complex joins that could cause recursion
-      const { data: supabaseBabies, error } = await supabase
+      // Try parent1 first
+      const { data: parent1Babies, error: error1 } = await supabase
         .from('babies')
         .select('*')
         .eq('parent1_id', userId)
         .eq('is_active', true);
 
-      if (error) {
-        console.error('[BabyOnboarding] Supabase query error:', error.message);
+      if (error1) {
+        console.error('[BabyOnboarding] parent1 query error:', error1.message);
         setSyncInProgress(false);
         return false;
       }
 
+      let allBabies = parent1Babies || [];
+
       // If no babies as parent1, try parent2
-      let allBabies = supabaseBabies || [];
-      
       if (allBabies.length === 0) {
-        const { data: parent2Babies, error: p2Error } = await supabase
+        const { data: parent2Babies, error: error2 } = await supabase
           .from('babies')
           .select('*')
           .eq('parent2_id', userId)
           .eq('is_active', true);
         
-        if (!p2Error && parent2Babies) {
+        if (error2) {
+          console.error('[BabyOnboarding] parent2 query error:', error2.message);
+        } else if (parent2Babies) {
           allBabies = parent2Babies;
         }
       }
@@ -247,7 +249,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           await checkAndNavigate();
         }
       } else {
-        // Try to fetch remote babies for import option - using separate simple queries
+        // Try to fetch remote babies for import option
         try {
           const { data: remoteData1 } = await supabase
             .from('babies')
