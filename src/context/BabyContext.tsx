@@ -1,26 +1,13 @@
+// src/context/BabyContext.tsx
+// Full Supabase implementation - No local DB
+
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { showAlert } from '@/utils/alert';
 import { useAuth } from './AuthContext';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
-import {
-  getAllBabiesFromDb,
-  getBabyByIdFromDb,
-  createBabyInDb,
-  updateBabyInDb,
-  deleteBabyFromDb,
-  setCurrentBabyInDb,
-  getAppSetting,
-  setAppSetting,
-  deleteAppSetting,
-  runOneTimeMigration,
-  getEntriesByBabyFromDb,
-  createEntryInDb,
-  updateEntryInDb,
-  softDeleteEntryInDb,
-} from '../database/dbHelpers';
-import type { Baby as DbBaby, TrackerEntry as DbTrackerEntry } from '../database/schema';
+import { supabase } from '@/utils/supabase';
 
 /* ------------------------------------------------------------------ */
 /*  Storage Keys                                                      */
@@ -29,29 +16,7 @@ export const STORAGE_KEYS = {
   BABIES: '@littleloom_babies',
   CURRENT_BABY: '@littleloom_current_baby',
   HAS_SKIPPED_BABY: '@littleloom_has_skipped_baby',
-  GROWTH_DATA: (babyId: string) => `@littleloom_growth_${babyId}`,
-  MILESTONES: (babyId: string) => `@littleloom_milestones_${babyId}`,
-  SLEEP_LOGS: (babyId: string) => `@littleloom_sleep_${babyId}`,
-  FEEDING_LOGS: (babyId: string) => `@littleloom_feeding_${babyId}`,
-  POTTY_LOGS: (babyId: string) => `@littleloom_potty_${babyId}`,
-  MEDICATION_LOGS: (babyId: string) => `@littleloom_medication_${babyId}`,
-  ACTIVITIES: (babyId: string) => `@littleloom_activities_${babyId}`,
 } as const;
-
-const ACTIVITY_CONTEXT_KEY = '@littleloom_activities_v3';
-const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
-
-/* ------------------------------------------------------------------ */
-/*  Lazy imports to avoid circular dependencies                       */
-/* ------------------------------------------------------------------ */
-const getNotificationService = async () => {
-  try {
-    const { notificationService } = await import('@/services/NotificationService');
-    return notificationService;
-  } catch {
-    return null;
-  }
-};
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -363,11 +328,6 @@ const generateId = (): string => {
   return `${timestamp}-${random}`;
 };
 
-const safeParse = <T,>(json: string | null, fallback: T): T => {
-  if (!json) return fallback;
-  try { return JSON.parse(json) as T; } catch { return fallback; }
-};
-
 const getStartOfDay = (date = new Date()): Date => {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -377,194 +337,6 @@ const getStartOfDay = (date = new Date()): Date => {
 const getDateKey = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-const withRetry = async <T,>(
-  operation: () => Promise<T>,
-  maxRetries: number = 2,
-  delayMs: number = 100
-): Promise<T> => {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-      if (attempt < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)));
-      }
-    }
-  }
-  throw lastError;
-};
-
-// Timeout wrapper for async operations
-const withTimeout = async <T,>(
-  operation: () => Promise<T>,
-  timeoutMs: number = 5000
-): Promise<T> => {
-  return Promise.race([
-    operation(),
-    new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs)
-    )
-  ]);
-};
-
-/* ------------------------------------------------------------------ */
-/*  DB row → domain model mappers                                      */
-/* ------------------------------------------------------------------ */
-const parseRowData = (raw: unknown): Record<string, any> =>
-  typeof raw === 'string' ? safeParse(raw, {}) : ((raw as Record<string, any>) ?? {});
-
-const parseRowArray = (raw: unknown): string[] =>
-  typeof raw === 'string' ? safeParse(raw, []) : Array.isArray(raw) ? (raw as string[]) : [];
-
-const mapDbBabyToProfile = (b: DbBaby, calculateAge: (birthDate: string) => string): BabyProfile => ({
-  id: b.id,
-  name: b.name,
-  birthDate: b.dateOfBirth,
-  age: calculateAge(b.dateOfBirth),
-  gender: b.gender === 'male' ? 'boy' : b.gender === 'female' ? 'girl' : 'other',
-  skinTone: 0,
-  avatar: b.avatar || '',
-  parent1Id: b.parent1Id || 'default',
-  parent2Id: b.parent2Id ?? undefined,
-  bloodType: b.bloodType ?? undefined,
-  medicalNotes: b.medicalNotes ?? undefined,
-  streak: 0,
-  milestones: 0,
-  photos: 0,
-  createdAt: b.createdAt,
-  lastUpdated: b.updatedAt,
-});
-
-const mapRowToGrowth = (row: DbTrackerEntry): GrowthMeasurement => {
-  const data = parseRowData(row.data);
-  return {
-    id: row.id,
-    babyId: row.babyId,
-    type: (data.measurementType as GrowthMeasurement['type']) ?? 'weight',
-    value: Number(data.value ?? 0),
-    unit: (data.unit as GrowthMeasurement['unit']) ?? 'kg',
-    date: typeof data.date === 'string' ? data.date : new Date(row.timestamp).toISOString(),
-    notes: row.notes ?? undefined,
-    recordedBy: (data.recordedBy as string) ?? (data.loggedBy as string) ?? '',
-    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
-  };
-};
-
-const mapRowToMilestone = (row: DbTrackerEntry): Milestone => {
-  const data = parseRowData(row.data);
-  const photoUris = parseRowArray(row.photoUris);
-  return {
-    id: row.id,
-    babyId: row.babyId,
-    title: row.title ?? (data.title as string) ?? '',
-    description: (data.description as string) ?? '',
-    category: (data.category as Milestone['category']) ?? 'physical',
-    achievedAt: typeof data.achievedAt === 'string' ? data.achievedAt : new Date(row.timestamp).toISOString(),
-    imageUrl: photoUris[0] ?? (data.imageUrl as string) ?? undefined,
-    notes: row.notes ?? undefined,
-    isFirstTime: (data.firstTime as boolean) ?? undefined,
-    recordedBy: (data.recordedBy as string) ?? (data.loggedBy as string) ?? undefined,
-    recordedByName: (data.recordedByName as string) ?? (data.loggedByName as string) ?? undefined,
-  };
-};
-
-const mapRowToSleep = (row: DbTrackerEntry): SleepLog => {
-  const data = parseRowData(row.data);
-  return {
-    id: row.id,
-    babyId: row.babyId,
-    startTime: typeof data.startTime === 'string' ? data.startTime : new Date(row.timestamp).toISOString(),
-    endTime: (data.endTime as string) ?? undefined,
-    duration: (data.duration as number) ?? undefined,
-    quality: (data.quality as SleepLog['quality']) ?? 'good',
-    location: (data.location as SleepLog['location']) ?? 'other',
-    notes: row.notes ?? undefined,
-    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
-  };
-};
-
-const mapRowToFeeding = (row: DbTrackerEntry): FeedingLog => {
-  const data = parseRowData(row.data);
-  return {
-    id: row.id,
-    babyId: row.babyId,
-    type: (data.feedType as FeedingLog['type']) ?? (data.type as FeedingLog['type']) ?? 'bottle',
-    startTime: typeof data.startTime === 'string' ? data.startTime : new Date(row.timestamp).toISOString(),
-    duration: (data.duration as number) ?? undefined,
-    amount: (data.amount as number) ?? undefined,
-    unit: (data.unit as FeedingLog['unit']) ?? undefined,
-    food: (data.food as string) ?? undefined,
-    notes: row.notes ?? undefined,
-    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
-  };
-};
-
-const mapRowToPotty = (row: DbTrackerEntry): PottyLog => {
-  const data = parseRowData(row.data);
-  return {
-    id: row.id,
-    babyId: row.babyId,
-    type: (data.pottyType as PottyLog['type']) ?? (data.type as PottyLog['type']) ?? 'pee',
-    location: (data.location as PottyLog['location']) ?? 'diaper',
-    successful: Boolean(data.successful),
-    timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date(row.timestamp).toISOString(),
-    notes: row.notes ?? undefined,
-    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
-  };
-};
-
-const mapRowToMedication = (row: DbTrackerEntry): MedicationLog => {
-  const data = parseRowData(row.data);
-  return {
-    id: row.id,
-    babyId: row.babyId,
-    medicationName: (data.medicationName as string) ?? '',
-    dosage: (data.dosage as string) ?? '',
-    reason: (data.reason as string) ?? undefined,
-    givenBy: (data.givenBy as string) ?? (data.loggedBy as string) ?? '',
-    timestamp: typeof data.timestamp === 'string' ? data.timestamp : new Date(row.timestamp).toISOString(),
-    notes: row.notes ?? undefined,
-    createdAt: row.createdAt ?? new Date(row.timestamp).toISOString(),
-  };
-};
-
-const mapRowToActivity = (row: DbTrackerEntry): ActivityEntry => {
-  const data = parseRowData(row.data);
-  const photoUris = parseRowArray(row.photoUris);
-  const tags = parseRowArray(row.tags);
-  return {
-    ...data,
-    id: row.id,
-    babyId: row.babyId,
-    type: row.trackerId,
-    timestamp: row.timestamp,
-    title: row.title ?? '',
-    details: (data.details as string) ?? row.notes ?? undefined,
-    notes: row.notes ?? undefined,
-    photo: photoUris[0] ?? (data.photo as string) ?? undefined,
-    tags,
-    loggedBy: (data.loggedBy as string) ?? '',
-    loggedByName: (data.loggedByName as string) ?? '',
-  };
-};
-
-const ENTRY_COLUMN_FIELDS = new Set([
-  'id', 'babyId', 'type', 'timestamp', 'title', 'details',
-  'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'syncedAt',
-]);
-
-const extractEntryData = (entry: Partial<ActivityEntry>): Record<string, unknown> => {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(entry)) {
-    if (!ENTRY_COLUMN_FIELDS.has(key) && value !== undefined) {
-      out[key] = value;
-    }
-  }
-  return out;
 };
 
 /* ------------------------------------------------------------------ */
@@ -640,7 +412,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoadingEntries(true);
 
     try {
-      const rows = await withRetry(() => getEntriesByBabyFromDb(babyId));
+      // Fetch from Supabase
+      const { data: entries, error } = await supabase
+        .from('tracker_entries')
+        .select('*')
+        .eq('baby_id', babyId)
+        .eq('is_deleted', false)
+        .order('timestamp', { ascending: false });
+
+      if (error) {
+        console.error('Error loading baby data:', error);
+        return;
+      }
 
       if (!isMounted.current) return;
 
@@ -652,29 +435,105 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const medicationLogs: MedicationLog[] = [];
       const activities: ActivityEntry[] = [];
 
-      for (const row of rows) {
-        if (row.isDeleted) continue;
-        switch (row.trackerId) {
+      for (const row of entries || []) {
+        const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {};
+        
+        switch (row.tracker_id) {
           case 'growth':
-            growthData.push(mapRowToGrowth(row));
+            growthData.push({
+              id: row.id,
+              babyId: row.baby_id,
+              type: data.measurementType || 'weight',
+              value: Number(data.value || 0),
+              unit: data.unit || 'kg',
+              date: data.date || new Date(row.timestamp).toISOString(),
+              notes: row.notes || undefined,
+              recordedBy: data.recordedBy || data.logged_by || '',
+              createdAt: row.created_at || new Date(row.timestamp).toISOString(),
+            });
             break;
           case 'milestone':
-            milestones.push(mapRowToMilestone(row));
+            milestones.push({
+              id: row.id,
+              babyId: row.baby_id,
+              title: row.title || '',
+              description: data.description || '',
+              category: data.category || 'physical',
+              achievedAt: data.achievedAt || new Date(row.timestamp).toISOString(),
+              imageUrl: row.photo_uris?.[0] || undefined,
+              notes: row.notes || undefined,
+              isFirstTime: data.firstTime || undefined,
+              recordedBy: data.recordedBy || data.logged_by || undefined,
+              recordedByName: data.recordedByName || data.logged_by_name || undefined,
+            });
             break;
           case 'sleep':
-            sleepLogs.push(mapRowToSleep(row));
+            sleepLogs.push({
+              id: row.id,
+              babyId: row.baby_id,
+              startTime: data.startTime || new Date(row.timestamp).toISOString(),
+              endTime: data.endTime || undefined,
+              duration: data.duration || undefined,
+              quality: data.quality || 'good',
+              location: data.location || 'other',
+              notes: row.notes || undefined,
+              createdAt: row.created_at || new Date(row.timestamp).toISOString(),
+            });
             break;
           case 'feeding':
-            feedingLogs.push(mapRowToFeeding(row));
+            feedingLogs.push({
+              id: row.id,
+              babyId: row.baby_id,
+              type: data.feedType || data.type || 'bottle',
+              startTime: data.startTime || new Date(row.timestamp).toISOString(),
+              duration: data.duration || undefined,
+              amount: data.amount || undefined,
+              unit: data.unit || undefined,
+              food: data.food || undefined,
+              notes: row.notes || undefined,
+              createdAt: row.created_at || new Date(row.timestamp).toISOString(),
+            });
             break;
           case 'potty':
-            pottyLogs.push(mapRowToPotty(row));
+            pottyLogs.push({
+              id: row.id,
+              babyId: row.baby_id,
+              type: data.pottyType || data.type || 'pee',
+              location: data.location || 'diaper',
+              successful: Boolean(data.successful),
+              timestamp: data.timestamp || new Date(row.timestamp).toISOString(),
+              notes: row.notes || undefined,
+              createdAt: row.created_at || new Date(row.timestamp).toISOString(),
+            });
             break;
           case 'medication':
-            medicationLogs.push(mapRowToMedication(row));
+            medicationLogs.push({
+              id: row.id,
+              babyId: row.baby_id,
+              medicationName: data.medicationName || '',
+              dosage: data.dosage || '',
+              reason: data.reason || undefined,
+              givenBy: data.givenBy || data.logged_by || '',
+              timestamp: data.timestamp || new Date(row.timestamp).toISOString(),
+              notes: row.notes || undefined,
+              createdAt: row.created_at || new Date(row.timestamp).toISOString(),
+            });
             break;
           default:
-            activities.push(mapRowToActivity(row));
+            activities.push({
+              id: row.id,
+              babyId: row.baby_id,
+              type: row.tracker_id,
+              timestamp: row.timestamp,
+              title: row.title || '',
+              details: data.details || row.notes || undefined,
+              notes: row.notes || undefined,
+              photo: row.photo_uris?.[0] || undefined,
+              tags: row.tags || [],
+              loggedBy: data.loggedBy || row.logged_by || '',
+              loggedByName: data.loggedByName || row.logged_by_name || '',
+              ...data,
+            });
             break;
         }
       }
@@ -703,9 +562,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  /* ─── CRITICAL FIX: loadBabies with timeout and fallback ──────────── */
+  /* ---- loadBabies ---- */
   const loadBabies = useCallback(async () => {
-    // Prevent concurrent loads
     if (loadInProgressRef.current) {
       console.log('[BabyContext] Load already in progress, skipping');
       return;
@@ -719,71 +577,117 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      // ─── Step 1: Try migration with timeout ──────────────────────────
-      try {
-        console.log('[BabyContext] Running migration...');
-        await withTimeout(() => runOneTimeMigration(), 5000);
-        console.log('[BabyContext] Migration completed');
-      } catch (migrationError) {
-        console.warn('[BabyContext] Migration timed out or failed, continuing:', migrationError);
+      // Get current user
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.warn('[BabyContext] No authenticated user');
+        setState(prev => ({ ...prev, isLoading: false }));
+        loadInProgressRef.current = false;
+        return;
       }
 
-      // ─── Step 2: Load babies from DB (NO force sync to avoid timeout) ──
-      console.log('[BabyContext] Fetching babies from DB...');
-      const dbBabies = await getAllBabiesFromDb(false); // forceSync = false
-      console.log(`[BabyContext] Found ${dbBabies.length} babies in DB`);
+      const userId = user.id;
 
-      const currentId = await getAppSetting('current_baby_id');
-      const hasSkipped = await getAppSetting('has_skipped_baby');
+      // Fetch babies from Supabase
+      const { data: parent1Babies, error: error1 } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent1_id', userId)
+        .eq('is_active', true);
 
-      const babies: BabyProfile[] = dbBabies.map(b => mapDbBabyToProfile(b, calculateAge));
-
-      let effectiveCurrentId = currentId;
-      if (!effectiveCurrentId && babies.length > 0) {
-        effectiveCurrentId = babies[0].id;
-        await setCurrentBabyInDb(effectiveCurrentId);
+      if (error1) {
+        console.error('[BabyContext] parent1 query error:', error1.message);
       }
 
-      const currentBaby = babies.find(b => b.id === effectiveCurrentId) || babies[0] || null;
+      const { data: parent2Babies, error: error2 } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent2_id', userId)
+        .eq('is_active', true);
+
+      if (error2) {
+        console.error('[BabyContext] parent2 query error:', error2.message);
+      }
+
+      // Combine and deduplicate
+      const allBabies: any[] = [];
+      const seenIds = new Set<string>();
+
+      const addBaby = (baby: any) => {
+        if (baby && !seenIds.has(baby.id)) {
+          seenIds.add(baby.id);
+          allBabies.push(baby);
+        }
+      };
+
+      if (parent1Babies) parent1Babies.forEach(addBaby);
+      if (parent2Babies) parent2Babies.forEach(addBaby);
+
+      console.log(`[BabyContext] Found ${allBabies.length} babies in Supabase`);
+
+      const babies: BabyProfile[] = allBabies.map(b => ({
+        id: b.id,
+        name: b.name,
+        birthDate: b.date_of_birth,
+        age: calculateAge(b.date_of_birth),
+        gender: b.gender === 'male' ? 'boy' : b.gender === 'female' ? 'girl' : 'other',
+        skinTone: 0,
+        avatar: b.avatar || '',
+        parent1Id: b.parent1_id || '',
+        parent2Id: b.parent2_id || undefined,
+        bloodType: b.blood_type || undefined,
+        medicalNotes: b.medical_notes || undefined,
+        streak: 0,
+        milestones: 0,
+        photos: 0,
+        createdAt: b.created_at,
+        lastUpdated: b.updated_at,
+      }));
+
+      // Get current baby ID from app settings
+      const { data: settingsData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'current_baby_id')
+        .maybeSingle();
+
+      let currentId = settingsData?.value || null;
+      
+      // If no current baby but we have babies, set first as current
+      if (!currentId && babies.length > 0) {
+        currentId = babies[0].id;
+        await supabase
+          .from('app_settings')
+          .upsert({
+            key: 'current_baby_id',
+            value: currentId,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'key' });
+      }
+
+      const currentBaby = babies.find(b => b.id === currentId) || babies[0] || null;
 
       if (!isMounted.current) {
         loadInProgressRef.current = false;
         return;
       }
 
-      console.log(`[BabyContext] Setting ${babies.length} babies in state`);
-
       setState(prev => ({
         ...prev,
         isLoading: false,
         babies,
-        currentBabyId: effectiveCurrentId,
+        currentBabyId: currentId,
         currentBaby,
-        hasSkippedBaby: hasSkipped === 'true',
+        hasSkippedBaby: false,
       }));
 
-      // ─── Step 3: Load tracker data for current baby ───────────────────
-      if (effectiveCurrentId) {
+      // Load tracker data for current baby
+      if (currentId) {
         console.log('[BabyContext] Loading tracker data for current baby...');
-        await loadAllBabyData(effectiveCurrentId);
+        await loadAllBabyData(currentId);
         console.log('[BabyContext] Tracker data loaded');
       }
-
-// ─── Step 4: Background sync if no local babies ──────────────────
-if (dbBabies.length === 0) {
-  console.log('[BabyContext] No local babies, triggering background sync...');
-  // This will now work because getAllBabiesFromDb(true) will sync from Supabase
-  getAllBabiesFromDb(true).then((syncedBabies) => {
-    if (syncedBabies && syncedBabies.length > 0) {
-      console.log(`[BabyContext] Background sync completed: ${syncedBabies.length} babies`);
-      // Reload babies after sync
-      loadBabies();
-    }
-  }).catch(e => 
-    console.warn('[BabyContext] Background sync failed:', e)
-  );
-}
-      console.log('[BabyContext] loadBabies completed successfully');
 
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
@@ -802,7 +706,6 @@ if (dbBabies.length === 0) {
 
     isMounted.current = true;
     
-    // Small delay to ensure everything is ready
     const timer = setTimeout(() => {
       loadBabies();
     }, 100);
@@ -843,7 +746,14 @@ if (dbBabies.length === 0) {
   /* ---- Skip / Clear skip ---- */
   const skipBaby = useCallback(async () => {
     try {
-      await setAppSetting('has_skipped_baby', 'true');
+      await supabase
+        .from('app_settings')
+        .upsert({
+          key: 'has_skipped_baby',
+          value: 'true',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
+      
       if (isMounted.current) {
         setState(prev => ({ ...prev, hasSkippedBaby: true }));
       }
@@ -855,7 +765,11 @@ if (dbBabies.length === 0) {
 
   const clearSkipBaby = useCallback(async () => {
     try {
-      await deleteAppSetting('has_skipped_baby');
+      await supabase
+        .from('app_settings')
+        .delete()
+        .eq('key', 'has_skipped_baby');
+      
       if (isMounted.current) {
         setState(prev => ({ ...prev, hasSkippedBaby: false }));
       }
@@ -888,31 +802,31 @@ if (dbBabies.length === 0) {
     }
 
     try {
-      const existingBabies = await getAllBabiesFromDb();
-      const duplicate = existingBabies.find(b => b.name === data.name && b.dateOfBirth === data.birthDate);
-      if (duplicate) {
-        isCreatingRef.current = false;
-        Alert.alert('Duplicate Profile', 'A baby with this name and birth date already exists.');
-        return null;
-      }
-      
       const newId = generateId();
       const effectiveParent1Id = data.parent1Id || authProfile?.id || 'default';
 
-      await createBabyInDb({
-        id: newId,
-        name: data.name,
-        avatar: data.avatar,
-        dateOfBirth: data.birthDate,
-        gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
-        bloodType: data.bloodType,
-        medicalNotes: data.medicalNotes,
-        parent1Id: effectiveParent1Id,
-      });
+      const { data: result, error } = await supabase
+        .from('babies')
+        .insert({
+          id: newId,
+          name: data.name,
+          avatar: data.avatar || null,
+          date_of_birth: data.birthDate,
+          gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
+          blood_type: data.bloodType || null,
+          medical_notes: data.medicalNotes || null,
+          parent1_id: effectiveParent1Id,
+          parent2_id: null,
+          is_active: true,
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .select()
+        .single();
 
-      const persisted = await getBabyByIdFromDb(newId);
-      if (!persisted) {
-        console.error('[BabyContext] createBaby: insert did not persist, aborting');
+      if (error) {
+        console.error('Create baby error:', error);
+        Alert.alert('Error', 'Failed to create baby profile');
         isCreatingRef.current = false;
         return null;
       }
@@ -929,11 +843,24 @@ if (dbBabies.length === 0) {
         age: calculateAge(data.birthDate),
       };
 
-      const isFirstBaby = existingBabies.length === 0;
+      // Get existing babies count
+      const { count } = await supabase
+        .from('babies')
+        .select('*', { count: 'exact', head: true })
+        .eq('parent1_id', effectiveParent1Id)
+        .eq('is_active', true);
+
+      const isFirstBaby = (count || 0) === 0;
       const newCurrentId = isFirstBaby ? newBaby.id : (state.currentBabyId || newBaby.id);
 
       if (isFirstBaby || !state.currentBabyId) {
-        await setCurrentBabyInDb(newCurrentId);
+        await supabase
+          .from('app_settings')
+          .upsert({
+            key: 'current_baby_id',
+            value: newCurrentId,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'key' });
       }
 
       await clearSkipBaby();
@@ -948,7 +875,6 @@ if (dbBabies.length === 0) {
       }
 
       await loadAllBabyData(newCurrentId);
-      await AsyncStorage.setItem('@littleloom_current_baby', newCurrentId);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       await loadBabies();
@@ -958,7 +884,7 @@ if (dbBabies.length === 0) {
     } catch (error) {
       isCreatingRef.current = false;
       console.error('Create baby error:', error);
-      showAlert('Error', 'Failed to create baby profile');
+      Alert.alert('Error', 'Failed to create baby profile');
       return null;
     }
   }, [calculateAge, clearSkipBaby, loadAllBabyData, state.currentBabyId, state.babies, authProfile, loadBabies]);
@@ -966,19 +892,52 @@ if (dbBabies.length === 0) {
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
     try {
-      await updateBabyInDb(id, {
-        name: updates.name,
-        avatar: updates.avatar,
-        dateOfBirth: updates.birthDate,
-        gender: updates.gender === 'boy' ? 'male' : updates.gender === 'girl' ? 'female' : updates.gender === 'other' ? 'other' : undefined,
-        bloodType: updates.bloodType,
-        medicalNotes: updates.medicalNotes,
-        parent2Id: updates.parent2Id,
-      });
+      const remoteUpdates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      
+      if (updates.name !== undefined) remoteUpdates.name = updates.name;
+      if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
+      if (updates.birthDate !== undefined) remoteUpdates.date_of_birth = updates.birthDate;
+      if (updates.gender !== undefined) {
+        remoteUpdates.gender = updates.gender === 'boy' ? 'male' : updates.gender === 'girl' ? 'female' : 'other';
+      }
+      if (updates.bloodType !== undefined) remoteUpdates.blood_type = updates.bloodType;
+      if (updates.medicalNotes !== undefined) remoteUpdates.medical_notes = updates.medicalNotes;
+      if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
 
-      const fresh = await getBabyByIdFromDb(id);
-      if (fresh && isMounted.current) {
-        const updatedBaby = mapDbBabyToProfile(fresh, calculateAge);
+      const { data: result, error } = await supabase
+        .from('babies')
+        .update(remoteUpdates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Update baby error:', error);
+        Alert.alert('Error', 'Failed to update baby profile');
+        return;
+      }
+
+      if (result && isMounted.current) {
+        const updatedBaby: BabyProfile = {
+          id: result.id,
+          name: result.name,
+          birthDate: result.date_of_birth,
+          age: calculateAge(result.date_of_birth),
+          gender: result.gender === 'male' ? 'boy' : result.gender === 'female' ? 'girl' : 'other',
+          skinTone: 0,
+          avatar: result.avatar || '',
+          parent1Id: result.parent1_id || '',
+          parent2Id: result.parent2_id || undefined,
+          bloodType: result.blood_type || undefined,
+          medicalNotes: result.medical_notes || undefined,
+          streak: 0,
+          milestones: 0,
+          photos: 0,
+          createdAt: result.created_at,
+          lastUpdated: result.updated_at,
+        };
 
         setState(prev => ({
           ...prev,
@@ -995,29 +954,52 @@ if (dbBabies.length === 0) {
   /* ---- Delete baby ---- */
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
     try {
-      await deleteBabyFromDb(id);
+      // Soft delete - set inactive
+      const { error } = await supabase
+        .from('babies')
+        .update({
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Delete baby error:', error);
+        Alert.alert('Error', 'Failed to delete baby profile');
+        return false;
+      }
 
       let newCurrentId = state.currentBabyId;
       if (state.currentBabyId === id) {
-        const remaining = await getAllBabiesFromDb();
-        newCurrentId = remaining[0]?.id || null;
+        const remainingBabies = state.babies.filter(b => b.id !== id);
+        newCurrentId = remainingBabies[0]?.id || null;
+        
         if (newCurrentId) {
-          await setCurrentBabyInDb(newCurrentId);
+          await supabase
+            .from('app_settings')
+            .upsert({
+              key: 'current_baby_id',
+              value: newCurrentId,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'key' });
         } else {
-          await setCurrentBabyInDb(null);
-          await deleteAppSetting('has_skipped_baby');
+          await supabase
+            .from('app_settings')
+            .delete()
+            .eq('key', 'current_baby_id');
+          await supabase
+            .from('app_settings')
+            .delete()
+            .eq('key', 'has_skipped_baby');
         }
       }
-
-      const remaining = await getAllBabiesFromDb();
-      const newCurrentRow = remaining.find(b => b.id === newCurrentId) || null;
 
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
-          babies: remaining.map(b => mapDbBabyToProfile(b, calculateAge)),
+          babies: prev.babies.filter(b => b.id !== id),
           currentBabyId: newCurrentId,
-          currentBaby: newCurrentRow ? mapDbBabyToProfile(newCurrentRow, calculateAge) : null,
+          currentBaby: newCurrentId ? prev.babies.find(b => b.id === newCurrentId) || null : null,
           growthData: newCurrentId ? prev.growthData : [],
           milestones: newCurrentId ? prev.milestones : [],
           sleepLogs: newCurrentId ? prev.sleepLogs : [],
@@ -1038,30 +1020,60 @@ if (dbBabies.length === 0) {
       Alert.alert('Error', 'Failed to delete baby profile');
       return false;
     }
-  }, [state.currentBabyId, loadAllBabyData, calculateAge]);
+  }, [state.currentBabyId, state.babies, loadAllBabyData]);
 
   /* ---- Switch baby ---- */
   const switchBaby = useCallback(async (id: string): Promise<boolean> => {
-    const baby = await getBabyByIdFromDb(id);
+    // Check if baby exists
+    const { data: baby, error } = await supabase
+      .from('babies')
+      .select('*')
+      .eq('id', id)
+      .eq('is_active', true)
+      .maybeSingle();
 
-    if (!baby) {
+    if (error || !baby) {
       console.warn(`Baby with id ${id} not found`);
       return false;
     }
 
     try {
-      await setCurrentBabyInDb(id);
+      await supabase
+        .from('app_settings')
+        .upsert({
+          key: 'current_baby_id',
+          value: id,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
+
       await loadAllBabyData(id);
 
       if (isMounted.current) {
+        const babyProfile: BabyProfile = {
+          id: baby.id,
+          name: baby.name,
+          birthDate: baby.date_of_birth,
+          age: calculateAge(baby.date_of_birth),
+          gender: baby.gender === 'male' ? 'boy' : baby.gender === 'female' ? 'girl' : 'other',
+          skinTone: 0,
+          avatar: baby.avatar || '',
+          parent1Id: baby.parent1_id || '',
+          parent2Id: baby.parent2_id || undefined,
+          bloodType: baby.blood_type || undefined,
+          medicalNotes: baby.medical_notes || undefined,
+          streak: 0,
+          milestones: 0,
+          photos: 0,
+          createdAt: baby.created_at,
+          lastUpdated: baby.updated_at,
+        };
+
         setState(prev => ({
           ...prev,
           currentBabyId: id,
-          currentBaby: mapDbBabyToProfile(baby, calculateAge),
+          currentBaby: babyProfile,
         }));
       }
-
-      await AsyncStorage.setItem('@littleloom_current_baby', id);
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       return true;
@@ -1076,56 +1088,51 @@ if (dbBabies.length === 0) {
     if (!state.currentBabyId) return;
 
     try {
-      const [dbBabies, currentRow] = await Promise.all([
-        getAllBabiesFromDb(),
-        getBabyByIdFromDb(state.currentBabyId),
-      ]);
+      const { data: baby, error } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('id', state.currentBabyId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error || !baby) {
+        console.warn('Baby not found, reloading...');
+        await loadBabies();
+        return;
+      }
 
       if (!isMounted.current) return;
 
-      const babies = dbBabies.map(b => mapDbBabyToProfile(b, calculateAge));
+      const updatedBaby: BabyProfile = {
+        id: baby.id,
+        name: baby.name,
+        birthDate: baby.date_of_birth,
+        age: calculateAge(baby.date_of_birth),
+        gender: baby.gender === 'male' ? 'boy' : baby.gender === 'female' ? 'girl' : 'other',
+        skinTone: 0,
+        avatar: baby.avatar || '',
+        parent1Id: baby.parent1_id || '',
+        parent2Id: baby.parent2_id || undefined,
+        bloodType: baby.blood_type || undefined,
+        medicalNotes: baby.medical_notes || undefined,
+        streak: 0,
+        milestones: 0,
+        photos: 0,
+        createdAt: baby.created_at,
+        lastUpdated: baby.updated_at,
+      };
 
-      setState(prev => {
-        const nextCurrentBaby = currentRow
-          ? mapDbBabyToProfile(currentRow, calculateAge)
-          : prev.currentBaby;
-
-        const babiesChanged =
-          babies.length !== prev.babies.length ||
-          babies.some(
-            (b, i) =>
-              b.id !== prev.babies[i]?.id ||
-              b.name !== prev.babies[i]?.name ||
-              b.birthDate !== prev.babies[i]?.birthDate ||
-              b.avatar !== prev.babies[i]?.avatar ||
-              b.gender !== prev.babies[i]?.gender
-          );
-
-        const currentBabyChanged =
-          !prev.currentBaby ||
-          !nextCurrentBaby ||
-          prev.currentBaby.id !== nextCurrentBaby.id ||
-          prev.currentBaby.name !== nextCurrentBaby.name ||
-          prev.currentBaby.birthDate !== nextCurrentBaby.birthDate ||
-          prev.currentBaby.avatar !== nextCurrentBaby.avatar ||
-          prev.currentBaby.gender !== nextCurrentBaby.gender;
-
-        if (!babiesChanged && !currentBabyChanged) {
-          return prev;
-        }
-
-        return {
-          ...prev,
-          babies: babiesChanged ? babies : prev.babies,
-          currentBaby: currentBabyChanged ? nextCurrentBaby : prev.currentBaby,
-        };
-      });
+      setState(prev => ({
+        ...prev,
+        currentBaby: updatedBaby,
+        babies: prev.babies.map(b => b.id === state.currentBabyId ? updatedBaby : b),
+      }));
 
       await loadAllBabyData(state.currentBabyId);
     } catch (error) {
       console.error('Error refreshing current baby:', error);
     }
-  }, [state.currentBabyId, calculateAge, loadAllBabyData]);
+  }, [state.currentBabyId, calculateAge, loadAllBabyData, loadBabies]);
 
   /* ---- Growth ---- */
   const addGrowthMeasurement = useCallback(async (
@@ -1133,38 +1140,40 @@ if (dbBabies.length === 0) {
   ): Promise<boolean> => {
     try {
       const newId = generateId();
+      const now = new Date().toISOString();
 
-      await createEntryInDb({
-        id: newId,
-        trackerId: 'growth',
-        babyId: measurement.babyId,
-        timestamp: new Date(measurement.date).getTime() || Date.now(),
-        title: `📏 ${measurement.type}: ${measurement.value} ${measurement.unit}`,
-        data: {
-          measurementType: measurement.type,
-          value: measurement.value,
-          unit: measurement.unit,
-          date: measurement.date,
-          recordedBy: measurement.recordedBy,
-        },
-        notes: measurement.notes,
-        loggedBy: measurement.recordedBy,
-      });
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: 'growth',
+          baby_id: measurement.babyId,
+          timestamp: new Date(measurement.date).getTime() || Date.now(),
+          title: `📏 ${measurement.type}: ${measurement.value} ${measurement.unit}`,
+          data: {
+            measurementType: measurement.type,
+            value: measurement.value,
+            unit: measurement.unit,
+            date: measurement.date,
+            recordedBy: measurement.recordedBy,
+          },
+          notes: measurement.notes,
+          logged_by: measurement.recordedBy,
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
 
-      const newMeasurement: GrowthMeasurement = { ...measurement, id: newId, createdAt: new Date().toISOString() };
+      if (error) {
+        console.error('Add growth measurement error:', error);
+        Alert.alert('Error', 'Failed to save measurement');
+        return false;
+      }
+
+      const newMeasurement: GrowthMeasurement = { ...measurement, id: newId, createdAt: now };
 
       if (measurement.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, growthData: [...prev.growthData, newMeasurement] }));
-      }
-
-      const baby = await getBabyByIdFromDb(measurement.babyId);
-      if (baby) {
-        const updates: Partial<BabyProfile> = {};
-        if (measurement.type === 'height') updates.height = `${measurement.value} ${measurement.unit}`;
-        if (measurement.type === 'weight') updates.weight = `${measurement.value} ${measurement.unit}`;
-        if (Object.keys(updates).length > 0) {
-          await updateBaby(measurement.babyId, updates);
-        }
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -1174,7 +1183,7 @@ if (dbBabies.length === 0) {
       Alert.alert('Error', 'Failed to save measurement');
       return false;
     }
-  }, [state.currentBabyId, updateBaby]);
+  }, [state.currentBabyId]);
 
   const getGrowthData = useCallback((type?: GrowthMeasurement['type']) => {
     let data = [...state.growthData];
@@ -1194,8 +1203,19 @@ if (dbBabies.length === 0) {
 
   const deleteGrowthMeasurement = useCallback(async (id: string): Promise<boolean> => {
     try {
-      if (!state.currentBabyId) return false;
-      await softDeleteEntryInDb(id);
+      const { error } = await supabase
+        .from('tracker_entries')
+        .update({
+          is_deleted: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Delete growth measurement error:', error);
+        return false;
+      }
+
       const filtered = state.growthData.filter(m => m.id !== id);
       if (isMounted.current) {
         setState(prev => ({ ...prev, growthData: filtered }));
@@ -1205,41 +1225,50 @@ if (dbBabies.length === 0) {
       console.error('Delete growth measurement error:', error);
       return false;
     }
-  }, [state.currentBabyId, state.growthData]);
+  }, [state.growthData]);
 
-  /* ---- Milestones ---- */
+  /* ---- Milestone ---- */
   const addMilestone = useCallback(async (milestone: Omit<Milestone, 'id'>): Promise<boolean> => {
     try {
       const newId = generateId();
+      const now = new Date().toISOString();
 
-      await createEntryInDb({
-        id: newId,
-        trackerId: 'milestone',
-        babyId: milestone.babyId,
-        timestamp: new Date(milestone.achievedAt).getTime() || Date.now(),
-        title: milestone.title,
-        data: {
-          description: milestone.description,
-          category: milestone.category,
-          achievedAt: milestone.achievedAt,
-          firstTime: milestone.isFirstTime,
-          recordedBy: milestone.recordedBy,
-          recordedByName: milestone.recordedByName,
-        },
-        notes: milestone.notes,
-        photoUris: milestone.imageUrl ? [milestone.imageUrl] : undefined,
-        loggedBy: milestone.recordedBy,
-        loggedByName: milestone.recordedByName,
-      });
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: 'milestone',
+          baby_id: milestone.babyId,
+          timestamp: new Date(milestone.achievedAt).getTime() || Date.now(),
+          title: milestone.title,
+          data: {
+            description: milestone.description,
+            category: milestone.category,
+            achievedAt: milestone.achievedAt,
+            firstTime: milestone.isFirstTime,
+            recordedBy: milestone.recordedBy,
+            recordedByName: milestone.recordedByName,
+          },
+          notes: milestone.notes,
+          photo_uris: milestone.imageUrl ? [milestone.imageUrl] : null,
+          logged_by: milestone.recordedBy,
+          logged_by_name: milestone.recordedByName,
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
+
+      if (error) {
+        console.error('Add milestone error:', error);
+        Alert.alert('Error', 'Failed to save milestone');
+        return false;
+      }
 
       const newMilestone: Milestone = { ...milestone, id: newId };
 
       if (milestone.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, milestones: [...prev.milestones, newMilestone] }));
       }
-
-      const currentCount = state.milestones.filter(m => m.babyId === milestone.babyId).length + 1;
-      await updateBaby(milestone.babyId, { milestones: currentCount });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return true;
@@ -1248,7 +1277,7 @@ if (dbBabies.length === 0) {
       Alert.alert('Error', 'Failed to save milestone');
       return false;
     }
-  }, [state.currentBabyId, updateBaby, state.milestones]);
+  }, [state.currentBabyId]);
 
   const getMilestones = useCallback((category?: Milestone['category']) => {
     let data = [...state.milestones];
@@ -1258,8 +1287,19 @@ if (dbBabies.length === 0) {
 
   const deleteMilestone = useCallback(async (id: string): Promise<boolean> => {
     try {
-      if (!state.currentBabyId) return false;
-      await softDeleteEntryInDb(id);
+      const { error } = await supabase
+        .from('tracker_entries')
+        .update({
+          is_deleted: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Delete milestone error:', error);
+        return false;
+      }
+
       const filtered = state.milestones.filter(m => m.id !== id);
       if (isMounted.current) {
         setState(prev => ({ ...prev, milestones: filtered }));
@@ -1269,29 +1309,42 @@ if (dbBabies.length === 0) {
       console.error('Delete milestone error:', error);
       return false;
     }
-  }, [state.currentBabyId, state.milestones]);
+  }, [state.milestones]);
 
   /* ---- Sleep ---- */
   const addSleepLog = useCallback(async (log: Omit<SleepLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       const newId = generateId();
-      const newLog: SleepLog = { ...log, id: newId, createdAt: new Date().toISOString() };
+      const now = new Date().toISOString();
 
-      await createEntryInDb({
-        id: newId,
-        trackerId: 'sleep',
-        babyId: log.babyId,
-        timestamp: new Date(log.startTime).getTime() || Date.now(),
-        title: '😴 Sleep',
-        data: {
-          startTime: log.startTime,
-          endTime: log.endTime,
-          duration: log.duration,
-          quality: log.quality,
-          location: log.location,
-        },
-        notes: log.notes,
-      });
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: 'sleep',
+          baby_id: log.babyId,
+          timestamp: new Date(log.startTime).getTime() || Date.now(),
+          title: '😴 Sleep',
+          data: {
+            startTime: log.startTime,
+            endTime: log.endTime,
+            duration: log.duration,
+            quality: log.quality,
+            location: log.location,
+          },
+          notes: log.notes,
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
+
+      if (error) {
+        console.error('Add sleep log error:', error);
+        Alert.alert('Error', 'Failed to save sleep log');
+        return false;
+      }
+
+      const newLog: SleepLog = { ...log, id: newId, createdAt: now };
 
       if (log.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, sleepLogs: [...prev.sleepLogs, newLog] }));
@@ -1316,8 +1369,6 @@ if (dbBabies.length === 0) {
 
   const endSleepSession = useCallback(async (logId: string, endTime: string): Promise<boolean> => {
     try {
-      if (!state.currentBabyId) return false;
-
       const target = state.sleepLogs.find(log => log.id === logId);
       if (!target) return false;
 
@@ -1329,15 +1380,24 @@ if (dbBabies.length === 0) {
       }
       const duration = Math.floor((end.getTime() - start.getTime()) / (1000 * 60));
 
-      await updateEntryInDb(logId, {
-        data: {
-          startTime: target.startTime,
-          endTime,
-          duration,
-          quality: target.quality,
-          location: target.location,
-        },
-      });
+      const { error } = await supabase
+        .from('tracker_entries')
+        .update({
+          data: {
+            startTime: target.startTime,
+            endTime,
+            duration,
+            quality: target.quality,
+            location: target.location,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', logId);
+
+      if (error) {
+        console.error('End sleep session error:', error);
+        return false;
+      }
 
       const updated = state.sleepLogs.map(log =>
         log.id === logId ? { ...log, endTime, duration } : log
@@ -1350,7 +1410,7 @@ if (dbBabies.length === 0) {
       console.error('End sleep session error:', error);
       return false;
     }
-  }, [state.currentBabyId, state.sleepLogs]);
+  }, [state.sleepLogs]);
 
   const getTodaySleepCount = useCallback(() => {
     const today = getStartOfDay();
@@ -1366,24 +1426,37 @@ if (dbBabies.length === 0) {
       }
 
       const newId = generateId();
-      const newLog: FeedingLog = { ...log, id: newId, createdAt: new Date().toISOString() };
+      const now = new Date().toISOString();
 
-      await createEntryInDb({
-        id: newId,
-        trackerId: 'feeding',
-        babyId: log.babyId,
-        timestamp: new Date(log.startTime).getTime() || Date.now(),
-        title: '🍼 Feeding',
-        data: {
-          feedType: log.type,
-          startTime: log.startTime,
-          duration: log.duration,
-          amount: log.amount,
-          unit: log.unit,
-          food: log.food,
-        },
-        notes: log.notes,
-      });
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: 'feeding',
+          baby_id: log.babyId,
+          timestamp: new Date(log.startTime).getTime() || Date.now(),
+          title: '🍼 Feeding',
+          data: {
+            feedType: log.type,
+            startTime: log.startTime,
+            duration: log.duration,
+            amount: log.amount,
+            unit: log.unit,
+            food: log.food,
+          },
+          notes: log.notes,
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
+
+      if (error) {
+        console.error('Add feeding log error:', error);
+        Alert.alert('Error', 'Failed to save feeding log');
+        return false;
+      }
+
+      const newLog: FeedingLog = { ...log, id: newId, createdAt: now };
 
       if (log.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, feedingLogs: [...prev.feedingLogs, newLog] }));
@@ -1438,22 +1511,35 @@ if (dbBabies.length === 0) {
   const addPottyLog = useCallback(async (log: Omit<PottyLog, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
       const newId = generateId();
-      const newLog: PottyLog = { ...log, id: newId, createdAt: new Date().toISOString() };
+      const now = new Date().toISOString();
 
-      await createEntryInDb({
-        id: newId,
-        trackerId: 'potty',
-        babyId: log.babyId,
-        timestamp: new Date(log.timestamp).getTime() || Date.now(),
-        title: '🚽 Potty',
-        data: {
-          pottyType: log.type,
-          location: log.location,
-          successful: log.successful,
-          timestamp: log.timestamp,
-        },
-        notes: log.notes,
-      });
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: 'potty',
+          baby_id: log.babyId,
+          timestamp: new Date(log.timestamp).getTime() || Date.now(),
+          title: '🚽 Potty',
+          data: {
+            pottyType: log.type,
+            location: log.location,
+            successful: log.successful,
+            timestamp: log.timestamp,
+          },
+          notes: log.notes,
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
+
+      if (error) {
+        console.error('Add potty log error:', error);
+        Alert.alert('Error', 'Failed to save potty log');
+        return false;
+      }
+
+      const newLog: PottyLog = { ...log, id: newId, createdAt: now };
 
       if (log.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, pottyLogs: [...prev.pottyLogs, newLog] }));
@@ -1503,28 +1589,41 @@ if (dbBabies.length === 0) {
       }
 
       const newId = generateId();
+      const now = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: 'medication',
+          baby_id: log.babyId,
+          timestamp: new Date(log.timestamp).getTime() || Date.now(),
+          title: `💊 ${log.medicationName.trim()}`,
+          data: {
+            medicationName: log.medicationName.trim(),
+            dosage: log.dosage,
+            reason: log.reason,
+            givenBy: log.givenBy,
+            timestamp: log.timestamp,
+          },
+          notes: log.notes,
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
+
+      if (error) {
+        console.error('Add medication log error:', error);
+        Alert.alert('Error', 'Failed to save medication log');
+        return false;
+      }
+
       const newLog: MedicationLog = {
         ...log,
         medicationName: log.medicationName.trim(),
         id: newId,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
       };
-
-      await createEntryInDb({
-        id: newId,
-        trackerId: 'medication',
-        babyId: log.babyId,
-        timestamp: new Date(log.timestamp).getTime() || Date.now(),
-        title: `💊 ${newLog.medicationName}`,
-        data: {
-          medicationName: newLog.medicationName,
-          dosage: log.dosage,
-          reason: log.reason,
-          givenBy: log.givenBy,
-          timestamp: log.timestamp,
-        },
-        notes: log.notes,
-      });
 
       if (log.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, medicationLogs: [...prev.medicationLogs, newLog] }));
@@ -1556,37 +1655,45 @@ if (dbBabies.length === 0) {
 
     try {
       const newId = generateId();
-      const entryData = extractEntryData(entry);
-      const trackerId = entry.type;
+      const now = new Date().toISOString();
 
-      await createEntryInDb({
-        id: newId,
-        trackerId,
-        babyId: entry.babyId,
-        timestamp: entry.timestamp,
-        title: entry.title,
-        data: entryData,
-        notes: entry.notes || entry.details,
-        photoUris: entry.photo ? [entry.photo] : undefined,
-        tags: entry.tags,
-        loggedBy: entry.loggedBy,
-        loggedByName: entry.loggedByName,
-        loggedByRole: entry.loggedByRole,
-      });
+      // Extract data fields
+      const entryData: Record<string, unknown> = {};
+      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
+      for (const [key, value] of Object.entries(entry)) {
+        if (!skipFields.includes(key) && value !== undefined) {
+          entryData[key] = value;
+        }
+      }
+
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: entry.type,
+          baby_id: entry.babyId,
+          timestamp: entry.timestamp,
+          title: entry.title,
+          data: entryData,
+          notes: entry.notes || entry.details,
+          photo_uris: entry.photo ? [entry.photo] : null,
+          tags: entry.tags || null,
+          logged_by: entry.loggedBy,
+          logged_by_name: entry.loggedByName,
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
+
+      if (error) {
+        console.error('Failed to add activity:', error);
+        return false;
+      }
 
       const newEntry: ActivityEntry = { ...entry, id: newId };
 
       if (entry.babyId === state.currentBabyId && isMounted.current) {
         setState(prev => ({ ...prev, activities: [newEntry, ...prev.activities] }));
-      }
-
-      await syncToActivityContext(newEntry);
-
-      if (['feed', 'sleep', 'potty', 'milestone', 'growth'].includes(entry.type)) {
-        const service = await getNotificationService();
-        if (service) {
-          await service.sendActivityCompleteNotification(entry.type, state.currentBaby?.name || 'baby');
-        }
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -1595,7 +1702,7 @@ if (dbBabies.length === 0) {
       console.error('Failed to add activity:', error);
       return false;
     }
-  }, [state.currentBabyId, state.currentBaby]);
+  }, [state.currentBabyId]);
 
   const getRecentActivities = useCallback((limit: number = 10) => {
     return [...state.activities]
@@ -1611,110 +1718,47 @@ if (dbBabies.length === 0) {
 
   const deleteActivity = useCallback(async (id: string): Promise<boolean> => {
     try {
-      if (!state.currentBabyId) return false;
+      const { error } = await supabase
+        .from('tracker_entries')
+        .update({
+          is_deleted: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
 
-      const entry = state.activities.find(a => a.id === id);
-      if (entry?.notificationId) {
-        const service = await getNotificationService();
-        if (service) {
-          await service.cancelNotification(entry.notificationId);
-        }
-        await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
+      if (error) {
+        console.error('Failed to delete activity:', error);
+        return false;
       }
-
-      await softDeleteEntryInDb(id);
 
       const filtered = state.activities.filter(a => a.id !== id);
       if (isMounted.current) {
         setState(prev => ({ ...prev, activities: filtered }));
       }
 
-      await removeFromActivityContext(id);
-
       return true;
     } catch (error) {
       console.error('Failed to delete activity:', error);
       return false;
     }
-  }, [state.currentBabyId, state.activities]);
-
-  /* ---- Cross-context sync ---- */
-  const syncToActivityContext = useCallback(async (entry: ActivityEntry) => {
-    try {
-      const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
-      const existingEntries: ActivityEntry[] = existing ? JSON.parse(existing) : [];
-      const exists = existingEntries.some(e => e.id === entry.id);
-      if (exists) return;
-      const merged = [entry, ...existingEntries];
-      await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
-    } catch {}
-  }, []);
-
-  const removeFromActivityContext = useCallback(async (entryId: string) => {
-    try {
-      const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
-      if (!existing) return;
-      const entries: ActivityEntry[] = JSON.parse(existing);
-      const filtered = entries.filter(e => e.id !== entryId);
-      await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(filtered));
-    } catch {}
-  }, []);
-
-  const syncWithActivityContext = useCallback(async () => {
-    if (!state.currentBabyId || state.activities.length === 0) return;
-
-    try {
-      const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
-      const existingEntries: ActivityEntry[] = existing ? JSON.parse(existing) : [];
-      const existingIds = new Set(existingEntries.map(e => e.id));
-      const newActivities = state.activities.filter(a => !existingIds.has(a.id));
-      if (newActivities.length > 0) {
-        const merged = [...newActivities, ...existingEntries];
-        await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
-      }
-    } catch {}
-  }, [state.currentBabyId, state.activities]);
-
-  /* ---- Notification integration ---- */
-  const scheduleActivityReminder = useCallback(async (entry: ActivityEntry, minutes: number): Promise<string | null> => {
-    try {
-      const service = await getNotificationService();
-      if (!service) return null;
-
-      const notifId = await service.scheduleActivityReminder(
-        entry.type,
-        state.currentBaby?.name || 'baby',
-        minutes,
-        entry.details
-      );
-
-      if (notifId) {
-        await updateEntry(entry.id, { notificationId: notifId, reminderScheduled: true });
-        await AsyncStorage.setItem(`${NOTIFICATION_PREFIX}${entry.id}`, notifId);
-      }
-
-      return notifId;
-    } catch {
-      return null;
-    }
-  }, [state.currentBaby]);
-
-  const cancelActivityReminder = useCallback(async (notificationId: string) => {
-    try {
-      const service = await getNotificationService();
-      if (service) {
-        await service.cancelNotification(notificationId);
-      }
-
-      const entry = state.activities.find(a => a.notificationId === notificationId);
-      if (entry) {
-        await updateEntry(entry.id, { notificationId: undefined, reminderScheduled: false });
-        await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
-      }
-    } catch {}
   }, [state.activities]);
 
-  /* ---- ActivityContext compatibility ---- */
+  /* ---- Stats ---- */
+  const getBabyStats = useCallback(() => {
+    return {
+      streak: state.currentBaby?.streak || 0,
+      milestones: state.currentBaby?.milestones || 0,
+      photos: state.currentBaby?.photos || 0,
+      entries: state.activities.length,
+    };
+  }, [state.currentBaby, state.activities]);
+
+  const updateBabyStats = useCallback(async (updates: Partial<BabyProfile>) => {
+    if (!state.currentBaby) return;
+    await updateBaby(state.currentBaby.id, updates);
+  }, [state.currentBaby, updateBaby]);
+
+  /* ---- Entry methods (ActivityContext compatibility) ---- */
   const entries = state.activities;
 
   const loadEntries = useCallback(async () => {
@@ -1726,37 +1770,42 @@ if (dbBabies.length === 0) {
   const deleteEntry = deleteActivity;
   const addEntry = addActivity;
 
-  const updateEntry = useCallback(async (id: string, entry: Partial<ActivityEntry>): Promise<boolean> => {
+  const updateEntry = useCallback(async (id: string, updates: Partial<ActivityEntry>): Promise<boolean> => {
     try {
-      if (!state.currentBabyId) return false;
-
       const existingEntry = state.activities.find(a => a.id === id);
       if (!existingEntry) return false;
 
-      const merged: ActivityEntry = { ...existingEntry, ...entry };
+      const merged: ActivityEntry = { ...existingEntry, ...updates };
 
-      await updateEntryInDb(id, {
-        timestamp: merged.timestamp,
-        title: merged.title,
-        notes: merged.notes || merged.details,
-        data: extractEntryData(merged),
-        tags: merged.tags,
-        photoUris: merged.photo ? [merged.photo] : undefined,
-      });
+      const entryData: Record<string, unknown> = {};
+      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
+      for (const [key, value] of Object.entries(merged)) {
+        if (!skipFields.includes(key) && value !== undefined) {
+          entryData[key] = value;
+        }
+      }
+
+      const { error } = await supabase
+        .from('tracker_entries')
+        .update({
+          timestamp: merged.timestamp,
+          title: merged.title,
+          data: entryData,
+          notes: merged.notes || merged.details,
+          tags: merged.tags || null,
+          photo_uris: merged.photo ? [merged.photo] : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Failed to update entry:', error);
+        return false;
+      }
 
       const updated = state.activities.map(a => a.id === id ? merged : a);
       if (isMounted.current) {
         setState(prev => ({ ...prev, activities: updated }));
-      }
-
-      const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
-      if (existing) {
-        const entries: ActivityEntry[] = JSON.parse(existing);
-        const activityIndex = entries.findIndex(e => e.id === id);
-        if (activityIndex >= 0) {
-          entries[activityIndex] = { ...entries[activityIndex], ...entry };
-          await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(entries));
-        }
       }
 
       return true;
@@ -1764,7 +1813,7 @@ if (dbBabies.length === 0) {
       console.error('Failed to update entry:', error);
       return false;
     }
-  }, [state.currentBabyId, state.activities]);
+  }, [state.activities]);
 
   const getEntryById = useCallback((id: string) => {
     return state.activities.find(a => a.id === id);
@@ -1783,26 +1832,18 @@ if (dbBabies.length === 0) {
     const days = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
     if (days < 7) {
       const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      return daysOfWeek[date.getDay()] ?? 'Unknown';
+      return daysOfWeek[date.getDay()] || 'Unknown';
     }
 
     return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
   }, []);
 
-  /* ---- Stats ---- */
-  const getBabyStats = useCallback(() => {
-    return {
-      streak: state.currentBaby?.streak || 0,
-      milestones: state.currentBaby?.milestones || 0,
-      photos: state.currentBaby?.photos || 0,
-      entries: state.activities.length,
-    };
-  }, [state.currentBaby, state.activities]);
-
-  const updateBabyStats = useCallback(async (updates: Partial<BabyProfile>) => {
-    if (!state.currentBaby) return;
-    await updateBaby(state.currentBaby.id, updates);
-  }, [state.currentBaby, updateBaby]);
+  /* ---- Stub methods (for compatibility) ---- */
+  const syncWithActivityContext = useCallback(async () => {}, []);
+  const scheduleActivityReminder = useCallback(async (entry: ActivityEntry, minutes: number): Promise<string | null> => {
+    return null;
+  }, []);
+  const cancelActivityReminder = useCallback(async (notificationId: string): Promise<void> => {}, []);
 
   /* ---- Memoized context value ---- */
   const value = useMemo<BabyContextType>(() => ({
@@ -1907,7 +1948,11 @@ if (dbBabies.length === 0) {
     cancelActivityReminder,
   ]);
 
-  return <BabyContext.Provider value={value}>{children}</BabyContext.Provider>;
+  return (
+    <BabyContext.Provider value={value}>
+      {children}
+    </BabyContext.Provider>
+  );
 };
 
 export const useBaby = (): BabyContextType => {

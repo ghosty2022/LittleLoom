@@ -1,5 +1,5 @@
 // src/context/TrackerContext.tsx
-// Unified tracker context with Drizzle DB + Supabase sync
+// Full Supabase implementation - No local DB
 
 import React, {
   createContext,
@@ -13,6 +13,7 @@ import React, {
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import { supabase } from '@/utils/supabase';
 
 import {
   UnifiedTrackerConfig,
@@ -31,16 +32,6 @@ import { useFamily } from '@/context/FamilyContext';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
-
-import {
-  getEntriesByBabyFromDb,
-  getEntryByIdFromDb,
-  createEntryInDb,
-  updateEntryInDb,
-  softDeleteEntryInDb,
-  getAppSetting,
-  setAppSetting,
-} from '../database/dbHelpers';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -158,7 +149,7 @@ interface TrackerContextType extends TrackerState {
 
   refreshTrackers: () => Promise<void>;
   refreshEntries: () => Promise<void>;
-  setCurrentBabyId: (babyId: string | null) => void;
+  setCurrentBabyId: (babyId: string | null) => Promise<void>;
 }
 
 const TrackerContext = createContext<TrackerContextType | null>(null);
@@ -199,18 +190,6 @@ const getDateKey = (date: Date | string | number): string => {
 const BABY_CURRENT_KEY = '@littleloom_current_baby';
 const DISMISSED_INSIGHTS_KEY = '@littleloom_dismissed_tracker_insights';
 const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1';
-
-export interface EntryEditVersion {
-  editedAt: number;
-  editedBy?: string;
-  editedByName: string;
-  prevTitle?: string;
-  prevNotes?: string;
-  prevTimestamp: number;
-  prevData?: Record<string, unknown>;
-  prevPhotoUris?: string[];
-  prevTags?: string[];
-}
 
 /* ─── STREAK CALCULATION ───────────────────────────────────────────── */
 
@@ -437,7 +416,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const detectCurrentBaby = useCallback(async (): Promise<string | null> => {
     try {
-      return await AsyncStorage.getItem(BABY_CURRENT_KEY);
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'current_baby_id')
+        .maybeSingle();
+      return data?.value || null;
     } catch {
       return null;
     }
@@ -497,33 +481,43 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const loadEntries = useCallback(async (babyId: string): Promise<TrackerEntry[]> => {
     try {
-      const rows = await getEntriesByBabyFromDb(babyId);
-      return rows
-        .filter(row => !row.isDeleted && row.syncStatus !== 'deleted')
-        .map(row => ({
-          id: row.id,
-          babyId: row.babyId,
-          trackerId: row.trackerId,
-          timestamp: row.timestamp,
-          title: row.title || '',
-          data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
-          loggedBy: row.loggedBy || '',
-          loggedByName: row.loggedByName || '',
-          loggedByRole: (row.loggedByRole as any) || 'parent1',
-          notes: row.notes || undefined,
-          photoUris: row.photoUris ? safeParse<string[]>(row.photoUris as any, []) : undefined,
-          tags: row.tags ? safeParse<string[]>(row.tags as any, []) : undefined,
-          location: row.location ? { name: row.location } : undefined,
-          mood: row.mood || undefined,
-          notificationId: row.notificationId || undefined,
-          reminderScheduled: row.reminderScheduled || false,
-          syncedAt: row.syncedAt || undefined,
-          editedBy: row.editedBy || undefined,
-          editedAt: row.editedAt || undefined,
-          isDeleted: row.isDeleted || row.syncStatus === 'deleted',
-          linkedEntries: [],
-        }));
-    } catch {
+      const { data, error } = await supabase
+        .from('tracker_entries')
+        .select('*')
+        .eq('baby_id', babyId)
+        .eq('is_deleted', false)
+        .order('timestamp', { ascending: false });
+
+      if (error) {
+        console.error('[Tracker] loadEntries error:', error);
+        return [];
+      }
+
+      return (data || []).map(row => ({
+        id: row.id,
+        babyId: row.baby_id,
+        trackerId: row.tracker_id,
+        timestamp: row.timestamp,
+        title: row.title || '',
+        data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+        loggedBy: row.logged_by || '',
+        loggedByName: row.logged_by_name || '',
+        loggedByRole: (row.logged_by_role as any) || 'parent1',
+        notes: row.notes || undefined,
+        photoUris: row.photo_uris || undefined,
+        tags: row.tags || undefined,
+        location: row.location ? { name: row.location } : undefined,
+        mood: row.mood || undefined,
+        notificationId: row.notification_id || undefined,
+        reminderScheduled: row.reminder_scheduled || false,
+        syncedAt: row.synced_at || undefined,
+        editedBy: row.edited_by || undefined,
+        editedAt: row.edited_at || undefined,
+        isDeleted: row.is_deleted || false,
+        linkedEntries: [],
+      }));
+    } catch (error) {
+      console.error('[Tracker] loadEntries error:', error);
       return [];
     }
   }, []);
@@ -627,7 +621,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     const checkBabyChange = async () => {
-      const storedBabyId = await AsyncStorage.getItem(BABY_CURRENT_KEY);
+      const storedBabyId = await detectCurrentBaby();
       if (storedBabyId && storedBabyId !== state.currentBabyId) {
         setCurrentBabyId(storedBabyId);
       }
@@ -636,7 +630,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     checkBabyChange();
     const interval = setInterval(checkBabyChange, 2000);
     return () => clearInterval(interval);
-  }, [state.currentBabyId]);
+  }, [state.currentBabyId, detectCurrentBaby]);
 
   /* ─── Update progressive state ───────────────────────────────────── */
 
@@ -859,6 +853,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     try {
       const newId = generateId();
+      const now = new Date().toISOString();
       const newEntry: TrackerEntry = {
         id: newId,
         babyId: state.currentBabyId || '',
@@ -876,20 +871,31 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isDeleted: false,
       };
 
-      await createEntryInDb({
-        id: newId,
-        trackerId,
-        babyId: state.currentBabyId || '',
-        timestamp: Date.now(),
-        title: options?.title || `${tracker.emoji} ${tracker.name}`,
-        data,
-        notes: options?.notes,
-        photoUris: options?.photoUris,
-        tags: options?.tags,
-        loggedBy: userProfile?.id || 'unknown',
-        loggedByName: userProfile?.fullName || 'Unknown',
-        loggedByRole: (myRole as any) || 'parent1',
-      });
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: trackerId,
+          baby_id: state.currentBabyId || '',
+          timestamp: Date.now(),
+          title: options?.title || `${tracker.emoji} ${tracker.name}`,
+          data: data,
+          notes: options?.notes,
+          photo_uris: options?.photoUris || null,
+          tags: options?.tags || null,
+          logged_by: userProfile?.id || 'unknown',
+          logged_by_name: userProfile?.fullName || 'Unknown',
+          logged_by_role: (myRole as any) || 'parent1',
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
+
+      if (error) {
+        console.error('Failed to add entry:', error);
+        sweetAlert('Error', 'Failed to save entry', 'warning');
+        return null;
+      }
 
       const updatedEntries = [newEntry, ...state.entries];
 
@@ -941,40 +947,32 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     try {
-      // Save edit history
-      try {
-        const rawHistory = await AsyncStorage.getItem(EDIT_HISTORY_KEY);
-        const historyStore: Record<string, EntryEditVersion[]> = rawHistory ? JSON.parse(rawHistory) : {};
-        const versionList = Array.isArray(historyStore[entryId]) ? historyStore[entryId] : [];
-        versionList.push({
-          editedAt: Date.now(),
-          editedBy: userProfile?.id,
-          editedByName: userProfile?.fullName || 'Unknown',
-          prevTitle: entry.title,
-          prevNotes: entry.notes,
-          prevTimestamp: entry.timestamp,
-          prevData: entry.data as Record<string, unknown>,
-          prevPhotoUris: entry.photoUris,
-          prevTags: entry.tags,
-        });
-        historyStore[entryId] = versionList.slice(-20);
-        await AsyncStorage.setItem(EDIT_HISTORY_KEY, JSON.stringify(historyStore));
-      } catch {}
+      const remoteUpdates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
 
-      await updateEntryInDb(entryId, {
-        ...updates,
-        data: updates.data,
-        photoUris: updates.photoUris,
-        tags: updates.tags,
-        notes: updates.notes,
-        editedBy: userProfile?.id,
-        editedAt: Date.now(),
-      });
+      if (updates.title !== undefined) remoteUpdates.title = updates.title;
+      if (updates.data !== undefined) remoteUpdates.data = updates.data;
+      if (updates.notes !== undefined) remoteUpdates.notes = updates.notes;
+      if (updates.photoUris !== undefined) remoteUpdates.photo_uris = updates.photoUris;
+      if (updates.tags !== undefined) remoteUpdates.tags = updates.tags;
+      if (updates.timestamp !== undefined) remoteUpdates.timestamp = updates.timestamp;
+      if (updates.editedBy !== undefined) remoteUpdates.edited_by = updates.editedBy;
+      if (updates.editedAt !== undefined) remoteUpdates.edited_at = updates.editedAt;
+
+      const { error } = await supabase
+        .from('tracker_entries')
+        .update(remoteUpdates)
+        .eq('id', entryId);
+
+      if (error) {
+        console.error('Failed to update entry:', error);
+        sweetAlert('Error', 'Failed to update entry', 'warning');
+        return false;
+      }
 
       const updatedEntries = state.entries.map(e =>
-        e.id === entryId
-          ? { ...e, ...updates, editedBy: userProfile?.id, editedAt: Date.now() }
-          : e
+        e.id === entryId ? { ...e, ...updates } : e
       );
 
       const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
@@ -993,10 +991,11 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       return true;
     } catch (error) {
+      console.error('Failed to update entry:', error);
       sweetAlert('Error', 'Failed to update entry', 'warning');
       return false;
     }
-  }, [state.entries, canEditEntry, userProfile, sweetAlert]);
+  }, [state.entries, canEditEntry, sweetAlert]);
 
   const handleDeleteEntry = useCallback(async (entryId: string): Promise<boolean> => {
     const entry = state.entries.find(e => e.id === entryId);
@@ -1008,7 +1007,19 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     try {
-      await softDeleteEntryInDb(entryId);
+      const { error } = await supabase
+        .from('tracker_entries')
+        .update({
+          is_deleted: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', entryId);
+
+      if (error) {
+        console.error('Failed to delete entry:', error);
+        sweetAlert('Error', 'Failed to delete entry', 'warning');
+        return false;
+      }
 
       const updatedEntries = state.entries.map(e =>
         e.id === entryId ? { ...e, isDeleted: true } : e
@@ -1030,6 +1041,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       return true;
     } catch (error) {
+      console.error('Failed to delete entry:', error);
       sweetAlert('Error', 'Failed to delete entry', 'warning');
       return false;
     }
@@ -1117,10 +1129,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   /* ─── Progressive actions ────────────────────────────────────────── */
 
   const getSmartSuggestions = useCallback((trackerId: string) => {
-    if (!state.currentBabyId) return {};
-    // Simplified suggestion engine
     return {};
-  }, [state.entries, state.currentBabyId]);
+  }, []);
 
   const getYesterdayData = useCallback((trackerId: string) => {
     if (!state.currentBabyId) return null;
@@ -1353,9 +1363,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .map(syncToLegacyActivity);
   }, [state.entries, syncToLegacyActivity]);
 
-  const syncFromBabyContext = useCallback(async () => {
-    // Legacy method - kept for compatibility
-  }, []);
+  const syncFromBabyContext = useCallback(async () => {}, []);
 
   /* ─── Refresh ────────────────────────────────────────────────────── */
 
@@ -1392,9 +1400,18 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const setCurrentBabyId = useCallback(async (babyId: string | null) => {
     if (babyId) {
-      await AsyncStorage.setItem(BABY_CURRENT_KEY, babyId);
+      await supabase
+        .from('app_settings')
+        .upsert({
+          key: 'current_baby_id',
+          value: babyId,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
     } else {
-      await AsyncStorage.removeItem(BABY_CURRENT_KEY);
+      await supabase
+        .from('app_settings')
+        .delete()
+        .eq('key', 'current_baby_id');
     }
     setState(prev => ({ ...prev, currentBabyId: babyId }));
     if (babyId) {
@@ -1502,16 +1519,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 };
 
-// src/context/TrackerContext.tsx
-// ── FIXED EXPORTS ──────────────────────────────────────────────────────
-
 export const useTracker = (): TrackerContextType => {
   const context = useContext(TrackerContext);
   if (!context) throw new Error('useTracker must be used within TrackerProvider');
   return context;
 };
 
-// Export the context itself for useSafeContexts.ts
 export { TrackerContext };
 
 export default TrackerProvider;

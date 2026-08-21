@@ -1,5 +1,5 @@
-// context/MediaContext.tsx
-// COMPLETE implementation with all photo/media operations
+// src/context/MediaContext.tsx
+// Full Supabase Storage implementation
 
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { Alert, Platform } from 'react-native';
@@ -7,9 +7,10 @@ import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as MediaLibrary from 'expo-media-library';
-import * as Crypto from 'expo-crypto';
+import { supabase } from '@/utils/supabase';
+import { decode } from 'base64-arraybuffer';
 
-export type MediaType = 'avatar' | 'photo' | 'document' | 'milestone' | 'gallery' | 'tracker';
+export type MediaType = 'avatar' | 'photo' | 'document' | 'milestone' | 'gallery' | 'tracker' | 'chat';
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 
 export interface MediaUpload {
@@ -19,18 +20,14 @@ export interface MediaUpload {
   status: UploadStatus;
   progress: number;
   error?: string;
+  storagePath?: string;
+  publicUrl?: string;
   metadata?: {
     width?: number;
     height?: number;
     size?: number;
     format?: string;
   };
-}
-
-export interface MediaState {
-  uploads: MediaUpload[];
-  isProcessing: boolean;
-  cacheSize: number;
 }
 
 export interface PickImageOptions {
@@ -40,13 +37,19 @@ export interface PickImageOptions {
   mediaTypes?: ImagePicker.MediaTypeOptions;
 }
 
+interface MediaState {
+  uploads: MediaUpload[];
+  isProcessing: boolean;
+  cacheSize: number;
+}
+
 interface MediaContextType extends MediaState {
   pickImage: (options?: PickImageOptions) => Promise<string | null>;
   pickMultipleImages: (limit?: number) => Promise<string[]>;
   takePhoto: () => Promise<string | null>;
 
-  uploadImage: (uri: string, type: MediaType, id: string) => Promise<string>;
-  uploadMultiple: (uris: string[], type: MediaType, id: string) => Promise<string[]>;
+  uploadImage: (uri: string, type: MediaType, id: string, bucket?: string) => Promise<string>;
+  uploadMultiple: (uris: string[], type: MediaType, id: string, bucket?: string) => Promise<string[]>;
   cancelUpload: (uploadId: string) => void;
   retryUpload: (uploadId: string) => Promise<void>;
 
@@ -66,6 +69,8 @@ interface MediaContextType extends MediaState {
   processBatch: (uris: string[], operations: ('compress' | 'thumbnail')[]) => Promise<string[]>;
 
   isValidImageUri: (uri: string | undefined | null) => boolean;
+  getPublicUrl: (bucket: string, path: string) => string;
+  deleteFromStorage: (bucket: string, path: string) => Promise<boolean>;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -106,12 +111,29 @@ const generateFileName = (prefix: string, ext: string = 'jpg'): string => {
   return `${prefix}_${timestamp}_${random}.${ext}`;
 };
 
+const getFileExtension = (uri: string): string => {
+  const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
+  return ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext) ? ext : 'jpg';
+};
+
+const getMimeType = (ext: string): string => {
+  const mimeTypes: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    heic: 'image/heic',
+    heif: 'image/heif',
+  };
+  return mimeTypes[ext] || 'image/jpeg';
+};
+
 const getCacheSize = async (): Promise<number> => {
   try {
     const info = await FileSystem.getInfoAsync(CACHE_DIR);
     if (!info.exists) return 0;
-    // Rough estimate - expo-file-system doesn't provide dir size easily
-    // In production, you'd walk the directory
+    // Rough estimate
     return 0;
   } catch {
     return 0;
@@ -251,10 +273,9 @@ const createThumbnail = async (uri: string): Promise<string> => {
 const cacheImage = async (uri: string): Promise<string> => {
   await ensureDir(CACHE_DIR);
 
-  const fileName = generateFileName('cached');
+  const fileName = generateFileName('cached', getFileExtension(uri));
   const destUri = `${CACHE_DIR}${fileName}`;
 
-  // If it's already a local file, copy it. If it's remote, download it.
   if (uri.startsWith('http')) {
     await FileSystem.downloadAsync(uri, destUri);
   } else {
@@ -366,6 +387,184 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
+  /* ─── Get Public URL ─────────────────────────────────────────────────── */
+
+  const getPublicUrl = useCallback((bucket: string, path: string): string => {
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return data.publicUrl;
+  }, []);
+
+  /* ─── Delete from Storage ───────────────────────────────────────────── */
+
+  const deleteFromStorage = useCallback(async (bucket: string, path: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase.storage.from(bucket).remove([path]);
+      if (error) {
+        console.error('[Media] Delete from storage error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('[Media] Delete from storage error:', error);
+      return false;
+    }
+  }, []);
+
+  /* ─── Upload to Supabase Storage ────────────────────────────────────── */
+
+  const uploadImage = useCallback(async (
+    uri: string,
+    type: MediaType,
+    id: string,
+    bucket: string = 'media'
+  ): Promise<string> => {
+    const uploadId = generateId();
+
+    const newUpload: MediaUpload = {
+      id: uploadId,
+      uri,
+      type,
+      status: 'uploading',
+      progress: 0,
+    };
+
+    setState(prev => ({
+      ...prev,
+      uploads: [newUpload, ...prev.uploads],
+    }));
+
+    try {
+      // Process image
+      const compressedUri = await compressImage(uri);
+      const fileExt = getFileExtension(compressedUri);
+      const mimeType = getMimeType(fileExt);
+      const fileName = `${type}_${id}_${Date.now()}.${fileExt}`;
+      const storagePath = `${type}/${id}/${fileName}`;
+
+      // Read file as base64
+      const fileData = await FileSystem.readAsStringAsync(compressedUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Upload to Supabase
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(storagePath, decode(fileData), {
+          contentType: mimeType,
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      // Get public URL
+      const publicUrl = getPublicUrl(bucket, storagePath);
+
+      // Get dimensions
+      const dims = await getImageDimensions(compressedUri);
+      const size = await getFileSize(compressedUri);
+
+      updateUpload(uploadId, {
+        status: 'success',
+        progress: 100,
+        storagePath,
+        publicUrl,
+        metadata: {
+          width: dims.width,
+          height: dims.height,
+          size,
+          format: fileExt,
+        },
+        uri: compressedUri,
+      });
+
+      return publicUrl;
+    } catch (error) {
+      console.error('[Media] Upload error:', error);
+      updateUpload(uploadId, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Upload failed',
+      });
+      throw error;
+    }
+  }, [getPublicUrl]);
+
+  const uploadMultiple = useCallback(async (
+    uris: string[],
+    type: MediaType,
+    id: string,
+    bucket: string = 'media'
+  ): Promise<string[]> => {
+    const results: string[] = [];
+
+    for (const uri of uris) {
+      try {
+        const uploadedUri = await uploadImage(uri, type, id, bucket);
+        results.push(uploadedUri);
+      } catch (error) {
+        console.error('[Media] Error uploading image:', error);
+      }
+    }
+
+    return results;
+  }, [uploadImage]);
+
+  const cancelUpload = useCallback((uploadId: string) => {
+    updateUpload(uploadId, { status: 'error', error: 'Cancelled by user' });
+  }, []);
+
+  const retryUpload = useCallback(async (uploadId: string) => {
+    const upload = state.uploads.find(u => u.id === uploadId);
+    if (!upload) return;
+
+    updateUpload(uploadId, { status: 'uploading', progress: 0, error: undefined });
+
+    try {
+      // Re-upload with same parameters
+      const { uri, type, storagePath } = upload;
+      if (!storagePath) {
+        throw new Error('No storage path available');
+      }
+
+      const compressedUri = await compressImage(uri);
+      const fileData = await FileSystem.readAsStringAsync(compressedUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const fileExt = getFileExtension(compressedUri);
+      const mimeType = getMimeType(fileExt);
+
+      const { error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(storagePath, decode(fileData), {
+          contentType: mimeType,
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      const publicUrl = getPublicUrl('media', storagePath);
+
+      updateUpload(uploadId, {
+        status: 'success',
+        progress: 100,
+        publicUrl,
+      });
+    } catch (error) {
+      updateUpload(uploadId, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Retry failed',
+      });
+    }
+  }, [state.uploads, getPublicUrl]);
+
+  /* ─── Image Operations ──────────────────────────────────────────────── */
+
   const handlePickImage = useCallback(async (options?: PickImageOptions): Promise<string | null> => {
     return await pickImage(options);
   }, []);
@@ -395,93 +594,6 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const handleThumbnail = useCallback(async (uri: string): Promise<string> => {
     return await createThumbnail(uri);
   }, []);
-
-  const uploadImage = useCallback(async (uri: string, type: MediaType, id: string): Promise<string> => {
-    const uploadId = generateId();
-
-    const newUpload: MediaUpload = {
-      id: uploadId,
-      uri,
-      type,
-      status: 'uploading',
-      progress: 0,
-    };
-
-    setState(prev => ({
-      ...prev,
-      uploads: [newUpload, ...prev.uploads],
-    }));
-
-    try {
-      // Simulate upload progress
-      for (let i = 0; i <= 100; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        updateUpload(uploadId, { progress: i });
-      }
-
-      // Process and cache
-      const processedUri = await cacheImage(uri);
-      const dims = await getImageDimensions(uri);
-      const size = await getFileSize(uri);
-
-      updateUpload(uploadId, {
-        status: 'success',
-        progress: 100,
-        uri: processedUri,
-        metadata: {
-          width: dims.width,
-          height: dims.height,
-          size,
-          format: 'jpeg',
-        },
-      });
-
-      return processedUri;
-    } catch (error) {
-      updateUpload(uploadId, {
-        status: 'error',
-        error: 'Upload failed',
-      });
-      throw error;
-    }
-  }, []);
-
-  const uploadMultiple = useCallback(async (uris: string[], type: MediaType, id: string): Promise<string[]> => {
-    const results: string[] = [];
-
-    for (const uri of uris) {
-      try {
-        const uploadedUri = await uploadImage(uri, type, id);
-        results.push(uploadedUri);
-      } catch (error) {
-        console.error('Error uploading image:', error);
-      }
-    }
-
-    return results;
-  }, [uploadImage]);
-
-  const cancelUpload = useCallback((uploadId: string) => {
-    updateUpload(uploadId, { status: 'error', error: 'Cancelled by user' });
-  }, []);
-
-  const retryUpload = useCallback(async (uploadId: string) => {
-    const upload = state.uploads.find(u => u.id === uploadId);
-    if (!upload) return;
-
-    updateUpload(uploadId, { status: 'uploading', progress: 0, error: undefined });
-
-    try {
-      for (let i = 0; i <= 100; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        updateUpload(uploadId, { progress: i });
-      }
-
-      updateUpload(uploadId, { status: 'success', progress: 100 });
-    } catch (error) {
-      updateUpload(uploadId, { status: 'error', error: 'Retry failed' });
-    }
-  }, [state.uploads]);
 
   const handleCacheImage = useCallback(async (uri: string): Promise<string> => {
     const result = await cacheImage(uri);
@@ -536,6 +648,8 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return isValidImageUri(uri);
   }, []);
 
+  /* ─── Memoized Value ─────────────────────────────────────────────────── */
+
   const value = useMemo(() => ({
     ...state,
     pickImage: handlePickImage,
@@ -557,6 +671,8 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     getImageDimensions: handleGetDimensions,
     processBatch: handleProcessBatch,
     isValidImageUri: handleIsValidUri,
+    getPublicUrl,
+    deleteFromStorage,
   }), [
     state,
     handlePickImage,
@@ -578,6 +694,8 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     handleGetDimensions,
     handleProcessBatch,
     handleIsValidUri,
+    getPublicUrl,
+    deleteFromStorage,
   ]);
 
   return (
