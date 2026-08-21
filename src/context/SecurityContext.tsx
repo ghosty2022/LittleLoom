@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '@/utils/supabase';
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 
 const SECURE_KEYS = {
   PIN_HASH: 'littleloom_pin_hash',
@@ -23,6 +24,7 @@ const ASYNC_KEYS = {
   SECURITY_LOCK: 'littleloom_security_lock',
   LAST_ACTIVE: 'littleloom_last_active',
   MANUAL_LOCK_TIME: 'littleloom_manual_lock_time',
+  SETUP_IN_PROGRESS: 'littleloom_setup_in_progress',
   SECURITY_QUESTIONS: 'littleloom_security_questions',
 } as const;
 
@@ -245,8 +247,12 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       try {
         await new Promise(resolve => setTimeout(resolve, 100));
         const [
-          biometricEnabled, pinHash, appLockEnabled, autoLockTimeout,
-          securityLocked, securityQuestionsStr,
+          biometricEnabled,
+          pinHash,
+          appLockEnabled,
+          autoLockTimeout,
+          securityLocked,
+          securityQuestionsStr,
         ] = await Promise.all([
           AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
           secureStorage.getItem(SECURE_KEYS.PIN_HASH),

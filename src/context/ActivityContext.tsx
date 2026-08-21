@@ -4,8 +4,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { supabase } from '@/utils/supabase';
-import { getAppSetting } from '../database/dbHelpers';
+import {
+  createEntryInDb,
+  updateEntryInDb,
+  softDeleteEntryInDb,
+  getEntriesByBabyFromDb,
+  getAppSetting,
+  setAppSetting,
+} from '@/database/dbHelpers';
 
 export type ActivityType = 
   | 'potty' 
@@ -116,7 +122,18 @@ interface ActivityContextType {
 
 const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
 
+const STORAGE_KEY = '@littleloom_activities_v3';
 const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
+const BABY_ACTIVITIES_KEY = (babyId: string) => `@littleloom_activities_${babyId}`;
+
+const getNotificationService = async () => {
+  try {
+    const { notificationService } = await import('@/services/NotificationService');
+    return notificationService;
+  } catch {
+    return null;
+  }
+};
 
 export function getDateTitle(timestamp: number): string {
   const date = new Date(timestamp);
@@ -201,6 +218,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   const [error, setError] = useState<string | null>(null);
 
   const initRef = useRef(false);
+  const currentBabyIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (initRef.current) return;
@@ -214,19 +232,11 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
     try {
       const currentBabyId = await getAppSetting('current_baby_id');
+      currentBabyIdRef.current = currentBabyId;
+      
       if (currentBabyId) {
-        const { data: rows, error: fetchError } = await supabase
-          .from('tracker_entries')
-          .select('*')
-          .eq('baby_id', currentBabyId)
-          .eq('is_deleted', false)
-          .order('timestamp', { ascending: false });
-
-        if (fetchError) {
-          throw new Error(fetchError.message);
-        }
-
-        const parsed: ActivityEntry[] = (rows || []).map(row => {
+        const rows = await getEntriesByBabyFromDb(currentBabyId);
+        const parsed: ActivityEntry[] = rows.map(row => {
           const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {};
           return {
             id: row.id,
@@ -240,7 +250,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
             loggedByName: row.logged_by_name || '',
             ...data,
             notes: row.notes,
-            photo: data.photo || (row.photo_uris ? row.photo_uris[0] : undefined),
+            photo: data.photo || (row.photo_uris ? (Array.isArray(row.photo_uris) ? row.photo_uris[0] : JSON.parse(row.photo_uris as any)[0]) : undefined),
             tags: row.tags || undefined,
             notificationId: row.notification_id || undefined,
             reminderScheduled: row.reminder_scheduled || false,
@@ -248,6 +258,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
           } as ActivityEntry;
         });
         setEntries(parsed);
+      } else {
+        setEntries([]);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load activities';
@@ -271,31 +283,21 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         }
       }
 
-      const { error: insertError } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_id: entry.type,
-          baby_id: entry.babyId,
-          timestamp: entry.timestamp,
-          title: entry.title,
-          data: entryData,
-          notes: entry.notes || entry.details,
-          photo_uris: entry.photo ? [entry.photo] : null,
-          tags: entry.tags || null,
-          logged_by: entry.loggedBy,
-          logged_by_name: entry.loggedByName,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          is_deleted: false,
-        });
+      await createEntryInDb({
+        id: newId,
+        trackerId: entry.type,
+        babyId: entry.babyId,
+        timestamp: entry.timestamp,
+        title: entry.title,
+        data: entryData,
+        notes: entry.notes || entry.details,
+        photoUris: entry.photo ? [entry.photo] : undefined,
+        tags: entry.tags,
+        loggedBy: entry.loggedBy,
+        loggedByName: entry.loggedByName,
+      });
 
-      if (insertError) {
-        throw new Error(insertError.message);
-      }
-
-      const updatedEntries = [newEntry, ...entries];
-      setEntries(updatedEntries);
+      setEntries(prev => [newEntry, ...prev]);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
@@ -304,7 +306,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw err;
     }
-  }, [entries]);
+  }, []);
 
   const updateEntry = useCallback(async (id: string, updates: Partial<ActivityEntry>) => {
     try {
@@ -316,27 +318,19 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         }
       }
 
-      const { error: updateError } = await supabase
-        .from('tracker_entries')
-        .update({
-          title: updates.title,
-          data: entryData,
-          notes: updates.notes || updates.details,
-          photo_uris: updates.photo ? [updates.photo] : null,
-          tags: updates.tags || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
+      await updateEntryInDb(id, {
+        title: updates.title,
+        data: entryData,
+        notes: updates.notes || updates.details,
+        photoUris: updates.photo ? [updates.photo] : undefined,
+        tags: updates.tags,
+      });
 
-      if (updateError) {
-        throw new Error(updateError.message);
-      }
-
-      const updatedEntries = entries.map(entry => 
-        entry.id === id ? { ...entry, ...updates } : entry
+      setEntries(prev => 
+        prev.map(entry => 
+          entry.id === id ? { ...entry, ...updates } : entry
+        )
       );
-
-      setEntries(updatedEntries);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
@@ -345,29 +339,19 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw err;
     }
-  }, [entries]);
+  }, []);
 
   const deleteEntry = useCallback(async (id: string) => {
     try {
       const entry = entries.find(e => e.id === id);
       if (entry?.notificationId) {
-        // Cancel notification if needed
+        const service = await getNotificationService();
+        if (service) await service.cancelNotification(entry.notificationId);
       }
 
-      const { error: deleteError } = await supabase
-        .from('tracker_entries')
-        .update({
-          is_deleted: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
+      await softDeleteEntryInDb(id);
 
-      if (deleteError) {
-        throw new Error(deleteError.message);
-      }
-
-      const updatedEntries = entries.filter(entry => entry.id !== id);
-      setEntries(updatedEntries);
+      setEntries(prev => prev.filter(entry => entry.id !== id));
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
@@ -378,7 +362,207 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [entries]);
 
-  // ... (rest of the methods remain the same as original, using Supabase)
+  const getEntriesByType = useCallback((type: ActivityType, babyId?: string) => {
+    return entries.filter(entry => {
+      const typeMatch = entry.type === type;
+      const babyMatch = babyId ? entry.babyId === babyId : true;
+      return typeMatch && babyMatch;
+    });
+  }, [entries]);
+
+  const getEntriesByBaby = useCallback((babyId: string) => {
+    return entries.filter(entry => entry.babyId === babyId);
+  }, [entries]);
+
+  const getEntriesByDateRange = useCallback((startDate: number, endDate: number, babyId?: string) => {
+    return entries.filter(entry => {
+      const dateMatch = entry.timestamp >= startDate && entry.timestamp <= endDate;
+      const babyMatch = babyId ? entry.babyId === babyId : true;
+      return dateMatch && babyMatch;
+    });
+  }, [entries]);
+
+  const getEntryById = useCallback((id: string) => {
+    return entries.find(entry => entry.id === id);
+  }, [entries]);
+
+  const getRecentTimelineEvents = useCallback((limit = 10, babyId?: string) => {
+    let filtered = entries;
+    if (babyId) filtered = entries.filter(entry => entry.babyId === babyId);
+    return filtered.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
+  }, [entries]);
+
+  const addTimelineEvent = useCallback(async (entry: Omit<ActivityEntry, 'id'>) => {
+    return addEntry(entry);
+  }, [addEntry]);
+
+  const getTodayCount = useCallback((type: ActivityType, babyId?: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTimestamp = today.getTime();
+
+    return entries.filter(entry => {
+      const typeMatch = entry.type === type;
+      const babyMatch = babyId ? entry.babyId === babyId : true;
+      const dateMatch = entry.timestamp >= todayTimestamp;
+      return typeMatch && babyMatch && dateMatch;
+    }).length;
+  }, [entries]);
+
+  const getSuccessRate = useCallback((type: ActivityType, babyId?: string) => {
+    const typeEntries = entries.filter(entry => {
+      const typeMatch = entry.type === type;
+      const babyMatch = babyId ? entry.babyId === babyId : true;
+      return typeMatch && babyMatch;
+    });
+
+    if (typeEntries.length === 0) return 0;
+    const successfulEntries = typeEntries.filter(entry => entry.successful === true);
+    return Math.round((successfulEntries.length / typeEntries.length) * 100);
+  }, [entries]);
+
+  const getStreak = useCallback((type: ActivityType, babyId?: string) => {
+    const typeEntries = entries.filter(entry => {
+      const typeMatch = entry.type === type;
+      const babyMatch = babyId ? entry.babyId === babyId : true;
+      return typeMatch && babyMatch;
+    });
+
+    if (typeEntries.length === 0) return 0;
+
+    const successfulDays = new Set<string>();
+    typeEntries.forEach(entry => {
+      if (entry.successful) {
+        const date = new Date(entry.timestamp);
+        const dateKey = date.toISOString().split('T')[0];
+        if (dateKey) successfulDays.add(dateKey);
+      }
+    });
+
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < 365; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(checkDate.getDate() - i);
+      const dateKey = checkDate.toISOString().split('T')[0];
+      if (!dateKey) break;
+
+      if (successfulDays.has(dateKey)) {
+        streak++;
+      } else if (i > 0) {
+        break;
+      }
+    }
+
+    return streak;
+  }, [entries]);
+
+  const syncEntries = useCallback(async () => {
+    await loadEntries();
+  }, [loadEntries]);
+
+  const clearEntries = useCallback(async () => {
+    try {
+      const notifKeys = (await AsyncStorage.getAllKeys()).filter(k => k.startsWith(NOTIFICATION_PREFIX));
+      await AsyncStorage.multiRemove(notifKeys);
+      setEntries([]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to clear entries';
+      throw new Error(message);
+    }
+  }, []);
+
+  const scheduleActivityReminder = useCallback(async (entry: ActivityEntry, minutes: number): Promise<string | null> => {
+    try {
+      const service = await getNotificationService();
+      if (!service) return null;
+
+      const notifId = await service.scheduleLocalNotification({
+        title: `⏰ Reminder: ${entry.title}`,
+        body: entry.details || `Time for ${entry.type} activity`,
+        data: { 
+          screen: 'ActivityDetail', 
+          activityId: entry.id,
+          babyId: entry.babyId,
+          type: entry.type,
+        },
+        trigger: { seconds: minutes * 60 },
+      });
+
+      if (notifId) {
+        await updateEntry(entry.id, { notificationId: notifId, reminderScheduled: true });
+        await AsyncStorage.setItem(`${NOTIFICATION_PREFIX}${entry.id}`, notifId);
+      }
+
+      return notifId;
+    } catch {
+      return null;
+    }
+  }, [updateEntry]);
+
+  const cancelActivityReminder = useCallback(async (notificationId: string) => {
+    try {
+      const service = await getNotificationService();
+      if (service) await service.cancelNotification(notificationId);
+
+      const entry = entries.find(e => e.notificationId === notificationId);
+      if (entry) {
+        await updateEntry(entry.id, { notificationId: undefined, reminderScheduled: false });
+        await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
+      }
+    } catch {
+      // Ignore errors
+    }
+  }, [entries, updateEntry]);
+
+  const syncWithBabyContext = useCallback(async (babyId: string) => {
+    try {
+      const rows = await getEntriesByBabyFromDb(babyId);
+      const existingIds = new Set(entries.map(e => e.id));
+      const newActivities: ActivityEntry[] = [];
+
+      for (const row of rows) {
+        if (!existingIds.has(row.id)) {
+          const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {};
+          newActivities.push({
+            id: row.id,
+            type: row.tracker_id as ActivityType,
+            babyId: row.baby_id,
+            timestamp: row.timestamp,
+            title: row.title,
+            details: row.notes,
+            loggedBy: row.logged_by || '',
+            loggedByName: row.logged_by_name || '',
+            ...data,
+            notes: row.notes,
+            photo: data.photo || (row.photo_uris ? (Array.isArray(row.photo_uris) ? row.photo_uris[0] : JSON.parse(row.photo_uris as any)[0]) : undefined),
+            tags: row.tags || undefined,
+            notificationId: row.notification_id || undefined,
+            reminderScheduled: row.reminder_scheduled || false,
+            syncedAt: row.synced_at || undefined,
+          } as ActivityEntry);
+        }
+      }
+
+      if (newActivities.length > 0) {
+        setEntries(prev => [...newActivities, ...prev]);
+      }
+    } catch {
+      // Ignore sync errors
+    }
+  }, [entries]);
+
+  const getEntriesForNotification = useCallback(() => {
+    const now = Date.now();
+    const oneHourAgo = now - (60 * 60 * 1000);
+
+    return entries
+      .filter(e => e.timestamp >= oneHourAgo)
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 5);
+  }, [entries]);
 
   const value = useMemo<ActivityContextType>(() => ({
     entries,
@@ -387,48 +571,49 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     addEntry,
     updateEntry,
     deleteEntry,
-    getEntriesByType: (type: ActivityType, babyId?: string) => {
-      return entries.filter(e => e.type === type && (!babyId || e.babyId === babyId));
-    },
-    getEntriesByBaby: (babyId: string) => entries.filter(e => e.babyId === babyId),
-    getEntriesByDateRange: (startDate: number, endDate: number, babyId?: string) => {
-      return entries.filter(e => e.timestamp >= startDate && e.timestamp <= endDate && (!babyId || e.babyId === babyId));
-    },
-    getEntryById: (id: string) => entries.find(e => e.id === id),
-    getRecentTimelineEvents: (limit = 10, babyId?: string) => {
-      let filtered = entries;
-      if (babyId) filtered = entries.filter(e => e.babyId === babyId);
-      return filtered.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
-    },
-    addTimelineEvent: addEntry,
-    getTodayCount: (type: ActivityType, babyId?: string) => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return entries.filter(e => e.type === type && e.timestamp >= today.getTime() && (!babyId || e.babyId === babyId)).length;
-    },
-    getSuccessRate: (type: ActivityType, babyId?: string) => {
-      const filtered = entries.filter(e => e.type === type && (!babyId || e.babyId === babyId));
-      if (filtered.length === 0) return 0;
-      const successful = filtered.filter(e => e.successful === true);
-      return Math.round((successful.length / filtered.length) * 100);
-    },
-    getStreak: (type: ActivityType, babyId?: string) => {
-      const filtered = entries.filter(e => e.type === type && (!babyId || e.babyId === babyId));
-      if (filtered.length === 0) return 0;
-      // Simple streak calculation
-      return 0; // Placeholder
-    },
+    getEntriesByType,
+    getEntriesByBaby,
+    getEntriesByDateRange,
+    getEntryById,
+    getRecentTimelineEvents,
+    addTimelineEvent,
+    getTodayCount,
+    getSuccessRate,
+    getStreak,
     getDateTitle,
     getRelativeTime,
     formatDuration,
     loadEntries,
-    syncEntries: loadEntries,
-    clearEntries: async () => { setEntries([]); },
-    scheduleActivityReminder: async () => null,
-    cancelActivityReminder: async () => {},
-    syncWithBabyContext: async (babyId: string) => { await loadEntries(); },
-    getEntriesForNotification: () => entries.slice(0, 5),
-  }), [entries, isLoading, error, addEntry, updateEntry, deleteEntry, loadEntries]);
+    syncEntries,
+    clearEntries,
+    scheduleActivityReminder,
+    cancelActivityReminder,
+    syncWithBabyContext,
+    getEntriesForNotification,
+  }), [
+    entries,
+    isLoading,
+    error,
+    addEntry,
+    updateEntry,
+    deleteEntry,
+    getEntriesByType,
+    getEntriesByBaby,
+    getEntriesByDateRange,
+    getEntryById,
+    getRecentTimelineEvents,
+    addTimelineEvent,
+    getTodayCount,
+    getSuccessRate,
+    getStreak,
+    loadEntries,
+    syncEntries,
+    clearEntries,
+    scheduleActivityReminder,
+    cancelActivityReminder,
+    syncWithBabyContext,
+    getEntriesForNotification,
+  ]);
 
   return (
     <ActivityContext.Provider value={value}>

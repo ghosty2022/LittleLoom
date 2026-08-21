@@ -5,6 +5,7 @@ import React, { createContext, useContext, useCallback, useMemo, useState, useEf
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/utils/supabase';
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 import { useTracker } from './TrackerContext';
 import { useBaby, GrowthMeasurement } from './BabyContext';
 import { useAuth } from './AuthContext';
@@ -80,6 +81,204 @@ const IntegratedTrackerContext = createContext<IntegratedTrackerContextType | nu
 
 const ACHIEVEMENT_STORAGE_KEY = '@littleloom_unlocked_achievements_v2';
 const REMINDER_DISMISSED_KEY = '@littleloom_dismissed_reminders';
+const CORRELATIONS_KEY = '@littleloom_tracker_correlations';
+
+/* ═══════════════════════════════════════════════════════════════
+   CORRELATION ENGINE
+   ═══════════════════════════════════════════════════════════════ */
+
+const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
+  const correlations: TrackerCorrelation[] = [];
+  
+  // Sleep ↔ Feed correlation
+  const sleepEntries = entries.filter(e => e.trackerId === 'sleep' && !e.isDeleted);
+  const feedEntries = entries.filter(e => e.trackerId === 'feed' && !e.isDeleted);
+
+  if (sleepEntries.length >= 5 && feedEntries.length >= 5) {
+    let feedBeforeSleep = 0;
+    sleepEntries.forEach(sleep => {
+      const sleepTime = sleep.timestamp;
+      const recentFeed = feedEntries.find(f =>
+        sleepTime - f.timestamp > 0 && sleepTime - f.timestamp < 2 * 60 * 60 * 1000
+      );
+      if (recentFeed) feedBeforeSleep++;
+    });
+    const score = sleepEntries.length > 0 ? feedBeforeSleep / sleepEntries.length : 0;
+    correlations.push({
+      id: 'feed_sleep',
+      trackerA: 'feed',
+      trackerB: 'sleep',
+      correlationScore: score,
+      insight: score > 0.7
+        ? 'Feeding consistently precedes sleep — great routine!'
+        : score > 0.4
+        ? 'Try feeding before naps for better sleep'
+        : 'Feeding and sleep patterns seem independent',
+      emoji: score > 0.7 ? '🍼😴' : '🍼',
+      trend: score > 0.5 ? 'positive' : 'neutral',
+      sampleSize: sleepEntries.length,
+    });
+  }
+
+  // Growth ↔ Milestone correlation
+  const growthEntries = entries.filter(e => e.trackerId === 'growth' && !e.isDeleted);
+  const milestoneEntries = entries.filter(e => e.trackerId === 'milestone' && !e.isDeleted);
+
+  if (growthEntries.length >= 3 && milestoneEntries.length >= 3) {
+    const growthTimestamps = growthEntries.map(e => e.timestamp).sort((a, b) => a - b);
+    const milestoneTimestamps = milestoneEntries.map(e => e.timestamp).sort((a, b) => a - b);
+
+    let nearGrowth = 0;
+    milestoneTimestamps.forEach(mt => {
+      const near = growthTimestamps.some(gt => Math.abs(mt - gt) < 7 * 24 * 60 * 60 * 1000);
+      if (near) nearGrowth++;
+    });
+
+    const score = milestoneTimestamps.length > 0 ? nearGrowth / milestoneTimestamps.length : 0;
+    correlations.push({
+      id: 'growth_milestone',
+      trackerA: 'growth',
+      trackerB: 'milestone',
+      correlationScore: score,
+      insight: score > 0.6
+        ? 'Growth spurts align with milestones — tracking both pays off!'
+        : 'Growth and milestones may be independent',
+      emoji: '📏🏆',
+      trend: score > 0.5 ? 'positive' : 'neutral',
+      sampleSize: milestoneEntries.length,
+    });
+  }
+
+  // Potty ↔ Feed correlation
+  const pottyEntries = entries.filter(e => e.trackerId === 'potty' && !e.isDeleted);
+  if (pottyEntries.length >= 10 && feedEntries.length >= 10) {
+    const successfulPotty = pottyEntries.filter(e => e.data?.successful === true);
+    let feedAfterPotty = 0;
+    successfulPotty.forEach(potty => {
+      const feedSoon = feedEntries.find(f =>
+        f.timestamp - potty.timestamp > 0 && f.timestamp - potty.timestamp < 30 * 60 * 1000
+      );
+      if (feedSoon) feedAfterPotty++;
+    });
+    const score = successfulPotty.length > 0 ? feedAfterPotty / successfulPotty.length : 0;
+    correlations.push({
+      id: 'potty_feed',
+      trackerA: 'potty',
+      trackerB: 'feed',
+      correlationScore: score,
+      insight: score > 0.5
+        ? 'Reward feeding after potty success reinforces training'
+        : 'Consider rewarding with feeding after successful potty',
+      emoji: '🚽🍼',
+      trend: score > 0.4 ? 'positive' : 'neutral',
+      sampleSize: successfulPotty.length,
+    });
+  }
+
+  // Medication ↔ Symptom correlation
+  const medEntries = entries.filter(e => e.trackerId === 'medication' && !e.isDeleted);
+  const symptomEntries = entries.filter(e => e.trackerId === 'symptom' && !e.isDeleted);
+
+  if (medEntries.length >= 3 && symptomEntries.length >= 3) {
+    let symptomAfterMed = 0;
+    medEntries.forEach(med => {
+      const symptomAfter = symptomEntries.find(s =>
+        s.timestamp - med.timestamp > 0 && s.timestamp - med.timestamp < 24 * 60 * 60 * 1000
+      );
+      if (symptomAfter) symptomAfterMed++;
+    });
+    const score = medEntries.length > 0 ? symptomAfterMed / medEntries.length : 0;
+    correlations.push({
+      id: 'med_symptom',
+      trackerA: 'medication',
+      trackerB: 'symptom',
+      correlationScore: score,
+      insight: score > 0.5
+        ? 'Symptoms tracked after medication — monitor effectiveness'
+        : 'Good symptom management with medication tracking',
+      emoji: '💊🤒',
+      trend: score > 0.5 ? 'negative' : 'positive',
+      sampleSize: medEntries.length,
+    });
+  }
+
+  return correlations;
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   PREDICTIVE ACHIEVEMENT ENGINE
+   ═══════════════════════════════════════════════════════════════ */
+
+const buildPredictiveAchievements = (
+  entries: any[],
+  reminders: any[],
+  growthScore: any,
+  unlocked: string[]
+): any[] => {
+  const achievements: any[] = [];
+
+  const actedReminders = (reminders || []).filter(r => r.actedUpon).length;
+  achievements.push({
+    id: 'predictive_parent',
+    title: 'Predictive Parent',
+    description: 'Act on 3 predictive reminders',
+    emoji: '🔮',
+    unlocked: actedReminders >= 3,
+    progress: actedReminders,
+    maxProgress: 3,
+    category: 'predictive',
+    rarity: 'epic',
+    points: 500,
+  });
+
+  const predictedGrowth = growthScore?.predicted?.value || 0;
+  const actualGrowth = growthScore?.overall?.value || 0;
+  const accurate = Math.abs(predictedGrowth - actualGrowth) < 10;
+  achievements.push({
+    id: 'growth_forecaster',
+    title: 'Growth Forecaster',
+    description: 'Growth prediction within 10% of actual',
+    emoji: '🔮📈',
+    unlocked: accurate && predictedGrowth > 0,
+    progress: accurate ? 1 : 0,
+    maxProgress: 1,
+    category: 'predictive',
+    rarity: 'rare',
+    points: 200,
+  });
+
+  const feedPredictions = (reminders || []).filter(r => r.type === 'feed' && r.actedUpon).length;
+  achievements.push({
+    id: 'routine_optimizer',
+    title: 'Routine Optimizer',
+    description: 'Follow 5 feeding time predictions',
+    emoji: '⏰🍼',
+    unlocked: feedPredictions >= 5,
+    progress: feedPredictions,
+    maxProgress: 5,
+    category: 'predictive',
+    rarity: 'rare',
+    points: 250,
+  });
+
+  const sleepScoreHistory = (growthScore?.dimensions?.sleep?.history ?? []) as number[];
+  const sleepImproved = sleepScoreHistory.length >= 2 &&
+    sleepScoreHistory[sleepScoreHistory.length - 1] - sleepScoreHistory[0] >= 10;
+  achievements.push({
+    id: 'sleep_sage',
+    title: 'Sleep Sage',
+    description: 'Improve sleep score by 10+ points',
+    emoji: '🌙✨',
+    unlocked: sleepImproved,
+    progress: sleepImproved ? 1 : 0,
+    maxProgress: 1,
+    category: 'predictive',
+    rarity: 'epic',
+    points: 400,
+  });
+
+  return achievements;
+};
 
 /* ═══════════════════════════════════════════════════════════════
    PROVIDER
@@ -104,20 +303,29 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     predictiveAchievements: [],
   });
 
-  /* ── Load persisted achievements ── */
+  /* ── Load persisted achievements from Supabase ── */
   useEffect(() => {
     const load = async () => {
       try {
-        const dbVal = await AsyncStorage.getItem(ACHIEVEMENT_STORAGE_KEY);
+        // Try Supabase first
+        const dbVal = await getAppSetting(ACHIEVEMENT_STORAGE_KEY);
         if (dbVal) {
           setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(dbVal) }));
+        } else {
+          // Fallback to AsyncStorage for migration
+          const saved = await AsyncStorage.getItem(ACHIEVEMENT_STORAGE_KEY);
+          if (saved) {
+            setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(saved) }));
+            // Migrate to Supabase
+            await setAppSetting(ACHIEVEMENT_STORAGE_KEY, saved);
+          }
         }
       } catch (e) { console.warn('Failed to load achievements:', e); }
     };
     load();
   }, []);
 
-  /* ── Calculate everything ── */
+  /* ── Calculate everything whenever entries or growth data change ── */
   useEffect(() => {
     if (!currentBabyId || !currentBaby) return;
 
@@ -194,63 +402,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     return { currentStreak, longestStreak };
   };
 
-  const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
-    const correlations: TrackerCorrelation[] = [];
-    
-    // Simple correlation analysis
-    const sleepEntries = entries.filter(e => e.trackerId === 'sleep' && !e.isDeleted);
-    const feedEntries = entries.filter(e => e.trackerId === 'feed' && !e.isDeleted);
-
-    if (sleepEntries.length >= 5 && feedEntries.length >= 5) {
-      let feedBeforeSleep = 0;
-      sleepEntries.forEach(sleep => {
-        const sleepTime = sleep.timestamp;
-        const recentFeed = feedEntries.find(f =>
-          sleepTime - f.timestamp > 0 && sleepTime - f.timestamp < 2 * 60 * 60 * 1000
-        );
-        if (recentFeed) feedBeforeSleep++;
-      });
-      const score = sleepEntries.length > 0 ? feedBeforeSleep / sleepEntries.length : 0;
-      correlations.push({
-        id: 'feed_sleep',
-        trackerA: 'feed',
-        trackerB: 'sleep',
-        correlationScore: score,
-        insight: score > 0.7
-          ? 'Feeding consistently precedes sleep — great routine!'
-          : score > 0.4
-          ? 'Try feeding before naps for better sleep'
-          : 'Feeding and sleep patterns seem independent',
-        emoji: score > 0.7 ? '🍼😴' : '🍼',
-        trend: score > 0.5 ? 'positive' : 'neutral',
-        sampleSize: sleepEntries.length,
-      });
-    }
-
-    return correlations;
-  };
-
-  const buildPredictiveAchievements = (entries: any[], reminders: any[], growthScore: any, unlocked: string[]): any[] => {
-    const achievements: any[] = [];
-
-    const actedReminders = (reminders || []).filter(r => r.actedUpon).length;
-    achievements.push({
-      id: 'predictive_parent',
-      title: 'Predictive Parent',
-      description: 'Act on 3 predictive reminders',
-      emoji: '🔮',
-      unlocked: actedReminders >= 3,
-      progress: actedReminders,
-      maxProgress: 3,
-      category: 'predictive',
-      rarity: 'epic',
-      points: 500,
-    });
-
-    return achievements;
-  };
-
-  /* ── Methods ── */
+  /* ── Refresh growth score ── */
   const refreshGrowthScore = useCallback(async () => {
     if (!currentBaby || !currentBabyId) return;
     setState(prev => ({ ...prev, isLoading: true }));
@@ -269,13 +421,15 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     }));
   }, [entries, growthData, currentBaby, currentBabyId, trackers, growthIndex]);
 
+  /* ── Check achievements ── */
   const checkAchievements = useCallback(() => {
     return state.pendingAchievements;
   }, [state.pendingAchievements]);
 
+  /* ── Dismiss achievement ── */
   const dismissAchievement = useCallback(async (id: string) => {
     const updated = [...state.unlockedAchievements, id];
-    await AsyncStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(updated));
+    await setAppSetting(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(updated));
     setState(prev => ({
       ...prev,
       unlockedAchievements: updated,
@@ -283,20 +437,36 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     }));
   }, [state.unlockedAchievements, state.pendingAchievements]);
 
+  /* ── Apply reminder ── */
   const applyReminder = useCallback(async (reminder: any) => {
     console.log('Applied reminder:', reminder);
+    // Sync to Supabase if needed
+    try {
+      await supabase
+        .from('applied_reminders')
+        .insert({
+          reminder_id: reminder.id,
+          baby_id: currentBabyId,
+          user_id: userProfile?.id,
+          applied_at: new Date().toISOString(),
+        });
+    } catch (e) {
+      console.warn('Failed to sync applied reminder:', e);
+    }
+    
     setState(prev => ({
       ...prev,
       smartReminders: prev.smartReminders.filter(r => r.id !== reminder.id),
     }));
-  }, []);
+  }, [currentBabyId, userProfile?.id]);
 
+  /* ── Dismiss reminder ── */
   const dismissReminder = useCallback(async (id: string) => {
     try {
-      const dismissed = await AsyncStorage.getItem(REMINDER_DISMISSED_KEY);
+      const dismissed = await getAppSetting(REMINDER_DISMISSED_KEY);
       const list: string[] = dismissed ? JSON.parse(dismissed) : [];
       if (!list.includes(id)) list.push(id);
-      await AsyncStorage.setItem(REMINDER_DISMISSED_KEY, JSON.stringify(list));
+      await setAppSetting(REMINDER_DISMISSED_KEY, JSON.stringify(list));
     } catch (e) {}
 
     setState(prev => ({
@@ -328,9 +498,14 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
 
   const getTrackerContribution = useCallback((trackerId: string) => {
     const trackerEntries = entries.filter(e => e.trackerId === trackerId && !e.isDeleted);
+    const count = trackerEntries.length;
+    const impact = count > 0 
+      ? `${count} entries tracked` 
+      : 'No entries tracked yet';
+    
     return {
-      score: trackerEntries.length > 0 ? 50 : 0,
-      impact: `${trackerEntries.length} entries tracked`,
+      score: count > 0 ? Math.min(100, 50 + count * 2) : 0,
+      impact,
     };
   }, [entries]);
 
