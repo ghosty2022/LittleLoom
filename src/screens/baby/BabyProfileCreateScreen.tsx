@@ -324,107 +324,117 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     }
   }, [currentStep, navigation, triggerHaptic]);
 
-  const handleCreateProfile = useCallback(async (andContinue = false) => {
-    if (isCreatingRef.current) {
-      toast('A profile is already being created', 'warning');
-      return;
-    }
-    if (!validateStep1() || !validateStep2()) return;
+const handleCreateProfile = useCallback(async (andContinue = false) => {
+  if (isCreatingRef.current) {
+    toast('A profile is already being created', 'warning');
+    return;
+  }
+  if (!validateStep1() || !validateStep2()) return;
 
-    if (!isAuthenticated || !userProfile) {
-      toast('Please sign in to create a baby profile', 'error');
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        if (error || !data?.user) {
-          navigation.replace('Login');
-          return;
-        }
-      } catch (e) {
+  if (!isAuthenticated || !userProfile) {
+    toast('Please sign in to create a baby profile', 'error');
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data?.user) {
         navigation.replace('Login');
         return;
       }
+    } catch (e) {
+      navigation.replace('Login');
+      return;
+    }
+    return;
+  }
+
+  const userId = userProfile.id;
+  console.log('[BabyProfile] Creating baby with parent1Id:', userId);
+
+  const trimmedName = name.trim();
+  const birthIso = birthDate.toISOString();
+  const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
+  if (duplicate) {
+    toast('A baby with this name and birth date already exists', 'warning');
+    return;
+  }
+
+  isCreatingRef.current = true;
+  setIsLoading(true);
+  triggerHaptic('medium');
+
+  let babyId: string | null = null;
+
+  try {
+    const hasCustomImage = isImageUri(avatar);
+    const avatarToSave = hasCustomImage ? '👶' : avatar;
+
+    // ─── CREATE BABY WITH ALL FIELDS ──────────────────────────────────
+    const babyData: any = {
+      name: trimmedName,
+      birthDate: birthIso,
+      gender,
+      skinTone,
+      avatar: avatarToSave,
+      weight: weight.trim() || undefined,
+      height: height.trim() || undefined,
+      bloodType: bloodType.trim().toUpperCase() || undefined,
+      allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
+      medicalNotes: medicalNotes.trim() || undefined,
+      parent1Id: userId,
+      parent2Id: undefined,
+      // Additional fields
+      birthWeight: birthWeight.trim() || undefined,
+      birthHeight: birthHeight.trim() || undefined,
+      birthHeadCircumference: birthHeadCircumference.trim() || undefined,
+      gestationalWeeks: gestationalWeeks.trim() || undefined,
+      apgar1Min: apgar1Min.trim() || undefined,
+      apgar5Min: apgar5Min.trim() || undefined,
+      deliveryType: deliveryType || undefined,
+      birthAttendant: birthAttendant || undefined,
+      birthPlace: birthPlace.trim() || undefined,
+      multipleBirth: multipleBirth,
+      birthOrder: birthOrder.trim() || undefined,
+      feedingPlan: feedingPlan || undefined,
+      birthTime: birthTime.trim() || undefined,
+    };
+
+    babyId = await createBaby(babyData);
+
+    if (!babyId) {
+      if (isMounted.current) {
+        toast('Failed to create profile. Please try again.', 'error');
+      }
+      isCreatingRef.current = false;
+      setIsLoading(false);
       return;
     }
 
-    const userId = userProfile.id;
-    console.log('[BabyProfile] Creating baby with parent1Id:', userId);
-
-    const trimmedName = name.trim();
-    const birthIso = birthDate.toISOString();
-    const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
-    if (duplicate) {
-      toast('A baby with this name and birth date already exists', 'warning');
-      return;
+    if (hasCustomImage && babyId) {
+      try {
+        const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
+        await updateBaby(babyId, { avatar: permanentUri });
+        if (isMounted.current) {
+          toast('Profile photo saved!', 'success');
+        }
+      } catch (imgError) {
+        console.warn('Failed to persist baby image:', imgError);
+        if (isMounted.current) {
+          toast('Profile created but image could not be saved', 'warning');
+        }
+      }
     }
 
-    isCreatingRef.current = true;
-    setIsLoading(true);
-    triggerHaptic('medium');
+    if (isMounted.current) {
+      toast(`${trimmedName}'s profile created! 🎉`, 'success');
+    }
 
-    let babyId: string | null = null;
+    if (!isMounted.current) {
+      isCreatingRef.current = false;
+      setIsLoading(false);
+      return;
+    }
 
     try {
-      const hasCustomImage = isImageUri(avatar);
-      const avatarToSave = hasCustomImage ? '👶' : avatar;
-
-      // ─── CREATE BABY WITH ALL FIELDS ──────────────────────────────────
-      const babyData: any = {
-        name: trimmedName,
-        birthDate: birthIso,
-        gender,
-        skinTone,
-        avatar: avatarToSave,
-        weight: weight.trim() || undefined,
-        height: height.trim() || undefined,
-        bloodType: bloodType.trim().toUpperCase() || undefined,
-        allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
-        medicalNotes: medicalNotes.trim() || undefined,
-        parent1Id: userId,
-        // Additional fields
-        birthWeight: birthWeight.trim() || undefined,
-        birthHeight: birthHeight.trim() || undefined,
-        birthHeadCircumference: birthHeadCircumference.trim() || undefined,
-        gestationalWeeks: gestationalWeeks.trim() || undefined,
-        apgar1Min: apgar1Min.trim() || undefined,
-        apgar5Min: apgar5Min.trim() || undefined,
-        deliveryType: deliveryType || undefined,
-        birthAttendant: birthAttendant || undefined,
-        birthPlace: birthPlace.trim() || undefined,
-        multipleBirth: multipleBirth,
-        birthOrder: birthOrder.trim() || undefined,
-        feedingPlan: feedingPlan || undefined,
-        birthTime: birthTime.trim() || undefined,
-      };
-
-      babyId = await createBaby(babyData);
-
-      if (!babyId) {
-        if (isMounted.current) {
-          toast('Failed to create profile. Please try again.', 'error');
-        }
-        isCreatingRef.current = false;
-        setIsLoading(false);
-        return;
-      }
-
-      if (hasCustomImage && babyId) {
-        try {
-          const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
-          await updateBaby(babyId, { avatar: permanentUri });
-          if (isMounted.current) {
-            toast('Profile photo saved!', 'success');
-          }
-        } catch (imgError) {
-          console.warn('Failed to persist baby image:', imgError);
-          if (isMounted.current) {
-            toast('Profile created but image could not be saved', 'warning');
-          }
-        }
-      }
-
-      if (isMounted.current) {
-        toast(`${trimmedName}'s profile created! 🎉`, 'success');
-      }
+      await loadBabies();
 
       if (!isMounted.current) {
         isCreatingRef.current = false;
@@ -432,142 +442,123 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         return;
       }
 
-      try {
-        await loadBabies();
+      const persisted = await getBabyByIdFromDb(babyId);
 
-        if (!isMounted.current) {
-          isCreatingRef.current = false;
-          setIsLoading(false);
-          return;
-        }
-
-        const persisted = await getBabyByIdFromDb(babyId);
-
-        if (!persisted) {
-          console.error('CRITICAL: Baby profile was not persisted to the database!');
-          if (isMounted.current) {
-            toast('Profile could not be saved. Please try again.', 'error');
-          }
-          isCreatingRef.current = false;
-          setIsLoading(false);
-          return;
-        }
-
-        console.log('✅ Baby profile verified in database:', persisted.id);
-
-        try {
-          await switchBaby(babyId);
-        } catch (switchErr) {
-          console.warn('Failed to auto-switch to new baby:', switchErr);
-        }
-
-        if (babies.length === 0) {
-          try {
-            await completeSetup('baby');
-          } catch (setupError) {
-            console.warn('completeSetup threw error:', setupError);
-          }
-        }
-
-        if (andContinue) {
-          if (navigation.canGoBack()) {
-            navigation.goBack();
-          } else {
-            const { hasParent2 } = await wasSetupCompleted();
-            if (hasParent2 === false) {
-              navigation.replace('CoParentInviteScreen');
-            } else {
-              navigation.replace('Main');
-            }
-          }
-        } else {
-          // Reset form for another baby
-          setName('');
-          setBirthDate(new Date());
-          setBirthTime('');
-          setGender('boy');
-          setSkinTone(0);
-          setAvatar('👶');
-          setWeight('');
-          setHeight('');
-          setBloodType('');
-          setAllergies('');
-          setMedicalNotes('');
-          setBirthWeight('');
-          setBirthHeight('');
-          setBirthHeadCircumference('');
-          setGestationalWeeks('');
-          setApgar1Min('');
-          setApgar5Min('');
-          setDeliveryType('');
-          setBirthAttendant('');
-          setBirthPlace('');
-          setMultipleBirth(false);
-          setBirthOrder('');
-          setFeedingPlan('');
-          setCurrentStep(1);
-          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-          if (isMounted.current) {
-            toast('Baby added! Ready for another?', 'success');
-          }
-        }
-      } catch (navError) {
-        console.error('Post-create error:', navError);
+      if (!persisted) {
+        console.error('CRITICAL: Baby profile was not persisted to the database!');
         if (isMounted.current) {
-          toast('Could not finalize setup', 'error');
+          toast('Profile could not be saved. Please try again.', 'error');
+        }
+        isCreatingRef.current = false;
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('✅ Baby profile verified in database:', persisted.id);
+
+      try {
+        await switchBaby(babyId);
+      } catch (switchErr) {
+        console.warn('Failed to auto-switch to new baby:', switchErr);
+      }
+
+      if (andContinue) {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          const { hasParent2 } = await wasSetupCompleted();
+          if (hasParent2 === false) {
+            navigation.replace('CoParentInviteScreen');
+          } else {
+            navigation.replace('Main');
+          }
+        }
+      } else {
+        // Reset form for another baby
+        setName('');
+        setBirthDate(new Date());
+        setBirthTime('');
+        setGender('boy');
+        setSkinTone(0);
+        setAvatar('👶');
+        setWeight('');
+        setHeight('');
+        setBloodType('');
+        setAllergies('');
+        setMedicalNotes('');
+        setBirthWeight('');
+        setBirthHeight('');
+        setBirthHeadCircumference('');
+        setGestationalWeeks('');
+        setApgar1Min('');
+        setApgar5Min('');
+        setDeliveryType('');
+        setBirthAttendant('');
+        setBirthPlace('');
+        setMultipleBirth(false);
+        setBirthOrder('');
+        setFeedingPlan('');
+        setCurrentStep(1);
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+        if (isMounted.current) {
+          toast('Baby added! Ready for another?', 'success');
         }
       }
-    } catch (error) {
-      console.error('Create baby error:', error);
+    } catch (navError) {
+      console.error('Post-create error:', navError);
       if (isMounted.current) {
-        toast('An unexpected error occurred. Please try again.', 'error');
-      }
-    } finally {
-      isCreatingRef.current = false;
-      if (isMounted.current) {
-        setIsLoading(false);
+        toast('Could not finalize setup', 'error');
       }
     }
-  }, [
-    name,
-    birthDate,
-    birthTime,
-    gender,
-    skinTone,
-    avatar,
-    weight,
-    height,
-    bloodType,
-    allergies,
-    medicalNotes,
-    birthWeight,
-    birthHeight,
-    birthHeadCircumference,
-    gestationalWeeks,
-    apgar1Min,
-    apgar5Min,
-    deliveryType,
-    birthAttendant,
-    birthPlace,
-    multipleBirth,
-    birthOrder,
-    feedingPlan,
-    babies,
-    createBaby,
-    updateBaby,
-    loadBabies,
-    completeSetup,
-    navigation,
-    validateStep1,
-    validateStep2,
-    toast,
-    triggerHaptic,
-    switchBaby,
-    wasSetupCompleted,
-    isAuthenticated,
-    userProfile,
-  ]);
-
+  } catch (error) {
+    console.error('Create baby error:', error);
+    if (isMounted.current) {
+      toast('An unexpected error occurred. Please try again.', 'error');
+    }
+  } finally {
+    isCreatingRef.current = false;
+    if (isMounted.current) {
+      setIsLoading(false);
+    }
+  }
+}, [
+  name,
+  birthDate,
+  birthTime,
+  gender,
+  skinTone,
+  avatar,
+  weight,
+  height,
+  bloodType,
+  allergies,
+  medicalNotes,
+  birthWeight,
+  birthHeight,
+  birthHeadCircumference,
+  gestationalWeeks,
+  apgar1Min,
+  apgar5Min,
+  deliveryType,
+  birthAttendant,
+  birthPlace,
+  multipleBirth,
+  birthOrder,
+  feedingPlan,
+  babies,
+  createBaby,
+  updateBaby,
+  loadBabies,
+  navigation,
+  validateStep1,
+  validateStep2,
+  toast,
+  triggerHaptic,
+  switchBaby,
+  wasSetupCompleted,
+  isAuthenticated,
+  userProfile,
+]);
   // ─── RENDER PICKER MODAL ──────────────────────────────────────────────
   const renderPickerModal = (
     title: string,
