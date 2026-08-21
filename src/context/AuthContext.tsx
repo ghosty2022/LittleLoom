@@ -698,8 +698,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = useCallback(async (): Promise<void> => {
     if (signInLock.current) await new Promise(resolve => setTimeout(resolve, 1000));
     try {
+      console.log('[Auth] Starting sign out process...');
+      
+      // Clear navigation lock
       await AsyncStorage.setItem('littleloom_security_lock', 'false');
       
+      // Get current setup state before clearing
       const [hasParent2Str, hasBabyStr, setupComplete, hasSeenOnboarding] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.HAS_PARENT2),
         AsyncStorage.getItem(ASYNC_KEYS.HAS_BABY),
@@ -707,8 +711,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.getItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING),
       ]);
 
+      // Sign out from Supabase
       await supabase.auth.signOut();
 
+      // Clear all secure storage
       await Promise.all([
         secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
         secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
@@ -716,18 +722,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
-        AsyncStorage.multiRemove([
-          ASYNC_KEYS.ONBOARDING_COMPLETE,
-          ASYNC_KEYS.NAVIGATION_LOCK,
-          'littleloom_security_lock',
-        ]),
       ]);
 
+      // Clear AsyncStorage auth-related keys
+      await AsyncStorage.multiRemove([
+        ASYNC_KEYS.ONBOARDING_COMPLETE,
+        ASYNC_KEYS.NAVIGATION_LOCK,
+        'littleloom_security_lock',
+        'littleloom_last_auth_state',
+        'littleloom_nav_state_v4', // Clear navigation state
+        '@littleloom_nav_state_v4',
+      ]);
+
+      // Clear user ID cache
       clearUserIdCache();
 
       const hasParent2 = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
       const hasBaby = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
+      const isSetupComplete = setupComplete === 'true';
 
+      // Reset state to unauthenticated
+      if (isMounted.current) {
+        setState({
+          isLoading: false,
+          isAuthenticated: false,
+          userToken: null,
+          userProfile: null,
+          session: null,
+          onboardingComplete: false,
+          hasSeenOnboarding: hasSeenOnboarding === 'true',
+          isBiometricAvailable: state.isBiometricAvailable,
+          isBiometricEnabled: false,
+          isBiometricLoginEnabled: false,
+          setupComplete: false,
+          hasParent2: false,
+          hasBaby: false,
+          availableBiometricTypes: state.availableBiometricTypes,
+          biometricTypeName: state.biometricTypeName,
+        });
+      }
+
+      console.log('[Auth] Sign out completed successfully');
+    } catch (error) { 
+      console.error('[Auth] Sign out error:', error);
+      
+      // Even if there's an error, try to reset the auth state
       if (isMounted.current) {
         setState(prev => ({ 
           ...prev, 
@@ -736,16 +775,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userToken: null,
           userProfile: null,
           session: null,
-          onboardingComplete: hasSeenOnboarding === 'true',
-          hasSeenOnboarding: hasSeenOnboarding === 'true',
+          onboardingComplete: false,
+          setupComplete: false,
           isBiometricLoginEnabled: false,
-          setupComplete: setupComplete === 'true',
-          hasParent2,
-          hasBaby,
+          hasParent2: false,
+          hasBaby: false,
         }));
       }
-    } catch (error) { console.error('Sign out error:', error); }
-  }, []);
+    }
+  }, [state.isBiometricAvailable, state.availableBiometricTypes, state.biometricTypeName]);
 
   // ─── BIOMETRIC FUNCTIONS ──────────────────────────────────────────────
 
@@ -1605,6 +1643,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }));
         }
       } else if (event === 'SIGNED_OUT') {
+        console.log('[Auth] SIGNED_OUT event received, clearing state');
         clearUserIdCache();
         if (isMounted.current) {
           setState(prev => ({
@@ -1613,6 +1652,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             userToken: null,
             userProfile: null,
             session: null,
+            isLoading: false,
           }));
         }
       } else if (event === 'TOKEN_REFRESHED' && session) {

@@ -45,7 +45,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     shouldReduceMotion,
   } = useCustomization();
 
-  const { toast, error: showError, success: showSuccess, info: showInfo } = useSweetAlert();
+  const { toast } = useSweetAlert();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [localLoading, setLocalLoading] = useState(true);
@@ -111,10 +111,11 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     try {
       console.log('[BabyOnboarding] Syncing babies from Supabase for user:', userId);
       
+      // SIMPLE query - no complex joins that could cause recursion
       const { data: supabaseBabies, error } = await supabase
         .from('babies')
         .select('*')
-        .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
+        .eq('parent1_id', userId)
         .eq('is_active', true);
 
       if (error) {
@@ -123,16 +124,31 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         return false;
       }
 
-      if (!supabaseBabies || supabaseBabies.length === 0) {
+      // If no babies as parent1, try parent2
+      let allBabies = supabaseBabies || [];
+      
+      if (allBabies.length === 0) {
+        const { data: parent2Babies, error: p2Error } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent2_id', userId)
+          .eq('is_active', true);
+        
+        if (!p2Error && parent2Babies) {
+          allBabies = parent2Babies;
+        }
+      }
+
+      if (!allBabies || allBabies.length === 0) {
         console.log('[BabyOnboarding] No babies found in Supabase for user');
         setSyncInProgress(false);
         return false;
       }
 
-      console.log(`[BabyOnboarding] Found ${supabaseBabies.length} babies in Supabase`);
+      console.log(`[BabyOnboarding] Found ${allBabies.length} babies in Supabase`);
 
       let syncedCount = 0;
-      for (const baby of supabaseBabies) {
+      for (const baby of allBabies) {
         try {
           const exists = await getBabyByIdFromDb(baby.id);
           if (!exists) {
@@ -158,12 +174,12 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       console.log(`[BabyOnboarding] Synced ${syncedCount} new babies`);
 
       const currentId = await getAppSetting('current_baby_id');
-      if (!currentId && supabaseBabies[0]) {
-        await setCurrentBabyInDb(supabaseBabies[0].id);
+      if (!currentId && allBabies[0]) {
+        await setCurrentBabyInDb(allBabies[0].id);
       }
 
       setSyncInProgress(false);
-      return syncedCount > 0 || supabaseBabies.length > 0;
+      return syncedCount > 0 || allBabies.length > 0;
     } catch (error) {
       console.error('[BabyOnboarding] Sync error:', error);
       setSyncInProgress(false);
@@ -231,12 +247,24 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           await checkAndNavigate();
         }
       } else {
+        // Try to fetch remote babies for import option - using separate simple queries
         try {
-          const { data: remoteData } = await supabase
+          const { data: remoteData1 } = await supabase
             .from('babies')
             .select('*')
-            .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
+            .eq('parent1_id', userId)
             .eq('is_active', true);
+          
+          let remoteData = remoteData1 || [];
+          
+          if (remoteData.length === 0) {
+            const { data: remoteData2 } = await supabase
+              .from('babies')
+              .select('*')
+              .eq('parent2_id', userId)
+              .eq('is_active', true);
+            remoteData = remoteData2 || [];
+          }
           
           if (remoteData && remoteData.length > 0) {
             console.log(`[BabyOnboarding] Found ${remoteData.length} babies in Supabase, showing import option`);
@@ -469,8 +497,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }, [loadBabies, babies.length, hasBabies, checkAndNavigate, checkAndSyncBabies]);
 
   const showLoading = localLoading || babyLoading || syncInProgress;
-
-  // Don't show loading after initial check is done
   const shouldShowLoading = !initialCheckDone && showLoading;
 
   // ─── ERROR STATE ──────────────────────────────────────────────────
@@ -674,20 +700,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
+  container: { flex: 1 },
+  gradient: { flex: 1 },
+  content: { flexGrow: 1, paddingHorizontal: 20 },
+  header: { alignItems: 'center', marginBottom: 32 },
   iconContainer: {
     width: 80,
     height: 80,
@@ -697,34 +713,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  icon: {
-    fontSize: 40,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 8,
-    color: '#1e293b',
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
-    color: '#64748b',
-  },
-  textDark: {
-    color: '#fff',
-  },
-  babiesContainer: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    color: '#1e293b',
-  },
+  icon: { fontSize: 40 },
+  title: { fontSize: 28, fontWeight: '700', textAlign: 'center', marginBottom: 8, color: '#1e293b' },
+  subtitle: { fontSize: 16, textAlign: 'center', lineHeight: 22, color: '#64748b' },
+  textDark: { color: '#fff' },
+  babiesContainer: { marginBottom: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 16, color: '#1e293b' },
   babyCard: {
     borderRadius: 16,
     marginBottom: 12,
@@ -732,35 +726,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  babyCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-  },
-  babyInfo: {
-    flex: 1,
-    marginLeft: 16,
-  },
-  babyName: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
-    color: '#1e293b',
-  },
-  babyAge: {
-    fontSize: 14,
-  },
-  activeBadge: {
-    marginRight: 8,
-  },
-  buttonsContainer: {
-    marginTop: 8,
-  },
-  primaryButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
+  babyCardContent: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+  babyInfo: { flex: 1, marginLeft: 16 },
+  babyName: { fontSize: 18, fontWeight: '600', marginBottom: 4, color: '#1e293b' },
+  babyAge: { fontSize: 14 },
+  activeBadge: { marginRight: 8 },
+  buttonsContainer: { marginTop: 8 },
+  primaryButton: { borderRadius: 16, overflow: 'hidden', marginBottom: 16 },
   primaryGradient: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -768,74 +740,20 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 24,
   },
-  primaryText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  skipButton: {
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderRadius: 16,
-  },
-  skipText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#64748b',
-  },
-  errorTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginTop: 16,
-    marginBottom: 8,
-    color: '#1e293b',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  retryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  retryText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  skipErrorText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#64748b',
-  },
-  cancelLoadingButton: {
-    padding: 12,
-  },
-  cancelLoadingText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  importContainer: {
-    marginBottom: 24,
-  },
-  importSubtitle: {
-    fontSize: 14,
-    marginBottom: 12,
-    color: '#64748b',
-  },
-  importCard: {
-    borderColor: '#10b981',
-    borderWidth: 1,
-  },
+  primaryText: { color: '#fff', fontSize: 16, fontWeight: '600', marginLeft: 8 },
+  skipButton: { paddingVertical: 16, alignItems: 'center', borderRadius: 16 },
+  skipText: { fontSize: 16, fontWeight: '500', color: '#64748b' },
+  errorTitle: { fontSize: 24, fontWeight: '700', marginTop: 16, marginBottom: 8, color: '#1e293b' },
+  errorText: { fontSize: 16, color: '#64748b', textAlign: 'center', marginBottom: 24 },
+  retryButton: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, marginBottom: 16 },
+  retryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  skipErrorText: { fontSize: 16, fontWeight: '500' },
+  loadingText: { marginTop: 16, fontSize: 16, color: '#64748b' },
+  cancelLoadingButton: { padding: 12 },
+  cancelLoadingText: { fontSize: 14, fontWeight: '600' },
+  importContainer: { marginBottom: 24 },
+  importSubtitle: { fontSize: 14, marginBottom: 12, color: '#64748b' },
+  importCard: { borderColor: '#10b981', borderWidth: 1 },
   importBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -845,18 +763,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginRight: 8,
   },
-  importBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  orText: {
-    fontSize: 14,
-    color: '#94a3b8',
-    textAlign: 'center',
-    marginVertical: 8,
-  },
-  smallSpinner: {
-    marginLeft: 8,
-  },
+  importBadgeText: { fontSize: 12, fontWeight: '600', marginLeft: 4 },
+  orText: { fontSize: 14, color: '#94a3b8', textAlign: 'center', marginVertical: 8 },
+  smallSpinner: { marginLeft: 8 },
 });
