@@ -1,3 +1,5 @@
+// src/screens/baby/BabyOnboardingScreen.tsx
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -58,6 +60,46 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const loadAttemptedRef = useRef(false);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ─── CHECK NAVIGATION ─────────────────────────────────────────────
+  const checkAndNavigate = useCallback(async () => {
+    if (navigationAttemptedRef.current) return;
+    if (!isMountedRef.current) return;
+    
+    try {
+      const localBabies = await getAllBabiesFromDb();
+      
+      if (localBabies && localBabies.length > 0) {
+        console.log('[BabyOnboarding] Found babies, checking setup');
+        setHasBabies(true);
+        
+        const { setupComplete } = await wasSetupCompleted();
+        
+        if (setupComplete) {
+          navigationAttemptedRef.current = true;
+          console.log('[BabyOnboarding] Setup complete, navigating to Main');
+          navigation.replace('Main');
+          return true;
+        }
+        
+        await completeSetup('baby');
+        const { setupComplete: newSetupComplete } = await wasSetupCompleted();
+        if (newSetupComplete) {
+          navigationAttemptedRef.current = true;
+          console.log('[BabyOnboarding] Marked baby complete, navigating to Main');
+          navigation.replace('Main');
+          return true;
+        }
+        
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.warn('[BabyOnboarding] Check navigate error:', error);
+      return false;
+    }
+  }, [navigation, wasSetupCompleted, completeSetup]);
+
   // ─── SYNC BABIES FROM SUPABASE ──────────────────────────────────────
   const syncBabiesFromSupabase = useCallback(async (userId: string): Promise<boolean> => {
     if (syncInProgress) return false;
@@ -84,15 +126,14 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         return false;
       }
 
-      console.log(`[BabyOnboarding] Found ${supabaseBabies.length} babies in Supabase:`, 
-        supabaseBabies.map(b => ({ id: b.id, name: b.name })));
+      console.log(`[BabyOnboarding] Found ${supabaseBabies.length} babies in Supabase`);
 
       let syncedCount = 0;
       for (const baby of supabaseBabies) {
         try {
           const exists = await getBabyByIdFromDb(baby.id);
           if (!exists) {
-            console.log(`[BabyOnboarding] Creating local baby: ${baby.name} (${baby.id})`);
+            console.log(`[BabyOnboarding] Creating local baby: ${baby.name}`);
             await createBabyInDb({
               id: baby.id,
               name: baby.name,
@@ -105,8 +146,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
               parent2Id: baby.parent2_id || undefined,
             });
             syncedCount++;
-          } else {
-            console.log(`[BabyOnboarding] Baby already exists locally: ${baby.name}`);
           }
         } catch (babyError) {
           console.error(`[BabyOnboarding] Error syncing baby ${baby.name}:`, babyError);
@@ -118,7 +157,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       const currentId = await getAppSetting('current_baby_id');
       if (!currentId && supabaseBabies[0]) {
         await setCurrentBabyInDb(supabaseBabies[0].id);
-        console.log(`[BabyOnboarding] Set current baby to: ${supabaseBabies[0].name}`);
       }
 
       setSyncInProgress(false);
@@ -171,6 +209,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setHasBabies(true);
         setRemoteBabies(localBabies);
         console.log(`[BabyOnboarding] Found ${localBabies.length} local babies`);
+        await checkAndNavigate();
         return;
       }
 
@@ -207,46 +246,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       console.error('[BabyOnboarding] Check error:', error);
     }
   }, [userProfile, loadBabies, syncBabiesFromSupabase, checkAndNavigate]);
-
-  // ─── CHECK NAVIGATION ─────────────────────────────────────────────
-  const checkAndNavigate = useCallback(async () => {
-    if (navigationAttemptedRef.current) return;
-    if (!isMountedRef.current) return;
-    
-    try {
-      const localBabies = await getAllBabiesFromDb();
-      
-      if (localBabies && localBabies.length > 0) {
-        console.log('[BabyOnboarding] Found babies, checking setup');
-        setHasBabies(true);
-        
-        const { setupComplete } = await wasSetupCompleted();
-        
-        if (setupComplete) {
-          navigationAttemptedRef.current = true;
-          console.log('[BabyOnboarding] Setup complete, navigating to Main');
-          navigation.replace('Main');
-          return true;
-        }
-        
-        await completeSetup('baby');
-        const { setupComplete: newSetupComplete } = await wasSetupCompleted();
-        if (newSetupComplete) {
-          navigationAttemptedRef.current = true;
-          console.log('[BabyOnboarding] Marked baby complete, navigating to Main');
-          navigation.replace('Main');
-          return true;
-        }
-        
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.warn('[BabyOnboarding] Check navigate error:', error);
-      return false;
-    }
-  }, [navigation, wasSetupCompleted, completeSetup]);
 
   // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {
@@ -507,7 +506,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }
 
   // ─── MAIN CONTENT ──────────────────────────────────────────────────
-  // Check if we have babies from either local or remote
   const displayBabies = babies.length > 0 ? babies : remoteBabies;
   const displayHasBabies = hasExistingBabies;
 

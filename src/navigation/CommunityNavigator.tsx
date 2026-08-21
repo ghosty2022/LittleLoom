@@ -1,6 +1,6 @@
 // src/navigation/CommunityNavigator.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Text, StatusBar, FlatList, TextInput, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Text, StatusBar, FlatList, TextInput, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -89,6 +89,7 @@ const TIMEZONE_MAP: Record<string, string> = {
 const getCountryFromCode = (code: string) => COUNTRY_MAP[code.toUpperCase()] || null;
 const getCountryFromTz = (tz: string) => TIMEZONE_MAP[tz] || null;
 
+// ─── AUTOMATIC COUNTRY DETECTION ──────────────────────────────────────
 const useAutomaticCountryDetection = () => {
   const { currentUser, updateUserLocation } = useCommunity();
   const [isDetecting, setIsDetecting] = useState(false);
@@ -166,6 +167,7 @@ const useAutomaticCountryDetection = () => {
   return isDetecting;
 };
 
+// ─── LOADING VIEW ──────────────────────────────────────────────────────
 const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   <View style={styles.inlineLoadingContainer}>
     <LinearGradient
@@ -204,6 +206,8 @@ const MAIN_SCREEN_OPTIONS = {
   contentStyle: { backgroundColor: CommunityColors.background.main },
 };
 
+// ─── PLACEHOLDER SCREENS ──────────────────────────────────────────────
+
 const TopicMembersScreen = () => {
   const { topics } = useCommunity();
   const route = useRoute();
@@ -211,13 +215,22 @@ const TopicMembersScreen = () => {
   const topic = topics.find(t => t.id === topicId);
   
   return (
-    <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main }]}>
-      <Ionicons name="people" size={48} color={CommunityColors.primary} />
-      <Text style={[styles.placeholderText, { marginTop: 16 }]}>{topic?.name || 'Topic'} Members</Text>
-      <Text style={{ color: CommunityColors.text.secondary, marginTop: 8 }}>
-        {topic?.members?.toLocaleString() || 0} members
-      </Text>
-    </View>
+    <SafeAreaView style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main }]}>
+      <View style={styles.placeholderHeader}>
+        <Text style={[styles.placeholderTitle, { color: CommunityColors.text.primary }]}>
+          {topic?.name || 'Topic'} Members
+        </Text>
+        <Text style={{ color: CommunityColors.text.secondary, fontSize: 14 }}>
+          {topic?.members?.toLocaleString() || 0} members
+        </Text>
+      </View>
+      <View style={styles.placeholderContent}>
+        <Ionicons name="people" size={48} color={CommunityColors.primary} />
+        <Text style={[styles.placeholderText, { marginTop: 16, color: CommunityColors.text.secondary }]}>
+          Member list coming soon
+        </Text>
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -231,42 +244,59 @@ const SearchUsersScreen = () => {
     : users;
   
   return (
-    <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main, alignItems: 'stretch', paddingHorizontal: 20 }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, paddingHorizontal: 12, marginBottom: 20, height: 44 }}>
+    <SafeAreaView style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main, paddingHorizontal: 20 }]}>
+      <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color={CommunityColors.text.secondary} />
         <TextInput 
-          style={{ flex: 1, marginLeft: 8, fontSize: 16 }}
+          style={styles.searchInput}
           placeholder="Search parents..."
+          placeholderTextColor={CommunityColors.text.secondary}
           value={query}
           onChangeText={setQuery}
         />
+        {query.length > 0 && (
+          <TouchableOpacity onPress={() => setQuery('')}>
+            <Ionicons name="close-circle" size={20} color={CommunityColors.text.secondary} />
+          </TouchableOpacity>
+        )}
       </View>
       <FlatList
         data={filtered}
         keyExtractor={u => u.id}
         renderItem={({ item }) => (
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
-            <Text style={{ fontSize: 24, marginRight: 12 }}>{item.avatar}</Text>
-            <View>
-              <Text style={{ fontWeight: '600', fontSize: 16 }}>{item.displayName}</Text>
-              <Text style={{ color: CommunityColors.text.secondary, fontSize: 13 }}>{item.handle}</Text>
+          <View style={styles.userItem}>
+            <Text style={styles.userAvatar}>{item.avatar || '👤'}</Text>
+            <View style={styles.userInfo}>
+              <Text style={[styles.userName, { color: CommunityColors.text.primary }]}>{item.displayName}</Text>
+              <Text style={[styles.userHandle, { color: CommunityColors.text.secondary }]}>{item.handle}</Text>
             </View>
           </View>
         )}
-        ListEmptyComponent={<Text style={{ textAlign: 'center', color: CommunityColors.text.secondary }}>No users found</Text>}
+        ListEmptyComponent={
+          <Text style={{ textAlign: 'center', color: CommunityColors.text.secondary, marginTop: 20 }}>
+            {query.trim() ? 'No users found' : 'Search for parents in the community'}
+          </Text>
+        }
       />
-    </View>
+    </SafeAreaView>
   );
 };
 
 const BlockedUsersScreen = () => {
-  const { blockedUsers, getUserById, blockUser } = useCommunity();
+  const { blockedUsers, getUserById, unblockUser } = useCommunity();
   
   return (
-    <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main, alignItems: 'stretch', paddingHorizontal: 20 }]}>
-      <Text style={[styles.placeholderText, { marginBottom: 20 }]}>Blocked Users</Text>
+    <SafeAreaView style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main, paddingHorizontal: 20 }]}>
+      <View style={styles.placeholderHeader}>
+        <Text style={[styles.placeholderTitle, { color: CommunityColors.text.primary }]}>Blocked Users</Text>
+      </View>
       {blockedUsers.length === 0 ? (
-        <Text style={{ textAlign: 'center', color: CommunityColors.text.secondary }}>No blocked users</Text>
+        <View style={styles.placeholderContent}>
+          <Ionicons name="shield-checkmark" size={48} color={CommunityColors.text.secondary} />
+          <Text style={{ textAlign: 'center', color: CommunityColors.text.secondary, marginTop: 16 }}>
+            No blocked users
+          </Text>
+        </View>
       ) : (
         <FlatList
           data={blockedUsers}
@@ -274,20 +304,27 @@ const BlockedUsersScreen = () => {
           renderItem={({ item }) => {
             const user = getUserById(item);
             return (
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 24, marginRight: 12 }}>{user?.avatar || '👤'}</Text>
-                  <Text style={{ fontWeight: '600' }}>{user?.displayName || 'Unknown'}</Text>
+              <View style={styles.blockedItem}>
+                <View style={styles.userItem}>
+                  <Text style={styles.userAvatar}>{user?.avatar || '👤'}</Text>
+                  <View style={styles.userInfo}>
+                    <Text style={[styles.userName, { color: CommunityColors.text.primary }]}>
+                      {user?.displayName || 'Unknown'}
+                    </Text>
+                  </View>
                 </View>
-                <TouchableOpacity onPress={() => blockUser(item)} style={{ backgroundColor: CommunityColors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
-                  <Text style={{ color: '#fff', fontWeight: '600' }}>Unblock</Text>
+                <TouchableOpacity 
+                  onPress={() => unblockUser(item)} 
+                  style={[styles.unblockButton, { backgroundColor: CommunityColors.primary }]}
+                >
+                  <Text style={styles.unblockText}>Unblock</Text>
                 </TouchableOpacity>
               </View>
             );
           }}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -318,14 +355,13 @@ function useCommunityAuthCheck() {
   return isValid;
 }
 
+// ─── MAIN COMMUNITY NAVIGATOR ──────────────────────────────────────────
 const CommunityNavigator = React.memo(() => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
   
-  // ─── CRITICAL FIX: Check authentication before showing community ────
   const isAuthValid = useCommunityAuthCheck();
-  
   const isDetectingCountry = useAutomaticCountryDetection();
   
   useEffect(() => {
@@ -347,7 +383,6 @@ const CommunityNavigator = React.memo(() => {
   const isReady = !isLoading && isInitialized && splashReady;
 
   useEffect(() => {
-    // ─── CRITICAL FIX: Don't proceed if auth is invalid ──────────────
     if (isAuthValid === false) {
       console.log('[CommunityNavigator] Auth invalid, staying in loading state');
       return;
@@ -368,7 +403,6 @@ const CommunityNavigator = React.memo(() => {
           console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
         }
 
-        // Show onboarding if NOT completed OR no topics selected
         const needsOnboarding = !onboardingStatus.completed || !onboardingStatus.hasTopics;
         
         if (needsOnboarding) {
@@ -406,7 +440,7 @@ const CommunityNavigator = React.memo(() => {
     }
   }, [markSplashShown, checkOnboardingStatus]);
 
-  // ─── CRITICAL FIX: If auth is invalid, don't render anything ──────
+  // ─── Auth invalid ─────────────────────────────────────────────────────
   if (isAuthValid === false) {
     return (
       <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main }]}>
@@ -418,7 +452,7 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // Show onboarding phase
+  // ─── Onboarding phase ────────────────────────────────────────────────
   if (phase === 'onboarding') {
     return (
       <Stack.Navigator
@@ -434,7 +468,7 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // Show splash phase
+  // ─── Splash phase ─────────────────────────────────────────────────────
   if (phase === 'splash') {
     return (
       <Stack.Navigator
@@ -453,7 +487,7 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // Main app - only if auth is valid and phase is main
+  // ─── Main phase ──────────────────────────────────────────────────────
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
@@ -467,7 +501,11 @@ const CommunityNavigator = React.memo(() => {
           options={{ animation: 'fade' }}
         />
         <Stack.Screen name="Topic" component={TopicScreen} />
-        <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+        <Stack.Screen 
+          name="CreatePost" 
+          component={CreatePostScreen} 
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }} 
+        />
         <Stack.Screen name="PostDetail" component={PostDetailScreen} />
         <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
         <Stack.Screen name="ChatList" component={ChatListScreen} />
@@ -493,12 +531,17 @@ const CommunityNavigator = React.memo(() => {
         <Stack.Screen name="Following" component={FollowingScreen} />
         <Stack.Screen name="SearchUsers" component={SearchUsersScreen} />
         <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
-        <Stack.Screen name="Report" component={ReportScreen} options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
+        <Stack.Screen 
+          name="Report" 
+          component={ReportScreen} 
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }} 
+        />
       </Stack.Navigator>
     </>
   );
 });
 
+// ─── STYLES ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   inlineLoadingContainer: {
     flex: 1,
@@ -527,14 +570,82 @@ const styles = StyleSheet.create({
   },
   placeholderContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: CommunityColors.background.main,
   },
+  placeholderContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  placeholderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
   placeholderText: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    marginTop: 12,
+    height: 44,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 16,
     color: CommunityColors.text.primary,
+  },
+  userItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  userAvatar: {
+    fontSize: 28,
+    marginRight: 12,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  userHandle: {
+    fontSize: 13,
+  },
+  blockedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  unblockButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  unblockText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 13,
   },
 });
 
