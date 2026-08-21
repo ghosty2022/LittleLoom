@@ -61,13 +61,11 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   return <>{children}</>;
 };
 
-// ─── FIXED: TrackerBabySync - MOVED OUTSIDE TrackerProvider ────────
-// This component should be OUTSIDE TrackerProvider but still inside BabyProvider
+// ─── FIXED: This component is now INSIDE BabyProvider ────────────────
 const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentBabyId, babies } = useBaby();
   const initRef = useRef(false);
   
-  // Use the imported TrackerContext directly
   const trackerContext = useContext(TrackerContext);
 
   useEffect(() => {
@@ -140,24 +138,24 @@ const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   );
 };
 
-// ─── FIXED: Reordered providers ─────────────────────────────────────
+// ─── FIXED: Correct provider order ─────────────────────────────────────
 export default function ContextProvider({ children }: ContextProviderProps) {
   return (
     <AuthProvider>
       <AppProvider>
         <UserProvider>
+          {/* BabyProvider MUST be before any component that uses useBaby() */}
           <BabyProvider>
             <SecurityAuthBridge>
               <FamilyProvider>
                 <ActivityProvider>
                   <ActivitySyncBridge>
-                    {/* MediaProvider needs AudioProvider, so AudioProvider should come first */}
                     <AudioProvider>
                       <MediaProvider>
                         <FamilyChatWrapper>
                           <CommunityProvider>
                             <SafetyProvider>
-                              {/* TrackerProvider wraps TrackerBabySync */}
+                              {/* TrackerProvider and TrackerBabySync are INSIDE BabyProvider */}
                               <TrackerProvider>
                                 <TrackerBabySync>
                                   <SweetAlertWrapper>

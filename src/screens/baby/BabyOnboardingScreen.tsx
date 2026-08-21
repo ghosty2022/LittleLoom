@@ -62,30 +62,28 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const navigationAttemptedRef = useRef(false);
   const loadAttemptedRef = useRef(false);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // ─── NEW: Prevent infinite loops ──────────────────────────────────────
+  const loadAttemptCountRef = useRef(0);
+  const MAX_LOAD_ATTEMPTS = 2;
+  const isInitializedRef = useRef(false);
 
   // ─── GET USER ID SAFELY ─────────────────────────────────────────────
   const getUserId = useCallback(async (): Promise<string | null> => {
     try {
-      // Try getUser first
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user?.id) {
         return userData.user.id;
       }
-    } catch (e) {
-      // Ignore
-    }
+    } catch (e) {}
 
     try {
-      // Try getSession next
       const { data: sessionData } = await supabase.auth.getSession();
       if (sessionData?.session?.user?.id) {
         return sessionData.session.user.id;
       }
-    } catch (e) {
-      // Ignore
-    }
+    } catch (e) {}
 
-    // Fallback to userProfile
     if (userProfile?.id) {
       return userProfile.id;
     }
@@ -102,7 +100,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     if (!isMountedRef.current) return false;
     
     try {
-      // Check if we have babies in the context
       if (babies && babies.length > 0) {
         console.log('[BabyOnboarding] Found babies in context, checking setup');
         setHasBabies(true);
@@ -128,7 +125,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         return true;
       }
 
-      // Check local DB
       const localBabies = await getAllBabiesFromDb();
       if (localBabies && localBabies.length > 0) {
         console.log('[BabyOnboarding] Found babies in local DB');
@@ -155,7 +151,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       let allBabies: any[] = [];
       let hadRlsError = false;
       
-      // Try parent1 first - with better error handling
       try {
         const { data: parent1Babies, error: error1 } = await supabase
           .from('babies')
@@ -177,7 +172,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         console.warn('[BabyOnboarding] parent1 query failed:', e);
       }
 
-      // If no babies as parent1, try parent2
       if (allBabies.length === 0 && !hadRlsError) {
         try {
           const { data: parent2Babies, error: error2 } = await supabase
@@ -201,7 +195,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         }
       }
 
-      // If RLS error, try a different approach - query without the is_active filter
       if (hadRlsError && allBabies.length === 0) {
         console.log('[BabyOnboarding] Trying without is_active filter due to RLS error');
         try {
@@ -211,7 +204,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
             .eq('parent1_id', userId);
           
           if (!fallbackError && fallbackBabies && fallbackBabies.length > 0) {
-            // Filter is_active manually
             allBabies = fallbackBabies.filter((b: any) => b.is_active !== false);
           }
         } catch (e) {
@@ -253,7 +245,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       console.log(`[BabyOnboarding] Synced ${syncedCount} new babies`);
 
-      // Set current baby if not set
       const currentId = await getAppSetting('current_baby_id');
       if (!currentId && allBabies[0]) {
         await setCurrentBabyInDb(allBabies[0].id);
@@ -270,6 +261,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
   // ─── CHECK AND SYNC BABIES ──────────────────────────────────────────
   const checkAndSyncBabies = useCallback(async () => {
+    // ─── NEW: Prevent multiple checks ──────────────────────────────────
     if (hasCheckedRef.current) {
       console.log('[BabyOnboarding] Already checked, skipping');
       return;
@@ -287,7 +279,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       console.log('[BabyOnboarding] Checking for babies with userId:', userId);
 
-      // First check if babies exist in context
       if (babies && babies.length > 0) {
         setHasBabies(true);
         setRemoteBabies(babies);
@@ -297,7 +288,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         return;
       }
 
-      // Check local DB
       const localBabies = await getAllBabiesFromDb();
       console.log(`[BabyOnboarding] Local babies count: ${localBabies.length}`);
 
@@ -310,12 +300,10 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         return;
       }
 
-      // If RLS recursion error, check if we can still fetch data
       console.log('[BabyOnboarding] No local babies, syncing from Supabase...');
       const synced = await syncBabiesFromSupabase(userId);
       
       if (synced) {
-        // Reload babies from context
         await loadBabies();
         const updatedLocalBabies = await getAllBabiesFromDb();
         if (updatedLocalBabies && updatedLocalBabies.length > 0) {
@@ -338,7 +326,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           
           if (error1?.message?.includes('infinite recursion')) {
             hadRlsError = true;
-            // Try without is_active
             const { data: fallbackData } = await supabase
               .from('babies')
               .select('*')
@@ -358,7 +345,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
               .eq('is_active', true);
             
             if (error2?.message?.includes('infinite recursion')) {
-              // Try without is_active
               const { data: fallbackData2 } = await supabase
                 .from('babies')
                 .select('*')
@@ -389,6 +375,12 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
   // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {
+    // ─── NEW: Prevent re-initialization ──────────────────────────────────
+    if (isInitializedRef.current) {
+      console.log('[BabyOnboarding] Already initialized, skipping');
+      return;
+    }
+
     isMountedRef.current = true;
     loadAttemptedRef.current = false;
     navigationAttemptedRef.current = false;
@@ -396,14 +388,29 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     setInitialCheckDone(false);
     setShowImportOption(false);
     setRemoteBabies([]);
+    loadAttemptCountRef.current = 0;
     
     const loadData = async () => {
-      if (loadAttemptedRef.current) return;
+      // ─── NEW: Max attempts check ──────────────────────────────────────
+      if (loadAttemptedRef.current) {
+        console.log('[BabyOnboarding] Load already attempted, skipping');
+        return;
+      }
+      
+      if (loadAttemptCountRef.current >= MAX_LOAD_ATTEMPTS) {
+        console.log('[BabyOnboarding] Max load attempts reached, stopping');
+        setLocalLoading(false);
+        setLoadError('Unable to load after multiple attempts');
+        setInitialCheckDone(true);
+        return;
+      }
+      
       loadAttemptedRef.current = true;
+      loadAttemptCountRef.current++;
       
       try {
         setLocalLoading(true);
-        console.log('[BabyOnboarding] Starting load...');
+        console.log(`[BabyOnboarding] Starting load... (Attempt ${loadAttemptCountRef.current})`);
         
         // Load babies from context
         await loadBabies();
@@ -418,6 +425,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           setLocalLoading(false);
           await checkAndNavigate();
           setInitialCheckDone(true);
+          isInitializedRef.current = true;
           return;
         }
         
@@ -431,6 +439,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           setLocalLoading(false);
           await checkAndNavigate();
           setInitialCheckDone(true);
+          isInitializedRef.current = true;
           return;
         }
         
@@ -439,6 +448,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         
         setLocalLoading(false);
         setInitialCheckDone(true);
+        isInitializedRef.current = true;
         await checkAndNavigate();
         
       } catch (error) {
@@ -447,12 +457,14 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           setLocalLoading(false);
           setLoadError('Failed to load babies');
           setInitialCheckDone(true);
+          isInitializedRef.current = true;
         }
       }
     };
     
     // Small delay to allow context to initialize
     const timer = setTimeout(loadData, 300);
+    loadTimeoutRef.current = timer;
     
     return () => {
       isMountedRef.current = false;
@@ -462,7 +474,8 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         loadTimeoutRef.current = null;
       }
     };
-  }, [loadBabies, checkAndSyncBabies, checkAndNavigate, babies]);
+  // ─── NEW: Remove `babies` from dependencies to prevent re-runs ────
+  }, [loadBabies, checkAndSyncBabies, checkAndNavigate]);
 
   // ─── HANDLERS ──────────────────────────────────────────────────────
   const handleImportBaby = useCallback(async (baby: any) => {
@@ -522,7 +535,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         if (setupComplete) {
           navigation.replace('Main');
         } else {
-          // If setup not complete, stay on this screen
           navigation.replace('BabyOptional');
         }
       }
@@ -568,6 +580,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }, [switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
 
   const handleRetry = useCallback(async () => {
+    // ─── NEW: Reset and retry ──────────────────────────────────────────
     setLoadError(null);
     setLocalLoading(true);
     hasCheckedRef.current = false;
@@ -576,16 +589,18 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     setInitialCheckDone(false);
     setShowImportOption(false);
     setRemoteBabies([]);
+    loadAttemptCountRef.current = 0;
+    isInitializedRef.current = false;
     
     try {
       await loadBabies();
       if (isMountedRef.current) {
-        // Check if we have babies
         if (babies && babies.length > 0) {
           setHasBabies(true);
           setRemoteBabies(babies);
           setLocalLoading(false);
           setInitialCheckDone(true);
+          isInitializedRef.current = true;
           await checkAndNavigate();
           return;
         }
@@ -596,12 +611,14 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           setRemoteBabies(localBabies);
           setLocalLoading(false);
           setInitialCheckDone(true);
+          isInitializedRef.current = true;
           await checkAndNavigate();
           return;
         }
         await checkAndSyncBabies();
         setLocalLoading(false);
         setInitialCheckDone(true);
+        isInitializedRef.current = true;
         await checkAndNavigate();
       }
     } catch (error) {
@@ -620,6 +637,8 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     setInitialCheckDone(false);
     setShowImportOption(false);
     setRemoteBabies([]);
+    loadAttemptCountRef.current = 0;
+    isInitializedRef.current = false;
     
     try {
       await loadBabies();
