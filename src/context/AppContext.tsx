@@ -281,6 +281,7 @@ async function loadNotificationSettings(): Promise<NotificationSettings> {
 }
 
 async function saveNotificationSettings(settings: NotificationSettings): Promise<void> {
+  // Save to Supabase
   await setAppSetting(NOTIFICATION_SETTINGS_KEY, JSON.stringify(settings));
   // Also save to AsyncStorage for backward compatibility
   await AsyncStorage.setItem(NOTIFICATION_SETTINGS_KEY, JSON.stringify(settings));
@@ -288,24 +289,46 @@ async function saveNotificationSettings(settings: NotificationSettings): Promise
 
 async function loadPendingNotifications(): Promise<ScheduledNotification[]> {
   try {
-    const stored = await AsyncStorage.getItem(PENDING_NOTIFICATIONS_KEY);
-    return stored ? JSON.parse(stored) : [];
+    // Try Supabase first
+    const stored = await getAppSetting(PENDING_NOTIFICATIONS_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    // Fallback to AsyncStorage
+    const asyncStored = await AsyncStorage.getItem(PENDING_NOTIFICATIONS_KEY);
+    if (asyncStored) {
+      const parsed = JSON.parse(asyncStored);
+      // Migrate to Supabase
+      await setAppSetting(PENDING_NOTIFICATIONS_KEY, JSON.stringify(parsed));
+      return parsed;
+    }
   } catch {
     return [];
   }
+  return [];
 }
 
 async function savePendingNotifications(notifications: ScheduledNotification[]): Promise<void> {
+  // Save to Supabase
+  await setAppSetting(PENDING_NOTIFICATIONS_KEY, JSON.stringify(notifications));
+  // Also save to AsyncStorage for backward compatibility
   await AsyncStorage.setItem(PENDING_NOTIFICATIONS_KEY, JSON.stringify(notifications));
 }
 
 async function getDeviceId(): Promise<string> {
   try {
-    let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    // Try Supabase first
+    let id = await getAppSetting(DEVICE_ID_KEY);
+    if (id) return id;
+    
+    // Try AsyncStorage
+    id = await AsyncStorage.getItem(DEVICE_ID_KEY);
     if (!id) {
       id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       await AsyncStorage.setItem(DEVICE_ID_KEY, id);
     }
+    // Migrate to Supabase
+    await setAppSetting(DEVICE_ID_KEY, id);
     return id;
   } catch {
     return `device_${Date.now()}`;
@@ -649,8 +672,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const storeNotification = async (notification: Notifications.Notification) => {
     try {
-      const stored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
-      const history = stored ? JSON.parse(stored) : [];
+      // Try Supabase first
+      let history = [];
+      const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
+      if (stored) {
+        history = JSON.parse(stored);
+      } else {
+        // Fallback to AsyncStorage
+        const asyncStored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
+        if (asyncStored) {
+          history = JSON.parse(asyncStored);
+        }
+      }
 
       history.push({
         id: notification.request.identifier,
@@ -663,6 +696,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         history.shift();
       }
 
+      // Save to Supabase
+      await setAppSetting(NOTIFICATION_HISTORY_KEY, JSON.stringify(history));
+      // Also save to AsyncStorage for backward compatibility
       await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(history));
     } catch (error) {
       console.warn('[AppContext] Failed to store notification:', error);
@@ -853,6 +889,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cancelAllNotifications = useCallback(async () => {
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
+      await setAppSetting(PENDING_NOTIFICATIONS_KEY, JSON.stringify([]));
       await AsyncStorage.removeItem(PENDING_NOTIFICATIONS_KEY);
     } catch (error) {
       console.warn('[AppContext] Cancel all error:', error);
@@ -866,8 +903,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getNotificationHistory = useCallback(async () => {
     try {
-      const stored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
-      return stored ? JSON.parse(stored) : [];
+      // Try Supabase first
+      const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+      // Fallback to AsyncStorage
+      const asyncStored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
+      return asyncStored ? JSON.parse(asyncStored) : [];
     } catch {
       return [];
     }
@@ -875,14 +918,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markNotificationRead = useCallback(async (id: string) => {
     try {
-      const stored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
+      // Get current history
+      let history = [];
+      const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
       if (stored) {
-        const history = JSON.parse(stored);
-        const updated = history.map((n: any) =>
-          n.id === id ? { ...n, read: true } : n
-        );
-        await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(updated));
+        history = JSON.parse(stored);
+      } else {
+        const asyncStored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
+        if (asyncStored) {
+          history = JSON.parse(asyncStored);
+        }
       }
+
+      const updated = history.map((n: any) =>
+        n.id === id ? { ...n, read: true } : n
+      );
+
+      // Save to Supabase
+      await setAppSetting(NOTIFICATION_HISTORY_KEY, JSON.stringify(updated));
+      // Also save to AsyncStorage for backward compatibility
+      await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(updated));
     } catch (error) {
       console.warn('[AppContext] Mark read error:', error);
     }

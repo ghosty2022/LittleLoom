@@ -8,7 +8,6 @@ import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '@/utils/supabase';
-import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 
 const SECURE_KEYS = {
   PIN_HASH: 'littleloom_pin_hash',
@@ -240,67 +239,81 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   useEffect(() => { isAuthenticatedRef.current = isAuthenticated; }, [isAuthenticated]);
   useEffect(() => { setupCompleteRef.current = setupComplete; }, [setupComplete]);
 
-  /* ─── INIT: load saved security state ───────────────────────────────── */
+  // ─── Load/Save using AsyncStorage only ──────────────────────────────
+
+  const loadSecurityState = useCallback(async () => {
+    try {
+      const [
+        biometricEnabled,
+        pinHash,
+        appLockEnabled,
+        autoLockTimeout,
+        securityLocked,
+        securityQuestionsStr,
+      ] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
+        secureStorage.getItem(SECURE_KEYS.PIN_HASH),
+        AsyncStorage.getItem(ASYNC_KEYS.APP_LOCK_ENABLED),
+        AsyncStorage.getItem(ASYNC_KEYS.AUTO_LOCK_TIMEOUT),
+        AsyncStorage.getItem(ASYNC_KEYS.SECURITY_LOCK),
+        AsyncStorage.getItem(ASYNC_KEYS.SECURITY_QUESTIONS),
+      ]);
+
+      const hasPin = !!pinHash;
+      const isAppLockEnabled = appLockEnabled === 'true';
+      const hasSecurityEnabled = (biometricEnabled === 'true') || hasPin || isAppLockEnabled;
+
+      let securityQuestions: SecurityQuestion[] = [];
+      let hasQuestions = false;
+      if (securityQuestionsStr) {
+        try {
+          securityQuestions = JSON.parse(securityQuestionsStr);
+          hasQuestions = securityQuestions.length > 0;
+        } catch {}
+      }
+
+      return {
+        isLoading: false,
+        isSecurityLocked: (securityLocked === 'true') && hasSecurityEnabled,
+        securityQuestions,
+        settings: {
+          ...defaultSettings,
+          isBiometricEnabled: biometricEnabled === 'true',
+          isPinEnabled: hasPin,
+          isAppLockEnabled,
+          autoLockTimeout: parseInt(autoLockTimeout || '5', 10),
+          hasSecurityQuestions: hasQuestions,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // ─── INIT ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const initSecurity = async () => {
-      try {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const [
-          biometricEnabled,
-          pinHash,
-          appLockEnabled,
-          autoLockTimeout,
-          securityLocked,
-          securityQuestionsStr,
-        ] = await Promise.all([
-          AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
-          secureStorage.getItem(SECURE_KEYS.PIN_HASH),
-          AsyncStorage.getItem(ASYNC_KEYS.APP_LOCK_ENABLED),
-          AsyncStorage.getItem(ASYNC_KEYS.AUTO_LOCK_TIMEOUT),
-          AsyncStorage.getItem(ASYNC_KEYS.SECURITY_LOCK),
-          AsyncStorage.getItem(ASYNC_KEYS.SECURITY_QUESTIONS),
-        ]);
-
-        const hasPin = !!pinHash;
-        const isAppLockEnabled = appLockEnabled === 'true';
-        const hasSecurityEnabled = (biometricEnabled === 'true') || hasPin || isAppLockEnabled;
-
-        let securityQuestions: SecurityQuestion[] = [];
-        let hasQuestions = false;
-        if (securityQuestionsStr) {
-          try {
-            securityQuestions = JSON.parse(securityQuestionsStr);
-            hasQuestions = securityQuestions.length > 0;
-          } catch {}
-        }
-
-        if (isMounted.current) {
-          setState(prev => ({
-            ...prev,
-            isLoading: false,
-            isSecurityLocked: (securityLocked === 'true') && hasSecurityEnabled,
-            securityQuestions,
-            settings: {
-              ...prev.settings,
-              isBiometricEnabled: biometricEnabled === 'true',
-              isPinEnabled: hasPin,
-              isAppLockEnabled,
-              autoLockTimeout: parseInt(autoLockTimeout || '5', 10),
-              hasSecurityQuestions: hasQuestions,
-            },
-          }));
-        }
-        await checkBiometricCapabilities();
-      } catch {
+    if (initRef.current) return;
+    initRef.current = true;
+    
+    const init = async () => {
+      if (!isAuthenticated) {
         if (isMounted.current) setState(prev => ({ ...prev, isLoading: false }));
+        return;
       }
+
+      const loadedState = await loadSecurityState();
+      if (loadedState && isMounted.current) {
+        setState(prev => ({ ...prev, ...loadedState }));
+      }
+
+      await checkBiometricCapabilities();
     };
-    if (isAuthenticated) initSecurity();
-    else if (isMounted.current) setState(prev => ({ ...prev, isLoading: false }));
+
+    init();
   }, [isAuthenticated]);
 
-  /* ─── APP STATE: background tracking + foreground lock check ────────── */
+  // ─── APP STATE HANDLING ──────────────────────────────────────────────
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
@@ -323,21 +336,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       appState.current = nextAppState;
     });
     return () => subscription.remove();
-  }, [checkSecurityOnResume]);
+  }, []);
 
-  /* ─── Keep lastActive updated ────────────────────────────────────────── */
-
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (isAuthenticated && !state.isSecurityLocked && appState.current === 'active' && !sharingActiveRef.current) {
-        lastActiveRef.current = Date.now();
-        await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, lastActiveRef.current.toString());
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated, state.isSecurityLocked]);
-
-  /* ─── Biometric Capabilities ─────────────────────────────────────────── */
+  // ─── BIOMETRIC CAPABILITIES ──────────────────────────────────────────
 
   const checkBiometricCapabilities = useCallback(async () => {
     try {
@@ -396,7 +397,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, []);
 
-  /* ─── Biometric Authentication ───────────────────────────────────────── */
+  // ─── BIOMETRIC AUTHENTICATION ─────────────────────────────────────────
 
   const authenticateWithBiometric = useCallback(async (promptMessage?: string) => {
     if (biometricPromptInProgressRef.current) return { success: false, error: 'in_progress' };
@@ -417,7 +418,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, [state.settings.biometricTypeName]);
 
-  /* ─── PIN Management ──────────────────────────────────────────────────── */
+  // ─── PIN MANAGEMENT ────────────────────────────────────────────────────
 
   const setupPin = useCallback(async (pin: string): Promise<boolean> => {
     if (pin.length < 4 || pin.length > 6) {
@@ -457,7 +458,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, []);
 
-  /* ─── Biometric Credentials (for auto-login) ────────────────────────── */
+  // ─── BIOMETRIC CREDENTIALS ────────────────────────────────────────────
 
   const getStoredBiometricCredentials = useCallback(async () => {
     try {
@@ -504,7 +505,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } catch {}
   }, []);
 
-  /* ─── Toggle Biometric ───────────────────────────────────────────────── */
+  // ─── TOGGLE BIOMETRIC ──────────────────────────────────────────────────
 
   const toggleBiometric = useCallback(async (enabled: boolean): Promise<boolean> => {
     if (enabled) {
@@ -526,7 +527,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, [authenticateWithBiometric]);
 
-  /* ─── App Lock ────────────────────────────────────────────────────────── */
+  // ─── APP LOCK ──────────────────────────────────────────────────────────
 
   const toggleAppLock = useCallback(async (enabled: boolean) => {
     await AsyncStorage.setItem(ASYNC_KEYS.APP_LOCK_ENABLED, enabled ? 'true' : 'false');
@@ -611,7 +612,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     console.log('🔓 Reset all security locks');
   }, []);
 
-  /* ─── Check Security on Resume ───────────────────────────────────────── */
+  // ─── CHECK SECURITY ON RESUME ─────────────────────────────────────────
 
   const checkSecurityOnResume = useCallback(async () => {
     if (securityCheckLockRef.current) {
@@ -680,7 +681,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, [state.settings.autoLockTimeout, lockApp]);
 
-  /* ─── Getters ─────────────────────────────────────────────────────────── */
+  // ─── GETTERS ───────────────────────────────────────────────────────────
 
   const getBiometricTypeName = useCallback(() => state.settings.biometricTypeName, [state.settings.biometricTypeName]);
 
@@ -706,7 +707,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } catch { return []; }
   }, []);
 
-  /* ─── Sharing State ──────────────────────────────────────────────────── */
+  // ─── SHARING STATE ────────────────────────────────────────────────────
 
   const setSharingActive = useCallback(async (active: boolean) => {
     sharingActiveRef.current = active;
@@ -719,7 +720,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const isSharingActive = useCallback(() => sharingActiveRef.current, []);
 
-  /* ─── Security Questions ─────────────────────────────────────────────── */
+  // ─── SECURITY QUESTIONS ───────────────────────────────────────────────
 
   const saveSecurityQuestions = useCallback(async (questions: { question: string; answer: string }[]): Promise<boolean> => {
     try {
@@ -792,7 +793,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     return state.settings.hasSecurityQuestions && state.securityQuestions.length > 0;
   }, [state.settings.hasSecurityQuestions, state.securityQuestions]);
 
-  /* ─── Clear Security State ───────────────────────────────────────────── */
+  // ─── CLEAR SECURITY STATE ─────────────────────────────────────────────
 
   const clearSecurityState = useCallback(async () => {
     await AsyncStorage.multiRemove([
@@ -833,7 +834,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     console.log('🔓 Security state cleared');
   }, [clearBiometricCredentials, clearPinOnly]);
 
-  /* ─── Memoized Value ─────────────────────────────────────────────────── */
+  // ─── MEMOIZED VALUE ───────────────────────────────────────────────────
 
   const value = React.useMemo(() => ({
     ...state,

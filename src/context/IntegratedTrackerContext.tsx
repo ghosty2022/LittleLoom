@@ -30,7 +30,7 @@ const usePredictiveRemindersSafe = () => {
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   INTEGRATED TRACKER CONTEXT
+   INTEGRATED TRACKER CONTEXT — Growth-aware, Achievement-driven
    ═══════════════════════════════════════════════════════════════ */
 
 interface IntegratedTrackerState {
@@ -46,7 +46,9 @@ interface IntegratedTrackerState {
     atRisk: boolean;
     hoursLeft: number;
   };
+  /** NEW: Correlation insights between trackers */
   correlations: TrackerCorrelation[];
+  /** NEW: Predictive reminder achievements */
   predictiveAchievements: any[];
 }
 
@@ -54,7 +56,7 @@ interface TrackerCorrelation {
   id: string;
   trackerA: string;
   trackerB: string;
-  correlationScore: number;
+  correlationScore: number; // -1 to 1
   insight: string;
   emoji: string;
   trend: 'positive' | 'negative' | 'neutral';
@@ -73,7 +75,9 @@ interface IntegratedTrackerContextType extends IntegratedTrackerState {
   getTrend: () => string;
   isDimensionConcerning: (dimension: string) => boolean;
   getTrackerContribution: (trackerId: string) => { score: number; impact: string };
+  /** NEW: Get cross-tracker correlations */
   getCorrelations: () => TrackerCorrelation[];
+  /** NEW: Get predictive achievements */
   getPredictiveAchievements: () => any[];
 }
 
@@ -84,13 +88,13 @@ const REMINDER_DISMISSED_KEY = '@littleloom_dismissed_reminders';
 const CORRELATIONS_KEY = '@littleloom_tracker_correlations';
 
 /* ═══════════════════════════════════════════════════════════════
-   CORRELATION ENGINE
+   CORRELATION ENGINE — Cross-tracker pattern detection
    ═══════════════════════════════════════════════════════════════ */
 
 const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
   const correlations: TrackerCorrelation[] = [];
-  
-  // Sleep ↔ Feed correlation
+  const trackerTypes = [...new Set(entries.map(e => e.trackerId))];
+
   const sleepEntries = entries.filter(e => e.trackerId === 'sleep' && !e.isDeleted);
   const feedEntries = entries.filter(e => e.trackerId === 'feed' && !e.isDeleted);
 
@@ -120,7 +124,6 @@ const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
     });
   }
 
-  // Growth ↔ Milestone correlation
   const growthEntries = entries.filter(e => e.trackerId === 'growth' && !e.isDeleted);
   const milestoneEntries = entries.filter(e => e.trackerId === 'milestone' && !e.isDeleted);
 
@@ -149,7 +152,6 @@ const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
     });
   }
 
-  // Potty ↔ Feed correlation
   const pottyEntries = entries.filter(e => e.trackerId === 'potty' && !e.isDeleted);
   if (pottyEntries.length >= 10 && feedEntries.length >= 10) {
     const successfulPotty = pottyEntries.filter(e => e.data?.successful === true);
@@ -175,7 +177,6 @@ const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
     });
   }
 
-  // Medication ↔ Symptom correlation
   const medEntries = entries.filter(e => e.trackerId === 'medication' && !e.isDeleted);
   const symptomEntries = entries.filter(e => e.trackerId === 'symptom' && !e.isDeleted);
 
@@ -412,6 +413,13 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
       ? growthIndex.generateReminders(entries, trackers, score)
       : [];
 
+    // Save to Supabase
+    try {
+      await setAppSetting('last_growth_update', JSON.stringify(Date.now()));
+    } catch (e) {
+      console.warn('Failed to save growth update timestamp:', e);
+    }
+
     setState(prev => ({
       ...prev,
       growthScore: score,
@@ -419,7 +427,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
       lastGrowthUpdate: Date.now(),
       isLoading: false,
     }));
-  }, [entries, growthData, currentBaby, currentBabyId, trackers, growthIndex]);
+  }, [entries, currentBaby, currentBabyId, trackers, growthIndex]);
 
   /* ── Check achievements ── */
   const checkAchievements = useCallback(() => {
@@ -437,19 +445,26 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     }));
   }, [state.unlockedAchievements, state.pendingAchievements]);
 
-  /* ── Apply reminder ── */
+  /* ── Apply reminder (creates actual reminder) ── */
   const applyReminder = useCallback(async (reminder: any) => {
     console.log('Applied reminder:', reminder);
-    // Sync to Supabase if needed
+    
+    // Sync to Supabase
     try {
-      await supabase
+      const { data, error } = await supabase
         .from('applied_reminders')
         .insert({
           reminder_id: reminder.id,
+          reminder_type: reminder.type || 'general',
           baby_id: currentBabyId,
           user_id: userProfile?.id,
           applied_at: new Date().toISOString(),
+          metadata: reminder,
         });
+
+      if (error) {
+        console.warn('Failed to sync applied reminder:', error);
+      }
     } catch (e) {
       console.warn('Failed to sync applied reminder:', e);
     }
@@ -463,17 +478,31 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
   /* ── Dismiss reminder ── */
   const dismissReminder = useCallback(async (id: string) => {
     try {
+      // Save dismissed reminder to Supabase
       const dismissed = await getAppSetting(REMINDER_DISMISSED_KEY);
       const list: string[] = dismissed ? JSON.parse(dismissed) : [];
       if (!list.includes(id)) list.push(id);
       await setAppSetting(REMINDER_DISMISSED_KEY, JSON.stringify(list));
-    } catch (e) {}
+      
+      // Also save to applied_reminders table for tracking
+      const { error } = await supabase
+        .from('applied_reminders')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('reminder_id', id)
+        .eq('baby_id', currentBabyId);
+
+      if (error) {
+        console.warn('Failed to update dismissed reminder:', error);
+      }
+    } catch (e) {
+      console.warn('Failed to save dismissed reminder:', e);
+    }
 
     setState(prev => ({
       ...prev,
       smartReminders: prev.smartReminders.filter(r => r.id !== id),
     }));
-  }, []);
+  }, [currentBabyId]);
 
   /* ── Getters ── */
   const getGrowthInsights = useCallback(() => {
@@ -509,15 +538,16 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     };
   }, [entries]);
 
+  /* ── NEW: Get correlations ── */
   const getCorrelations = useCallback(() => {
     return state.correlations;
   }, [state.correlations]);
 
+  /* ── NEW: Get predictive achievements ── */
   const getPredictiveAchievements = useCallback(() => {
     return state.predictiveAchievements;
   }, [state.predictiveAchievements]);
 
-  /* ── Value ── */
   const value = useMemo(() => ({
     ...state,
     refreshGrowthScore,
