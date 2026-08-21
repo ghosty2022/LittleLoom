@@ -63,16 +63,48 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const loadAttemptedRef = useRef(false);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ─── GET USER ID SAFELY ─────────────────────────────────────────────
+  const getUserId = useCallback(async (): Promise<string | null> => {
+    try {
+      // Try getUser first
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user?.id) {
+        return userData.user.id;
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    try {
+      // Try getSession next
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user?.id) {
+        return sessionData.session.user.id;
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // Fallback to userProfile
+    if (userProfile?.id) {
+      return userProfile.id;
+    }
+
+    return null;
+  }, [userProfile]);
+
   // ─── CHECK AND NAVIGATE ─────────────────────────────────────────────
   const checkAndNavigate = useCallback(async () => {
-    if (navigationAttemptedRef.current) return;
-    if (!isMountedRef.current) return;
+    if (navigationAttemptedRef.current) {
+      console.log('[BabyOnboarding] Navigation already attempted, skipping');
+      return false;
+    }
+    if (!isMountedRef.current) return false;
     
     try {
-      const localBabies = await getAllBabiesFromDb();
-      
-      if (localBabies && localBabies.length > 0) {
-        console.log('[BabyOnboarding] Found babies, checking setup');
+      // Check if we have babies in the context
+      if (babies && babies.length > 0) {
+        console.log('[BabyOnboarding] Found babies in context, checking setup');
         setHasBabies(true);
         
         const { setupComplete } = await wasSetupCompleted();
@@ -95,13 +127,22 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         
         return true;
       }
+
+      // Check local DB
+      const localBabies = await getAllBabiesFromDb();
+      if (localBabies && localBabies.length > 0) {
+        console.log('[BabyOnboarding] Found babies in local DB');
+        setHasBabies(true);
+        setRemoteBabies(localBabies);
+        return true;
+      }
       
       return false;
     } catch (error) {
       console.warn('[BabyOnboarding] Check navigate error:', error);
       return false;
     }
-  }, [navigation, wasSetupCompleted, completeSetup]);
+  }, [navigation, wasSetupCompleted, completeSetup, babies]);
 
   // ─── SYNC BABIES FROM SUPABASE ──────────────────────────────────────
   const syncBabiesFromSupabase = useCallback(async (userId: string): Promise<boolean> => {
@@ -111,33 +152,70 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     try {
       console.log('[BabyOnboarding] Syncing babies from Supabase for user:', userId);
       
-      // Try parent1 first
-      const { data: parent1Babies, error: error1 } = await supabase
-        .from('babies')
-        .select('*')
-        .eq('parent1_id', userId)
-        .eq('is_active', true);
-
-      if (error1) {
-        console.error('[BabyOnboarding] parent1 query error:', error1.message);
-        setSyncInProgress(false);
-        return false;
-      }
-
-      let allBabies = parent1Babies || [];
-
-      // If no babies as parent1, try parent2
-      if (allBabies.length === 0) {
-        const { data: parent2Babies, error: error2 } = await supabase
+      let allBabies: any[] = [];
+      let hadRlsError = false;
+      
+      // Try parent1 first - with better error handling
+      try {
+        const { data: parent1Babies, error: error1 } = await supabase
           .from('babies')
           .select('*')
-          .eq('parent2_id', userId)
+          .eq('parent1_id', userId)
           .eq('is_active', true);
-        
-        if (error2) {
-          console.error('[BabyOnboarding] parent2 query error:', error2.message);
-        } else if (parent2Babies) {
-          allBabies = parent2Babies;
+
+        if (error1) {
+          if (error1.message?.includes('infinite recursion')) {
+            console.error('[BabyOnboarding] RLS RECURSION ERROR - Fix your RLS policies!');
+            hadRlsError = true;
+          } else {
+            console.error('[BabyOnboarding] parent1 query error:', error1.message);
+          }
+        } else if (parent1Babies && parent1Babies.length > 0) {
+          allBabies = parent1Babies;
+        }
+      } catch (e) {
+        console.warn('[BabyOnboarding] parent1 query failed:', e);
+      }
+
+      // If no babies as parent1, try parent2
+      if (allBabies.length === 0 && !hadRlsError) {
+        try {
+          const { data: parent2Babies, error: error2 } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('parent2_id', userId)
+            .eq('is_active', true);
+          
+          if (error2) {
+            if (error2.message?.includes('infinite recursion')) {
+              console.error('[BabyOnboarding] RLS RECURSION ERROR - Fix your RLS policies!');
+              hadRlsError = true;
+            } else {
+              console.error('[BabyOnboarding] parent2 query error:', error2.message);
+            }
+          } else if (parent2Babies && parent2Babies.length > 0) {
+            allBabies = parent2Babies;
+          }
+        } catch (e) {
+          console.warn('[BabyOnboarding] parent2 query failed:', e);
+        }
+      }
+
+      // If RLS error, try a different approach - query without the is_active filter
+      if (hadRlsError && allBabies.length === 0) {
+        console.log('[BabyOnboarding] Trying without is_active filter due to RLS error');
+        try {
+          const { data: fallbackBabies, error: fallbackError } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('parent1_id', userId);
+          
+          if (!fallbackError && fallbackBabies && fallbackBabies.length > 0) {
+            // Filter is_active manually
+            allBabies = fallbackBabies.filter((b: any) => b.is_active !== false);
+          }
+        } catch (e) {
+          console.warn('[BabyOnboarding] Fallback query failed:', e);
         }
       }
 
@@ -175,6 +253,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       console.log(`[BabyOnboarding] Synced ${syncedCount} new babies`);
 
+      // Set current baby if not set
       const currentId = await getAppSetting('current_baby_id');
       if (!currentId && allBabies[0]) {
         await setCurrentBabyInDb(allBabies[0].id);
@@ -198,24 +277,8 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     hasCheckedRef.current = true;
 
     try {
-      let userId: string | null = null;
+      const userId = await getUserId();
       
-      try {
-        const { data } = await supabase.auth.getUser();
-        if (data?.user?.id) userId = data.user.id;
-      } catch (e) {}
-      
-      if (!userId) {
-        try {
-          const { data } = await supabase.auth.getSession();
-          if (data?.session?.user?.id) userId = data.session.user.id;
-        } catch (e) {}
-      }
-      
-      if (!userId && userProfile?.id) {
-        userId = userProfile.id;
-      }
-
       if (!userId) {
         console.log('[BabyOnboarding] No user found');
         setInitialCheckDone(true);
@@ -224,6 +287,17 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       console.log('[BabyOnboarding] Checking for babies with userId:', userId);
 
+      // First check if babies exist in context
+      if (babies && babies.length > 0) {
+        setHasBabies(true);
+        setRemoteBabies(babies);
+        console.log(`[BabyOnboarding] Found ${babies.length} babies in context`);
+        await checkAndNavigate();
+        setInitialCheckDone(true);
+        return;
+      }
+
+      // Check local DB
       const localBabies = await getAllBabiesFromDb();
       console.log(`[BabyOnboarding] Local babies count: ${localBabies.length}`);
 
@@ -236,10 +310,12 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         return;
       }
 
+      // If RLS recursion error, check if we can still fetch data
       console.log('[BabyOnboarding] No local babies, syncing from Supabase...');
       const synced = await syncBabiesFromSupabase(userId);
       
       if (synced) {
+        // Reload babies from context
         await loadBabies();
         const updatedLocalBabies = await getAllBabiesFromDb();
         if (updatedLocalBabies && updatedLocalBabies.length > 0) {
@@ -251,21 +327,48 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       } else {
         // Try to fetch remote babies for import option
         try {
-          const { data: remoteData1 } = await supabase
+          let remoteData: any[] = [];
+          let hadRlsError = false;
+          
+          const { data: remoteData1, error: error1 } = await supabase
             .from('babies')
             .select('*')
             .eq('parent1_id', userId)
             .eq('is_active', true);
           
-          let remoteData = remoteData1 || [];
+          if (error1?.message?.includes('infinite recursion')) {
+            hadRlsError = true;
+            // Try without is_active
+            const { data: fallbackData } = await supabase
+              .from('babies')
+              .select('*')
+              .eq('parent1_id', userId);
+            if (fallbackData) {
+              remoteData = fallbackData.filter((b: any) => b.is_active !== false);
+            }
+          } else if (remoteData1 && remoteData1.length > 0) {
+            remoteData = remoteData1;
+          }
           
-          if (remoteData.length === 0) {
-            const { data: remoteData2 } = await supabase
+          if (remoteData.length === 0 && !hadRlsError) {
+            const { data: remoteData2, error: error2 } = await supabase
               .from('babies')
               .select('*')
               .eq('parent2_id', userId)
               .eq('is_active', true);
-            remoteData = remoteData2 || [];
+            
+            if (error2?.message?.includes('infinite recursion')) {
+              // Try without is_active
+              const { data: fallbackData2 } = await supabase
+                .from('babies')
+                .select('*')
+                .eq('parent2_id', userId);
+              if (fallbackData2) {
+                remoteData = fallbackData2.filter((b: any) => b.is_active !== false);
+              }
+            } else if (remoteData2 && remoteData2.length > 0) {
+              remoteData = remoteData2;
+            }
           }
           
           if (remoteData && remoteData.length > 0) {
@@ -282,7 +385,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       console.error('[BabyOnboarding] Check error:', error);
       setInitialCheckDone(true);
     }
-  }, [userProfile, loadBabies, syncBabiesFromSupabase, checkAndNavigate]);
+  }, [getUserId, loadBabies, syncBabiesFromSupabase, checkAndNavigate, babies]);
 
   // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {
@@ -291,6 +394,8 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     navigationAttemptedRef.current = false;
     hasCheckedRef.current = false;
     setInitialCheckDone(false);
+    setShowImportOption(false);
+    setRemoteBabies([]);
     
     const loadData = async () => {
       if (loadAttemptedRef.current) return;
@@ -300,16 +405,29 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setLocalLoading(true);
         console.log('[BabyOnboarding] Starting load...');
         
+        // Load babies from context
         await loadBabies();
         console.log('[BabyOnboarding] loadBabies completed');
         
         if (!isMountedRef.current) return;
         
+        // Check if we have babies
+        if (babies && babies.length > 0) {
+          setHasBabies(true);
+          setRemoteBabies(babies);
+          setLocalLoading(false);
+          await checkAndNavigate();
+          setInitialCheckDone(true);
+          return;
+        }
+        
+        // Check local DB
         const localBabies = await getAllBabiesFromDb();
         console.log(`[BabyOnboarding] Local babies after load: ${localBabies.length}`);
         
         if (localBabies && localBabies.length > 0) {
           setHasBabies(true);
+          setRemoteBabies(localBabies);
           setLocalLoading(false);
           await checkAndNavigate();
           setInitialCheckDone(true);
@@ -333,6 +451,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       }
     };
     
+    // Small delay to allow context to initialize
     const timer = setTimeout(loadData, 300);
     
     return () => {
@@ -343,7 +462,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         loadTimeoutRef.current = null;
       }
     };
-  }, [loadBabies, checkAndSyncBabies, checkAndNavigate]);
+  }, [loadBabies, checkAndSyncBabies, checkAndNavigate, babies]);
 
   // ─── HANDLERS ──────────────────────────────────────────────────────
   const handleImportBaby = useCallback(async (baby: any) => {
@@ -402,6 +521,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         const { setupComplete } = await wasSetupCompleted();
         if (setupComplete) {
           navigation.replace('Main');
+        } else {
+          // If setup not complete, stay on this screen
+          navigation.replace('BabyOptional');
         }
       }
     } catch (error) {
@@ -452,13 +574,26 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     loadAttemptedRef.current = false;
     navigationAttemptedRef.current = false;
     setInitialCheckDone(false);
+    setShowImportOption(false);
+    setRemoteBabies([]);
     
     try {
       await loadBabies();
       if (isMountedRef.current) {
+        // Check if we have babies
+        if (babies && babies.length > 0) {
+          setHasBabies(true);
+          setRemoteBabies(babies);
+          setLocalLoading(false);
+          setInitialCheckDone(true);
+          await checkAndNavigate();
+          return;
+        }
+        
         const localBabies = await getAllBabiesFromDb();
         if (localBabies && localBabies.length > 0) {
           setHasBabies(true);
+          setRemoteBabies(localBabies);
           setLocalLoading(false);
           setInitialCheckDone(true);
           await checkAndNavigate();
@@ -476,18 +611,24 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setInitialCheckDone(true);
       }
     }
-  }, [loadBabies, checkAndSyncBabies, checkAndNavigate]);
+  }, [loadBabies, checkAndSyncBabies, checkAndNavigate, babies]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     hasCheckedRef.current = false;
     navigationAttemptedRef.current = false;
     setInitialCheckDone(false);
+    setShowImportOption(false);
+    setRemoteBabies([]);
+    
     try {
       await loadBabies();
-      await checkAndSyncBabies();
-      if (babies.length > 0 || hasBabies) {
+      if (babies && babies.length > 0) {
+        setHasBabies(true);
+        setRemoteBabies(babies);
         await checkAndNavigate();
+      } else {
+        await checkAndSyncBabies();
       }
       setInitialCheckDone(true);
     } catch (error) {
@@ -496,7 +637,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, babies.length, hasBabies, checkAndNavigate, checkAndSyncBabies]);
+  }, [loadBabies, babies, checkAndNavigate, checkAndSyncBabies]);
 
   const showLoading = localLoading || babyLoading || syncInProgress;
   const shouldShowLoading = !initialCheckDone && showLoading;

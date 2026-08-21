@@ -38,6 +38,7 @@ const USER_REGISTRY_KEY = 'littleloom_user_registry';
 let cachedUserId: string | null = null;
 let cachedUserIdTimestamp: number = 0;
 const USER_ID_CACHE_TTL = 30000; // 30 seconds
+let isRefreshingSession = false;
 
 // ─── Clear user ID cache (call on logout) ─────────────────────────────
 export function clearUserIdCache(): void {
@@ -56,7 +57,6 @@ export async function tableExists(tableName: string): Promise<boolean> {
       .select('count', { count: 'exact', head: true })
       .limit(1);
     
-    // If error contains "relation" or "does not exist", table doesn't exist
     if (error && (
       error.message?.includes('relation') || 
       error.message?.includes('does not exist') ||
@@ -70,7 +70,7 @@ export async function tableExists(tableName: string): Promise<boolean> {
   }
 }
 
-// ─── FIXED: Get current user ID with caching ──────────────────────────
+// ─── FIXED: Get current user ID with session refresh ──────────────────
 export async function getCurrentUserId(): Promise<string | null> {
   // Return cached value if fresh
   const now = Date.now();
@@ -78,13 +78,38 @@ export async function getCurrentUserId(): Promise<string | null> {
     return cachedUserId;
   }
 
+  // If we're already refreshing, wait a bit
+  if (isRefreshingSession) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    if (cachedUserId !== null) return cachedUserId;
+  }
+
   try {
+    // First try to get the user
     const { data: { user }, error } = await supabase.auth.getUser();
+    
     if (error || !user) {
-      // Only log on state change, not every time
-      if (cachedUserId !== null) {
-        console.log('[DB] User session ended');
+      // If error is session missing, try to refresh
+      if (error?.message?.includes('session') || error?.message?.includes('JWT')) {
+        console.log('[DB] Session expired, attempting refresh...');
+        isRefreshingSession = true;
+        
+        const { data: { session }, error: refreshError } = await supabase.auth.getSession();
+        
+        if (refreshError || !session?.user) {
+          console.log('[DB] Session refresh failed');
+          cachedUserId = null;
+          cachedUserIdTimestamp = now;
+          isRefreshingSession = false;
+          return null;
+        }
+        
+        cachedUserId = session.user.id;
+        cachedUserIdTimestamp = now;
+        isRefreshingSession = false;
+        return cachedUserId;
       }
+      
       cachedUserId = null;
       cachedUserIdTimestamp = now;
       return null;
@@ -100,22 +125,57 @@ export async function getCurrentUserId(): Promise<string | null> {
     console.error('[DB] getCurrentUserId error:', error);
     cachedUserId = null;
     cachedUserIdTimestamp = now;
+    isRefreshingSession = false;
     return null;
   }
 }
 
-// Get current session
+// Get current session with refresh attempt
 export async function getCurrentSession() {
   try {
+    // Try to get fresh session
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error) {
       console.warn('[DB] Session error:', error.message);
+      
+      // If error is about missing session, try to get user directly
+      if (error.message?.includes('session') || error.message?.includes('JWT')) {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user) {
+          console.log('[DB] Got user directly, session may be stale but user exists');
+          // Return a minimal session-like object
+          return { user, access_token: 'refreshed' };
+        }
+      }
       return null;
     }
     return session;
   } catch (error) {
     console.error('[DB] getCurrentSession error:', error);
     return null;
+  }
+}
+
+// ─── FORCE REFRESH SESSION ──────────────────────────────────────────────
+export async function forceRefreshSession(): Promise<boolean> {
+  try {
+    isRefreshingSession = true;
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error || !session) {
+      console.warn('[DB] Force refresh failed:', error?.message);
+      cachedUserId = null;
+      cachedUserIdTimestamp = 0;
+      isRefreshingSession = false;
+      return false;
+    }
+    cachedUserId = session.user.id;
+    cachedUserIdTimestamp = Date.now();
+    isRefreshingSession = false;
+    return true;
+  } catch (error) {
+    console.error('[DB] Force refresh error:', error);
+    isRefreshingSession = false;
+    return false;
   }
 }
 
@@ -189,7 +249,6 @@ export async function findUserByEmail(email: string): Promise<UserRegistryEntry 
   try {
     const searchEmail = email.trim().toLowerCase();
     
-    // Check local registry first
     const registry = await getUserRegistry();
     for (const entry of Object.values(registry)) {
       if (entry.email.toLowerCase() === searchEmail) {
@@ -210,7 +269,6 @@ export async function findUserByEmail(email: string): Promise<UserRegistryEntry 
     }
 
     if (profile) {
-      // Create registry entry
       const newEntry: UserRegistryEntry = {
         userId: profile.id,
         email: profile.email,
@@ -252,7 +310,6 @@ export async function findUserByUsername(username: string): Promise<UserRegistry
       }
     }
     
-    // Try to find from Supabase profiles
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
@@ -313,7 +370,6 @@ export async function findUserByPhone(phone: string): Promise<UserRegistryEntry 
       }
     }
     
-    // Try to find from Supabase profiles
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
@@ -386,20 +442,17 @@ export async function findUserByEmailOrUsernameOrPhone(identifier: string): Prom
    APP SETTINGS - With table existence check
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// Cache for table existence to reduce repeated checks
 let appSettingsTableExists: boolean | null = null;
 
 export async function getAppSetting(key: string): Promise<string | null> {
   try {
     const userId = await getCurrentUserId();
     
-    // Check if table exists (cached)
     if (appSettingsTableExists === null) {
       appSettingsTableExists = await tableExists('app_settings');
     }
     
     if (!appSettingsTableExists) {
-      // Table doesn't exist, use AsyncStorage fallback
       try {
         const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
         return await AsyncStorage.getItem(storageKey);
@@ -444,18 +497,15 @@ export async function getAppSetting(key: string): Promise<string | null> {
   }
 }
 
-// ─── FIXED: setAppSetting with proper upsert handling ────────────────
 export async function setAppSetting(key: string, value: string): Promise<void> {
   try {
     const userId = await getCurrentUserId();
     
-    // Check if table exists (cached)
     if (appSettingsTableExists === null) {
       appSettingsTableExists = await tableExists('app_settings');
     }
     
     if (!appSettingsTableExists) {
-      // Table doesn't exist, use AsyncStorage fallback
       const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
       await AsyncStorage.setItem(storageKey, value);
       return;
@@ -463,14 +513,10 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 
     const now = new Date().toISOString();
     
-    // FIX: Use a more compatible upsert approach
-    // First try to update
+    // Try update first
     let query = supabase
       .from('app_settings')
-      .update({
-        value,
-        updated_at: now,
-      })
+      .update({ value, updated_at: now })
       .eq('key', key);
 
     if (userId) {
@@ -481,13 +527,8 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 
     const { error: updateError, count } = await query;
 
-    // If no rows were updated, insert
     if (updateError || count === 0) {
-      const insertData: any = {
-        key,
-        value,
-        updated_at: now,
-      };
+      const insertData: any = { key, value, updated_at: now };
       
       if (userId) {
         insertData.user_id = userId;
@@ -501,7 +542,6 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 
       if (insertError) {
         console.warn(`[DB] setAppSetting insert error for ${key}:`, insertError.message);
-        // Fallback to AsyncStorage
         const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
         await AsyncStorage.setItem(storageKey, value);
       }
@@ -518,12 +558,10 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
   }
 }
 
-// ─── FIXED: deleteAppSetting with proper handling ────────────────────
 export async function deleteAppSetting(key: string): Promise<void> {
   try {
     const userId = await getCurrentUserId();
     
-    // Check if table exists (cached)
     if (appSettingsTableExists === null) {
       appSettingsTableExists = await tableExists('app_settings');
     }
@@ -568,7 +606,6 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
   try {
     const userId = await getCurrentUserId();
     
-    // Check if table exists (cached)
     if (appSettingsTableExists === null) {
       appSettingsTableExists = await tableExists('app_settings');
     }
@@ -624,14 +661,13 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   BABIES
+   BABIES - WITH IMPROVED ERROR HANDLING
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export async function getAllBabiesFromDb(forceSync: boolean = false) {
   try {
     const userId = await getCurrentUserId();
     if (!userId) {
-      // Silent return - this is expected when not logged in
       return [];
     }
 
@@ -643,6 +679,11 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
       .eq('is_active', true);
 
     if (error1) {
+      // If it's an RLS error, try to handle it gracefully
+      if (error1.message?.includes('infinite recursion') || error1.message?.includes('policy')) {
+        console.error('[DB] RLS policy error - please check your RLS policies:', error1.message);
+        return [];
+      }
       console.error('[DB] parent1 query error:', error1.message);
     }
 
@@ -653,6 +694,10 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
       .eq('is_active', true);
 
     if (error2) {
+      if (error2.message?.includes('infinite recursion') || error2.message?.includes('policy')) {
+        console.error('[DB] RLS policy error - please check your RLS policies:', error2.message);
+        return [];
+      }
       console.error('[DB] parent2 query error:', error2.message);
     }
 
@@ -880,7 +925,6 @@ export async function deleteBabyFromDb(id: string) {
   try {
     const userId = await getCurrentUserId();
     
-    // Soft delete - set inactive
     const { data: result, error } = await supabase
       .from('babies')
       .update({
@@ -896,7 +940,6 @@ export async function deleteBabyFromDb(id: string) {
       throw error;
     }
 
-    // Invalidate cache
     if (userId) {
       await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
     }
@@ -910,11 +953,9 @@ export async function deleteBabyFromDb(id: string) {
 
 export async function hardDeleteBaby(babyId: string): Promise<boolean> {
   try {
-    // Delete all related data
     await supabase.from('tracker_entries').delete().eq('baby_id', babyId);
     await supabase.from('family_members').delete().eq('baby_id', babyId);
     
-    // Delete the baby
     const { error } = await supabase.from('babies').delete().eq('id', babyId);
     
     if (error) {
@@ -922,7 +963,6 @@ export async function hardDeleteBaby(babyId: string): Promise<boolean> {
       return false;
     }
     
-    // Invalidate cache
     const userId = await getCurrentUserId();
     if (userId) {
       await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
@@ -955,7 +995,6 @@ export async function getCurrentBabyData(babyId: string) {
     const baby = await getBabyByIdFromDb(babyId);
     if (baby) return baby;
 
-    // Try to fetch from Supabase directly
     const { data, error } = await supabase
       .from('babies')
       .select('*')
@@ -998,7 +1037,6 @@ export async function getEntriesByBabyFromDb(babyId: string, trackerId?: string)
       return [];
     }
 
-    // Cache entries in AsyncStorage for offline access
     if (data && data.length > 0) {
       try {
         const cacheKey = `@littleloom_entries_${babyId}`;
@@ -1012,7 +1050,6 @@ export async function getEntriesByBabyFromDb(babyId: string, trackerId?: string)
   } catch (error) {
     console.error('[DB] getEntriesByBabyFromDb error:', error);
     
-    // Try to return cached entries
     try {
       const cacheKey = `@littleloom_entries_${babyId}`;
       const cached = await AsyncStorage.getItem(cacheKey);
@@ -1113,7 +1150,6 @@ export async function createEntryInDb(data: {
       throw error;
     }
 
-    // Invalidate cache
     await AsyncStorage.removeItem(`@littleloom_entries_${data.babyId}`);
 
     return result;
@@ -1183,7 +1219,6 @@ export async function updateEntryInDb(id: string, updates: Partial<{
       throw error;
     }
 
-    // Invalidate cache if babyId is provided
     if (babyId) {
       await AsyncStorage.removeItem(`@littleloom_entries_${babyId}`);
     }
@@ -1212,7 +1247,6 @@ export async function softDeleteEntryInDb(id: string) {
       throw error;
     }
 
-    // Invalidate cache for the baby
     if (result?.baby_id) {
       await AsyncStorage.removeItem(`@littleloom_entries_${result.baby_id}`);
     }
@@ -1465,7 +1499,6 @@ export async function deleteFamilyMembersByBabyFromDb(babyId: string) {
 
 export async function hardDeleteAllUserData(userId: string): Promise<boolean> {
   try {
-    // Get all babies for this user
     const { data: userBabies, error: babiesError } = await supabase
       .from('babies')
       .select('id')
@@ -1481,18 +1514,12 @@ export async function hardDeleteAllUserData(userId: string): Promise<boolean> {
         await supabase.from('family_members').delete().eq('baby_id', baby.id);
         await supabase.from('babies').delete().eq('id', baby.id);
         
-        // Invalidate cache
         await AsyncStorage.removeItem(`@littleloom_entries_${baby.id}`);
       }
     }
 
-    // Delete any remaining family members where user is a member
     await supabase.from('family_members').delete().eq('user_id', userId);
-
-    // Delete app settings
     await supabase.from('app_settings').delete().eq('user_id', userId);
-
-    // Invalidate cache
     await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
 
     console.log(`[DB] Hard deleted all data for user: ${userId}`);
