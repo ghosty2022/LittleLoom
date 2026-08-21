@@ -1,14 +1,8 @@
 // src/database/dbHelpers.ts
-// Database CRUD operations with Supabase sync
+// Full Supabase implementation - No local DB
 
-import { db } from './db';
-import { babies, trackerEntries, appSettings, familyMembers } from './schema';
-import { eq, and, desc, count, isNull, like, or } from 'drizzle-orm';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
-
-const MIGRATION_KEY = '@littleloom_db_migration_v1';
-const BACKUP_KEY = '@littleloom_last_backup_time';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    USER REGISTRY TYPES
@@ -94,71 +88,56 @@ export async function updateUserInRegistry(
   }
 }
 
-// ─── VERIFY USER EXISTS IN SUPABASE ─────────────────────────────────────
+/* ─── FIND USERS ───────────────────────────────────────────────────── */
 
-export async function verifyUserInSupabase(email: string): Promise<{ exists: boolean; userId?: string }> {
+export async function findUserByEmail(email: string): Promise<UserRegistryEntry | null> {
   try {
-    // First check if the user exists by trying to get the user from auth
-    // Using the standard method - we'll check via the users table
-    const { data: users, error } = await supabase
-      .from('profiles')
-      .select('id, email')
-      .eq('email', email.trim())
-      .maybeSingle();
-
-    if (error) {
-      console.warn('[DB] Profile query error:', error.message);
-      return { exists: false };
+    // First check Supabase
+    const { data: { user }, error } = await supabase.auth.admin.getUserByEmail(email.trim());
+    
+    if (error || !user) {
+      // Clean up local registry
+      const registry = await getUserRegistry();
+      for (const [userId, entry] of Object.entries(registry)) {
+        if (entry.email.toLowerCase() === email.trim().toLowerCase()) {
+          delete registry[userId];
+          await saveUserRegistry(registry);
+          break;
+        }
+      }
+      return null;
     }
 
-    if (users) {
-      return { exists: true, userId: users.id };
-    }
-
-    // Try to check via auth - this won't work with client-side only
-    // So we'll check if there's a session or use the profiles table as source of truth
-    return { exists: false };
-  } catch (error) {
-    console.error('[DB] Verify user error:', error);
-    return { exists: false };
-  }
-}
-
-// ─── UPDATE findUserByEmail TO VERIFY AGAINST SUPABASE ────────────────
-
-export async function findUserByEmail(
-  email: string
-): Promise<UserRegistryEntry | null> {
-  try {
-    // First check local registry for speed
+    // Check local registry
     const registry = await getUserRegistry();
     const searchEmail = email.trim().toLowerCase();
     
     for (const entry of Object.values(registry)) {
       if (entry.email.toLowerCase() === searchEmail) {
-        // Verify this user actually exists in Supabase
-        const supabaseCheck = await verifyUserInSupabase(entry.email);
-        if (supabaseCheck.exists) {
-          return entry;
-        } else {
-          // User doesn't exist in Supabase - clean up local registry
-          delete registry[entry.userId];
-          await saveUserRegistry(registry);
-          return null;
-        }
+        return entry;
       }
     }
-    
-    return null;
+
+    // Create registry entry if user exists in Supabase
+    const userMeta = user.user_metadata || {};
+    const newEntry: UserRegistryEntry = {
+      userId: user.id,
+      email: user.email || email,
+      fullName: userMeta.full_name || userMeta.fullName || email.split('@')[0],
+      avatar: userMeta.avatar || '👤',
+      role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
+      createdAt: user.created_at || new Date().toISOString(),
+      hasPassword: true,
+    };
+    await registerUser(newEntry);
+    return newEntry;
   } catch (error) {
     console.error('Error finding user by email:', error);
     return null;
   }
 }
 
-export async function findUserByUsername(
-  username: string
-): Promise<UserRegistryEntry | null> {
+export async function findUserByUsername(username: string): Promise<UserRegistryEntry | null> {
   try {
     const registry = await getUserRegistry();
     const searchUsername = username.trim().toLowerCase().replace(/^@/, '');
@@ -168,16 +147,7 @@ export async function findUserByUsername(
       const entryUsername = (entry.communityUsername || '').toLowerCase();
       
       if (entryHandle === searchUsername || entryUsername === searchUsername) {
-        // Verify user exists
-        const supabaseCheck = await verifyUserInSupabase(entry.email);
-        if (supabaseCheck.exists) {
-          return entry;
-        } else {
-          // Clean up invalid entry
-          delete registry[entry.userId];
-          await saveUserRegistry(registry);
-          return null;
-        }
+        return entry;
       }
     }
     return null;
@@ -187,9 +157,7 @@ export async function findUserByUsername(
   }
 }
 
-export async function findUserByPhone(
-  phone: string
-): Promise<UserRegistryEntry | null> {
+export async function findUserByPhone(phone: string): Promise<UserRegistryEntry | null> {
   try {
     const registry = await getUserRegistry();
     const searchPhone = phone.trim().replace(/[^0-9+]/g, '');
@@ -206,14 +174,7 @@ export async function findUserByPhone(
       if (!entry.phoneNumber) continue;
       const entryPhone = entry.phoneNumber.trim().replace(/[^0-9+]/g, '');
       if (formats.some(f => f === entryPhone)) {
-        const supabaseCheck = await verifyUserInSupabase(entry.email);
-        if (supabaseCheck.exists) {
-          return entry;
-        } else {
-          delete registry[entry.userId];
-          await saveUserRegistry(registry);
-          return null;
-        }
+        return entry;
       }
     }
     return null;
@@ -223,9 +184,7 @@ export async function findUserByPhone(
   }
 }
 
-export async function findUserByEmailOrUsername(
-  identifier: string
-): Promise<UserRegistryEntry | null> {
+export async function findUserByEmailOrUsername(identifier: string): Promise<UserRegistryEntry | null> {
   try {
     const byEmail = await findUserByEmail(identifier);
     if (byEmail) return byEmail;
@@ -238,9 +197,7 @@ export async function findUserByEmailOrUsername(
   }
 }
 
-export async function findUserByEmailOrUsernameOrPhone(
-  identifier: string
-): Promise<UserRegistryEntry | null> {
+export async function findUserByEmailOrUsernameOrPhone(identifier: string): Promise<UserRegistryEntry | null> {
   try {
     const byEmail = await findUserByEmail(identifier);
     if (byEmail) return byEmail;
@@ -256,234 +213,104 @@ export async function findUserByEmailOrUsernameOrPhone(
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   BACKUP HELPERS
+   APP SETTINGS
    ═══════════════════════════════════════════════════════════════════════════ */
-
-export async function getLastBackupTime(): Promise<number | null> {
-  try {
-    const last = await AsyncStorage.getItem(BACKUP_KEY);
-    return last ? parseInt(last, 10) : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function setLastBackupTime(time: number): Promise<void> {
-  try {
-    await AsyncStorage.setItem(BACKUP_KEY, String(time));
-  } catch {
-    // Ignore
-  }
-}
-
-export async function getAllUserDataForBackup(userId: string): Promise<{
-  babies: any[];
-  entries: Record<string, any[]>;
-  familyMembers: Record<string, any[]>;
-  appSettings: Record<string, string>;
-}> {
-  try {
-    const allBabies = await getAllBabiesFromDb();
-    
-    const entries: Record<string, any[]> = {};
-    const familyMembers: Record<string, any[]> = {};
-    const appSettings: Record<string, string> = {};
-    
-    for (const baby of allBabies) {
-      const babyEntries = await getEntriesByBabyFromDb(baby.id);
-      entries[baby.id] = babyEntries;
-      
-      const babyFamily = await getFamilyMembersByBabyFromDb(baby.id);
-      familyMembers[baby.id] = babyFamily;
-    }
-    
-    const settingsKeys = [
-      'current_baby_id',
-      'has_skipped_baby',
-      'community_username',
-      'community_handle',
-      'community_bio',
-      'community_avatar',
-      'community_display_name',
-      'community_stats',
-      'community_selected_topics',
-    ];
-    
-    for (const key of settingsKeys) {
-      const val = await getAppSetting(key);
-      if (val) appSettings[key] = val;
-    }
-    
-    return { babies: allBabies, entries, familyMembers, appSettings };
-  } catch (error) {
-    console.error('Error getting user data for backup:', error);
-    throw error;
-  }
-}
-
-export async function restoreFromBackupData(
-  backupData: any,
-  userId: string
-): Promise<{ restoredBabies: number; restoredEntries: number; restoredFamily: number }> {
-  let restoredBabies = 0;
-  let restoredEntries = 0;
-  let restoredFamily = 0;
-  
-  try {
-    for (const baby of backupData.babies || []) {
-      const exists = await getBabyByIdFromDb(baby.id);
-      if (!exists) {
-        await createBabyInDb({
-          id: baby.id,
-          name: baby.name,
-          avatar: baby.avatar || baby.avatar,
-          dateOfBirth: baby.dateOfBirth || baby.date_of_birth,
-          gender: baby.gender || baby.gender,
-          bloodType: baby.bloodType || baby.blood_type,
-          medicalNotes: baby.medicalNotes || baby.medical_notes,
-          parent1Id: baby.parent1Id || baby.parent1_id || userId,
-          parent2Id: baby.parent2Id || baby.parent2_id,
-        });
-        restoredBabies++;
-      } else {
-        await updateBabyInDb(baby.id, {
-          name: baby.name,
-          avatar: baby.avatar || baby.avatar,
-          dateOfBirth: baby.dateOfBirth || baby.date_of_birth,
-          gender: baby.gender || baby.gender,
-          bloodType: baby.bloodType || baby.blood_type,
-          medicalNotes: baby.medicalNotes || baby.medical_notes,
-          parent2Id: baby.parent2Id || baby.parent2_id,
-        });
-        restoredBabies++;
-      }
-    }
-    
-    for (const [babyId, entries] of Object.entries(backupData.entries || {})) {
-      for (const entry of entries as any[]) {
-        const exists = await getEntryByIdFromDb(entry.id);
-        if (!exists) {
-          await createEntryInDb({
-            id: entry.id,
-            trackerId: entry.trackerId || entry.type || 'unknown',
-            babyId: entry.babyId || babyId,
-            timestamp: entry.timestamp || Date.now(),
-            title: entry.title || 'Untitled',
-            data: entry.data || {},
-            notes: entry.notes || entry.details,
-            photoUris: entry.photoUris || entry.photo_uris || (entry.photo ? [entry.photo] : undefined),
-            tags: entry.tags,
-            loggedBy: entry.loggedBy || userId,
-            loggedByName: entry.loggedByName || 'Restored User',
-            loggedByRole: entry.loggedByRole || 'parent1',
-          });
-          restoredEntries++;
-        }
-      }
-    }
-    
-    for (const [babyId, members] of Object.entries(backupData.familyMembers || {})) {
-      for (const member of members as any[]) {
-        const exists = await getFamilyMemberByIdFromDb(member.id);
-        if (!exists) {
-          await createFamilyMemberInDb({
-            id: member.id,
-            babyId: member.babyId || babyId,
-            email: member.email,
-            fullName: member.fullName,
-            role: member.role,
-            relationship: member.relationship || 'Family',
-            permissions: member.permissions || {},
-            addedBy: member.addedBy || userId,
-            userId: member.userId || null,
-            avatar: member.avatar,
-            phoneNumber: member.phoneNumber,
-            canBeRemoved: member.canBeRemoved ?? true,
-            notificationsEnabled: member.notificationsEnabled ?? true,
-            status: member.status || 'active',
-          });
-          restoredFamily++;
-        }
-      }
-    }
-    
-    for (const [key, value] of Object.entries(backupData.appSettings || {})) {
-      await setAppSetting(key, String(value));
-    }
-    
-    return { restoredBabies, restoredEntries, restoredFamily };
-  } catch (error) {
-    console.error('Error restoring from backup:', error);
-    throw error;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   UTILITY HELPERS
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-export async function isMigrationComplete(): Promise<boolean> {
-  const flag = await AsyncStorage.getItem(MIGRATION_KEY);
-  return flag === 'complete';
-}
-
-export async function markMigrationComplete(): Promise<void> {
-  await AsyncStorage.setItem(MIGRATION_KEY, 'complete');
-}
-
-/* ─── APP SETTINGS ───────────────────────────────────────────────────── */
 
 export async function getAppSetting(key: string): Promise<string | null> {
   try {
-    const result = db.select().from(appSettings).where(eq(appSettings.key, key)).all();
-    return result[0]?.value ?? null;
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(`[DB] getAppSetting error for ${key}:`, error.message);
       return null;
     }
-    throw error;
+
+    return data?.value || null;
+  } catch (error) {
+    console.error(`[DB] getAppSetting error for ${key}:`, error);
+    return null;
   }
 }
 
 export async function setAppSetting(key: string, value: string): Promise<void> {
   try {
     const now = new Date().toISOString();
-    await db.insert(appSettings)
-      .values({ key, value, updatedAt: now })
-      .onConflictDoUpdate({
-        target: appSettings.key,
-        set: { value, updatedAt: now },
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({
+        key,
+        value,
+        updated_at: now,
+      }, {
+        onConflict: 'key',
       });
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return;
+
+    if (error) {
+      console.warn(`[DB] setAppSetting error for ${key}:`, error.message);
     }
-    throw error;
+  } catch (error) {
+    console.error(`[DB] setAppSetting error for ${key}:`, error);
   }
 }
 
 export async function deleteAppSetting(key: string): Promise<void> {
   try {
-    await db.delete(appSettings).where(eq(appSettings.key, key));
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return;
+    const { error } = await supabase
+      .from('app_settings')
+      .delete()
+      .eq('key', key);
+
+    if (error) {
+      console.warn(`[DB] deleteAppSetting error for ${key}:`, error.message);
     }
-    throw error;
+  } catch (error) {
+    console.error(`[DB] deleteAppSetting error for ${key}:`, error);
   }
 }
 
-/* ─── BABIES ────────────────────────────────────────────────────────── */
-
-// ─── DIRECT SUPABASE FETCH WITH PROPER UUID HANDLING ────────────────
-async function fetchBabiesFromSupabase(userId: string): Promise<any[]> {
+export async function getMultipleAppSettings(keys: string[]): Promise<Record<string, string | null>> {
   try {
-    console.log(`[DB] Fetching babies for user: ${userId}`);
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('key, value')
+      .in('key', keys);
+
+    if (error) {
+      console.warn('[DB] getMultipleAppSettings error:', error.message);
+      return {};
+    }
+
+    const result: Record<string, string | null> = {};
+    keys.forEach(key => { result[key] = null; });
+    data?.forEach(item => { result[item.key] = item.value; });
+    return result;
+  } catch (error) {
+    console.error('[DB] getMultipleAppSettings error:', error);
+    return {};
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BABIES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function getAllBabiesFromDb(forceSync: boolean = false) {
+  try {
+    // Check authentication
+    const { data: authData, error: authError } = await supabase.auth.getUser();
     
-    // Use separate queries for parent1_id and parent2_id
+    if (authError || !authData?.user) {
+      console.log('[DB] No authenticated user found, returning empty list');
+      return [];
+    }
+    
+    const userId = authData.user.id;
+
+    // Fetch from Supabase
     const { data: parent1Babies, error: error1 } = await supabase
       .from('babies')
       .select('*')
@@ -504,7 +331,7 @@ async function fetchBabiesFromSupabase(userId: string): Promise<any[]> {
       console.error('[DB] parent2 query error:', error2.message);
     }
 
-    // Combine results and deduplicate
+    // Combine and deduplicate
     const allBabies: any[] = [];
     const seenIds = new Set<string>();
 
@@ -519,131 +346,8 @@ async function fetchBabiesFromSupabase(userId: string): Promise<any[]> {
     if (parent2Babies) parent2Babies.forEach(addBaby);
 
     console.log(`[DB] Found ${allBabies.length} babies in Supabase`);
-    if (allBabies.length > 0) {
-      console.log('[DB] Babies:', allBabies.map(b => ({ id: b.id, name: b.name, parent1: b.parent1_id, parent2: b.parent2_id })));
-    }
     return allBabies;
   } catch (error) {
-    console.error('[DB] Supabase fetch error:', error);
-    return [];
-  }
-}
-
-// ─── SYNC BABIES TO LOCAL DB ──────────────────────────────────────────
-async function syncBabiesToLocalDb(remoteBabies: any[]): Promise<number> {
-  if (!remoteBabies || remoteBabies.length === 0) return 0;
-
-  const now = new Date().toISOString();
-  let syncedCount = 0;
-
-  for (const baby of remoteBabies) {
-    try {
-      const exists = db.select().from(babies).where(eq(babies.id, baby.id)).all();
-      
-      if (exists.length === 0) {
-        console.log(`[DB] Creating local baby: "${baby.name}" (${baby.id})`);
-        db.insert(babies).values({
-          id: baby.id,
-          name: baby.name,
-          avatar: baby.avatar ?? undefined,
-          dateOfBirth: baby.date_of_birth,
-          gender: baby.gender ?? undefined,
-          bloodType: baby.blood_type ?? undefined,
-          medicalNotes: baby.medical_notes ?? undefined,
-          parent1Id: baby.parent1_id ?? undefined,
-          parent2Id: baby.parent2_id ?? undefined,
-          createdAt: baby.created_at ?? now,
-          updatedAt: now,
-          isActive: baby.is_active ?? true,
-          syncStatus: 'synced',
-        }).run();
-        syncedCount++;
-      } else {
-        console.log(`[DB] Updating existing baby: "${baby.name}"`);
-        db.update(babies)
-          .set({
-            name: baby.name,
-            avatar: baby.avatar ?? undefined,
-            dateOfBirth: baby.date_of_birth,
-            gender: baby.gender ?? undefined,
-            bloodType: baby.blood_type ?? undefined,
-            medicalNotes: baby.medical_notes ?? undefined,
-            parent1Id: baby.parent1_id ?? undefined,
-            parent2Id: baby.parent2_id ?? undefined,
-            updatedAt: now,
-            isActive: baby.is_active ?? true,
-            syncStatus: 'synced',
-          })
-          .where(eq(babies.id, baby.id))
-          .run();
-      }
-    } catch (babyError) {
-      console.error(`[DB] Error syncing baby "${baby.name}":`, babyError);
-    }
-  }
-
-  // Set current baby if not set
-  const currentId = await getAppSetting('current_baby_id');
-  if (!currentId && remoteBabies[0]) {
-    await setAppSetting('current_baby_id', remoteBabies[0].id);
-    console.log(`[DB] Set current baby to: "${remoteBabies[0].name}"`);
-  }
-
-  return syncedCount;
-}
-
-// ─── FIXED: getAllBabiesFromDb with proper auth check ──────────────────
-export async function getAllBabiesFromDb(forceSync: boolean = false) {
-  try {
-    // ─── CRITICAL FIX: Check authentication first ────────────────────
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !authData?.user) {
-      console.log('[DB] No authenticated user found, returning empty list');
-      return [];
-    }
-    
-    const userId = authData.user.id;
-    console.log(`[DB] Authenticated user ID: ${userId}`);
-    
-    // First, get local data immediately
-    let localBabies = db.select().from(babies).where(eq(babies.isActive, true)).all();
-    
-    // If we have local data, return it immediately
-    if (localBabies.length > 0) {
-      if (forceSync) {
-        console.log('[DB] Triggering background sync...');
-        setTimeout(async () => {
-          try {
-            const remoteBabies = await fetchBabiesFromSupabase(userId);
-            if (remoteBabies.length > 0) {
-              await syncBabiesToLocalDb(remoteBabies);
-            }
-          } catch (e) {
-            console.warn('[DB] Background sync failed:', e);
-          }
-        }, 100);
-      }
-      return localBabies;
-    }
-    
-    // No local data, try to sync from Supabase
-    console.log('[DB] No local babies, trying to sync from Supabase...');
-    
-    const remoteBabies = await fetchBabiesFromSupabase(userId);
-    
-    if (remoteBabies.length > 0) {
-      await syncBabiesToLocalDb(remoteBabies);
-      return db.select().from(babies).where(eq(babies.isActive, true)).all();
-    }
-    
-    console.log('[DB] No babies found in Supabase');
-    return [];
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
-    }
     console.error('[DB] getAllBabiesFromDb error:', error);
     return [];
   }
@@ -651,52 +355,19 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
 
 export async function getBabyByIdFromDb(id: string, forceSync: boolean = false) {
   try {
-    const result = db.select().from(babies).where(eq(babies.id, id)).all();
-    if (result[0]) return result[0];
+    const { data, error } = await supabase
+      .from('babies')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
 
-    if (forceSync) {
-      try {
-        const { data, error } = await supabase
-          .from('babies')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-
-        if (!error && data) {
-          const now = new Date().toISOString();
-          db.insert(babies).values({
-            id: data.id,
-            name: data.name,
-            avatar: data.avatar ?? undefined,
-            dateOfBirth: data.date_of_birth,
-            gender: data.gender ?? undefined,
-            bloodType: data.blood_type ?? undefined,
-            medicalNotes: data.medical_notes ?? undefined,
-            parent1Id: data.parent1_id ?? undefined,
-            parent2Id: data.parent2_id ?? undefined,
-            createdAt: data.created_at ?? now,
-            updatedAt: now,
-            isActive: data.is_active ?? true,
-            syncStatus: 'synced',
-          }).run();
-
-          const pulled = db.select().from(babies).where(eq(babies.id, id)).all();
-          if (pulled[0]) {
-            console.log(`[DB] Synced baby '${data.name}' from Supabase`);
-            return pulled[0];
-          }
-        }
-      } catch (pullError) {
-        console.warn(`[DB] Supabase pull error for baby('${id}'):`, pullError);
-      }
-    }
-
-    return null;
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+    if (error) {
+      console.warn(`[DB] getBabyByIdFromDb error for ${id}:`, error.message);
       return null;
     }
+
+    return data || null;
+  } catch (error) {
     console.error(`[DB] getBabyByIdFromDb error for ${id}:`, error);
     return null;
   }
@@ -704,14 +375,29 @@ export async function getBabyByIdFromDb(id: string, forceSync: boolean = false) 
 
 export async function getBabyCountFromDb(): Promise<number> {
   try {
-    const result = db.select({ count: count() }).from(babies).where(eq(babies.isActive, true)).all();
-    return result[0]?.count ?? 0;
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !authData?.user) {
       return 0;
     }
-    throw error;
+
+    const userId = authData.user.id;
+
+    const { count, error } = await supabase
+      .from('babies')
+      .select('*', { count: 'exact', head: true })
+      .or(`parent1_id.eq.${userId},parent2_id.eq.${userId}`)
+      .eq('is_active', true);
+
+    if (error) {
+      console.warn('[DB] getBabyCountFromDb error:', error.message);
+      return 0;
+    }
+
+    return count || 0;
+  } catch (error) {
+    console.error('[DB] getBabyCountFromDb error:', error);
+    return 0;
   }
 }
 
@@ -728,51 +414,53 @@ export async function createBabyInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
-    const inserted = db.insert(babies).values({
-      ...data,
-      createdAt: now,
-      updatedAt: now,
-      syncStatus: 'pending',
-    }).returning().all();
+    
+    const { data: result, error } = await supabase
+      .from('babies')
+      .insert({
+        id: data.id,
+        name: data.name,
+        avatar: data.avatar || null,
+        date_of_birth: data.dateOfBirth,
+        gender: data.gender || null,
+        blood_type: data.bloodType || null,
+        medical_notes: data.medicalNotes || null,
+        parent1_id: data.parent1Id || null,
+        parent2_id: data.parent2Id || null,
+        created_at: now,
+        updated_at: now,
+        is_active: true,
+      })
+      .select()
+      .single();
 
-    supabase.from('babies').upsert({
-      id: data.id,
-      name: data.name,
-      avatar: data.avatar ?? null,
-      date_of_birth: data.dateOfBirth,
-      gender: data.gender ?? null,
-      blood_type: data.bloodType ?? null,
-      medical_notes: data.medicalNotes ?? null,
-      parent1_id: data.parent1Id ?? null,
-      parent2_id: data.parent2Id ?? null,
-      created_at: now,
-      updated_at: now,
-      is_active: true,
-    }).then(({ error }) => {
-      if (error) console.warn('[DB] Supabase push failed:', error.message);
-      else db.update(babies).set({ syncStatus: 'synced' }).where(eq(babies.id, data.id)).run();
-    });
-
-    return inserted;
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
+    if (error) {
+      console.error('[DB] createBabyInDb error:', error.message);
+      throw error;
     }
+
+    return result;
+  } catch (error) {
+    console.error('[DB] createBabyInDb error:', error);
     throw error;
   }
 }
 
-export async function updateBabyInDb(id: string, updates: Partial<typeof babies.$inferInsert>) {
+export async function updateBabyInDb(id: string, updates: Partial<{
+  name: string;
+  avatar: string;
+  dateOfBirth: string;
+  gender: string;
+  bloodType: string;
+  medicalNotes: string;
+  parent1Id: string;
+  parent2Id: string;
+  isActive: boolean;
+}>) {
   try {
     const now = new Date().toISOString();
-    const result = db.update(babies)
-      .set({ ...updates, updatedAt: now, syncStatus: 'pending' })
-      .where(eq(babies.id, id))
-      .returning()
-      .all();
-
     const remoteUpdates: Record<string, unknown> = { updated_at: now };
+    
     if (updates.name !== undefined) remoteUpdates.name = updates.name;
     if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
     if (updates.dateOfBirth !== undefined) remoteUpdates.date_of_birth = updates.dateOfBirth;
@@ -783,34 +471,69 @@ export async function updateBabyInDb(id: string, updates: Partial<typeof babies.
     if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
     if (updates.isActive !== undefined) remoteUpdates.is_active = updates.isActive;
 
-    supabase.from('babies').update(remoteUpdates).eq('id', id).then(({ error }) => {
-      if (error) console.warn(`[DB] Supabase push failed for updateBabyInDb('${id}'):`, error.message);
-      else db.update(babies).set({ syncStatus: 'synced' }).where(eq(babies.id, id)).run();
-    });
+    const { data: result, error } = await supabase
+      .from('babies')
+      .update(remoteUpdates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[DB] updateBabyInDb error for ${id}:`, error.message);
+      throw error;
+    }
 
     return result;
   } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
-    }
+    console.error(`[DB] updateBabyInDb error for ${id}:`, error);
     throw error;
   }
 }
 
 export async function deleteBabyFromDb(id: string) {
   try {
-    return db.update(babies)
-      .set({ isActive: false, updatedAt: new Date().toISOString(), syncStatus: 'pending' })
-      .where(eq(babies.id, id))
-      .returning()
-      .all();
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
+    // Soft delete - set inactive
+    const { data: result, error } = await supabase
+      .from('babies')
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[DB] deleteBabyFromDb error for ${id}:`, error.message);
+      throw error;
     }
+
+    return result;
+  } catch (error) {
+    console.error(`[DB] deleteBabyFromDb error for ${id}:`, error);
     throw error;
+  }
+}
+
+export async function hardDeleteBaby(babyId: string): Promise<boolean> {
+  try {
+    // Delete all related data
+    await supabase.from('tracker_entries').delete().eq('baby_id', babyId);
+    await supabase.from('family_members').delete().eq('baby_id', babyId);
+    
+    // Delete the baby
+    const { error } = await supabase.from('babies').delete().eq('id', babyId);
+    
+    if (error) {
+      console.error('[DB] hardDeleteBaby error:', error.message);
+      return false;
+    }
+    
+    console.log(`[DB] Hard deleted baby: ${babyId}`);
+    return true;
+  } catch (error) {
+    console.error('[DB] hardDeleteBaby error:', error);
+    return false;
   }
 }
 
@@ -830,9 +553,10 @@ export async function getCurrentBabyFromDb() {
 
 export async function getCurrentBabyData(babyId: string) {
   try {
-    const localBaby = await getBabyByIdFromDb(babyId);
-    if (localBaby) return localBaby;
+    const baby = await getBabyByIdFromDb(babyId);
+    if (baby) return baby;
 
+    // Try to fetch from Supabase directly
     const { data, error } = await supabase
       .from('babies')
       .select('*')
@@ -840,60 +564,65 @@ export async function getCurrentBabyData(babyId: string) {
       .maybeSingle();
 
     if (error || !data) {
-      console.warn(`[DB] getCurrentBabyData: Baby ${babyId} not found in Supabase`);
+      console.warn(`[DB] getCurrentBabyData: Baby ${babyId} not found`);
       return null;
     }
 
-    const now = new Date().toISOString();
-    await createBabyInDb({
-      id: data.id,
-      name: data.name,
-      avatar: data.avatar ?? undefined,
-      dateOfBirth: data.date_of_birth,
-      gender: data.gender ?? undefined,
-      bloodType: data.blood_type ?? undefined,
-      medicalNotes: data.medical_notes ?? undefined,
-      parent1Id: data.parent1_id ?? undefined,
-      parent2Id: data.parent2_id ?? undefined,
-    });
-
-    return await getBabyByIdFromDb(babyId);
+    return data;
   } catch (error) {
     console.error('[DB] getCurrentBabyData error:', error);
     return null;
   }
 }
 
-/* ─── TRACKER ENTRIES ──────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   TRACKER ENTRIES
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export async function getEntriesByBabyFromDb(babyId: string, trackerId?: string) {
   try {
+    let query = supabase
+      .from('tracker_entries')
+      .select('*')
+      .eq('baby_id', babyId)
+      .eq('is_deleted', false)
+      .order('timestamp', { ascending: false });
+
     if (trackerId) {
-      return db.select().from(trackerEntries).where(
-        and(eq(trackerEntries.babyId, babyId), eq(trackerEntries.trackerId, trackerId))
-      ).orderBy(desc(trackerEntries.timestamp)).all();
+      query = query.eq('tracker_id', trackerId);
     }
-    return db.select().from(trackerEntries).where(eq(trackerEntries.babyId, babyId))
-      .orderBy(desc(trackerEntries.timestamp)).all();
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.warn('[DB] getEntriesByBabyFromDb error:', error.message);
       return [];
     }
-    throw error;
+
+    return data || [];
+  } catch (error) {
+    console.error('[DB] getEntriesByBabyFromDb error:', error);
+    return [];
   }
 }
 
 export async function getEntryByIdFromDb(id: string) {
   try {
-    const result = db.select().from(trackerEntries).where(eq(trackerEntries.id, id)).all();
-    return result[0] || null;
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+    const { data, error } = await supabase
+      .from('tracker_entries')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(`[DB] getEntryByIdFromDb error for ${id}:`, error.message);
       return null;
     }
-    throw error;
+
+    return data || null;
+  } catch (error) {
+    console.error(`[DB] getEntryByIdFromDb error for ${id}:`, error);
+    return null;
   }
 }
 
@@ -925,180 +654,202 @@ export async function createEntryInDb(data: {
     if (data.loggedByName !== undefined) payload.loggedByName = data.loggedByName;
     if (data.loggedByRole !== undefined) payload.loggedByRole = data.loggedByRole;
 
-    return db.insert(trackerEntries).values({
-      id: data.id,
-      trackerId: data.trackerId,
-      babyId: data.babyId,
-      timestamp: data.timestamp,
-      title: data.title,
-      data: JSON.stringify(payload),
-      notes: data.notes,
-      photoUris: data.photoUris ? JSON.stringify(data.photoUris) : undefined,
-      tags: data.tags ? JSON.stringify(data.tags) : undefined,
-      location: data.location,
-      mood: data.mood,
-      loggedBy: data.loggedBy,
-      loggedByName: data.loggedByName,
-      loggedByRole: data.loggedByRole,
-      notificationId: data.notificationId,
-      reminderScheduled: data.reminderScheduled,
-      syncedAt: data.syncedAt,
-      editedBy: data.editedBy,
-      editedAt: data.editedAt,
-      createdAt: now,
-      updatedAt: now,
-      syncStatus: 'pending',
-    }).returning().all();
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
+    const { data: result, error } = await supabase
+      .from('tracker_entries')
+      .insert({
+        id: data.id,
+        tracker_id: data.trackerId,
+        baby_id: data.babyId,
+        timestamp: data.timestamp,
+        title: data.title,
+        data: payload,
+        notes: data.notes,
+        photo_uris: data.photoUris || null,
+        tags: data.tags || null,
+        location: data.location || null,
+        mood: data.mood || null,
+        logged_by: data.loggedBy || null,
+        logged_by_name: data.loggedByName || null,
+        logged_by_role: data.loggedByRole || null,
+        notification_id: data.notificationId || null,
+        reminder_scheduled: data.reminderScheduled || false,
+        synced_at: data.syncedAt || null,
+        edited_by: data.editedBy || null,
+        edited_at: data.editedAt || null,
+        created_at: now,
+        updated_at: now,
+        is_deleted: false,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[DB] createEntryInDb error:', error.message);
+      throw error;
     }
+
+    return result;
+  } catch (error) {
+    console.error('[DB] createEntryInDb error:', error);
     throw error;
   }
 }
 
-export async function updateEntryInDb(id: string, updates: Partial<typeof trackerEntries.$inferInsert>) {
+export async function updateEntryInDb(id: string, updates: Partial<{
+  trackerId: string;
+  babyId: string;
+  timestamp: number;
+  title: string;
+  data: Record<string, unknown>;
+  notes: string;
+  photoUris: string[];
+  tags: string[];
+  location: string;
+  mood: string;
+  loggedBy: string;
+  loggedByName: string;
+  loggedByRole: string;
+  notificationId: string;
+  reminderScheduled: boolean;
+  syncedAt: string;
+  editedBy: string;
+  editedAt: number;
+}>) {
   try {
     const now = new Date().toISOString();
-    const processed = { ...updates };
-    if (updates.data && typeof updates.data !== 'string') {
-      const existing = await getEntryByIdFromDb(id);
-      const existingData = existing?.data ? (typeof existing.data === 'string' ? JSON.parse(existing.data) : existing.data) : {};
-      processed.data = JSON.stringify({ ...existingData, ...updates.data });
-    }
-    if (updates.photoUris && typeof updates.photoUris !== 'string') {
-      processed.photoUris = JSON.stringify(updates.photoUris);
-    }
-    if (updates.tags && typeof updates.tags !== 'string') {
-      processed.tags = JSON.stringify(updates.tags);
+    const remoteUpdates: Record<string, unknown> = { updated_at: now };
+
+    if (updates.trackerId !== undefined) remoteUpdates.tracker_id = updates.trackerId;
+    if (updates.babyId !== undefined) remoteUpdates.baby_id = updates.babyId;
+    if (updates.timestamp !== undefined) remoteUpdates.timestamp = updates.timestamp;
+    if (updates.title !== undefined) remoteUpdates.title = updates.title;
+    if (updates.data !== undefined) remoteUpdates.data = updates.data;
+    if (updates.notes !== undefined) remoteUpdates.notes = updates.notes;
+    if (updates.photoUris !== undefined) remoteUpdates.photo_uris = updates.photoUris;
+    if (updates.tags !== undefined) remoteUpdates.tags = updates.tags;
+    if (updates.location !== undefined) remoteUpdates.location = updates.location;
+    if (updates.mood !== undefined) remoteUpdates.mood = updates.mood;
+    if (updates.loggedBy !== undefined) remoteUpdates.logged_by = updates.loggedBy;
+    if (updates.loggedByName !== undefined) remoteUpdates.logged_by_name = updates.loggedByName;
+    if (updates.loggedByRole !== undefined) remoteUpdates.logged_by_role = updates.loggedByRole;
+    if (updates.notificationId !== undefined) remoteUpdates.notification_id = updates.notificationId;
+    if (updates.reminderScheduled !== undefined) remoteUpdates.reminder_scheduled = updates.reminderScheduled;
+    if (updates.syncedAt !== undefined) remoteUpdates.synced_at = updates.syncedAt;
+    if (updates.editedBy !== undefined) remoteUpdates.edited_by = updates.editedBy;
+    if (updates.editedAt !== undefined) remoteUpdates.edited_at = updates.editedAt;
+
+    const { data: result, error } = await supabase
+      .from('tracker_entries')
+      .update(remoteUpdates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[DB] updateEntryInDb error for ${id}:`, error.message);
+      throw error;
     }
 
-    return db.update(trackerEntries)
-      .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
-      .where(eq(trackerEntries.id, id))
-      .returning()
-      .all();
+    return result;
   } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
-    }
+    console.error(`[DB] updateEntryInDb error for ${id}:`, error);
     throw error;
   }
 }
 
 export async function softDeleteEntryInDb(id: string) {
   try {
-    return db.update(trackerEntries)
-      .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: new Date().toISOString() })
-      .where(eq(trackerEntries.id, id))
-      .returning()
-      .all();
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
+    const { data: result, error } = await supabase
+      .from('tracker_entries')
+      .update({
+        is_deleted: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[DB] softDeleteEntryInDb error for ${id}:`, error.message);
+      throw error;
     }
+
+    return result;
+  } catch (error) {
+    console.error(`[DB] softDeleteEntryInDb error for ${id}:`, error);
     throw error;
   }
 }
 
-/* ─── FAMILY MEMBERS ───────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY MEMBERS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export async function getFamilyMembersByBabyFromDb(babyId: string, includeDeleted = false) {
   try {
-    try {
-      const { data: remoteRows, error } = await supabase
-        .from('family_members')
-        .select('*')
-        .eq('baby_id', babyId);
+    let query = supabase
+      .from('family_members')
+      .select('*')
+      .eq('baby_id', babyId)
+      .order('added_at', { ascending: false });
 
-      if (!error && remoteRows) {
-        for (const row of remoteRows) {
-          const existsLocally = db.select({ id: familyMembers.id })
-            .from(familyMembers)
-            .where(eq(familyMembers.id, row.id))
-            .all();
-          if (existsLocally.length === 0) {
-            db.insert(familyMembers).values({
-              id: row.id,
-              babyId: row.baby_id,
-              userId: row.user_id ?? null,
-              email: row.email,
-              fullName: row.full_name,
-              avatar: row.avatar ?? undefined,
-              role: row.role,
-              relationship: row.relationship ?? 'Family',
-              permissions: row.permissions ?? {},
-              addedAt: row.added_at,
-              addedBy: row.added_by,
-              canBeRemoved: row.can_be_removed ?? true,
-              lastActive: row.last_active ?? undefined,
-              phoneNumber: row.phone_number ?? undefined,
-              notificationsEnabled: row.notifications_enabled ?? true,
-              status: row.status ?? 'pending',
-              updatedAt: row.updated_at ?? new Date().toISOString(),
-              syncStatus: 'synced',
-              isDeleted: false,
-            }).onConflictDoNothing().run();
-          }
-        }
-      }
-    } catch (pullError) {
-      console.warn('[DB] Supabase pull failed for family members:', pullError);
-    }
-
-    const conditions = [eq(familyMembers.babyId, babyId)];
     if (!includeDeleted) {
-      conditions.push(eq(familyMembers.isDeleted, false));
+      query = query.eq('is_deleted', false);
     }
-    return db.select().from(familyMembers)
-      .where(and(...conditions))
-      .orderBy(desc(familyMembers.addedAt))
-      .all();
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.warn('[DB] getFamilyMembersByBabyFromDb error:', error.message);
       return [];
     }
-    throw error;
+
+    return data || [];
+  } catch (error) {
+    console.error('[DB] getFamilyMembersByBabyFromDb error:', error);
+    return [];
   }
 }
 
 export async function getFamilyMemberByIdFromDb(id: string) {
   try {
-    const result = db.select().from(familyMembers)
-      .where(eq(familyMembers.id, id))
-      .all();
-    return result[0] || null;
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+    const { data, error } = await supabase
+      .from('family_members')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(`[DB] getFamilyMemberByIdFromDb error for ${id}:`, error.message);
       return null;
     }
-    throw error;
+
+    return data || null;
+  } catch (error) {
+    console.error(`[DB] getFamilyMemberByIdFromDb error for ${id}:`, error);
+    return null;
   }
 }
 
 export async function getFamilyMemberByEmailAndBabyFromDb(email: string, babyId: string) {
   try {
-    const result = db.select().from(familyMembers)
-      .where(
-        and(
-          eq(familyMembers.email, email),
-          eq(familyMembers.babyId, babyId),
-          eq(familyMembers.isDeleted, false)
-        )
-      )
-      .all();
-    return result[0] || null;
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
+    const { data, error } = await supabase
+      .from('family_members')
+      .select('*')
+      .eq('email', email)
+      .eq('baby_id', babyId)
+      .eq('is_deleted', false)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[DB] getFamilyMemberByEmailAndBabyFromDb error:', error.message);
       return null;
     }
-    throw error;
+
+    return data || null;
+  } catch (error) {
+    console.error('[DB] getFamilyMemberByEmailAndBabyFromDb error:', error);
+    return null;
   }
 }
 
@@ -1120,159 +871,127 @@ export async function createFamilyMemberInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
-    const inserted = db.insert(familyMembers).values({
-      ...data,
-      addedAt: now,
-      updatedAt: now,
-      syncStatus: 'pending',
-    }).returning().all();
+    
+    const { data: result, error } = await supabase
+      .from('family_members')
+      .insert({
+        id: data.id,
+        baby_id: data.babyId,
+        user_id: data.userId || null,
+        email: data.email,
+        full_name: data.fullName,
+        avatar: data.avatar || null,
+        role: data.role,
+        relationship: data.relationship,
+        permissions: data.permissions || {},
+        added_at: now,
+        added_by: data.addedBy,
+        can_be_removed: data.canBeRemoved ?? true,
+        phone_number: data.phoneNumber || null,
+        notifications_enabled: data.notificationsEnabled ?? true,
+        status: data.status || 'pending',
+        updated_at: now,
+        is_deleted: false,
+      })
+      .select()
+      .single();
 
-    supabase.from('family_members').upsert({
-      id: data.id,
-      baby_id: data.babyId,
-      user_id: data.userId ?? null,
-      email: data.email,
-      full_name: data.fullName,
-      avatar: data.avatar ?? null,
-      role: data.role,
-      relationship: data.relationship,
-      permissions: data.permissions ?? {},
-      added_at: now,
-      added_by: data.addedBy,
-      can_be_removed: data.canBeRemoved ?? true,
-      phone_number: data.phoneNumber ?? null,
-      notifications_enabled: data.notificationsEnabled ?? true,
-      status: data.status ?? 'pending',
-      updated_at: now,
-    }).then(({ error }) => {
-      if (error) console.warn('[DB] Supabase push failed for family member:', error.message);
-      else db.update(familyMembers).set({ syncStatus: 'synced' }).where(eq(familyMembers.id, data.id)).run();
-    });
-
-    return inserted;
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
+    if (error) {
+      console.error('[DB] createFamilyMemberInDb error:', error.message);
+      throw error;
     }
+
+    return result;
+  } catch (error) {
+    console.error('[DB] createFamilyMemberInDb error:', error);
     throw error;
   }
 }
 
-export async function updateFamilyMemberInDb(id: string, updates: Partial<typeof familyMembers.$inferInsert>) {
+export async function updateFamilyMemberInDb(id: string, updates: Partial<{
+  userId: string | null;
+  email: string;
+  fullName: string;
+  avatar: string;
+  role: string;
+  relationship: string;
+  permissions: Record<string, boolean>;
+  phoneNumber: string;
+  notificationsEnabled: boolean;
+  status: string;
+  lastActive: string;
+}>) {
   try {
     const now = new Date().toISOString();
-    const processed = { ...updates };
-    if (updates.permissions && typeof updates.permissions !== 'string') {
-      processed.permissions = JSON.stringify(updates.permissions) as any;
-    }
-
-    const result = db.update(familyMembers)
-      .set({ ...processed, updatedAt: now, syncStatus: 'pending' })
-      .where(eq(familyMembers.id, id))
-      .returning()
-      .all();
-
     const remoteUpdates: Record<string, unknown> = { updated_at: now };
-    if (updates.fullName !== undefined) remoteUpdates.full_name = updates.fullName;
+
+    if (updates.userId !== undefined) remoteUpdates.user_id = updates.userId;
     if (updates.email !== undefined) remoteUpdates.email = updates.email;
+    if (updates.fullName !== undefined) remoteUpdates.full_name = updates.fullName;
     if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
-    if (updates.phoneNumber !== undefined) remoteUpdates.phone_number = updates.phoneNumber;
-    if (updates.relationship !== undefined) remoteUpdates.relationship = updates.relationship;
     if (updates.role !== undefined) remoteUpdates.role = updates.role;
+    if (updates.relationship !== undefined) remoteUpdates.relationship = updates.relationship;
     if (updates.permissions !== undefined) remoteUpdates.permissions = updates.permissions;
+    if (updates.phoneNumber !== undefined) remoteUpdates.phone_number = updates.phoneNumber;
     if (updates.notificationsEnabled !== undefined) remoteUpdates.notifications_enabled = updates.notificationsEnabled;
     if (updates.status !== undefined) remoteUpdates.status = updates.status;
     if (updates.lastActive !== undefined) remoteUpdates.last_active = updates.lastActive;
 
-    supabase.from('family_members').update(remoteUpdates).eq('id', id).then(({ error }) => {
-      if (error) console.warn(`[DB] Supabase push failed for updateFamilyMemberInDb('${id}'):`, error.message);
-      else db.update(familyMembers).set({ syncStatus: 'synced' }).where(eq(familyMembers.id, id)).run();
-    });
+    const { data: result, error } = await supabase
+      .from('family_members')
+      .update(remoteUpdates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[DB] updateFamilyMemberInDb error for ${id}:`, error.message);
+      throw error;
+    }
 
     return result;
   } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
-    }
+    console.error(`[DB] updateFamilyMemberInDb error for ${id}:`, error);
     throw error;
   }
 }
 
 export async function softDeleteFamilyMemberInDb(id: string) {
   try {
-    const now = new Date().toISOString();
-    const result = db.update(familyMembers)
-      .set({ isDeleted: true, syncStatus: 'deleted', updatedAt: now })
-      .where(eq(familyMembers.id, id))
-      .returning()
-      .all();
+    const { data: result, error } = await supabase
+      .from('family_members')
+      .update({
+        is_deleted: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
 
-    supabase.from('family_members').delete().eq('id', id).then(({ error }) => {
-      if (error) console.warn(`[DB] Supabase delete failed for softDeleteFamilyMemberInDb('${id}'):`, error.message);
-    });
+    if (error) {
+      console.error(`[DB] softDeleteFamilyMemberInDb error for ${id}:`, error.message);
+      throw error;
+    }
 
     return result;
   } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return [];
-    }
+    console.error(`[DB] softDeleteFamilyMemberInDb error for ${id}:`, error);
     throw error;
-  }
-}
-
-export async function deleteFamilyMembersByBabyFromDb(babyId: string) {
-  try {
-    return db.delete(familyMembers).where(eq(familyMembers.babyId, babyId));
-  } catch (error) {
-    const msg = String(error);
-    if (msg.includes('no such table') || msg.includes('prepareSync')) {
-      return;
-    }
-    throw error;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   HARD DELETE FUNCTIONS
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-export async function hardDeleteBaby(babyId: string): Promise<boolean> {
-  try {
-    // First delete all related data from local DB
-    // Delete tracker entries
-    await db.delete(trackerEntries).where(eq(trackerEntries.babyId, babyId));
-    
-    // Delete family members
-    await db.delete(familyMembers).where(eq(familyMembers.babyId, babyId));
-    
-    // Delete the baby
-    await db.delete(babies).where(eq(babies.id, babyId));
-    
-    // Also delete from Supabase
-    await supabase.from('tracker_entries').delete().eq('baby_id', babyId);
-    await supabase.from('family_members').delete().eq('baby_id', babyId);
-    await supabase.from('babies').delete().eq('id', babyId);
-    
-    console.log(`[DB] Hard deleted baby: ${babyId}`);
-    return true;
-  } catch (error) {
-    console.error('[DB] hardDeleteBaby error:', error);
-    return false;
   }
 }
 
 export async function hardDeleteFamilyMember(memberId: string): Promise<boolean> {
   try {
-    // Delete from local DB
-    await db.delete(familyMembers).where(eq(familyMembers.id, memberId));
-    
-    // Delete from Supabase
-    await supabase.from('family_members').delete().eq('id', memberId);
-    
-    console.log(`[DB] Hard deleted family member: ${memberId}`);
+    const { error } = await supabase
+      .from('family_members')
+      .delete()
+      .eq('id', memberId);
+
+    if (error) {
+      console.error('[DB] hardDeleteFamilyMember error:', error.message);
+      return false;
+    }
+
     return true;
   } catch (error) {
     console.error('[DB] hardDeleteFamilyMember error:', error);
@@ -1280,32 +999,53 @@ export async function hardDeleteFamilyMember(memberId: string): Promise<boolean>
   }
 }
 
+export async function deleteFamilyMembersByBabyFromDb(babyId: string) {
+  try {
+    const { error } = await supabase
+      .from('family_members')
+      .delete()
+      .eq('baby_id', babyId);
+
+    if (error) {
+      console.error('[DB] deleteFamilyMembersByBabyFromDb error:', error.message);
+      throw error;
+    }
+  } catch (error) {
+    console.error('[DB] deleteFamilyMembersByBabyFromDb error:', error);
+    throw error;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HARD DELETE ALL USER DATA
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 export async function hardDeleteAllUserData(userId: string): Promise<boolean> {
   try {
     // Get all babies for this user
-    const userBabies = await db.select().from(babies).where(eq(babies.parent1Id, userId));
-    
-    for (const baby of userBabies) {
-      // Delete tracker entries
-      await db.delete(trackerEntries).where(eq(trackerEntries.babyId, baby.id));
-      // Delete family members
-      await db.delete(familyMembers).where(eq(familyMembers.babyId, baby.id));
-      // Delete baby
-      await db.delete(babies).where(eq(babies.id, baby.id));
-      
-      // Also delete from Supabase
-      await supabase.from('tracker_entries').delete().eq('baby_id', baby.id);
-      await supabase.from('family_members').delete().eq('baby_id', baby.id);
-      await supabase.from('babies').delete().eq('id', baby.id);
+    const { data: userBabies, error: babiesError } = await supabase
+      .from('babies')
+      .select('id')
+      .eq('parent1_id', userId);
+
+    if (babiesError) {
+      console.error('[DB] hardDeleteAllUserData babies error:', babiesError.message);
     }
-    
+
+    if (userBabies) {
+      for (const baby of userBabies) {
+        await supabase.from('tracker_entries').delete().eq('baby_id', baby.id);
+        await supabase.from('family_members').delete().eq('baby_id', baby.id);
+        await supabase.from('babies').delete().eq('id', baby.id);
+      }
+    }
+
     // Delete any remaining family members where user is a member
-    await db.delete(familyMembers).where(eq(familyMembers.userId, userId));
     await supabase.from('family_members').delete().eq('user_id', userId);
-    
+
     // Delete app settings
-    await db.delete(appSettings);
-    
+    await supabase.from('app_settings').delete().eq('user_id', userId);
+
     console.log(`[DB] Hard deleted all data for user: ${userId}`);
     return true;
   } catch (error) {
@@ -1314,140 +1054,74 @@ export async function hardDeleteAllUserData(userId: string): Promise<boolean> {
   }
 }
 
-/* ─── ONE-TIME MIGRATION ───────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   EXPORT TYPES
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-export async function runOneTimeMigration(): Promise<void> {
-  if (await isMigrationComplete()) return;
+export type Baby = {
+  id: string;
+  name: string;
+  avatar: string | null;
+  date_of_birth: string;
+  gender: string | null;
+  blood_type: string | null;
+  medical_notes: string | null;
+  parent1_id: string | null;
+  parent2_id: string | null;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+};
 
-  console.log('[Migration] Starting AsyncStorage → Drizzle migration...');
+export type TrackerEntry = {
+  id: string;
+  tracker_id: string;
+  baby_id: string;
+  timestamp: number;
+  title: string;
+  data: Record<string, unknown>;
+  notes: string | null;
+  photo_uris: string[] | null;
+  tags: string[] | null;
+  location: string | null;
+  mood: string | null;
+  logged_by: string | null;
+  logged_by_name: string | null;
+  logged_by_role: string | null;
+  notification_id: string | null;
+  reminder_scheduled: boolean;
+  synced_at: string | null;
+  edited_by: string | null;
+  edited_at: number | null;
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+};
 
-  // Migrate babies
-  const babiesJson = await AsyncStorage.getItem('@littleloom_babies');
-  if (babiesJson) {
-    try {
-      const babyList = JSON.parse(babiesJson);
-      for (const baby of babyList) {
-        const existing = await getBabyByIdFromDb(baby.id);
-        if (!existing) {
-          await createBabyInDb({
-            id: baby.id,
-            name: baby.name,
-            avatar: baby.avatar,
-            dateOfBirth: baby.birthDate || baby.dateOfBirth,
-            gender: baby.gender === 'boy' ? 'male' : baby.gender === 'girl' ? 'female' : 'other',
-            bloodType: baby.bloodType,
-            medicalNotes: baby.medicalNotes,
-            parent1Id: baby.parent1Id,
-            parent2Id: baby.parent2Id,
-          });
-        }
-      }
-      console.log(`[Migration] Migrated ${babyList.length} babies`);
-    } catch (e) {
-      console.error('[Migration] Babies migration failed:', e);
-    }
-  }
+export type FamilyMember = {
+  id: string;
+  baby_id: string;
+  user_id: string | null;
+  email: string;
+  full_name: string;
+  avatar: string | null;
+  role: string;
+  relationship: string;
+  permissions: Record<string, boolean>;
+  added_at: string;
+  added_by: string;
+  can_be_removed: boolean;
+  last_active: string | null;
+  phone_number: string | null;
+  notifications_enabled: boolean;
+  status: string;
+  updated_at: string;
+  is_deleted: boolean;
+};
 
-  // Migrate current baby
-  const currentBabyId = await AsyncStorage.getItem('@littleloom_current_baby');
-  if (currentBabyId) await setAppSetting('current_baby_id', currentBabyId);
-
-  // Migrate skipped flag
-  const hasSkipped = await AsyncStorage.getItem('@littleloom_has_skipped_baby');
-  if (hasSkipped) await setAppSetting('has_skipped_baby', hasSkipped);
-
-  // Migrate tracker entries
-  const allKeys = await AsyncStorage.getAllKeys();
-  const activityKeys = allKeys.filter(k =>
-    k.startsWith('@littleloom_activities_') ||
-    k.startsWith('@littleloom_entries_')
-  );
-
-  let entryCount = 0;
-  for (const key of activityKeys) {
-    const json = await AsyncStorage.getItem(key);
-    if (!json) continue;
-    try {
-      const entries = JSON.parse(json);
-      const babyId = key.split('_').pop() || '';
-      for (const entry of entries) {
-        if (!entry.id) continue;
-        const existing = await getEntryByIdFromDb(entry.id);
-        if (!existing) {
-          const trackerId = entry.trackerId || entry.type || 'unknown';
-          await createEntryInDb({
-            id: entry.id,
-            trackerId,
-            babyId: entry.babyId || babyId,
-            timestamp: entry.timestamp || Date.now(),
-            title: entry.title || 'Untitled',
-            data: entry.data || {},
-            notes: entry.notes || entry.details,
-            photoUris: entry.photoUris || (entry.photo ? [entry.photo] : undefined),
-            tags: entry.tags,
-            loggedBy: entry.loggedBy,
-            loggedByName: entry.loggedByName,
-            loggedByRole: entry.loggedByRole,
-          });
-          entryCount++;
-        }
-      }
-    } catch (e) {
-      console.error(`[Migration] Failed to migrate ${key}:`, e);
-    }
-  }
-  console.log(`[Migration] Migrated ${entryCount} tracker entries`);
-
-  // Migrate app settings
-  const themeMode = await AsyncStorage.getItem('@littleloom_theme_v2');
-  if (themeMode) await setAppSetting('theme_mode', themeMode);
-
-  const appearance = await AsyncStorage.getItem('@littleloom_appearance_v1');
-  if (appearance) await setAppSetting('appearance', appearance);
-
-  // Migrate user registry
-  try {
-    const oldRegistry = await AsyncStorage.getItem('littleloom_username_registry');
-    if (oldRegistry) {
-      const parsed = JSON.parse(oldRegistry);
-      if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const newRegistry: Record<string, UserRegistryEntry> = {};
-        const profileStr = await AsyncStorage.getItem('littleloom_user_profile_secure');
-        if (profileStr) {
-          try {
-            const profile = JSON.parse(profileStr);
-            if (profile && profile.id) {
-              for (const [username, userId] of Object.entries(parsed)) {
-                if (userId === profile.id) {
-                  newRegistry[profile.id] = {
-                    userId: profile.id,
-                    email: profile.email || '',
-                    fullName: profile.fullName || 'User',
-                    avatar: profile.avatar || '👤',
-                    role: profile.role || 'parent1',
-                    createdAt: profile.createdAt || new Date().toISOString(),
-                    communityUsername: username,
-                    communityHandle: `@${username}`,
-                    communityDisplayName: profile.fullName || username,
-                  };
-                  break;
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[Migration] Failed to parse user profile:', e);
-          }
-        }
-        if (Object.keys(newRegistry).length > 0) {
-          await saveUserRegistry(newRegistry);
-          console.log('[Migration] Migrated user registry');
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('[Migration] User registry migration failed:', e);
-  }
-
-  await markMigrationComplete();
-  console.log('[Migration] Complete!');
-}
+export type AppSetting = {
+  key: string;
+  value: string;
+  user_id: string | null;
+  updated_at: string;
+};
