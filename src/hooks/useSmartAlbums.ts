@@ -1,8 +1,7 @@
 // src/hooks/useSmartAlbums.ts
+
 import { useState, useEffect, useCallback } from 'react';
-import { db } from '../database/db';
-import { photos, smartAlbums } from '../database/schema';
-import { eq, count, sql } from 'drizzle-orm';
+import { supabase } from '../lib/supabase';
 
 export interface SmartAlbumWithCount {
   id: string;
@@ -14,6 +13,16 @@ export interface SmartAlbumWithCount {
   coverPhotoUri?: string;
 }
 
+// Smart album definitions
+const SMART_ALBUMS = [
+  { id: 'album_all', title: 'All Photos', type: 'system', icon: '📸', gradient: ['#667eea', '#764ba2'] },
+  { id: 'album_favorites', title: 'Favorites', type: 'system', icon: '⭐', gradient: ['#f59e0b', '#f97316'] },
+  { id: 'album_screenshots', title: 'Screenshots', type: 'system', icon: '📱', gradient: ['#3b82f6', '#8b5cf6'] },
+  { id: 'album_auto_import', title: 'Auto Import', type: 'system', icon: '📥', gradient: ['#10b981', '#06b6d4'] },
+  { id: 'album_vault', title: 'Vault', type: 'system', icon: '🔒', gradient: ['#ef4444', '#ec4899'] },
+  { id: 'album_milestones', title: 'Milestones', type: 'system', icon: '🏆', gradient: ['#f59e0b', '#f472b6'] },
+];
+
 export function useSmartAlbums() {
   const [albums, setAlbums] = useState<SmartAlbumWithCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,76 +30,80 @@ export function useSmartAlbums() {
   const loadAlbums = useCallback(async () => {
     setIsLoading(true);
     try {
-      const dbAlbums = await db.select().from(smartAlbums)
-        .where(eq(smartAlbums.isSystem, true))
-        .orderBy(smartAlbums.sortOrder);
+      // Fetch photos from Supabase
+      const { data: photos, error } = await supabase
+        .from('tracker_entries')
+        .select('id, photo_uris, data, is_favorite, is_private, type, timestamp')
+        .not('photo_uris', 'is', null)
+        .order('timestamp', { ascending: false });
 
-      const enriched = await Promise.all(
-        dbAlbums.map(async (album) => {
-          let photoCount = 0;
-          let coverPhotoUri: string | undefined;
+      if (error) {
+        console.warn('[useSmartAlbums] Error fetching photos:', error.message);
+        setAlbums([]);
+        return;
+      }
 
-          try {
-            // Count photos based on album filter
-            if (album.id === 'album_all') {
-              const result = await db.select({ count: count() }).from(photos);
-              photoCount = result[0]?.count || 0;
-            } else if (album.id === 'album_favorites') {
-              const result = await db.select({ count: count() }).from(photos)
-                .where(eq(photos.isFavorite, true));
-              photoCount = result[0]?.count || 0;
-            } else if (album.id === 'album_screenshots') {
-              const result = await db.select({ count: count() }).from(photos)
-                .where(eq(photos.isScreenshot, true));
-              photoCount = result[0]?.count || 0;
-            } else if (album.id === 'album_auto_import') {
-              const result = await db.select({ count: count() }).from(photos)
-                .where(eq(photos.source, 'auto_import'));
-              photoCount = result[0]?.count || 0;
-            } else if (album.id === 'album_vault') {
-              const result = await db.select({ count: count() }).from(photos)
-                .where(eq(photos.isPrivate, true));
-              photoCount = result[0]?.count || 0;
-            } else if (album.id === 'album_milestones') {
-              const result = await db.select({ count: count() }).from(photos)
-                .where(eq(photos.type, 'milestone'));
-              photoCount = result[0]?.count || 0;
-            }
+      // Count photos by album
+      const counts: Record<string, number> = {};
+      const coverPhotos: Record<string, string> = {};
 
-            // Get cover photo
-            if (photoCount > 0) {
-              const cover = await db.select({ uri: photos.uri }).from(photos)
-                .orderBy(sql`${photos.timestamp} DESC`)
-                .limit(1);
-              coverPhotoUri = cover[0]?.uri;
-            }
-          } catch (dbError) {
-            const msg = String(dbError);
-            if (msg.includes('no such table') || msg.includes('prepareSync')) {
-              console.warn(`[useSmartAlbums] Table not ready for album ${album.id}, skipping`);
-            } else {
-              throw dbError;
-            }
-          }
+      SMART_ALBUMS.forEach(album => {
+        counts[album.id] = 0;
+      });
 
-          return {
-            ...album,
-            photoCount,
-            coverPhotoUri,
-            gradient: album.gradient as [string, string] | null,
-          };
-        })
-      );
+      // Process photos
+      photos?.forEach(photo => {
+        const photoData = typeof photo.data === 'string' ? JSON.parse(photo.data) : photo.data || {};
+        const uris = typeof photo.photo_uris === 'string' ? JSON.parse(photo.photo_uris) : photo.photo_uris;
+        const firstUri = Array.isArray(uris) ? uris[0] : null;
+
+        // All photos
+        counts.album_all = (counts.album_all || 0) + 1;
+        if (firstUri && !coverPhotos.album_all) coverPhotos.album_all = firstUri;
+
+        // Favorites
+        if (photo.is_favorite || photoData.isFavorite) {
+          counts.album_favorites = (counts.album_favorites || 0) + 1;
+          if (firstUri && !coverPhotos.album_favorites) coverPhotos.album_favorites = firstUri;
+        }
+
+        // Screenshots
+        if (photo.is_screenshot || photoData.isScreenshot) {
+          counts.album_screenshots = (counts.album_screenshots || 0) + 1;
+          if (firstUri && !coverPhotos.album_screenshots) coverPhotos.album_screenshots = firstUri;
+        }
+
+        // Auto import
+        if (photo.source === 'auto_import' || photoData.source === 'auto_import') {
+          counts.album_auto_import = (counts.album_auto_import || 0) + 1;
+          if (firstUri && !coverPhotos.album_auto_import) coverPhotos.album_auto_import = firstUri;
+        }
+
+        // Vault (private)
+        if (photo.is_private || photoData.isPrivate) {
+          counts.album_vault = (counts.album_vault || 0) + 1;
+          if (firstUri && !coverPhotos.album_vault) coverPhotos.album_vault = firstUri;
+        }
+
+        // Milestones
+        if (photo.type === 'milestone' || photoData.type === 'milestone') {
+          counts.album_milestones = (counts.album_milestones || 0) + 1;
+          if (firstUri && !coverPhotos.album_milestones) coverPhotos.album_milestones = firstUri;
+        }
+      });
+
+      // Build albums with counts
+      const enriched = SMART_ALBUMS.map(album => ({
+        ...album,
+        photoCount: counts[album.id] || 0,
+        coverPhotoUri: coverPhotos[album.id],
+        gradient: album.gradient as [string, string] | null,
+      }));
 
       setAlbums(enriched);
     } catch (error) {
-      const msg = String(error);
-      if (msg.includes('no such table') || msg.includes('prepareSync')) {
-        console.warn('[useSmartAlbums] smart_albums table not ready, returning empty');
-        setAlbums([]);
-      } else {
-        console.error('[useSmartAlbums] Failed to load albums:', error);
-      }
+      console.error('[useSmartAlbums] Failed to load albums:', error);
+      setAlbums([]);
     } finally {
       setIsLoading(false);
     }

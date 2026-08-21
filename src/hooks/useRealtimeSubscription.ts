@@ -1,4 +1,5 @@
 // src/hooks/useRealtimeSubscription.ts
+
 import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
@@ -24,9 +25,7 @@ export function useRealtimeSubscription({
   const isSubscribedRef = useRef(false);
 
   const setupSubscription = useCallback(async () => {
-    if (!enabled || !table) {
-      return;
-    }
+    if (!enabled || !table) return;
 
     try {
       // Clean up any existing subscription
@@ -36,10 +35,8 @@ export function useRealtimeSubscription({
         isSubscribedRef.current = false;
       }
 
-      // Build channel name
       const channelName = `realtime:${table}${filter ? `:${filter}` : ''}`;
 
-      // Create channel
       const channel = supabase
         .channel(channelName)
         .on(
@@ -51,7 +48,6 @@ export function useRealtimeSubscription({
             filter: filter,
           },
           (payload) => {
-            // Handle different event types
             switch (payload.eventType) {
               case 'INSERT':
                 onInsert?.(payload);
@@ -75,7 +71,6 @@ export function useRealtimeSubscription({
 
       channelRef.current = channel;
 
-      // Cleanup function
       return () => {
         if (channelRef.current) {
           supabase.removeChannel(channelRef.current);
@@ -88,7 +83,7 @@ export function useRealtimeSubscription({
     }
   }, [table, filter, onInsert, onUpdate, onDelete, enabled]);
 
-  // Setup subscription on mount and when dependencies change
+  // Setup subscription on mount
   useEffect(() => {
     let cleanup: (() => void) | undefined;
 
@@ -111,7 +106,6 @@ export function useRealtimeSubscription({
     };
   }, [setupSubscription, enabled]);
 
-  // Manual unsubscribe function
   const unsubscribe = useCallback(async () => {
     if (channelRef.current) {
       await supabase.removeChannel(channelRef.current);
@@ -120,7 +114,6 @@ export function useRealtimeSubscription({
     }
   }, []);
 
-  // Manual resubscribe function
   const resubscribe = useCallback(async () => {
     await unsubscribe();
     return setupSubscription();

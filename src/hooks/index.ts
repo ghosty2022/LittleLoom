@@ -1,7 +1,6 @@
 // src/hooks/index.ts
-// Safe context hooks - COMPLETE FIX with explicit exports
 
-// First, export everything from useSafeContexts
+// Safe context hooks
 export { 
   useSafeApp, 
   useSafeBaby, 
@@ -9,17 +8,16 @@ export {
   useSafeCustomization, 
   useSafeTracker,
   useSafeActivity,
-  useSafeUser, // <-- ADD THIS
+  useSafeUser,
   useUnifiedTheme,
 } from './useSafeContexts';
 
-// Also export as default from useSafeContexts
 export { default as useSafeContexts } from './useSafeContexts';
 
 // Main hooks
 export { useActivity } from './useActivity';
 export { useAuth } from './useAuth';
-export { useBaby } from '@/context/BabyContext';
+export { useBaby } from './useBaby';
 export { useCustomization } from './useCustomization';
 export { useFamily } from './useFamily';
 export { useMedia } from './useMedia';
@@ -28,18 +26,16 @@ export { useSafety } from './useSafety';
 export { useSecurity } from './useSecurity';
 export { useSupabase } from './useSupabase';
 export { useSweetAlert } from './useSweetAlert';
+export { useUser } from './useUser';
+export { useDatabase } from './useDatabase';
 
-// ─── useUser is now exported from useSafeContexts as useSafeUser
-// For backward compatibility, we still export useUser
-export { useSafeUser as useUser } from './useSafeContexts';
-
+// Feature hooks
 export { useUnifiedTrackerTheme } from './useUnifiedTrackerTheme';
 export { useTracker } from './useTrackerContext';
 export { useRouteBasedNavVisibility } from './useRouteBasedNavVisibility';
 export { useActivityPersistence, useEmergencySave, useComponentPersistence } from './useActivityPersistence';
 export { useAudioPlayer } from './useAudioPlayer';
 export { useCountdown } from './useCountdown';
-export { useDatabase } from './useDatabase';
 export { useGrowthIntelligence } from './useGrowthIntelligence';
 export { useIntelligentSplash } from './useIntelligentSplash';
 export { useModal } from './useModal';
@@ -54,6 +50,10 @@ export { useTimelineCorrelations } from './useTimelineCorrelations';
 export { useTrackerAchievements } from './useTrackerAchievements';
 export { useTrackerProgressive } from './useTrackerProgressive';
 export { useWHOGrowthCalculator } from './useWHOGrowthCalculator';
+
+// NEW: Offline and Realtime hooks
+export { useOfflineSync } from './useOfflineSync';
+export { useRealtimeSubscription } from './useRealtimeSubscription';
 
 // Re-export all from useSafeContexts as a namespace
 export * as SafeContexts from './useSafeContexts';

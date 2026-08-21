@@ -1,4 +1,5 @@
-// hooks/useOfflineSync.ts
+// src/hooks/useOfflineSync.ts
+
 import { useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
@@ -69,17 +70,24 @@ export function useOfflineSync() {
     setIsSyncing(true);
     const errors: OfflineOperation[] = [];
 
+    // Check if online
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setIsSyncing(false);
+      return { success: false, errors: queue, message: 'No authenticated user' };
+    }
+
     for (const op of queue) {
       try {
         switch (op.operation) {
           case 'insert':
-            await supabase.from(op.table).insert(op.data);
+            await supabase.from(op.table).insert({ ...op.data, user_id: user.id });
             break;
           case 'update':
-            await supabase.from(op.table).update(op.data).eq('id', op.data.id);
+            await supabase.from(op.table).update(op.data).eq('id', op.data.id).eq('user_id', user.id);
             break;
           case 'delete':
-            await supabase.from(op.table).delete().eq('id', op.data.id);
+            await supabase.from(op.table).delete().eq('id', op.data.id).eq('user_id', user.id);
             break;
         }
       } catch (error) {
@@ -120,3 +128,5 @@ export function useOfflineSync() {
     getQueueStatus,
   };
 }
+
+export default useOfflineSync;

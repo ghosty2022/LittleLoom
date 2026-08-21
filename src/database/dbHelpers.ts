@@ -58,6 +58,36 @@ export async function tableExists(tableName: string): Promise<boolean> {
   }
 }
 
+// Get current user ID
+export async function getCurrentUserId(): Promise<string | null> {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      console.warn('[DB] No authenticated user found');
+      return null;
+    }
+    return user.id;
+  } catch (error) {
+    console.error('[DB] getCurrentUserId error:', error);
+    return null;
+  }
+}
+
+// Get current session
+export async function getCurrentSession() {
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) {
+      console.warn('[DB] Session error:', error.message);
+      return null;
+    }
+    return session;
+  } catch (error) {
+    console.error('[DB] getCurrentSession error:', error);
+    return null;
+  }
+}
+
 /* ─── USER REGISTRY ───────────────────────────────────────────────────── */
 
 export async function getUserRegistry(): Promise<Record<string, UserRegistryEntry>> {
@@ -112,14 +142,24 @@ export async function updateUserInRegistry(
   }
 }
 
+export async function getUserFromRegistry(userId: string): Promise<UserRegistryEntry | null> {
+  try {
+    const registry = await getUserRegistry();
+    return registry[userId] || null;
+  } catch (error) {
+    console.error('Error getting user from registry:', error);
+    return null;
+  }
+}
+
 /* ─── FIND USERS ───────────────────────────────────────────────────── */
 
 export async function findUserByEmail(email: string): Promise<UserRegistryEntry | null> {
   try {
-    // Check local registry first
-    const registry = await getUserRegistry();
     const searchEmail = email.trim().toLowerCase();
     
+    // Check local registry first
+    const registry = await getUserRegistry();
     for (const entry of Object.values(registry)) {
       if (entry.email.toLowerCase() === searchEmail) {
         return entry;
@@ -320,6 +360,8 @@ let appSettingsTableExists: boolean | null = null;
 
 export async function getAppSetting(key: string): Promise<string | null> {
   try {
+    const userId = await getCurrentUserId();
+    
     // Check if table exists (cached)
     if (appSettingsTableExists === null) {
       appSettingsTableExists = await tableExists('app_settings');
@@ -328,22 +370,31 @@ export async function getAppSetting(key: string): Promise<string | null> {
     if (!appSettingsTableExists) {
       // Table doesn't exist, use AsyncStorage fallback
       try {
-        return await AsyncStorage.getItem(`app_setting_${key}`);
+        const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+        return await AsyncStorage.getItem(storageKey);
       } catch {
         return null;
       }
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('app_settings')
       .select('value')
-      .eq('key', key)
-      .maybeSingle();
+      .eq('key', key);
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       console.warn(`[DB] getAppSetting error for ${key}:`, error.message);
       try {
-        return await AsyncStorage.getItem(`app_setting_${key}`);
+        const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+        return await AsyncStorage.getItem(storageKey);
       } catch {
         return null;
       }
@@ -353,7 +404,9 @@ export async function getAppSetting(key: string): Promise<string | null> {
   } catch (error) {
     console.error(`[DB] getAppSetting error for ${key}:`, error);
     try {
-      return await AsyncStorage.getItem(`app_setting_${key}`);
+      const userId = await getCurrentUserId();
+      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+      return await AsyncStorage.getItem(storageKey);
     } catch {
       return null;
     }
@@ -362,6 +415,8 @@ export async function getAppSetting(key: string): Promise<string | null> {
 
 export async function setAppSetting(key: string, value: string): Promise<void> {
   try {
+    const userId = await getCurrentUserId();
+    
     // Check if table exists (cached)
     if (appSettingsTableExists === null) {
       appSettingsTableExists = await tableExists('app_settings');
@@ -369,7 +424,8 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
     
     if (!appSettingsTableExists) {
       // Table doesn't exist, use AsyncStorage fallback
-      await AsyncStorage.setItem(`app_setting_${key}`, value);
+      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+      await AsyncStorage.setItem(storageKey, value);
       return;
     }
 
@@ -379,19 +435,23 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
       .upsert({
         key,
         value,
+        user_id: userId,
         updated_at: now,
       }, {
-        onConflict: 'key',
+        onConflict: 'key, user_id',
       });
 
     if (error) {
       console.warn(`[DB] setAppSetting error for ${key}:`, error.message);
-      await AsyncStorage.setItem(`app_setting_${key}`, value);
+      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+      await AsyncStorage.setItem(storageKey, value);
     }
   } catch (error) {
     console.error(`[DB] setAppSetting error for ${key}:`, error);
     try {
-      await AsyncStorage.setItem(`app_setting_${key}`, value);
+      const userId = await getCurrentUserId();
+      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+      await AsyncStorage.setItem(storageKey, value);
     } catch (e) {
       console.error(`[DB] setAppSetting AsyncStorage fallback error for ${key}:`, e);
     }
@@ -400,29 +460,43 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 
 export async function deleteAppSetting(key: string): Promise<void> {
   try {
+    const userId = await getCurrentUserId();
+    
     // Check if table exists (cached)
     if (appSettingsTableExists === null) {
       appSettingsTableExists = await tableExists('app_settings');
     }
     
     if (!appSettingsTableExists) {
-      await AsyncStorage.removeItem(`app_setting_${key}`);
+      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+      await AsyncStorage.removeItem(storageKey);
       return;
     }
 
-    const { error } = await supabase
+    let query = supabase
       .from('app_settings')
       .delete()
       .eq('key', key);
 
+    if (userId) {
+      query = query.eq('user_id', userId);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { error } = await query;
+
     if (error) {
       console.warn(`[DB] deleteAppSetting error for ${key}:`, error.message);
-      await AsyncStorage.removeItem(`app_setting_${key}`);
+      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+      await AsyncStorage.removeItem(storageKey);
     }
   } catch (error) {
     console.error(`[DB] deleteAppSetting error for ${key}:`, error);
     try {
-      await AsyncStorage.removeItem(`app_setting_${key}`);
+      const userId = await getCurrentUserId();
+      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+      await AsyncStorage.removeItem(storageKey);
     } catch (e) {
       console.error(`[DB] deleteAppSetting AsyncStorage fallback error for ${key}:`, e);
     }
@@ -431,6 +505,8 @@ export async function deleteAppSetting(key: string): Promise<void> {
 
 export async function getMultipleAppSettings(keys: string[]): Promise<Record<string, string | null>> {
   try {
+    const userId = await getCurrentUserId();
+    
     // Check if table exists (cached)
     if (appSettingsTableExists === null) {
       appSettingsTableExists = await tableExists('app_settings');
@@ -440,7 +516,8 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
       const result: Record<string, string | null> = {};
       for (const key of keys) {
         try {
-          result[key] = await AsyncStorage.getItem(`app_setting_${key}`);
+          const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+          result[key] = await AsyncStorage.getItem(storageKey);
         } catch {
           result[key] = null;
         }
@@ -448,17 +525,26 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
       return result;
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('app_settings')
       .select('key, value')
       .in('key', keys);
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.warn('[DB] getMultipleAppSettings error:', error.message);
       const result: Record<string, string | null> = {};
       for (const key of keys) {
         try {
-          result[key] = await AsyncStorage.getItem(`app_setting_${key}`);
+          const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+          result[key] = await AsyncStorage.getItem(storageKey);
         } catch {
           result[key] = null;
         }
@@ -482,15 +568,11 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
 
 export async function getAllBabiesFromDb(forceSync: boolean = false) {
   try {
-    // Check authentication
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !authData?.user) {
+    const userId = await getCurrentUserId();
+    if (!userId) {
       console.log('[DB] No authenticated user found, returning empty list');
       return [];
     }
-    
-    const userId = authData.user.id;
 
     // Fetch from Supabase
     const { data: parent1Babies, error: error1 } = await supabase
@@ -527,10 +609,34 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
     if (parent1Babies) parent1Babies.forEach(addBaby);
     if (parent2Babies) parent2Babies.forEach(addBaby);
 
+    // Cache babies in AsyncStorage for offline access
+    if (allBabies.length > 0) {
+      try {
+        await AsyncStorage.setItem(`@littleloom_babies_${userId}`, JSON.stringify(allBabies));
+      } catch (cacheError) {
+        console.warn('[DB] Failed to cache babies:', cacheError);
+      }
+    }
+
     console.log(`[DB] Found ${allBabies.length} babies in Supabase`);
     return allBabies;
   } catch (error) {
     console.error('[DB] getAllBabiesFromDb error:', error);
+    
+    // Try to return cached babies
+    try {
+      const userId = await getCurrentUserId();
+      if (userId) {
+        const cached = await AsyncStorage.getItem(`@littleloom_babies_${userId}`);
+        if (cached) {
+          console.log('[DB] Returning cached babies');
+          return JSON.parse(cached);
+        }
+      }
+    } catch (cacheError) {
+      console.warn('[DB] Failed to load cached babies:', cacheError);
+    }
+    
     return [];
   }
 }
@@ -545,6 +651,22 @@ export async function getBabyByIdFromDb(id: string, forceSync: boolean = false) 
 
     if (error) {
       console.warn(`[DB] getBabyByIdFromDb error for ${id}:`, error.message);
+      
+      // Try cached
+      try {
+        const userId = await getCurrentUserId();
+        if (userId) {
+          const cached = await AsyncStorage.getItem(`@littleloom_babies_${userId}`);
+          if (cached) {
+            const babies = JSON.parse(cached);
+            const found = babies.find((b: any) => b.id === id);
+            if (found) return found;
+          }
+        }
+      } catch (cacheError) {
+        console.warn('[DB] Failed to load cached baby:', cacheError);
+      }
+      
       return null;
     }
 
@@ -557,13 +679,8 @@ export async function getBabyByIdFromDb(id: string, forceSync: boolean = false) 
 
 export async function getBabyCountFromDb(): Promise<number> {
   try {
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !authData?.user) {
-      return 0;
-    }
-
-    const userId = authData.user.id;
+    const userId = await getCurrentUserId();
+    if (!userId) return 0;
 
     const { count, error } = await supabase
       .from('babies')
@@ -573,6 +690,18 @@ export async function getBabyCountFromDb(): Promise<number> {
 
     if (error) {
       console.warn('[DB] getBabyCountFromDb error:', error.message);
+      
+      // Try cached
+      try {
+        const cached = await AsyncStorage.getItem(`@littleloom_babies_${userId}`);
+        if (cached) {
+          const babies = JSON.parse(cached);
+          return babies.filter((b: any) => b.is_active !== false).length;
+        }
+      } catch (cacheError) {
+        console.warn('[DB] Failed to load cached baby count:', cacheError);
+      }
+      
       return 0;
     }
 
@@ -596,6 +725,11 @@ export async function createBabyInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
+    const userId = await getCurrentUserId();
+    
+    if (!userId && !data.parent1Id) {
+      throw new Error('No authenticated user and no parent1Id provided');
+    }
     
     const { data: result, error } = await supabase
       .from('babies')
@@ -607,7 +741,7 @@ export async function createBabyInDb(data: {
         gender: data.gender || null,
         blood_type: data.bloodType || null,
         medical_notes: data.medicalNotes || null,
-        parent1_id: data.parent1Id || null,
+        parent1_id: data.parent1Id || userId,
         parent2_id: data.parent2Id || null,
         created_at: now,
         updated_at: now,
@@ -619,6 +753,11 @@ export async function createBabyInDb(data: {
     if (error) {
       console.error('[DB] createBabyInDb error:', error.message);
       throw error;
+    }
+
+    // Invalidate cache
+    if (userId) {
+      await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
     }
 
     return result;
@@ -641,6 +780,7 @@ export async function updateBabyInDb(id: string, updates: Partial<{
 }>) {
   try {
     const now = new Date().toISOString();
+    const userId = await getCurrentUserId();
     const remoteUpdates: Record<string, unknown> = { updated_at: now };
     
     if (updates.name !== undefined) remoteUpdates.name = updates.name;
@@ -665,6 +805,11 @@ export async function updateBabyInDb(id: string, updates: Partial<{
       throw error;
     }
 
+    // Invalidate cache
+    if (userId) {
+      await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
+    }
+
     return result;
   } catch (error) {
     console.error(`[DB] updateBabyInDb error for ${id}:`, error);
@@ -674,6 +819,8 @@ export async function updateBabyInDb(id: string, updates: Partial<{
 
 export async function deleteBabyFromDb(id: string) {
   try {
+    const userId = await getCurrentUserId();
+    
     // Soft delete - set inactive
     const { data: result, error } = await supabase
       .from('babies')
@@ -688,6 +835,11 @@ export async function deleteBabyFromDb(id: string) {
     if (error) {
       console.error(`[DB] deleteBabyFromDb error for ${id}:`, error.message);
       throw error;
+    }
+
+    // Invalidate cache
+    if (userId) {
+      await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
     }
 
     return result;
@@ -709,6 +861,12 @@ export async function hardDeleteBaby(babyId: string): Promise<boolean> {
     if (error) {
       console.error('[DB] hardDeleteBaby error:', error.message);
       return false;
+    }
+    
+    // Invalidate cache
+    const userId = await getCurrentUserId();
+    if (userId) {
+      await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
     }
     
     console.log(`[DB] Hard deleted baby: ${babyId}`);
@@ -767,6 +925,7 @@ export async function getEntriesByBabyFromDb(babyId: string, trackerId?: string)
       .from('tracker_entries')
       .select('*')
       .eq('baby_id', babyId)
+      .eq('is_deleted', false)
       .order('timestamp', { ascending: false });
 
     if (trackerId) {
@@ -780,9 +939,36 @@ export async function getEntriesByBabyFromDb(babyId: string, trackerId?: string)
       return [];
     }
 
+    // Cache entries in AsyncStorage for offline access
+    if (data && data.length > 0) {
+      try {
+        const cacheKey = `@littleloom_entries_${babyId}`;
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(data));
+      } catch (cacheError) {
+        console.warn('[DB] Failed to cache entries:', cacheError);
+      }
+    }
+
     return data || [];
   } catch (error) {
     console.error('[DB] getEntriesByBabyFromDb error:', error);
+    
+    // Try to return cached entries
+    try {
+      const cacheKey = `@littleloom_entries_${babyId}`;
+      const cached = await AsyncStorage.getItem(cacheKey);
+      if (cached) {
+        console.log('[DB] Returning cached entries');
+        const entries = JSON.parse(cached);
+        if (trackerId) {
+          return entries.filter((e: any) => e.tracker_id === trackerId);
+        }
+        return entries;
+      }
+    } catch (cacheError) {
+      console.warn('[DB] Failed to load cached entries:', cacheError);
+    }
+    
     return [];
   }
 }
@@ -869,6 +1055,9 @@ export async function createEntryInDb(data: {
       throw error;
     }
 
+    // Invalidate cache
+    await AsyncStorage.removeItem(`@littleloom_entries_${data.babyId}`);
+
     return result;
   } catch (error) {
     console.error('[DB] createEntryInDb error:', error);
@@ -899,9 +1088,14 @@ export async function updateEntryInDb(id: string, updates: Partial<{
   try {
     const now = new Date().toISOString();
     const remoteUpdates: Record<string, unknown> = { updated_at: now };
+    
+    let babyId: string | undefined;
 
     if (updates.trackerId !== undefined) remoteUpdates.tracker_id = updates.trackerId;
-    if (updates.babyId !== undefined) remoteUpdates.baby_id = updates.babyId;
+    if (updates.babyId !== undefined) {
+      remoteUpdates.baby_id = updates.babyId;
+      babyId = updates.babyId;
+    }
     if (updates.timestamp !== undefined) remoteUpdates.timestamp = updates.timestamp;
     if (updates.title !== undefined) remoteUpdates.title = updates.title;
     if (updates.data !== undefined) remoteUpdates.data = updates.data;
@@ -931,6 +1125,11 @@ export async function updateEntryInDb(id: string, updates: Partial<{
       throw error;
     }
 
+    // Invalidate cache if babyId is provided
+    if (babyId) {
+      await AsyncStorage.removeItem(`@littleloom_entries_${babyId}`);
+    }
+
     return result;
   } catch (error) {
     console.error(`[DB] updateEntryInDb error for ${id}:`, error);
@@ -953,6 +1152,11 @@ export async function softDeleteEntryInDb(id: string) {
     if (error) {
       console.error(`[DB] softDeleteEntryInDb error for ${id}:`, error.message);
       throw error;
+    }
+
+    // Invalidate cache for the baby
+    if (result?.baby_id) {
+      await AsyncStorage.removeItem(`@littleloom_entries_${result.baby_id}`);
     }
 
     return result;
@@ -1218,6 +1422,9 @@ export async function hardDeleteAllUserData(userId: string): Promise<boolean> {
         await supabase.from('tracker_entries').delete().eq('baby_id', baby.id);
         await supabase.from('family_members').delete().eq('baby_id', baby.id);
         await supabase.from('babies').delete().eq('id', baby.id);
+        
+        // Invalidate cache
+        await AsyncStorage.removeItem(`@littleloom_entries_${baby.id}`);
       }
     }
 
@@ -1226,6 +1433,9 @@ export async function hardDeleteAllUserData(userId: string): Promise<boolean> {
 
     // Delete app settings
     await supabase.from('app_settings').delete().eq('user_id', userId);
+
+    // Invalidate cache
+    await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
 
     console.log(`[DB] Hard deleted all data for user: ${userId}`);
     return true;
