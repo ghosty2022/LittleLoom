@@ -5,7 +5,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AppState, AppStateStatus, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { SocialUser } from '../hooks/useSocialAuth';
 import { supabase } from '@/utils/supabase';
@@ -44,7 +43,6 @@ const ASYNC_KEYS = {
   COMMUNITY_DISPLAY_NAME: 'littleloom_community_display_name',
   COMMUNITY_STATS: 'littleloom_community_stats',
   COMMUNITY_SELECTED_TOPICS: 'littleloom_community_selected_topics',
-  USERNAME_REGISTRY: 'littleloom_username_registry',
 } as const;
 
 export interface UserProfile {
@@ -177,19 +175,6 @@ const secureStorage = {
   },
 };
 
-// Import user registry functions
-import { 
-  registerUser, 
-  updateUserInRegistry,
-  findUserByEmail as dbFindUserByEmail,
-  findUserByUsername as dbFindUserByUsername,
-  findUserByPhone as dbFindUserByPhone,
-  findUserByEmailOrUsername as dbFindUserByEmailOrUsername,
-  findUserByEmailOrUsernameOrPhone as dbFindUserByEmailOrUsernameOrPhone,
-  getUserRegistry,
-  type UserRegistryEntry,
-} from '@/database/dbHelpers';
-
 const getBiometricTypeName = (types: LocalAuthentication.AuthenticationType[]): string => {
   if (!types || types.length === 0) return 'Biometric';
   if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'Face ID';
@@ -306,6 +291,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, session }));
+      }
       return true;
     } catch (error) {
       console.error('[Auth] Refresh session error:', error);
@@ -421,7 +409,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         
         if (authError?.message?.toLowerCase().includes('invalid login credentials')) {
-          return { success: false, message: 'Invalid email/username or password. Please try again.' };
+          return { success: false, message: 'Invalid email or password. Please try again.' };
         }
         
         return { success: false, message: authError?.message || 'Unable to sign in. Please try again.' };
@@ -434,14 +422,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userMeta = user.user_metadata || {};
       const fullName = userMeta.full_name || userMeta.fullName || userEmail.split('@')[0];
 
+      // Load community profile data from AsyncStorage
       const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
-        getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_BIO),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_AVATAR),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_STATS),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
       ]);
       
       const baseName = fullName || userEmail.split('@')[0];
@@ -489,28 +478,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (isSetupComplete) {
         await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
-      }
-
-      try {
-        const registryEntry: UserRegistryEntry = {
-          userId: user.id,
-          email: userEmail,
-          fullName: baseName,
-          avatar: userProfile.avatar,
-          role: userProfile.role,
-          createdAt: userProfile.createdAt,
-          communityUsername: userProfile.communityUsername,
-          communityHandle: userProfile.communityHandle,
-          communityBio: userProfile.communityBio,
-          communityAvatar: userProfile.communityAvatar,
-          communityDisplayName: userProfile.communityDisplayName,
-          communityStats: userProfile.communityStats,
-          communitySelectedTopics: userProfile.communitySelectedTopics,
-          hasPassword: true,
-        };
-        await registerUser(registryEntry);
-      } catch (registryError) {
-        console.warn('[Auth] Failed to update registry cache:', registryError);
       }
 
       if (isMounted.current) {
@@ -612,31 +579,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         communitySelectedTopics: [],
       };
 
-      const registryEntry: UserRegistryEntry = {
-        userId,
-        email: email.trim(),
-        fullName,
-        avatar: '👤',
-        role: 'parent1',
-        createdAt: userProfile.createdAt,
-        communityUsername: fullName,
-        communityHandle: handle,
-        communityBio: '',
-        communityAvatar: '👤',
-        communityDisplayName: fullName,
-        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
-        communitySelectedTopics: [],
-        hasPassword: true,
-      };
-      await registerUser(registryEntry);
-
       await Promise.all([
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
-        setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
-        setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
-        setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
+        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
+        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
+        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
       ]);
 
       await AsyncStorage.multiRemove([
@@ -973,20 +922,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
       }
       
-      // Update registry
-      try {
-        await updateUserInRegistry(currentProfile.id, {
-          fullName: updates.fullName,
-          avatar: updates.avatar,
-          role: updates.role,
-          communityUsername: updates.communityUsername,
-          communityHandle: updates.communityHandle,
-          communityBio: updates.communityBio,
-          communityAvatar: updates.communityAvatar,
-          communityDisplayName: updates.communityDisplayName,
-        });
-      } catch (e) {}
-      
       return true;
     } catch (error) {
       console.error('Update user profile error:', error);
@@ -1036,19 +971,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
       
       if (updates.username !== undefined) {
-        await setAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME, updates.username);
+        await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_USERNAME, updates.username);
       }
       if (updates.handle !== undefined) {
-        await setAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE, updates.handle);
+        await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_HANDLE, updates.handle);
       }
       if (updates.bio !== undefined) {
-        await setAppSetting(ASYNC_KEYS.COMMUNITY_BIO, updates.bio);
+        await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_BIO, updates.bio);
       }
       if (updates.avatar !== undefined) {
-        await setAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR, updates.avatar);
+        await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_AVATAR, updates.avatar);
       }
       if (updates.displayName !== undefined) {
-        await setAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, updates.displayName);
+        await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, updates.displayName);
       }
 
       if (isMounted.current) {
@@ -1064,13 +999,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getCommunityProfile = useCallback(async (): Promise<{ username: string; handle: string; bio: string; avatar: string; displayName: string; stats: any; selectedTopics: string[] } | null> => {
     try {
       const [username, handle, bio, avatar, displayName, stats, selectedTopics] = await Promise.all([
-        getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
-        getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_BIO),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_AVATAR),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_STATS),
+        AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
       ]);
 
       return {
@@ -1098,7 +1033,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const updatedProfile = { ...currentProfile, communityStats: updatedStats };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
-      await setAppSetting(ASYNC_KEYS.COMMUNITY_STATS, JSON.stringify(updatedStats));
+      await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_STATS, JSON.stringify(updatedStats));
       
       if (isMounted.current) {
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
@@ -1117,7 +1052,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const updatedProfile = { ...currentProfile, communitySelectedTopics: topics };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
-      await setAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(topics));
+      await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(topics));
       
       if (isMounted.current) {
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
@@ -1167,18 +1102,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { available: false, message: 'Username must be at least 3 characters' };
       }
       
-      const registry = await getUserRegistry();
-      const existing = registry.find(
-        (entry: UserRegistryEntry) => 
-          entry.communityUsername?.toLowerCase() === trimmed || 
-          entry.communityHandle?.toLowerCase() === `@${trimmed}`
-      );
+      // Check against community profiles in AsyncStorage
+      const registryJson = await AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME);
+      const existingUsernames = registryJson ? [registryJson] : [];
       
-      if (existing) {
-        // Check if it's the current user's own username
-        if (state.userProfile?.id === existing.userId) {
-          return { available: false, message: 'This is your current username' };
-        }
+      // Also check local registry if it exists
+      const allUsernamesJson = await AsyncStorage.getItem('littleloom_username_registry');
+      let allUsernames: string[] = [];
+      if (allUsernamesJson) {
+        try {
+          const parsed = JSON.parse(allUsernamesJson);
+          allUsernames = Array.isArray(parsed) ? parsed : [];
+        } catch {}
+      }
+      
+      const allExisting = [...existingUsernames, ...allUsernames];
+      
+      if (allExisting.some(u => u.toLowerCase() === trimmed)) {
         return { available: false, message: 'Username is already taken' };
       }
       
@@ -1187,12 +1127,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Check username availability error:', error);
       return { available: false, message: 'Failed to check username availability' };
     }
-  }, [state.userProfile]);
+  }, []);
 
   const registerCommunityUsername = useCallback(async (username: string): Promise<boolean> => {
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
     const availability = await isUsernameAvailable(trimmed);
     if (!availability.available) return false;
+    
+    // Save to registry
+    try {
+      const registryJson = await AsyncStorage.getItem('littleloom_username_registry');
+      let registry: string[] = registryJson ? JSON.parse(registryJson) : [];
+      if (!Array.isArray(registry)) registry = [];
+      registry.push(trimmed);
+      await AsyncStorage.setItem('littleloom_username_registry', JSON.stringify(registry));
+    } catch {}
     
     return await updateCommunityProfile({ 
       username: trimmed, 
@@ -1227,7 +1176,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({ ...prev, [stateKey]: true as const }));
       }
 
-      // Check if both steps are complete
       const [parent2Completed, babyCompleted] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
@@ -1324,7 +1272,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasBiometricLoginCredentials(),
       ]);
       
-      // Show prompt if biometric is available but not enabled or not set up
       if (state.isBiometricAvailable && biometricEnabled !== 'true') {
         return true;
       }
@@ -1399,13 +1346,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ─── ACCOUNT FUNCTIONS ────────────────────────────────────────────────
 
   const deleteAccount = useCallback(async (password: string): Promise<{ success: boolean; message: string }> => {
-    // Account deletion requires admin API or user self-deletion endpoint
-    // This is a placeholder - implement actual account deletion logic
     return { success: false, message: 'Account deletion requires additional verification. Please contact support.' };
   }, []);
 
   const deleteAccountWithConfirmation = useCallback(async (): Promise<{ success: boolean; message: string }> => {
-    // This would require a more complex flow with confirmation
     return { success: false, message: 'Account deletion requires additional verification. Please contact support.' };
   }, []);
 
@@ -1417,11 +1361,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     password: string
   ): Promise<{ success: boolean; message: string }> => {
-    // Validate invite code (implement your invite code logic)
-    // For now, just do normal signup
     const result = await signUp(fullName, email, password);
     return result;
   }, [signUp]);
+
+  // ─── FIND USER FUNCTIONS (Supabase only) ─────────────────────────────
+
+  const findUserByEmail = useCallback(async (email: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
+    try {
+      // First try to get from auth
+      const { data: { users }, error } = await supabase.auth.admin.listUsers();
+      if (error) {
+        console.warn('[Auth] Admin list users error:', error.message);
+        return null;
+      }
+      
+      const user = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+      if (!user) return null;
+      
+      const meta = user.user_metadata || {};
+      return {
+        userId: user.id,
+        email: user.email || '',
+        fullName: meta.full_name || meta.fullName || user.email?.split('@')[0] || '',
+        role: meta.role || 'parent1',
+      };
+    } catch (error) {
+      console.error('Find user by email error:', error);
+      return null;
+    }
+  }, []);
+
+  const findUserByEmailOrUsername = useCallback(async (identifier: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
+    // Check if it's an email
+    if (identifier.includes('@')) {
+      return await findUserByEmail(identifier);
+    }
+    // Otherwise check by username - this would require a users table in Supabase
+    // For now, try email lookup as fallback
+    return await findUserByEmail(identifier);
+  }, [findUserByEmail]);
+
+  const findUserByEmailOrUsernameOrPhone = useCallback(async (identifier: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
+    return await findUserByEmailOrUsername(identifier);
+  }, [findUserByEmailOrUsername]);
+
+  // ─── CHECK SESSION ────────────────────────────────────────────────────
+
+  const checkSession = useCallback(async (): Promise<boolean> => {
+    return await validateCurrentSession();
+  }, [validateCurrentSession]);
 
   // ─── INITIALIZATION ─────────────────────────────────────────────────────
 
@@ -1493,13 +1482,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         if (userProfile && isValidSession) {
           const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
-            getAppSetting(ASYNC_KEYS.COMMUNITY_USERNAME),
-            getAppSetting(ASYNC_KEYS.COMMUNITY_HANDLE),
-            getAppSetting(ASYNC_KEYS.COMMUNITY_BIO),
-            getAppSetting(ASYNC_KEYS.COMMUNITY_AVATAR),
-            getAppSetting(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
-            getAppSetting(ASYNC_KEYS.COMMUNITY_STATS),
-            getAppSetting(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
+            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
+            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
+            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_BIO),
+            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_AVATAR),
+            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME),
+            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_STATS),
+            AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
           ]);
           
           const baseName = userProfile.fullName || 'Parent';
@@ -1658,12 +1647,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [state.isAuthenticated, validateCurrentSession, signOut]);
 
-  // ─── CHECK SESSION ────────────────────────────────────────────────────
-
-  const checkSession = useCallback(async (): Promise<boolean> => {
-    return await validateCurrentSession();
-  }, [validateCurrentSession]);
-
   // ─── CONTEXT VALUE ────────────────────────────────────────────────────
 
   const value = React.useMemo(() => ({
@@ -1704,9 +1687,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUpWithInviteCode,
     forgotPassword,
     resetPasswordForUser,
-    findUserByEmail: dbFindUserByEmail,
-    findUserByEmailOrUsername: dbFindUserByEmailOrUsername,
-    findUserByEmailOrUsernameOrPhone: dbFindUserByEmailOrUsernameOrPhone,
+    findUserByEmail,
+    findUserByEmailOrUsername,
+    findUserByEmailOrUsernameOrPhone,
     checkSession,
     forceLogoutOnInvalidSession,
     verifyPassword,
@@ -1751,6 +1734,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUpWithInviteCode,
     forgotPassword,
     resetPasswordForUser,
+    findUserByEmail,
+    findUserByEmailOrUsername,
+    findUserByEmailOrUsernameOrPhone,
     checkSession,
     forceLogoutOnInvalidSession,
     verifyPassword,
