@@ -907,7 +907,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Achievements'>;
 export default function AchievementsScreen({ navigation, route }: Props) {
   const scrollY = useSharedValue(0);
   const { currentBaby, babies, refreshCurrentBaby } = useBaby();
-  const { entries } = useTracker();
+  // FIXED: Use useTrackerProgressive instead of useTracker
+  const { entries } = useTrackerProgressive();
   const {
     achievements,
     stats,
