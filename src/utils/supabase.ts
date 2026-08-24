@@ -66,40 +66,67 @@ const decompressData = (value: string): string => {
   }
 };
 
+// ─── FIXED: Unified storage that checks BOTH SecureStore and AsyncStorage ──
 const secureStorage = {
   getItem: async (key: string): Promise<string | null> => {
     try {
       if (isNative) {
-        const value = await SecureStore.getItemAsync(key);
+        // First try SecureStore
+        let value = await SecureStore.getItemAsync(key);
         if (value) {
           // Try to decompress if it was compressed
           return decompressData(value);
         }
+        
+        // If not in SecureStore, try AsyncStorage (for large tokens that were stored there)
+        try {
+          const asyncValue = await AsyncStorage.getItem(key);
+          if (asyncValue) {
+            console.log(`[SecureStorage] Found ${key} in AsyncStorage (large token)`);
+            return decompressData(asyncValue);
+          }
+        } catch (asyncError) {
+          // Ignore AsyncStorage errors
+        }
+        
         return null;
       }
       return await AsyncStorage.getItem(key);
     } catch (error) {
       console.warn(`[SecureStorage] Failed to get ${key}:`, error);
-      return null;
+      
+      // On error, try AsyncStorage as fallback
+      try {
+        return await AsyncStorage.getItem(key);
+      } catch {
+        return null;
+      }
     }
   },
   setItem: async (key: string, value: string): Promise<void> => {
     try {
+      // Always store in AsyncStorage as a backup
+      try {
+        await AsyncStorage.setItem(key, value);
+      } catch (backupError) {
+        console.warn(`[SecureStorage] AsyncStorage backup failed for ${key}:`, backupError);
+      }
+      
       if (isNative) {
         // Check if data is too large for SecureStore
         if (isDataTooLarge(value)) {
           console.warn(`[SecureStorage] ⚠️ ${key} is ${new Blob([value]).size} bytes, exceeding 2048 byte limit`);
-          console.log(`[SecureStorage] 💡 Storing ${key} in AsyncStorage instead`);
-          await AsyncStorage.setItem(key, value);
-        } else {
-          await SecureStore.setItemAsync(key, value);
+          console.log(`[SecureStorage] 💡 Storing ${key} in AsyncStorage only (SecureStore skipped)`);
+          // We already stored in AsyncStorage above, so just return
+          return;
         }
-      } else {
-        await AsyncStorage.setItem(key, value);
+        
+        // Store in SecureStore for smaller tokens
+        await SecureStore.setItemAsync(key, value);
       }
     } catch (error) {
       console.warn(`[SecureStorage] Failed to set ${key}:`, error);
-      // Fallback to AsyncStorage if SecureStore fails
+      // Ensure it's at least in AsyncStorage
       try {
         await AsyncStorage.setItem(key, value);
       } catch (fallbackError) {
@@ -111,13 +138,17 @@ const secureStorage = {
     try {
       if (isNative) {
         await SecureStore.deleteItemAsync(key);
-      } else {
-        await AsyncStorage.removeItem(key);
       }
-      // Also remove from AsyncStorage in case it was stored there as fallback
+      // Always remove from AsyncStorage too
       await AsyncStorage.removeItem(key);
     } catch (error) {
       console.warn(`[SecureStorage] Failed to remove ${key}:`, error);
+      // Try AsyncStorage as fallback
+      try {
+        await AsyncStorage.removeItem(key);
+      } catch {
+        // Ignore
+      }
     }
   },
 };

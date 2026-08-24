@@ -61,7 +61,7 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   return <>{children}</>;
 };
 
-// ─── FIXED: This component is now INSIDE BabyProvider ────────────────
+// ─── FIXED: This component now uses useBaby() and is INSIDE BabyProvider ──
 const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentBabyId, babies } = useBaby();
   const initRef = useRef(false);
@@ -138,25 +138,28 @@ const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   );
 };
 
-// ─── FIXED: Correct provider order ─────────────────────────────────────
+// ─── FIXED: Correct provider order - BabyProvider wraps everything that needs it ──
 export default function ContextProvider({ children }: ContextProviderProps) {
   return (
     <AuthProvider>
       <AppProvider>
         <UserProvider>
-          {/* BabyProvider MUST be before any component that uses useBaby() */}
+          {/* BabyProvider wraps ALL components that need useBaby() */}
           <BabyProvider>
+            {/* SecurityAuthBridge needs useAuth() but not useBaby() */}
             <SecurityAuthBridge>
               <FamilyProvider>
                 <ActivityProvider>
+                  {/* ActivitySyncBridge uses useBaby() - it's inside BabyProvider now */}
                   <ActivitySyncBridge>
                     <AudioProvider>
                       <MediaProvider>
                         <FamilyChatWrapper>
                           <CommunityProvider>
                             <SafetyProvider>
-                              {/* TrackerProvider and TrackerBabySync are INSIDE BabyProvider */}
+                              {/* TrackerProvider is INSIDE BabyProvider so TrackerBabySync can use useBaby() */}
                               <TrackerProvider>
+                                {/* TrackerBabySync uses useBaby() - it's inside BabyProvider */}
                                 <TrackerBabySync>
                                   <SweetAlertWrapper>
                                     {children}
