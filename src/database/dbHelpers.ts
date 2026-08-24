@@ -40,6 +40,77 @@ let cachedUserIdTimestamp: number = 0;
 const USER_ID_CACHE_TTL = 30000; // 30 seconds
 let isRefreshingSession = false;
 
+// ─── TEST DATABASE CONNECTION ──────────────────────────────────────────
+export async function testDatabaseConnection(): Promise<{ 
+  success: boolean; 
+  userId: string | null; 
+  message: string 
+}> {
+  try {
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { 
+        success: false, 
+        userId: null, 
+        message: `Auth error: ${userError?.message || 'No user'}` 
+      };
+    }
+    
+    // Test if we can read from babies table
+    const { data, error: readError } = await supabase
+      .from('babies')
+      .select('id')
+      .limit(1);
+    
+    if (readError) {
+      return { 
+        success: false, 
+        userId: user.id, 
+        message: `Read error: ${readError.message}` 
+      };
+    }
+    
+    // Test if we can insert a test record (will be rolled back)
+    const testId = `test_${Date.now()}`;
+    const { error: insertError } = await supabase
+      .from('babies')
+      .insert({
+        id: testId,
+        name: 'Test Baby',
+        date_of_birth: new Date().toISOString(),
+        parent1_id: user.id,
+        is_active: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    
+    // Clean up test record
+    await supabase.from('babies').delete().eq('id', testId);
+    
+    if (insertError) {
+      return { 
+        success: false, 
+        userId: user.id, 
+        message: `Insert error: ${insertError.message}` 
+      };
+    }
+    
+    return { 
+      success: true, 
+      userId: user.id, 
+      message: 'Database connection successful' 
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      userId: null, 
+      message: `Error: ${error}` 
+    };
+  }
+}
+
 // ─── Clear user ID cache (call on logout) ─────────────────────────────
 export function clearUserIdCache(): void {
   cachedUserId = null;

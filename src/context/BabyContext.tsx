@@ -962,8 +962,51 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const newId = generateId();
       
-      // Get current authenticated user
-      const userId = await getCurrentUserId();
+      // Get current authenticated user - use the most reliable method
+      let userId: string | null = null;
+      
+      // Method 1: Use supabase.auth.getUser() - most reliable
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user?.id) {
+          userId = user.id;
+          console.log('[BabyContext] Got user ID from getUser:', userId);
+        }
+      } catch (e) {
+        console.warn('[BabyContext] getUser failed:', e);
+      }
+      
+      // Method 2: Use session if getUser failed
+      if (!userId) {
+        try {
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          if (!sessionError && session?.user?.id) {
+            userId = session.user.id;
+            console.log('[BabyContext] Got user ID from session:', userId);
+          }
+        } catch (e) {
+          console.warn('[BabyContext] getSession failed:', e);
+        }
+      }
+      
+      // Method 3: Use authProfile from context
+      if (!userId && authProfile?.id) {
+        userId = authProfile.id;
+        console.log('[BabyContext] Got user ID from authProfile:', userId);
+      }
+      
+      // Method 4: Force refresh session
+      if (!userId) {
+        try {
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError && refreshData?.session?.user?.id) {
+            userId = refreshData.session.user.id;
+            console.log('[BabyContext] Got user ID from refreshSession:', userId);
+          }
+        } catch (e) {
+          console.warn('[BabyContext] refreshSession failed:', e);
+        }
+      }
       
       if (!userId) {
         console.error('[BabyContext] No authenticated user for createBaby');
@@ -974,7 +1017,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[BabyContext] Creating baby with parent1_id:', userId);
 
       // Check for duplicate
-      const { data: existingBabies } = await supabase
+      const { data: existingBabies, error: duplicateError } = await supabase
         .from('babies')
         .select('id')
         .eq('name', data.name)
@@ -982,34 +1025,139 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('parent1_id', userId)
         .eq('is_active', true);
 
+      if (duplicateError) {
+        console.warn('[BabyContext] Duplicate check error:', duplicateError);
+      }
+
       if (existingBabies && existingBabies.length > 0) {
         console.log('[BabyContext] Duplicate baby found');
         isCreatingRef.current = false;
         return null;
       }
 
-      // Insert baby
+      // Insert baby with all fields
+      const babyData = {
+        id: newId,
+        name: data.name,
+        avatar: data.avatar || null,
+        date_of_birth: data.birthDate,
+        gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
+        blood_type: data.bloodType || null,
+        medical_notes: data.medicalNotes || null,
+        parent1_id: userId,
+        parent2_id: data.parent2Id || null,
+        is_active: true,
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      };
+
+      console.log('[BabyContext] Inserting baby with data:', { ...babyData, id: newId });
+
       const { data: result, error } = await supabase
         .from('babies')
-        .insert({
-          id: newId,
-          name: data.name,
-          avatar: data.avatar || null,
-          date_of_birth: data.birthDate,
-          gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
-          blood_type: data.bloodType || null,
-          medical_notes: data.medicalNotes || null,
-          parent1_id: userId,
-          parent2_id: data.parent2Id || null,
-          is_active: true,
-          created_at: now.toISOString(),
-          updated_at: now.toISOString(),
-        })
+        .insert(babyData)
         .select()
         .single();
 
       if (error) {
         console.error('[BabyContext] Create baby error:', error);
+        
+        // Handle specific error types
+        if (error.code === '42501') {
+          // RLS error - try with a more explicit approach
+          console.warn('[BabyContext] RLS error - attempting with explicit auth check...');
+          
+          // Try refreshing the session and retry
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError && refreshData?.session) {
+            console.log('[BabyContext] Session refreshed, retrying insert...');
+            
+            const { data: retryResult, error: retryError } = await supabase
+              .from('babies')
+              .insert(babyData)
+              .select()
+              .single();
+            
+            if (retryError) {
+              console.error('[BabyContext] Retry insert failed:', retryError);
+              isCreatingRef.current = false;
+              return null;
+            }
+            
+            if (retryResult) {
+              console.log('[BabyContext] Baby created on retry:', retryResult.id);
+              
+              const newBaby: BabyProfile = {
+                ...data,
+                id: retryResult.id,
+                parent1Id: userId,
+                streak: 0,
+                milestones: 0,
+                photos: 0,
+                createdAt: now.toISOString(),
+                lastUpdated: now.toISOString(),
+                age: calculateAge(data.birthDate),
+              };
+
+              // Check if this is the first baby for this user
+              const { count } = await supabase
+                .from('babies')
+                .select('*', { count: 'exact', head: true })
+                .eq('parent1_id', userId)
+                .eq('is_active', true);
+
+              const isFirstBaby = (count || 0) <= 1;
+              const newCurrentId = isFirstBaby ? retryResult.id : (state.currentBabyId || retryResult.id);
+
+              // Set current baby in app_settings
+              try {
+                await supabase
+                  .from('app_settings')
+                  .upsert({
+                    key: 'current_baby_id',
+                    value: newCurrentId,
+                    user_id: userId,
+                    updated_at: new Date().toISOString(),
+                  }, { onConflict: 'key, user_id' });
+              } catch (e) {
+                console.warn('[BabyContext] Failed to set current_baby_id:', e);
+              }
+
+              // Clear skip baby if set
+              try {
+                await supabase
+                  .from('app_settings')
+                  .delete()
+                  .eq('key', 'has_skipped_baby')
+                  .eq('user_id', userId);
+              } catch (e) {
+                console.warn('[BabyContext] Failed to clear skip baby:', e);
+              }
+
+              if (isMounted.current) {
+                setState(prev => ({
+                  ...prev,
+                  babies: [...prev.babies, newBaby],
+                  currentBabyId: newCurrentId,
+                  currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
+                  hasSkippedBaby: false,
+                }));
+              }
+
+              // Load tracker data
+              await loadAllBabyData(newCurrentId);
+
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              
+              // Reload babies to ensure consistency
+              await loadBabies();
+
+              isCreatingRef.current = false;
+              return retryResult.id;
+            }
+          }
+        }
+        
         isCreatingRef.current = false;
         return null;
       }
@@ -1095,7 +1243,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[BabyContext] Create baby error:', error);
       return null;
     }
-  }, [calculateAge, loadAllBabyData, state.currentBabyId, loadBabies, getCurrentUserId]);
+  }, [calculateAge, loadAllBabyData, state.currentBabyId, loadBabies, authProfile]); // Added authProfile to dependencies
 
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {

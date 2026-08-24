@@ -331,23 +331,30 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
   }
   if (!validateStep1() || !validateStep2()) return;
 
-  if (!isAuthenticated || !userProfile) {
-    toast('Please sign in to create a baby profile', 'error');
-    try {
-      const { data, error } = await supabase.auth.getUser();
-      if (error || !data?.user) {
-        navigation.replace('Login');
-        return;
-      }
-    } catch (e) {
-      navigation.replace('Login');
-      return;
-    }
+  // ─── DEBUG: Verify authentication status ──────────────────────────────
+  // Get the authenticated user directly from Supabase
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  console.log('[BabyProfile] Auth check - user:', user?.id);
+  console.log('[BabyProfile] Auth check - error:', userError?.message);
+  console.log('[BabyProfile] Auth check - userProfile:', userProfile?.id);
+
+  if (userError || !user) {
+    toast('Please sign in again to create a baby profile', 'error');
+    navigation.replace('Login');
     return;
   }
 
-  const userId = userProfile.id;
-  console.log('[BabyProfile] Creating baby with parent1Id:', userId);
+  // Use the session user ID instead of userProfile.id
+  const userId = user.id;
+  console.log('[BabyProfile] Creating baby with parent1Id (from session):', userId);
+
+  // Ensure we're not using a stale userProfile
+  if (userProfile && user.id !== userProfile.id) {
+    console.warn('[BabyProfile] User ID mismatch - using session user:', user.id, 'vs profile:', userProfile.id);
+    // Continue with the session user ID
+  }
+
+  // ─── CONTINUE WITH PROFILE CREATION ──────────────────────────────────
 
   const trimmedName = name.trim();
   const birthIso = birthDate.toISOString();
