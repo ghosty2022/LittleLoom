@@ -585,118 +585,150 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [loadFamily]);
 
   // ─── Generate Invite Code ─────────────────────────────────────────────
-  const generateInviteCode = useCallback(async (
-    role: 'parent2' | 'guardian' | 'viewer',
-    relationship?: string,
-    inviteeName?: string,
-    inviteeEmail?: string,
-    inviteePhone?: string
-  ): Promise<{ code: string; success: boolean; message: string }> => {
-    if (!isOwner || !authProfile || !currentBaby) {
-      return { code: '', success: false, message: 'Only the account creator can invite family members' };
-    }
+// In FamilyContext.tsx, fix the generateInviteCode insert:
 
-    try {
-      const payload = {
+const generateInviteCode = useCallback(async (
+  role: 'parent2' | 'guardian' | 'viewer',
+  relationship?: string,
+  inviteeName?: string,
+  inviteeEmail?: string,
+  inviteePhone?: string
+): Promise<{ code: string; success: boolean; message: string }> => {
+  if (!isOwner || !authProfile || !currentBaby) {
+    return { code: '', success: false, message: 'Only the account creator can invite family members' };
+  }
+
+  try {
+    const code = generateId().substring(0, 8).toUpperCase();
+    const now = Date.now();
+    const expiresInDays = 7;
+
+    const payload = {
+      family_id: currentBaby.id,
+      baby_name: currentBaby.name,
+      baby_dob: currentBaby.date_of_birth,
+      baby_gender: currentBaby.gender,
+      creator_id: authProfile.id,
+      creator_name: authProfile.full_name,
+      role,
+      relationship,
+      invitee_name: inviteeName,
+      invitee_email: inviteeEmail,
+      invitee_phone: inviteePhone,
+      created_at: now,
+      expires_in_days: expiresInDays,
+    };
+
+    const { data, error } = await supabase
+      .from('invite_codes')
+      .insert({
+        code: code,
         family_id: currentBaby.id,
         baby_name: currentBaby.name,
         baby_dob: currentBaby.date_of_birth,
         baby_gender: currentBaby.gender,
         creator_id: authProfile.id,
         creator_name: authProfile.full_name,
-        role,
-        relationship,
-        invitee_name: inviteeName,
-        invitee_email: inviteeEmail,
-        invitee_phone: inviteePhone,
-        created_at: Date.now(),
-        expires_in_days: 7,
-      };
+        role: role,
+        relationship: relationship || null,
+        created_at: now,
+        expires_in_days: expiresInDays,
+        used: false,
+        revoked: false,
+      })
+      .select('code')
+      .single();
 
-      // Use Supabase to generate invite code
-      const { data, error } = await supabase
-        .from('invite_codes')
-        .insert({
-          code: generateId().substring(0, 8).toUpperCase(),
-          family_id: currentBaby.id,
-          creator_id: authProfile.id,
-          payload: payload,
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        })
-        .select('code')
-        .single();
-
-      if (error) {
-        console.error('Error generating invite code:', error);
-        // Fallback to local generation
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        const array = new Uint32Array(6);
-        crypto.getRandomValues(array);
-        const code = Array.from(array, n => chars[n % chars.length]).join('');
-
-        const existing = await AsyncStorage.getItem('littleloom_invite_codes');
-        const codes = existing ? JSON.parse(existing) : {};
-        codes[code] = { ...payload, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, used: false };
-        await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
-
-        return { code, success: true, message: 'Invite code generated successfully' };
-      }
-
-      return { code: data.code, success: true, message: 'Invite code generated successfully' };
-    } catch (error) {
+    if (error) {
       console.error('Error generating invite code:', error);
-      return { code: '', success: false, message: 'Failed to generate invite code' };
+      
+      // Fallback to local generation
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const array = new Uint32Array(6);
+      crypto.getRandomValues(array);
+      const fallbackCode = Array.from(array, n => chars[n % chars.length]).join('');
+      
+      const existing = await AsyncStorage.getItem('littleloom_invite_codes');
+      const codes = existing ? JSON.parse(existing) : {};
+      codes[fallbackCode] = { 
+        ...payload, 
+        expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, 
+        used: false 
+      };
+      await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
+
+      return { code: fallbackCode, success: true, message: 'Invite code generated successfully' };
     }
-  }, [isOwner, authProfile, currentBaby]);
+
+    return { code: data.code, success: true, message: 'Invite code generated successfully' };
+  } catch (error) {
+    console.error('Error generating invite code:', error);
+    return { code: '', success: false, message: 'Failed to generate invite code' };
+  }
+}, [isOwner, authProfile, currentBaby]);
 
   // ─── Get Active Invite Codes ──────────────────────────────────────────
-  const getActiveInviteCodes = useCallback(async () => {
-    if (!currentBaby?.id) return [];
+// In FamilyContext.tsx, replace the getActiveInviteCodes function with:
 
-    try {
-      const { data, error } = await supabase
-        .from('invite_codes')
-        .select('*')
-        .eq('family_id', currentBaby.id)
-        .eq('used', false)
-        .eq('revoked', false)
-        .gt('expires_at', new Date().toISOString());
+const getActiveInviteCodes = useCallback(async () => {
+  if (!currentBaby?.id) return [];
 
-      if (error) {
-        console.error('Error fetching invite codes:', error);
-        return [];
-      }
+  try {
+    const now = Date.now();
+    const expiresAt = now + 7 * 24 * 60 * 60 * 1000;
+    
+    const { data, error } = await supabase
+      .from('invite_codes')
+      .select('*')
+      .eq('family_id', currentBaby.id)
+      .eq('used', false)
+      .eq('revoked', false)
+      // Filter by expiration: created_at + expires_in_days * 86400000 > now
+      // We need to do this in the query using the raw SQL filter
+      .filter('created_at', 'gt', now - 7 * 24 * 60 * 60 * 1000);
 
-      return data || [];
-    } catch (error) {
+    if (error) {
       console.error('Error fetching invite codes:', error);
       return [];
     }
-  }, [currentBaby?.id]);
+
+    // Transform the data to match what the UI expects
+    return (data || []).map(item => ({
+      ...item,
+      expiresAt: new Date(item.created_at + item.expires_in_days * 24 * 60 * 60 * 1000).toISOString(),
+      role: item.role,
+      relationship: item.relationship,
+    }));
+  } catch (error) {
+    console.error('Error fetching invite codes:', error);
+    return [];
+  }
+}, [currentBaby?.id]);
 
   // ─── Revoke Invite Code ───────────────────────────────────────────────
-  const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
-    if (!isOwner || !currentBaby) return false;
+// In FamilyContext.tsx:
 
-    try {
-      const { error } = await supabase
-        .from('invite_codes')
-        .update({ revoked: true })
-        .eq('code', code)
-        .eq('family_id', currentBaby.id);
+const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
+  if (!isOwner || !currentBaby) return false;
 
-      if (error) {
-        console.error('Error revoking invite code:', error);
-        return false;
-      }
+  try {
+    const { error } = await supabase
+      .from('invite_codes')
+      .update({ revoked: true })
+      .eq('code', code)
+      .eq('family_id', currentBaby.id);
 
-      return true;
-    } catch (error) {
+    if (error) {
       console.error('Error revoking invite code:', error);
       return false;
     }
-  }, [isOwner, currentBaby]);
 
+    return true;
+  } catch (error) {
+    console.error('Error revoking invite code:', error);
+    return false;
+  }
+}, [isOwner, currentBaby]);
   // ─── Get Effective Permissions ────────────────────────────────────────
   const getEffectivePermissions = useCallback((userId?: string): Permission => {
     const targetId = userId || authProfile?.id;
