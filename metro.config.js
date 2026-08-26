@@ -56,4 +56,44 @@ config.resolver.alias = {
   '@': path.resolve(__dirname, 'src'),
 };
 
+// ─── FIX: React Native shims for React 19 ──────────────────────────
+// This resolves the "react-native/Libraries/Renderer/shims/ReactNative" error
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Fix for React Native shims path in React 19
+  if (moduleName === 'react-native/Libraries/Renderer/shims/ReactNative') {
+    // Try to resolve the actual path
+    try {
+      const resolvedPath = require.resolve('react-native/Libraries/Renderer/shims/ReactNative');
+      return {
+        filePath: resolvedPath,
+        type: 'sourceFile',
+      };
+    } catch (e) {
+      // If the file doesn't exist, try alternative paths
+      const alternatives = [
+        'react-native/Libraries/ReactNative/ReactNative',
+        'react-native/Libraries/Renderer/shims/ReactNative',
+        'react-native/Libraries/Renderer/ReactNative',
+      ];
+      
+      for (const alt of alternatives) {
+        try {
+          const resolvedPath = require.resolve(alt);
+          return {
+            filePath: resolvedPath,
+            type: 'sourceFile',
+          };
+        } catch (e2) {
+          // Continue trying
+        }
+      }
+      
+      // If all fail, fallback to original resolver
+      return context.resolveRequest(context, moduleName, platform);
+    }
+  }
+  
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;

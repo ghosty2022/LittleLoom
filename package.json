@@ -18,7 +18,8 @@
     "db:push": "drizzle-kit push --config=src/database/drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config=src/database/drizzle.config.ts",
     "prebuild:check": "node prebuild-check.js",
-    "build:dev": "node prebuild-check.js && eas build --platform android --profile development"
+    "build:dev": "node prebuild-check.js && eas build --platform android --profile development",
+    "postinstall": "npx patch-package"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.13",
@@ -135,7 +136,7 @@
     "@react-native-community/cli": "^20.2.0",
     "@testing-library/react-native": "^12.9.0",
     "@types/lodash": "^4.17.0",
-    "@types/react": "~18.3.12",
+    "@types/react": "~19.2.4",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.60.1",
@@ -162,5 +163,13 @@
         "listUnknownPackages": true
       }
     }
+  },
+  "resolutions": {
+    "react": "19.2.3",
+    "@types/react": "~19.2.4"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "@types/react": "~19.2.4"
   }
 }
