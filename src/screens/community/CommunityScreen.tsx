@@ -820,7 +820,7 @@ export default function CommunityScreen({ navigation }: Props) {
   // ============================================================
   const renderHeader = useCallback(() => (
     <View>
-      {/* Hero Banner - THE LOOM with gradient colors */}
+      {/* Hero Banner - THE LOOM with gradient text */}
       <Animated.View 
         entering={FadeInUp.delay(100).duration(500).springify()}
         style={[styles.heroBanner, { backgroundColor: isDark ? DS.darkCard : DS.white }]}
@@ -834,7 +834,7 @@ export default function CommunityScreen({ navigation }: Props) {
         <View style={styles.heroContent}>
           <View style={styles.heroHeader}>
             <View>
-              <Text style={[styles.headerTitleGradient]}>THE LOOM</Text>
+              <Text style={styles.heroTitleGradient}>THE LOOM</Text>
               <Text style={[styles.heroSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                 Weave stories, share wisdom, grow together.
               </Text>
@@ -888,28 +888,28 @@ export default function CommunityScreen({ navigation }: Props) {
           </View>
           
           {/* Topic Selection Status - Shows correct count */}
-          {hasTopics ? (
-            <View style={[styles.topicStatus, { marginTop: DS.space.sm }]}>
-              <Ionicons name="checkmark-circle" size={14} color={DS.success} />
-              <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                {userTopics.length} topic{userTopics.length !== 1 ? 's' : ''} selected
-              </Text>
-              <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
-                <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.topicStatus, styles.topicStatusEmpty, { marginTop: DS.space.sm }]}
-              onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
-            >
-              <Ionicons name="alert-circle" size={14} color={DS.warning} />
-              <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                Select {Math.max(0, 5 - userTopics.length)} more topics to personalize your feed
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={DS.primary} />
-            </TouchableOpacity>
-          )}
+{hasTopics ? (
+  <View style={[styles.topicStatus, { marginTop: DS.space.sm }]}>
+    <Ionicons name="checkmark-circle" size={14} color={DS.success} />
+    <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+      {userTopics.length} topic{userTopics.length !== 1 ? 's' : ''} selected
+    </Text>
+    <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
+      <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
+    </TouchableOpacity>
+  </View>
+) : (
+  <TouchableOpacity 
+    style={[styles.topicStatus, styles.topicStatusEmpty, { marginTop: DS.space.sm }]}
+    onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
+  >
+    <Ionicons name="alert-circle" size={14} color={DS.warning} />
+    <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+      Select topics to personalize your feed
+    </Text>
+    <Ionicons name="chevron-forward" size={14} color={DS.primary} />
+  </TouchableOpacity>
+)}
         </View>
       </Animated.View>
 
@@ -1044,9 +1044,7 @@ export default function CommunityScreen({ navigation }: Props) {
                 </View>
               )}
               <View style={{ marginLeft: 10 }}>
-                <Text style={[styles.heroTitleGradient]}>
-  THE LOOM
-</Text>
+                <Text style={styles.headerTitleGradient}>THE LOOM</Text>
                 <Text style={[styles.headerSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                   {currentUser?.displayName || 'Welcome'}
                 </Text>
@@ -1457,11 +1455,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 2,
   },
-  heroTitleGradient: {
+// Find these lines in the styles and REPLACE with:
+heroTitleGradient: {
   fontSize: DS.text['2xl'].size,
   fontWeight: '800',
   letterSpacing: 1,
   marginBottom: 2,
+  // Use the gradient colors from splash screen
   backgroundImage: 'linear-gradient(to right, #667eea, #764ba2, #f093fb)',
   WebkitBackgroundClip: 'text',
   WebkitTextFillColor: 'transparent',

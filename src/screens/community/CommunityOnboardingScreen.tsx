@@ -164,7 +164,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   const sweetAlert = useSweetAlert();
   const { settings, triggerHaptic } = useCustomization();
   const { updateSelectedTopics: updateUserTopics } = useUser();
-  const { currentUser } = useCommunity(); // <-- ADD THIS
+  const { currentUser } = useCommunity(); // <-- ADD THIS LINE
   
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -291,7 +291,6 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       }
     });
   }, []);
-
 const handleComplete = useCallback(async () => {
   // Check minimum 5 topics
   if (selectedTopics.length < MIN_TOPICS) {
@@ -311,14 +310,14 @@ const handleComplete = useCallback(async () => {
       timestamp: new Date().toISOString(),
     };
 
-    // Save to AsyncStorage
+    // Save to ALL storage keys
     await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
     await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
     
     // Also save user-specific topics
     if (currentUser?.id) {
       await AsyncStorage.setItem(
-        `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
+        `@community_selected_topics_v2_${currentUser.id}`,
         JSON.stringify(selectedTopics)
       );
     }

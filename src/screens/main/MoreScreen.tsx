@@ -878,8 +878,39 @@ const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
 // ─── Main Component ───────────────────────────────────────────────
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
-  // ─── Call useSafeSweetAlert at the top level ───────────────────
-  const sweetAlert = useSafeSweetAlert();
+  // ─── SweetAlert ─────────────────────────────────────────────────
+  let sweetAlert;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    sweetAlert = useSweetAlert();
+  } catch (error) {
+    console.warn('[MoreScreen] useSweetAlert failed, using fallback');
+  }
+  
+  // Fallback if hook failed
+  if (!sweetAlert) {
+    sweetAlert = {
+      toast: (title: string, message: string) => Alert.alert(title, message),
+      alert: (title: string, message: string) => Alert.alert(title, message),
+      confirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; destructive?: boolean }) => {
+        return new Promise<boolean>((resolve) => {
+          Alert.alert(
+            options.title,
+            options.message,
+            [
+              { text: options.cancelText || 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: options.confirmText || 'OK', style: options.destructive ? 'destructive' : 'default', onPress: () => resolve(true) },
+            ]
+          );
+        });
+      },
+      success: (title: string, message: string) => Alert.alert(title, message),
+      error: (title: string, message: string) => Alert.alert(title, message),
+      warning: (title: string, message: string) => Alert.alert(title, message),
+      info: (title: string, message: string) => Alert.alert(title, message),
+    };
+  }
+  
   const insets = useSafeAreaInsets();
 
   // ─── Contexts ────────────────────────────────────────────────────

@@ -3138,17 +3138,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   // ─── UPDATE SELECTED TOPICS ─────────────────────────────────────────
-// src/context/CommunityContext.tsx
-// Fix the updateSelectedTopics function - remove the 5-topic limit
-
 const updateSelectedTopics = useCallback(async (topics: string[]) => {
   const validTopics = validateTopicIds(topics);
   
-  // Remove the 5-topic limit - let users select as many as they want
-  // The MIN_TOPICS is for onboarding minimum, not maximum
-  
   const currentUser = stateRef.current.currentUser;
 
+  // Update Supabase if available
   if (currentUser) {
     try {
       const { data: existingTopics, error: fetchError } = await supabase
@@ -3186,7 +3181,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     }
   }
 
-  // Update topic join status
+  // Update topic join status in state
   if (currentUser) {
     setState(prev => {
       const updatedTopics = prev.topics.map(topic => {
@@ -3205,12 +3200,17 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     });
   }
 
-  // Persist selected topics
+  // Persist selected topics to ALL storage keys
   await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validTopics));
+  await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(validTopics));
 
   if (currentUser?.id) {
     await AsyncStorage.setItem(
       `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
+      JSON.stringify(validTopics)
+    );
+    await AsyncStorage.setItem(
+      `@community_selected_topics_v2_${currentUser.id}`,
       JSON.stringify(validTopics)
     );
   }
@@ -3232,6 +3232,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     }));
   }
 
+  // Update state
   setState(prev => ({
     ...prev,
     selectedTopics: validTopics,
@@ -3239,7 +3240,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
   }));
 
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  console.log('Topics updated successfully!');
+  console.log('[updateSelectedTopics] Updated to:', validTopics.length, 'topics');
 }, []);
 
   // ─── GET SELECTED TOPICS ────────────────────────────────────────────
