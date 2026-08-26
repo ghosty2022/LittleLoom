@@ -1066,7 +1066,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
         blood_type: data.bloodType || null,
         medical_notes: data.medicalNotes || null,
-        allergies: data.allergies || null,
         parent1_id: userId,
         parent2_id: data.parent2Id || null,
         

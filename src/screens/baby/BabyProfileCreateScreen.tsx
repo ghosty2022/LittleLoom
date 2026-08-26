@@ -48,38 +48,46 @@ const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', '
 const FEEDING_PLANS = ['Breastfeeding', 'Formula', 'Combination', 'Pumping'];
 
 // ─── TERM EXPLANATIONS ──────────────────────────────────────────────────
-const TERM_EXPLANATIONS: Record<string, { label: string; explanation: string }> = {
+const TERM_EXPLANATIONS: Record<string, { label: string; explanation: string; emoji: string }> = {
   'Apgar Score': {
     label: 'Apgar Score',
-    explanation: 'A quick test given to newborns at 1 and 5 minutes after birth. Scores range from 0-10 based on Appearance, Pulse, Grimace, Activity, and Respiration. 7+ is normal.'
+    explanation: 'A quick test given at 1 and 5 minutes after birth. Scores 0-10 based on Appearance, Pulse, Grimace, Activity, and Respiration. 7+ is normal.',
+    emoji: '🫀'
   },
   'Gestational Weeks': {
     label: 'Gestational Weeks',
-    explanation: 'The number of weeks your baby was in the womb. Full-term is 39-40 weeks. Before 37 weeks is premature.'
+    explanation: 'Weeks your baby was in the womb. Full-term is 39-40 weeks. Before 37 weeks is premature.',
+    emoji: '📅'
   },
   'Birth Weight': {
     label: 'Birth Weight',
-    explanation: 'Your baby\'s weight at birth. Average is 2.5-4.5 kg (5.5-10 lbs). This helps track growth patterns.'
+    explanation: 'Your baby\'s weight at birth. Average is 2.5-4.5 kg (5.5-10 lbs). Helps track growth patterns.',
+    emoji: '⚖️'
   },
   'Birth Height': {
     label: 'Birth Height',
-    explanation: 'Your baby\'s length at birth. Average is 45-55 cm (18-22 inches).'
+    explanation: 'Your baby\'s length at birth. Average is 45-55 cm (18-22 inches).',
+    emoji: '📏'
   },
   'Head Circumference': {
     label: 'Head Circumference',
-    explanation: 'Measurement around your baby\'s head. Average is 32-37 cm (12.5-14.5 inches). This helps track brain development.'
+    explanation: 'Measurement around your baby\'s head. Average is 32-37 cm (12.5-14.5 inches). Tracks brain development.',
+    emoji: '🧠'
   },
   'Delivery Type': {
     label: 'Delivery Type',
-    explanation: 'How your baby was born: Vaginal (natural birth), C-Section (surgical), VBAC (vaginal birth after C-section), or Other.'
+    explanation: 'How your baby was born: Vaginal (natural birth), C-Section (surgical), VBAC (vaginal birth after C-section), or Other.',
+    emoji: '🏥'
   },
   'Birth Attendant': {
     label: 'Birth Attendant',
-    explanation: 'The healthcare professional who helped deliver your baby. Can be an Obstetrician, Midwife, Family Doctor, or Doula.'
+    explanation: 'The healthcare professional who helped deliver your baby. Can be an Obstetrician, Midwife, Family Doctor, or Doula.',
+    emoji: '👩‍⚕️'
   },
   'Feeding Plan': {
     label: 'Feeding Plan',
-    explanation: 'How you plan to feed your baby: Breastfeeding (breast milk), Formula (infant formula), Combination (both), or Pumping (expressed milk).'
+    explanation: 'How you plan to feed your baby: Breastfeeding (breast milk), Formula (infant formula), Combination (both), or Pumping (expressed milk).',
+    emoji: '🍼'
   },
 };
 
@@ -154,24 +162,32 @@ const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
   if (!info) return null;
 
   return (
-    <View style={{ position: 'relative' }}>
+    <View style={styles.tooltipWrapper}>
       <TouchableOpacity
         onPress={() => setShowTooltip(!showTooltip)}
-        style={{ paddingHorizontal: 6 }}
+        style={styles.tooltipTrigger}
+        activeOpacity={0.7}
       >
-        <Ionicons name="help-circle-outline" size={18} color={isDark ? '#64748b' : '#94a3b8'} />
+        <Ionicons name="information-circle-outline" size={20} color={isDark ? '#6366f1' : '#6366f1'} />
       </TouchableOpacity>
       {showTooltip && (
-        <View style={[styles.tooltipContainer, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
-          <Text style={[styles.tooltipTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-            {info.label}
-          </Text>
+        <View style={[
+          styles.tooltipContainer,
+          { backgroundColor: isDark ? '#1e293b' : '#ffffff' },
+          Platform.OS === 'ios' ? styles.tooltipShadow : styles.tooltipShadowAndroid
+        ]}>
+          <View style={styles.tooltipHeader}>
+            <Text style={styles.tooltipEmoji}>{info.emoji}</Text>
+            <Text style={[styles.tooltipTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+              {info.label}
+            </Text>
+          </View>
           <Text style={[styles.tooltipText, { color: isDark ? '#94a3b8' : '#475569' }]}>
             {info.explanation}
           </Text>
           <TouchableOpacity
             onPress={() => setShowTooltip(false)}
-            style={styles.tooltipClose}
+            style={styles.tooltipCloseBtn}
           >
             <Text style={[styles.tooltipCloseText, { color: '#6366f1' }]}>Got it</Text>
           </TouchableOpacity>
@@ -402,10 +418,8 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     }
     if (!validateStep1() || !validateStep2()) return;
 
-    // ─── DEBUG: Verify authentication status ──────────────────────────────
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     console.log('[BabyProfile] Auth check - user:', user?.id);
-    console.log('[BabyProfile] Auth check - error:', userError?.message);
 
     if (userError || !user) {
       toast('Please sign in again to create a baby profile', 'error');
@@ -419,7 +433,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     const trimmedName = name.trim();
     const birthIso = birthDate.toISOString();
     
-    // Check for duplicate
     const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
     if (duplicate) {
       toast('A baby with this name and birth date already exists', 'warning');
@@ -436,7 +449,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       const hasCustomImage = isImageUri(avatar);
       const avatarToSave = hasCustomImage ? '👶' : avatar;
 
-      // ─── CREATE BABY WITH ALL FIELDS ──────────────────────────────────
       const babyData: any = {
         name: trimmedName,
         birthDate: birthIso,
@@ -450,7 +462,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         medicalNotes: medicalNotes.trim() || undefined,
         parent1Id: userId,
         parent2Id: undefined,
-        // Additional fields
         birthWeight: birthWeight.trim() || undefined,
         birthHeight: birthHeight.trim() || undefined,
         birthHeadCircumference: birthHeadCircumference.trim() || undefined,
@@ -507,11 +518,9 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       }
 
       try {
-        // Reload babies to get the new one
         await loadBabies();
         console.log('[BabyProfile] Babies reloaded');
 
-        // Verify the baby was created in the database
         const persisted = await getBabyByIdFromDb(babyId);
         console.log('[BabyProfile] Verified baby in DB:', persisted);
 
@@ -544,7 +553,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             }
           }
         } else {
-          // Reset form for another baby
           setName('');
           setBirthDate(new Date());
           setBirthTime('');
@@ -955,7 +963,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         ✨ Health & Birth Details
       </Text>
       <Text style={[styles.sectionHint, isDark && { color: '#94a3b8' }]}>
-        Tap the ℹ️ icons for explanations of medical terms
+        Tap the ℹ️ icons for explanations
       </Text>
 
       {/* Current Measurements */}
@@ -1731,24 +1739,62 @@ const styles = StyleSheet.create({
   // ─── TOOLTIP STYLES ──────────────────────────────────────────────────
   fieldWithTooltip: { flex: 1 },
   fieldLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  
+  tooltipWrapper: {
+    position: 'relative',
+    marginLeft: 4,
+    zIndex: 10,
+  },
+  tooltipTrigger: {
+    padding: 2,
+  },
   tooltipContainer: {
     position: 'absolute',
-    top: 24,
-    right: -8,
-    width: 280,
+    top: -8,
+    left: 24,
+    width: Math.min(280, width - 60),
     padding: 14,
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.15)',
+    zIndex: 1000,
+  },
+  tooltipShadow: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-    zIndex: 100,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    shadowRadius: 12,
   },
-  tooltipTitle: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
-  tooltipText: { fontSize: 13, lineHeight: 19 },
-  tooltipClose: { marginTop: 10, alignSelf: 'flex-end' },
-  tooltipCloseText: { fontSize: 14, fontWeight: '700' },
+  tooltipShadowAndroid: {
+    elevation: 8,
+  },
+  tooltipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  tooltipEmoji: {
+    fontSize: 18,
+  },
+  tooltipTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    flex: 1,
+  },
+  tooltipText: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '400',
+  },
+  tooltipCloseBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  tooltipCloseText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
 });
