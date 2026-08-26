@@ -901,6 +901,21 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const [pediatrician, setPediatrician] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
+  // Birth details state for editing
+  const [birthWeight, setBirthWeight] = useState('');
+  const [birthHeight, setBirthHeight] = useState('');
+  const [birthHeadCircumference, setBirthHeadCircumference] = useState('');
+  const [gestationalWeeks, setGestationalWeeks] = useState('');
+  const [apgar1Min, setApgar1Min] = useState('');
+  const [apgar5Min, setApgar5Min] = useState('');
+  const [deliveryType, setDeliveryType] = useState('');
+  const [birthAttendant, setBirthAttendant] = useState('');
+  const [birthPlace, setBirthPlace] = useState('');
+  const [multipleBirth, setMultipleBirth] = useState(false);
+  const [birthOrder, setBirthOrder] = useState('');
+  const [feedingPlan, setFeedingPlan] = useState('');
+  const [birthTime, setBirthTime] = useState('');
+
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
 
@@ -928,6 +943,22 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       setEmergencyContact(currentBabyData.emergencyContact || '');
       setPediatrician(currentBabyData.pediatrician || '');
       setNotificationsEnabled(currentBabyData.notificationsEnabled !== false);
+      
+      // Birth details
+      setBirthWeight(currentBabyData.birthWeight || '');
+      setBirthHeight(currentBabyData.birthHeight || '');
+      setBirthHeadCircumference(currentBabyData.birthHeadCircumference || '');
+      setGestationalWeeks(currentBabyData.gestationalWeeks || '');
+      setApgar1Min(currentBabyData.apgar1Min || '');
+      setApgar5Min(currentBabyData.apgar5Min || '');
+      setDeliveryType(currentBabyData.deliveryType || '');
+      setBirthAttendant(currentBabyData.birthAttendant || '');
+      setBirthPlace(currentBabyData.birthPlace || '');
+      setMultipleBirth(currentBabyData.multipleBirth || false);
+      setBirthOrder(currentBabyData.birthOrder || '');
+      setFeedingPlan(currentBabyData.feedingPlan || '');
+      setBirthTime(currentBabyData.birthTime || '');
+      
       setIsEditing(false);
     }
   }, [currentBabyData?.id]);
@@ -1070,8 +1101,24 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     if (height !== (currentBabyData.height || '')) changes.push('Height updated');
     if (emergencyContact !== (currentBabyData.emergencyContact || '')) changes.push('Emergency Contact updated');
     if (pediatrician !== (currentBabyData.pediatrician || '')) changes.push('Pediatrician updated');
+    
+    // Birth details
+    if (birthWeight !== (currentBabyData.birthWeight || '')) changes.push('Birth Weight updated');
+    if (birthHeight !== (currentBabyData.birthHeight || '')) changes.push('Birth Height updated');
+    if (birthHeadCircumference !== (currentBabyData.birthHeadCircumference || '')) changes.push('Head Circumference updated');
+    if (gestationalWeeks !== (currentBabyData.gestationalWeeks || '')) changes.push('Gestational Weeks updated');
+    if (apgar1Min !== (currentBabyData.apgar1Min || '')) changes.push('Apgar 1min updated');
+    if (apgar5Min !== (currentBabyData.apgar5Min || '')) changes.push('Apgar 5min updated');
+    if (deliveryType !== (currentBabyData.deliveryType || '')) changes.push('Delivery Type updated');
+    if (birthAttendant !== (currentBabyData.birthAttendant || '')) changes.push('Birth Attendant updated');
+    if (birthPlace !== (currentBabyData.birthPlace || '')) changes.push('Birth Place updated');
+    if (multipleBirth !== (currentBabyData.multipleBirth || false)) changes.push('Multiple Birth updated');
+    if (birthOrder !== (currentBabyData.birthOrder || '')) changes.push('Birth Order updated');
+    if (feedingPlan !== (currentBabyData.feedingPlan || '')) changes.push('Feeding Plan updated');
+    if (birthTime !== (currentBabyData.birthTime || '')) changes.push('Birth Time updated');
+    
     return changes;
-  }, [currentBabyData, babyName, selectedGender, babyPhoto, bloodType, allergies, medicalNotes, weight, height, emergencyContact, pediatrician]);
+  }, [currentBabyData, babyName, selectedGender, babyPhoto, bloodType, allergies, medicalNotes, weight, height, emergencyContact, pediatrician, birthWeight, birthHeight, birthHeadCircumference, gestationalWeeks, apgar1Min, apgar5Min, deliveryType, birthAttendant, birthPlace, multipleBirth, birthOrder, feedingPlan, birthTime]);
 
   const handleSavePress = () => {
     const changes = checkForChanges();
@@ -1102,6 +1149,22 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         emergencyContact,
         pediatrician,
         notificationsEnabled,
+        
+        // Birth details
+        birthWeight: birthWeight,
+        birthHeight: birthHeight,
+        birthHeadCircumference: birthHeadCircumference,
+        gestationalWeeks: gestationalWeeks,
+        apgar1Min: apgar1Min,
+        apgar5Min: apgar5Min,
+        deliveryType: deliveryType,
+        birthAttendant: birthAttendant,
+        birthPlace: birthPlace,
+        multipleBirth: multipleBirth,
+        birthOrder: birthOrder,
+        feedingPlan: feedingPlan,
+        birthTime: birthTime,
+        
         lastUpdated: new Date().toISOString(),
       };
       await updateBaby(currentBabyData.id, babyUpdates);
@@ -1152,7 +1215,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       'Delete Profile?',
       `⚠️ This will permanently delete ${currentBabyData?.name}'s profile and all associated data. This action cannot be undone.`,
       async () => {
-        // Ask for password confirmation
         sweetAlert.prompt(
           'Confirm Password',
           'Enter your password to confirm deletion:',
@@ -1163,17 +1225,14 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
               return;
             }
             
-            // Verify password
             const isValid = await verifyPassword(password);
             if (!isValid) {
               sweetAlert.error('Error', 'Incorrect password. Please try again.');
               return;
             }
             
-            // Proceed with deletion
             if (currentBabyData) {
               try {
-                // Delete from database
                 await deleteBaby(currentBabyData.id);
                 sweetAlert.success('Profile Deleted', `${currentBabyData.name}'s profile has been removed.`);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1322,9 +1381,103 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
               <View style={styles.birthDateContent}>
                 <Text style={styles.birthDateLabel}>Birth Date</Text>
                 <Text style={styles.birthDateValue}>{format(birthDate, 'MMMM d, yyyy')}</Text>
+                {birthTime && <Text style={styles.birthTimeText}>🕐 {birthTime}</Text>}
               </View>
               <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
             </TouchableOpacity>
+
+            {/* Birth Details Section */}
+            <Animated.View entering={FadeInUp.delay(250).springify()}>
+              <SectionHeader title="Birth Details" subtitle="Information from birth" isDark={isDark} colors={themeColors} />
+              <GlassCard isDark={isDark} colors={themeColors}>
+                <View style={styles.birthDetailsGrid}>
+                  {birthWeight && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Birth Weight</Text>
+                      <Text style={styles.birthDetailValue}>{birthWeight} kg</Text>
+                    </View>
+                  )}
+                  {birthHeight && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Birth Height</Text>
+                      <Text style={styles.birthDetailValue}>{birthHeight} cm</Text>
+                    </View>
+                  )}
+                  {birthHeadCircumference && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Head Circumference</Text>
+                      <Text style={styles.birthDetailValue}>{birthHeadCircumference} cm</Text>
+                    </View>
+                  )}
+                  {gestationalWeeks && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Gestational Weeks</Text>
+                      <Text style={styles.birthDetailValue}>{gestationalWeeks} weeks</Text>
+                    </View>
+                  )}
+                  {apgar1Min && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Apgar (1 min)</Text>
+                      <Text style={styles.birthDetailValue}>{apgar1Min}</Text>
+                    </View>
+                  )}
+                  {apgar5Min && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Apgar (5 min)</Text>
+                      <Text style={styles.birthDetailValue}>{apgar5Min}</Text>
+                    </View>
+                  )}
+                  {deliveryType && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Delivery Type</Text>
+                      <Text style={styles.birthDetailValue}>{deliveryType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</Text>
+                    </View>
+                  )}
+                  {birthAttendant && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Birth Attendant</Text>
+                      <Text style={styles.birthDetailValue}>{birthAttendant.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</Text>
+                    </View>
+                  )}
+                  {birthPlace && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Birth Place</Text>
+                      <Text style={styles.birthDetailValue}>{birthPlace}</Text>
+                    </View>
+                  )}
+                  {feedingPlan && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Feeding Plan</Text>
+                      <Text style={styles.birthDetailValue}>{feedingPlan.charAt(0).toUpperCase() + feedingPlan.slice(1)}</Text>
+                    </View>
+                  )}
+                  {multipleBirth && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Multiple Birth</Text>
+                      <Text style={styles.birthDetailValue}>Yes</Text>
+                    </View>
+                  )}
+                  {birthOrder && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Birth Order</Text>
+                      <Text style={styles.birthDetailValue}>#{birthOrder}</Text>
+                    </View>
+                  )}
+                  {bloodType && (
+                    <View style={styles.birthDetailItem}>
+                      <Text style={styles.birthDetailLabel}>Blood Type</Text>
+                      <Text style={styles.birthDetailValue}>{bloodType}</Text>
+                    </View>
+                  )}
+                </View>
+                {!birthWeight && !birthHeight && !birthHeadCircumference && !gestationalWeeks && !apgar1Min && !deliveryType && !feedingPlan && !bloodType && (
+                  <View style={styles.emptyBirthDetails}>
+                    <Text style={styles.emptyBirthDetailsText}>No birth details recorded yet</Text>
+                    <Text style={styles.emptyBirthDetailsSubtext}>Add birth information in the Health tab</Text>
+                  </View>
+                )}
+              </GlassCard>
+            </Animated.View>
 
             <SmartHealthInsights baby={currentBabyData} stats={babyStats} recentActivities={recentActivities} isDark={isDark} colors={themeColors} />
             <ActivitySparkline activities={recentActivities} isDark={isDark} colors={themeColors} />
@@ -1434,7 +1587,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
           </>
         )}
 
-        {/* TAB: HEALTH */}
+        {/* TAB: HEALTH - Updated with Birth Details fields */}
         {activeTab === 'health' && (
           <>
             <GlassCard style={styles.formCard} delay={100} isDark={isDark} colors={themeColors}>
@@ -1530,6 +1683,261 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                   editable={isEditing}
                   selectionColor="#6366f1"
                 />
+              </View>
+            </GlassCard>
+
+            {/* Birth Details Card - New */}
+            <GlassCard style={styles.formCard} delay={150} isDark={isDark} colors={themeColors}>
+              <View style={styles.sectionHeaderWithEdit}>
+                <Text style={styles.sectionLabel}>Birth Details</Text>
+                {!isEditing ? (
+                  <TouchableOpacity style={styles.editIconBtn} onPress={() => setIsEditing(true)}>
+                    <Ionicons name="create-outline" size={20} color="#6366f1" />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.editingBadge}>
+                    <Text style={styles.editingBadgeText}>Editing</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.rowContainer}>
+                <View style={[styles.halfWidth, { marginRight: 8 }]}>
+                  <Text style={styles.inputLabel}>Birth Weight (kg)</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="scale-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={birthWeight}
+                      onChangeText={(text) => { setBirthWeight(text); setIsEditing(true); }}
+                      placeholder="3.2"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+                <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+                  <Text style={styles.inputLabel}>Birth Height (cm)</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="resize-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={birthHeight}
+                      onChangeText={(text) => { setBirthHeight(text); setIsEditing(true); }}
+                      placeholder="48"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.rowContainer}>
+                <View style={[styles.halfWidth, { marginRight: 8 }]}>
+                  <Text style={styles.inputLabel}>Head Circumference (cm)</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="aperture-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={birthHeadCircumference}
+                      onChangeText={(text) => { setBirthHeadCircumference(text); setIsEditing(true); }}
+                      placeholder="33"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+                <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+                  <Text style={styles.inputLabel}>Gestational Weeks</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="calendar-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={gestationalWeeks}
+                      onChangeText={(text) => { setGestationalWeeks(text); setIsEditing(true); }}
+                      placeholder="40"
+                      keyboardType="number-pad"
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.rowContainer}>
+                <View style={[styles.halfWidth, { marginRight: 8 }]}>
+                  <Text style={styles.inputLabel}>Apgar 1 min</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="pulse-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={apgar1Min}
+                      onChangeText={(text) => { setApgar1Min(text); setIsEditing(true); }}
+                      placeholder="8"
+                      keyboardType="number-pad"
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+                <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+                  <Text style={styles.inputLabel}>Apgar 5 min</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="pulse-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={apgar5Min}
+                      onChangeText={(text) => { setApgar5Min(text); setIsEditing(true); }}
+                      placeholder="9"
+                      keyboardType="number-pad"
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.rowContainer}>
+                <View style={[styles.halfWidth, { marginRight: 8 }]}>
+                  <Text style={styles.inputLabel}>Delivery Type</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="medkit-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={deliveryType}
+                      onChangeText={(text) => { setDeliveryType(text); setIsEditing(true); }}
+                      placeholder="Vaginal, C-Section, etc."
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+                <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+                  <Text style={styles.inputLabel}>Birth Attendant</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="people-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={birthAttendant}
+                      onChangeText={(text) => { setBirthAttendant(text); setIsEditing(true); }}
+                      placeholder="Obstetrician, Midwife, etc."
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.rowContainer}>
+                <View style={[styles.halfWidth, { marginRight: 8 }]}>
+                  <Text style={styles.inputLabel}>Birth Place</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="location-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={birthPlace}
+                      onChangeText={(text) => { setBirthPlace(text); setIsEditing(true); }}
+                      placeholder="Hospital, Home, etc."
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+                <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+                  <Text style={styles.inputLabel}>Feeding Plan</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="nutrition-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={feedingPlan}
+                      onChangeText={(text) => { setFeedingPlan(text); setIsEditing(true); }}
+                      placeholder="Breastfeeding, Formula, etc."
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.rowContainer}>
+                <View style={[styles.halfWidth, { marginRight: 8 }]}>
+                  <Text style={styles.inputLabel}>Birth Order</Text>
+                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                    <Ionicons name="list-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      value={birthOrder}
+                      onChangeText={(text) => { setBirthOrder(text); setIsEditing(true); }}
+                      placeholder="1"
+                      keyboardType="number-pad"
+                      placeholderTextColor="#666"
+                      editable={isEditing}
+                      selectionColor="#6366f1"
+                    />
+                  </View>
+                </View>
+                <View style={[styles.halfWidth, { marginLeft: 8 }]}>
+                  <Text style={styles.inputLabel}>Multiple Birth</Text>
+                  <View style={styles.multipleBirthContainer}>
+                    <TouchableOpacity
+                      style={[
+                        styles.multipleBirthButton,
+                        multipleBirth === true && {
+                          borderColor: '#6366f1',
+                          backgroundColor: 'rgba(99,102,241,0.15)',
+                        },
+                        !isEditing && styles.inputDisabled,
+                      ]}
+                      onPress={() => { if (isEditing) { setMultipleBirth(true); setIsEditing(true); } }}
+                      disabled={!isEditing}
+                    >
+                      <Text style={[styles.multipleBirthText, multipleBirth === true && { color: '#6366f1', fontWeight: '700' }]}>Yes</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.multipleBirthButton,
+                        multipleBirth === false && {
+                          borderColor: '#6366f1',
+                          backgroundColor: 'rgba(99,102,241,0.15)',
+                        },
+                        !isEditing && styles.inputDisabled,
+                      ]}
+                      onPress={() => { if (isEditing) { setMultipleBirth(false); setIsEditing(true); } }}
+                      disabled={!isEditing}
+                    >
+                      <Text style={[styles.multipleBirthText, multipleBirth === false && { color: '#6366f1', fontWeight: '700' }]}>No</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Birth Time</Text>
+                <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                  <Ionicons name="time-outline" size={20} color="#6366f1" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.inputField}
+                    value={birthTime}
+                    onChangeText={(text) => { setBirthTime(text); setIsEditing(true); }}
+                    placeholder="3:30 PM"
+                    placeholderTextColor="#666"
+                    editable={isEditing}
+                    selectionColor="#6366f1"
+                  />
+                </View>
               </View>
             </GlassCard>
 
@@ -1865,6 +2273,53 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       fontWeight: '600', 
       color: colors.text || '#fff', 
       marginTop: 2 
+    },
+    birthTimeText: {
+      fontSize: 13,
+      color: colors.textSecondary || '#94a3b8',
+      marginTop: 2,
+    },
+
+    // Birth Details Grid
+    birthDetailsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      padding: 16,
+      gap: 12,
+    },
+    birthDetailItem: {
+      flex: 1,
+      minWidth: '45%',
+      backgroundColor: 'rgba(255,255,255,0.05)',
+      borderRadius: 12,
+      padding: 12,
+    },
+    birthDetailLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textSecondary || '#94a3b8',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    birthDetailValue: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.text || '#fff',
+      marginTop: 2,
+    },
+    emptyBirthDetails: {
+      padding: 24,
+      alignItems: 'center',
+    },
+    emptyBirthDetailsText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.textSecondary || '#94a3b8',
+    },
+    emptyBirthDetailsSubtext: {
+      fontSize: 13,
+      color: colors.textMuted || '#64748b',
+      marginTop: 4,
     },
 
     // Quick Actions Dock
@@ -2240,6 +2695,35 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       fontWeight: '500', 
       borderWidth: 1, 
       borderColor: 'rgba(255,255,255,0.04)' 
+    },
+
+    rowContainer: {
+      flexDirection: 'row',
+      paddingHorizontal: 20,
+      gap: 10,
+    },
+    halfWidth: {
+      flex: 1,
+    },
+
+    multipleBirthContainer: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 4,
+    },
+    multipleBirthButton: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: 'rgba(99,102,241,0.15)',
+      backgroundColor: 'rgba(255,255,255,0.6)',
+    },
+    multipleBirthText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#666',
     },
 
     preferenceRow: { 
