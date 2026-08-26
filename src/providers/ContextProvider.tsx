@@ -254,7 +254,7 @@ const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
 };
 
 // ─── FIXED PROVIDER ORDER ─────────────────────────────────────────────
-// AudioProvider MUST be initialized before any component that uses useAudio()
+// AudioProvider MUST be HIGHER in the tree so it wraps ALL components that use useAudio()
 export default function ContextProvider({ children }: ContextProviderProps) {
   return (
     <AuthProvider>
@@ -264,8 +264,8 @@ export default function ContextProvider({ children }: ContextProviderProps) {
             <SecurityAuthBridge>
               <FamilyProvider>
                 <ActivityProvider>
-                  {/* AudioProvider must be inside ActivityProvider but BEFORE ActivitySyncBridge */}
-                  {/* Also must be inside BabyProvider for useBaby() */}
+                  {/* AudioProvider must be OUTSIDE ActivitySyncBridge but INSIDE ActivityProvider */}
+                  {/* It must also wrap SweetAlertWrapper and all other children */}
                   <AudioProvider>
                     <ActivitySyncBridge>
                       <MediaProvider>
@@ -274,6 +274,7 @@ export default function ContextProvider({ children }: ContextProviderProps) {
                             <SafetyProvider>
                               <TrackerProvider>
                                 <TrackerBabySync>
+                                  {/* SweetAlertWrapper now INSIDE AudioProvider */}
                                   <SweetAlertWrapper>
                                     {children}
                                   </SweetAlertWrapper>

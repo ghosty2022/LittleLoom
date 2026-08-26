@@ -145,24 +145,20 @@ const GradientText = ({
   colors = ['#667eea', '#764ba2', '#f093fb'],
   ...props 
 }: any) => {
-  // Split text into characters for per-letter gradient
   const letters = children.toString().split('');
   
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
       {letters.map((letter: string, index: number) => {
-        // Calculate gradient position for each letter
         const position = index / Math.max(letters.length - 1, 1);
         const colorIndex = position * (colors.length - 1);
         const lowerIndex = Math.floor(colorIndex);
         const upperIndex = Math.min(lowerIndex + 1, colors.length - 1);
         const fraction = colorIndex - lowerIndex;
         
-        // Interpolate color
         const startColor = colors[lowerIndex] || colors[0];
         const endColor = colors[upperIndex] || colors[colors.length - 1];
         
-        // Simple interpolation
         const interpolateColor = (c1: string, c2: string, t: number) => {
           const r1 = parseInt(c1.slice(1, 3), 16);
           const g1 = parseInt(c1.slice(3, 5), 16);
@@ -371,9 +367,8 @@ export default function CommunityScreen({ navigation }: Props) {
   const [showNotificationChooser, setShowNotificationChooser] = useState(false);
   const [showTopicSelector, setShowTopicSelector] = useState(false);
   const [pinnedPostId, setPinnedPostId] = useState<string | null>(null);
-
-  // Force refresh topics when screen mounts/focuses
   const [topicRefreshKey, setTopicRefreshKey] = useState(0);
+  const [selectedTopicsList, setSelectedTopicsList] = useState<string[]>([]);
 
   const scrollY = useSharedValue(0);
   const listRef = useRef<FlatList>(null);
@@ -388,12 +383,15 @@ export default function CommunityScreen({ navigation }: Props) {
   const postsCount = posts.length;
   const membersCount = allUsers.length;
 
-  // Find LittleLoom welcome post
+  // Update selected topics list for display
+  useEffect(() => {
+    setSelectedTopicsList(userTopics.slice(0, 20));
+  }, [userTopics]);
+
   const welcomePost = useMemo(() => {
     return posts.find(p => p.authorId === 'littleloom_team');
   }, [posts]);
 
-  // Set pinned post ID on load
   useEffect(() => {
     if (welcomePost && !pinnedPostId) {
       setPinnedPostId(welcomePost.id);
@@ -416,7 +414,6 @@ export default function CommunityScreen({ navigation }: Props) {
     return unsubscribe;
   }, [navigation, refreshTopics]);
 
-  // Also refresh on initial load
   useEffect(() => {
     refreshTopics().then(() => {
       setTopicRefreshKey(prev => prev + 1);
@@ -444,7 +441,6 @@ export default function CommunityScreen({ navigation }: Props) {
     prevPostsRef.current = posts;
   }, [posts]);
 
-  // Show topic selector if user has no topics
   useEffect(() => {
     if (!isLoading && !hasTopics && canInteract) {
       const timer = setTimeout(() => {
@@ -465,7 +461,6 @@ export default function CommunityScreen({ navigation }: Props) {
     let filtered = getFeedPosts();
     filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    // Pinned LittleLoom welcome post at the top
     if (welcomePost) {
       filtered = filtered.filter(p => p.id !== welcomePost.id);
       filtered.unshift(welcomePost);
@@ -638,7 +633,6 @@ export default function CommunityScreen({ navigation }: Props) {
           }
         ]}>
           
-          {/* Pinned Badge */}
           {isPinned && (
             <View style={[styles.pinnedBadge, { backgroundColor: DS.primary }]}>
               <Ionicons name="pin" size={12} color="#fff" />
@@ -646,7 +640,6 @@ export default function CommunityScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Header */}
           <View style={styles.postHeader}>
             <TouchableOpacity
               style={styles.authorRow}
@@ -700,7 +693,6 @@ export default function CommunityScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
 
-          {/* Sentiment Badge */}
           {sentiment.confidence > 0.3 && (
             <View style={[styles.sentimentWrap, { paddingHorizontal: DS.space.lg, marginBottom: DS.space.sm }]}>
               <Text style={styles.sentimentEmoji}>{SentimentAnalyzer.getEmoji(sentiment.sentiment)}</Text>
@@ -729,7 +721,6 @@ export default function CommunityScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Mood Badge */}
           {item.mood && (
             <View style={{ paddingHorizontal: DS.space.lg, marginBottom: DS.space.sm }}>
               <View style={[styles.moodBadge, { backgroundColor: isDark ? `${DS.mood[item.mood]?.glow}20` : DS.mood[item.mood]?.bg }]}>
@@ -741,7 +732,6 @@ export default function CommunityScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Content */}
           <TouchableOpacity
             activeOpacity={0.95}
             onPress={() => navigation.navigate(ROUTES.POST_DETAIL, { postId: item.id })}
@@ -759,7 +749,6 @@ export default function CommunityScreen({ navigation }: Props) {
             )}
           </TouchableOpacity>
 
-          {/* AI Summary */}
           {summary && expandedPostId !== item.id && (
             <View style={[styles.summaryWrap, { backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : DS.primaryGhost, marginHorizontal: DS.space.lg, marginBottom: DS.space.md }]}>
               <View style={styles.summaryToggle}>
@@ -772,7 +761,6 @@ export default function CommunityScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Images with blur */}
           {item.images && item.images.length > 0 && (
             <View style={[styles.mediaBox, { marginHorizontal: DS.space.lg, marginBottom: DS.space.md }]}>
               {item.images.length === 1 ? (
@@ -789,14 +777,12 @@ export default function CommunityScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Poll */}
           {item.poll && (
             <View style={{ paddingHorizontal: DS.space.lg, marginBottom: DS.space.md }}>
               <PollWidget poll={item.poll} postId={item.id} onVote={handleVotePoll} isDark={isDark} />
             </View>
           )}
 
-          {/* Topic Tag with Category - Long press to navigate */}
           <TouchableOpacity
             onPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: item.topicId })}
             onLongPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: item.topicId })}
@@ -816,7 +802,6 @@ export default function CommunityScreen({ navigation }: Props) {
             )}
           </TouchableOpacity>
 
-          {/* Engagement Bar */}
           <View style={[styles.engagementBar, { paddingHorizontal: DS.space.lg, paddingBottom: DS.space.sm }]}>
             <Text style={[styles.engagementText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
               {item.likes > 0 ? `${item.likes} like${item.likes !== 1 ? 's' : ''}` : ''}
@@ -827,7 +812,6 @@ export default function CommunityScreen({ navigation }: Props) {
             </Text>
           </View>
 
-          {/* Reaction Bar */}
           <View style={[styles.reactionBar, { borderTopColor: isDark ? DS.darkBorder : DS.gray200 }]}>
             <Pressable onPress={() => handleLike(item.id)} style={styles.reactionBtn}>
               <Ionicons name={item.isLiked ? 'heart' : 'heart-outline'} size={22} color={item.isLiked ? DS.accent : DS.gray400} />
@@ -859,7 +843,6 @@ export default function CommunityScreen({ navigation }: Props) {
             </Pressable>
           </View>
 
-          {/* Comments Section */}
           {expandedPostId === item.id && (
             <View style={[styles.commentsBox, { borderTopColor: isDark ? DS.darkBorder : DS.gray200 }]}>
               {item.comments.slice(0, 3).map((c) => (
@@ -924,17 +907,15 @@ export default function CommunityScreen({ navigation }: Props) {
   }, [isDark, currentUser, topics, expandedPostId, commentInputs, replyingTo, handleLike, handleRepost, handleBookmark, handleShare, handleCommentSubmit, handleVotePoll, navigation, sweetAlert]);
 
   // ============================================================
-  // RENDER HEADER
+  // RENDER HEADER - WITH STABLE ANIMATION
   // ============================================================
   const renderHeader = useCallback(() => {
-    // Get selected topics for display - show ALL selected topics
-    const selectedTopicsList = userTopics.slice(0, 20); // Show up to 20 topics
+    const displayTopics = selectedTopicsList;
 
     return (
     <View>
-      {/* Hero Banner - THE LOOM with gradient text */}
       <Animated.View 
-        entering={FadeInUp.delay(100).duration(500).springify()}
+        entering={FadeInUp.delay(100).duration(400).springify()}
         style={[styles.heroBanner, { backgroundColor: isDark ? DS.darkCard : DS.white }]}
       >
         <LinearGradient
@@ -1004,55 +985,58 @@ export default function CommunityScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
           
-          {/* Topic Selection Status - Show ALL selected topics */}
-          {hasTopics ? (
-            <View style={[styles.topicStatusContainer, { marginTop: DS.space.sm }]}>
-              <View style={styles.topicStatusRow}>
-                <Ionicons name="checkmark-circle" size={14} color={DS.success} />
+          {/* Topic Selection Status - Stable height to prevent jumping */}
+          <View style={styles.topicStatusContainer}>
+            {hasTopics ? (
+              <>
+                <View style={styles.topicStatusRow}>
+                  <Ionicons name="checkmark-circle" size={14} color={DS.success} />
+                  <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                    {userTopics.length} topic{userTopics.length !== 1 ? 's' : ''} selected
+                  </Text>
+                  <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
+                    <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
+                {/* Stable height wrapper for topic pills */}
+                <View style={styles.selectedTopicsWrapper}>
+                  {displayTopics.map((topicId) => {
+                    const topic = topics.find(t => t.id === topicId) || INITIAL_TOPICS.find(t => t.id === topicId);
+                    if (!topic) return null;
+                    const topicColor = topic.color || DS.primary;
+                    return (
+                      <TouchableOpacity
+                        key={topicId}
+                        style={[styles.selectedTopicPill, { backgroundColor: `${topicColor}20`, borderColor: topicColor }]}
+                        onPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: topic.id })}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.selectedTopicPillEmoji}>{topic.emoji}</Text>
+                        <Text style={[styles.selectedTopicPillText, { color: topicColor }]}>{topic.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            ) : (
+              <TouchableOpacity 
+                style={[styles.topicStatus, styles.topicStatusEmpty]}
+                onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="alert-circle" size={14} color={DS.warning} />
                 <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                  {userTopics.length} topic{userTopics.length !== 1 ? 's' : ''} selected
+                  Select topics to personalize your feed
                 </Text>
-                <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
-                  <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
-                </TouchableOpacity>
-              </View>
-              {/* Show ALL selected topic pills */}
-              <View style={styles.selectedTopicsScroll}>
-                {selectedTopicsList.map((topicId) => {
-                  const topic = topics.find(t => t.id === topicId) || INITIAL_TOPICS.find(t => t.id === topicId);
-                  if (!topic) return null;
-                  const topicColor = topic.color || DS.primary;
-                  return (
-                    <TouchableOpacity
-                      key={topicId}
-                      style={[styles.selectedTopicPill, { backgroundColor: `${topicColor}20`, borderColor: topicColor }]}
-                      onPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: topic.id })}
-                    >
-                      <Text style={styles.selectedTopicPillEmoji}>{topic.emoji}</Text>
-                      <Text style={[styles.selectedTopicPillText, { color: topicColor }]}>{topic.name}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.topicStatus, styles.topicStatusEmpty, { marginTop: DS.space.sm }]}
-              onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
-            >
-              <Ionicons name="alert-circle" size={14} color={DS.warning} />
-              <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                Select topics to personalize your feed
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={DS.primary} />
-            </TouchableOpacity>
-          )}
+                <Ionicons name="chevron-forward" size={14} color={DS.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </Animated.View>
 
-      {/* Smart Compose Bar */}
       <Animated.View
-        entering={FadeInUp.delay(200).duration(500).springify()}
+        entering={FadeInUp.delay(150).duration(400).springify()}
         style={[styles.composeBar, { backgroundColor: isDark ? DS.darkCard : DS.white }]}
       >
         <TouchableOpacity
@@ -1072,8 +1056,10 @@ export default function CommunityScreen({ navigation }: Props) {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Topic Filter - Shows topics with long press support */}
-      <View style={styles.topicFilterRow}>
+      <Animated.View 
+        entering={FadeInUp.delay(200).duration(400).springify()}
+        style={styles.topicFilterRow}
+      >
         <TouchableOpacity
           style={[styles.topicFilterPill, activeTopic === 'all' && { backgroundColor: DS.primary }]}
           onPress={() => setActiveTopic('all')}
@@ -1093,9 +1079,9 @@ export default function CommunityScreen({ navigation }: Props) {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </Animated.View>
     </View>
-  )}, [isDark, topics, postsCount, membersCount, canInteract, activeTopic, hasTopics, userTopics, navigation, sweetAlert]);
+  )}, [isDark, topics, postsCount, membersCount, canInteract, activeTopic, hasTopics, userTopics, selectedTopicsList, navigation, sweetAlert]);
 
   // ============================================================
   // RENDER FOOTER
@@ -1151,7 +1137,6 @@ export default function CommunityScreen({ navigation }: Props) {
       <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
 
-        {/* Glass Header */}
         <Animated.View style={[styles.header, { 
           backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)',
           borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray200,
@@ -1322,7 +1307,6 @@ export default function CommunityScreen({ navigation }: Props) {
           />
         )}
 
-        {/* Notification Modal */}
         <Modal visible={showNotificationChooser} transparent animationType="fade" onRequestClose={() => setShowNotificationChooser(false)}>
           <Pressable style={styles.modalOverlay} onPress={() => setShowNotificationChooser(false)}>
             <View style={[styles.notificationModal, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
@@ -1365,7 +1349,6 @@ export default function CommunityScreen({ navigation }: Props) {
           </Pressable>
         </Modal>
 
-        {/* FAB */}
         <Animated.View entering={FadeIn.delay(600).duration(400)} style={styles.fabWrap}>
           <TouchableOpacity
             style={styles.fab}
@@ -1481,7 +1464,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   listContent: { paddingBottom: 120 },
 
-  // Pinned Badge
   pinnedBadge: {
     position: 'absolute',
     top: 8,
@@ -1500,7 +1482,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Header
   header: {
     position: 'absolute',
     top: 0,
@@ -1594,7 +1575,6 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
 
-  // Hero Banner
   heroBanner: {
     marginHorizontal: DS.space.lg,
     marginTop: DS.space.md,
@@ -1662,9 +1642,9 @@ const styles = StyleSheet.create({
     color: DS.white,
   },
 
-  // Topic Status - Enhanced for all topics
   topicStatusContainer: {
     marginTop: DS.space.sm,
+    minHeight: 60,
   },
   topicStatusRow: {
     flexDirection: 'row',
@@ -1695,12 +1675,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: DS.space.xs,
   },
-  selectedTopicsScroll: {
+  selectedTopicsWrapper: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
     paddingTop: 6,
     paddingBottom: 4,
+    minHeight: 36,
   },
   selectedTopicPill: {
     flexDirection: 'row',
@@ -1719,7 +1700,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Compose
   composeBar: {
     marginHorizontal: DS.space.lg,
     marginBottom: DS.space.md,
@@ -1745,7 +1725,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.base.size,
   },
 
-  // Topic Filter
   topicFilterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1773,7 +1752,6 @@ const styles = StyleSheet.create({
     color: DS.gray600,
   },
 
-  // Post Card
   postCard: {
     borderRadius: DS.radius['2xl'],
     borderWidth: 1,
@@ -1835,8 +1813,6 @@ const styles = StyleSheet.create({
     padding: DS.space.sm,
     marginLeft: DS.space.sm,
   },
-
-  // Mood
   moodBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1851,8 +1827,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'capitalize',
   },
-
-  // Sentiment
   sentimentWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1875,8 +1849,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.xs.size,
     fontWeight: '600',
   },
-
-  // Summary
   summaryWrap: {
     padding: DS.space.md,
     borderRadius: DS.radius.md,
@@ -1895,7 +1867,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.sm.size,
     lineHeight: 20,
   },
-
   postText: {
     fontSize: DS.text.base.size,
     lineHeight: 24,
@@ -1910,8 +1881,6 @@ const styles = StyleSheet.create({
     marginTop: -DS.space.sm,
     marginBottom: DS.space.md,
   },
-
-  // Topic Tag
   topicTag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1958,8 +1927,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: DS.warning,
   },
-
-  // Media
   mediaBox: {
     borderRadius: DS.radius.lg,
     overflow: 'hidden',
@@ -2012,8 +1979,6 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 16 / 9,
   },
-
-  // Engagement
   engagementBar: {
     paddingBottom: DS.space.sm,
   },
@@ -2021,8 +1986,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.xs.size,
     fontWeight: '500',
   },
-
-  // Reaction Bar
   reactionBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2042,8 +2005,6 @@ const styles = StyleSheet.create({
     color: DS.gray400,
     fontWeight: '600',
   },
-
-  // Comments
   commentsBox: {
     borderTopWidth: 1,
     padding: DS.space.lg,
@@ -2129,8 +2090,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  // Poll
   pollWrap: {
     borderRadius: DS.radius.lg,
     padding: DS.space.md,
@@ -2170,8 +2129,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.xs.size,
     marginTop: DS.space.sm,
   },
-
-  // Skeleton
   skeletonHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2190,8 +2147,6 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: DS.radius.sm,
   },
-
-  // Banner
   bannerWrap: {
     position: 'absolute',
     top: HEADER_TOTAL_HEIGHT + 8,
@@ -2215,8 +2170,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.sm.size,
     fontWeight: '700',
   },
-
-  // Search
   searchBarContainer: {
     position: 'absolute',
     top: 0,
@@ -2255,8 +2208,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.sm.size,
     fontWeight: '600',
   },
-
-  // Empty
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -2299,8 +2250,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.sm.size,
     fontWeight: '700',
   },
-
-  // FAB
   fabWrap: {
     position: 'absolute',
     bottom: 30,
@@ -2321,8 +2270,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -2373,8 +2320,6 @@ const styles = StyleSheet.create({
     fontSize: DS.text.xs.size,
     marginTop: 2,
   },
-
-  // Footer
   footerLoader: {
     flexDirection: 'row',
     alignItems: 'center',

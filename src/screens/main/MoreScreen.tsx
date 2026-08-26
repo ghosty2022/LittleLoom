@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx - COMPLETE PRODUCTION READY VERSION
+// screens/main/MoreScreen.tsx - COMPLETE FIXED
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -56,7 +56,6 @@ import { useUser } from '../../context/UserContext';
 // ─── Components ────────────────────────────────────────────────────
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
-import { useSweetAlert } from '../../components/SweetAlert';
 
 // ─── Types ─────────────────────────────────────────────────────────
 import type { RootStackParamList } from '../../types/navigation';
@@ -68,6 +67,37 @@ import { createBackup } from '../../utils/backupService';
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// ─── FIXED: Alert helpers using React Native Alert ──────────────
+const showToast = (title: string, message?: string) => {
+  Alert.alert(title, message || '');
+};
+
+const showError = (title: string, message?: string) => {
+  Alert.alert(title, message || '');
+};
+
+const showSuccess = (title: string, message?: string) => {
+  Alert.alert(title, message || '');
+};
+
+const showConfirm = (
+  title: string,
+  message: string,
+  onConfirm: () => void,
+  onCancel?: () => void,
+  confirmText: string = 'Confirm',
+  cancelText: string = 'Cancel'
+) => {
+  Alert.alert(
+    title,
+    message,
+    [
+      { text: cancelText, style: 'cancel', onPress: onCancel },
+      { text: confirmText, style: 'destructive', onPress: onConfirm },
+    ]
+  );
+};
 
 // ─── Animated Components ──────────────────────────────────────────
 
@@ -877,7 +907,6 @@ const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
-  const { sweetAlert } = useSweetAlert();
 
   // ─── Contexts ────────────────────────────────────────────────────
   const { signOut, userProfile, isLoading: authLoading } = useAuth();
@@ -892,15 +921,17 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const {
     settings: securitySettings,
     isBiometricEnabled,
-    toggleBiometric,
-    toggleAppLock,
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
-    getBiometricTypeName,
-    lockApp,
+    toggleBiometric,
+    toggleAppLock,
     updateAutoLockTimeout,
+    lockApp,
     getAvailableAuthMethods,
+    getBiometricTypeName,
     getBiometricIcon,
+    checkBiometricCapabilities,
+    resetUnlockLock,
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
   const { guardians, parent2: parent2Profile, familyMembers } = useFamily();
@@ -925,10 +956,12 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [localBiometricAvailable, setLocalBiometricAvailable] = useState(false);
 
   // ─── Refs ──────────────────────────────────────────────────────
   const scrollY = useSharedValue(0);
   const isMounted = useRef(true);
+  const focusLoadTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // ─── Computed ──────────────────────────────────────────────────
   const isDark = customizationIsDark;
@@ -940,7 +973,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const availableMethods = getAvailableAuthMethods();
   const biometricTypeName = getBiometricTypeName();
   const biometricIcon = getBiometricIcon();
+  
+  // FIXED: Use actual biometric availability from context
   const hasBiometric = isBiometricHardwareAvailable && isBiometricEnrolled;
+  const biometricEnabled = isBiometricEnabled || false;
 
   const babyStats = currentBaby ? getBabyStats() : { streak: 0, milestones: 0, photos: 0, entries: 0 };
   const activityStats = {
@@ -975,11 +1011,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {
-      sweetAlert.toast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout', 'warning');
+      showToast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout');
       return;
     }
     setShowTimeoutModal(true);
-  }, [securitySettings.isAppLockEnabled, sweetAlert]);
+  }, [securitySettings.isAppLockEnabled]);
 
   // ─── Handlers ──────────────────────────────────────────────────
 
@@ -999,6 +1035,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       await Promise.all([
         loadBabies(),
         loadEntries?.(),
+        checkBiometricCapabilities(),
       ]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -1006,65 +1043,64 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, loadEntries]);
+  }, [loadBabies, loadEntries, checkBiometricCapabilities]);
 
-// ─── FIXED: Handle Sign Out ─────────────────────────────────────
-const handleLogout = useCallback(async () => {
-  const confirmed = await sweetAlert.confirm({
-    title: 'Sign Out',
-    message: 'Are you sure you want to sign out? You will need to sign in again to access your account.',
-    confirmText: 'Sign Out',
-    cancelText: 'Cancel',
-    destructive: true,
-  });
-  if (confirmed) {
-    try {
-      triggerHaptic('medium');
-      
-      // Clear security lock state before signing out
-      await AsyncStorage.setItem('littleloom_security_lock', 'false');
-      
-      // Clear any navigation state that might persist
-      await AsyncStorage.multiRemove([
-        'littleloom_nav_state_v4',
-        '@littleloom_nav_state_v4',
-        'littleloom_last_auth_state',
-        'littleloom_security_lock',
-      ]);
-      
-      // Call signOut from auth context
-      await signOut();
-      
-      // Force navigation to Login screen with full reset
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' as never }],
-      });
-      
-      // Show success message
-      sweetAlert.toast('Signed Out', 'You have been signed out successfully', 'success');
-    } catch (error) {
-      console.error('Sign out error:', error);
-      
-      // Even if signOut fails, try to force navigation to login
-      try {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' as never }],
-        });
-      } catch (navError) {
-        console.error('Navigation reset error:', navError);
-      }
-      
-      sweetAlert.alert('Error', 'Failed to sign out. Please try again.', 'error');
-    }
-  }
-}, [signOut, sweetAlert, triggerHaptic, navigation]);
+  // ─── FIXED: Handle Sign Out ─────────────────────────────────────
+  const handleLogout = useCallback(async () => {
+    showConfirm(
+      'Sign Out',
+      'Are you sure you want to sign out? You will need to sign in again to access your account.',
+      async () => {
+        try {
+          triggerHaptic('medium');
+          
+          // Clear security lock state before signing out
+          await AsyncStorage.setItem('littleloom_security_lock', 'false');
+          
+          // Clear any navigation state that might persist
+          await AsyncStorage.multiRemove([
+            'littleloom_nav_state_v4',
+            '@littleloom_nav_state_v4',
+            'littleloom_last_auth_state',
+            'littleloom_security_lock',
+          ]);
+          
+          // Call signOut from auth context
+          await signOut();
+          
+          // Force navigation to Login screen with full reset
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' as never }],
+          });
+          
+          showToast('Signed Out', 'You have been signed out successfully');
+        } catch (error) {
+          console.error('Sign out error:', error);
+          
+          // Even if signOut fails, try to force navigation to login
+          try {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' as never }],
+            });
+          } catch (navError) {
+            console.error('Navigation reset error:', navError);
+          }
+          
+          showError('Error', 'Failed to sign out. Please try again.');
+        }
+      },
+      undefined,
+      'Sign Out',
+      'Cancel'
+    );
+  }, [signOut, triggerHaptic, navigation]);
 
   // ─── FIXED: Handle Sync / Cloud Backup ─────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
-      sweetAlert.toast('Sync in Progress', 'Please wait for the current sync to complete.', 'info');
+      showToast('Sync in Progress', 'Please wait for the current sync to complete.');
       return;
     }
 
@@ -1074,7 +1110,7 @@ const handleLogout = useCallback(async () => {
       if (result.success) {
         setSyncStatus('success');
         triggerHaptic('success');
-        sweetAlert.toast('✅ Synced!', 'Your data is now in sync with the cloud', 'success');
+        showToast('✅ Synced!', 'Your data is now in sync with the cloud');
         
         // Also create a backup in the background
         try {
@@ -1083,49 +1119,48 @@ const handleLogout = useCallback(async () => {
             includePhotos: true,
           });
           if (backupResult.success) {
-            // Silently backup, don't show another toast
             console.log('✅ Backup created successfully');
           }
         } catch (backupError) {
           console.warn('Backup creation error (non-critical):', backupError);
-          // Don't show error to user, sync was successful
         }
       } else {
         setSyncStatus('error');
-        sweetAlert.toast('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.', 'warning');
+        showToast('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.');
       }
     } catch (error) {
       console.error('Sync error:', error);
       setSyncStatus('error');
-      sweetAlert.toast('❌ Sync Failed', 'Could not sync data. Please try again.', 'error');
+      showToast('❌ Sync Failed', 'Could not sync data. Please try again.');
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [isSyncing, sync, sweetAlert, triggerHaptic]);
+  }, [isSyncing, sync, triggerHaptic]);
 
+  // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
-        sweetAlert.alert('Biometric Not Available', 'Please set up biometric authentication in your device settings first.', 'warning');
+        showToast('Biometric Not Available', 'Please set up biometric authentication in your device settings first.');
         return;
       }
       navigation.navigate('BiometricSetup');
     } else {
-      const confirmed = await sweetAlert.confirm({
-        title: 'Disable Biometric?',
-        message: 'Are you sure you want to disable biometric authentication?',
-        confirmText: 'Disable',
-        cancelText: 'Cancel',
-        destructive: true,
-      });
-      if (confirmed) {
-        const success = await toggleBiometric(false);
-        if (!success) {
-          sweetAlert.alert('Error', 'Could not disable biometric authentication.', 'error');
-        }
-      }
+      showConfirm(
+        'Disable Biometric?',
+        'Are you sure you want to disable biometric authentication?',
+        async () => {
+          const success = await toggleBiometric(false);
+          if (!success) {
+            showError('Error', 'Could not disable biometric authentication.');
+          }
+        },
+        undefined,
+        'Disable',
+        'Cancel'
+      );
     }
-  }, [hasBiometric, navigation, sweetAlert, toggleBiometric]);
+  }, [hasBiometric, navigation, toggleBiometric]);
 
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
@@ -1134,33 +1169,34 @@ const handleLogout = useCallback(async () => {
   const handleLockNow = useCallback(async () => {
     const hasAnySecurity = availableMethods.hasPin || availableMethods.hasBiometric || securitySettings.isAppLockEnabled;
     if (!hasAnySecurity) {
-      const confirmed = await sweetAlert.confirm({
-        title: 'No Security Enabled',
-        message: 'You can lock the app without protection, or set up PIN / Biometric first.',
-        confirmText: 'Lock Anyway',
-        cancelText: 'Set Up Security',
-      });
-      if (confirmed) {
-        await lockApp(true);
-        sweetAlert.toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
-      } else {
-        navigation.navigate('SecurityCenter', { mode: 'setup' });
-      }
+      showConfirm(
+        'No Security Enabled',
+        'You can lock the app without protection, or set up PIN / Biometric first.',
+        async () => {
+          await lockApp(true);
+          showToast('App Locked', 'Locked without security. Tap unlock to enter.');
+        },
+        () => {
+          navigation.navigate('SecurityCenter', { mode: 'setup' });
+        },
+        'Lock Anyway',
+        'Set Up Security'
+      );
       return;
     }
     await lockApp();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, sweetAlert, navigation]);
+  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, navigation]);
 
   const handleSelectTimeout = useCallback(async (minutes: number) => {
     setShowTimeoutModal(false);
     try {
       await updateAutoLockTimeout(minutes);
-      sweetAlert.toast('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`, 'success');
+      showToast('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`);
     } catch (err) {
-      sweetAlert.alert('Update Failed', 'Could not update auto-lock timeout.', 'error');
+      showError('Update Failed', 'Could not update auto-lock timeout.');
     }
-  }, [updateAutoLockTimeout, sweetAlert, formatTimeout]);
+  }, [updateAutoLockTimeout, formatTimeout]);
 
   const handleSelectBabyFromModal = useCallback((baby: any) => {
     setShowBabyModal(false);
@@ -1188,9 +1224,22 @@ const handleLogout = useCallback(async () => {
 
   // ─── Effects ────────────────────────────────────────────────────
 
+  // FIXED: Check biometric capabilities on mount and focus
+  useEffect(() => {
+    const checkBiometrics = async () => {
+      try {
+        await checkBiometricCapabilities();
+        // Force a re-render to update UI
+        setLocalBiometricAvailable(hasBiometric);
+      } catch (error) {
+        console.error('Error checking biometrics:', error);
+      }
+    };
+    
+    checkBiometrics();
+  }, [checkBiometricCapabilities, hasBiometric]);
+
   // ✅ Prevent duplicate load calls with a debounce
-  const focusLoadTimeout = useRef<NodeJS.Timeout | null>(null);
-  
   useFocusEffect(
     useCallback(() => {
       if (focusLoadTimeout.current) {
@@ -1200,6 +1249,8 @@ const handleLogout = useCallback(async () => {
         console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
         loadBabies();
         loadEntries?.();
+        // Refresh biometric status on focus
+        checkBiometricCapabilities();
       }, 300);
       
       return () => {
@@ -1207,7 +1258,7 @@ const handleLogout = useCallback(async () => {
           clearTimeout(focusLoadTimeout.current);
         }
       };
-    }, [loadBabies, loadEntries])
+    }, [loadBabies, loadEntries, checkBiometricCapabilities])
   );
 
   useEffect(() => {
@@ -1221,12 +1272,16 @@ const handleLogout = useCallback(async () => {
 
   const renderSecuritySection = useCallback(() => {
     const isExpanded = expandedSections.has('security');
+    // FIXED: Use actual biometric availability
+    const bioAvailable = isBiometricHardwareAvailable && isBiometricEnrolled;
+    const bioEnabled = isBiometricEnabled || false;
+    
     return (
       <Animated.View entering={FadeInUp.delay(100)} layout={Layout.springify()} style={styles.section}>
         <SectionHeader
           icon="shield-checkmark"
           title="Security & Privacy"
-          subtitle={isBiometricEnabled ? `${biometricTypeName} enabled` : 'Protect your data'}
+          subtitle={bioEnabled ? `${biometricTypeName} enabled` : 'Protect your data'}
           color={primary}
           isDark={isDark}
           isExpanded={isExpanded}
@@ -1239,14 +1294,14 @@ const handleLogout = useCallback(async () => {
             tint={isDark ? 'dark' : 'light'}
           >
             <MenuItem
-              icon={isBiometricEnabled ? biometricIcon as any : `${biometricIcon}-outline` as any}
+              icon={bioEnabled ? biometricIcon as any : `${biometricIcon}-outline` as any}
               title={`${biometricTypeName} Unlock`}
-              subtitle={isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
-              isEnabled={isBiometricEnabled}
+              subtitle={bioEnabled ? 'Enabled' : bioAvailable ? 'Disabled' : 'Not Available'}
+              isEnabled={bioEnabled}
               onToggle={handleBiometricToggle}
               color={primary}
               isDark={isDark}
-              disabled={!hasBiometric}
+              disabled={!bioAvailable}
             />
             <MenuItem
               icon="keypad"
@@ -1295,7 +1350,9 @@ const handleLogout = useCallback(async () => {
     securitySettings,
     biometricTypeName,
     biometricIcon,
-    hasBiometric,
+    isBiometricHardwareAvailable,
+    isBiometricEnrolled,
+    isBiometricEnabled,
     primary,
     secondary,
     accent,

@@ -401,6 +401,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isCreatingRef = useRef(false);
   const loadInProgressRef = useRef(false);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const authLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     babyChangeSubscribers.forEach(callback => {
@@ -454,35 +455,36 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /* ─── Helper: get current user ID with fallback ────────────────────── */
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (!error && session?.user?.id) {
-        return session.user.id;
-      }
-    } catch (e) {
-      console.warn('[BabyContext] getSession failed:', e);
-    }
+    // Try multiple methods to get the user ID
+    const methods = [
+      async () => {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (!error && session?.user?.id) return session.user.id;
+        return null;
+      },
+      async () => {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (!error && user?.id) return user.id;
+        return null;
+      },
+      async () => {
+        if (authProfile?.id) return authProfile.id;
+        return null;
+      },
+      async () => {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshData?.session?.user?.id) return refreshData.session.user.id;
+        return null;
+      },
+    ];
 
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (!error && user?.id) {
-        return user.id;
+    for (const method of methods) {
+      try {
+        const result = await method();
+        if (result) return result;
+      } catch (e) {
+        // Continue to next method
       }
-    } catch (e) {
-      console.warn('[BabyContext] getUser failed:', e);
-    }
-
-    if (authProfile?.id) {
-      return authProfile.id;
-    }
-
-    try {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (!refreshError && refreshData?.session?.user?.id) {
-        return refreshData.session.user.id;
-      }
-    } catch (e) {
-      console.warn('[BabyContext] Force refresh failed:', e);
     }
 
     return null;
@@ -853,7 +855,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
       }
 
-      const currentBaby = babies.find(b => b.id === currentId) || babies[0] || null;
+      // ✅ FIX: Find the baby that matches currentId, or use the first one
+      const babyToSet = babies.find(b => b.id === currentId) || babies[0] || null;
 
       let hasSkippedBaby = false;
       try {
@@ -873,20 +876,19 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Update state first
+      // ✅ FIX: Update state with proper currentBaby
       setState(prev => ({
         ...prev,
         isLoading: false,
         babies,
         currentBabyId: currentId,
-        currentBaby,
+        currentBaby: babyToSet,  // ← Properly set currentBaby
         hasSkippedBaby,
         lastSyncTime: Date.now(),
         isInitialized: true,
       }));
 
       // THEN broadcast baby change (after state is committed)
-      // Use setTimeout to ensure state is flushed
       setTimeout(() => {
         broadcastBabyChange(currentId);
       }, 50);
@@ -908,11 +910,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const babies = JSON.parse(cached);
           console.log(`[BabyContext] Loaded ${babies.length} babies from cache`);
           if (isMounted.current) {
+            const cachedBaby = babies.find((b: any) => b.id === state.currentBabyId) || babies[0] || null;
             setState(prev => ({
               ...prev,
               isLoading: false,
               babies,
-              currentBaby: babies.find(b => b.id === prev.currentBabyId) || babies[0] || null,
+              currentBaby: cachedBaby,
               isInitialized: true,
             }));
           }
@@ -927,7 +930,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       loadInProgressRef.current = false;
     }
-  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange]);
+  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange, state.currentBabyId]);
 
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
@@ -947,6 +950,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
+      if (authLoadTimerRef.current) {
+        clearTimeout(authLoadTimerRef.current);
+      }
     };
   }, [loadBabies]);
 
@@ -955,11 +961,21 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // When authProfile changes (user signs in), reload babies
     if (authProfile?.id) {
       console.log('[BabyContext] Auth user detected, loading babies...');
+      // Clear any existing timer
+      if (authLoadTimerRef.current) {
+        clearTimeout(authLoadTimerRef.current);
+      }
       // Small delay to let auth session fully establish
-      const timer = setTimeout(() => {
+      authLoadTimerRef.current = setTimeout(() => {
         loadBabies(true);
+        authLoadTimerRef.current = null;
       }, 500);
-      return () => clearTimeout(timer);
+      return () => {
+        if (authLoadTimerRef.current) {
+          clearTimeout(authLoadTimerRef.current);
+          authLoadTimerRef.current = null;
+        }
+      };
     }
   }, [authProfile?.id, loadBabies]);
 
@@ -1269,7 +1285,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to clear skip baby:', e);
       }
 
-            // Update local state
+      // Update local state
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1291,10 +1307,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         broadcastBabyChange(newCurrentId);
       }, 50);
 
-      // Broadcast after state is updated
-      setTimeout(() => {
-        broadcastBabyChange(newCurrentId);
-      }, 50);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       isCreatingRef.current = false;
@@ -1454,7 +1466,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-            if (isMounted.current) {
+      if (isMounted.current) {
         setState(prev => ({
           ...prev,
           babies: prev.babies.filter(b => b.id !== id),
@@ -1528,7 +1540,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({
           ...prev,
           currentBabyId: id,
-          currentBaby: babyProfile,
+          currentBaby: babyProfile, // ← Make sure this is set
         }));
       }
 
