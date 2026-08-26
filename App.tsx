@@ -235,9 +235,6 @@ export default function App(): JSX.Element | null {
           console.warn('[App] Reanimated load failed:', e);
         });
 
-        // CRITICAL FIX: Hide splash screen IMMEDIATELY after essential tasks
-        // Don't wait for all tasks to complete
-        
         // Start all init tasks in parallel - don't await them all
         const essentialTasks = Promise.all([
           // Only essential font loading
