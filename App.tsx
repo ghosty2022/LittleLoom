@@ -32,9 +32,18 @@ import { ensureAllImageDirs } from '@/utils/imageUtils';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
 
-// CRITICAL FIX: Reanimated needs to be initialized before use
-// Make sure react-native-reanimated is imported at the top level
-import 'react-native-reanimated';
+// FIX: Lazy load Reanimated to avoid resolution issues
+let ReanimatedLoaded = false;
+const loadReanimated = async () => {
+  if (ReanimatedLoaded) return;
+  try {
+    await import('react-native-reanimated');
+    ReanimatedLoaded = true;
+    console.log('[App] Reanimated loaded successfully');
+  } catch (error) {
+    console.warn('[App] Failed to load Reanimated:', error);
+  }
+};
 
 // Lazy load notification service to avoid startup issues
 let notificationService: any = null;
@@ -221,6 +230,11 @@ export default function App(): JSX.Element | null {
 
     const init = async () => {
       try {
+        // Load Reanimated first (non-blocking)
+        loadReanimated().catch(e => {
+          console.warn('[App] Reanimated load failed:', e);
+        });
+
         // CRITICAL FIX: Hide splash screen IMMEDIATELY after essential tasks
         // Don't wait for all tasks to complete
         

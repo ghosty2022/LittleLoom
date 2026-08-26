@@ -1,4 +1,3 @@
-// babel.config.js
 module.exports = function (api) {
   api.cache(true);
 
@@ -16,8 +15,10 @@ module.exports = function (api) {
         },
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
       }],
-      // react-native-reanimated/plugin MUST BE LAST
-      'react-native-reanimated/plugin',
+      // THIS MUST BE THE LAST PLUGIN
+      ['react-native-reanimated/plugin', {
+        relativeSourceLocation: true,
+      }],
     ],
   };
 };
