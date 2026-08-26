@@ -32,6 +32,10 @@ import { ensureAllImageDirs } from '@/utils/imageUtils';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
 
+// CRITICAL FIX: Reanimated needs to be initialized before use
+// Make sure react-native-reanimated is imported at the top level
+import 'react-native-reanimated';
+
 // Lazy load notification service to avoid startup issues
 let notificationService: any = null;
 let notificationServiceLoaded = false;
@@ -54,6 +58,9 @@ LogBox.ignoreLogs([
   'The provided Linking scheme',
   'JavaScript logs will be removed from Metro',
   'Navigation state from different app version',
+  // Ignore Reanimated warnings in development
+  'Reanimated',
+  'Worklets',
 ]);
 
 SplashScreen.preventAutoHideAsync();
