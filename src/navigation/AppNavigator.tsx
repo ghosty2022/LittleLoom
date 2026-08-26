@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
-
+import CommunityProfileScreen from '../screens/community/CommunityProfileScreen';
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
@@ -664,7 +664,7 @@ function NavigationContent({
           <Stack.Screen name="PottyTracker" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="FeedTracker" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="SleepTracker" component={TimelineScreen} options={{ animation: 'none' }} />
-
+<Stack.Screen name="CommunityProfile" component={CommunityProfileScreen} options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="Profile" component={FamilyDashboardScreen} options={{ animation: 'none' }} />
           <Stack.Screen
             name="SwitchBaby"

@@ -625,11 +625,13 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
     });
   }, [hapticFeedback, triggerHaptic, navigation]);
 
-  const handleCommunityProfile = useCallback(() => {
-    if (hapticFeedback) triggerHaptic('medium').catch(() => {});
-    navigation.navigate('CommunityProfile', { userId: userProfile?.id });
-  }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
+// screens/main/MoreScreen.tsx - Fix the navigation in handleCommunityProfile
 
+const handleCommunityProfile = useCallback(() => {
+  if (hapticFeedback) triggerHaptic('medium').catch(() => {});
+  // ✅ FIX: Navigate to CommunityProfile through the root stack
+  navigation.navigate('CommunityProfile', { userId: userProfile?.id });
+}, [userProfile, hapticFeedback, triggerHaptic, navigation]);
   return (
     <BlurView
       intensity={isDark ? 35 : 85}

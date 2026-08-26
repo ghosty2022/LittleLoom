@@ -1,6 +1,6 @@
-// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED VERSION
+// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED VERSION FOR SAMSUNG A06
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View, Animated, Alert } from 'react-native';
+import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View, Animated, Alert, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -119,6 +119,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     isBiometricHardwareAvailable,
     isBiometricEnrolled,
     availableBiometricTypes: contextTypes,
+    getBiometricTypeName,
   } = useSecurity();
   const { userProfile } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
@@ -137,82 +138,141 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [navigation]);
 
-  // FIXED: Properly detect biometric types on mount
+  // ✅ FIXED: Properly detect biometric types for Samsung A06
   useEffect(() => {
     let mounted = true;
 
     const checkBiometrics = async () => {
       try {
         setIsLoading(true);
-        const hasHardware = await LocalAuthentication.hasHardwareAsync();
-        const enrolled = await LocalAuthentication.isEnrolledAsync();
-        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+        console.log('[BiometricSetup] Checking biometrics...');
+        
+        let hasHardware = false;
+        let isEnrolled = false;
+        let types: LocalAuthentication.AuthenticationType[] = [];
+
+        try {
+          hasHardware = await LocalAuthentication.hasHardwareAsync();
+          console.log('[BiometricSetup] Has hardware:', hasHardware);
+        } catch (e) {
+          console.warn('[BiometricSetup] hasHardwareAsync failed:', e);
+        }
+
+        if (hasHardware) {
+          try {
+            isEnrolled = await LocalAuthentication.isEnrolledAsync();
+            console.log('[BiometricSetup] Is enrolled:', isEnrolled);
+          } catch (e) {
+            console.warn('[BiometricSetup] isEnrolledAsync failed:', e);
+          }
+
+          try {
+            types = await LocalAuthentication.supportedAuthenticationTypesAsync() || [];
+            console.log('[BiometricSetup] Supported types:', types);
+          } catch (e) {
+            console.warn('[BiometricSetup] supportedAuthenticationTypesAsync failed:', e);
+          }
+        }
+
+        // ✅ FIXED: For Samsung A06, even if enrollment check fails, try to proceed
+        // Sometimes Samsung devices return false for isEnrolled even when biometrics are set up
+        if (hasHardware && !isEnrolled) {
+          console.log('[BiometricSetup] isEnrolled returned false, but trying to proceed anyway');
+          // Try to authenticate to verify
+          try {
+            const testAuth = await LocalAuthentication.authenticateAsync({
+              promptMessage: 'Verify biometric setup',
+              disableDeviceFallback: true,
+            });
+            if (testAuth.success) {
+              isEnrolled = true;
+              console.log('[BiometricSetup] Biometric verification successful');
+            }
+          } catch (e) {
+            console.log('[BiometricSetup] Test auth failed:', e);
+          }
+        }
+
+        // If we have hardware but no types, assume fingerprint
+        if (hasHardware && types.length === 0) {
+          console.log('[BiometricSetup] No types detected, assuming fingerprint');
+          types = [LocalAuthentication.AuthenticationType.FINGERPRINT];
+        }
 
         if (mounted) {
           setHasHardware(hasHardware);
-          setIsEnrolled(enrolled && hasHardware);
+          setIsEnrolled(isEnrolled && hasHardware);
 
-          // Get available types from context
-          const configs = getAvailableBiometricTypes();
-          const resolvedConfigs = await configs;
+          // Get available types from context or build manually
+          let configs: BiometricTypeConfig[] = [];
           
-          if (resolvedConfigs.length > 0) {
-            setAvailableTypes(resolvedConfigs);
-            setSelectedType(resolvedConfigs[0]);
-          } else if (hasHardware && enrolled && types.length > 0) {
-            // Fallback: build configs manually
-            const fallbackConfigs: BiometricTypeConfig[] = [];
-            types.forEach(type => {
-              switch (type) {
-                case LocalAuthentication.AuthenticationType.FINGERPRINT:
-                  fallbackConfigs.push({
-                    type,
-                    name: 'Fingerprint',
-                    icon: 'finger-print',
-                    iconFilled: 'finger-print',
-                    label: 'Touch ID / Fingerprint',
-                    description: 'Use your fingerprint to unlock',
-                    color: '#10b981',
-                    gradient: ['#11998e', '#38ef7d'],
-                    isAvailable: true,
-                  });
-                  break;
-                case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION:
-                  fallbackConfigs.push({
-                    type,
-                    name: 'Face ID',
-                    icon: 'scan-outline',
-                    iconFilled: 'scan',
-                    label: 'Face Recognition',
-                    description: 'Use your face to unlock',
-                    color: '#667eea',
-                    gradient: ['#667eea', '#764ba2'],
-                    isAvailable: true,
-                  });
-                  break;
-                case LocalAuthentication.AuthenticationType.IRIS:
-                  fallbackConfigs.push({
-                    type,
-                    name: 'Iris Scan',
-                    icon: 'eye-outline',
-                    iconFilled: 'eye',
-                    label: 'Iris Recognition',
-                    description: 'Use your eyes to unlock',
-                    color: '#f59e0b',
-                    gradient: ['#f59e0b', '#fbbf24'],
-                    isAvailable: true,
-                  });
-                  break;
-              }
-            });
-            setAvailableTypes(fallbackConfigs);
-            if (fallbackConfigs.length > 0) {
-              setSelectedType(fallbackConfigs[0]);
+          try {
+            const contextConfigs = await getAvailableBiometricTypes();
+            if (contextConfigs && contextConfigs.length > 0) {
+              configs = contextConfigs;
             }
+          } catch (e) {
+            console.warn('[BiometricSetup] getAvailableBiometricTypes failed:', e);
+          }
+
+          // If no configs from context, build manually
+          if (configs.length === 0 && hasHardware) {
+            console.log('[BiometricSetup] Building manual configs');
+            const manualConfigs: BiometricTypeConfig[] = [];
+            
+            if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+              manualConfigs.push({
+                type: LocalAuthentication.AuthenticationType.FINGERPRINT,
+                name: 'Fingerprint',
+                icon: 'finger-print',
+                iconFilled: 'finger-print',
+                label: 'Touch ID / Fingerprint',
+                description: 'Use your fingerprint to unlock',
+                color: '#10b981',
+                gradient: ['#11998e', '#38ef7d'],
+                isAvailable: true,
+              });
+            }
+            
+            if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+              manualConfigs.push({
+                type: LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
+                name: 'Face ID',
+                icon: 'scan-outline',
+                iconFilled: 'scan',
+                label: 'Face Recognition',
+                description: 'Use your face to unlock',
+                color: '#667eea',
+                gradient: ['#667eea', '#764ba2'],
+                isAvailable: true,
+              });
+            }
+
+            // If still no configs but we have hardware, add a generic one
+            if (manualConfigs.length === 0) {
+              manualConfigs.push({
+                type: LocalAuthentication.AuthenticationType.FINGERPRINT,
+                name: 'Biometric',
+                icon: 'finger-print',
+                iconFilled: 'finger-print',
+                label: 'Biometric Authentication',
+                description: 'Use your device biometrics to unlock',
+                color: '#667eea',
+                gradient: ['#667eea', '#764ba2'],
+                isAvailable: true,
+              });
+            }
+            
+            configs = manualConfigs;
+          }
+
+          setAvailableTypes(configs);
+          if (configs.length > 0) {
+            setSelectedType(configs[0]);
           }
         }
       } catch (error) {
-        console.error('Biometric check failed:', error);
+        console.error('[BiometricSetup] Biometric check failed:', error);
         if (mounted) {
           setHasHardware(false);
           setIsEnrolled(false);
@@ -276,10 +336,10 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       return;
     }
 
-    if (!hasHardware || !isEnrolled) {
+    if (!hasHardware) {
       Alert.alert(
         'Not Available',
-        'Please set up biometrics in your device settings first.',
+        'This device does not support biometric authentication.',
         [{ text: 'OK' }]
       );
       return;
@@ -360,9 +420,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     );
   }
 
-  // FIXED: Show proper UI based on available biometrics
   const hasBiometricAvailable = hasHardware && isEnrolled;
-  const primaryConfig = availableTypes.length > 0 ? availableTypes[0] : null;
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
@@ -407,11 +465,13 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             <Text style={[styles.subtitle, { color: isDark ? '#cbd5e1' : 'rgba(255,255,255,0.9)' }]}>
               {hasBiometricAvailable
                 ? `Hi ${userName}, use biometric authentication for quick and secure access to your baby's memories.`
-                : 'Biometric authentication is not available on this device.'}
+                : hasHardware 
+                  ? 'Please set up biometrics in your device settings first, then try again.'
+                  : 'Biometric authentication is not available on this device.'}
             </Text>
 
-            {/* FIXED: Show all available biometric options */}
-            {availableTypes.length > 1 && hasBiometricAvailable && (
+            {/* Show available biometric options */}
+            {availableTypes.length > 0 && hasBiometricAvailable && (
               <View style={styles.optionsContainer}>
                 {availableTypes.map((config) => (
                   <TouchableOpacity
@@ -460,25 +520,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
                     )}
                   </TouchableOpacity>
                 ))}
-              </View>
-            )}
-
-            {/* Show single biometric info */}
-            {availableTypes.length === 1 && hasBiometricAvailable && (
-              <View style={styles.singleTypeInfo}>
-                <View style={[styles.singleTypeCard, { backgroundColor: `${themeColors.primary}15` }]}>
-                  <Ionicons 
-                    name={availableTypes[0]?.icon || 'finger-print'} 
-                    size={32} 
-                    color={themeColors.primary} 
-                  />
-                  <Text style={[styles.singleTypeText, { color: isDark ? '#fff' : '#1e293b' }]}>
-                    {availableTypes[0]?.name}
-                  </Text>
-                  <Text style={[styles.singleTypeDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                    {availableTypes[0]?.description}
-                  </Text>
-                </View>
               </View>
             )}
 
@@ -694,24 +735,6 @@ const styles = StyleSheet.create({
   },
   optionDescription: {
     fontSize: 14,
-  },
-  singleTypeInfo: {
-    width: '100%',
-    marginBottom: 32,
-  },
-  singleTypeCard: {
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    gap: 8,
-  },
-  singleTypeText: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  singleTypeDesc: {
-    fontSize: 14,
-    textAlign: 'center',
   },
   benefitsContainer: {
     flexDirection: 'row',
