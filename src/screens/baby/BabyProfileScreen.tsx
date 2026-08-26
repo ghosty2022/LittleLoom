@@ -53,6 +53,47 @@ import { useCustomization } from '../../hooks/useCustomization';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
+const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
+  try {
+    // Read the file as base64
+    const base64 = await FileSystem.readAsStringAsync(localUri, { 
+      encoding: FileSystem.EncodingType.Base64 
+    });
+    
+    // Create file path
+    const fileExt = localUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const fileName = `${babyId}_${Date.now()}.${fileExt}`;
+    const filePath = `baby_avatars/${fileName}`;
+    
+    // Convert base64 to ArrayBuffer
+    const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('baby_avatars')
+      .upload(filePath, arrayBuffer, {
+        contentType: `image/${fileExt}`,
+        cacheControl: '3600',
+        upsert: false,
+      });
+    
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+    
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('baby_avatars')
+      .getPublicUrl(filePath);
+    
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('Upload to Supabase error:', error);
+    return null;
+  }
+};
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -1131,52 +1172,106 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }, () => {}, 'Save', 'Cancel');
   };
 
-  const handleSave = async () => {
-    try {
-      if (!currentBabyData) return;
-      setIsSaving(true);
-      const babyUpdates: any = {
-        name: babyName,
-        skinTone: selectedSkin,
-        gender: selectedGender,
-        birthDate: birthDate.toISOString(),
-        avatar: babyPhoto,
-        bloodType,
-        allergies: allergies.split(',').map(a => a.trim()).filter(Boolean),
-        medicalNotes,
-        weight,
-        height,
-        emergencyContact,
-        pediatrician,
-        notificationsEnabled,
-        
-        // Birth details
-        birthWeight: birthWeight,
-        birthHeight: birthHeight,
-        birthHeadCircumference: birthHeadCircumference,
-        gestationalWeeks: gestationalWeeks,
-        apgar1Min: apgar1Min,
-        apgar5Min: apgar5Min,
-        deliveryType: deliveryType,
-        birthAttendant: birthAttendant,
-        birthPlace: birthPlace,
-        multipleBirth: multipleBirth,
-        birthOrder: birthOrder,
-        feedingPlan: feedingPlan,
-        birthTime: birthTime,
-        
-        lastUpdated: new Date().toISOString(),
-      };
-      await updateBaby(currentBabyData.id, babyUpdates);
-      setIsEditing(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated successfully.`);
-    } catch (error) {
-      sweetAlert.error('Error', 'Failed to update profile');
-    } finally {
-      setIsSaving(false);
+// FIND AND REPLACE handleSave function in BabyFamilyCenterScreen.tsx
+
+const handleSave = async () => {
+  try {
+    if (!currentBabyData) return;
+    setIsSaving(true);
+    
+    // Check if avatar has changed
+    let avatarUrl = currentBabyData.avatar_url || currentBabyData.avatar;
+    let avatarUpdated = false;
+    
+    // If a new photo was selected (and it's a file URI, not an emoji)
+    if (babyPhoto && babyPhoto !== currentBabyData.avatar && 
+        (babyPhoto.startsWith('file://') || babyPhoto.startsWith('content://'))) {
+      try {
+        // Upload to Supabase Storage
+        const uploadedUrl = await uploadImageToSupabase(babyPhoto, currentBabyData.id);
+        if (uploadedUrl) {
+          avatarUrl = uploadedUrl;
+          avatarUpdated = true;
+          console.log('[BabyFamilyCenter] Avatar uploaded to Supabase:', avatarUrl);
+          
+          // Also copy to local permanent storage as backup
+          await ensureDirExists();
+          const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
+          await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
+        } else {
+          // Fallback: save locally
+          await ensureDirExists();
+          const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
+          await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
+          avatarUrl = permanentUri;
+          avatarUpdated = true;
+        }
+      } catch (uploadError) {
+        console.error('Avatar upload error:', uploadError);
+        // Fallback: save locally
+        await ensureDirExists();
+        const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
+        await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
+        avatarUrl = permanentUri;
+        avatarUpdated = true;
+      }
+    } else if (babyPhoto && !babyPhoto.startsWith('file://') && !babyPhoto.startsWith('content://')) {
+      // It's an emoji or other non-file value
+      avatarUrl = babyPhoto;
+      avatarUpdated = true;
     }
-  };
+    
+    const babyUpdates: any = {
+      name: babyName,
+      skinTone: selectedSkin,
+      gender: selectedGender,
+      birthDate: birthDate.toISOString(),
+      avatar: avatarUrl,
+      avatar_url: avatarUrl,  // Store both for compatibility
+      bloodType,
+      allergies: allergies.split(',').map(a => a.trim()).filter(Boolean),
+      medicalNotes,
+      weight,
+      height,
+      emergencyContact,
+      pediatrician,
+      notificationsEnabled,
+      
+      // Birth details
+      birthWeight: birthWeight,
+      birthHeight: birthHeight,
+      birthHeadCircumference: birthHeadCircumference,
+      gestationalWeeks: gestationalWeeks,
+      apgar1Min: apgar1Min,
+      apgar5Min: apgar5Min,
+      deliveryType: deliveryType,
+      birthAttendant: birthAttendant,
+      birthPlace: birthPlace,
+      multipleBirth: multipleBirth,
+      birthOrder: birthOrder,
+      feedingPlan: feedingPlan,
+      birthTime: birthTime,
+      
+      lastUpdated: new Date().toISOString(),
+    };
+    
+    await updateBaby(currentBabyData.id, babyUpdates);
+    setIsEditing(false);
+    
+    // Update local state with the new avatar URL
+    if (avatarUpdated) {
+      setBabyPhoto(avatarUrl);
+    }
+    
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated successfully.`);
+  } catch (error) {
+    console.error('Save error:', error);
+    sweetAlert.error('Error', 'Failed to update profile');
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({

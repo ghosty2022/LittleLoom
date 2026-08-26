@@ -47,6 +47,44 @@ const DELIVERY_TYPES = ['Vaginal', 'C-Section', 'VBAC', 'Other'];
 const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', 'Other'];
 const FEEDING_PLANS = ['Breastfeeding', 'Formula', 'Combination', 'Pumping'];
 
+// ADD this function after imports in BabyProfileCreateScreen.tsx
+
+const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
+  try {
+    const base64 = await FileSystem.readAsStringAsync(localUri, { 
+      encoding: FileSystem.EncodingType.Base64 
+    });
+    
+    const fileExt = localUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const fileName = `${babyId}_${Date.now()}.${fileExt}`;
+    const filePath = `baby_avatars/${fileName}`;
+    
+    const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    
+    const { data, error } = await supabase.storage
+      .from('baby_avatars')
+      .upload(filePath, arrayBuffer, {
+        contentType: `image/${fileExt}`,
+        cacheControl: '3600',
+        upsert: false,
+      });
+    
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+    
+    const { data: urlData } = supabase.storage
+      .from('baby_avatars')
+      .getPublicUrl(filePath);
+    
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('Upload to Supabase error:', error);
+    return null;
+  }
+};
+
 // ─── TERM EXPLANATIONS ──────────────────────────────────────────────────
 const TERM_EXPLANATIONS: Record<string, { label: string; explanation: string; emoji: string }> = {
   'Apgar Score': {
@@ -503,20 +541,40 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
       console.log('[BabyProfile] Baby created with ID:', babyId);
 
-      if (hasCustomImage && babyId) {
-        try {
-          const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
-          await updateBaby(babyId, { avatar: permanentUri });
-          if (isMounted.current) {
-            toast('Profile photo saved!', 'success');
-          }
-        } catch (imgError) {
-          console.warn('Failed to persist baby image:', imgError);
-          if (isMounted.current) {
-            toast('Profile created but image could not be saved', 'warning');
-          }
-        }
+if (hasCustomImage && babyId) {
+  try {
+    // Upload to Supabase Storage first
+    const uploadedUrl = await uploadImageToSupabase(avatar, babyId);
+    let finalAvatarUrl = avatar;
+    
+    if (uploadedUrl) {
+      finalAvatarUrl = uploadedUrl;
+      console.log('[BabyProfile] Avatar uploaded to Supabase:', uploadedUrl);
+    } else {
+      // Fallback to local storage
+      const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
+      if (permanentUri) {
+        finalAvatarUrl = permanentUri;
       }
+    }
+    
+    if (finalAvatarUrl) {
+      await updateBaby(babyId, { 
+        avatar: finalAvatarUrl,
+        avatar_url: finalAvatarUrl
+      });
+      
+      if (isMounted.current) {
+        toast('Profile photo saved!', 'success');
+      }
+    }
+  } catch (imgError) {
+    console.warn('Failed to persist baby image:', imgError);
+    if (isMounted.current) {
+      toast('Profile created but image could not be saved', 'warning');
+    }
+  }
+}
 
       if (isMounted.current) {
         toast(`${trimmedName}'s profile created! 🎉`, 'success');

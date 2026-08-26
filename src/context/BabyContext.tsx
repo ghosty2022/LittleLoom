@@ -1320,100 +1320,109 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [calculateAge, loadAllBabyData, state.currentBabyId, authProfile, broadcastBabyChange]);
 
   /* ---- Update baby ---- */
-  const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
-    try {
-      const remoteUpdates: Record<string, unknown> = {
-        updated_at: new Date().toISOString(),
-      };
-      
-      if (updates.name !== undefined) remoteUpdates.name = updates.name;
-      if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
-      if (updates.birthDate !== undefined) remoteUpdates.date_of_birth = updates.birthDate;
-      if (updates.gender !== undefined) {
-        remoteUpdates.gender = updates.gender === 'boy' ? 'male' : updates.gender === 'girl' ? 'female' : 'other';
-      }
-      if (updates.bloodType !== undefined) remoteUpdates.blood_type = updates.bloodType;
-      if (updates.medicalNotes !== undefined) remoteUpdates.medical_notes = updates.medicalNotes;
-      if (updates.allergies !== undefined) remoteUpdates.allergies = updates.allergies;
-      if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
-      
-      if (updates.weight !== undefined) {
-        remoteUpdates.current_weight_kg = updates.weight ? parseFloat(updates.weight) : null;
-      }
-      if (updates.height !== undefined) {
-        remoteUpdates.current_height_cm = updates.height ? parseFloat(updates.height) : null;
-      }
-      
-      if (updates.birthTime !== undefined) remoteUpdates.birth_time = updates.birthTime;
-      if (updates.birthWeight !== undefined) {
-        remoteUpdates.birth_weight_kg = updates.birthWeight ? parseFloat(updates.birthWeight) : null;
-      }
-      if (updates.birthHeight !== undefined) {
-        remoteUpdates.birth_height_cm = updates.birthHeight ? parseFloat(updates.birthHeight) : null;
-      }
-      if (updates.birthHeadCircumference !== undefined) {
-        remoteUpdates.birth_head_circumference = updates.birthHeadCircumference ? parseFloat(updates.birthHeadCircumference) : null;
-      }
-      if (updates.deliveryType !== undefined) {
-        remoteUpdates.delivery_type = updates.deliveryType ? updates.deliveryType.toLowerCase().replace(/ /g, '_') : null;
-      }
-      if (updates.gestationalWeeks !== undefined) {
-        remoteUpdates.gestational_weeks = updates.gestationalWeeks ? parseInt(updates.gestationalWeeks) : null;
-      }
-      if (updates.apgar1Min !== undefined) {
-        remoteUpdates.apgar_1min = updates.apgar1Min ? parseInt(updates.apgar1Min) : null;
-      }
-      if (updates.apgar5Min !== undefined) {
-        remoteUpdates.apgar_5min = updates.apgar5Min ? parseInt(updates.apgar5Min) : null;
-      }
-      if (updates.birthPlace !== undefined) remoteUpdates.birth_place = updates.birthPlace;
-      if (updates.birthAttendant !== undefined) {
-        remoteUpdates.birth_attendant = updates.birthAttendant ? updates.birthAttendant.toLowerCase().replace(/ /g, '_') : null;
-      }
-      if (updates.multipleBirth !== undefined) remoteUpdates.multiple_birth = updates.multipleBirth;
-      if (updates.birthOrder !== undefined) {
-        remoteUpdates.birth_order = updates.birthOrder ? parseInt(updates.birthOrder) : null;
-      }
-      if (updates.feedingPlan !== undefined) {
-        remoteUpdates.feeding_plan = updates.feedingPlan ? updates.feedingPlan.toLowerCase() : null;
-      }
-      
-      if (updates.emergencyContact !== undefined) remoteUpdates.emergency_contact = updates.emergencyContact;
-      if (updates.pediatrician !== undefined) remoteUpdates.pediatrician = updates.pediatrician;
-      if (updates.notificationsEnabled !== undefined) remoteUpdates.notifications_enabled = updates.notificationsEnabled;
-      if (updates.skinTone !== undefined) remoteUpdates.skin_tone = updates.skinTone;
-      if (updates.streak !== undefined) remoteUpdates.streak = updates.streak;
-      if (updates.milestones !== undefined) remoteUpdates.milestones_count = updates.milestones;
-      if (updates.photos !== undefined) remoteUpdates.photos_count = updates.photos;
+// FIND in BabyContext.tsx - updateBaby function
+// Around line 600-650, replace the updateBaby function with:
 
-      const { data: result, error } = await supabase
-        .from('babies')
-        .update(remoteUpdates)
-        .eq('id', id)
-        .eq('is_active', true)
-        .select()
-        .single();
+const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
+  try {
+    const remoteUpdates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    
+    if (updates.name !== undefined) remoteUpdates.name = updates.name;
+    if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
+    if (updates.avatar_url !== undefined) remoteUpdates.avatar_url = updates.avatar_url;
+    if (updates.birthDate !== undefined) remoteUpdates.date_of_birth = updates.birthDate;
+    if (updates.gender !== undefined) {
+      remoteUpdates.gender = updates.gender === 'boy' ? 'male' : updates.gender === 'girl' ? 'female' : 'other';
+    }
+    if (updates.bloodType !== undefined) remoteUpdates.blood_type = updates.bloodType;
+    if (updates.medicalNotes !== undefined) remoteUpdates.medical_notes = updates.medicalNotes;
+    if (updates.allergies !== undefined) remoteUpdates.allergies = updates.allergies;
+    if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
+    
+    if (updates.weight !== undefined) {
+      remoteUpdates.current_weight_kg = updates.weight ? parseFloat(updates.weight) : null;
+    }
+    if (updates.height !== undefined) {
+      remoteUpdates.current_height_cm = updates.height ? parseFloat(updates.height) : null;
+    }
+    
+    if (updates.birthTime !== undefined) remoteUpdates.birth_time = updates.birthTime;
+    if (updates.birthWeight !== undefined) {
+      remoteUpdates.birth_weight_kg = updates.birthWeight ? parseFloat(updates.birthWeight) : null;
+    }
+    if (updates.birthHeight !== undefined) {
+      remoteUpdates.birth_height_cm = updates.birthHeight ? parseFloat(updates.birthHeight) : null;
+    }
+    if (updates.birthHeadCircumference !== undefined) {
+      remoteUpdates.birth_head_circumference = updates.birthHeadCircumference ? parseFloat(updates.birthHeadCircumference) : null;
+    }
+    if (updates.deliveryType !== undefined) {
+      remoteUpdates.delivery_type = updates.deliveryType ? updates.deliveryType.toLowerCase().replace(/ /g, '_') : null;
+    }
+    if (updates.gestationalWeeks !== undefined) {
+      remoteUpdates.gestational_weeks = updates.gestationalWeeks ? parseInt(updates.gestationalWeeks) : null;
+    }
+    if (updates.apgar1Min !== undefined) {
+      remoteUpdates.apgar_1min = updates.apgar1Min ? parseInt(updates.apgar1Min) : null;
+    }
+    if (updates.apgar5Min !== undefined) {
+      remoteUpdates.apgar_5min = updates.apgar5Min ? parseInt(updates.apgar5Min) : null;
+    }
+    if (updates.birthPlace !== undefined) remoteUpdates.birth_place = updates.birthPlace;
+    if (updates.birthAttendant !== undefined) {
+      remoteUpdates.birth_attendant = updates.birthAttendant ? updates.birthAttendant.toLowerCase().replace(/ /g, '_') : null;
+    }
+    if (updates.multipleBirth !== undefined) remoteUpdates.multiple_birth = updates.multipleBirth;
+    if (updates.birthOrder !== undefined) {
+      remoteUpdates.birth_order = updates.birthOrder ? parseInt(updates.birthOrder) : null;
+    }
+    if (updates.feedingPlan !== undefined) {
+      remoteUpdates.feeding_plan = updates.feedingPlan ? updates.feedingPlan.toLowerCase() : null;
+    }
+    
+    if (updates.emergencyContact !== undefined) remoteUpdates.emergency_contact = updates.emergencyContact;
+    if (updates.pediatrician !== undefined) remoteUpdates.pediatrician = updates.pediatrician;
+    if (updates.notificationsEnabled !== undefined) remoteUpdates.notifications_enabled = updates.notificationsEnabled;
+    if (updates.skinTone !== undefined) remoteUpdates.skin_tone = updates.skinTone;
+    if (updates.streak !== undefined) remoteUpdates.streak = updates.streak;
+    if (updates.milestones !== undefined) remoteUpdates.milestones_count = updates.milestones;
+    if (updates.photos !== undefined) remoteUpdates.photos_count = updates.photos;
+    
+    // Add avatar_updated_at if avatar is being updated
+    if (updates.avatar !== undefined || updates.avatar_url !== undefined) {
+      remoteUpdates.avatar_updated_at = new Date().toISOString();
+    }
 
-      if (error) {
-        console.error('Update baby error:', error);
-        Alert.alert('Error', 'Failed to update baby profile');
-        return;
-      }
+    const { data: result, error } = await supabase
+      .from('babies')
+      .update(remoteUpdates)
+      .eq('id', id)
+      .eq('is_active', true)
+      .select()
+      .single();
 
-      if (result && isMounted.current) {
-        const updatedBaby = mapBabyRowToProfile(result);
-        setState(prev => ({
-          ...prev,
-          babies: prev.babies.map(b => b.id === id ? updatedBaby : b),
-          currentBaby: prev.currentBaby?.id === id ? updatedBaby : prev.currentBaby,
-        }));
-        await AsyncStorage.removeItem(BABIES_CACHE_KEY);
-      }
-    } catch (error) {
+    if (error) {
       console.error('Update baby error:', error);
       Alert.alert('Error', 'Failed to update baby profile');
+      return;
     }
-  }, [mapBabyRowToProfile]);
+
+    if (result && isMounted.current) {
+      const updatedBaby = mapBabyRowToProfile(result);
+      setState(prev => ({
+        ...prev,
+        babies: prev.babies.map(b => b.id === id ? updatedBaby : b),
+        currentBaby: prev.currentBaby?.id === id ? updatedBaby : prev.currentBaby,
+      }));
+      await AsyncStorage.removeItem(BABIES_CACHE_KEY);
+    }
+  } catch (error) {
+    console.error('Update baby error:', error);
+    Alert.alert('Error', 'Failed to update baby profile');
+  }
+}, [mapBabyRowToProfile]);
 
   /* ---- Delete baby ---- */
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
