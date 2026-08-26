@@ -46,6 +46,7 @@ import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// ─── FIX: Use proper import for base64-arraybuffer ────────────────────
 import { decode } from 'base64-arraybuffer';
 
 import type { CommunityStackParamList } from '../../types/navigation';
@@ -54,6 +55,7 @@ import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useMedia } from '../../context/MediaContext';
 import { useSweetAlert } from '../../components/SweetAlert';
+// ─── FIX: Import UniversalSpinner correctly ──────────────────────────
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '@/utils/supabase';

@@ -40,6 +40,7 @@
     "@stripe/stripe-react-native": "0.38.6",
     "@supabase/realtime-js": "^2.112.3",
     "@supabase/supabase-js": "^2.112.3",
+    "base64-arraybuffer": "^1.0.2",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
     "drizzle-orm": "^0.45.2",

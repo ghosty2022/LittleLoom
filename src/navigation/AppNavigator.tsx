@@ -1,4 +1,4 @@
-// src/navigation/AppNavigator.tsx
+// src/navigation/AppNavigator.tsx (Fixed Navigation)
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, AppState, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -100,6 +100,7 @@ const MAIN_FLOW_SCREENS = new Set([
 
 const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword']);
 const SETUP_FLOW_SCREENS = new Set(['CoParentInviteScreen', 'BabyOptional', 'CreateBabyProfile']);
+const SECURITY_SCREENS = new Set(['SecurityLock', 'BiometricSetup', 'SecurityCenter']);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    HEADER COMPONENTS
@@ -200,7 +201,7 @@ async function validateSupabaseSession(): Promise<boolean> {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GET NAV STATE
+   GET NAV STATE - FIXED
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function getNavState(
@@ -224,7 +225,11 @@ function getNavState(
     return 'LOGIN';
   }
 
-  if (isLocked && setupDone) return 'SECURITY_LOCK';
+  // ✅ FIXED: Check if security lock should be shown
+  // Only show security lock if there's actual security enabled
+  if (isLocked && securityOn) {
+    return 'SECURITY_LOCK';
+  }
 
   const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
   const p2Addressed = hasP2 === true || hasP2 === 'skipped';
@@ -288,7 +293,7 @@ function NavigationContent({
   } = useSafeAuth();
 
   const { babies, loadBabies, hasSkippedBaby } = useSafeBaby();
-  const { isSecurityLocked, checkSecurityOnResume, settings: secSettings } = useSecurity();
+  const { isSecurityLocked, checkSecurityOnResume, settings: secSettings, resetUnlockLock, forceUnlock } = useSecurity();
 
   const [navState, setNavState] = useState<NavigationState>('LOADING');
   const [initialCheckDone, setInitialCheckDone] = useState(false);
@@ -311,12 +316,15 @@ function NavigationContent({
   const hasInitializedNav = useRef(false);
   const isMounted = useRef(true);
   const effectRunCount = useRef(0);
+  const navReadyCalled = useRef(false);
 
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
 
   const checkSecurityOnResumeRef = useRef(checkSecurityOnResume);
   const loadBabiesRef = useRef(loadBabies);
+  const resetUnlockLockRef = useRef(resetUnlockLock);
+  const forceUnlockRef = useRef(forceUnlock);
 
   // ─── Validate session ────────────────────────────────────────────────
   useEffect(() => {
@@ -368,7 +376,9 @@ function NavigationContent({
   useEffect(() => {
     checkSecurityOnResumeRef.current = checkSecurityOnResume;
     loadBabiesRef.current = loadBabies;
-  }, [checkSecurityOnResume, loadBabies]);
+    resetUnlockLockRef.current = resetUnlockLock;
+    forceUnlockRef.current = forceUnlock;
+  }, [checkSecurityOnResume, loadBabies, resetUnlockLock, forceUnlock]);
 
   const securityOn = useMemo(() =>
     !!(secSettings?.isPinEnabled || secSettings?.isBiometricEnabled || secSettings?.isAppLockEnabled),
@@ -400,7 +410,7 @@ function NavigationContent({
     const newCount = babies?.length || 0;
     babyCountRef.current = newCount;
     hasSkippedBabyRef.current = hasSkippedBaby;
-  }, [babies?.length, hasSkippedBaby, isAuthenticated, setupComplete, isFirstOpen]);
+  }, [babies?.length, hasSkippedBaby]);
 
   // ─── Compute nav state ──────────────────────────────────────────────
   useEffect(() => {
@@ -429,6 +439,7 @@ function NavigationContent({
       }
       lastNavState.current = newState;
       setNavState(newState);
+      console.log('[Navigation] State changed to:', newState);
     }
 
     if (!initialCheckDone) setInitialCheckDone(true);
@@ -472,7 +483,11 @@ function NavigationContent({
         await new Promise(r => setTimeout(r, 30));
 
         const currentRoute = navRef.current?.getCurrentRoute()?.name;
-        if (currentRoute === 'SecurityLock') return;
+        if (currentRoute === 'SecurityLock') {
+          // If we're on SecurityLock, reset unlock lock to prevent issues
+          resetUnlockLockRef.current();
+          return;
+        }
         if (wasOnSecurityLock.current) {
           wasOnSecurityLock.current = false;
           return;
@@ -509,14 +524,14 @@ function NavigationContent({
   }, []);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // SIMPLIFIED MAIN NAVIGATION EFFECT
+  // FIXED: MAIN NAVIGATION EFFECT
   // ═══════════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
 
     const currentRoute = navRef.current.getCurrentRoute()?.name;
     
-    console.log('[Navigation] State:', navState, 'route:', currentRoute);
+    console.log('[Navigation] State:', navState, 'Current route:', currentRoute);
 
     // Prevent multiple rapid navigations
     const now = Date.now();
@@ -544,9 +559,12 @@ function NavigationContent({
 
     // ─── SECURITY_LOCK ────────────────────────────────────────────────
     if (navState === 'SECURITY_LOCK') {
+      // ✅ FIXED: Only navigate to SecurityLock if we're not already there
       if (currentRoute !== 'SecurityLock') {
         console.log('[Navigation] → SecurityLock');
         lastNavTime.current = now;
+        // Reset unlock lock before showing security lock
+        resetUnlockLockRef.current();
         navRef.current.reset({ index: 0, routes: [{ name: 'SecurityLock' }] });
       }
       return;
@@ -556,7 +574,7 @@ function NavigationContent({
     if (navState === 'SETUP_BABY') {
       // If we already have babies, go to Main
       if (babyCountRef.current > 0 || (babies && babies.length > 0)) {
-        if (currentRoute !== 'Main') {
+        if (currentRoute !== 'Main' && !SECURITY_SCREENS.has(currentRoute || '')) {
           console.log('[Navigation] → Main (has babies)');
           lastNavTime.current = now;
           navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
@@ -592,6 +610,15 @@ function NavigationContent({
         return;
       }
       
+      // If we're on a security screen and shouldn't be, force unlock
+      if (currentRoute === 'SecurityLock') {
+        console.log('[Navigation] Force unlocking from SecurityLock');
+        forceUnlockRef.current();
+        lastNavTime.current = now;
+        navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+        return;
+      }
+      
       // If we're already on a main screen, stay
       if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
         return;
@@ -609,7 +636,15 @@ function NavigationContent({
     lastNavTime.current = now;
     navRef.current.reset({ index: 0, routes: [{ name: 'Login' }] });
     
-  }, [navState, initialCheckDone, isNavReady, babies]);
+  }, [navState, initialCheckDone, isNavReady, babies, isSecurityLocked]);
+
+  // ─── Handle navigation ready ────────────────────────────────────────
+  const handleNavReady = useCallback(() => {
+    if (!navReadyCalled.current) {
+      navReadyCalled.current = true;
+      setIsNavReady(true);
+    }
+  }, []);
 
   // ─── Early return ────────────────────────────────────────────────────
   if (authLoading || !initialCheckDone || !sessionChecked) {
@@ -622,7 +657,7 @@ function NavigationContent({
       theme={isDark ? CustomDarkTheme : CustomLightTheme}
       initialState={initialState}
       onStateChange={handleStateChange}
-      onReady={() => setIsNavReady(true)}
+      onReady={handleNavReady}
       key="app-navigation-container"
     >
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -664,7 +699,7 @@ function NavigationContent({
           <Stack.Screen name="PottyTracker" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="FeedTracker" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="SleepTracker" component={TimelineScreen} options={{ animation: 'none' }} />
-<Stack.Screen name="CommunityProfile" component={CommunityProfileScreen} options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="CommunityProfile" component={CommunityProfileScreen} options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="Profile" component={FamilyDashboardScreen} options={{ animation: 'none' }} />
           <Stack.Screen
             name="SwitchBaby"
@@ -690,7 +725,7 @@ function NavigationContent({
           <Stack.Screen name="PediatricianPDFExport" component={PediatricianPDFExport} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'none' }} />
           
-                    <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
+          <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
             <Stack.Screen name="AddEntry" component={AddEntryScreen} />
             <Stack.Screen name="Achievements" component={AchievementsScreen} />
             <Stack.Screen name="GrowthDashboard" component={GrowthDashboardScreen} />

@@ -465,12 +465,15 @@ const [forceUpdate, setForceUpdate] = useState(false);
     }
   };
 
-const handleToggleBiometric = async () => {
+const handleToggleBiometric = useCallback(async () => {
   setBiometricLoading(true);
   try {
+    // First refresh biometric status to get latest state
+    await checkBiometricCapabilities();
+    
     const result = await toggleBiometric(!isBiometricEnabled);
     if (result) {
-      // Force refresh biometric status
+      // Force refresh biometric status after toggle
       await checkBiometricCapabilities();
       setForceUpdate(prev => !prev);
       showSuccess(
@@ -478,12 +481,15 @@ const handleToggleBiometric = async () => {
         isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
       );
     } else {
-      showError('Failed', 'Could not change biometric setting');
+      showError('Failed', 'Could not change biometric setting. Please ensure biometrics are set up in your device settings.');
     }
+  } catch (error) {
+    console.error('Biometric toggle error:', error);
+    showError('Error', 'An error occurred while changing biometric settings.');
   } finally {
     setBiometricLoading(false);
   }
-};
+}, [isBiometricEnabled, toggleBiometric, checkBiometricCapabilities, showSuccess, showError]);
 
 // Force refresh biometric status after toggle
 useEffect(() => {
