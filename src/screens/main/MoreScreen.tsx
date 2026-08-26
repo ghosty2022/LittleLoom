@@ -1188,10 +1188,25 @@ const handleLogout = useCallback(async () => {
 
   // ─── Effects ────────────────────────────────────────────────────
 
+  // ✅ Prevent duplicate load calls with a debounce
+  const focusLoadTimeout = useRef<NodeJS.Timeout | null>(null);
+  
   useFocusEffect(
     useCallback(() => {
-      loadBabies();
-      loadEntries?.();
+      if (focusLoadTimeout.current) {
+        clearTimeout(focusLoadTimeout.current);
+      }
+      focusLoadTimeout.current = setTimeout(() => {
+        console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
+        loadBabies();
+        loadEntries?.();
+      }, 300);
+      
+      return () => {
+        if (focusLoadTimeout.current) {
+          clearTimeout(focusLoadTimeout.current);
+        }
+      };
     }, [loadBabies, loadEntries])
   );
 
@@ -1599,7 +1614,22 @@ const handleLogout = useCallback(async () => {
 
   // ─── Loading State ─────────────────────────────────────────────
 
-  const isInitialLoading = authLoading || (babyLoading && safeBabies.length === 0);
+  // ✅ Add a timeout to force exit loading state
+  const [forceShowContent, setForceShowContent] = useState(false);
+  
+  useEffect(() => {
+    if (authLoading || (babyLoading && safeBabies.length === 0)) {
+      const timeout = setTimeout(() => {
+        console.warn('⚠️ [MoreScreen] Loading timeout - forcing content display');
+        setForceShowContent(true);
+      }, 5000);
+      return () => clearTimeout(timeout);
+    } else {
+      setForceShowContent(false);
+    }
+  }, [authLoading, babyLoading, safeBabies.length]);
+
+  const isInitialLoading = (authLoading || (babyLoading && safeBabies.length === 0)) && !forceShowContent;
 
   if (isInitialLoading) {
     return (

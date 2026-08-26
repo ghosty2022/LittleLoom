@@ -1,8 +1,8 @@
 // src/context/BabyContext.tsx
-// Full Supabase implementation - Auto-refresh on focus and changes
+// Full Supabase implementation - SINGLE SOURCE OF TRUTH for baby data
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Alert } from 'react-native'; // <-- ADD AppState here
+import { AppState, Alert } from 'react-native';
 import { useAuth } from './AuthContext';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,6 +13,7 @@ import { supabase } from '@/utils/supabase';
 /* ------------------------------------------------------------------ */
 export const STORAGE_KEYS = {
   HAS_SKIPPED_BABY: '@littleloom_has_skipped_baby',
+  CURRENT_BABY_ID: '@littleloom_current_baby_id',
 } as const;
 
 const ACTIVITY_CONTEXT_KEY = '@littleloom_activities_v3';
@@ -329,6 +330,11 @@ interface BabyContextType extends BabyState {
   syncWithActivityContext: () => Promise<void>;
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
+  
+  // NEW: Get current baby ID for other contexts
+  getCurrentBabyId: () => string | null;
+  // NEW: Subscribe to baby changes
+  subscribeToBabyChanges: (callback: (babyId: string | null) => void) => () => void;
 }
 
 const BabyContext = createContext<BabyContextType | null>(null);
@@ -352,6 +358,10 @@ const getDateKey = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+// Baby change subscribers
+type BabyChangeCallback = (babyId: string | null) => void;
+let babyChangeSubscribers: BabyChangeCallback[] = [];
 
 /* Lazy imports for notification service */
 const getNotificationService = async () => {
@@ -394,6 +404,23 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isCreatingRef = useRef(false);
   const loadInProgressRef = useRef(false);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Broadcast baby changes to subscribers
+  const broadcastBabyChange = useCallback((babyId: string | null) => {
+    babyChangeSubscribers.forEach(callback => {
+      try { callback(babyId); } catch (e) { /* ignore */ }
+    });
+  }, []);
+
+  // NEW: Subscribe to baby changes
+  const subscribeToBabyChanges = useCallback((callback: BabyChangeCallback) => {
+    babyChangeSubscribers.push(callback);
+    // Immediately call with current value
+    callback(state.currentBabyId);
+    return () => {
+      babyChangeSubscribers = babyChangeSubscribers.filter(cb => cb !== callback);
+    };
+  }, [state.currentBabyId]);
 
   /* ---- Age calculation ---- */
   const calculateAge = useCallback((birthDate: string): string => {
@@ -664,6 +691,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.error('[BabyContext] loadAllBabyData error:', error);
+        // ✅ Ensure loading state is reset on error
+        if (isMounted.current) {
+          setState(prev => ({ ...prev, isLoading: false }));
+          setIsLoadingEntries(false);
+        }
         return;
       }
 
@@ -749,6 +781,15 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setState(prev => ({ ...prev, isLoading: true }));
 
+    // ✅ Add safety timeout to prevent infinite loading
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted.current && loadInProgressRef.current) {
+        console.warn('[BabyContext] ⚠️ loadBabies safety timeout - forcing completion');
+        setState(prev => ({ ...prev, isLoading: false }));
+        loadInProgressRef.current = false;
+      }
+    }, 8000);
+
     try {
       const userId = await getCurrentUserId();
 
@@ -756,6 +797,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] No authenticated user');
         setState(prev => ({ ...prev, isLoading: false }));
         loadInProgressRef.current = false;
+        clearTimeout(safetyTimeout);
         return;
       }
 
@@ -842,6 +884,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      // Also store in AsyncStorage for other contexts
+      if (currentId) {
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
+      }
+
       const currentBaby = babies.find(b => b.id === currentId) || babies[0] || null;
 
       // Check if user has skipped baby selection
@@ -863,6 +910,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // Broadcast baby change
+      broadcastBabyChange(currentId);
+
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -881,6 +931,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.log('[BabyContext] loadBabies completed successfully');
+      
+      // ✅ Clear safety timeout on success
+      clearTimeout(safetyTimeout);
 
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
@@ -908,9 +961,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({ ...prev, isLoading: false }));
       }
     } finally {
+      // ✅ Clear safety timeout if not already cleared
+      clearTimeout(safetyTimeout);
       loadInProgressRef.current = false;
     }
-  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId]);
+  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange]);
 
   /* ─── Force Refresh ──────────────────────────────────────────────────── */
   const forceRefresh = useCallback(async () => {
@@ -1244,6 +1299,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to set current_baby_id:', e);
       }
 
+      // Also store in AsyncStorage for other contexts
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
+
+      // Broadcast baby change
+      broadcastBabyChange(newCurrentId);
+
       // Clear skip baby if set
       try {
         await supabase
@@ -1282,7 +1343,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[BabyContext] Create baby error:', error);
       return null;
     }
-  }, [calculateAge, loadAllBabyData, state.currentBabyId, authProfile]);
+  }, [calculateAge, loadAllBabyData, state.currentBabyId, authProfile, broadcastBabyChange]);
 
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
@@ -1418,6 +1479,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               user_id: userId,
               updated_at: new Date().toISOString(),
             }, { onConflict: 'key, user_id' });
+          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
+          broadcastBabyChange(newCurrentId);
         } else if (userId) {
           await supabase
             .from('app_settings')
@@ -1429,6 +1492,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .delete()
             .eq('key', 'has_skipped_baby')
             .eq('user_id', userId);
+          await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_BABY_ID);
+          broadcastBabyChange(null);
         }
       }
 
@@ -1460,7 +1525,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to delete baby profile');
       return false;
     }
-  }, [state.currentBabyId, state.babies, loadAllBabyData, getCurrentUserId]);
+  }, [state.currentBabyId, state.babies, loadAllBabyData, getCurrentUserId, broadcastBabyChange]);
 
   /* ---- Switch baby ---- */
   const switchBaby = useCallback(async (id: string): Promise<boolean> => {
@@ -1492,6 +1557,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updated_at: new Date().toISOString(),
         }, { onConflict: 'key, user_id' });
 
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, id);
+      broadcastBabyChange(id);
+
       await loadAllBabyData(id);
 
       if (isMounted.current) {
@@ -1512,7 +1580,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error switching baby:', error);
       return false;
     }
-  }, [loadAllBabyData, mapBabyRowToProfile, getCurrentUserId]);
+  }, [loadAllBabyData, mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
 
   /* ---- Refresh current baby ---- */
   const refreshCurrentBaby = useCallback(async () => {
@@ -2328,6 +2396,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await updateBaby(state.currentBaby.id, updates);
   }, [state.currentBaby, updateBaby]);
 
+  // ─── NEW: Get current baby ID for other contexts ─────────────────────
+  const getCurrentBabyId = useCallback((): string | null => {
+    return state.currentBabyId;
+  }, [state.currentBabyId]);
+
   // ─── STUB METHODS ─────────────────────────────────────────────────────
   const syncWithActivityContext = useCallback(async () => {}, []);
   
@@ -2421,6 +2494,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     syncWithActivityContext,
     scheduleActivityReminder,
     cancelActivityReminder,
+    // NEW
+    getCurrentBabyId,
+    subscribeToBabyChanges,
   }), [
     state,
     loadBabies,
@@ -2472,6 +2548,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     syncWithActivityContext,
     scheduleActivityReminder,
     cancelActivityReminder,
+    getCurrentBabyId,
+    subscribeToBabyChanges,
   ]);
 
   return (

@@ -1,5 +1,5 @@
 // src/context/TrackerContext.tsx
-// Full Supabase implementation - No local DB
+// Full Supabase implementation - Reads baby data from BabyContext
 
 import React, {
   createContext,
@@ -32,6 +32,7 @@ import { useFamily } from '@/context/FamilyContext';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
+import { useBaby } from './BabyContext';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -66,11 +67,11 @@ interface TrackerState {
   entries: TrackerEntry[];
   entriesByTracker: Record<string, TrackerEntry[]>;
   lastTrackerId: string | null;
-  currentBabyId: string | null;
+  // REMOVED: currentBabyId - now read from BabyContext
   progressive: ProgressiveTrackerState;
 }
 
-interface TrackerContextType extends TrackerState {
+interface TrackerContextType extends Omit<TrackerState, 'currentBabyId'> {
   getTracker: (id: string) => UnifiedTrackerConfig | undefined;
   getTrackersByCategory: (category: TrackerCategory) => UnifiedTrackerConfig[];
   searchTrackers: (query: string) => UnifiedTrackerConfig[];
@@ -149,7 +150,9 @@ interface TrackerContextType extends TrackerState {
 
   refreshTrackers: () => Promise<void>;
   refreshEntries: () => Promise<void>;
-  setCurrentBabyId: (babyId: string | null) => Promise<void>;
+  
+  // NEW: Get the current baby ID from BabyContext
+  getCurrentBabyId: () => string | null;
 }
 
 const TrackerContext = createContext<TrackerContextType | null>(null);
@@ -187,7 +190,6 @@ const getDateKey = (date: Date | string | number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const BABY_CURRENT_KEY = '@littleloom_current_baby';
 const DISMISSED_INSIGHTS_KEY = '@littleloom_dismissed_tracker_insights';
 const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1';
 
@@ -389,6 +391,9 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const { members } = useFamily();
   const { triggerHaptic } = useCustomization();
   const { success, toast, alert: sweetAlert } = useSweetAlert();
+  
+  // ─── READ BABY FROM BABYCONTEXT ──────────────────────────────────────
+  const { getCurrentBabyId: getBabyIdFromContext, subscribeToBabyChanges } = useBaby();
 
   const [state, setState] = useState<TrackerState>({
     isLoading: true,
@@ -397,7 +402,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     entries: [],
     entriesByTracker: {},
     lastTrackerId: null,
-    currentBabyId: null,
     progressive: {
       todayEntries: [],
       yesterdayEntries: [],
@@ -411,20 +415,37 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const initRef = useRef(false);
   const dismissedInsightIdsRef = useRef<Set<string>>(new Set());
+  const currentBabyIdRef = useRef<string | null>(null);
 
-  /* ─── Detect current baby ─────────────────────────────────────────── */
+  // ─── Subscribe to baby changes from BabyContext ─────────────────────
+  useEffect(() => {
+    const unsubscribe = subscribeToBabyChanges((babyId) => {
+      console.log('[TrackerContext] Baby changed to:', babyId);
+      currentBabyIdRef.current = babyId;
+      // Auto-refresh entries when baby changes
+      if (babyId) {
+        refreshEntries();
+      } else {
+        setState(prev => ({
+          ...prev,
+          entries: [],
+          entriesByTracker: {},
+        }));
+      }
+    });
 
-  const detectCurrentBaby = useCallback(async (): Promise<string | null> => {
-    try {
-      const { data } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'current_baby_id')
-        .maybeSingle();
-      return data?.value || null;
-    } catch {
-      return null;
+    // Initial sync
+    const initialBabyId = getBabyIdFromContext();
+    if (initialBabyId) {
+      currentBabyIdRef.current = initialBabyId;
     }
+
+    return unsubscribe;
+  }, [subscribeToBabyChanges, getBabyIdFromContext]);
+
+  // ─── Detect initial baby ────────────────────────────────────────────
+  const getCurrentBabyId = useCallback((): string | null => {
+    return currentBabyIdRef.current;
   }, []);
 
   /* ─── Permission helpers ──────────────────────────────────────────── */
@@ -541,7 +562,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setState(prev => ({ ...prev, isLoading: true }));
 
       try {
-        const babyId = await detectCurrentBaby();
+        const babyId = getCurrentBabyId();
 
         const [customTrackers, entries, lastTracker, reminders, dismissedRaw] = await Promise.all([
           loadCustomTrackers(),
@@ -585,7 +606,9 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         );
 
         const allTrackerIds = [...new Set(safeEntries.filter(e => e.babyId === babyId).map(e => e.trackerId))];
-        const streaks = allTrackerIds.map(id => calculateStreak(id, safeEntries, babyId || ''));
+        const streaks = babyId
+          ? allTrackerIds.map(id => calculateStreak(id, safeEntries, babyId))
+          : [];
         const insights = babyId
           ? generateInsights(safeEntries, babyId).filter(i => !dismissedInsightIdsRef.current.has(i.id))
           : [];
@@ -597,7 +620,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
           entries: safeEntries,
           entriesByTracker,
           lastTrackerId: lastTracker || null,
-          currentBabyId: babyId || null,
           progressive: {
             todayEntries,
             yesterdayEntries,
@@ -615,27 +637,13 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     init();
-  }, [detectCurrentBaby, loadCustomTrackers, loadEntries, loadReminders]);
-
-  /* ─── Listen for baby changes ────────────────────────────────────── */
-
-  useEffect(() => {
-    const checkBabyChange = async () => {
-      const storedBabyId = await detectCurrentBaby();
-      if (storedBabyId && storedBabyId !== state.currentBabyId) {
-        setCurrentBabyId(storedBabyId);
-      }
-    };
-
-    checkBabyChange();
-    const interval = setInterval(checkBabyChange, 2000);
-    return () => clearInterval(interval);
-  }, [state.currentBabyId, detectCurrentBaby]);
+  }, [loadCustomTrackers, loadEntries, loadReminders, getCurrentBabyId]);
 
   /* ─── Update progressive state ───────────────────────────────────── */
 
   useEffect(() => {
-    if (!state.currentBabyId) return;
+    const babyId = getCurrentBabyId();
+    if (!babyId) return;
 
     const today = getStartOfDay();
     const todayStart = today.getTime();
@@ -646,15 +654,15 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const yesterdayEnd = yesterdayStart + 86400000;
 
     const todayEntries = state.entries.filter(e =>
-      e.babyId === state.currentBabyId && !e.isDeleted && e.timestamp >= todayStart && e.timestamp < todayEnd
+      e.babyId === babyId && !e.isDeleted && e.timestamp >= todayStart && e.timestamp < todayEnd
     );
     const yesterdayEntries = state.entries.filter(e =>
-      e.babyId === state.currentBabyId && !e.isDeleted && e.timestamp >= yesterdayStart && e.timestamp < yesterdayEnd
+      e.babyId === babyId && !e.isDeleted && e.timestamp >= yesterdayStart && e.timestamp < yesterdayEnd
     );
 
-    const allTrackerIds = [...new Set(state.entries.filter(e => e.babyId === state.currentBabyId).map(e => e.trackerId))];
-    const streaks = allTrackerIds.map(id => calculateStreak(id, state.entries, state.currentBabyId));
-    const insights = generateInsights(state.entries, state.currentBabyId)
+    const allTrackerIds = [...new Set(state.entries.filter(e => e.babyId === babyId).map(e => e.trackerId))];
+    const streaks = allTrackerIds.map(id => calculateStreak(id, state.entries, babyId));
+    const insights = generateInsights(state.entries, babyId)
       .filter(i => !dismissedInsightIdsRef.current.has(i.id));
 
     setState(prev => ({
@@ -667,7 +675,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         insights,
       },
     }));
-  }, [state.entries, state.currentBabyId]);
+  }, [state.entries, getCurrentBabyId]);
 
   /* ─── Persist helpers ────────────────────────────────────────────── */
 
@@ -831,6 +839,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       tags?: string[];
     }
   ): Promise<TrackerEntry | null> => {
+    const babyId = getCurrentBabyId();
+    if (!babyId) {
+      sweetAlert('Error', 'No baby profile selected. Please select a baby first.', 'warning');
+      return null;
+    }
+
     if (!canCreateEntry(trackerId)) {
       sweetAlert('Permission Denied', 'You do not have permission to add entries to this tracker', 'warning');
       return null;
@@ -856,7 +870,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const now = new Date().toISOString();
       const newEntry: TrackerEntry = {
         id: newId,
-        babyId: state.currentBabyId || '',
+        babyId: babyId,
         trackerId,
         timestamp: Date.now(),
         title: options?.title || `${tracker.emoji} ${tracker.name}`,
@@ -876,7 +890,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .insert({
           id: newId,
           tracker_id: trackerId,
-          baby_id: state.currentBabyId || '',
+          baby_id: babyId,
           timestamp: Date.now(),
           title: options?.title || `${tracker.emoji} ${tracker.name}`,
           data: data,
@@ -914,8 +928,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastTrackerId: trackerId,
       }));
 
-      if (state.currentBabyId) {
-        const streak = calculateStreak(trackerId, updatedEntries, state.currentBabyId);
+      if (babyId) {
+        const streak = calculateStreak(trackerId, updatedEntries, babyId);
         if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
           triggerHaptic('success');
           success(
@@ -932,7 +946,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
     }
-  }, [canCreateEntry, getTracker, state.currentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert]);
+  }, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert]);
 
   const handleUpdateEntry = useCallback(async (
     entryId: string,
@@ -1126,9 +1140,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [state.entries]);
 
   const handleGetTodaySummary = useCallback(() => {
+    const babyId = getCurrentBabyId();
+    if (!babyId) return [];
+
     const today = getStartOfDay();
     const todayEntries = state.entries.filter(e =>
-      !e.isDeleted && new Date(e.timestamp) >= today
+      !e.isDeleted && e.babyId === babyId && new Date(e.timestamp) >= today
     );
 
     const counts: Record<string, number> = {};
@@ -1144,7 +1161,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         emoji: tracker?.emoji || '📝',
       };
     }).sort((a, b) => b.count - a.count);
-  }, [state.entries, getTracker]);
+  }, [state.entries, getTracker, getCurrentBabyId]);
 
   /* ─── Progressive actions ────────────────────────────────────────── */
 
@@ -1153,7 +1170,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const getYesterdayData = useCallback((trackerId: string) => {
-    if (!state.currentBabyId) return null;
+    const babyId = getCurrentBabyId();
+    if (!babyId) return null;
 
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -1161,22 +1179,24 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const end = start + 86400000;
 
     const yesterdayEntry = state.entries
-      .filter(e => e.trackerId === trackerId && e.babyId === state.currentBabyId && !e.isDeleted)
+      .filter(e => e.trackerId === trackerId && e.babyId === babyId && !e.isDeleted)
       .find(e => e.timestamp >= start && e.timestamp < end);
 
     return yesterdayEntry?.data || null;
-  }, [state.entries, state.currentBabyId]);
+  }, [state.entries, getCurrentBabyId]);
 
   const getStreak = useCallback((trackerId: string) => {
-    if (!state.currentBabyId) return undefined;
-    return calculateStreak(trackerId, state.entries, state.currentBabyId);
-  }, [state.entries, state.currentBabyId]);
+    const babyId = getCurrentBabyId();
+    if (!babyId) return undefined;
+    return calculateStreak(trackerId, state.entries, babyId);
+  }, [state.entries, getCurrentBabyId]);
 
   const getInsights = useCallback(() => {
-    if (!state.currentBabyId) return [];
-    return generateInsights(state.entries, state.currentBabyId)
+    const babyId = getCurrentBabyId();
+    if (!babyId) return [];
+    return generateInsights(state.entries, babyId)
       .filter(i => !dismissedInsightIdsRef.current.has(i.id));
-  }, [state.entries, state.currentBabyId]);
+  }, [state.entries, getCurrentBabyId]);
 
   const dismissInsight = useCallback((id: string) => {
     dismissedInsightIdsRef.current.add(id);
@@ -1401,9 +1421,17 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [loadCustomTrackers]);
 
   const refreshEntries = useCallback(async () => {
-    if (!state.currentBabyId) return;
+    const babyId = getCurrentBabyId();
+    if (!babyId) {
+      setState(prev => ({
+        ...prev,
+        entries: [],
+        entriesByTracker: {},
+      }));
+      return;
+    }
     try {
-      const entries = await loadEntries(state.currentBabyId);
+      const entries = await loadEntries(babyId);
       const safeEntries = Array.isArray(entries) ? entries : [];
       const entriesByTracker: Record<string, TrackerEntry[]> = {};
       safeEntries.forEach(entry => {
@@ -1416,42 +1444,18 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (err) {
       console.error('[TrackerContext] refreshEntries failed:', err);
     }
-  }, [state.currentBabyId, loadEntries]);
-
-  const setCurrentBabyId = useCallback(async (babyId: string | null) => {
-    if (babyId) {
-      await supabase
-        .from('app_settings')
-        .upsert({
-          key: 'current_baby_id',
-          value: babyId,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
-    } else {
-      await supabase
-        .from('app_settings')
-        .delete()
-        .eq('key', 'current_baby_id');
-    }
-    setState(prev => ({ ...prev, currentBabyId: babyId }));
-    if (babyId) {
-      const entries = await loadEntries(babyId);
-      const safeEntries = Array.isArray(entries) ? entries : [];
-      const entriesByTracker: Record<string, TrackerEntry[]> = {};
-      safeEntries.forEach(entry => {
-        if (!entriesByTracker[entry.trackerId]) {
-          entriesByTracker[entry.trackerId] = [];
-        }
-        entriesByTracker[entry.trackerId].push(entry);
-      });
-      setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
-    }
-  }, [loadEntries]);
+  }, [getCurrentBabyId, loadEntries]);
 
   /* ─── Memoized value ────────────────────────────────────────────── */
 
   const value = useMemo<TrackerContextType>(() => ({
-    ...state,
+    isLoading: state.isLoading,
+    trackers: state.trackers,
+    customTrackers: state.customTrackers,
+    entries: state.entries,
+    entriesByTracker: state.entriesByTracker,
+    lastTrackerId: state.lastTrackerId,
+    progressive: state.progressive,
     getTracker,
     getTrackersByCategory,
     searchTrackers,
@@ -1489,7 +1493,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     syncFromBabyContext,
     refreshTrackers,
     refreshEntries,
-    setCurrentBabyId,
+    // NEW: Pass through the baby ID getter
+    getCurrentBabyId,
   }), [
     state,
     getTracker,
@@ -1529,7 +1534,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     syncFromBabyContext,
     refreshTrackers,
     refreshEntries,
-    setCurrentBabyId,
+    getCurrentBabyId,
   ]);
 
   return (
@@ -1546,5 +1551,4 @@ export const useTracker = (): TrackerContextType => {
 };
 
 export { TrackerContext };
-
 export default TrackerProvider;

@@ -1,5 +1,5 @@
 // src/context/ActivityContext.tsx
-// Full Supabase-compatible activity tracking
+// Full Supabase-compatible activity tracking - Reads from BabyContext
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,6 +13,7 @@ import {
   setAppSetting,
 } from '@/database/dbHelpers';
 import { supabase } from '@/lib/supabase';
+import { useBaby } from './BabyContext';
 
 export type ActivityType = 
   | 'potty' 
@@ -137,6 +138,9 @@ interface ActivityContextType {
   syncWithSupabase: () => Promise<void>;
   pushToSupabase: (entry: ActivityEntry) => Promise<void>;
   pullFromSupabase: (babyId: string) => Promise<void>;
+  
+  // NEW: Get current baby ID
+  getCurrentBabyId: () => string | null;
 }
 
 const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
@@ -231,6 +235,9 @@ export const ACTIVITY_ICONS: Record<string, string> = {
 };
 
 export function ActivityProvider({ children }: { children: React.ReactNode }): JSX.Element {
+  // ─── READ BABY FROM BABYCONTEXT ──────────────────────────────────────
+  const { getCurrentBabyId: getBabyIdFromContext, subscribeToBabyChanges } = useBaby();
+
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -239,48 +246,67 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   const initRef = useRef(false);
   const currentBabyIdRef = useRef<string | null>(null);
 
+  // ─── Subscribe to baby changes from BabyContext ─────────────────────
   useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
-    loadEntries();
+    const unsubscribe = subscribeToBabyChanges((babyId) => {
+      console.log('[ActivityContext] Baby changed to:', babyId);
+      currentBabyIdRef.current = babyId;
+      if (babyId) {
+        loadEntries();
+      } else {
+        setEntries([]);
+      }
+    });
+
+    // Initial sync
+    const initialBabyId = getBabyIdFromContext();
+    if (initialBabyId) {
+      currentBabyIdRef.current = initialBabyId;
+    }
+
+    return unsubscribe;
+  }, [subscribeToBabyChanges, getBabyIdFromContext]);
+
+  // ─── Get current baby ID ─────────────────────────────────────────────
+  const getCurrentBabyId = useCallback((): string | null => {
+    return currentBabyIdRef.current;
   }, []);
 
   const loadEntries = useCallback(async () => {
+    const babyId = getCurrentBabyId();
+    if (!babyId) {
+      setEntries([]);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const currentBabyId = await getAppSetting('current_baby_id');
-      currentBabyIdRef.current = currentBabyId;
-      
-      if (currentBabyId) {
-        const rows = await getEntriesByBabyFromDb(currentBabyId);
-        const parsed: ActivityEntry[] = rows.map(row => {
-          const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {};
-          return {
-            id: row.id,
-            type: row.tracker_id as ActivityType,
-            babyId: row.baby_id,
-            timestamp: row.timestamp,
-            title: row.title,
-            details: row.notes || undefined,
-            icon: undefined,
-            loggedBy: row.logged_by || '',
-            loggedByName: row.logged_by_name || '',
-            ...data,
-            notes: row.notes || undefined,
-            photo: data.photo || (row.photo_uris ? (Array.isArray(row.photo_uris) ? row.photo_uris[0] : JSON.parse(row.photo_uris as any)[0]) : undefined),
-            tags: row.tags || undefined,
-            notificationId: row.notification_id || undefined,
-            reminderScheduled: row.reminder_scheduled || false,
-            syncedAt: row.synced_at || undefined,
-            deletedAt: row.deleted_at || undefined,
-          } as ActivityEntry;
-        });
-        setEntries(parsed);
-      } else {
-        setEntries([]);
-      }
+      const rows = await getEntriesByBabyFromDb(babyId);
+      const parsed: ActivityEntry[] = rows.map(row => {
+        const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {};
+        return {
+          id: row.id,
+          type: row.tracker_id as ActivityType,
+          babyId: row.baby_id,
+          timestamp: row.timestamp,
+          title: row.title,
+          details: row.notes || undefined,
+          icon: undefined,
+          loggedBy: row.logged_by || '',
+          loggedByName: row.logged_by_name || '',
+          ...data,
+          notes: row.notes || undefined,
+          photo: data.photo || (row.photo_uris ? (Array.isArray(row.photo_uris) ? row.photo_uris[0] : JSON.parse(row.photo_uris as any)[0]) : undefined),
+          tags: row.tags || undefined,
+          notificationId: row.notification_id || undefined,
+          reminderScheduled: row.reminder_scheduled || false,
+          syncedAt: row.synced_at || undefined,
+          deletedAt: row.deleted_at || undefined,
+        } as ActivityEntry;
+      });
+      setEntries(parsed);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load activities';
       setError(message);
@@ -288,7 +314,14 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [getCurrentBabyId]);
+
+  // ─── Initial load ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    loadEntries();
+  }, [loadEntries]);
 
   const refreshEntries = useCallback(async () => {
     await loadEntries();
@@ -535,11 +568,11 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     
     setIsSyncing(true);
     try {
-      const currentBabyId = await getAppSetting('current_baby_id');
-      if (!currentBabyId) return;
+      const babyId = getCurrentBabyId();
+      if (!babyId) return;
 
       // Pull latest from Supabase
-      await pullFromSupabase(currentBabyId);
+      await pullFromSupabase(babyId);
 
       // Push local entries that haven't been synced
       const unsyncedEntries = entries.filter(e => !e.syncedAt);
@@ -557,7 +590,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     } finally {
       setIsSyncing(false);
     }
-  }, [entries, isSyncing, pullFromSupabase, pushToSupabase]);
+  }, [entries, isSyncing, pullFromSupabase, pushToSupabase, getCurrentBabyId]);
 
   const getEntriesByType = useCallback((type: ActivityType, babyId?: string) => {
     return entries.filter(entry => {
@@ -800,6 +833,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     syncWithSupabase,
     pushToSupabase,
     pullFromSupabase,
+    getCurrentBabyId,
   }), [
     entries,
     isLoading,
@@ -828,6 +862,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     syncWithSupabase,
     pushToSupabase,
     pullFromSupabase,
+    getCurrentBabyId,
   ]);
 
   return (
