@@ -353,7 +353,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     return () => subscription.remove();
   }, []);
 
-  // ✅ FIXED: Enhanced biometric detection for Android
+  // ✅ FIXED: Enhanced biometric detection for Android - Samsung A06 compatible
   const checkBiometricCapabilities = useCallback(async () => {
     try {
       console.log('[Security] Checking biometric capabilities...');
@@ -383,30 +383,55 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         console.warn('[Security] hasHardwareAsync failed:', e);
       }
 
-      try {
-        if (hasHardware) {
+      if (hasHardware) {
+        // ─── STEP 1: Check enrollment ─────────────────────────────
+        try {
           isEnrolled = await LocalAuthentication.isEnrolledAsync();
           console.log('[Security] Is enrolled:', isEnrolled);
+        } catch (e) {
+          console.warn('[Security] isEnrolledAsync failed:', e);
         }
-      } catch (e) {
-        console.warn('[Security] isEnrolledAsync failed:', e);
-      }
 
-      try {
-        if (hasHardware) {
+        // ─── STEP 2: FIXED: For Samsung A06, try direct auth verification ──
+        // Samsung devices often return false for isEnrolled even when biometrics are set up
+        if (!isEnrolled) {
+          console.log('[Security] isEnrolled returned false, trying direct auth verification...');
+          try {
+            const testAuth = await LocalAuthentication.authenticateAsync({
+              promptMessage: 'Verify biometric setup',
+              disableDeviceFallback: true,
+              cancelLabel: 'Cancel',
+            });
+            if (testAuth.success) {
+              isEnrolled = true;
+              console.log('[Security] ✅ Direct auth verification successful!');
+            } else if (testAuth.error === 'user_cancel' || testAuth.error === 'system_cancel') {
+              // User canceled, but biometric prompt appeared - treat as enrolled
+              isEnrolled = true;
+              console.log('[Security] User canceled but biometric prompt appeared - treating as enrolled');
+            } else {
+              console.log('[Security] Direct auth verification failed:', testAuth.error);
+            }
+          } catch (authError) {
+            console.log('[Security] Direct auth verification threw error:', authError);
+            // Don't set isEnrolled to false - keep trying
+          }
+        }
+
+        // ─── STEP 3: Get supported types ──────────────────────────
+        try {
           const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
           types = supportedTypes || [];
           console.log('[Security] Supported types:', types);
+        } catch (e) {
+          console.warn('[Security] supportedAuthenticationTypesAsync failed:', e);
         }
-      } catch (e) {
-        console.warn('[Security] supportedAuthenticationTypesAsync failed:', e);
-      }
 
-      // ✅ FIXED: For Samsung A06, sometimes biometrics work but types are empty
-      // If we have hardware and enrolled, but no types, we assume fingerprint
-      if (hasHardware && isEnrolled && types.length === 0) {
-        console.log('[Security] No specific types detected, assuming fingerprint');
-        types = [LocalAuthentication.AuthenticationType.FINGERPRINT];
+        // ─── STEP 4: If no types but we have hardware, assume fingerprint ──
+        if (types.length === 0) {
+          console.log('[Security] No specific types detected, assuming fingerprint');
+          types = [LocalAuthentication.AuthenticationType.FINGERPRINT];
+        }
       }
 
       let securityLevel = LocalAuthentication.SecurityLevel.NONE;
@@ -423,6 +448,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
       console.log('[Security] Biometric configs:', biometricConfigs);
       console.log('[Security] Primary name:', primaryName);
+      console.log('[Security] Final enrolled status:', isEnrolled);
 
       if (isMounted.current) {
         setState(prev => ({
@@ -441,22 +467,42 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } catch (error) {
       console.error('[Security] Biometric check failed:', error);
       if (isMounted.current) {
+        // Don't disable biometrics on error - Samsung may still work
         setState(prev => ({
           ...prev,
-          isBiometricHardwareAvailable: false,
-          isBiometricEnrolled: false,
-          availableBiometricTypes: [],
+          isBiometricHardwareAvailable: true, // Keep optimistic
+          isBiometricEnrolled: true, // Keep optimistic
+          availableBiometricTypes: prev.availableBiometricTypes.length > 0 ? prev.availableBiometricTypes : [{
+            type: LocalAuthentication.AuthenticationType.FINGERPRINT,
+            name: 'Biometric',
+            icon: 'finger-print',
+            iconFilled: 'finger-print',
+            label: 'Biometric Authentication',
+            description: 'Use your device biometrics to unlock',
+            color: '#667eea',
+            gradient: ['#667eea', '#764ba2'],
+            isAvailable: true,
+          }],
         }));
       }
     }
   }, []);
 
+  // ─── FIXED: Biometric authentication with Samsung compatibility ──
   const authenticateWithBiometric = useCallback(async (promptMessage?: string) => {
-    if (biometricPromptInProgressRef.current) return { success: false, error: 'in_progress' };
-    if (!LocalAuthentication?.authenticateAsync) return { success: false, error: 'not_available' };
+    if (biometricPromptInProgressRef.current) {
+      console.log('[Security] Biometric prompt already in progress');
+      return { success: false, error: 'in_progress' };
+    }
+    
+    if (!LocalAuthentication?.authenticateAsync) {
+      console.log('[Security] LocalAuthentication.authenticateAsync not available');
+      return { success: false, error: 'not_available' };
+    }
     
     biometricPromptInProgressRef.current = true;
     try {
+      // For Samsung A06, we need to be more lenient with authentication
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: promptMessage || `Authenticate with ${state.settings.biometricTypeName}`,
         fallbackLabel: 'Use PIN',
@@ -464,12 +510,26 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         disableDeviceFallback: false,
       });
       console.log('[Security] Biometric auth result:', result);
+      
+      // On Samsung, sometimes authentication succeeds but we get a warning
+      // If we get any success, treat it as success
+      if (result.success) {
+        return { success: true };
+      }
+      
+      // If user canceled, don't treat as error
+      if (result.error === 'user_cancel' || result.error === 'system_cancel') {
+        return { success: false, error: 'user_cancel' };
+      }
+      
       return result;
     } catch (error) {
       console.error('[Security] Biometric auth error:', error);
       return { success: false, error: 'unknown' };
     } finally {
-      setTimeout(() => { biometricPromptInProgressRef.current = false; }, 2000);
+      setTimeout(() => { 
+        biometricPromptInProgressRef.current = false; 
+      }, 3000);
     }
   }, [state.settings.biometricTypeName]);
 
@@ -612,6 +672,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     console.log('🔒 App locked');
   }, [state.settings.isBiometricEnabled, state.settings.isPinEnabled, state.settings.isAppLockEnabled]);
 
+  // ─── FIXED: unlockApp with better Samsung compatibility ──────────
   const unlockApp = useCallback(async (method: 'biometric' | 'pin', data?: string): Promise<boolean> => {
     if (unlockInProgressRef.current) {
       console.log('⚠️ Unlock already in progress');
@@ -623,9 +684,15 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       if (method === 'biometric') {
         const result = await authenticateWithBiometric();
         isValid = result.success;
+        // If user canceled, don't count as failure
+        if (result.error === 'user_cancel' || result.error === 'system_cancel') {
+          console.log('[Security] User canceled biometric auth');
+          return false;
+        }
       } else if (method === 'pin' && data) {
         isValid = await verifyPin(data);
       }
+      
       if (isValid) {
         await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'false');
         await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
@@ -640,8 +707,11 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         return true;
       }
       return false;
+    } catch (error) {
+      console.error('[Security] Unlock error:', error);
+      return false;
     } finally {
-      setTimeout(() => { unlockInProgressRef.current = false; }, 200);
+      setTimeout(() => { unlockInProgressRef.current = false; }, 300);
     }
   }, [authenticateWithBiometric, verifyPin]);
 
@@ -752,10 +822,12 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     return 'finger-print';
   }, [state.settings.availableAuthTypes]);
 
+  // ─── FIXED: getAvailableAuthMethods with Samsung compatibility ──
   const getAvailableAuthMethods = useCallback(() => ({
-    hasBiometric: state.settings.isBiometricEnabled && state.isBiometricHardwareAvailable && state.isBiometricEnrolled,
+    // On Samsung, biometric might work even if isBiometricEnrolled is false
+    hasBiometric: state.settings.isBiometricEnabled && state.isBiometricHardwareAvailable,
     hasPin: state.settings.isPinEnabled,
-  }), [state.settings.isBiometricEnabled, state.settings.isPinEnabled, state.isBiometricHardwareAvailable, state.isBiometricEnrolled]);
+  }), [state.settings.isBiometricEnabled, state.settings.isPinEnabled, state.isBiometricHardwareAvailable]);
 
   const getAvailableBiometricTypes = useCallback(async (): Promise<BiometricTypeConfig[]> => {
     try {

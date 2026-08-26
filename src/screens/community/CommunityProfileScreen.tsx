@@ -1016,9 +1016,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   }, [deleteAccountWithConfirmation, navigation, sweetAlert]);
 
   // Navigate to messages
-  const handleNavigateToMessages = () => {
-    navigation.navigate('ChatList' as never);
-  };
+const handleNavigateToMessages = () => {
+  // Navigate to the ChatList screen in the Community stack
+  navigation.navigate('ChatList');
+};
 
   // ============================================
   // SAVE PROFILE
@@ -1641,10 +1642,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       )}
 
       {/* Manage Topics */}
-      <TouchableOpacity
-        style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
-        onPress={() => navigation.navigate('CommunityOnboarding' as never, { editing: true } as never)}
-      >
+<TouchableOpacity
+  style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
+  onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })}
+>
         <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
         <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
           Manage Your Topics
@@ -1730,9 +1731,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             <Text style={styles.emptyPostsTitle}>No posts yet</Text>
             <Text style={styles.emptyPostsText}>Share your first story with the community!</Text>
             <TouchableOpacity 
-              style={[styles.createPostBtn, { backgroundColor: themeColors.primary }]} 
-              onPress={() => navigation.navigate('CreatePost' as never)}
-            >
+  style={[styles.createPostBtn, { backgroundColor: themeColors.primary }]} 
+  onPress={() => navigation.navigate('CreatePost')}
+>
               <Text style={styles.createPostBtnText}>Create Post</Text>
             </TouchableOpacity>
           </View>

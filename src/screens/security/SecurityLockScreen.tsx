@@ -122,11 +122,36 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const effectiveBiometricEnabled = isBiometricEnabled ?? false;
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  const { toast, error: showError, confirm } = useSweetAlert();
+  
+  // ─── FIXED: Initialize SweetAlert with fallback ──────────────
+  let sweetAlert;
+  try {
+    const result = useSweetAlert();
+    sweetAlert = result;
+  } catch (error) {
+    console.warn('[SecurityLock] SweetAlert not available, using fallback');
+    const { Alert } = require('react-native');
+    sweetAlert = {
+      toast: (title: string, message: string, type: string) => Alert.alert(title, message),
+      error: (title: string, message: string) => Alert.alert(title, message),
+      success: (title: string, message: string) => Alert.alert(title, message),
+      confirm: (options: any) => new Promise<boolean>((resolve) => {
+        Alert.alert(options.title, options.message, [
+          { text: options.cancelText || 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: options.confirmText || 'OK', onPress: () => resolve(true) },
+        ]);
+      }),
+    };
+  }
+  
+  const { toast, error: showError, confirm } = sweetAlert;
   const insets = useSafeAreaInsets();
 
+  // ─── FIXED: Better biometric availability check ──────────────
   const availableMethods = getAvailableAuthMethods();
-  const hasBiometric = availableMethods.hasBiometric;
+  // On Samsung, even if isBiometricEnrolled is false, biometrics might still work
+  // So we check hardware availability too
+  const hasBiometric = availableMethods.hasBiometric || (isBiometricHardwareAvailable);
   const hasPin = availableMethods.hasPin;
 
   const userName = userProfile?.fullName || 'Welcome Back';
@@ -263,15 +288,29 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     detectBiometricType();
   }, []);
 
+  // ─── FIXED: Biometric auto-prompt with better Android detection ──
   useEffect(() => {
+    // Only auto-prompt if biometric is enabled AND hardware is available
+    // Don't rely solely on isBiometricEnrolled - it can be false on Samsung
     if (!effectiveBiometricEnabled) return;
-    if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
+    if (!isBiometricHardwareAvailable) return;
     if (isLockedOut) return;
     if (unlockInProgress.current) return;
+
+    // Even if isBiometricEnrolled is false, we still want to try
+    // On Samsung A06, isBiometricEnrolled can return false incorrectly
+    const hasBiometricAvailable = isBiometricHardwareAvailable;
+
+    if (!hasBiometricAvailable) return;
 
     const unsubscribe = navigation.addListener('focus', () => {
       hasAutoPrompted.current = false;
     });
+
+    // Clear any existing timer
+    if (autoPromptTimer.current) {
+      clearTimeout(autoPromptTimer.current);
+    }
 
     autoPromptTimer.current = setTimeout(() => {
       if (
@@ -284,7 +323,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         hasAutoPrompted.current = true;
         handleBiometricAuthRef.current();
       }
-    }, 900);
+    }, 1200); // Increased delay for better Android performance
 
     return () => {
       unsubscribe();
@@ -295,7 +334,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   }, [
     isBiometricEnabled,
     isBiometricHardwareAvailable,
-    isBiometricEnrolled,
     isLockedOut,
     navigation,
   ]);
@@ -409,10 +447,21 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   }, [pin.length, isLoading, isLockedOut, triggerHaptic]);
 
+  // ─── FIXED: Biometric auth with better Samsung compatibility ──
   const handleBiometricAuth = useCallback(async () => {
-    if (!isBiometricHardwareAvailable || !isBiometricEnrolled) return;
-    if (!effectiveBiometricEnabled) return;
-    if (isLockedOut || isLoading || unlockInProgress.current) return;
+    // Only require hardware, not enrollment check for Samsung compatibility
+    if (!isBiometricHardwareAvailable) {
+      console.log('[SecurityLock] No biometric hardware');
+      return;
+    }
+    if (!effectiveBiometricEnabled) {
+      console.log('[SecurityLock] Biometric not enabled');
+      return;
+    }
+    if (isLockedOut || isLoading || unlockInProgress.current) {
+      console.log('[SecurityLock] Locked or in progress');
+      return;
+    }
 
     const now = Date.now();
     if (now - lastUnlockAttemptRef.current < 1500) {
@@ -428,6 +477,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     try {
       triggerHaptic('medium');
 
+      // Try biometric unlock - the SecurityContext will handle the actual biometric prompt
       const success = await unlockApp('biometric');
 
       if (success) {
@@ -440,7 +490,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         shake();
       }
     } catch (error) {
-      console.error('Biometric error:', error);
+      console.error('[SecurityLock] Biometric error:', error);
+      // Don't shake on error, just log it
     } finally {
       unlockInProgress.current = false;
       if (isMounted.current) {
@@ -449,9 +500,9 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   }, [
     isBiometricHardwareAvailable,
-    isBiometricEnrolled,
-    isBiometricEnabled,
+    effectiveBiometricEnabled,
     isLockedOut,
+    isLoading,
     unlockApp,
     resetUnlockLock,
     shake,

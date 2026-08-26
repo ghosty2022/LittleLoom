@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx - COMPLETE PRODUCTION READY VERSION
+// screens/main/MoreScreen.tsx - FIXED VERSION
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -625,13 +625,11 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
     });
   }, [hapticFeedback, triggerHaptic, navigation]);
 
-// screens/main/MoreScreen.tsx - Fix the navigation in handleCommunityProfile
+  const handleCommunityProfile = useCallback(() => {
+    if (hapticFeedback) triggerHaptic('medium').catch(() => {});
+    navigation.navigate('CommunityProfile', { userId: userProfile?.id });
+  }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
 
-const handleCommunityProfile = useCallback(() => {
-  if (hapticFeedback) triggerHaptic('medium').catch(() => {});
-  // ✅ FIX: Navigate to CommunityProfile through the root stack
-  navigation.navigate('CommunityProfile', { userId: userProfile?.id });
-}, [userProfile, hapticFeedback, triggerHaptic, navigation]);
   return (
     <BlurView
       intensity={isDark ? 35 : 85}
@@ -879,7 +877,38 @@ const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
-  const { sweetAlert } = useSweetAlert();
+  
+  // ─── IMPORTANT: Initialize SweetAlert with fallback ────────────
+  let sweetAlert;
+  try {
+    const result = useSweetAlert();
+    sweetAlert = result;
+  } catch (error) {
+    console.warn('[MoreScreen] SweetAlert not available, using fallback');
+    // Create a fallback sweetAlert with default Alert
+    sweetAlert = {
+      toast: (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info') => {
+        Alert.alert(title, message);
+      },
+      alert: (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info') => {
+        Alert.alert(title, message);
+      },
+      confirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; destructive?: boolean }) => {
+        return new Promise<boolean>((resolve) => {
+          Alert.alert(options.title, options.message, [
+            { text: options.cancelText || 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: options.confirmText || 'OK', style: options.destructive ? 'destructive' : 'default', onPress: () => resolve(true) },
+          ]);
+        });
+      },
+      success: (title: string, message: string) => {
+        Alert.alert(title, message);
+      },
+      error: (title: string, message: string) => {
+        Alert.alert(title, message);
+      },
+    };
+  }
 
   // ─── Contexts ────────────────────────────────────────────────────
   const { signOut, userProfile, isLoading: authLoading } = useAuth();
@@ -927,10 +956,14 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [loadAttempts, setLoadAttempts] = useState(0);
 
   // ─── Refs ──────────────────────────────────────────────────────
   const scrollY = useSharedValue(0);
   const isMounted = useRef(true);
+  const focusLoadTimeout = useRef<NodeJS.Timeout | null>(null);
+  const initialLoadDone = useRef(false);
 
   // ─── Computed ──────────────────────────────────────────────────
   const isDark = customizationIsDark;
@@ -1010,58 +1043,58 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [loadBabies, loadEntries]);
 
-// ─── FIXED: Handle Sign Out ─────────────────────────────────────
-const handleLogout = useCallback(async () => {
-  const confirmed = await sweetAlert.confirm({
-    title: 'Sign Out',
-    message: 'Are you sure you want to sign out? You will need to sign in again to access your account.',
-    confirmText: 'Sign Out',
-    cancelText: 'Cancel',
-    destructive: true,
-  });
-  if (confirmed) {
-    try {
-      triggerHaptic('medium');
-      
-      // Clear security lock state before signing out
-      await AsyncStorage.setItem('littleloom_security_lock', 'false');
-      
-      // Clear any navigation state that might persist
-      await AsyncStorage.multiRemove([
-        'littleloom_nav_state_v4',
-        '@littleloom_nav_state_v4',
-        'littleloom_last_auth_state',
-        'littleloom_security_lock',
-      ]);
-      
-      // Call signOut from auth context
-      await signOut();
-      
-      // Force navigation to Login screen with full reset
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' as never }],
-      });
-      
-      // Show success message
-      sweetAlert.toast('Signed Out', 'You have been signed out successfully', 'success');
-    } catch (error) {
-      console.error('Sign out error:', error);
-      
-      // Even if signOut fails, try to force navigation to login
+  // ─── FIXED: Handle Sign Out ─────────────────────────────────────
+  const handleLogout = useCallback(async () => {
+    const confirmed = await sweetAlert.confirm({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out? You will need to sign in again to access your account.',
+      confirmText: 'Sign Out',
+      cancelText: 'Cancel',
+      destructive: true,
+    });
+    if (confirmed) {
       try {
+        triggerHaptic('medium');
+        
+        // Clear security lock state before signing out
+        await AsyncStorage.setItem('littleloom_security_lock', 'false');
+        
+        // Clear any navigation state that might persist
+        await AsyncStorage.multiRemove([
+          'littleloom_nav_state_v4',
+          '@littleloom_nav_state_v4',
+          'littleloom_last_auth_state',
+          'littleloom_security_lock',
+        ]);
+        
+        // Call signOut from auth context
+        await signOut();
+        
+        // Force navigation to Login screen with full reset
         navigation.reset({
           index: 0,
           routes: [{ name: 'Login' as never }],
         });
-      } catch (navError) {
-        console.error('Navigation reset error:', navError);
+        
+        // Show success message
+        sweetAlert.toast('Signed Out', 'You have been signed out successfully', 'success');
+      } catch (error) {
+        console.error('Sign out error:', error);
+        
+        // Even if signOut fails, try to force navigation to login
+        try {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' as never }],
+          });
+        } catch (navError) {
+          console.error('Navigation reset error:', navError);
+        }
+        
+        sweetAlert.alert('Error', 'Failed to sign out. Please try again.', 'error');
       }
-      
-      sweetAlert.alert('Error', 'Failed to sign out. Please try again.', 'error');
     }
-  }
-}, [signOut, sweetAlert, triggerHaptic, navigation]);
+  }, [signOut, sweetAlert, triggerHaptic, navigation]);
 
   // ─── FIXED: Handle Sync / Cloud Backup ─────────────────────────
   const handleSync = useCallback(async () => {
@@ -1085,12 +1118,10 @@ const handleLogout = useCallback(async () => {
             includePhotos: true,
           });
           if (backupResult.success) {
-            // Silently backup, don't show another toast
             console.log('✅ Backup created successfully');
           }
         } catch (backupError) {
           console.warn('Backup creation error (non-critical):', backupError);
-          // Don't show error to user, sync was successful
         }
       } else {
         setSyncStatus('error');
@@ -1188,36 +1219,96 @@ const handleLogout = useCallback(async () => {
     },
   });
 
+  // ─── FIXED: Load data with better performance ──────────────────
+  
+  const loadData = useCallback(async (isInitialLoad: boolean = false) => {
+    try {
+      // Only show loading on initial load
+      if (isInitialLoad) {
+        setDataLoaded(false);
+      }
+      
+      // Load babies first (most important)
+      await loadBabies();
+      
+      // Load entries in parallel
+      await loadEntries?.();
+      
+      setDataLoaded(true);
+      initialLoadDone.current = true;
+    } catch (error) {
+      console.error('[MoreScreen] Load data error:', error);
+      setDataLoaded(true); // Show content even on error
+    }
+  }, [loadBabies, loadEntries]);
+
   // ─── Effects ────────────────────────────────────────────────────
 
-  // ✅ Prevent duplicate load calls with a debounce
-  const focusLoadTimeout = useRef<NodeJS.Timeout | null>(null);
-  
+  // ✅ Optimized: Load data on focus with debounce
   useFocusEffect(
     useCallback(() => {
+      // Clear any pending timeout
       if (focusLoadTimeout.current) {
         clearTimeout(focusLoadTimeout.current);
       }
+      
+      // If already loaded, just refresh in background
+      if (dataLoaded) {
+        focusLoadTimeout.current = setTimeout(() => {
+          loadData(false);
+        }, 300);
+        return;
+      }
+      
+      // Initial load - show skeleton
       focusLoadTimeout.current = setTimeout(() => {
-        console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
-        loadBabies();
-        loadEntries?.();
-      }, 300);
+        loadData(true);
+      }, 100);
       
       return () => {
         if (focusLoadTimeout.current) {
           clearTimeout(focusLoadTimeout.current);
         }
       };
-    }, [loadBabies, loadEntries])
+    }, [loadData, dataLoaded])
   );
 
+  // ✅ Handle route params for baby switching
   useEffect(() => {
     if (route.params?.babySwitched) {
       loadBabies();
       navigation.setParams({ babySwitched: undefined });
     }
   }, [route.params?.babySwitched, loadBabies, navigation]);
+
+  // ─── Determine if we're in loading state ──────────────────────
+
+  const isLoading = useMemo(() => {
+    // If data is loaded, never show loading
+    if (dataLoaded) return false;
+    
+    // If we've tried multiple times, show content anyway
+    if (loadAttempts > 2) return false;
+    
+    // Only show loading on initial load with some conditions
+    const isInitialLoading = (authLoading || (babyLoading && safeBabies.length === 0)) && !dataLoaded;
+    
+    // If we've been loading for more than 2 seconds, show content anyway
+    if (isInitialLoading && initialLoadDone.current) {
+      return false;
+    }
+    
+    return isInitialLoading;
+  }, [authLoading, babyLoading, safeBabies.length, dataLoaded, loadAttempts]);
+
+  // ─── If loading, show skeleton ────────────────────────────────
+  if (isLoading) {
+    return (
+      <LinearGradient colors={bgColors} style={styles.container}>
+        <SkeletonLoader isDark={isDark} />
+      </LinearGradient>
+    );
+  }
 
   // ─── Render Sections ───────────────────────────────────────────
 
@@ -1240,16 +1331,16 @@ const handleLogout = useCallback(async () => {
             style={styles.menuContainer}
             tint={isDark ? 'dark' : 'light'}
           >
-<MenuItem
-  icon={isBiometricEnabled ? (biometricIcon as keyof typeof Ionicons.glyphMap) : 'finger-print-outline'}
-  title={`${biometricTypeName} Unlock`}
-  subtitle={isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
-  isEnabled={isBiometricEnabled}
-  onToggle={handleBiometricToggle}
-  color={primary}
-  isDark={isDark}
-  disabled={!hasBiometric}
-/>
+            <MenuItem
+              icon={isBiometricEnabled ? (biometricIcon as keyof typeof Ionicons.glyphMap) : 'finger-print-outline'}
+              title={`${biometricTypeName} Unlock`}
+              subtitle={isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
+              isEnabled={isBiometricEnabled}
+              onToggle={handleBiometricToggle}
+              color={primary}
+              isDark={isDark}
+              disabled={!hasBiometric}
+            />
             <MenuItem
               icon="keypad"
               title="PIN Code"
@@ -1613,33 +1704,6 @@ const handleLogout = useCallback(async () => {
       </Animated.View>
     );
   }, [expandedSections, secondary, isDark, toggleSection, navigation]);
-
-  // ─── Loading State ─────────────────────────────────────────────
-
-  // ✅ Add a timeout to force exit loading state
-  const [forceShowContent, setForceShowContent] = useState(false);
-  
-  useEffect(() => {
-    if (authLoading || (babyLoading && safeBabies.length === 0)) {
-      const timeout = setTimeout(() => {
-        console.warn('⚠️ [MoreScreen] Loading timeout - forcing content display');
-        setForceShowContent(true);
-      }, 5000);
-      return () => clearTimeout(timeout);
-    } else {
-      setForceShowContent(false);
-    }
-  }, [authLoading, babyLoading, safeBabies.length]);
-
-  const isInitialLoading = (authLoading || (babyLoading && safeBabies.length === 0)) && !forceShowContent;
-
-  if (isInitialLoading) {
-    return (
-      <LinearGradient colors={bgColors} style={styles.container}>
-        <SkeletonLoader isDark={isDark} />
-      </LinearGradient>
-    );
-  }
 
   // ─── Render ────────────────────────────────────────────────────
 

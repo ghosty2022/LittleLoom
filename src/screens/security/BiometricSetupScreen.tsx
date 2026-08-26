@@ -1,4 +1,4 @@
-// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED VERSION FOR SAMSUNG A06
+// screens/security/BiometricSetupScreen.tsx - FIXED FOR SAMSUNG A06
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View, Animated, Alert, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -111,6 +111,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   const [setupComplete, setSetupComplete] = useState(false);
   const [hasHardware, setHasHardware] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
+  const [biometricCheckComplete, setBiometricCheckComplete] = useState(false);
 
   const { 
     toggleBiometric, 
@@ -123,7 +124,27 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   } = useSecurity();
   const { userProfile } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
-  const { toast, error: showError, success: showSuccess } = useSweetAlert();
+  
+  // ─── FIXED: Initialize SweetAlert with fallback ──────────────
+  let sweetAlert;
+  try {
+    const result = useSweetAlert();
+    sweetAlert = result;
+  } catch (error) {
+    console.warn('[BiometricSetup] SweetAlert not available, using fallback');
+    sweetAlert = {
+      toast: (title: string, message: string, type: string) => Alert.alert(title, message),
+      error: (title: string, message: string) => Alert.alert(title, message),
+      success: (title: string, message: string) => Alert.alert(title, message),
+      confirm: (options: any) => new Promise<boolean>((resolve) => {
+        Alert.alert(options.title, options.message, [
+          { text: options.cancelText || 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: options.confirmText || 'OK', onPress: () => resolve(true) },
+        ]);
+      }),
+    };
+  }
+
   const insets = useSafeAreaInsets();
 
   const userName = userProfile?.fullName || 'there';
@@ -138,7 +159,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [navigation]);
 
-  // ✅ FIXED: Properly detect biometric types for Samsung A06
+  // ─── FIXED: Biometric detection for Samsung A06 ──────────────
   useEffect(() => {
     let mounted = true;
 
@@ -151,6 +172,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         let isEnrolled = false;
         let types: LocalAuthentication.AuthenticationType[] = [];
 
+        // ─── STEP 1: Check hardware ─────────────────────────────
         try {
           hasHardware = await LocalAuthentication.hasHardwareAsync();
           console.log('[BiometricSetup] Has hardware:', hasHardware);
@@ -159,53 +181,62 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         }
 
         if (hasHardware) {
+          // ─── STEP 2: Check enrollment ─────────────────────────
           try {
             isEnrolled = await LocalAuthentication.isEnrolledAsync();
             console.log('[BiometricSetup] Is enrolled:', isEnrolled);
           } catch (e) {
             console.warn('[BiometricSetup] isEnrolledAsync failed:', e);
+            // On some Samsung devices, isEnrolledAsync returns false even when enrolled
+            // We'll try a direct authentication check
           }
 
+          // ─── STEP 3: Get supported types ──────────────────────
           try {
             types = await LocalAuthentication.supportedAuthenticationTypesAsync() || [];
             console.log('[BiometricSetup] Supported types:', types);
           } catch (e) {
             console.warn('[BiometricSetup] supportedAuthenticationTypesAsync failed:', e);
           }
-        }
 
-        // ✅ FIXED: For Samsung A06, even if enrollment check fails, try to proceed
-        // Sometimes Samsung devices return false for isEnrolled even when biometrics are set up
-        if (hasHardware && !isEnrolled) {
-          console.log('[BiometricSetup] isEnrolled returned false, but trying to proceed anyway');
-          // Try to authenticate to verify
-          try {
-            const testAuth = await LocalAuthentication.authenticateAsync({
-              promptMessage: 'Verify biometric setup',
-              disableDeviceFallback: true,
-            });
-            if (testAuth.success) {
-              isEnrolled = true;
-              console.log('[BiometricSetup] Biometric verification successful');
+          // ─── STEP 4: FIXED: For Samsung A06, try direct auth ──
+          // Even if isEnrolled returns false, try to authenticate
+          if (!isEnrolled) {
+            console.log('[BiometricSetup] isEnrolled returned false, trying direct auth verification...');
+            try {
+              // Try a quick authentication to verify biometrics are actually set up
+              const testAuth = await LocalAuthentication.authenticateAsync({
+                promptMessage: 'Verify biometric setup',
+                disableDeviceFallback: true,
+                cancelLabel: 'Cancel',
+              });
+              if (testAuth.success) {
+                isEnrolled = true;
+                console.log('[BiometricSetup] Direct auth verification successful!');
+              } else if (testAuth.error === 'user_cancel' || testAuth.error === 'system_cancel') {
+                // User canceled, but biometrics might still be available
+                // We'll treat this as enrolled since the system showed the prompt
+                isEnrolled = true;
+                console.log('[BiometricSetup] User canceled but biometric prompt appeared - treating as enrolled');
+              }
+            } catch (authError) {
+              console.log('[BiometricSetup] Direct auth verification failed:', authError);
+              // If we get a "not enrolled" error, keep isEnrolled as false
             }
-          } catch (e) {
-            console.log('[BiometricSetup] Test auth failed:', e);
+          }
+
+          // ─── STEP 5: If we have types, detect them ────────────
+          if (types.length === 0 && hasHardware) {
+            console.log('[BiometricSetup] No types detected, assuming fingerprint');
+            types = [LocalAuthentication.AuthenticationType.FINGERPRINT];
           }
         }
 
-        // If we have hardware but no types, assume fingerprint
-        if (hasHardware && types.length === 0) {
-          console.log('[BiometricSetup] No types detected, assuming fingerprint');
-          types = [LocalAuthentication.AuthenticationType.FINGERPRINT];
-        }
-
-        if (mounted) {
-          setHasHardware(hasHardware);
-          setIsEnrolled(isEnrolled && hasHardware);
-
-          // Get available types from context or build manually
-          let configs: BiometricTypeConfig[] = [];
-          
+        // ─── STEP 6: Build configs ──────────────────────────────
+        let configs: BiometricTypeConfig[] = [];
+        
+        if (hasHardware) {
+          // Try to get configs from context first
           try {
             const contextConfigs = await getAvailableBiometricTypes();
             if (contextConfigs && contextConfigs.length > 0) {
@@ -215,13 +246,12 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             console.warn('[BiometricSetup] getAvailableBiometricTypes failed:', e);
           }
 
-          // If no configs from context, build manually
-          if (configs.length === 0 && hasHardware) {
+          // If no configs, build manually
+          if (configs.length === 0) {
             console.log('[BiometricSetup] Building manual configs');
-            const manualConfigs: BiometricTypeConfig[] = [];
             
-            if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
-              manualConfigs.push({
+            if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT) || types.length === 0) {
+              configs.push({
                 type: LocalAuthentication.AuthenticationType.FINGERPRINT,
                 name: 'Fingerprint',
                 icon: 'finger-print',
@@ -235,7 +265,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             }
             
             if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-              manualConfigs.push({
+              configs.push({
                 type: LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
                 name: 'Face ID',
                 icon: 'scan-outline',
@@ -248,9 +278,9 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
               });
             }
 
-            // If still no configs but we have hardware, add a generic one
-            if (manualConfigs.length === 0) {
-              manualConfigs.push({
+            // If still no configs, add generic biometric
+            if (configs.length === 0 && hasHardware) {
+              configs.push({
                 type: LocalAuthentication.AuthenticationType.FINGERPRINT,
                 name: 'Biometric',
                 icon: 'finger-print',
@@ -262,20 +292,24 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
                 isAvailable: true,
               });
             }
-            
-            configs = manualConfigs;
           }
+        }
 
+        if (mounted) {
+          setHasHardware(hasHardware);
+          setIsEnrolled(isEnrolled && hasHardware);
           setAvailableTypes(configs);
           if (configs.length > 0) {
             setSelectedType(configs[0]);
           }
+          setBiometricCheckComplete(true);
         }
       } catch (error) {
         console.error('[BiometricSetup] Biometric check failed:', error);
         if (mounted) {
           setHasHardware(false);
           setIsEnrolled(false);
+          setBiometricCheckComplete(true);
         }
       } finally {
         if (mounted) {
@@ -332,7 +366,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
   const handleEnableBiometric = async () => {
     if (!selectedType) {
-      showError('Error', 'Please select a biometric method');
+      sweetAlert.error('Error', 'Please select a biometric method');
       return;
     }
 
@@ -340,6 +374,15 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       Alert.alert(
         'Not Available',
         'This device does not support biometric authentication.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!isEnrolled) {
+      Alert.alert(
+        'Not Set Up',
+        'Please set up biometrics in your device settings first.',
         [{ text: 'OK' }]
       );
       return;
@@ -355,14 +398,14 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       if (enabled) {
         triggerHaptic('success');
         setSetupComplete(true);
-        showSuccess('Enabled!', `${selectedType.name} is now active for ${userName}`);
+        sweetAlert.success('Enabled!', `${selectedType.name} is now active for ${userName}`);
       } else {
-        showError('Cancelled', 'Biometric setup was cancelled');
+        sweetAlert.error('Cancelled', 'Biometric setup was cancelled');
       }
     } catch (error) {
       console.error('Biometric error:', error);
       setIsScanning(false);
-      showError('Error', 'An error occurred during authentication');
+      sweetAlert.error('Error', 'An error occurred during authentication');
     }
   };
 
