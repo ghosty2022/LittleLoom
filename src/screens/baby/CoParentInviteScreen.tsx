@@ -160,10 +160,18 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const isOnboarding = useMemo(() => !setupComplete, [setupComplete]);
 
   // ── Animated rings ──
-  const ringProgress = useSharedValue(0);
+// In CoParentInviteScreen.tsx, replace the ring animation with:
+
+const ringProgress = useSharedValue(0);
+
+useEffect(() => {
   if (!shouldReduceMotion) {
     ringProgress.value = withRepeat(withTiming(1, { duration: 3000 }), -1, false);
   }
+  return () => {
+    ringProgress.value = 0;
+  };
+}, [shouldReduceMotion]);
   const ring1Style = useAnimatedStyle(() => ({
     opacity: interpolate(ringProgress.value, [0, 0.5, 1], [0.4, 0.2, 0]),
     transform: [{ scale: interpolate(ringProgress.value, [0, 1], [1, 1.6]) }],

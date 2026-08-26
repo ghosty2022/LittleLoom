@@ -1,6 +1,4 @@
 // src/context/DatabaseContext.tsx
-// Full Supabase - No local DB initialization needed
-
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, AppState } from 'react-native';
 import { supabase } from '@/utils/supabase';
@@ -41,11 +39,26 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isMountedRef = useRef(true);
   const appStateSubscriptionRef = useRef<any>(null);
   const initRef = useRef(false);
+  const lastLogTimeRef = useRef<Record<string, number>>({});
+  const logCooldownMs = 5000; // Only log same message every 5 seconds
+
+  // Throttled logging to reduce noise
+  const throttledLog = useCallback((message: string, data?: any) => {
+    const now = Date.now();
+    const key = message;
+    if (!lastLogTimeRef.current[key] || now - lastLogTimeRef.current[key] > logCooldownMs) {
+      lastLogTimeRef.current[key] = now;
+      if (data) {
+        console.log(message, data);
+      } else {
+        console.log(message);
+      }
+    }
+  }, []);
 
   // Check Supabase connection and session
   const checkConnection = useCallback(async () => {
     try {
-      // Get current session
       const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
@@ -55,21 +68,18 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
-      // Check if we have a valid session
       if (currentSession?.user) {
         setUserId(currentSession.user.id);
         setSession(currentSession);
         setError(null);
         setIsReady(true);
         
-        // Store session in AsyncStorage for offline access
         try {
           await AsyncStorage.setItem('@littleloom_session', JSON.stringify(currentSession));
         } catch (storageError) {
-          console.warn('[DatabaseContext] Failed to cache session:', storageError);
+          // Silently handle storage error
         }
       } else {
-        // Try to restore session from storage
         try {
           const storedSession = await AsyncStorage.getItem('@littleloom_session');
           if (storedSession) {
@@ -79,12 +89,12 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               setSession(parsed);
               setError(null);
               setIsReady(true);
-              console.log('[DatabaseContext] Restored session from cache');
+              throttledLog('[DatabaseContext] Session restored from cache');
               return;
             }
           }
-        } catch (storageError) {
-          console.warn('[DatabaseContext] Failed to restore session:', storageError);
+        } catch {
+          // Silently handle
         }
         
         setUserId(null);
@@ -96,14 +106,12 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setError(err instanceof Error ? err : new Error('Connection failed'));
       setIsReady(true);
     }
-  }, []);
+  }, [throttledLog]);
 
-  // Simple online check
   const checkOnlineStatus = useCallback(() => {
     setIsOnline(true);
   }, []);
 
-  // Refresh session
   const refreshSession = useCallback(async () => {
     try {
       const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
@@ -123,23 +131,20 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  // Sign out
   const signOut = useCallback(async () => {
     try {
       await supabase.auth.signOut();
       await AsyncStorage.removeItem('@littleloom_session');
       setUserId(null);
       setSession(null);
-      console.log('[DatabaseContext] Signed out successfully');
+      console.log('[DatabaseContext] Signed out');
     } catch (err) {
       console.error('[DatabaseContext] Sign out error:', err);
       throw err;
     }
   }, []);
 
-  // Retry connection
   const retry = useCallback(() => {
-    console.log('[DatabaseContext] Manual retry requested');
     retryCountRef.current = 0;
     setError(null);
     setIsReady(false);
@@ -151,10 +156,19 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   }, [checkConnection]);
 
-  // Handle auth state changes
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      console.log('[DatabaseContext] Auth state changed:', event);
+      if (event === 'TOKEN_REFRESHED') {
+        // Silent refresh - no log
+        if (newSession?.user) {
+          setUserId(newSession.user.id);
+          setSession(newSession);
+          await AsyncStorage.setItem('@littleloom_session', JSON.stringify(newSession));
+        }
+        return;
+      }
+      
+      throttledLog('[DatabaseContext] Auth state changed:', event);
       
       if (newSession?.user) {
         setUserId(newSession.user.id);
@@ -172,22 +186,18 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => {
       authListener?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [throttledLog]);
 
-  // Initial setup
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
     
     isMountedRef.current = true;
-    
-    // Check connection on mount
     checkConnection();
 
-    // Retry when app comes back to foreground
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        console.log('[DatabaseContext] App became active, checking connection...');
+        // Silent refresh - no log
         refreshSession();
       }
     });
@@ -202,12 +212,11 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, [checkConnection, refreshSession]);
 
-  // Only show loading on initial check
   if (showLoading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#667eea" />
-        <Text style={styles.loading}>Connecting to LittleLoom...</Text>
+        <Text style={styles.loading}>Connecting...</Text>
       </View>
     );
   }
