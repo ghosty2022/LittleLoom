@@ -19,7 +19,7 @@ export const NOTIFICATION_CHANNELS = {
   POTTY: 'potty',
   GROWTH: 'growth',
   COMMUNITY: 'community',
-  STREAKS: 'streaks', // Added missing STREAKS channel
+  STREAKS: 'streaks',
 } as const;
 
 export type NotificationChannels = typeof NOTIFICATION_CHANNELS[keyof typeof NOTIFICATION_CHANNELS];
@@ -39,8 +39,10 @@ export interface NotificationPayload {
 // ─── NOTIFICATION SERVICE ──────────────────────────────────────────
 
 class NotificationService {
-  private static instance: NotificationService;
+  private static instance: NotificationService | null = null;
   private isInitialized = false;
+
+  private constructor() {}
 
   static getInstance(): NotificationService {
     if (!NotificationService.instance) {
@@ -476,111 +478,10 @@ class NotificationService {
   }
 }
 
+// ─── SINGLETON INSTANCE ────────────────────────────────────────────
+// Create the instance at the bottom of the file
+const notificationServiceInstance = NotificationService.getInstance();
+
 // ─── EXPORT ─────────────────────────────────────────────────────────
-
-export const notificationService = NotificationService.getInstance();
-export default notificationService;
-
-// ─── HOOK VERSION ──────────────────────────────────────────────────
-
-import { useApp } from '../context/AppContext';
-
-export function useNotificationService() {
-  const {
-    notificationSettings,
-    isNotificationReady,
-    updateNotificationSettings,
-    scheduleNotification,
-    sendImmediateNotification,
-    cancelNotification,
-    cancelAllNotifications,
-    getScheduledNotifications,
-    getNotificationHistory,
-    markNotificationRead,
-    getBadgeCount,
-    isInQuietHours,
-    enableKeepAwake,
-    releaseKeepAwake,
-  } = useApp();
-
-  return {
-    settings: notificationSettings,
-    isReady: isNotificationReady,
-    updateSettings: updateNotificationSettings,
-    schedule: scheduleNotification,
-    sendImmediate: sendImmediateNotification,
-    cancel: cancelNotification,
-    cancelAll: cancelAllNotifications,
-    getScheduled: getScheduledNotifications,
-    getHistory: getNotificationHistory,
-    markRead: markNotificationRead,
-    getBadgeCount,
-    isInQuietHours,
-    enableKeepAwake,
-    releaseKeepAwake,
-    // Legacy methods
-    scheduleLocalNotification: scheduleNotification,
-    sendAchievementNotification: async (achievement: string, description: string) => {
-      return scheduleNotification({
-        title: `🏆 Achievement Unlocked!`,
-        body: `${achievement}: ${description}`,
-        channelId: 'achievements',
-        data: { type: 'achievement_unlocked', screen: 'Achievements' },
-      });
-    },
-    sendChatNotification: async (senderName: string, message: string, chatId?: string) => {
-      return scheduleNotification({
-        title: `💬 ${senderName}`,
-        body: message.length > 60 ? message.substring(0, 60) + '...' : message,
-        channelId: 'chat',
-        data: { type: 'chat_message', screen: 'FamilyChat', chatId },
-      });
-    },
-    sendSafetyAlert: async (title: string, body: string) => {
-      return scheduleNotification({
-        title: `🛡️ ${title}`,
-        body,
-        channelId: 'safety',
-        priority: 'high',
-        data: { type: 'safety_alert', screen: 'Safety' },
-      });
-    },
-    sendActivityReminder: async (type: string, babyName: string, minutes: number, details?: string) => {
-      const titles: Record<string, string> = {
-        feed: `🍼 Time to feed ${babyName}!`,
-        sleep: `😴 ${babyName} might be sleepy`,
-        potty: `🚽 Potty check for ${babyName}`,
-        milestone: `🎉 Milestone reminder for ${babyName}`,
-        growth: `📏 Growth tracking for ${babyName}`,
-        medication: `💊 Medication reminder for ${babyName}`,
-        diaper: `🧷 Diaper check for ${babyName}`,
-        bath: `🛁 Bath time for ${babyName}`,
-        default: `⏰ Reminder for ${babyName}`,
-      };
-
-      const channelMap: Record<string, string> = {
-        feed: 'feeding',
-        sleep: 'sleep',
-        potty: 'potty',
-        growth: 'growth',
-        default: 'activities',
-      };
-
-      return scheduleNotification({
-        title: titles[type] || titles.default,
-        body: details || `Tap to open LittleLoom and track this activity.`,
-        channelId: channelMap[type] || channelMap.default,
-        data: { type: 'activity_reminder', screen: 'Timeline', activityType: type },
-      });
-    },
-    sendStreakReminder: async (streakDays: number, hoursLeft: number) => {
-      return scheduleNotification({
-        title: `🔥 Streak at Risk!`,
-        body: `Your ${streakDays}-day streak ends in ${hoursLeft} hours! Log an activity now.`,
-        channelId: 'streaks',
-        priority: 'high',
-        data: { type: 'streak_reminder', screen: 'Timeline' },
-      });
-    },
-  };
-}
+export const notificationService = notificationServiceInstance;
+export default notificationServiceInstance;

@@ -1,4 +1,4 @@
-// App.tsx - Optimized for faster startup
+// App.tsx - Optimized for faster startup with fixed notification service
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -25,13 +25,29 @@ import { AppProvider, useTheme } from '@/context/AppContext';
 import ContextProvider from '@/providers/ContextProvider';
 import { ModalProvider } from '@/utils/modal';
 import AppNavigator from '@/navigation/AppNavigator';
-import { notificationService } from '@/services/NotificationService';
 import { statePersistence } from '@/utils/statePersistence';
 import { InlineSpinner } from '@/components/UniversalSpinner';
 import { ensureAllImageDirs } from '@/utils/imageUtils';
 
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
+
+// Lazy load notification service to avoid startup issues
+let notificationService: any = null;
+let notificationServiceLoaded = false;
+
+const loadNotificationService = async () => {
+  if (notificationServiceLoaded) return notificationService;
+  try {
+    const module = await import('@/services/NotificationService');
+    notificationService = module.notificationService || module.default;
+    notificationServiceLoaded = true;
+    return notificationService;
+  } catch (error) {
+    console.warn('[App] Failed to load notification service:', error);
+    return null;
+  }
+};
 
 LogBox.ignoreLogs([
   'Non-serializable values were found in the navigation state',
@@ -159,6 +175,7 @@ export default function App(): JSX.Element | null {
   const initStartedRef = useRef(false);
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const splashHiddenRef = useRef(false);
+  const notificationInitRef = useRef(false);
 
   // Phase 0: Read theme from database immediately
   useEffect(() => {
@@ -264,10 +281,8 @@ export default function App(): JSX.Element | null {
         console.warn('[App] Additional fonts failed:', e);
       });
 
-      // Notification service (non-blocking)
-      if (notificationService && typeof notificationService.initialize === 'function') {
-        await notificationService.initialize();
-      }
+      // Notification service - lazy loaded with error handling
+      await initNotificationService();
 
       // Image directories (non-blocking)
       if (ensureAllImageDirs && typeof ensureAllImageDirs === 'function') {
@@ -287,6 +302,25 @@ export default function App(): JSX.Element | null {
 
     } catch (e) {
       console.warn('[App] Background tasks error:', e);
+    }
+  };
+
+  // Lazy load notification service
+  const initNotificationService = async () => {
+    if (notificationInitRef.current) return;
+    notificationInitRef.current = true;
+
+    try {
+      const service = await loadNotificationService();
+      if (service && typeof service.initialize === 'function') {
+        await service.initialize();
+        console.log('[App] Notification service initialized');
+      } else {
+        console.log('[App] Notification service not available');
+      }
+    } catch (error) {
+      console.warn('[App] Notification service init failed:', error);
+      // Don't throw - allow app to continue
     }
   };
 
