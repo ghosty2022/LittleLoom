@@ -16,6 +16,8 @@ module.exports = function (api) {
         },
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
       }],
+      // Add worklets plugin BEFORE reanimated
+      'react-native-worklets/plugin',
       // react-native-reanimated/plugin MUST BE LAST
       'react-native-reanimated/plugin',
     ],
