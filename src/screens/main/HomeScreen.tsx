@@ -1281,13 +1281,73 @@ const RecentActivityList: React.FC<{
 
 const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme: any }> = 
   React.memo(({ onPress, isDark, theme }) => {
-    const { playTrack, currentTrack, isPlaying, togglePlayback } = useAudio();
+    // ─── SAFE: Use audio context with guard ──────────────────────────
+    let audioContext: any = null;
+    let playTrack: any = null;
+    let currentTrack: any = null;
+    let isPlaying = false;
+    let togglePlayback: any = null;
+    
+    try {
+      audioContext = useAudio();
+      playTrack = audioContext.playTrack;
+      currentTrack = audioContext.currentTrack;
+      isPlaying = audioContext.isPlaying;
+      togglePlayback = audioContext.togglePlayback;
+    } catch (e) {
+      // AudioProvider not available - use fallback
+      console.warn('[SoundMixerSection] Audio context not available');
+    }
 
     const handlePlayTrack = (track: typeof SOUND_TRACKS[0]) => {
-      if (currentTrack?.id === track.id) togglePlayback();
+      if (!playTrack) return;
+      if (currentTrack?.id === track.id && togglePlayback) togglePlayback();
       else playTrack(track);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
+
+    // If audio context is not available, show a minimal version
+    if (!audioContext) {
+      return (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
+          <View style={[styles.soundMixerContainer, { borderColor: theme.border, backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}>
+            <View style={styles.soundMixerHeader}>
+              <View style={styles.soundMixerTitle}>
+                <View style={[styles.soundMixerIconBg, { backgroundColor: '#1DB95418' }]}>
+                  <Ionicons name="musical-notes-outline" size={18} color="#1DB954" />
+                </View>
+                <View>
+                  <Text style={[styles.soundMixerTitleText, { color: theme.text }]}>Sound Mixer</Text>
+                  <Text style={[styles.soundMixerSubtitle, { color: theme.textMuted }]}>
+                    Tap to play soothing sounds
+                  </Text>
+                </View>
+              </View>
+            </View>
+            <FlatList
+              data={SOUND_TRACKS.slice(0, 4)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingRight: 20 }}
+              renderItem={({ item }) => (
+                <View style={styles.trackCard}>
+                  <View style={[styles.trackImage, { backgroundColor: isDark ? '#1e1e3f' : '#e2e8f0' }]}>
+                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={styles.trackOverlay}>
+                      <View style={[styles.trackPlayButton, { backgroundColor: '#1DB954' }]}>
+                        <Ionicons name="play" size={12} color="#fff" />
+                      </View>
+                    </LinearGradient>
+                  </View>
+                  <Text style={[styles.trackTitle, { color: theme.text }]} numberOfLines={1}>{item.title}</Text>
+                  <Text style={[styles.trackArtist, { color: theme.textMuted }]}>{item.artist}</Text>
+                </View>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      );
+    }
 
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
@@ -1308,8 +1368,8 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
               style={[styles.playAllButton, isPlaying && styles.playAllButtonActive]}
               onPress={(e) => { 
                 e.stopPropagation(); 
-                if (!currentTrack) playTrack(SOUND_TRACKS[0]); 
-                else togglePlayback(); 
+                if (!currentTrack && playTrack) playTrack(SOUND_TRACKS[0]); 
+                else if (togglePlayback) togglePlayback(); 
               }}
             >
               <Ionicons name={isPlaying ? "pause" : "play"} size={16} color="#fff" />
