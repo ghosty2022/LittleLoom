@@ -11,12 +11,23 @@ config.transformer.getTransformOptions = async () => ({
   },
 });
 
+// ─── SVG Support ──────────────────────────────────────────────────────
+try {
+  const svgTransformer = require.resolve('react-native-svg-transformer');
+  config.transformer.babelTransformerPath = svgTransformer;
+} catch (e) {
+  console.warn('[metro] react-native-svg-transformer not found, SVG support disabled');
+}
+
 // ─── Source extensions ──────────────────────────────────────────────
 config.resolver.sourceExts = [
-  ...config.resolver.sourceExts,
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+  'json',
   'cjs',
   'mjs',
-  'svg',
 ];
 
 // ─── Asset extensions ────────────────────────────────────────────────
@@ -42,7 +53,14 @@ config.resolver.assetExts = [
 // ─── Path alias for @/ imports ──────────────────────────────────────
 config.resolver.alias = {
   '@': path.resolve(__dirname, 'src'),
-  'react-native/Libraries/Renderer/shims/ReactNative': path.resolve(__dirname, 'src/shim/ReactNative.js'),
 };
+
+// ─── Watch folders for better performance ──────────────────────────
+config.watchFolders = [
+  path.resolve(__dirname, 'src'),
+];
+
+// ─── Max workers for better performance ────────────────────────────
+config.maxWorkers = 4;
 
 module.exports = config;

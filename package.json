@@ -119,7 +119,7 @@
     "react-native-pager-view": "8.0.2",
     "react-native-paper": "^5.12.0",
     "react-native-qrcode-svg": "^6.3.21",
-    "react-native-reanimated": "^3.10.1",
+    "react-native-reanimated": "3.10.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
@@ -129,7 +129,8 @@
     "react-native-web": "^0.21.2",
     "uuid": "^14.0.2",
     "zod": "^3.23.0",
-    "zustand": "^4.5.2"
+    "zustand": "^4.5.2",
+    "patch-package": "^8.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
