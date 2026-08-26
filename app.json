@@ -10,6 +10,7 @@
     "backgroundColor": "#E6F4FE",
     "primaryColor": "#667eea",
     "owner": "ondieki",
+    "entryPoint": "index.ts",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
