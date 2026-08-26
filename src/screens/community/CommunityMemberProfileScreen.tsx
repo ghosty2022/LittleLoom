@@ -35,6 +35,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 import { CommunityUser, Post, useCommunity, INITIAL_TOPICS } from '../../context/CommunityContext';
@@ -246,6 +247,10 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
 
   const isOwnProfile = currentUser?.id === userId;
   const allUsers = useMemo(() => getAllUsers(), [getAllUsers]);
+  
+  // Refs to prevent double loading
+  const isLoadingRef = useRef(false);
+  const initialLoadDone = useRef(false);
 
   // Sync user profile across posts when community profile changes
   useEffect(() => {
@@ -561,9 +566,29 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     { key: 'insights' as ProfileTab, label: 'Insights', icon: 'analytics-outline' },
   ];
 
-  useEffect(() => { loadUserData(); }, [userId]);
+  // Single initial load - only when userId changes
+  useEffect(() => {
+    if (userId && !initialLoadDone.current) {
+      loadUserData();
+      initialLoadDone.current = true;
+    }
+  }, [userId]);
+
+  // Focus effect - refresh when screen comes into focus, but only if not already loading
+  useFocusEffect(
+    useCallback(() => {
+      if (userId && !isLoadingRef.current) {
+        loadUserData();
+      }
+      return () => {};
+    }, [userId])
+  );
 
   const loadUserData = async () => {
+    // Prevent concurrent loads
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    
     setIsLoading(true);
     try {
       const targetUser = getUserById(userId);
@@ -585,6 +610,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       sweetAlert.error('Error', 'Failed to load profile');
     }
     setIsLoading(false);
+    isLoadingRef.current = false;
   };
 
   const onRefresh = useCallback(async () => {
@@ -592,7 +618,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     await refreshFeed();
     await loadUserData();
     setRefreshing(false);
-  }, [refreshFeed, loadUserData]);
+  }, [refreshFeed]);
 
   const handleFollowToggle = async () => {
     if (isOwnProfile || !user) return;

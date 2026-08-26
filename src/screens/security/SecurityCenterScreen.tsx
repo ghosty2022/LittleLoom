@@ -1,4 +1,4 @@
-// screens/security/SecurityCenterScreen.tsx - COMPLETE FIXED (No SweetAlert)
+// screens/security/SecurityCenterScreen.tsx - COMPLETE FIXED
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -143,6 +143,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     clearSecurityState,
     clearPinOnly,
     resetUnlockLock,
+    checkBiometricCapabilities, // ← ADDED: Import from useSecurity
   } = useSecurity();
 
   const { userProfile } = useAuth();
@@ -202,6 +203,24 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       ]
     );
   }, []);
+
+  // ─── FIXED: Force biometric check on mount and focus ───────────
+  useEffect(() => {
+    const checkBiometrics = async () => {
+      try {
+        await checkBiometricCapabilities();
+      } catch (error) {
+        console.error('Error checking biometrics:', error);
+      }
+    };
+    checkBiometrics();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      checkBiometrics();
+    });
+
+    return unsubscribe;
+  }, [navigation, checkBiometricCapabilities]);
 
   useEffect(() => {
     resetUnlockLock();
@@ -483,7 +502,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const scoreLabel = useMemo(() => getScoreLabel(score), [score, getScoreLabel]);
 
   // ─── Render Sections ────────────────────────────────────────────
-  // (All render functions remain the same - they use showToast/showError/showSuccess/showConfirm)
 
   const renderDashboard = () => (
     <AnimatedRe.View entering={FadeInUp.duration(500)} style={styles.section}>

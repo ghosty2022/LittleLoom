@@ -302,7 +302,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   });
   const [originalData, setOriginalData] = useState({ ...formData });
   const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Ref to prevent double loading
   const isLoadingRef = useRef(false);
+  const initialLoadDone = useRef(false);
 
   // ============================================
   // COMPUTED DATA FROM REAL POSTS
@@ -566,28 +569,28 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  // Load activity log
+  // Single initial load - only when currentUser changes or component mounts
   useEffect(() => {
-    loadActivityLog();
-  }, []);
-
-  // Load user data only once on mount when currentUser is available
-  useEffect(() => {
-    if (currentUser && !isLoadingRef.current) {
-      isLoadingRef.current = true;
+    if (currentUser && !initialLoadDone.current) {
       loadUserData();
+      initialLoadDone.current = true;
     }
   }, [currentUser]);
 
-  // Refresh on focus but don't double-load
+  // Focus effect - refresh data when screen comes into focus, but only if not already loading
   useFocusEffect(
     useCallback(() => {
-      if (currentUser) {
+      if (currentUser && !isLoadingRef.current) {
         loadUserData();
       }
       return () => {};
     }, [currentUser])
   );
+
+  // Load activity log once
+  useEffect(() => {
+    loadActivityLog();
+  }, []);
 
   const loadActivityLog = async () => {
     try {
@@ -652,18 +655,19 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     };
   }, [formData.handle, checkUsername]);
 
-  // Location detection
+  // Location detection - only once
   useEffect(() => {
+    let isMounted = true;
     const detectLocation = async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
+        if (status === 'granted' && isMounted) {
           const location = await Location.getCurrentPositionAsync({});
           const reverseGeocode = await Location.reverseGeocodeAsync({
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           });
-          if (reverseGeocode.length > 0) {
+          if (reverseGeocode.length > 0 && isMounted) {
             const place = reverseGeocode[0];
             const locationString = [place.city, place.region, place.country]
               .filter(Boolean)
@@ -679,14 +683,16 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       }
     };
     detectLocation();
+    return () => { isMounted = false; };
   }, []);
 
   // ============================================
   // DATA LOADING
   // ============================================
   const loadUserData = async () => {
-    // Prevent multiple simultaneous loads
-    if (isLoading) return;
+    // Prevent concurrent loads
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
     
     setIsLoading(true);
     try {
@@ -728,6 +734,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       console.error('Error loading profile:', error); 
     }
     setIsLoading(false);
+    isLoadingRef.current = false;
   };
 
   const onRefresh = useCallback(async () => {

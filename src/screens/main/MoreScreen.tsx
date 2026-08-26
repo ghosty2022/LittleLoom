@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx - COMPLETE FIXED
+// screens/main/MoreScreen.tsx - COMPLETE FIXED with modals
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -16,6 +16,7 @@ import {
   Platform,
   Alert,
   Linking,
+  Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -67,37 +68,6 @@ import { createBackup } from '../../utils/backupService';
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// ─── FIXED: Alert helpers using React Native Alert ──────────────
-const showToast = (title: string, message?: string) => {
-  Alert.alert(title, message || '');
-};
-
-const showError = (title: string, message?: string) => {
-  Alert.alert(title, message || '');
-};
-
-const showSuccess = (title: string, message?: string) => {
-  Alert.alert(title, message || '');
-};
-
-const showConfirm = (
-  title: string,
-  message: string,
-  onConfirm: () => void,
-  onCancel?: () => void,
-  confirmText: string = 'Confirm',
-  cancelText: string = 'Cancel'
-) => {
-  Alert.alert(
-    title,
-    message,
-    [
-      { text: cancelText, style: 'cancel', onPress: onCancel },
-      { text: confirmText, style: 'destructive', onPress: onConfirm },
-    ]
-  );
-};
 
 // ─── Animated Components ──────────────────────────────────────────
 
@@ -157,6 +127,100 @@ const PressableScale = React.memo<PressableScaleProps>(({
     >
       {children}
     </AnimatedTouchable>
+  );
+});
+
+// ─── Custom Modal Components (like HomeScreen) ────────────────────
+
+interface CustomModalProps {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  message: string;
+  icon?: string;
+  iconColor?: string;
+  primaryAction?: { label: string; onPress: () => void };
+  secondaryAction?: { label: string; onPress: () => void };
+  isDark: boolean;
+  primaryColor: string;
+}
+
+const CustomModal = React.memo<CustomModalProps>(({
+  visible,
+  onClose,
+  title,
+  message,
+  icon = 'information-circle',
+  iconColor,
+  primaryAction,
+  secondaryAction,
+  isDark,
+  primaryColor,
+}) => {
+  const scale = useSharedValue(0.8);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 20, stiffness: 300 });
+      opacity.value = withTiming(1, { duration: 200 });
+    } else {
+      scale.value = withTiming(0.8, { duration: 150 });
+      opacity.value = withTiming(0, { duration: 150 });
+    }
+  }, [visible]);
+
+  const contentStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+      <Animated.View style={[styles.modalOverlay, backdropStyle]}>
+        <BlurView
+          intensity={isDark ? 60 : 90}
+          style={[styles.modalContent, isDark && styles.modalContentDark]}
+          tint={isDark ? 'dark' : 'light'}
+        >
+          <Animated.View style={contentStyle}>
+            <View style={[styles.modalIconWrap, { backgroundColor: `${iconColor || primaryColor}15` }]}>
+              <Ionicons name={icon as any} size={32} color={iconColor || primaryColor} />
+            </View>
+
+            <Text style={[styles.modalTitle, isDark && styles.textLight]}>{title}</Text>
+            <Text style={[styles.modalDesc, isDark && styles.textMuted]}>{message}</Text>
+
+            <View style={styles.modalButtons}>
+              {secondaryAction && (
+                <TouchableOpacity
+                  style={[styles.modalSecondaryBtn, { borderColor: `${primaryColor}30`, borderWidth: 1 }]}
+                  onPress={() => { secondaryAction.onPress(); onClose(); }}
+                >
+                  <Text style={[styles.modalSecondaryBtnText, { color: primaryColor }]}>
+                    {secondaryAction.label}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {primaryAction && (
+                <TouchableOpacity
+                  style={[styles.modalPrimaryBtn, { backgroundColor: primaryColor }]}
+                  onPress={() => { primaryAction.onPress(); onClose(); }}
+                >
+                  <Text style={styles.modalPrimaryBtnText}>{primaryAction.label}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </Animated.View>
+        </BlurView>
+      </Animated.View>
+    </Pressable>
   );
 });
 
@@ -956,7 +1020,13 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
-  const [localBiometricAvailable, setLocalBiometricAvailable] = useState(false);
+  
+  // ─── Custom Modal States ────────────────────────────────────────
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showBiometricModal, setShowBiometricModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [modalConfig, setModalConfig] = useState<any>(null);
 
   // ─── Refs ──────────────────────────────────────────────────────
   const scrollY = useSharedValue(0);
@@ -974,7 +1044,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const biometricTypeName = getBiometricTypeName();
   const biometricIcon = getBiometricIcon();
   
-  // FIXED: Use actual biometric availability from context
   const hasBiometric = isBiometricHardwareAvailable && isBiometricEnrolled;
   const biometricEnabled = isBiometricEnabled || false;
 
@@ -1011,7 +1080,13 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {
-      showToast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout');
+      setModalConfig({
+        title: 'Enable App Lock First',
+        message: 'Turn on Auto-Lock App to set a timeout',
+        icon: 'information-circle',
+        iconColor: '#f59e0b',
+        primaryAction: { label: 'OK', onPress: () => {} },
+      });
       return;
     }
     setShowTimeoutModal(true);
@@ -1045,62 +1120,71 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [loadBabies, loadEntries, checkBiometricCapabilities]);
 
-  // ─── FIXED: Handle Sign Out ─────────────────────────────────────
+  // ─── FIXED: Handle Sign Out with Custom Modal ──────────────────
   const handleLogout = useCallback(async () => {
-    showConfirm(
-      'Sign Out',
-      'Are you sure you want to sign out? You will need to sign in again to access your account.',
-      async () => {
-        try {
-          triggerHaptic('medium');
-          
-          // Clear security lock state before signing out
-          await AsyncStorage.setItem('littleloom_security_lock', 'false');
-          
-          // Clear any navigation state that might persist
-          await AsyncStorage.multiRemove([
-            'littleloom_nav_state_v4',
-            '@littleloom_nav_state_v4',
-            'littleloom_last_auth_state',
-            'littleloom_security_lock',
-          ]);
-          
-          // Call signOut from auth context
-          await signOut();
-          
-          // Force navigation to Login screen with full reset
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Login' as never }],
-          });
-          
-          showToast('Signed Out', 'You have been signed out successfully');
-        } catch (error) {
-          console.error('Sign out error:', error);
-          
-          // Even if signOut fails, try to force navigation to login
-          try {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' as never }],
-            });
-          } catch (navError) {
-            console.error('Navigation reset error:', navError);
-          }
-          
-          showError('Error', 'Failed to sign out. Please try again.');
-        }
-      },
-      undefined,
-      'Sign Out',
-      'Cancel'
-    );
+    setShowLogoutModal(true);
+  }, []);
+
+  const confirmLogout = useCallback(async () => {
+    setShowLogoutModal(false);
+    try {
+      triggerHaptic('medium');
+      
+      await AsyncStorage.setItem('littleloom_security_lock', 'false');
+      
+      await AsyncStorage.multiRemove([
+        'littleloom_nav_state_v4',
+        '@littleloom_nav_state_v4',
+        'littleloom_last_auth_state',
+        'littleloom_security_lock',
+      ]);
+      
+      await signOut();
+      
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' as never }],
+      });
+      
+      setModalConfig({
+        title: 'Signed Out',
+        message: 'You have been signed out successfully',
+        icon: 'checkmark-circle',
+        iconColor: '#43e97b',
+        primaryAction: { label: 'OK', onPress: () => {} },
+      });
+    } catch (error) {
+      console.error('Sign out error:', error);
+      
+      try {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' as never }],
+        });
+      } catch (navError) {
+        console.error('Navigation reset error:', navError);
+      }
+      
+      setModalConfig({
+        title: 'Error',
+        message: 'Failed to sign out. Please try again.',
+        icon: 'alert-circle',
+        iconColor: '#ef4444',
+        primaryAction: { label: 'OK', onPress: () => {} },
+      });
+    }
   }, [signOut, triggerHaptic, navigation]);
 
-  // ─── FIXED: Handle Sync / Cloud Backup ─────────────────────────
+  // ─── FIXED: Handle Sync with Cloud ─────────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
-      showToast('Sync in Progress', 'Please wait for the current sync to complete.');
+      setModalConfig({
+        title: 'Sync in Progress',
+        message: 'Please wait for the current sync to complete.',
+        icon: 'information-circle',
+        iconColor: '#4facfe',
+        primaryAction: { label: 'OK', onPress: () => {} },
+      });
       return;
     }
 
@@ -1110,9 +1194,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (result.success) {
         setSyncStatus('success');
         triggerHaptic('success');
-        showToast('✅ Synced!', 'Your data is now in sync with the cloud');
         
-        // Also create a backup in the background
+        // Create a backup in the background
         try {
           const backupResult = await createBackup({ 
             encrypted: false,
@@ -1124,43 +1207,72 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         } catch (backupError) {
           console.warn('Backup creation error (non-critical):', backupError);
         }
+        
+        setModalConfig({
+          title: '✅ Synced!',
+          message: 'Your data is now in sync with the cloud',
+          icon: 'checkmark-circle',
+          iconColor: '#43e97b',
+          primaryAction: { label: 'Great!', onPress: () => {} },
+        });
       } else {
         setSyncStatus('error');
-        showToast('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.');
+        setModalConfig({
+          title: '⚠️ Sync Issue',
+          message: 'Some items failed to sync. They will be retried.',
+          icon: 'warning',
+          iconColor: '#f59e0b',
+          primaryAction: { label: 'OK', onPress: () => {} },
+        });
       }
     } catch (error) {
       console.error('Sync error:', error);
       setSyncStatus('error');
-      showToast('❌ Sync Failed', 'Could not sync data. Please try again.');
+      setModalConfig({
+        title: '❌ Sync Failed',
+        message: 'Could not sync data. Please try again.',
+        icon: 'alert-circle',
+        iconColor: '#ef4444',
+        primaryAction: { label: 'Try Again', onPress: () => handleSync() },
+        secondaryAction: { label: 'Cancel', onPress: () => {} },
+      });
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
   }, [isSyncing, sync, triggerHaptic]);
 
-  // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
+  // ─── FIXED: Handle Biometric Toggle with Custom Modal ──────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
-        showToast('Biometric Not Available', 'Please set up biometric authentication in your device settings first.');
+        setModalConfig({
+          title: 'Biometric Not Available',
+          message: 'Please set up biometric authentication in your device settings first.',
+          icon: 'finger-print',
+          iconColor: '#f59e0b',
+          primaryAction: { label: 'OK', onPress: () => {} },
+        });
         return;
       }
       navigation.navigate('BiometricSetup');
     } else {
-      showConfirm(
-        'Disable Biometric?',
-        'Are you sure you want to disable biometric authentication?',
-        async () => {
-          const success = await toggleBiometric(false);
-          if (!success) {
-            showError('Error', 'Could not disable biometric authentication.');
-          }
-        },
-        undefined,
-        'Disable',
-        'Cancel'
-      );
+      setShowBiometricModal(true);
     }
-  }, [hasBiometric, navigation, toggleBiometric]);
+  }, [hasBiometric, navigation]);
+
+  const confirmDisableBiometric = useCallback(async () => {
+    setShowBiometricModal(false);
+    const success = await toggleBiometric(false);
+    if (!success) {
+      setModalConfig({
+        title: 'Error',
+        message: 'Could not disable biometric authentication.',
+        icon: 'alert-circle',
+        iconColor: '#ef4444',
+        primaryAction: { label: 'OK', onPress: () => {} },
+      });
+    }
+  }, [toggleBiometric]);
 
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
@@ -1169,32 +1281,40 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const handleLockNow = useCallback(async () => {
     const hasAnySecurity = availableMethods.hasPin || availableMethods.hasBiometric || securitySettings.isAppLockEnabled;
     if (!hasAnySecurity) {
-      showConfirm(
-        'No Security Enabled',
-        'You can lock the app without protection, or set up PIN / Biometric first.',
-        async () => {
-          await lockApp(true);
-          showToast('App Locked', 'Locked without security. Tap unlock to enter.');
-        },
-        () => {
-          navigation.navigate('SecurityCenter', { mode: 'setup' });
-        },
-        'Lock Anyway',
-        'Set Up Security'
-      );
+      setShowSecurityModal(true);
       return;
     }
     await lockApp();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, navigation]);
+    
+    setModalConfig({
+      title: '🔒 App Locked',
+      message: 'LittleLoom has been secured.',
+      icon: 'lock-closed',
+      iconColor: '#43e97b',
+      primaryAction: { label: 'OK', onPress: () => {} },
+    });
+  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp]);
 
   const handleSelectTimeout = useCallback(async (minutes: number) => {
     setShowTimeoutModal(false);
     try {
       await updateAutoLockTimeout(minutes);
-      showToast('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`);
+      setModalConfig({
+        title: 'Timeout Updated',
+        message: `Auto-lock set to ${formatTimeout(minutes)}`,
+        icon: 'time',
+        iconColor: '#43e97b',
+        primaryAction: { label: 'OK', onPress: () => {} },
+      });
     } catch (err) {
-      showError('Update Failed', 'Could not update auto-lock timeout.');
+      setModalConfig({
+        title: 'Update Failed',
+        message: 'Could not update auto-lock timeout.',
+        icon: 'alert-circle',
+        iconColor: '#ef4444',
+        primaryAction: { label: 'OK', onPress: () => {} },
+      });
     }
   }, [updateAutoLockTimeout, formatTimeout]);
 
@@ -1224,22 +1344,18 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Effects ────────────────────────────────────────────────────
 
-  // FIXED: Check biometric capabilities on mount and focus
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
         await checkBiometricCapabilities();
-        // Force a re-render to update UI
-        setLocalBiometricAvailable(hasBiometric);
       } catch (error) {
         console.error('Error checking biometrics:', error);
       }
     };
     
     checkBiometrics();
-  }, [checkBiometricCapabilities, hasBiometric]);
+  }, [checkBiometricCapabilities]);
 
-  // ✅ Prevent duplicate load calls with a debounce
   useFocusEffect(
     useCallback(() => {
       if (focusLoadTimeout.current) {
@@ -1249,7 +1365,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
         loadBabies();
         loadEntries?.();
-        // Refresh biometric status on focus
         checkBiometricCapabilities();
       }, 300);
       
@@ -1272,7 +1387,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   const renderSecuritySection = useCallback(() => {
     const isExpanded = expandedSections.has('security');
-    // FIXED: Use actual biometric availability
     const bioAvailable = isBiometricHardwareAvailable && isBiometricEnrolled;
     const bioEnabled = isBiometricEnabled || false;
     
@@ -1671,7 +1785,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Loading State ─────────────────────────────────────────────
 
-  // ✅ Add a timeout to force exit loading state
   const [forceShowContent, setForceShowContent] = useState(false);
   
   useEffect(() => {
@@ -1944,6 +2057,83 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         isDark={isDark}
         primaryColor={primary}
       />
+
+      {/* ─── Custom Modals (like HomeScreen) ────────────────────── */}
+
+      {/* Logout Confirmation Modal */}
+      <CustomModal
+        visible={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        title="Sign Out"
+        message="Are you sure you want to sign out? You will need to sign in again to access your account."
+        icon="log-out-outline"
+        iconColor="#ef4444"
+        isDark={isDark}
+        primaryColor={primary}
+        primaryAction={{ label: 'Sign Out', onPress: confirmLogout }}
+        secondaryAction={{ label: 'Cancel', onPress: () => setShowLogoutModal(false) }}
+      />
+
+      {/* Disable Biometric Confirmation Modal */}
+      <CustomModal
+        visible={showBiometricModal}
+        onClose={() => setShowBiometricModal(false)}
+        title="Disable Biometric?"
+        message="Are you sure you want to disable biometric authentication?"
+        icon="finger-print"
+        iconColor="#f59e0b"
+        isDark={isDark}
+        primaryColor={primary}
+        primaryAction={{ label: 'Disable', onPress: confirmDisableBiometric }}
+        secondaryAction={{ label: 'Cancel', onPress: () => setShowBiometricModal(false) }}
+      />
+
+      {/* No Security Modal */}
+      <CustomModal
+        visible={showSecurityModal}
+        onClose={() => setShowSecurityModal(false)}
+        title="No Security Enabled"
+        message="You haven't set up a PIN or biometric lock yet. You can still lock the app, but anyone can unlock it."
+        icon="shield-outline"
+        iconColor="#f59e0b"
+        isDark={isDark}
+        primaryColor={primary}
+        primaryAction={{ 
+          label: 'Set Up Security', 
+          onPress: () => {
+            navigation.navigate('SecurityCenter', { mode: 'setup' });
+          }
+        }}
+        secondaryAction={{ 
+          label: 'Lock Anyway', 
+          onPress: async () => {
+            await lockApp(true);
+            setModalConfig({
+              title: '🔒 App Locked',
+              message: 'Locked without security. Tap unlock to enter.',
+              icon: 'lock-closed',
+              iconColor: '#f59e0b',
+              primaryAction: { label: 'OK', onPress: () => {} },
+            });
+          }
+        }}
+      />
+
+      {/* Generic Modal for alerts */}
+      {modalConfig && (
+        <CustomModal
+          visible={true}
+          onClose={() => setModalConfig(null)}
+          title={modalConfig.title}
+          message={modalConfig.message}
+          icon={modalConfig.icon || 'information-circle'}
+          iconColor={modalConfig.iconColor || primary}
+          isDark={isDark}
+          primaryColor={primary}
+          primaryAction={modalConfig.primaryAction}
+          secondaryAction={modalConfig.secondaryAction}
+        />
+      )}
     </LinearGradient>
   );
 }
@@ -2552,6 +2742,87 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
+  // ─── Custom Modal Styles ──────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 20,
+  },
+  modalContentDark: {
+    backgroundColor: 'rgba(26,26,46,0.95)',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  modalIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  modalDesc: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  modalPrimaryBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalSecondaryBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  modalSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
   babyOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2593,12 +2864,6 @@ const styles = StyleSheet.create({
   },
 
   // ─── Timeout Modal ────────────────────────────────────────────
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
   timeoutModal: {
     width: '100%',
     maxWidth: 360,
