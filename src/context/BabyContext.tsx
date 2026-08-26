@@ -1,5 +1,4 @@
-// src/context/BabyContext.tsx
-// Full Supabase implementation - SINGLE SOURCE OF TRUTH for baby data
+// src/context/BabyContext.tsx - COMPLETE FIXED VERSION
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Alert } from 'react-native';
@@ -269,7 +268,7 @@ interface BabyState {
   medicationLogs: MedicationLog[];
   activities: ActivityEntry[];
   lastSyncTime: number | null;
-  isInitialized: boolean; // NEW: Track if initial load completed
+  isInitialized: boolean;
 }
 
 interface BabyContextType extends BabyState {
@@ -332,9 +331,7 @@ interface BabyContextType extends BabyState {
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
   
-  // Get current baby ID for other contexts
   getCurrentBabyId: () => string | null;
-  // Subscribe to baby changes
   subscribeToBabyChanges: (callback: (babyId: string | null) => void) => () => void;
 }
 
@@ -360,11 +357,9 @@ const getDateKey = (date: Date | string): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// Baby change subscribers
 type BabyChangeCallback = (babyId: string | null) => void;
 let babyChangeSubscribers: BabyChangeCallback[] = [];
 
-/* Lazy imports for notification service */
 const getNotificationService = async () => {
   try {
     const { notificationService } = await import('@/services/NotificationService');
@@ -395,7 +390,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     medicationLogs: [],
     activities: [],
     lastSyncTime: null,
-    isInitialized: false, // NEW
+    isInitialized: false,
   });
 
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
@@ -406,19 +401,15 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isCreatingRef = useRef(false);
   const loadInProgressRef = useRef(false);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialLoadDoneRef = useRef(false);
 
-  // Broadcast baby changes to subscribers
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     babyChangeSubscribers.forEach(callback => {
       try { callback(babyId); } catch (e) { /* ignore */ }
     });
   }, []);
 
-  // Subscribe to baby changes
   const subscribeToBabyChanges = useCallback((callback: BabyChangeCallback) => {
     babyChangeSubscribers.push(callback);
-    // Immediately call with current value
     callback(state.currentBabyId);
     return () => {
       babyChangeSubscribers = babyChangeSubscribers.filter(cb => cb !== callback);
@@ -512,12 +503,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       bloodType: row.blood_type || undefined,
       medicalNotes: row.medical_notes || undefined,
       allergies: row.allergies || undefined,
-      
-      // Current measurements
       weight: row.current_weight_kg ? String(row.current_weight_kg) : undefined,
       height: row.current_height_cm ? String(row.current_height_cm) : undefined,
-      
-      // Birth details
       birthTime: row.birth_time || undefined,
       birthWeight: row.birth_weight_kg ? String(row.birth_weight_kg) : undefined,
       birthHeight: row.birth_height_cm ? String(row.birth_height_cm) : undefined,
@@ -531,13 +518,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       multipleBirth: row.multiple_birth || false,
       birthOrder: row.birth_order ? String(row.birth_order) : undefined,
       feedingPlan: row.feeding_plan || undefined,
-      
-      // Additional
       emergencyContact: row.emergency_contact || undefined,
       pediatrician: row.pediatrician || undefined,
       notificationsEnabled: row.notifications_enabled !== false,
-      
-      // Stats
       streak: row.streak || 0,
       milestones: row.milestones_count || 0,
       photos: row.photos_count || 0,
@@ -736,7 +719,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Update activities in AsyncStorage for ActivityContext compatibility
       try {
         await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(activities));
       } catch {}
@@ -793,7 +775,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let allBabies: any[] = [];
 
-      // Fetch babies where user is parent1
       try {
         const { data: parent1Babies, error: error1 } = await supabase
           .from('babies')
@@ -810,7 +791,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] parent1 query failed:', e);
       }
 
-      // Only fetch parent2 if we didn't find any as parent1 (avoids recursion)
       if (allBabies.length === 0) {
         try {
           const { data: parent2Babies, error: error2 } = await supabase
@@ -833,7 +813,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
 
-      // Cache babies for offline access
       try {
         await AsyncStorage.setItem(BABIES_CACHE_KEY, JSON.stringify(babies));
         await AsyncStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
@@ -841,7 +820,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to cache babies:', cacheError);
       }
 
-      // Get current baby ID from app_settings
       let currentId: string | null = null;
       try {
         const { data: settingsData } = await supabase
@@ -855,7 +833,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to get current_baby_id:', e);
       }
       
-      // If no current baby but we have babies, set first as current
       if (!currentId && babies.length > 0) {
         currentId = babies[0].id;
         try {
@@ -872,14 +849,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Also store in AsyncStorage for other contexts
       if (currentId) {
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
       }
 
       const currentBaby = babies.find(b => b.id === currentId) || babies[0] || null;
 
-      // Check if user has skipped baby selection
       let hasSkippedBaby = false;
       try {
         const { data: skipData } = await supabase
@@ -898,7 +873,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Broadcast baby change
       broadcastBabyChange(currentId);
 
       setState(prev => ({
@@ -909,10 +883,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentBaby,
         hasSkippedBaby,
         lastSyncTime: Date.now(),
-        isInitialized: true, // NEW: Mark as initialized
+        isInitialized: true,
       }));
 
-      // Load tracker data for current baby
       if (currentId) {
         console.log('[BabyContext] Loading tracker data for current baby...');
         await loadAllBabyData(currentId);
@@ -924,7 +897,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
       
-      // Try to load from cache if available
       try {
         const cached = await AsyncStorage.getItem(BABIES_CACHE_KEY);
         if (cached) {
@@ -952,20 +924,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange]);
 
-  /* ─── Force Refresh ──────────────────────────────────────────────────── */
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
     await loadBabies(true);
   }, [loadBabies]);
 
-  /* ---- Initial load - IMMEDIATE ---- */
+  /* ---- Initial load ---- */
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
 
     isMounted.current = true;
-    
-    // Load immediately - no delay
     loadBabies();
 
     return () => {
@@ -976,11 +945,23 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadBabies]);
 
+  /* ─── CRITICAL FIX: Watch for auth changes ────────────────────────── */
+  useEffect(() => {
+    // When authProfile changes (user signs in), reload babies
+    if (authProfile?.id) {
+      console.log('[BabyContext] Auth user detected, loading babies...');
+      // Small delay to let auth session fully establish
+      const timer = setTimeout(() => {
+        loadBabies(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [authProfile?.id, loadBabies]);
+
   /* ---- Auto-refresh on app focus (via AppState) ---- */
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        // Auto-refresh when app comes to foreground (debounced)
         if (syncTimeoutRef.current) {
           clearTimeout(syncTimeoutRef.current);
         }
@@ -1007,7 +988,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       intervalId = setInterval(() => {
         console.log('[BabyContext] Auto-refresh interval');
         loadBabies(true);
-      }, 300000); // 5 minutes
+      }, 300000);
     }
     
     return () => {
@@ -1161,7 +1142,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('[BabyContext] Creating baby with parent1_id:', userId);
 
-      // Check for duplicate
       const { data: existingBabies, error: duplicateError } = await supabase
         .from('babies')
         .select('id')
@@ -1180,7 +1160,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null;
       }
 
-      // ─── INSERT BABY WITH ALL FIELDS ──────────────────────────────────
       const babyData = {
         id: newId,
         name: data.name,
@@ -1192,12 +1171,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         allergies: data.allergies || null,
         parent1_id: userId,
         parent2_id: data.parent2Id || null,
-        
-        // Current measurements
         current_weight_kg: data.weight ? parseFloat(data.weight) : null,
         current_height_cm: data.height ? parseFloat(data.height) : null,
-        
-        // Birth details
         birth_time: data.birthTime || null,
         birth_weight_kg: data.birthWeight ? parseFloat(data.birthWeight) : null,
         birth_height_cm: data.birthHeight ? parseFloat(data.birthHeight) : null,
@@ -1211,14 +1186,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         multiple_birth: data.multipleBirth || false,
         birth_order: data.birthOrder ? parseInt(data.birthOrder) : null,
         feeding_plan: data.feedingPlan ? data.feedingPlan.toLowerCase() : null,
-        
-        // Additional
         emergency_contact: data.emergencyContact || null,
         pediatrician: data.pediatrician || null,
         notifications_enabled: data.notificationsEnabled !== false,
         skin_tone: data.skinTone || 0,
-        
-        // Active and timestamps
         is_active: true,
         created_at: now.toISOString(),
         updated_at: now.toISOString(),
@@ -1258,7 +1229,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         age: calculateAge(data.birthDate),
       };
 
-      // Check if this is the first baby for this user
       const { count } = await supabase
         .from('babies')
         .select('*', { count: 'exact', head: true })
@@ -1268,7 +1238,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const isFirstBaby = (count || 0) <= 1;
       const newCurrentId = isFirstBaby ? result.id : (state.currentBabyId || result.id);
 
-      // Set current baby in app_settings
       try {
         await supabase
           .from('app_settings')
@@ -1282,13 +1251,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to set current_baby_id:', e);
       }
 
-      // Also store in AsyncStorage for other contexts
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
-
-      // Broadcast baby change
       broadcastBabyChange(newCurrentId);
 
-      // Clear skip baby if set
       try {
         await supabase
           .from('app_settings')
@@ -1299,7 +1264,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to clear skip baby:', e);
       }
 
-      // Update local state
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1310,10 +1274,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
-      // Clear cache
       await AsyncStorage.removeItem(BABIES_CACHE_KEY);
-
-      // Load tracker data for new baby
       await loadAllBabyData(newCurrentId);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -1335,7 +1296,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updated_at: new Date().toISOString(),
       };
       
-      // Map profile fields to database columns
       if (updates.name !== undefined) remoteUpdates.name = updates.name;
       if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
       if (updates.birthDate !== undefined) remoteUpdates.date_of_birth = updates.birthDate;
@@ -1347,7 +1307,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.allergies !== undefined) remoteUpdates.allergies = updates.allergies;
       if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
       
-      // Current measurements
       if (updates.weight !== undefined) {
         remoteUpdates.current_weight_kg = updates.weight ? parseFloat(updates.weight) : null;
       }
@@ -1355,7 +1314,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         remoteUpdates.current_height_cm = updates.height ? parseFloat(updates.height) : null;
       }
       
-      // Birth details
       if (updates.birthTime !== undefined) remoteUpdates.birth_time = updates.birthTime;
       if (updates.birthWeight !== undefined) {
         remoteUpdates.birth_weight_kg = updates.birthWeight ? parseFloat(updates.birthWeight) : null;
@@ -1390,7 +1348,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         remoteUpdates.feeding_plan = updates.feedingPlan ? updates.feedingPlan.toLowerCase() : null;
       }
       
-      // Additional
       if (updates.emergencyContact !== undefined) remoteUpdates.emergency_contact = updates.emergencyContact;
       if (updates.pediatrician !== undefined) remoteUpdates.pediatrician = updates.pediatrician;
       if (updates.notificationsEnabled !== undefined) remoteUpdates.notifications_enabled = updates.notificationsEnabled;
@@ -1420,7 +1377,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           babies: prev.babies.map(b => b.id === id ? updatedBaby : b),
           currentBaby: prev.currentBaby?.id === id ? updatedBaby : prev.currentBaby,
         }));
-        // Clear cache
         await AsyncStorage.removeItem(BABIES_CACHE_KEY);
       }
     } catch (error) {
@@ -1494,7 +1450,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           medicationLogs: newCurrentId ? prev.medicationLogs : [],
           activities: newCurrentId ? prev.activities : [],
         }));
-        // Clear cache
         await AsyncStorage.removeItem(BABIES_CACHE_KEY);
       }
 
@@ -1554,7 +1509,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
-      // Clear cache
       await AsyncStorage.removeItem(BABIES_CACHE_KEY);
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -2198,7 +2152,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
-      // Sync to AsyncStorage for ActivityContext compatibility
       try {
         const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
         const existingEntries: ActivityEntry[] = existing ? JSON.parse(existing) : [];

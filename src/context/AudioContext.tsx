@@ -8,8 +8,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/utils/supabase';
-import { useBaby } from './BabyContext';
 import { decode } from 'base64-arraybuffer';
+
+// SAFE: Get useBaby only if available
+let useBabySafe: any = null;
+try {
+  const babyModule = require('./BabyContext');
+  useBabySafe = babyModule.useBaby;
+} catch {
+  useBabySafe = () => ({ currentBaby: null });
+}
 
 export const SOUND_TRACKS = [
   { id: '1', title: 'White Noise', artist: 'Sleep Aid', duration: '3:45', color: '#a1c4fd', image: 'https://images.unsplash.com/photo-1519834785169-98be25ec3f84?w=400&q=80', uri: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
@@ -93,8 +101,28 @@ const IMPORTED_STORAGE_KEY = '@littleloom_imported_tracks';
 const SLEEP_TIMER_KEY = '@littleloom_sleep_timer';
 const AUDIO_BUCKET = 'audio';
 
+// ─── SAFE Baby access ─────────────────────────────────────────────────────
+// Use a try-catch wrapper to handle case where BabyContext isn't ready
+const useBabySafeWrapper = () => {
+  try {
+    const { useBaby } = require('./BabyContext');
+    return useBaby();
+  } catch (e) {
+    console.warn('[AudioProvider] BabyContext not available');
+    return { currentBaby: null, getCurrentBabyId: () => null };
+  }
+};
+
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentBaby } = useBaby();
+  // ─── SAFE: Get baby data only if available ──────────────────────────
+  let babyData: any = null;
+  try {
+    const { useBaby } = require('./BabyContext');
+    babyData = useBaby();
+  } catch {
+    babyData = { currentBaby: null, getCurrentBabyId: () => null };
+  }
+  const { currentBaby } = babyData || { currentBaby: null };
 
   const [currentTrack, setCurrentTrack] = useState<AudioTrack | null>(null);
   const [playerMode, setPlayerMode] = useState<PlayerMode>('hidden');
@@ -115,7 +143,16 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => { if (currentBaby?.id) loadFavorites(); }, [currentBaby?.id]);
+  // ─── Load favorites using safe baby ID ───────────────────────────────
+  const getBabyId = useCallback(() => {
+    return currentBaby?.id || null;
+  }, [currentBaby]);
+
+  useEffect(() => {
+    const id = getBabyId();
+    if (id) loadFavorites(id);
+  }, [getBabyId]);
+
   useEffect(() => { loadImportedTracks(); }, []);
   useEffect(() => { loadSleepTimer(); }, []);
 
@@ -136,23 +173,20 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [sleepTimer]);
 
   /* ─── Load Favorites ─────────────────────────────────────────────────── */
-
-  const loadFavorites = async () => {
-    if (!currentBaby?.id) return;
+  const loadFavorites = async (babyId: string) => {
+    if (!babyId) return;
     try {
-      const stored = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY + currentBaby.id);
+      const stored = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY + babyId);
       if (stored) setFavorites(JSON.parse(stored));
     } catch (e) { console.error('Error loading favorites:', e); }
   };
 
   /* ─── Load Imported Tracks ──────────────────────────────────────────── */
-
   const loadImportedTracks = async () => {
     try {
       const stored = await AsyncStorage.getItem(IMPORTED_STORAGE_KEY);
       if (stored) {
         const tracks = JSON.parse(stored);
-        // Verify tracks still exist in storage
         const validTracks = [];
         for (const track of tracks) {
           if (track.storagePath) {
@@ -171,7 +205,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   /* ─── Load Sleep Timer ───────────────────────────────────────────────── */
-
   const loadSleepTimer = async () => {
     try {
       const stored = await AsyncStorage.getItem(SLEEP_TIMER_KEY);
@@ -187,16 +220,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   /* ─── Save Favorites ────────────────────────────────────────────────── */
-
   const saveFavorites = async (newFavorites: string[]) => {
-    if (!currentBaby?.id) return;
+    const babyId = getBabyId();
+    if (!babyId) return;
     try {
-      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY + currentBaby.id, JSON.stringify(newFavorites));
+      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY + babyId, JSON.stringify(newFavorites));
     } catch (e) { console.error('Error saving favorites:', e); }
   };
 
   /* ─── Play Track ─────────────────────────────────────────────────────── */
-
   const playTrack = useCallback((track: AudioTrack) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -214,7 +246,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [importedTracks, player]);
 
   /* ─── Toggle Playback ────────────────────────────────────────────────── */
-
   const togglePlayback = useCallback(() => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -229,20 +260,17 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [isPlaying, player]);
 
   /* ─── Pause ─────────────────────────────────────────────────────────── */
-
   const pause = useCallback(() => {
     if (isPlaying) player.pause();
   }, [isPlaying, player]);
 
   /* ─── Stop ──────────────────────────────────────────────────────────── */
-
   const stop = useCallback(() => {
     player.pause();
     player.seekTo(0);
   }, [player]);
 
   /* ─── Next Track ────────────────────────────────────────────────────── */
-
   const nextTrack = useCallback(() => {
     const allTracks = [...SOUND_TRACKS, ...importedTracks];
     if (allTracks.length === 0) return;
@@ -253,7 +281,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentIndex, importedTracks, playTrack]);
 
   /* ─── Previous Track ────────────────────────────────────────────────── */
-
   const previousTrack = useCallback(() => {
     const allTracks = [...SOUND_TRACKS, ...importedTracks];
     if (allTracks.length === 0) return;
@@ -264,13 +291,11 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentIndex, importedTracks, playTrack]);
 
   /* ─── Seek To ───────────────────────────────────────────────────────── */
-
   const seekTo = useCallback((positionMillis: number) => {
     player.seekTo(positionMillis / 1000);
   }, [player]);
 
   /* ─── Shuffle ───────────────────────────────────────────────────────── */
-
   const shuffle = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -289,7 +314,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [isShuffled, currentTrack, importedTracks]);
 
   /* ─── Player Mode ───────────────────────────────────────────────────── */
-
   const expandPlayer = useCallback(() => setPlayerMode('full'), []);
   const minimizePlayer = useCallback(() => setPlayerMode('mini'), []);
   const collapseToBall = useCallback(() => setPlayerMode('ball'), []);
@@ -300,7 +324,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [stop]);
 
   /* ─── Toggle Favorite ───────────────────────────────────────────────── */
-
   const toggleFavorite = useCallback(async (trackId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newFavorites = favorites.includes(trackId)
@@ -311,15 +334,12 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [favorites]);
 
   /* ─── Is Favorite ───────────────────────────────────────────────────── */
-
   const isFavorite = useCallback((trackId: string) => favorites.includes(trackId), [favorites]);
 
   /* ─── Add Imported Track ────────────────────────────────────────────── */
-
   const addImportedTrack = useCallback(async (track: Omit<AudioTrack, 'id'>) => {
     const newTrack: AudioTrack = { ...track, id: `imported_${Date.now()}` };
 
-    // Upload to Supabase Storage if local file
     if (track.uri && track.uri.startsWith('file://')) {
       try {
         const fileData = await FileSystem.readAsStringAsync(track.uri, {
@@ -353,7 +373,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [importedTracks]);
 
   /* ─── Remove Imported Track ─────────────────────────────────────────── */
-
   const removeImportedTrack = useCallback(async (id: string) => {
     const track = importedTracks.find(t => t.id === id);
     if (track?.storagePath) {
@@ -365,7 +384,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [importedTracks]);
 
   /* ─── Import From Device ────────────────────────────────────────────── */
-
   const importFromDevice = useCallback(async () => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -400,7 +418,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [addImportedTrack]);
 
   /* ─── Set Sleep Timer ───────────────────────────────────────────────── */
-
   const setSleepTimer = useCallback(async (minutes: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -417,7 +434,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   /* ─── Format Time ───────────────────────────────────────────────────── */
-
   const formatTime = useCallback((millis: number = 0) => {
     const totalSeconds = Math.floor(millis / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -426,13 +442,11 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   /* ─── Computed Values ───────────────────────────────────────────────── */
-
   const progress = duration > 0 ? (position / duration) * 100 : 0;
   const formattedPosition = formatTime(position);
   const formattedDuration = formatTime(duration);
 
   /* ─── Auto-next when track finishes ────────────────────────────────── */
-
   useEffect(() => {
     if (status?.didJustFinish) {
       nextTrack();
@@ -440,7 +454,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [status?.didJustFinish, nextTrack]);
 
   /* ─── Context Value ─────────────────────────────────────────────────── */
-
   const value: AudioContextType = {
     isPlaying,
     isLoading,
