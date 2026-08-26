@@ -204,23 +204,28 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   }, []);
 
-  // ─── FIXED: Force biometric check on mount and focus ───────────
-  useEffect(() => {
-    const checkBiometrics = async () => {
-      try {
-        await checkBiometricCapabilities();
-      } catch (error) {
-        console.error('Error checking biometrics:', error);
-      }
-    };
+// ─── FIXED: Force biometric check on mount and focus ───────────
+useEffect(() => {
+  const checkBiometrics = async () => {
+    try {
+      await checkBiometricCapabilities();
+      // Force re-render to update UI
+      setForceUpdate(prev => !prev);
+    } catch (error) {
+      console.error('Error checking biometrics:', error);
+    }
+  };
+  checkBiometrics();
+
+  const unsubscribe = navigation.addListener('focus', () => {
     checkBiometrics();
+  });
 
-    const unsubscribe = navigation.addListener('focus', () => {
-      checkBiometrics();
-    });
+  return unsubscribe;
+}, [navigation, checkBiometricCapabilities]);
 
-    return unsubscribe;
-  }, [navigation, checkBiometricCapabilities]);
+// Add this state for force update
+const [forceUpdate, setForceUpdate] = useState(false);
 
   useEffect(() => {
     resetUnlockLock();
@@ -923,7 +928,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         <View style={[styles.bioCard, isDark && styles.bioCardDark]}>
           <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
           <View style={[styles.bioIconCircle, { backgroundColor: bioConfig?.color + '20' || 'rgba(102,126,234,0.2)' }]}>
-            <Ionicons name={(bioConfig?.icon || 'finger-print') as any} size={36} color={bioConfig?.color || themeColors.primary} />
+            <Ionicons name={(bioConfig?.iconFilled || bioConfig?.icon || 'finger-print') as any} size={36} color={bioConfig?.color || themeColors.primary} />
           </View>
           <Text style={[styles.bioTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>{bioName}</Text>
           <Text style={[styles.bioDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>

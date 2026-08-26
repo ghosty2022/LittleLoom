@@ -1408,7 +1408,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             tint={isDark ? 'dark' : 'light'}
           >
             <MenuItem
-              icon={bioEnabled ? biometricIcon as any : `${biometricIcon}-outline` as any}
+              icon={bioEnabled ? (biometricIcon.includes('-outline') ? biometricIcon : `${biometricIcon}`) as any : `${biometricIcon}` as any}
               title={`${biometricTypeName} Unlock`}
               subtitle={bioEnabled ? 'Enabled' : bioAvailable ? 'Disabled' : 'Not Available'}
               isEnabled={bioEnabled}
