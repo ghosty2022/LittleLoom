@@ -490,46 +490,48 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   }, [authProfile]);
 
-  /* ─── Helper: map Supabase baby row to BabyProfile ─────────────────── */
-  const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
-    return {
-      id: row.id,
-      name: row.name,
-      birthDate: row.date_of_birth,
-      age: calculateAge(row.date_of_birth),
-      gender: row.gender === 'male' ? 'boy' : row.gender === 'female' ? 'girl' : 'other',
-      skinTone: row.skin_tone ?? 0,
-      avatar: row.avatar || '',
-      parent1Id: row.parent1_id || '',
-      parent2Id: row.parent2_id || undefined,
-      bloodType: row.blood_type || undefined,
-      medicalNotes: row.medical_notes || undefined,
-      allergies: row.allergies || undefined,
-      weight: row.current_weight_kg ? String(row.current_weight_kg) : undefined,
-      height: row.current_height_cm ? String(row.current_height_cm) : undefined,
-      birthTime: row.birth_time || undefined,
-      birthWeight: row.birth_weight_kg ? String(row.birth_weight_kg) : undefined,
-      birthHeight: row.birth_height_cm ? String(row.birth_height_cm) : undefined,
-      birthHeadCircumference: row.birth_head_circumference ? String(row.birth_head_circumference) : undefined,
-      deliveryType: row.delivery_type || undefined,
-      gestationalWeeks: row.gestational_weeks ? String(row.gestational_weeks) : undefined,
-      apgar1Min: row.apgar_1min ? String(row.apgar_1min) : undefined,
-      apgar5Min: row.apgar_5min ? String(row.apgar_5min) : undefined,
-      birthPlace: row.birth_place || undefined,
-      birthAttendant: row.birth_attendant || undefined,
-      multipleBirth: row.multiple_birth || false,
-      birthOrder: row.birth_order ? String(row.birth_order) : undefined,
-      feedingPlan: row.feeding_plan || undefined,
-      emergencyContact: row.emergency_contact || undefined,
-      pediatrician: row.pediatrician || undefined,
-      notificationsEnabled: row.notifications_enabled !== false,
-      streak: row.streak || 0,
-      milestones: row.milestones_count || 0,
-      photos: row.photos_count || 0,
-      createdAt: row.created_at,
-      lastUpdated: row.updated_at,
-    };
-  }, [calculateAge]);
+// FIND mapBabyRowToProfile in BabyContext.tsx and update:
+
+const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
+  return {
+    id: row.id,
+    name: row.name,
+    birthDate: row.date_of_birth,
+    age: calculateAge(row.date_of_birth),
+    gender: row.gender === 'male' ? 'boy' : row.gender === 'female' ? 'girl' : 'other',
+    skinTone: row.skin_tone ?? 0,
+    avatar: row.avatar || row.avatar_url || '',  // Try avatar_url if avatar is empty
+    avatar_url: row.avatar_url || row.avatar || '',  // Store both
+    parent1Id: row.parent1_id || '',
+    parent2Id: row.parent2_id || undefined,
+    bloodType: row.blood_type || undefined,
+    medicalNotes: row.medical_notes || undefined,
+    allergies: row.allergies || undefined,
+    weight: row.current_weight_kg ? String(row.current_weight_kg) : undefined,
+    height: row.current_height_cm ? String(row.current_height_cm) : undefined,
+    birthTime: row.birth_time || undefined,
+    birthWeight: row.birth_weight_kg ? String(row.birth_weight_kg) : undefined,
+    birthHeight: row.birth_height_cm ? String(row.birth_height_cm) : undefined,
+    birthHeadCircumference: row.birth_head_circumference ? String(row.birth_head_circumference) : undefined,
+    deliveryType: row.delivery_type || undefined,
+    gestationalWeeks: row.gestational_weeks ? String(row.gestational_weeks) : undefined,
+    apgar1Min: row.apgar_1min ? String(row.apgar_1min) : undefined,
+    apgar5Min: row.apgar_5min ? String(row.apgar_5min) : undefined,
+    birthPlace: row.birth_place || undefined,
+    birthAttendant: row.birth_attendant || undefined,
+    multipleBirth: row.multiple_birth || false,
+    birthOrder: row.birth_order ? String(row.birth_order) : undefined,
+    feedingPlan: row.feeding_plan || undefined,
+    emergencyContact: row.emergency_contact || undefined,
+    pediatrician: row.pediatrician || undefined,
+    notificationsEnabled: row.notifications_enabled !== false,
+    streak: row.streak || 0,
+    milestones: row.milestones_count || 0,
+    photos: row.photos_count || 0,
+    createdAt: row.created_at,
+    lastUpdated: row.updated_at,
+  };
+}, [calculateAge]);
 
   /* ─── Helper: parse tracker entry data ─────────────────────────────── */
   const parseEntryData = (raw: unknown): Record<string, any> => {

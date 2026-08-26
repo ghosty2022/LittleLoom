@@ -14,6 +14,23 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { isValidImageUri, isEmoji } from '../utils/imageUtils';
+// ADD this helper after the imports:
+
+/**
+ * Safely gets the avatar source, checking avatar_url first if it's an object
+ * This handles cases where avatar might be an object with avatar_url property
+ */
+export const getAvatarSource = (avatar: AvatarSource | { avatar_url?: string } | any): AvatarSource => {
+  if (!avatar) return null;
+  // If it's an object with avatar_url property
+  if (typeof avatar === 'object' && avatar !== null) {
+    if (avatar.avatar_url) return avatar.avatar_url;
+    if (avatar.avatar) return avatar.avatar;
+    if (avatar.uri) return avatar.uri;
+    return null;
+  }
+  return avatar;
+};
 
 export type AvatarSource = string | number | undefined | null;
 
@@ -33,6 +50,7 @@ const DEFAULT_THEME_COLORS: ThemeColorSet = {
 
 export interface SafeAvatarProps {
   avatar?: AvatarSource;
+  avatarUrl?: string;
   size?: number;
   fallbackIcon?: keyof typeof Ionicons.glyphMap;
   fallbackColor?: string;
@@ -52,8 +70,11 @@ export interface SafeAvatarProps {
   reduceMotion?: boolean;
 }
 
+// FIND SafeBabyAvatar props and update:
+
 export interface SafeBabyAvatarProps {
   avatar?: AvatarSource;
+  avatarUrl?: string;  // ADD THIS
   gender?: 'boy' | 'girl' | 'other';
   size?: number;
   showBadge?: boolean;
@@ -63,7 +84,6 @@ export interface SafeBabyAvatarProps {
   themeColors?: ThemeColorSet;
   reduceMotion?: boolean;
 }
-
 export interface SafeParentAvatarProps {
   avatar?: AvatarSource;
   name?: string;
@@ -98,13 +118,18 @@ export const resolveAvatarSource = (avatar: AvatarSource): ImageSourcePropType |
     if (avatar.startsWith('data:')) {
       return { uri: avatar };
     }
-    // Handle http/https remote URLs
+    // Handle http/https remote URLs (including Supabase storage)
     if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
-      return { uri: avatar };
+      // Add cache control for remote images
+      return { uri: avatar, cache: 'force-cache' };
     }
     // Handle bare paths (treat as file://)
     if (avatar.startsWith('/')) {
       return { uri: `file://${avatar}` };
+    }
+    // Handle supabase storage URLs without protocol (shouldn't happen but just in case)
+    if (avatar.includes('supabase.co')) {
+      return { uri: `https://${avatar}` };
     }
     // Default: assume it's a URI string
     return { uri: avatar };
@@ -121,8 +146,12 @@ export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): bo
   if (typeof avatar === 'string') {
     // Emoji avatars are displayable but not "images"
     if (isEmoji(avatar)) return false; // Let emoji path handle it
-    // Valid image URIs: file://, content://, http(s)://, data:
-    const isValid = /^((file|content|https?):\/\/|data:image\/)/.test(avatar) || avatar.startsWith('/');
+    // Valid image URIs: file://, content://, https://, http://, data:
+    // Also handle Supabase storage URLs and any URL
+    const isValid = /^((file|content|https?):\/\/|data:image\/)/.test(avatar) || 
+                    avatar.startsWith('/') ||
+                    avatar.includes('supabase.co/storage/v1/object/public/') ||
+                    /^[a-zA-Z0-9_\-]+\.[a-zA-Z]+$/.test(avatar); // bare filenames
     return isValid;
   }
   return false;
@@ -180,26 +209,31 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
   const hasImage = hasDisplayableImage(avatar, hasError);
   const hasEmojiValue = avatar != null && typeof avatar === 'string' && isEmoji(avatar);
 
-  if (hasImage && imageSourceResolved) {
-    return (
-      <>
-        <Image
-          source={imageSourceResolved}
-          style={[styles.image, { width: size, height: size, borderRadius }]}
-          resizeMode="cover"
-          onError={onError}
-          onLoad={onLoad}
-          accessible={true}
-          accessibilityLabel="Avatar image"
-        />
-        {isLoading && (
-          <View style={[styles.loadingOverlay, { borderRadius }]}>
-            <ActivityIndicator size="small" color={themeColors.spinnerColor || themeColors.primary} />
-          </View>
-        )}
-      </>
-    );
-  }
+if (hasImage && imageSourceResolved) {
+  // Add extra cache control for remote images
+  const sourceWithCache = typeof avatar === 'string' && avatar.startsWith('http')
+    ? { uri: avatar, cache: 'force-cache' }
+    : imageSourceResolved;
+    
+  return (
+    <>
+      <Image
+        source={sourceWithCache}
+        style={[styles.image, { width: size, height: size, borderRadius }]}
+        resizeMode="cover"
+        onError={onError}
+        onLoad={onLoad}
+        accessible={true}
+        accessibilityLabel="Avatar image"
+      />
+      {isLoading && (
+        <View style={[styles.loadingOverlay, { borderRadius }]}>
+          <ActivityIndicator size="small" color={themeColors.spinnerColor || themeColors.primary} />
+        </View>
+      )}
+    </>
+  );
+}
 
   if (hasEmojiValue) {
     return (
@@ -230,8 +264,11 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
   );
 };
 
+// FIND the SafeAvatar component (around line 140-180) and update:
+
 export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   avatar,
+  avatarUrl,  // ADD THIS
   size = 72,
   fallbackIcon = 'person',
   fallbackColor,
@@ -252,6 +289,9 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
 
   const themeColors = propThemeColors || DEFAULT_THEME_COLORS;
   const shouldReduceMotion = reduceMotion ?? false;
+
+  // Use avatarUrl if provided, otherwise use avatar
+  const effectiveAvatar = avatarUrl || avatar;  // ADD THIS
 
   const effectiveFallbackColor = fallbackColor || themeColors.primary;
   const effectiveFallbackBgColor = fallbackBgColor || `${effectiveFallbackColor}20`;
@@ -296,7 +336,7 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
         ]}
       >
         <AvatarContent
-          avatar={avatar}
+          avatar={effectiveAvatar}  // Use effectiveAvatar here
           size={size}
           hasError={hasError}
           isLoading={isLoading}
