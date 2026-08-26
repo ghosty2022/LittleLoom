@@ -287,59 +287,77 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
     });
   }, []);
 
-  const handleComplete = useCallback(async () => {
-    // Check minimum 5 topics
-    if (selectedTopics.length < MIN_TOPICS) {
-      sweetAlert.alert(
-        'Select More Topics', 
-        `Please select at least ${MIN_TOPICS} topics to personalize your feed. You've selected ${selectedTopics.length}.`,
-        'info'
+const handleComplete = useCallback(async () => {
+  // Check minimum 5 topics
+  if (selectedTopics.length < MIN_TOPICS) {
+    sweetAlert.alert(
+      'Select More Topics', 
+      `Please select at least ${MIN_TOPICS} topics to personalize your feed. You've selected ${selectedTopics.length}.`,
+      'info'
+    );
+    return;
+  }
+
+  setIsSaving(true);
+  try {
+    const data = {
+      completed: true,
+      selectedTopics,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Save to AsyncStorage
+    await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
+    await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
+    
+    // Also save user-specific topics
+    if (currentUser?.id) {
+      await AsyncStorage.setItem(
+        `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
+        JSON.stringify(selectedTopics)
       );
+    }
+
+    // Update UserContext
+    try {
+      await updateUserTopics(selectedTopics);
+    } catch (e) {
+      console.warn('[CommunityOnboarding] Failed to update user topics:', e);
+    }
+    
+    // Update section state
+    try {
+      await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
+    } catch (e) {
+      console.warn('[CommunityOnboarding] Failed to update section state:', e);
+    }
+
+    // Force refresh topics in context
+    try {
+      const { refreshTopics } = require('../../context/CommunityContext');
+      await refreshTopics();
+    } catch (e) {
+      console.warn('[CommunityOnboarding] Failed to refresh topics:', e);
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    sweetAlert.toast('Topics Selected', `${selectedTopics.length} topics selected!`);
+
+    if (isEditing) {
+      navigation?.goBack?.();
       return;
     }
 
-    setIsSaving(true);
-    try {
-      const data = {
-        completed: true,
-        selectedTopics,
-        timestamp: new Date().toISOString(),
-      };
-
-      await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
-      await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
-
-      try {
-        await updateUserTopics(selectedTopics);
-      } catch (e) {
-        console.warn('[CommunityOnboarding] Failed to update user topics:', e);
-      }
-      
-      try {
-        await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
-      } catch (e) {
-        console.warn('[CommunityOnboarding] Failed to update section state:', e);
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      sweetAlert.toast('Topics Selected', `${selectedTopics.length} topics selected!`);
-
-      if (isEditing) {
-        navigation?.goBack?.();
-        return;
-      }
-
-      if (onComplete) {
-        onComplete();
-      }
-    } catch (error) {
-      console.error('Error saving topics:', error);
-      sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
-    } finally {
-      setIsSaving(false);
+    if (onComplete) {
+      onComplete();
     }
-  }, [selectedTopics, isEditing, navigation, onComplete, updateUserTopics, sweetAlert]);
-
+  } catch (error) {
+    console.error('Error saving topics:', error);
+    sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
+  } finally {
+    setIsSaving(false);
+  }
+}, [selectedTopics, isEditing, navigation, onComplete, updateUserTopics, sweetAlert, currentUser]);
   const handleSkip = useCallback(async () => {
     if (isEditing) return;
 

@@ -450,21 +450,21 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       suggestions.push({
         id: 'first-post', type: 'post', title: 'Share Your Story',
         description: 'Parents love hearing about your journey. Post today!',
-        emoji: '✍️', color: TC.secondary, action: () => navigation.navigate('CreatePost' as never),
+        emoji: '✍️', color: TC.secondary, action: () => navigation.navigate('CreatePost'),
       });
     }
     if (!currentUser?.isVerified) {
       suggestions.push({
         id: 'verify', type: 'verify', title: 'Get Verified',
         description: 'Verify your identity to unlock exclusive features',
-        emoji: '✅', color: TC.success, action: () => navigation.navigate('CommunityVerification' as never),
+        emoji: '✅', color: TC.success, action: () => navigation.navigate('CommunityVerification'),
       });
     }
     if (followerCount < 10) {
       suggestions.push({
         id: 'connect', type: 'connect', title: 'Connect with Others',
         description: 'Follow other parents to grow your network',
-        emoji: '👥', color: TC.purple, action: () => navigation.navigate('CommunityDiscover' as never),
+        emoji: '👥', color: TC.purple, action: () => navigation.navigate('SearchUsers'),
       });
     }
     return suggestions;
@@ -1016,10 +1016,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   }, [deleteAccountWithConfirmation, navigation, sweetAlert]);
 
   // Navigate to messages
-const handleNavigateToMessages = () => {
-  // Navigate to the ChatList screen in the Community stack
-  navigation.navigate('ChatList');
-};
+  const handleNavigateToMessages = () => {
+    navigation.navigate('ChatList');
+  };
 
   // ============================================
   // SAVE PROFILE
@@ -1642,16 +1641,19 @@ const handleNavigateToMessages = () => {
       )}
 
       {/* Manage Topics */}
-<TouchableOpacity
+      <TouchableOpacity
   style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
-  onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })}
+  onPress={() => {
+    // Navigate to onboarding with editing mode
+    navigation.navigate('CommunityOnboarding' as never, { editing: true } as never);
+  }}
 >
-        <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
-        <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
-          Manage Your Topics
-        </Text>
-        <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
-      </TouchableOpacity>
+  <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
+  <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
+    Manage Your Topics ({selectedTopics.length})
+  </Text>
+  <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+</TouchableOpacity>
 
       <GlassCard delay={700} isDark={isDark} colors={fullThemeColors}>
         <View style={styles.sectionHeaderWithEdit}>
@@ -1731,9 +1733,9 @@ const handleNavigateToMessages = () => {
             <Text style={styles.emptyPostsTitle}>No posts yet</Text>
             <Text style={styles.emptyPostsText}>Share your first story with the community!</Text>
             <TouchableOpacity 
-  style={[styles.createPostBtn, { backgroundColor: themeColors.primary }]} 
-  onPress={() => navigation.navigate('CreatePost')}
->
+              style={[styles.createPostBtn, { backgroundColor: themeColors.primary }]} 
+              onPress={() => navigation.navigate('CreatePost')}
+            >
               <Text style={styles.createPostBtnText}>Create Post</Text>
             </TouchableOpacity>
           </View>
@@ -1746,7 +1748,7 @@ const handleNavigateToMessages = () => {
                 <TouchableOpacity 
                   key={post.id} 
                   style={styles.postItem}
-                  onPress={() => navigation.navigate('PostDetail' as never, { postId: post.id })}
+                  onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
                   activeOpacity={0.7}
                 >
                   <LinearGradient

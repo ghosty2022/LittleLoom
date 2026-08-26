@@ -3138,106 +3138,109 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   // ─── UPDATE SELECTED TOPICS ─────────────────────────────────────────
+// src/context/CommunityContext.tsx
+// Fix the updateSelectedTopics function - remove the 5-topic limit
 
-  const updateSelectedTopics = useCallback(async (topics: string[]) => {
-    const validTopics = validateTopicIds(topics);
-    
-    if (validTopics.length > 5) {
-      sweetAlert.alert('Limit Reached', 'You can select up to 5 topics only.', 'warning');
-      return;
-    }
+const updateSelectedTopics = useCallback(async (topics: string[]) => {
+  const validTopics = validateTopicIds(topics);
+  
+  // Remove the 5-topic limit - let users select as many as they want
+  // The MIN_TOPICS is for onboarding minimum, not maximum
+  
+  const currentUser = stateRef.current.currentUser;
 
-    const currentUser = stateRef.current.currentUser;
+  if (currentUser) {
+    try {
+      const { data: existingTopics, error: fetchError } = await supabase
+        .from('user_topics')
+        .select('topic_id')
+        .eq('user_id', currentUser.id);
 
-    if (currentUser) {
-      try {
-        const { data: existingTopics, error: fetchError } = await supabase
-          .from('user_topics')
-          .select('topic_id')
-          .eq('user_id', currentUser.id);
+      if (!fetchError) {
+        const existingTopicIds = (existingTopics || []).map(t => t.topic_id);
+        
+        const topicsToAdd = validTopics.filter(id => !existingTopicIds.includes(id));
+        const topicsToRemove = existingTopicIds.filter(id => !validTopics.includes(id));
 
-        if (!fetchError) {
-          const existingTopicIds = (existingTopics || []).map(t => t.topic_id);
-          
-          const topicsToAdd = validTopics.filter(id => !existingTopicIds.includes(id));
-          const topicsToRemove = existingTopicIds.filter(id => !validTopics.includes(id));
-
-          if (topicsToAdd.length > 0) {
-            await supabase
-              .from('user_topics')
-              .insert(topicsToAdd.map(topicId => ({
-                user_id: currentUser.id,
-                topic_id: topicId,
-              })));
-          }
-
-          if (topicsToRemove.length > 0) {
-            await supabase
-              .from('user_topics')
-              .delete()
-              .eq('user_id', currentUser.id)
-              .in('topic_id', topicsToRemove);
-          }
-
-          console.log(`[updateSelectedTopics] Synced to Supabase: +${topicsToAdd.length}, -${topicsToRemove.length}`);
+        if (topicsToAdd.length > 0) {
+          await supabase
+            .from('user_topics')
+            .insert(topicsToAdd.map(topicId => ({
+              user_id: currentUser.id,
+              topic_id: topicId,
+            })));
         }
-      } catch (supabaseError) {
-        console.warn('Supabase sync error (will retry later):', supabaseError);
+
+        if (topicsToRemove.length > 0) {
+          await supabase
+            .from('user_topics')
+            .delete()
+            .eq('user_id', currentUser.id)
+            .in('topic_id', topicsToRemove);
+        }
+
+        console.log(`[updateSelectedTopics] Synced to Supabase: +${topicsToAdd.length}, -${topicsToRemove.length}`);
       }
+    } catch (supabaseError) {
+      console.warn('Supabase sync error (will retry later):', supabaseError);
     }
+  }
 
-    if (currentUser) {
-      setState(prev => {
-        const updatedTopics = prev.topics.map(topic => {
-          if (validTopics.includes(topic.id) && !topic.joinedBy.includes(currentUser.id)) {
-            return {
-              ...topic,
-              isJoined: true,
-              members: topic.members + 1,
-              joinedBy: [...topic.joinedBy, currentUser.id],
-            };
-          }
-          return topic;
-        });
-        AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
-        return { ...prev, topics: updatedTopics };
+  // Update topic join status
+  if (currentUser) {
+    setState(prev => {
+      const updatedTopics = prev.topics.map(topic => {
+        if (validTopics.includes(topic.id) && !topic.joinedBy.includes(currentUser.id)) {
+          return {
+            ...topic,
+            isJoined: true,
+            members: topic.members + 1,
+            joinedBy: [...topic.joinedBy, currentUser.id],
+          };
+        }
+        return topic;
       });
-    }
+      AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
+      return { ...prev, topics: updatedTopics };
+    });
+  }
 
-    await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validTopics));
+  // Persist selected topics
+  await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validTopics));
 
-    if (currentUser?.id) {
-      await AsyncStorage.setItem(
-        `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
-        JSON.stringify(validTopics)
-      );
-    }
+  if (currentUser?.id) {
+    await AsyncStorage.setItem(
+      `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
+      JSON.stringify(validTopics)
+    );
+  }
 
-    const onboardingData = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
-    if (onboardingData) {
-      const parsed = JSON.parse(onboardingData);
-      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
-        ...parsed,
-        selectedTopics: validTopics,
-        completed: true,
-      }));
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
-        completed: true,
-        selectedTopics: validTopics,
-        timestamp: new Date().toISOString(),
-      }));
-    }
-
-    setState(prev => ({
-      ...prev,
+  // Update onboarding status
+  const onboardingData = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
+  if (onboardingData) {
+    const parsed = JSON.parse(onboardingData);
+    await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
+      ...parsed,
       selectedTopics: validTopics,
-      currentUser: prev.currentUser ? { ...prev.currentUser, selectedTopics: validTopics } : null,
+      completed: true,
     }));
+  } else {
+    await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
+      completed: true,
+      selectedTopics: validTopics,
+      timestamp: new Date().toISOString(),
+    }));
+  }
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    console.log('Topics updated successfully!');
-  }, []);
+  setState(prev => ({
+    ...prev,
+    selectedTopics: validTopics,
+    currentUser: prev.currentUser ? { ...prev.currentUser, selectedTopics: validTopics } : null,
+  }));
+
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  console.log('Topics updated successfully!');
+}, []);
 
   // ─── GET SELECTED TOPICS ────────────────────────────────────────────
 

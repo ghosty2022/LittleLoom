@@ -834,16 +834,7 @@ export default function CommunityScreen({ navigation }: Props) {
         <View style={styles.heroContent}>
           <View style={styles.heroHeader}>
             <View>
-              <LinearGradient
-                colors={['#667eea', '#764ba2', '#f093fb']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ paddingVertical: 2 }}
-              >
-                <Text style={[styles.heroTitle, { color: '#fff' }]}>
-                  THE LOOM
-                </Text>
-              </LinearGradient>
+              <Text style={[styles.headerTitleGradient]}>THE LOOM</Text>
               <Text style={[styles.heroSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                 Weave stories, share wisdom, grow together.
               </Text>
@@ -1053,14 +1044,9 @@ export default function CommunityScreen({ navigation }: Props) {
                 </View>
               )}
               <View style={{ marginLeft: 10 }}>
-                <LinearGradient
-                  colors={['#667eea', '#764ba2', '#f093fb']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{ paddingVertical: 1 }}
-                >
-                  <Text style={[styles.headerTitle, { color: '#fff' }]}>THE LOOM</Text>
-                </LinearGradient>
+                <Text style={[styles.heroTitleGradient]}>
+  THE LOOM
+</Text>
                 <Text style={[styles.headerSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                   {currentUser?.displayName || 'Welcome'}
                 </Text>
@@ -1471,6 +1457,25 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 2,
   },
+  heroTitleGradient: {
+  fontSize: DS.text['2xl'].size,
+  fontWeight: '800',
+  letterSpacing: 1,
+  marginBottom: 2,
+  backgroundImage: 'linear-gradient(to right, #667eea, #764ba2, #f093fb)',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  color: '#667eea',
+},
+headerTitleGradient: {
+  fontSize: DS.text.xl.size,
+  fontWeight: '800',
+  letterSpacing: -0.5,
+  backgroundImage: 'linear-gradient(to right, #667eea, #764ba2, #f093fb)',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  color: '#667eea',
+},
   heroSubtitle: {
     fontSize: DS.text.sm.size,
   },
