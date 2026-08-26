@@ -223,18 +223,18 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             }
             
             if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-              configs.push({
-                type: LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
-                name: 'Face ID',
-                icon: 'scan-outline',
-                iconFilled: 'scan',
-                label: 'Face Recognition',
-                description: 'Use your face to unlock',
-                color: '#667eea',
-                gradient: ['#667eea', '#764ba2'],
-                isAvailable: true,
-              });
-            }
+  configs.push({
+    type: LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
+    name: 'Face ID',
+    icon: 'scan-outline',
+    iconFilled: 'scan',
+    label: 'Face Recognition',
+    description: 'Use your face to unlock',
+    color: '#667eea',
+    gradient: ['#667eea', '#764ba2'],
+    isAvailable: true,
+  });
+}
 
             if (configs.length === 0 && hasHardware) {
               configs.push({

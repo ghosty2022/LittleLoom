@@ -465,22 +465,39 @@ const [forceUpdate, setForceUpdate] = useState(false);
     }
   };
 
-  const handleToggleBiometric = async () => {
-    setBiometricLoading(true);
+const handleToggleBiometric = async () => {
+  setBiometricLoading(true);
+  try {
+    const result = await toggleBiometric(!isBiometricEnabled);
+    if (result) {
+      // Force refresh biometric status
+      await checkBiometricCapabilities();
+      setForceUpdate(prev => !prev);
+      showSuccess(
+        isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
+        isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
+      );
+    } else {
+      showError('Failed', 'Could not change biometric setting');
+    }
+  } finally {
+    setBiometricLoading(false);
+  }
+};
+
+// Force refresh biometric status after toggle
+useEffect(() => {
+  if (biometricLoading) return;
+  const refreshBiometrics = async () => {
     try {
-      const result = await toggleBiometric(!isBiometricEnabled);
-      if (result) {
-        showSuccess(
-          isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
-          isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
-        );
-      } else {
-        showError('Failed', 'Could not change biometric setting');
-      }
-    } finally {
-      setBiometricLoading(false);
+      await checkBiometricCapabilities();
+      setForceUpdate(prev => !prev);
+    } catch (error) {
+      console.error('Error refreshing biometrics:', error);
     }
   };
+  refreshBiometrics();
+}, [isBiometricEnabled, biometricLoading]);
 
   const handleTimeoutChange = async (minutes: number) => {
     setSelectedTimeout(minutes);
