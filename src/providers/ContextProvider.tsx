@@ -37,19 +37,20 @@ const SecurityAuthBridge: React.FC<{ children: React.ReactNode }> = ({ children 
 };
 
 const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentBabyId } = useBaby();
-  const { syncWithBabyContext } = useActivity();
+  const { currentBabyId, getCurrentBabyId } = useBaby();
+  const { syncWithBabyContext, getCurrentBabyId: getActivityBabyId } = useActivity();
   const initRef = useRef(false);
 
   useEffect(() => {
-    if (!currentBabyId || initRef.current) return;
+    const babyId = currentBabyId || getCurrentBabyId();
+    if (!babyId || initRef.current) return;
     initRef.current = true;
 
     const doSync = async () => {
-      await syncWithBabyContext(currentBabyId);
+      await syncWithBabyContext(babyId);
     };
     doSync();
-  }, [currentBabyId, syncWithBabyContext]);
+  }, [currentBabyId, getCurrentBabyId, syncWithBabyContext]);
 
   useEffect(() => {
     const init = async () => {
@@ -61,31 +62,42 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   return <>{children}</>;
 };
 
-// ─── FIXED: This component now uses useBaby() and is INSIDE BabyProvider ──
+// TrackerBabySync - syncs TrackerContext with BabyContext
 const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentBabyId, babies } = useBaby();
-  const initRef = useRef(false);
-  
+  const { getCurrentBabyId: getBabyFromContext, subscribeToBabyChanges } = useBaby();
   const trackerContext = useContext(TrackerContext);
+  const initRef = useRef(false);
 
   useEffect(() => {
-    if (!currentBabyId || initRef.current) return;
-    if (!trackerContext) return;
-    
-    initRef.current = true;
-    if (trackerContext.setCurrentBabyId) {
-      trackerContext.setCurrentBabyId(currentBabyId);
-    }
-  }, [currentBabyId, trackerContext]);
-
-  useEffect(() => {
-    if (!trackerContext || !currentBabyId) return;
-    if (babies && babies.length > 0) {
-      if (trackerContext.loadTrackerData) {
-        trackerContext.loadTrackerData(currentBabyId);
+    // Subscribe to baby changes from BabyContext
+    const unsubscribe = subscribeToBabyChanges((babyId) => {
+      console.log('[TrackerBabySync] Baby changed to:', babyId);
+      if (trackerContext && trackerContext.setCurrentBabyId) {
+        trackerContext.setCurrentBabyId(babyId);
       }
+      // Also refresh entries when baby changes
+      if (trackerContext && trackerContext.refreshEntries && babyId) {
+        trackerContext.refreshEntries();
+      }
+    });
+
+    // Initial sync
+    const initialBabyId = getBabyFromContext();
+    if (initialBabyId && trackerContext && trackerContext.setCurrentBabyId) {
+      trackerContext.setCurrentBabyId(initialBabyId);
     }
-  }, [babies, currentBabyId, trackerContext]);
+
+    return unsubscribe;
+  }, [trackerContext, getBabyFromContext, subscribeToBabyChanges]);
+
+  // Also sync when tracker context becomes available
+  useEffect(() => {
+    if (!trackerContext) return;
+    const babyId = getBabyFromContext();
+    if (babyId && trackerContext.setCurrentBabyId) {
+      trackerContext.setCurrentBabyId(babyId);
+    }
+  }, [trackerContext, getBabyFromContext]);
 
   return <>{children}</>;
 };
@@ -138,7 +150,8 @@ const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   );
 };
 
-// ─── FIXED: Correct provider order - BabyProvider wraps everything that needs it ──
+// ─── CORRECT PROVIDER ORDER ────────────────────────────────────────────
+// BabyProvider MUST be first and wrap everything that needs useBaby()
 export default function ContextProvider({ children }: ContextProviderProps) {
   return (
     <AuthProvider>

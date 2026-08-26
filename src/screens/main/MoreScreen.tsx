@@ -1238,16 +1238,16 @@ const handleLogout = useCallback(async () => {
             style={styles.menuContainer}
             tint={isDark ? 'dark' : 'light'}
           >
-            <MenuItem
-              icon={isBiometricEnabled ? biometricIcon as any : `${biometricIcon}-outline` as any}
-              title={`${biometricTypeName} Unlock`}
-              subtitle={isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
-              isEnabled={isBiometricEnabled}
-              onToggle={handleBiometricToggle}
-              color={primary}
-              isDark={isDark}
-              disabled={!hasBiometric}
-            />
+<MenuItem
+  icon={isBiometricEnabled ? (biometricIcon as keyof typeof Ionicons.glyphMap) : 'finger-print-outline'}
+  title={`${biometricTypeName} Unlock`}
+  subtitle={isBiometricEnabled ? 'Enabled' : hasBiometric ? 'Disabled' : 'Not Available'}
+  isEnabled={isBiometricEnabled}
+  onToggle={handleBiometricToggle}
+  color={primary}
+  isDark={isDark}
+  disabled={!hasBiometric}
+/>
             <MenuItem
               icon="keypad"
               title="PIN Code"

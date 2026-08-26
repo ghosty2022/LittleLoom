@@ -1,4 +1,4 @@
-// src/navigation/CommunityNavigator.tsx
+// src/navigation/CommunityNavigator.tsx - COMPLETE FIXED VERSION
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Text, StatusBar, FlatList, TextInput, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useRoute } from '@react-navigation/native';

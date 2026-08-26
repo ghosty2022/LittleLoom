@@ -269,6 +269,7 @@ interface BabyState {
   medicationLogs: MedicationLog[];
   activities: ActivityEntry[];
   lastSyncTime: number | null;
+  isInitialized: boolean; // NEW: Track if initial load completed
 }
 
 interface BabyContextType extends BabyState {
@@ -331,9 +332,9 @@ interface BabyContextType extends BabyState {
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
   
-  // NEW: Get current baby ID for other contexts
+  // Get current baby ID for other contexts
   getCurrentBabyId: () => string | null;
-  // NEW: Subscribe to baby changes
+  // Subscribe to baby changes
   subscribeToBabyChanges: (callback: (babyId: string | null) => void) => () => void;
 }
 
@@ -394,6 +395,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     medicationLogs: [],
     activities: [],
     lastSyncTime: null,
+    isInitialized: false, // NEW
   });
 
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
@@ -404,6 +406,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isCreatingRef = useRef(false);
   const loadInProgressRef = useRef(false);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialLoadDoneRef = useRef(false);
 
   // Broadcast baby changes to subscribers
   const broadcastBabyChange = useCallback((babyId: string | null) => {
@@ -412,7 +415,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
-  // NEW: Subscribe to baby changes
+  // Subscribe to baby changes
   const subscribeToBabyChanges = useCallback((callback: BabyChangeCallback) => {
     babyChangeSubscribers.push(callback);
     // Immediately call with current value
@@ -691,11 +694,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.error('[BabyContext] loadAllBabyData error:', error);
-        // ✅ Ensure loading state is reset on error
-        if (isMounted.current) {
-          setState(prev => ({ ...prev, isLoading: false }));
-          setIsLoadingEntries(false);
-        }
         return;
       }
 
@@ -781,23 +779,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setState(prev => ({ ...prev, isLoading: true }));
 
-    // ✅ Add safety timeout to prevent infinite loading
-    const safetyTimeout = setTimeout(() => {
-      if (isMounted.current && loadInProgressRef.current) {
-        console.warn('[BabyContext] ⚠️ loadBabies safety timeout - forcing completion');
-        setState(prev => ({ ...prev, isLoading: false }));
-        loadInProgressRef.current = false;
-      }
-    }, 8000);
-
     try {
       const userId = await getCurrentUserId();
 
       if (!userId) {
         console.warn('[BabyContext] No authenticated user');
-        setState(prev => ({ ...prev, isLoading: false }));
+        setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
         loadInProgressRef.current = false;
-        clearTimeout(safetyTimeout);
         return;
       }
 
@@ -921,6 +909,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentBaby,
         hasSkippedBaby,
         lastSyncTime: Date.now(),
+        isInitialized: true, // NEW: Mark as initialized
       }));
 
       // Load tracker data for current baby
@@ -931,9 +920,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.log('[BabyContext] loadBabies completed successfully');
-      
-      // ✅ Clear safety timeout on success
-      clearTimeout(safetyTimeout);
 
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
@@ -950,6 +936,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               isLoading: false,
               babies,
               currentBaby: babies.find(b => b.id === prev.currentBabyId) || babies[0] || null,
+              isInitialized: true,
             }));
           }
         }
@@ -958,11 +945,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       if (isMounted.current) {
-        setState(prev => ({ ...prev, isLoading: false }));
+        setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
       }
     } finally {
-      // ✅ Clear safety timeout if not already cleared
-      clearTimeout(safetyTimeout);
       loadInProgressRef.current = false;
     }
   }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange]);
@@ -973,20 +958,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadBabies(true);
   }, [loadBabies]);
 
-  /* ---- Initial load ---- */
+  /* ---- Initial load - IMMEDIATE ---- */
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
 
     isMounted.current = true;
     
-    const timer = setTimeout(() => {
-      loadBabies();
-    }, 100);
+    // Load immediately - no delay
+    loadBabies();
 
     return () => {
       isMounted.current = false;
-      clearTimeout(timer);
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
@@ -2396,7 +2379,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await updateBaby(state.currentBaby.id, updates);
   }, [state.currentBaby, updateBaby]);
 
-  // ─── NEW: Get current baby ID for other contexts ─────────────────────
+  // ─── Get current baby ID for other contexts ─────────────────────
   const getCurrentBabyId = useCallback((): string | null => {
     return state.currentBabyId;
   }, [state.currentBabyId]);
@@ -2494,7 +2477,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     syncWithActivityContext,
     scheduleActivityReminder,
     cancelActivityReminder,
-    // NEW
     getCurrentBabyId,
     subscribeToBabyChanges,
   }), [

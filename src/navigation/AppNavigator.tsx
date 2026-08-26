@@ -690,7 +690,7 @@ function NavigationContent({
           <Stack.Screen name="PediatricianPDFExport" component={PediatricianPDFExport} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'none' }} />
           
-          <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
+                    <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
             <Stack.Screen name="AddEntry" component={AddEntryScreen} />
             <Stack.Screen name="Achievements" component={AchievementsScreen} />
             <Stack.Screen name="GrowthDashboard" component={GrowthDashboardScreen} />

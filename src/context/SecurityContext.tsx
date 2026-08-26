@@ -126,6 +126,7 @@ const defaultSettings: SecuritySettings = {
   hasSecurityQuestions: false,
 };
 
+// ✅ FIXED: Intelligent biometric detection
 const getBiometricConfigs = (types: LocalAuthentication.AuthenticationType[]): BiometricTypeConfig[] => {
   if (!types || !Array.isArray(types)) return [];
   
@@ -177,6 +178,7 @@ const getBiometricConfigs = (types: LocalAuthentication.AuthenticationType[]): B
   return configs;
 };
 
+// ✅ FIXED: Get primary biometric name with intelligent detection
 const getPrimaryBiometricName = (types: LocalAuthentication.AuthenticationType[]): string => {
   if (!types || types.length === 0) return 'Biometric';
   if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'Face ID';
@@ -185,6 +187,7 @@ const getPrimaryBiometricName = (types: LocalAuthentication.AuthenticationType[]
   return 'Biometric';
 };
 
+// ✅ FIXED: Get primary biometric icon
 const getPrimaryBiometricIcon = (types: LocalAuthentication.AuthenticationType[]): string => {
   if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'scan-outline';
   if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'finger-print';
@@ -221,8 +224,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     securityQuestions: [],
   });
 
-  // ─── REFS ──────────────────────────────────────────────────────────────
-  // FIX: Added initRef here
   const initRef = useRef(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const isMounted = useRef(true);
@@ -241,8 +242,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   useEffect(() => { return () => { isMounted.current = false; }; }, []);
   useEffect(() => { isAuthenticatedRef.current = isAuthenticated; }, [isAuthenticated]);
   useEffect(() => { setupCompleteRef.current = setupComplete; }, [setupComplete]);
-
-  // ─── Load/Save using AsyncStorage only ──────────────────────────────
 
   const loadSecurityState = useCallback(async () => {
     try {
@@ -293,8 +292,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, []);
 
-  // ─── INIT ─────────────────────────────────────────────────────────────
-
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
@@ -315,8 +312,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
     init();
   }, [isAuthenticated, loadSecurityState]);
-
-  // ─── APP STATE HANDLING ──────────────────────────────────────────────
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
@@ -340,8 +335,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     });
     return () => subscription.remove();
   }, []);
-
-  // ─── BIOMETRIC CAPABILITIES ──────────────────────────────────────────
 
   const checkBiometricCapabilities = useCallback(async () => {
     try {
@@ -400,8 +393,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, []);
 
-  // ─── BIOMETRIC AUTHENTICATION ─────────────────────────────────────────
-
   const authenticateWithBiometric = useCallback(async (promptMessage?: string) => {
     if (biometricPromptInProgressRef.current) return { success: false, error: 'in_progress' };
     if (!LocalAuthentication?.authenticateAsync) return { success: false, error: 'not_available' };
@@ -420,8 +411,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       setTimeout(() => { biometricPromptInProgressRef.current = false; }, 2000);
     }
   }, [state.settings.biometricTypeName]);
-
-  // ─── PIN MANAGEMENT ────────────────────────────────────────────────────
 
   const setupPin = useCallback(async (pin: string): Promise<boolean> => {
     if (pin.length < 4 || pin.length > 6) {
@@ -460,8 +449,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       }));
     }
   }, []);
-
-  // ─── BIOMETRIC CREDENTIALS ────────────────────────────────────────────
 
   const getStoredBiometricCredentials = useCallback(async () => {
     try {
@@ -508,8 +495,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } catch {}
   }, []);
 
-  // ─── TOGGLE BIOMETRIC ──────────────────────────────────────────────────
-
   const toggleBiometric = useCallback(async (enabled: boolean): Promise<boolean> => {
     if (enabled) {
       const result = await authenticateWithBiometric('Confirm to enable biometric unlock');
@@ -529,8 +514,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       return true;
     }
   }, [authenticateWithBiometric]);
-
-  // ─── APP LOCK ──────────────────────────────────────────────────────────
 
   const toggleAppLock = useCallback(async (enabled: boolean) => {
     await AsyncStorage.setItem(ASYNC_KEYS.APP_LOCK_ENABLED, enabled ? 'true' : 'false');
@@ -615,8 +598,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     console.log('🔓 Reset all security locks');
   }, []);
 
-  // ─── CHECK SECURITY ON RESUME ─────────────────────────────────────────
-
   const checkSecurityOnResume = useCallback(async () => {
     if (securityCheckLockRef.current) {
       console.log('⚠️ Security check already in progress');
@@ -684,12 +665,24 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, [state.settings.autoLockTimeout, lockApp]);
 
-  // ─── GETTERS ───────────────────────────────────────────────────────────
+  // ✅ FIXED: Intelligent biometric type name
+  const getBiometricTypeName = useCallback(() => {
+    const types = state.settings.availableAuthTypes;
+    if (!types || types.length === 0) return 'Biometric';
+    const names: string[] = [];
+    if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) names.push('Face ID');
+    if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) names.push('Fingerprint');
+    if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) names.push('Iris Scan');
+    return names.length > 1 ? names.join(' or ') : names[0] || 'Biometric';
+  }, [state.settings.availableAuthTypes]);
 
-  const getBiometricTypeName = useCallback(() => state.settings.biometricTypeName, [state.settings.biometricTypeName]);
-
+  // ✅ FIXED: Intelligent biometric icon
   const getBiometricIcon = useCallback(() => {
-    return getPrimaryBiometricIcon(state.settings.availableAuthTypes);
+    const types = state.settings.availableAuthTypes;
+    if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'scan-outline';
+    if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'finger-print';
+    if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) return 'eye-outline';
+    return 'finger-print';
   }, [state.settings.availableAuthTypes]);
 
   const getAvailableAuthMethods = useCallback(() => ({
@@ -710,8 +703,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } catch { return []; }
   }, []);
 
-  // ─── SHARING STATE ────────────────────────────────────────────────────
-
   const setSharingActive = useCallback(async (active: boolean) => {
     sharingActiveRef.current = active;
     if (active) {
@@ -722,8 +713,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   }, []);
 
   const isSharingActive = useCallback(() => sharingActiveRef.current, []);
-
-  // ─── SECURITY QUESTIONS ───────────────────────────────────────────────
 
   const saveSecurityQuestions = useCallback(async (questions: { question: string; answer: string }[]): Promise<boolean> => {
     try {
@@ -796,8 +785,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     return state.settings.hasSecurityQuestions && state.securityQuestions.length > 0;
   }, [state.settings.hasSecurityQuestions, state.securityQuestions]);
 
-  // ─── CLEAR SECURITY STATE ─────────────────────────────────────────────
-
   const clearSecurityState = useCallback(async () => {
     await AsyncStorage.multiRemove([
       ASYNC_KEYS.SECURITY_LOCK,
@@ -836,8 +823,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
     console.log('🔓 Security state cleared');
   }, [clearBiometricCredentials, clearPinOnly]);
-
-  // ─── MEMOIZED VALUE ───────────────────────────────────────────────────
 
   const value = React.useMemo(() => ({
     ...state,
