@@ -137,7 +137,7 @@ const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 
 // ============================================================
-// GRADIENT TEXT COMPONENT (Each letter gets gradient)
+// GRADIENT TEXT COMPONENT - Proper gradient text
 // ============================================================
 const GradientText = ({ 
   children, 
@@ -145,17 +145,50 @@ const GradientText = ({
   colors = ['#667eea', '#764ba2', '#f093fb'],
   ...props 
 }: any) => {
+  // Split text into characters for per-letter gradient
+  const letters = children.toString().split('');
+  
   return (
-    <LinearGradient
-      colors={colors}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={{ alignSelf: 'flex-start' }}
-    >
-      <Text style={[style, { color: 'transparent' }]} {...props}>
-        {children}
-      </Text>
-    </LinearGradient>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((letter: string, index: number) => {
+        // Calculate gradient position for each letter
+        const position = index / Math.max(letters.length - 1, 1);
+        const colorIndex = position * (colors.length - 1);
+        const lowerIndex = Math.floor(colorIndex);
+        const upperIndex = Math.min(lowerIndex + 1, colors.length - 1);
+        const fraction = colorIndex - lowerIndex;
+        
+        // Interpolate color
+        const startColor = colors[lowerIndex] || colors[0];
+        const endColor = colors[upperIndex] || colors[colors.length - 1];
+        
+        // Simple interpolation
+        const interpolateColor = (c1: string, c2: string, t: number) => {
+          const r1 = parseInt(c1.slice(1, 3), 16);
+          const g1 = parseInt(c1.slice(3, 5), 16);
+          const b1 = parseInt(c1.slice(5, 7), 16);
+          const r2 = parseInt(c2.slice(1, 3), 16);
+          const g2 = parseInt(c2.slice(3, 5), 16);
+          const b2 = parseInt(c2.slice(5, 7), 16);
+          const r = Math.round(r1 + (r2 - r1) * t);
+          const g = Math.round(g1 + (g2 - g1) * t);
+          const b = Math.round(b1 + (b2 - b1) * t);
+          return `rgb(${r}, ${g}, ${b})`;
+        };
+        
+        const color = interpolateColor(startColor, endColor, fraction);
+        
+        return (
+          <Text
+            key={index}
+            style={[style, { color }]}
+            {...props}
+          >
+            {letter}
+          </Text>
+        );
+      })}
+    </View>
   );
 };
 
