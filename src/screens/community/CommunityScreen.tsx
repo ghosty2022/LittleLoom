@@ -137,6 +137,29 @@ const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 
 // ============================================================
+// GRADIENT TEXT COMPONENT (Each letter gets gradient)
+// ============================================================
+const GradientText = ({ 
+  children, 
+  style, 
+  colors = ['#667eea', '#764ba2', '#f093fb'],
+  ...props 
+}: any) => {
+  return (
+    <LinearGradient
+      colors={colors}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={{ alignSelf: 'flex-start' }}
+    >
+      <Text style={[style, { color: 'transparent' }]} {...props}>
+        {children}
+      </Text>
+    </LinearGradient>
+  );
+};
+
+// ============================================================
 // BLURRED IMAGE COMPONENT
 // ============================================================
 const BlurredImage = React.memo(({ 
@@ -289,6 +312,7 @@ export default function CommunityScreen({ navigation }: Props) {
     getUserById: contextGetUserById,
     sharePost,
     getSelectedTopics,
+    refreshTopics,
   } = community;
 
   const { isAuthenticated: authIsAuth } = useAuth();
@@ -313,6 +337,10 @@ export default function CommunityScreen({ navigation }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [showNotificationChooser, setShowNotificationChooser] = useState(false);
   const [showTopicSelector, setShowTopicSelector] = useState(false);
+  const [pinnedPostId, setPinnedPostId] = useState<string | null>(null);
+
+  // Force refresh topics when screen mounts/focuses
+  const [topicRefreshKey, setTopicRefreshKey] = useState(0);
 
   const scrollY = useSharedValue(0);
   const listRef = useRef<FlatList>(null);
@@ -321,17 +349,46 @@ export default function CommunityScreen({ navigation }: Props) {
   const unreadCount = getUnreadCount();
   const canInteract = useMemo(() => checkIsAuth() || authIsAuth, [checkIsAuth, authIsAuth]);
   const allUsers = useMemo(() => getAllUsers(), [getAllUsers, posts.length]);
-  const userTopics = useMemo(() => getSelectedTopics(), [getSelectedTopics]);
+  const userTopics = useMemo(() => getSelectedTopics(), [getSelectedTopics, topicRefreshKey]);
   const hasTopics = useMemo(() => userTopics.length > 0, [userTopics]);
 
   const postsCount = posts.length;
   const membersCount = allUsers.length;
+
+  // Find LittleLoom welcome post
+  const welcomePost = useMemo(() => {
+    return posts.find(p => p.authorId === 'littleloom_team');
+  }, [posts]);
+
+  // Set pinned post ID on load
+  useEffect(() => {
+    if (welcomePost && !pinnedPostId) {
+      setPinnedPostId(welcomePost.id);
+    }
+  }, [welcomePost]);
 
   const getUserById = useCallback((userId: string) => {
     if (contextGetUserById) return contextGetUserById(userId);
     if (userId === currentUser?.id) return currentUser;
     return allUsers.find(u => u.id === userId);
   }, [contextGetUserById, currentUser, allUsers]);
+
+  // Refresh topics on focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      refreshTopics().then(() => {
+        setTopicRefreshKey(prev => prev + 1);
+      }).catch(console.warn);
+    });
+    return unsubscribe;
+  }, [navigation, refreshTopics]);
+
+  // Also refresh on initial load
+  useEffect(() => {
+    refreshTopics().then(() => {
+      setTopicRefreshKey(prev => prev + 1);
+    }).catch(console.warn);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 500);
@@ -343,7 +400,7 @@ export default function CommunityScreen({ navigation }: Props) {
     setDisplayedPosts(filtered.slice(0, POSTS_PER_PAGE));
     setHasMore(filtered.length > POSTS_PER_PAGE);
     setPage(1);
-  }, [posts, activeTopic, searchQuery]);
+  }, [posts, activeTopic, searchQuery, topicRefreshKey]);
 
   useEffect(() => {
     if (prevPostsRef.current.length > 0 && posts.length > prevPostsRef.current.length) {
@@ -370,23 +427,12 @@ export default function CommunityScreen({ navigation }: Props) {
       return () => clearTimeout(timer);
     }
   }, [isLoading, hasTopics, canInteract, navigation, sweetAlert]);
-// Add this useEffect after the existing ones (around line 420)
-useEffect(() => {
-  // Refresh user topics when the screen focuses
-  const unsubscribe = navigation.addListener('focus', () => {
-    // Force re-fetch selected topics
-    const topics = getSelectedTopics();
-    // The component will re-render with updated topics
-  });
-  return unsubscribe;
-}, [navigation, getSelectedTopics]);
 
   const getFilteredPosts = useCallback(() => {
     let filtered = getFeedPosts();
     filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    // Always ensure LittleLoom welcome post is at the top
-    const welcomePost = filtered.find(p => p.authorId === 'littleloom_team');
+    // Pinned LittleLoom welcome post at the top
     if (welcomePost) {
       filtered = filtered.filter(p => p.id !== welcomePost.id);
       filtered.unshift(welcomePost);
@@ -401,18 +447,20 @@ useEffect(() => {
       );
     }
     return filtered;
-  }, [activeTopic, searchQuery, getFeedPosts, posts]);
+  }, [activeTopic, searchQuery, getFeedPosts, posts, welcomePost]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     triggerHaptic('light');
     await refreshFeed();
+    await refreshTopics();
+    setTopicRefreshKey(prev => prev + 1);
     setRefreshing(false);
     setPage(1);
     const filtered = getFilteredPosts();
     setDisplayedPosts(filtered.slice(0, POSTS_PER_PAGE));
     setHasMore(filtered.length > POSTS_PER_PAGE);
-  }, [refreshFeed, triggerHaptic, getFilteredPosts]);
+  }, [refreshFeed, triggerHaptic, getFilteredPosts, refreshTopics]);
 
   const onLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -538,6 +586,7 @@ useEffect(() => {
     const topicColor = topics.find(t => t.id === item.topicId)?.color || DS.primary;
     const topicCategory = topics.find(t => t.id === item.topicId)?.category;
     const isOwnPost = item.authorId === currentUser?.id;
+    const isPinned = item.authorId === 'littleloom_team';
     const sentiment = SentimentAnalyzer.analyze(item.content);
     const summary = item.content.length > 100 ? ThreadSummarizer.summarize(item.content) : null;
 
@@ -546,8 +595,24 @@ useEffect(() => {
         entering={FadeInUp.delay(index < 6 ? index * 60 : 0).duration(400).springify()}
         layout={Layout.springify()}
       >
-        <View style={[styles.postCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[
+          styles.postCard, 
+          { 
+            backgroundColor: isDark ? DS.darkCard : DS.white, 
+            borderColor: isDark ? DS.darkBorder : DS.gray200,
+            borderWidth: isPinned ? 2 : 1,
+            borderColor: isPinned ? DS.primary : (isDark ? DS.darkBorder : DS.gray200),
+          }
+        ]}>
           
+          {/* Pinned Badge */}
+          {isPinned && (
+            <View style={[styles.pinnedBadge, { backgroundColor: DS.primary }]}>
+              <Ionicons name="pin" size={12} color="#fff" />
+              <Text style={styles.pinnedBadgeText}>Pinned</Text>
+            </View>
+          )}
+
           {/* Header */}
           <View style={styles.postHeader}>
             <TouchableOpacity
@@ -828,7 +893,11 @@ useEffect(() => {
   // ============================================================
   // RENDER HEADER
   // ============================================================
-  const renderHeader = useCallback(() => (
+  const renderHeader = useCallback(() => {
+    // Get selected topics for display - show ALL selected topics
+    const selectedTopicsList = userTopics.slice(0, 20); // Show up to 20 topics
+
+    return (
     <View>
       {/* Hero Banner - THE LOOM with gradient text */}
       <Animated.View 
@@ -844,7 +913,12 @@ useEffect(() => {
         <View style={styles.heroContent}>
           <View style={styles.heroHeader}>
             <View>
-              <Text style={styles.heroTitleGradient}>THE LOOM</Text>
+              <GradientText 
+                colors={['#667eea', '#764ba2', '#f093fb']}
+                style={[styles.heroTitle]}
+              >
+                THE LOOM
+              </GradientText>
               <Text style={[styles.heroSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                 Weave stories, share wisdom, grow together.
               </Text>
@@ -897,29 +971,49 @@ useEffect(() => {
             </TouchableOpacity>
           </View>
           
-          {/* Topic Selection Status - Shows correct count */}
-{hasTopics ? (
-  <View style={[styles.topicStatus, { marginTop: DS.space.sm }]}>
-    <Ionicons name="checkmark-circle" size={14} color={DS.success} />
-    <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-      {userTopics.length} topic{userTopics.length !== 1 ? 's' : ''} selected
-    </Text>
-    <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
-      <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
-    </TouchableOpacity>
-  </View>
-) : (
-  <TouchableOpacity 
-    style={[styles.topicStatus, styles.topicStatusEmpty, { marginTop: DS.space.sm }]}
-    onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
-  >
-    <Ionicons name="alert-circle" size={14} color={DS.warning} />
-    <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-      Select topics to personalize your feed
-    </Text>
-    <Ionicons name="chevron-forward" size={14} color={DS.primary} />
-  </TouchableOpacity>
-)}
+          {/* Topic Selection Status - Show ALL selected topics */}
+          {hasTopics ? (
+            <View style={[styles.topicStatusContainer, { marginTop: DS.space.sm }]}>
+              <View style={styles.topicStatusRow}>
+                <Ionicons name="checkmark-circle" size={14} color={DS.success} />
+                <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  {userTopics.length} topic{userTopics.length !== 1 ? 's' : ''} selected
+                </Text>
+                <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}>
+                  <Text style={[styles.topicStatusEdit, { color: DS.primary }]}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+              {/* Show ALL selected topic pills */}
+              <View style={styles.selectedTopicsScroll}>
+                {selectedTopicsList.map((topicId) => {
+                  const topic = topics.find(t => t.id === topicId) || INITIAL_TOPICS.find(t => t.id === topicId);
+                  if (!topic) return null;
+                  const topicColor = topic.color || DS.primary;
+                  return (
+                    <TouchableOpacity
+                      key={topicId}
+                      style={[styles.selectedTopicPill, { backgroundColor: `${topicColor}20`, borderColor: topicColor }]}
+                      onPress={() => navigation.navigate(ROUTES.TOPICS, { topicId: topic.id })}
+                    >
+                      <Text style={styles.selectedTopicPillEmoji}>{topic.emoji}</Text>
+                      <Text style={[styles.selectedTopicPillText, { color: topicColor }]}>{topic.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.topicStatus, styles.topicStatusEmpty, { marginTop: DS.space.sm }]}
+              onPress={() => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never)}
+            >
+              <Ionicons name="alert-circle" size={14} color={DS.warning} />
+              <Text style={[styles.topicStatusText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                Select topics to personalize your feed
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={DS.primary} />
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
 
@@ -968,7 +1062,7 @@ useEffect(() => {
         ))}
       </View>
     </View>
-  ), [isDark, topics, postsCount, membersCount, canInteract, activeTopic, hasTopics, userTopics, navigation, sweetAlert]);
+  )}, [isDark, topics, postsCount, membersCount, canInteract, activeTopic, hasTopics, userTopics, navigation, sweetAlert]);
 
   // ============================================================
   // RENDER FOOTER
@@ -1054,7 +1148,12 @@ useEffect(() => {
                 </View>
               )}
               <View style={{ marginLeft: 10 }}>
-                <Text style={styles.headerTitleGradient}>THE LOOM</Text>
+                <GradientText 
+                  colors={['#667eea', '#764ba2', '#f093fb']}
+                  style={[styles.headerTitle]}
+                >
+                  THE LOOM
+                </GradientText>
                 <Text style={[styles.headerSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                   {currentUser?.displayName || 'Welcome'}
                 </Text>
@@ -1349,6 +1448,25 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   listContent: { paddingBottom: 120 },
 
+  // Pinned Badge
+  pinnedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    zIndex: 10,
+  },
+  pinnedBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+
   // Header
   header: {
     position: 'absolute',
@@ -1465,27 +1583,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 2,
   },
-// Find these lines in the styles and REPLACE with:
-heroTitleGradient: {
-  fontSize: DS.text['2xl'].size,
-  fontWeight: '800',
-  letterSpacing: 1,
-  marginBottom: 2,
-  // Use the gradient colors from splash screen
-  backgroundImage: 'linear-gradient(to right, #667eea, #764ba2, #f093fb)',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  color: '#667eea',
-},
-headerTitleGradient: {
-  fontSize: DS.text.xl.size,
-  fontWeight: '800',
-  letterSpacing: -0.5,
-  backgroundImage: 'linear-gradient(to right, #667eea, #764ba2, #f093fb)',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  color: '#667eea',
-},
   heroSubtitle: {
     fontSize: DS.text.sm.size,
   },
@@ -1531,6 +1628,18 @@ headerTitleGradient: {
     fontWeight: '700',
     color: DS.white,
   },
+
+  // Topic Status - Enhanced for all topics
+  topicStatusContainer: {
+    marginTop: DS.space.sm,
+  },
+  topicStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DS.space.sm,
+    paddingHorizontal: DS.space.sm,
+    paddingVertical: DS.space.xs,
+  },
   topicStatus: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1552,6 +1661,29 @@ headerTitleGradient: {
     fontSize: DS.text.xs.size,
     fontWeight: '700',
     marginLeft: DS.space.xs,
+  },
+  selectedTopicsScroll: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  selectedTopicPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  selectedTopicPillEmoji: {
+    fontSize: 12,
+  },
+  selectedTopicPillText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 
   // Compose

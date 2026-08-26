@@ -1,3 +1,4 @@
+// screens/security/SecurityLockScreen.tsx - COMPLETE FIXED (No SweetAlert)
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -11,6 +12,7 @@ import {
   View,
   BackHandler,
   Image,
+  Alert,
 } from 'react-native';
 
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -25,7 +27,6 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSecurity, hashAnswer } from '../../context/SecurityContext';
-import { useSweetAlert } from '../../components/SweetAlert';
 
 type SecurityLockScreenProps = NativeStackScreenProps<RootStackParamList, 'SecurityLock'>;
 
@@ -122,35 +123,36 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const effectiveBiometricEnabled = isBiometricEnabled ?? false;
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  
-  // ─── FIXED: Initialize SweetAlert with fallback ──────────────
-  let sweetAlert;
-  try {
-    const result = useSweetAlert();
-    sweetAlert = result;
-  } catch (error) {
-    console.warn('[SecurityLock] SweetAlert not available, using fallback');
-    const { Alert } = require('react-native');
-    sweetAlert = {
-      toast: (title: string, message: string, type: string) => Alert.alert(title, message),
-      error: (title: string, message: string) => Alert.alert(title, message),
-      success: (title: string, message: string) => Alert.alert(title, message),
-      confirm: (options: any) => new Promise<boolean>((resolve) => {
-        Alert.alert(options.title, options.message, [
-          { text: options.cancelText || 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-          { text: options.confirmText || 'OK', onPress: () => resolve(true) },
-        ]);
-      }),
-    };
-  }
-  
-  const { toast, error: showError, confirm } = sweetAlert;
   const insets = useSafeAreaInsets();
 
-  // ─── FIXED: Better biometric availability check ──────────────
+  // ─── Alert helpers ──────────────────────────────────────────────
+  const showToast = useCallback((title: string, message?: string) => {
+    Alert.alert(title, message || '');
+  }, []);
+
+  const showError = useCallback((title: string, message?: string) => {
+    Alert.alert(title, message || '');
+  }, []);
+
+  const showConfirm = useCallback((
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel?: () => void,
+    confirmText: string = 'Confirm',
+    cancelText: string = 'Cancel'
+  ) => {
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: cancelText, style: 'cancel', onPress: onCancel },
+        { text: confirmText, style: 'destructive', onPress: onConfirm },
+      ]
+    );
+  }, []);
+
   const availableMethods = getAvailableAuthMethods();
-  // On Samsung, even if isBiometricEnrolled is false, biometrics might still work
-  // So we check hardware availability too
   const hasBiometric = availableMethods.hasBiometric || (isBiometricHardwareAvailable);
   const hasPin = availableMethods.hasPin;
 
@@ -178,7 +180,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const handleBiometricAuthRef = useRef<(() => Promise<void>) | null>(null);
   const lastUnlockAttemptRef = useRef<number>(0);
 
-  // ─── CRITICAL: dismiss lock screen after successful unlock ───────────
   const dismissLockScreen = useCallback(() => {
     setTimeout(() => {
       if (navigation.canGoBack()) {
@@ -189,10 +190,9 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }, 250);
   }, [navigation]);
 
-  // Prevent hardware back button on Android while locked
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!isLockedOut) return true; // Block back
+      if (!isLockedOut) return true;
       return false;
     });
     return () => backHandler.remove();
@@ -233,7 +233,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       if (allCorrect.every(Boolean)) {
         triggerHaptic('success');
         setShowForgotPin(false);
-        toast('Verified!', 'Redirecting to PIN reset...', 'success');
+        showToast('Verified!', 'Redirecting to PIN reset...');
 
         setTimeout(() => {
           navigation.navigate('SecurityCenter', { 
@@ -288,26 +288,19 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     detectBiometricType();
   }, []);
 
-  // ─── FIXED: Biometric auto-prompt with better Android detection ──
   useEffect(() => {
-    // Only auto-prompt if biometric is enabled AND hardware is available
-    // Don't rely solely on isBiometricEnrolled - it can be false on Samsung
     if (!effectiveBiometricEnabled) return;
     if (!isBiometricHardwareAvailable) return;
     if (isLockedOut) return;
     if (unlockInProgress.current) return;
 
-    // Even if isBiometricEnrolled is false, we still want to try
-    // On Samsung A06, isBiometricEnrolled can return false incorrectly
     const hasBiometricAvailable = isBiometricHardwareAvailable;
-
     if (!hasBiometricAvailable) return;
 
     const unsubscribe = navigation.addListener('focus', () => {
       hasAutoPrompted.current = false;
     });
 
-    // Clear any existing timer
     if (autoPromptTimer.current) {
       clearTimeout(autoPromptTimer.current);
     }
@@ -323,7 +316,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         hasAutoPrompted.current = true;
         handleBiometricAuthRef.current();
       }
-    }, 1200); // Increased delay for better Android performance
+    }, 1200);
 
     return () => {
       unsubscribe();
@@ -365,7 +358,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     triggerHaptic('error');
     showError('Too Many Attempts', 'For security purposes, you need to sign out and sign in again.');
     setTimeout(() => {
-      confirm(
+      showConfirm(
         'Too Many Attempts',
         'For security purposes, you need to sign out and sign in again.',
         async () => {
@@ -377,7 +370,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         'Cancel'
       );
     }, 500);
-  }, [signOut, forceUnlock, triggerHaptic, showError, confirm]);
+  }, [signOut, forceUnlock, triggerHaptic, showError, showConfirm]);
 
   const handlePinComplete = useCallback(
     async (completedPin: string) => {
@@ -408,7 +401,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         } else {
           setAttempts(0);
           triggerHaptic('success');
-          toast('Welcome Back!', `Good to see you, ${userName}`, 'success');
+          showToast('Welcome Back!', `Good to see you, ${userName}`);
           await forceUnlock?.();
           dismissLockScreen();
         }
@@ -422,7 +415,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         }
       }
     },
-    [unlockApp, shake, attempts, isLockedOut, handleLockout, triggerHaptic, userName, toast, showError, forceUnlock, dismissLockScreen]
+    [unlockApp, shake, attempts, isLockedOut, handleLockout, triggerHaptic, userName, showToast, showError, forceUnlock, dismissLockScreen]
   );
 
   const handleNumberPress = useCallback(
@@ -447,9 +440,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   }, [pin.length, isLoading, isLockedOut, triggerHaptic]);
 
-  // ─── FIXED: Biometric auth with better Samsung compatibility ──
   const handleBiometricAuth = useCallback(async () => {
-    // Only require hardware, not enrollment check for Samsung compatibility
     if (!isBiometricHardwareAvailable) {
       console.log('[SecurityLock] No biometric hardware');
       return;
@@ -477,12 +468,11 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     try {
       triggerHaptic('medium');
 
-      // Try biometric unlock - the SecurityContext will handle the actual biometric prompt
       const success = await unlockApp('biometric');
 
       if (success) {
         triggerHaptic('success');
-        toast('Welcome Back!', `Good to see you, ${userName}`, 'success');
+        showToast('Welcome Back!', `Good to see you, ${userName}`);
         await forceUnlock?.();
         dismissLockScreen();
       } else {
@@ -491,7 +481,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       }
     } catch (error) {
       console.error('[SecurityLock] Biometric error:', error);
-      // Don't shake on error, just log it
     } finally {
       unlockInProgress.current = false;
       if (isMounted.current) {
@@ -508,7 +497,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     shake,
     triggerHaptic,
     userName,
-    toast,
+    showToast,
     forceUnlock,
     dismissLockScreen,
   ]);
@@ -715,15 +704,15 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
           ]}
         >
           <View style={styles.header}>
-                      <View style={[styles.iconContainer, { backgroundColor: colors.surface }]}>
-            {typeof userAvatar === 'number' ? (
-              <Image source={userAvatar} style={styles.avatarImage} resizeMode="cover" />
-            ) : typeof userAvatar === 'string' && (userAvatar.startsWith('file://') || userAvatar.startsWith('http://') || userAvatar.startsWith('https://') || userAvatar.startsWith('data:')) ? (
-              <Image source={{ uri: userAvatar }} style={styles.avatarImage} resizeMode="cover" />
-            ) : (
-              <Text style={styles.avatarText}>{userAvatar}</Text>
-            )}
-          </View>
+            <View style={[styles.iconContainer, { backgroundColor: colors.surface }]}>
+              {typeof userAvatar === 'number' ? (
+                <Image source={userAvatar} style={styles.avatarImage} resizeMode="cover" />
+              ) : typeof userAvatar === 'string' && (userAvatar.startsWith('file://') || userAvatar.startsWith('http://') || userAvatar.startsWith('https://') || userAvatar.startsWith('data:')) ? (
+                <Image source={{ uri: userAvatar }} style={styles.avatarImage} resizeMode="cover" />
+              ) : (
+                <Text style={styles.avatarText}>{userAvatar}</Text>
+              )}
+            </View>
 
             <Text style={[styles.title, { color: colors.text }]}>
               {isLockedOut ? 'Locked Out' : showForgotPin ? 'PIN Recovery' : `Welcome, ${userName}`}
@@ -795,7 +784,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 style={[styles.unlockButton, { backgroundColor: colors.primary }]}
                 onPress={async () => {
                   await forceUnlock?.();
-                  toast('Unlocked', 'Welcome back!', 'success');
+                  showToast('Unlocked', 'Welcome back!');
                   dismissLockScreen();
                 }}
               >
@@ -833,7 +822,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             <TouchableOpacity
               style={styles.emergencyButton}
               onPress={() => {
-                confirm(
+                showConfirm(
                   'Sign Out',
                   'Are you sure you want to sign out?',
                   () => signOut(),

@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx - COMPLETE FIXED VERSION
+// screens/main/MoreScreen.tsx - COMPLETE FIXED VERSION (Using Alert API directly)
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -56,7 +56,6 @@ import { useUser } from '../../context/UserContext';
 // ─── Components ────────────────────────────────────────────────────
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
-import { useSweetAlert } from '../../components/SweetAlert';
 
 // ─── Types ─────────────────────────────────────────────────────────
 import type { RootStackParamList } from '../../types/navigation';
@@ -876,8 +875,6 @@ const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
 // ─── Main Component ───────────────────────────────────────────────
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
-  // ─── SweetAlert Hook - Called unconditionally ──────────────────
-  const sweetAlert = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   // ─── Contexts ────────────────────────────────────────────────────
@@ -978,13 +975,36 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   }, []);
 
+  // ─── Alert Helpers (using React Native Alert) ───────────────────
+  const showToast = useCallback((title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => {
+    Alert.alert(title, message || '');
+  }, []);
+
+  const showConfirm = useCallback((
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel?: () => void,
+    confirmText: string = 'Confirm',
+    cancelText: string = 'Cancel'
+  ) => {
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: cancelText, style: 'cancel', onPress: onCancel },
+        { text: confirmText, style: 'destructive', onPress: onConfirm },
+      ]
+    );
+  }, []);
+
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {
-      sweetAlert.warning('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout');
+      Alert.alert('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout');
       return;
     }
     setShowTimeoutModal(true);
-  }, [securitySettings.isAppLockEnabled, sweetAlert]);
+  }, [securitySettings.isAppLockEnabled]);
 
   // ─── Handlers ──────────────────────────────────────────────────
 
@@ -1013,19 +1033,17 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [loadBabies, loadEntries]);
 
-  // ─── FIXED: Handle Sign Out ─────────────────────────────────────
+  // ─── Handle Sign Out ────────────────────────────────────────────
   const handleLogout = useCallback(() => {
-    sweetAlert.confirm(
+    showConfirm(
       'Sign Out',
       'Are you sure you want to sign out? You will need to sign in again to access your account.',
       async () => {
         try {
           triggerHaptic('medium');
           
-          // Clear security lock state before signing out
           await AsyncStorage.setItem('littleloom_security_lock', 'false');
           
-          // Clear any navigation state that might persist
           await AsyncStorage.multiRemove([
             'littleloom_nav_state_v4',
             '@littleloom_nav_state_v4',
@@ -1033,21 +1051,17 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             'littleloom_security_lock',
           ]);
           
-          // Call signOut from auth context
           await signOut();
           
-          // Force navigation to Login screen with full reset
           navigation.reset({
             index: 0,
             routes: [{ name: 'Login' as never }],
           });
           
-          // Show success message
-          sweetAlert.success('Signed Out', 'You have been signed out successfully');
+          Alert.alert('Signed Out', 'You have been signed out successfully');
         } catch (error) {
           console.error('Sign out error:', error);
           
-          // Even if signOut fails, try to force navigation to login
           try {
             navigation.reset({
               index: 0,
@@ -1057,20 +1071,19 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             console.error('Navigation reset error:', navError);
           }
           
-          sweetAlert.error('Error', 'Failed to sign out. Please try again.');
+          Alert.alert('Error', 'Failed to sign out. Please try again.');
         }
       },
-      undefined, // onCancel
+      undefined,
       'Sign Out',
-      'Cancel',
-      true // isDanger
+      'Cancel'
     );
-  }, [signOut, sweetAlert, triggerHaptic, navigation]);
+  }, [signOut, triggerHaptic, navigation, showConfirm]);
 
-  // ─── FIXED: Handle Sync / Cloud Backup ─────────────────────────
+  // ─── Handle Sync / Cloud Backup ─────────────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
-      sweetAlert.info('Sync in Progress', 'Please wait for the current sync to complete.');
+      Alert.alert('Sync in Progress', 'Please wait for the current sync to complete.');
       return;
     }
 
@@ -1080,9 +1093,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (result.success) {
         setSyncStatus('success');
         triggerHaptic('success');
-        sweetAlert.success('✅ Synced!', 'Your data is now in sync with the cloud');
+        Alert.alert('✅ Synced!', 'Your data is now in sync with the cloud');
         
-        // Also create a backup in the background
         try {
           const backupResult = await createBackup({ 
             encrypted: false,
@@ -1096,42 +1108,45 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         }
       } else {
         setSyncStatus('error');
-        sweetAlert.warning('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.');
+        Alert.alert('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.');
       }
     } catch (error) {
       console.error('Sync error:', error);
       setSyncStatus('error');
-      sweetAlert.error('❌ Sync Failed', 'Could not sync data. Please try again.');
+      Alert.alert('❌ Sync Failed', 'Could not sync data. Please try again.');
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [isSyncing, sync, sweetAlert, triggerHaptic]);
+  }, [isSyncing, sync, triggerHaptic]);
 
-  // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
+  // ─── Handle Biometric Toggle ────────────────────────────────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
-        sweetAlert.warning('Biometric Not Available', 'Please set up biometric authentication in your device settings first.');
+        Alert.alert('Biometric Not Available', 'Please set up biometric authentication in your device settings first.');
         return;
       }
       navigation.navigate('BiometricSetup');
     } else {
-      sweetAlert.confirm(
+      Alert.alert(
         'Disable Biometric?',
         'Are you sure you want to disable biometric authentication?',
-        async () => {
-          const success = await toggleBiometric(false);
-          if (!success) {
-            sweetAlert.error('Error', 'Could not disable biometric authentication.');
-          }
-        },
-        undefined,
-        'Disable',
-        'Cancel',
-        true
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Disable', 
+            style: 'destructive',
+            onPress: async () => {
+              const success = await toggleBiometric(false);
+              if (!success) {
+                Alert.alert('Error', 'Could not disable biometric authentication.');
+              }
+            }
+          },
+        ]
       );
     }
-  }, [hasBiometric, navigation, sweetAlert, toggleBiometric]);
+  }, [hasBiometric, navigation, toggleBiometric]);
 
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
@@ -1140,34 +1155,35 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const handleLockNow = useCallback(async () => {
     const hasAnySecurity = availableMethods.hasPin || availableMethods.hasBiometric || securitySettings.isAppLockEnabled;
     if (!hasAnySecurity) {
-      sweetAlert.confirm(
+      Alert.alert(
         'No Security Enabled',
         'You can lock the app without protection, or set up PIN / Biometric first.',
-        async () => {
-          await lockApp(true);
-          sweetAlert.warning('App Locked', 'Locked without security. Tap unlock to enter.');
-        },
-        () => {
-          navigation.navigate('SecurityCenter', { mode: 'setup' });
-        },
-        'Lock Anyway',
-        'Set Up Security'
+        [
+          { text: 'Set Up Security', onPress: () => navigation.navigate('SecurityCenter', { mode: 'setup' }) },
+          { 
+            text: 'Lock Anyway', 
+            onPress: async () => {
+              await lockApp(true);
+              Alert.alert('App Locked', 'Locked without security. Tap unlock to enter.');
+            }
+          },
+        ]
       );
       return;
     }
     await lockApp();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, sweetAlert, navigation]);
+  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, navigation]);
 
   const handleSelectTimeout = useCallback(async (minutes: number) => {
     setShowTimeoutModal(false);
     try {
       await updateAutoLockTimeout(minutes);
-      sweetAlert.success('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`);
+      Alert.alert('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`);
     } catch (err) {
-      sweetAlert.error('Update Failed', 'Could not update auto-lock timeout.');
+      Alert.alert('Update Failed', 'Could not update auto-lock timeout.');
     }
-  }, [updateAutoLockTimeout, sweetAlert, formatTimeout]);
+  }, [updateAutoLockTimeout, formatTimeout]);
 
   const handleSelectBabyFromModal = useCallback((baby: any) => {
     setShowBabyModal(false);
@@ -1193,40 +1209,33 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     },
   });
 
-  // ─── FIXED: Load data with better performance ──────────────────
+  // ─── Load data ──────────────────────────────────────────────────
   
   const loadData = useCallback(async (isInitialLoad: boolean = false) => {
     try {
-      // Only show loading on initial load
       if (isInitialLoad) {
         setDataLoaded(false);
       }
       
-      // Load babies first (most important)
       await loadBabies();
-      
-      // Load entries in parallel
       await loadEntries?.();
       
       setDataLoaded(true);
       initialLoadDone.current = true;
     } catch (error) {
       console.error('[MoreScreen] Load data error:', error);
-      setDataLoaded(true); // Show content even on error
+      setDataLoaded(true);
     }
   }, [loadBabies, loadEntries]);
 
   // ─── Effects ────────────────────────────────────────────────────
 
-  // ✅ Optimized: Load data on focus with debounce
   useFocusEffect(
     useCallback(() => {
-      // Clear any pending timeout
       if (focusLoadTimeout.current) {
         clearTimeout(focusLoadTimeout.current);
       }
       
-      // If already loaded, just refresh in background
       if (dataLoaded) {
         focusLoadTimeout.current = setTimeout(() => {
           loadData(false);
@@ -1234,7 +1243,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         return;
       }
       
-      // Initial load - show skeleton
       focusLoadTimeout.current = setTimeout(() => {
         loadData(true);
       }, 100);
@@ -1247,7 +1255,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }, [loadData, dataLoaded])
   );
 
-  // ✅ Handle route params for baby switching
   useEffect(() => {
     if (route.params?.babySwitched) {
       loadBabies();
@@ -1255,27 +1262,16 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [route.params?.babySwitched, loadBabies, navigation]);
 
-  // ─── Determine if we're in loading state ──────────────────────
-
   const isLoading = useMemo(() => {
-    // If data is loaded, never show loading
     if (dataLoaded) return false;
-    
-    // If we've tried multiple times, show content anyway
     if (loadAttempts > 2) return false;
-    
-    // Only show loading on initial load with some conditions
     const isInitialLoading = (authLoading || (babyLoading && safeBabies.length === 0)) && !dataLoaded;
-    
-    // If we've been loading for more than 2 seconds, show content anyway
     if (isInitialLoading && initialLoadDone.current) {
       return false;
     }
-    
     return isInitialLoading;
   }, [authLoading, babyLoading, safeBabies.length, dataLoaded, loadAttempts]);
 
-  // ─── If loading, show skeleton ────────────────────────────────
   if (isLoading) {
     return (
       <LinearGradient colors={bgColors} style={styles.container}>
@@ -1685,7 +1681,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* ─── Sync Status Indicator ──────────────────────────────── */}
       {isSyncing && (
         <Animated.View entering={FadeIn.duration(300)} style={styles.syncStatusBar}>
           <BlurView intensity={isDark ? 40 : 80} style={styles.syncStatusContent} tint={isDark ? 'dark' : 'light'}>
@@ -1719,7 +1714,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {/* ─── Header ────────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.duration(400)} style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={[styles.headerTitle, isDark && styles.textLight]}>
@@ -1754,7 +1748,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           </View>
         </Animated.View>
 
-        {/* ─── Profile Card ──────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(50).duration(500)}>
           <ProfileHeader
             navigation={navigation}
@@ -1773,7 +1766,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           />
         </Animated.View>
 
-        {/* ─── Sections ──────────────────────────────────────────── */}
         {renderSecuritySection()}
         {renderPreferencesSection()}
         {renderFamilySection()}
@@ -1781,7 +1773,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         {renderSafetySection()}
         {renderSupportSection()}
 
-        {/* ─── App Info ──────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(400)} style={styles.appInfo}>
           <View style={styles.appLogoFloatWrap}>
             <Image
@@ -1819,7 +1810,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           )}
         </Animated.View>
 
-        {/* ─── Logout ────────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(450)}>
           <PressableScale onPress={handleLogout} activeScale={0.97} hapticType="medium">
             <LinearGradient
@@ -1917,7 +1907,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         </View>
       </Modal>
 
-      {/* ─── Baby Selection Modal ────────────────────────────────── */}
       <BabySelectionModal
         visible={showBabyModal}
         onClose={() => setShowBabyModal(false)}
@@ -1940,7 +1929,6 @@ const styles = StyleSheet.create({
   textLight: { color: '#ffffff' },
   textMuted: { color: '#888' },
 
-  // ─── Header ────────────────────────────────────────────────────
   header: {
     marginBottom: 20,
     paddingHorizontal: 4,
@@ -1974,7 +1962,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ─── Profile Card ─────────────────────────────────────────────
   profileCard: {
     borderRadius: 28,
     padding: 20,
@@ -2249,7 +2236,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ─── Sections ──────────────────────────────────────────────────
   section: { marginBottom: 4 },
 
   sectionHeader: {
@@ -2381,7 +2367,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ─── App Info ──────────────────────────────────────────────────
   appInfo: {
     alignItems: 'center',
     marginTop: 24,
@@ -2435,7 +2420,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ─── Logout ────────────────────────────────────────────────────
   logoutButton: {
     borderRadius: 20,
     marginTop: 8,
@@ -2455,7 +2439,6 @@ const styles = StyleSheet.create({
     color: '#ef4444',
   },
 
-  // ─── Sync Status ──────────────────────────────────────────────
   syncStatusBar: {
     position: 'absolute',
     top: 0,
@@ -2481,7 +2464,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ─── Modal ────────────────────────────────────────────────────
   modalBackdrop: {
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
@@ -2575,7 +2557,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ─── Timeout Modal ────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2651,7 +2632,6 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
   },
 
-  // ─── Skeleton ──────────────────────────────────────────────────
   skeletonContainer: {
     padding: 20,
     gap: 12,

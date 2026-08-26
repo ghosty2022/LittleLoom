@@ -1,5 +1,6 @@
+// screens/security/SecurityCenterScreen.tsx - COMPLETE FIXED (No SweetAlert)
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +21,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSecurity } from '../../context/SecurityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -147,7 +147,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
   const { userProfile } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  const { toast, error: showError, success: showSuccess, confirm: showConfirm } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
@@ -173,6 +172,37 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
   const [selectedTimeout, setSelectedTimeout] = useState(securitySettings.autoLockTimeout);
 
+  // ─── Alert helpers (using React Native Alert) ───────────────────
+  const showToast = useCallback((title: string, message?: string) => {
+    Alert.alert(title, message || '');
+  }, []);
+
+  const showError = useCallback((title: string, message?: string) => {
+    Alert.alert(title, message || '');
+  }, []);
+
+  const showSuccess = useCallback((title: string, message?: string) => {
+    Alert.alert(title, message || '');
+  }, []);
+
+  const showConfirm = useCallback((
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel?: () => void,
+    confirmText: string = 'Confirm',
+    cancelText: string = 'Cancel'
+  ) => {
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: cancelText, style: 'cancel', onPress: onCancel },
+        { text: confirmText, style: 'destructive', onPress: onConfirm },
+      ]
+    );
+  }, []);
+
   useEffect(() => {
     resetUnlockLock();
     loadStoredQuestions();
@@ -180,7 +210,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     return unsub;
   }, [navigation, resetUnlockLock]);
 
-  // Auto-navigate to PIN reset when coming from forgot PIN flow
   useEffect(() => {
     if (mode === 'reset' && fromForgotPassword) {
       setActiveSection('pin');
@@ -255,7 +284,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           if (!pinConfirm) {
             setPinConfirm(completedPin);
             setPinInput('');
-            toast('Confirm PIN', 'Re-enter to confirm', 'info');
+            showToast('Confirm PIN', 'Re-enter to confirm');
           } else {
             if (completedPin === pinConfirm) {
               const success = await changePin(pinOld, completedPin);
@@ -281,7 +310,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           setPinConfirm(completedPin);
           setPinStep('confirm');
           setPinInput('');
-          toast('Confirm PIN', 'Re-enter your new PIN', 'info');
+          showToast('Confirm PIN', 'Re-enter your new PIN');
         } else if (pinStep === 'confirm') {
           if (completedPin === pinConfirm) {
             const success = await setupPin(completedPin);
@@ -453,9 +482,11 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const score = useMemo(() => getSecurityScore(), [getSecurityScore]);
   const scoreLabel = useMemo(() => getScoreLabel(score), [score, getScoreLabel]);
 
+  // ─── Render Sections ────────────────────────────────────────────
+  // (All render functions remain the same - they use showToast/showError/showSuccess/showConfirm)
+
   const renderDashboard = () => (
     <AnimatedRe.View entering={FadeInUp.duration(500)} style={styles.section}>
-      {/* Security Score Card */}
       <View style={[styles.scoreCard, isDark && styles.scoreCardDark]}>
         <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
         <LinearGradient
@@ -656,7 +687,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           )}
         </View>
 
-        {/* Keypad */}
         <View style={styles.keypad}>
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
             <TouchableOpacity
@@ -692,7 +722,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           </TouchableOpacity>
         </View>
 
-        {/* Action buttons for verified state */}
         {isVerify && pinStep === 'success' && (
           <AnimatedRe.View entering={FadeInUp.delay(300)} style={styles.pinActions}>
             <TouchableOpacity
@@ -824,7 +853,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         </View>
       )}
 
-      {/* Question Picker Modal */}
       <Modal visible={showQuestionPicker} transparent animationType="fade" onRequestClose={() => setShowQuestionPicker(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowQuestionPicker(false)}>
           <View style={[styles.pickerSheet, isDark && styles.pickerSheetDark]}>
@@ -966,6 +994,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       </View>
     </AnimatedRe.View>
   );
+
+  // ─── Render ────────────────────────────────────────────────────
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
