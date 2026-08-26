@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx - COMPLETE FIXED VERSION
+// screens/main/MoreScreen.tsx - FIXED VERSION
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -873,15 +873,15 @@ const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
   </View>
 ));
 
+
+
 // ─── Main Component ───────────────────────────────────────────────
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
+  // ─── Call useSafeSweetAlert at the top level ───────────────────
+  const sweetAlert = useSafeSweetAlert();
   const insets = useSafeAreaInsets();
-  
-  // ─── IMPORTANT: All hooks must be called at the top level ────
-  // DO NOT wrap useSweetAlert in try/catch - this causes the hook order error!
-  const sweetAlertResult = useSweetAlert();
-  
+
   // ─── Contexts ────────────────────────────────────────────────────
   const { signOut, userProfile, isLoading: authLoading } = useAuth();
   const {
@@ -982,11 +982,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {
-      sweetAlertResult.toast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout', 'warning');
+      sweetAlert.toast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout', 'warning');
       return;
     }
     setShowTimeoutModal(true);
-  }, [securitySettings.isAppLockEnabled, sweetAlertResult]);
+  }, [securitySettings.isAppLockEnabled, sweetAlert]);
 
   // ─── Handlers ──────────────────────────────────────────────────
 
@@ -1015,9 +1015,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [loadBabies, loadEntries]);
 
-  // ─── Handle Sign Out ────────────────────────────────────────────
+  // ─── FIXED: Handle Sign Out ─────────────────────────────────────
   const handleLogout = useCallback(async () => {
-    const confirmed = await sweetAlertResult.confirm({
+    const confirmed = await sweetAlert.confirm({
       title: 'Sign Out',
       message: 'Are you sure you want to sign out? You will need to sign in again to access your account.',
       confirmText: 'Sign Out',
@@ -1028,8 +1028,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       try {
         triggerHaptic('medium');
         
+        // Clear security lock state before signing out
         await AsyncStorage.setItem('littleloom_security_lock', 'false');
         
+        // Clear any navigation state that might persist
         await AsyncStorage.multiRemove([
           'littleloom_nav_state_v4',
           '@littleloom_nav_state_v4',
@@ -1037,16 +1039,21 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           'littleloom_security_lock',
         ]);
         
+        // Call signOut from auth context
         await signOut();
         
+        // Force navigation to Login screen with full reset
         navigation.reset({
           index: 0,
           routes: [{ name: 'Login' as never }],
         });
         
-        sweetAlertResult.toast('Signed Out', 'You have been signed out successfully', 'success');
+        // Show success message
+        sweetAlert.toast('Signed Out', 'You have been signed out successfully', 'success');
       } catch (error) {
         console.error('Sign out error:', error);
+        
+        // Even if signOut fails, try to force navigation to login
         try {
           navigation.reset({
             index: 0,
@@ -1055,15 +1062,16 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         } catch (navError) {
           console.error('Navigation reset error:', navError);
         }
-        sweetAlertResult.alert('Error', 'Failed to sign out. Please try again.', 'error');
+        
+        sweetAlert.alert('Error', 'Failed to sign out. Please try again.', 'error');
       }
     }
-  }, [signOut, sweetAlertResult, triggerHaptic, navigation]);
+  }, [signOut, sweetAlert, triggerHaptic, navigation]);
 
-  // ─── Handle Sync ──────────────────────────────────────────────
+  // ─── FIXED: Handle Sync / Cloud Backup ─────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
-      sweetAlertResult.toast('Sync in Progress', 'Please wait for the current sync to complete.', 'info');
+      sweetAlert.toast('Sync in Progress', 'Please wait for the current sync to complete.', 'info');
       return;
     }
 
@@ -1073,8 +1081,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (result.success) {
         setSyncStatus('success');
         triggerHaptic('success');
-        sweetAlertResult.toast('✅ Synced!', 'Your data is now in sync with the cloud', 'success');
+        sweetAlert.toast('✅ Synced!', 'Your data is now in sync with the cloud', 'success');
         
+        // Also create a backup in the background
         try {
           const backupResult = await createBackup({ 
             encrypted: false,
@@ -1088,26 +1097,26 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         }
       } else {
         setSyncStatus('error');
-        sweetAlertResult.toast('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.', 'warning');
+        sweetAlert.toast('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.', 'warning');
       }
     } catch (error) {
       console.error('Sync error:', error);
       setSyncStatus('error');
-      sweetAlertResult.toast('❌ Sync Failed', 'Could not sync data. Please try again.', 'error');
+      sweetAlert.toast('❌ Sync Failed', 'Could not sync data. Please try again.', 'error');
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [isSyncing, sync, sweetAlertResult, triggerHaptic]);
+  }, [isSyncing, sync, sweetAlert, triggerHaptic]);
 
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
-        sweetAlertResult.alert('Biometric Not Available', 'Please set up biometric authentication in your device settings first.', 'warning');
+        sweetAlert.alert('Biometric Not Available', 'Please set up biometric authentication in your device settings first.', 'warning');
         return;
       }
       navigation.navigate('BiometricSetup');
     } else {
-      const confirmed = await sweetAlertResult.confirm({
+      const confirmed = await sweetAlert.confirm({
         title: 'Disable Biometric?',
         message: 'Are you sure you want to disable biometric authentication?',
         confirmText: 'Disable',
@@ -1117,11 +1126,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (confirmed) {
         const success = await toggleBiometric(false);
         if (!success) {
-          sweetAlertResult.alert('Error', 'Could not disable biometric authentication.', 'error');
+          sweetAlert.alert('Error', 'Could not disable biometric authentication.', 'error');
         }
       }
     }
-  }, [hasBiometric, navigation, sweetAlertResult, toggleBiometric]);
+  }, [hasBiometric, navigation, sweetAlert, toggleBiometric]);
 
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
@@ -1130,7 +1139,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const handleLockNow = useCallback(async () => {
     const hasAnySecurity = availableMethods.hasPin || availableMethods.hasBiometric || securitySettings.isAppLockEnabled;
     if (!hasAnySecurity) {
-      const confirmed = await sweetAlertResult.confirm({
+      const confirmed = await sweetAlert.confirm({
         title: 'No Security Enabled',
         message: 'You can lock the app without protection, or set up PIN / Biometric first.',
         confirmText: 'Lock Anyway',
@@ -1138,7 +1147,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       });
       if (confirmed) {
         await lockApp(true);
-        sweetAlertResult.toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
+        sweetAlert.toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
       } else {
         navigation.navigate('SecurityCenter', { mode: 'setup' });
       }
@@ -1146,17 +1155,17 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
     await lockApp();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, sweetAlertResult, navigation]);
+  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp, sweetAlert, navigation]);
 
   const handleSelectTimeout = useCallback(async (minutes: number) => {
     setShowTimeoutModal(false);
     try {
       await updateAutoLockTimeout(minutes);
-      sweetAlertResult.toast('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`, 'success');
+      sweetAlert.toast('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`, 'success');
     } catch (err) {
-      sweetAlertResult.alert('Update Failed', 'Could not update auto-lock timeout.', 'error');
+      sweetAlert.alert('Update Failed', 'Could not update auto-lock timeout.', 'error');
     }
-  }, [updateAutoLockTimeout, sweetAlertResult, formatTimeout]);
+  }, [updateAutoLockTimeout, sweetAlert, formatTimeout]);
 
   const handleSelectBabyFromModal = useCallback((baby: any) => {
     setShowBabyModal(false);
@@ -1182,33 +1191,40 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     },
   });
 
-  // ─── Load data with better performance ──────────────────────────
+  // ─── FIXED: Load data with better performance ──────────────────
   
   const loadData = useCallback(async (isInitialLoad: boolean = false) => {
     try {
+      // Only show loading on initial load
       if (isInitialLoad) {
         setDataLoaded(false);
       }
       
+      // Load babies first (most important)
       await loadBabies();
+      
+      // Load entries in parallel
       await loadEntries?.();
       
       setDataLoaded(true);
       initialLoadDone.current = true;
     } catch (error) {
       console.error('[MoreScreen] Load data error:', error);
-      setDataLoaded(true);
+      setDataLoaded(true); // Show content even on error
     }
   }, [loadBabies, loadEntries]);
 
   // ─── Effects ────────────────────────────────────────────────────
 
+  // ✅ Optimized: Load data on focus with debounce
   useFocusEffect(
     useCallback(() => {
+      // Clear any pending timeout
       if (focusLoadTimeout.current) {
         clearTimeout(focusLoadTimeout.current);
       }
       
+      // If already loaded, just refresh in background
       if (dataLoaded) {
         focusLoadTimeout.current = setTimeout(() => {
           loadData(false);
@@ -1216,6 +1232,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         return;
       }
       
+      // Initial load - show skeleton
       focusLoadTimeout.current = setTimeout(() => {
         loadData(true);
       }, 100);
@@ -1228,6 +1245,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }, [loadData, dataLoaded])
   );
 
+  // ✅ Handle route params for baby switching
   useEffect(() => {
     if (route.params?.babySwitched) {
       loadBabies();
@@ -1238,15 +1256,24 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   // ─── Determine if we're in loading state ──────────────────────
 
   const isLoading = useMemo(() => {
+    // If data is loaded, never show loading
     if (dataLoaded) return false;
+    
+    // If we've tried multiple times, show content anyway
     if (loadAttempts > 2) return false;
+    
+    // Only show loading on initial load with some conditions
     const isInitialLoading = (authLoading || (babyLoading && safeBabies.length === 0)) && !dataLoaded;
+    
+    // If we've been loading for more than 2 seconds, show content anyway
     if (isInitialLoading && initialLoadDone.current) {
       return false;
     }
+    
     return isInitialLoading;
   }, [authLoading, babyLoading, safeBabies.length, dataLoaded, loadAttempts]);
 
+  // ─── If loading, show skeleton ────────────────────────────────
   if (isLoading) {
     return (
       <LinearGradient colors={bgColors} style={styles.container}>

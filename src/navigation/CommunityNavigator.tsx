@@ -394,30 +394,42 @@ const CommunityNavigator = React.memo(() => {
     initDone.current = true;
 
     const initialize = async () => {
-      try {
-        const onboardingStatus = await checkOnboardingStatus();
-        
-        if (!mounted) return;
+  try {
+    // Force refresh topics first
+    try {
+      const { refreshTopics } = require('../context/CommunityContext');
+      await refreshTopics();
+    } catch (e) {
+      console.warn('[CommunityNavigator] Failed to refresh topics:', e);
+    }
+    
+    const onboardingStatus = await checkOnboardingStatus();
+    
+    if (!mounted) return;
 
-        if (__DEV__) {
-          console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
-        }
+    if (__DEV__) {
+      console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
+    }
 
-        const needsOnboarding = !onboardingStatus.completed || !onboardingStatus.hasTopics;
-        
-        if (needsOnboarding) {
-          console.log('[CommunityNavigator] Showing onboarding - needs topics');
-          setPhase('onboarding');
-        } else if (shouldShowSplash) {
-          setPhase('splash');
-        } else {
-          setPhase('main');
-        }
-      } catch (error) {
-        console.error('[CommunityNavigator] Init error:', error);
-        setPhase('main');
-      }
-    };
+    // Check if user actually has selected topics in the context
+    const selectedTopics = await AsyncStorage.getItem('@community_selected_topics_v2');
+    const hasStoredTopics = selectedTopics ? JSON.parse(selectedTopics).length > 0 : false;
+    
+    const needsOnboarding = !onboardingStatus.completed || !onboardingStatus.hasTopics || !hasStoredTopics;
+    
+    if (needsOnboarding) {
+      console.log('[CommunityNavigator] Showing onboarding - needs topics');
+      setPhase('onboarding');
+    } else if (shouldShowSplash) {
+      setPhase('splash');
+    } else {
+      setPhase('main');
+    }
+  } catch (error) {
+    console.error('[CommunityNavigator] Init error:', error);
+    setPhase('main');
+  }
+};
 
     initialize();
     return () => { mounted = false; };

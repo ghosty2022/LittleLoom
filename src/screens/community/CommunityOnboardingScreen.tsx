@@ -18,12 +18,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { useCommunity } from '../../context/CommunityContext';
 import { TOPIC_CATEGORIES, INITIAL_TOPICS, type Topic } from '../../context/CommunityContext';
 import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { updateSectionState } from '../../hooks/useIntelligentSplash';
+// Storage keys for consistency
+const STORAGE_KEYS = {
+  SELECTED_TOPICS: '@community_selected_topics_v2',
+};
 
 const { width } = Dimensions.get('window');
 const ONBOARDING_KEY = '@littleloom_community_onboarding_v3';
@@ -160,6 +164,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   const sweetAlert = useSweetAlert();
   const { settings, triggerHaptic } = useCustomization();
   const { updateSelectedTopics: updateUserTopics } = useUser();
+  const { currentUser } = useCommunity(); // <-- ADD THIS
   
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
