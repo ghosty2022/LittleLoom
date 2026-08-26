@@ -873,8 +873,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      broadcastBabyChange(currentId);
-
+      // Update state first
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -885,6 +884,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastSyncTime: Date.now(),
         isInitialized: true,
       }));
+
+      // THEN broadcast baby change (after state is committed)
+      // Use setTimeout to ensure state is flushed
+      setTimeout(() => {
+        broadcastBabyChange(currentId);
+      }, 50);
 
       if (currentId) {
         console.log('[BabyContext] Loading tracker data for current baby...');
@@ -1264,6 +1269,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to clear skip baby:', e);
       }
 
+            // Update local state
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1274,9 +1280,21 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
+      // Clear cache
       await AsyncStorage.removeItem(BABIES_CACHE_KEY);
+
+      // Load tracker data for new baby
       await loadAllBabyData(newCurrentId);
 
+      // Broadcast after state is updated
+      setTimeout(() => {
+        broadcastBabyChange(newCurrentId);
+      }, 50);
+
+      // Broadcast after state is updated
+      setTimeout(() => {
+        broadcastBabyChange(newCurrentId);
+      }, 50);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       isCreatingRef.current = false;
@@ -1436,7 +1454,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      if (isMounted.current) {
+            if (isMounted.current) {
         setState(prev => ({
           ...prev,
           babies: prev.babies.filter(b => b.id !== id),
@@ -1450,12 +1468,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           medicationLogs: newCurrentId ? prev.medicationLogs : [],
           activities: newCurrentId ? prev.activities : [],
         }));
+        // Clear cache
         await AsyncStorage.removeItem(BABIES_CACHE_KEY);
       }
 
       if (newCurrentId) {
         await loadAllBabyData(newCurrentId);
       }
+
+      // Broadcast after state is updated (even if null)
+      setTimeout(() => {
+        broadcastBabyChange(newCurrentId);
+      }, 50);
 
       return true;
     } catch (error) {
@@ -1496,7 +1520,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }, { onConflict: 'key, user_id' });
 
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, id);
-      broadcastBabyChange(id);
 
       await loadAllBabyData(id);
 
@@ -1508,6 +1531,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           currentBaby: babyProfile,
         }));
       }
+
+      // Broadcast after state is updated
+      setTimeout(() => {
+        broadcastBabyChange(id);
+      }, 50);
 
       await AsyncStorage.removeItem(BABIES_CACHE_KEY);
 

@@ -39,9 +39,14 @@ const SecurityAuthBridge: React.FC<{ children: React.ReactNode }> = ({ children 
 const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Safely get baby ID
   let babyId: string | null = null;
+  let subscribeToBabyChanges: ((cb: (id: string | null) => void) => () => void) | null = null;
+  const babyIdRef = useRef<string | null>(null);
+  
   try {
-    const { getCurrentBabyId } = useBaby();
-    babyId = getCurrentBabyId();
+    const baby = useBaby();
+    babyId = baby.getCurrentBabyId();
+    subscribeToBabyChanges = baby.subscribeToBabyChanges;
+    babyIdRef.current = babyId;
   } catch {
     // BabyContext not ready yet
   }
@@ -49,15 +54,51 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
   const { syncWithBabyContext } = useActivity();
   const initRef = useRef(false);
 
+  // Subscribe to baby changes
+  useEffect(() => {
+    if (!subscribeToBabyChanges) return;
+    
+    const unsubscribe = subscribeToBabyChanges((newBabyId) => {
+      console.log('[ActivitySyncBridge] Baby changed to:', newBabyId);
+      babyIdRef.current = newBabyId;
+      if (newBabyId && !initRef.current) {
+        initRef.current = true;
+        syncWithBabyContext(newBabyId);
+      }
+    });
+    
+    return unsubscribe;
+  }, [subscribeToBabyChanges, syncWithBabyContext]);
+
+  // Initial sync
   useEffect(() => {
     if (!babyId || initRef.current) return;
     initRef.current = true;
-
-    const doSync = async () => {
-      await syncWithBabyContext(babyId);
-    };
-    doSync();
+    console.log('[ActivitySyncBridge] Initial sync with baby:', babyId);
+    syncWithBabyContext(babyId);
   }, [babyId, syncWithBabyContext]);
+
+  // Poll for baby ID changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const baby = useBaby();
+        const newId = baby.getCurrentBabyId();
+        if (newId !== babyIdRef.current && newId) {
+          console.log('[ActivitySyncBridge] Poll detected baby change:', newId);
+          babyIdRef.current = newId;
+          if (!initRef.current) {
+            initRef.current = true;
+            syncWithBabyContext(newId);
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    }, 2000);
+    
+    return () => clearInterval(interval);
+  }, [syncWithBabyContext]);
 
   useEffect(() => {
     const init = async () => {
@@ -73,47 +114,93 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
 const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const trackerContext = useContext(TrackerContext);
   const initRef = useRef(false);
+  const currentBabyIdRef = useRef<string | null>(null);
   
-  // Safely get baby data
+  // Get baby data - with retry if not ready
   let babyId: string | null = null;
   let subscribeToBabyChanges: ((cb: (id: string | null) => void) => () => void) | null = null;
+  let loadBabies: (() => Promise<void>) | null = null;
+  let refreshCurrentBaby: (() => Promise<void>) | null = null;
+  
   try {
     const baby = useBaby();
     babyId = baby.getCurrentBabyId();
     subscribeToBabyChanges = baby.subscribeToBabyChanges;
-  } catch {
-    // BabyContext not ready yet
+    loadBabies = baby.loadBabies;
+    refreshCurrentBaby = baby.refreshCurrentBaby;
+    currentBabyIdRef.current = babyId;
+  } catch (e) {
+    console.warn('[TrackerBabySync] BabyContext not ready yet');
   }
 
+  // Force load babies on mount
+  useEffect(() => {
+    if (loadBabies && !babyId) {
+      console.log('[TrackerBabySync] No baby ID, forcing load...');
+      loadBabies();
+    }
+  }, [loadBabies, babyId]);
+
+  // Subscribe to baby changes
   useEffect(() => {
     if (!trackerContext || !subscribeToBabyChanges) return;
+    
+    console.log('[TrackerBabySync] Setting up subscription to BabyContext');
     
     // Subscribe to baby changes from BabyContext
     const unsubscribe = subscribeToBabyChanges((newBabyId) => {
       console.log('[TrackerBabySync] Baby changed to:', newBabyId);
+      currentBabyIdRef.current = newBabyId;
+      
       if (trackerContext && trackerContext.setCurrentBabyId) {
         trackerContext.setCurrentBabyId(newBabyId);
       }
+      
       if (trackerContext && trackerContext.refreshEntries && newBabyId) {
         trackerContext.refreshEntries();
       }
     });
 
-    // Initial sync
-    if (babyId && trackerContext && trackerContext.setCurrentBabyId) {
-      trackerContext.setCurrentBabyId(babyId);
+    // Initial sync - use the latest baby ID
+    const currentId = currentBabyIdRef.current || babyId;
+    if (currentId && trackerContext && trackerContext.setCurrentBabyId) {
+      console.log('[TrackerBabySync] Initial sync with baby:', currentId);
+      trackerContext.setCurrentBabyId(currentId);
     }
 
     return unsubscribe;
   }, [trackerContext, babyId, subscribeToBabyChanges]);
 
-  // Also sync when tracker context becomes available
+  // Sync when tracker context becomes available
   useEffect(() => {
     if (!trackerContext) return;
-    if (babyId && trackerContext.setCurrentBabyId) {
-      trackerContext.setCurrentBabyId(babyId);
+    const currentId = currentBabyIdRef.current || babyId;
+    if (currentId && trackerContext.setCurrentBabyId) {
+      console.log('[TrackerBabySync] Tracker available, syncing baby:', currentId);
+      trackerContext.setCurrentBabyId(currentId);
     }
   }, [trackerContext, babyId]);
+
+  // Poll for baby ID changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const baby = useBaby();
+        const newId = baby.getCurrentBabyId();
+        if (newId !== currentBabyIdRef.current) {
+          console.log('[TrackerBabySync] Poll detected baby change:', newId);
+          currentBabyIdRef.current = newId;
+          if (trackerContext && trackerContext.setCurrentBabyId) {
+            trackerContext.setCurrentBabyId(newId);
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    }, 2000);
+    
+    return () => clearInterval(interval);
+  }, [trackerContext]);
 
   return <>{children}</>;
 };
@@ -166,30 +253,26 @@ const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   );
 };
 
-// ─── CORRECT PROVIDER ORDER ────────────────────────────────────────────
-// BabyProvider MUST be first and wrap everything that needs useBaby()
+// ─── FIXED PROVIDER ORDER ─────────────────────────────────────────────
+// AudioProvider MUST be initialized before any component that uses useAudio()
 export default function ContextProvider({ children }: ContextProviderProps) {
   return (
     <AuthProvider>
       <AppProvider>
         <UserProvider>
-          {/* BabyProvider wraps ALL components that need useBaby() */}
           <BabyProvider>
-            {/* SecurityAuthBridge needs useAuth() but not useBaby() */}
             <SecurityAuthBridge>
               <FamilyProvider>
                 <ActivityProvider>
-                  {/* ActivitySyncBridge uses useBaby() - it's inside BabyProvider now */}
-                  <ActivitySyncBridge>
-                    {/* AudioProvider uses useBaby() - must be inside BabyProvider */}
-                    <AudioProvider>
+                  {/* AudioProvider must be inside ActivityProvider but BEFORE ActivitySyncBridge */}
+                  {/* Also must be inside BabyProvider for useBaby() */}
+                  <AudioProvider>
+                    <ActivitySyncBridge>
                       <MediaProvider>
                         <FamilyChatWrapper>
                           <CommunityProvider>
                             <SafetyProvider>
-                              {/* TrackerProvider is INSIDE BabyProvider so TrackerBabySync can use useBaby() */}
                               <TrackerProvider>
-                                {/* TrackerBabySync uses useBaby() - it's inside BabyProvider */}
                                 <TrackerBabySync>
                                   <SweetAlertWrapper>
                                     {children}
@@ -200,8 +283,8 @@ export default function ContextProvider({ children }: ContextProviderProps) {
                           </CommunityProvider>
                         </FamilyChatWrapper>
                       </MediaProvider>
-                    </AudioProvider>
-                  </ActivitySyncBridge>
+                    </ActivitySyncBridge>
+                  </AudioProvider>
                 </ActivityProvider>
               </FamilyProvider>
             </SecurityAuthBridge>
