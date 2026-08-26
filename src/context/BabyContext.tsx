@@ -1058,48 +1058,51 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // ─── INSERT BABY WITH ALL FIELDS ──────────────────────────────────
-      const babyData = {
-        id: newId,
-        name: data.name,
-        avatar: data.avatar || null,
-        date_of_birth: data.birthDate,
-        gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
-        blood_type: data.bloodType || null,
-        medical_notes: data.medicalNotes || null,
-        parent1_id: userId,
-        parent2_id: data.parent2Id || null,
-        
-        // Current measurements
-        current_weight_kg: data.weight ? parseFloat(data.weight) : null,
-        current_height_cm: data.height ? parseFloat(data.height) : null,
-        
-        // Birth details
-        birth_time: data.birthTime || null,
-        birth_weight_kg: data.birthWeight ? parseFloat(data.birthWeight) : null,
-        birth_height_cm: data.birthHeight ? parseFloat(data.birthHeight) : null,
-        birth_head_circumference: data.birthHeadCircumference ? parseFloat(data.birthHeadCircumference) : null,
-        delivery_type: data.deliveryType ? data.deliveryType.toLowerCase().replace(/ /g, '_') : null,
-        gestational_weeks: data.gestationalWeeks ? parseInt(data.gestationalWeeks) : null,
-        apgar_1min: data.apgar1Min ? parseInt(data.apgar1Min) : null,
-        apgar_5min: data.apgar5Min ? parseInt(data.apgar5Min) : null,
-        birth_place: data.birthPlace || null,
-        birth_attendant: data.birthAttendant ? data.birthAttendant.toLowerCase().replace(/ /g, '_') : null,
-        multiple_birth: data.multipleBirth || false,
-        birth_order: data.birthOrder ? parseInt(data.birthOrder) : null,
-        feeding_plan: data.feedingPlan ? data.feedingPlan.toLowerCase() : null,
-        
-        // Additional
-        emergency_contact: data.emergencyContact || null,
-        pediatrician: data.pediatrician || null,
-        notifications_enabled: data.notificationsEnabled !== false,
-        skin_tone: data.skinTone || 0,
-        
-        // Active and timestamps
-        is_active: true,
-        created_at: now.toISOString(),
-        updated_at: now.toISOString(),
-      };
-
+const babyData = {
+  id: newId,
+  name: data.name,
+  avatar: data.avatar || null,
+  date_of_birth: data.birthDate,
+  gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
+  blood_type: data.bloodType || null,
+  medical_notes: data.medicalNotes || null,
+  // FIX: Handle allergies properly
+  allergies: data.allergies || null,
+  parent1_id: userId,
+  parent2_id: data.parent2Id || null,
+  
+  // Current measurements
+  current_weight_kg: data.weight ? parseFloat(data.weight) : null,
+  current_height_cm: data.height ? parseFloat(data.height) : null,
+  
+  // Birth details - FIXED conversions
+  birth_time: data.birthTime || null,
+  birth_weight_kg: data.birthWeight ? parseFloat(data.birthWeight) : null,
+  birth_height_cm: data.birthHeight ? parseFloat(data.birthHeight) : null,
+  birth_head_circumference: data.birthHeadCircumference ? parseFloat(data.birthHeadCircumference) : null,
+  // FIX: Convert delivery type (c-section -> c_section)
+  delivery_type: data.deliveryType ? data.deliveryType.toLowerCase().replace(/-/g, '_') : null,
+  gestational_weeks: data.gestationalWeeks ? parseInt(data.gestationalWeeks) : null,
+  apgar_1min: data.apgar1Min ? parseInt(data.apgar1Min) : null,
+  apgar_5min: data.apgar5Min ? parseInt(data.apgar5Min) : null,
+  birth_place: data.birthPlace || null,
+  // FIX: Convert birth attendant (Family Doctor -> family_doctor)
+  birth_attendant: data.birthAttendant ? data.birthAttendant.toLowerCase().replace(/ /g, '_') : null,
+  multiple_birth: data.multipleBirth || false,
+  birth_order: data.birthOrder ? parseInt(data.birthOrder) : null,
+  feeding_plan: data.feedingPlan ? data.feedingPlan.toLowerCase() : null,
+  
+  // Additional
+  emergency_contact: data.emergencyContact || null,
+  pediatrician: data.pediatrician || null,
+  notifications_enabled: data.notificationsEnabled !== false,
+  skin_tone: data.skinTone || 0,
+  
+  // Active and timestamps
+  is_active: true,
+  created_at: now.toISOString(),
+  updated_at: now.toISOString(),
+};
       console.log('[BabyContext] Inserting baby with data:', JSON.stringify(babyData, null, 2));
 
       const { data: result, error } = await supabase

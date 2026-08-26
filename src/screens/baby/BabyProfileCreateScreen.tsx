@@ -156,47 +156,58 @@ const isImageUri = (value: string | undefined | null): boolean => {
 type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
 
 // ─── TERM EXPLANATION TOOLTIP ──────────────────────────────────────────
+// Update the TermTooltip component:
 const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const info = TERM_EXPLANATIONS[term];
   if (!info) return null;
 
+  const handleToggle = () => setShowTooltip(prev => !prev);
+  const handleClose = () => setShowTooltip(false);
+
   return (
     <View style={styles.tooltipWrapper}>
       <TouchableOpacity
-        onPress={() => setShowTooltip(!showTooltip)}
+        onPress={handleToggle}
         style={styles.tooltipTrigger}
         activeOpacity={0.7}
       >
-        <Ionicons name="information-circle-outline" size={20} color={isDark ? '#6366f1' : '#6366f1'} />
+        <Ionicons name="information-circle-outline" size={20} color="#6366f1" />
       </TouchableOpacity>
       {showTooltip && (
-        <View style={[
-          styles.tooltipContainer,
-          { backgroundColor: isDark ? '#1e293b' : '#ffffff' },
-          Platform.OS === 'ios' ? styles.tooltipShadow : styles.tooltipShadowAndroid
-        ]}>
-          <View style={styles.tooltipHeader}>
-            <Text style={styles.tooltipEmoji}>{info.emoji}</Text>
-            <Text style={[styles.tooltipTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-              {info.label}
+        <>
+          {/* Backdrop to close on outside tap */}
+          <TouchableOpacity 
+            style={styles.tooltipBackdrop} 
+            activeOpacity={1} 
+            onPress={handleClose} 
+          />
+          <View style={[
+            styles.tooltipContainer,
+            { backgroundColor: isDark ? '#1e293b' : '#ffffff' },
+            Platform.OS === 'ios' ? styles.tooltipShadow : styles.tooltipShadowAndroid
+          ]}>
+            <View style={styles.tooltipHeader}>
+              <Text style={styles.tooltipEmoji}>{info.emoji}</Text>
+              <Text style={[styles.tooltipTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+                {info.label}
+              </Text>
+            </View>
+            <Text style={[styles.tooltipText, { color: isDark ? '#94a3b8' : '#475569' }]}>
+              {info.explanation}
             </Text>
+            <TouchableOpacity
+              onPress={handleClose}
+              style={styles.tooltipCloseBtn}
+            >
+              <Text style={[styles.tooltipCloseText, { color: '#6366f1' }]}>Got it</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={[styles.tooltipText, { color: isDark ? '#94a3b8' : '#475569' }]}>
-            {info.explanation}
-          </Text>
-          <TouchableOpacity
-            onPress={() => setShowTooltip(false)}
-            style={styles.tooltipCloseBtn}
-          >
-            <Text style={[styles.tooltipCloseText, { color: '#6366f1' }]}>Got it</Text>
-          </TouchableOpacity>
-        </View>
+        </>
       )}
     </View>
   );
 };
-
 // ─── COMPONENT ────────────────────────────────────────────────────────────
 export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
   const insets = useSafeAreaInsets();
@@ -468,12 +479,12 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         gestationalWeeks: gestationalWeeks.trim() || undefined,
         apgar1Min: apgar1Min.trim() || undefined,
         apgar5Min: apgar5Min.trim() || undefined,
-        deliveryType: deliveryType || undefined,
-        birthAttendant: birthAttendant || undefined,
+        deliveryType: deliveryType ? deliveryType.toLowerCase().replace(/-/g, '_') : undefined,
+        birthAttendant: birthAttendant ? birthAttendant.toLowerCase().replace(/ /g, '_') : undefined,
         birthPlace: birthPlace.trim() || undefined,
         multipleBirth: multipleBirth,
         birthOrder: birthOrder.trim() || undefined,
-        feedingPlan: feedingPlan || undefined,
+        feedingPlan: feedingPlan ? feedingPlan.toLowerCase() : undefined,
         birthTime: birthTime.trim() || undefined,
       };
 
@@ -1748,17 +1759,19 @@ const styles = StyleSheet.create({
   tooltipTrigger: {
     padding: 2,
   },
-  tooltipContainer: {
-    position: 'absolute',
-    top: -8,
-    left: 24,
-    width: Math.min(280, width - 60),
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(99,102,241,0.15)',
-    zIndex: 1000,
-  },
+// Update the tooltipContainer style:
+tooltipContainer: {
+  position: 'absolute',
+  top: -8,
+  // Change from 'left: 24' to 'right: 0' for better positioning
+  right: 0,
+  width: Math.min(280, width - 80),
+  padding: 14,
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: 'rgba(99,102,241,0.15)',
+  zIndex: 1000,
+},
   tooltipShadow: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1787,6 +1800,14 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: '400',
   },
+  tooltipBackdrop: {
+  position: 'absolute',
+  top: -200,
+  left: -200,
+  right: -200,
+  bottom: -200,
+  zIndex: 999,
+},
   tooltipCloseBtn: {
     marginTop: 10,
     alignSelf: 'flex-end',
