@@ -302,6 +302,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   });
   const [originalData, setOriginalData] = useState({ ...formData });
   const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const isLoadingRef = useRef(false);
 
   // ============================================
   // COMPUTED DATA FROM REAL POSTS
@@ -565,19 +566,28 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  useEffect(() => { loadUserData(); }, [currentUser]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadUserData();
-      return () => {};
-    }, [])
-  );
-
   // Load activity log
   useEffect(() => {
     loadActivityLog();
   }, []);
+
+  // Load user data only once on mount when currentUser is available
+  useEffect(() => {
+    if (currentUser && !isLoadingRef.current) {
+      isLoadingRef.current = true;
+      loadUserData();
+    }
+  }, [currentUser]);
+
+  // Refresh on focus but don't double-load
+  useFocusEffect(
+    useCallback(() => {
+      if (currentUser) {
+        loadUserData();
+      }
+      return () => {};
+    }, [currentUser])
+  );
 
   const loadActivityLog = async () => {
     try {
@@ -675,6 +685,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   // DATA LOADING
   // ============================================
   const loadUserData = async () => {
+    // Prevent multiple simultaneous loads
+    if (isLoading) return;
+    
     setIsLoading(true);
     try {
       if (currentUser) {
@@ -711,7 +724,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         setFormData(initialData);
         setOriginalData(initialData);
       }
-    } catch (error) { console.error('Error loading profile:', error); }
+    } catch (error) { 
+      console.error('Error loading profile:', error); 
+    }
     setIsLoading(false);
   };
 
@@ -721,7 +736,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     await loadUserData();
     await loadActivityLog();
     setRefreshing(false);
-  }, [refreshFeed, loadUserData]);
+  }, [refreshFeed]);
 
   // ============================================
   // IMAGE HANDLING
@@ -1642,41 +1657,40 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
       {/* Manage Topics */}
       <TouchableOpacity
-  style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
-  onPress={() => {
-    navigation.navigate('CommunityOnboarding' as never, { editing: true } as never);
-  }}
->
-  <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
-  <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
-    Manage Your Topics {selectedTopics.length > 0 ? `(${selectedTopics.length})` : ''}
-  </Text>
-  <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
-</TouchableOpacity>
+        style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
+        onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })}
+      >
+        <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
+        <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
+          Manage Your Topics {selectedTopics.length > 0 ? `(${selectedTopics.length})` : ''}
+        </Text>
+        <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+      </TouchableOpacity>
+
       <GlassCard delay={700} isDark={isDark} colors={fullThemeColors}>
-  <View style={styles.sectionHeaderWithEdit}>
-    <Text style={styles.sectionLabel}>Interested Topics</Text>
-    <TouchableOpacity style={styles.editIconBtn} onPress={() => navigation.navigate('CommunityOnboarding' as never, { editing: true } as never)}>
-      <Ionicons name="add" size={18} color="#6366f1" />
-    </TouchableOpacity>
-  </View>
-  <View style={styles.topicsWrap}>
-    {selectedTopics.length > 0 ? selectedTopics.map((topicId) => {
-      const topic = INITIAL_TOPICS.find(t => t.id === topicId);
-      const topicColor = topic?.color || TOPIC_COLORS[topicId] || '#6366f1';
-      const topicName = topic?.name || topicId;
-      return (
-        <View key={topicId} style={[styles.topicChip, { backgroundColor: `${topicColor}20` }]}>
-          <Text style={[styles.topicChipText, { color: topicColor }]}>
-            {topic?.emoji ? `${topic.emoji} ${topicName}` : topicName}
-          </Text>
+        <View style={styles.sectionHeaderWithEdit}>
+          <Text style={styles.sectionLabel}>Interested Topics</Text>
+          <TouchableOpacity style={styles.editIconBtn} onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })}>
+            <Ionicons name="add" size={18} color="#6366f1" />
+          </TouchableOpacity>
         </View>
-      );
-    }) : (
-      <Text style={styles.emptyText}>No topics selected yet. Tap + to add some!</Text>
-    )}
-  </View>
-</GlassCard>
+        <View style={styles.topicsWrap}>
+          {selectedTopics.length > 0 ? selectedTopics.map((topicId) => {
+            const topic = INITIAL_TOPICS.find(t => t.id === topicId);
+            const topicColor = topic?.color || TOPIC_COLORS[topicId] || '#6366f1';
+            const topicName = topic?.name || topicId;
+            return (
+              <View key={topicId} style={[styles.topicChip, { backgroundColor: `${topicColor}20` }]}>
+                <Text style={[styles.topicChipText, { color: topicColor }]}>
+                  {topic?.emoji ? `${topic.emoji} ${topicName}` : topicName}
+                </Text>
+              </View>
+            );
+          }) : (
+            <Text style={styles.emptyText}>No topics selected yet. Tap + to add some!</Text>
+          )}
+        </View>
+      </GlassCard>
 
       {/* Quick Actions Dock - Only in view mode */}
       {!isEditing && (
