@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx - FIXED VERSION
+// screens/main/MoreScreen.tsx - COMPLETE FIXED VERSION
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -873,44 +873,11 @@ const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
   </View>
 ));
 
-
-
 // ─── Main Component ───────────────────────────────────────────────
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
-  // ─── SweetAlert ─────────────────────────────────────────────────
-  let sweetAlert;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    sweetAlert = useSweetAlert();
-  } catch (error) {
-    console.warn('[MoreScreen] useSweetAlert failed, using fallback');
-  }
-  
-  // Fallback if hook failed
-  if (!sweetAlert) {
-    sweetAlert = {
-      toast: (title: string, message: string) => Alert.alert(title, message),
-      alert: (title: string, message: string) => Alert.alert(title, message),
-      confirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; destructive?: boolean }) => {
-        return new Promise<boolean>((resolve) => {
-          Alert.alert(
-            options.title,
-            options.message,
-            [
-              { text: options.cancelText || 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-              { text: options.confirmText || 'OK', style: options.destructive ? 'destructive' : 'default', onPress: () => resolve(true) },
-            ]
-          );
-        });
-      },
-      success: (title: string, message: string) => Alert.alert(title, message),
-      error: (title: string, message: string) => Alert.alert(title, message),
-      warning: (title: string, message: string) => Alert.alert(title, message),
-      info: (title: string, message: string) => Alert.alert(title, message),
-    };
-  }
-  
+  // ─── SweetAlert Hook - Called unconditionally ──────────────────
+  const sweetAlert = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   // ─── Contexts ────────────────────────────────────────────────────
@@ -1013,7 +980,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {
-      sweetAlert.toast('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout', 'warning');
+      sweetAlert.warning('Enable App Lock first', 'Turn on Auto-Lock App to set a timeout');
       return;
     }
     setShowTimeoutModal(true);
@@ -1047,62 +1014,63 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   }, [loadBabies, loadEntries]);
 
   // ─── FIXED: Handle Sign Out ─────────────────────────────────────
-  const handleLogout = useCallback(async () => {
-    const confirmed = await sweetAlert.confirm({
-      title: 'Sign Out',
-      message: 'Are you sure you want to sign out? You will need to sign in again to access your account.',
-      confirmText: 'Sign Out',
-      cancelText: 'Cancel',
-      destructive: true,
-    });
-    if (confirmed) {
-      try {
-        triggerHaptic('medium');
-        
-        // Clear security lock state before signing out
-        await AsyncStorage.setItem('littleloom_security_lock', 'false');
-        
-        // Clear any navigation state that might persist
-        await AsyncStorage.multiRemove([
-          'littleloom_nav_state_v4',
-          '@littleloom_nav_state_v4',
-          'littleloom_last_auth_state',
-          'littleloom_security_lock',
-        ]);
-        
-        // Call signOut from auth context
-        await signOut();
-        
-        // Force navigation to Login screen with full reset
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' as never }],
-        });
-        
-        // Show success message
-        sweetAlert.toast('Signed Out', 'You have been signed out successfully', 'success');
-      } catch (error) {
-        console.error('Sign out error:', error);
-        
-        // Even if signOut fails, try to force navigation to login
+  const handleLogout = useCallback(() => {
+    sweetAlert.confirm(
+      'Sign Out',
+      'Are you sure you want to sign out? You will need to sign in again to access your account.',
+      async () => {
         try {
+          triggerHaptic('medium');
+          
+          // Clear security lock state before signing out
+          await AsyncStorage.setItem('littleloom_security_lock', 'false');
+          
+          // Clear any navigation state that might persist
+          await AsyncStorage.multiRemove([
+            'littleloom_nav_state_v4',
+            '@littleloom_nav_state_v4',
+            'littleloom_last_auth_state',
+            'littleloom_security_lock',
+          ]);
+          
+          // Call signOut from auth context
+          await signOut();
+          
+          // Force navigation to Login screen with full reset
           navigation.reset({
             index: 0,
             routes: [{ name: 'Login' as never }],
           });
-        } catch (navError) {
-          console.error('Navigation reset error:', navError);
+          
+          // Show success message
+          sweetAlert.success('Signed Out', 'You have been signed out successfully');
+        } catch (error) {
+          console.error('Sign out error:', error);
+          
+          // Even if signOut fails, try to force navigation to login
+          try {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' as never }],
+            });
+          } catch (navError) {
+            console.error('Navigation reset error:', navError);
+          }
+          
+          sweetAlert.error('Error', 'Failed to sign out. Please try again.');
         }
-        
-        sweetAlert.alert('Error', 'Failed to sign out. Please try again.', 'error');
-      }
-    }
+      },
+      undefined, // onCancel
+      'Sign Out',
+      'Cancel',
+      true // isDanger
+    );
   }, [signOut, sweetAlert, triggerHaptic, navigation]);
 
   // ─── FIXED: Handle Sync / Cloud Backup ─────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
-      sweetAlert.toast('Sync in Progress', 'Please wait for the current sync to complete.', 'info');
+      sweetAlert.info('Sync in Progress', 'Please wait for the current sync to complete.');
       return;
     }
 
@@ -1112,7 +1080,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (result.success) {
         setSyncStatus('success');
         triggerHaptic('success');
-        sweetAlert.toast('✅ Synced!', 'Your data is now in sync with the cloud', 'success');
+        sweetAlert.success('✅ Synced!', 'Your data is now in sync with the cloud');
         
         // Also create a backup in the background
         try {
@@ -1128,38 +1096,40 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         }
       } else {
         setSyncStatus('error');
-        sweetAlert.toast('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.', 'warning');
+        sweetAlert.warning('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.');
       }
     } catch (error) {
       console.error('Sync error:', error);
       setSyncStatus('error');
-      sweetAlert.toast('❌ Sync Failed', 'Could not sync data. Please try again.', 'error');
+      sweetAlert.error('❌ Sync Failed', 'Could not sync data. Please try again.');
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
   }, [isSyncing, sync, sweetAlert, triggerHaptic]);
 
+  // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
-        sweetAlert.alert('Biometric Not Available', 'Please set up biometric authentication in your device settings first.', 'warning');
+        sweetAlert.warning('Biometric Not Available', 'Please set up biometric authentication in your device settings first.');
         return;
       }
       navigation.navigate('BiometricSetup');
     } else {
-      const confirmed = await sweetAlert.confirm({
-        title: 'Disable Biometric?',
-        message: 'Are you sure you want to disable biometric authentication?',
-        confirmText: 'Disable',
-        cancelText: 'Cancel',
-        destructive: true,
-      });
-      if (confirmed) {
-        const success = await toggleBiometric(false);
-        if (!success) {
-          sweetAlert.alert('Error', 'Could not disable biometric authentication.', 'error');
-        }
-      }
+      sweetAlert.confirm(
+        'Disable Biometric?',
+        'Are you sure you want to disable biometric authentication?',
+        async () => {
+          const success = await toggleBiometric(false);
+          if (!success) {
+            sweetAlert.error('Error', 'Could not disable biometric authentication.');
+          }
+        },
+        undefined,
+        'Disable',
+        'Cancel',
+        true
+      );
     }
   }, [hasBiometric, navigation, sweetAlert, toggleBiometric]);
 
@@ -1170,18 +1140,19 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const handleLockNow = useCallback(async () => {
     const hasAnySecurity = availableMethods.hasPin || availableMethods.hasBiometric || securitySettings.isAppLockEnabled;
     if (!hasAnySecurity) {
-      const confirmed = await sweetAlert.confirm({
-        title: 'No Security Enabled',
-        message: 'You can lock the app without protection, or set up PIN / Biometric first.',
-        confirmText: 'Lock Anyway',
-        cancelText: 'Set Up Security',
-      });
-      if (confirmed) {
-        await lockApp(true);
-        sweetAlert.toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
-      } else {
-        navigation.navigate('SecurityCenter', { mode: 'setup' });
-      }
+      sweetAlert.confirm(
+        'No Security Enabled',
+        'You can lock the app without protection, or set up PIN / Biometric first.',
+        async () => {
+          await lockApp(true);
+          sweetAlert.warning('App Locked', 'Locked without security. Tap unlock to enter.');
+        },
+        () => {
+          navigation.navigate('SecurityCenter', { mode: 'setup' });
+        },
+        'Lock Anyway',
+        'Set Up Security'
+      );
       return;
     }
     await lockApp();
@@ -1192,9 +1163,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     setShowTimeoutModal(false);
     try {
       await updateAutoLockTimeout(minutes);
-      sweetAlert.toast('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`, 'success');
+      sweetAlert.success('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`);
     } catch (err) {
-      sweetAlert.alert('Update Failed', 'Could not update auto-lock timeout.', 'error');
+      sweetAlert.error('Update Failed', 'Could not update auto-lock timeout.');
     }
   }, [updateAutoLockTimeout, sweetAlert, formatTimeout]);
 

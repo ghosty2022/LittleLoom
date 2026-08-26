@@ -1644,39 +1644,39 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       <TouchableOpacity
   style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
   onPress={() => {
-    // Navigate to onboarding with editing mode
     navigation.navigate('CommunityOnboarding' as never, { editing: true } as never);
   }}
 >
   <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
   <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
-    Manage Your Topics ({selectedTopics.length})
+    Manage Your Topics {selectedTopics.length > 0 ? `(${selectedTopics.length})` : ''}
   </Text>
   <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
 </TouchableOpacity>
-
       <GlassCard delay={700} isDark={isDark} colors={fullThemeColors}>
-        <View style={styles.sectionHeaderWithEdit}>
-          <Text style={styles.sectionLabel}>Interested Topics</Text>
-          <TouchableOpacity style={styles.editIconBtn} onPress={() => setShowTopicSelector(true)}>
-            <Ionicons name="add" size={18} color="#6366f1" />
-          </TouchableOpacity>
+  <View style={styles.sectionHeaderWithEdit}>
+    <Text style={styles.sectionLabel}>Interested Topics</Text>
+    <TouchableOpacity style={styles.editIconBtn} onPress={() => navigation.navigate('CommunityOnboarding' as never, { editing: true } as never)}>
+      <Ionicons name="add" size={18} color="#6366f1" />
+    </TouchableOpacity>
+  </View>
+  <View style={styles.topicsWrap}>
+    {selectedTopics.length > 0 ? selectedTopics.map((topicId) => {
+      const topic = INITIAL_TOPICS.find(t => t.id === topicId);
+      const topicColor = topic?.color || TOPIC_COLORS[topicId] || '#6366f1';
+      const topicName = topic?.name || topicId;
+      return (
+        <View key={topicId} style={[styles.topicChip, { backgroundColor: `${topicColor}20` }]}>
+          <Text style={[styles.topicChipText, { color: topicColor }]}>
+            {topic?.emoji ? `${topic.emoji} ${topicName}` : topicName}
+          </Text>
         </View>
-        <View style={styles.topicsWrap}>
-          {selectedTopics.length > 0 ? selectedTopics.map((topicId) => {
-            const topic = INITIAL_TOPICS.find(t => t.id === topicId);
-            const topicColor = topic?.color || TOPIC_COLORS[topicId] || '#6366f1';
-            const topicName = topic?.name || topicId.replace('topic_', 'Topic ');
-            return (
-              <View key={topicId} style={[styles.topicChip, { backgroundColor: `${topicColor}20` }]}>
-                <Text style={[styles.topicChipText, { color: topicColor }]}>{topic?.emoji ? `${topic.emoji} ${topicName}` : topicName}</Text>
-              </View>
-            );
-          }) : (
-            <Text style={styles.emptyText}>No topics selected yet</Text>
-          )}
-        </View>
-      </GlassCard>
+      );
+    }) : (
+      <Text style={styles.emptyText}>No topics selected yet. Tap + to add some!</Text>
+    )}
+  </View>
+</GlassCard>
 
       {/* Quick Actions Dock - Only in view mode */}
       {!isEditing && (

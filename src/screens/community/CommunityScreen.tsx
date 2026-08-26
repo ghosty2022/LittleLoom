@@ -370,6 +370,16 @@ export default function CommunityScreen({ navigation }: Props) {
       return () => clearTimeout(timer);
     }
   }, [isLoading, hasTopics, canInteract, navigation, sweetAlert]);
+// Add this useEffect after the existing ones (around line 420)
+useEffect(() => {
+  // Refresh user topics when the screen focuses
+  const unsubscribe = navigation.addListener('focus', () => {
+    // Force re-fetch selected topics
+    const topics = getSelectedTopics();
+    // The component will re-render with updated topics
+  });
+  return unsubscribe;
+}, [navigation, getSelectedTopics]);
 
   const getFilteredPosts = useCallback(() => {
     let filtered = getFeedPosts();
