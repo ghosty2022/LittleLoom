@@ -47,6 +47,42 @@ const DELIVERY_TYPES = ['Vaginal', 'C-Section', 'VBAC', 'Other'];
 const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', 'Other'];
 const FEEDING_PLANS = ['Breastfeeding', 'Formula', 'Combination', 'Pumping'];
 
+// ─── TERM EXPLANATIONS ──────────────────────────────────────────────────
+const TERM_EXPLANATIONS: Record<string, { label: string; explanation: string }> = {
+  'Apgar Score': {
+    label: 'Apgar Score',
+    explanation: 'A quick test given to newborns at 1 and 5 minutes after birth. Scores range from 0-10 based on Appearance, Pulse, Grimace, Activity, and Respiration. 7+ is normal.'
+  },
+  'Gestational Weeks': {
+    label: 'Gestational Weeks',
+    explanation: 'The number of weeks your baby was in the womb. Full-term is 39-40 weeks. Before 37 weeks is premature.'
+  },
+  'Birth Weight': {
+    label: 'Birth Weight',
+    explanation: 'Your baby\'s weight at birth. Average is 2.5-4.5 kg (5.5-10 lbs). This helps track growth patterns.'
+  },
+  'Birth Height': {
+    label: 'Birth Height',
+    explanation: 'Your baby\'s length at birth. Average is 45-55 cm (18-22 inches).'
+  },
+  'Head Circumference': {
+    label: 'Head Circumference',
+    explanation: 'Measurement around your baby\'s head. Average is 32-37 cm (12.5-14.5 inches). This helps track brain development.'
+  },
+  'Delivery Type': {
+    label: 'Delivery Type',
+    explanation: 'How your baby was born: Vaginal (natural birth), C-Section (surgical), VBAC (vaginal birth after C-section), or Other.'
+  },
+  'Birth Attendant': {
+    label: 'Birth Attendant',
+    explanation: 'The healthcare professional who helped deliver your baby. Can be an Obstetrician, Midwife, Family Doctor, or Doula.'
+  },
+  'Feeding Plan': {
+    label: 'Feeding Plan',
+    explanation: 'How you plan to feed your baby: Breastfeeding (breast milk), Formula (infant formula), Combination (both), or Pumping (expressed milk).'
+  },
+};
+
 const SKIN_TONES = [
   { id: 0, emoji: '👶', color: '#F5D0C5', label: 'Light' },
   { id: 1, emoji: '👶🏻', color: '#F5D0C5', label: 'Fair' },
@@ -111,6 +147,40 @@ const isImageUri = (value: string | undefined | null): boolean => {
 
 type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
 
+// ─── TERM EXPLANATION TOOLTIP ──────────────────────────────────────────
+const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const info = TERM_EXPLANATIONS[term];
+  if (!info) return null;
+
+  return (
+    <View style={{ position: 'relative' }}>
+      <TouchableOpacity
+        onPress={() => setShowTooltip(!showTooltip)}
+        style={{ paddingHorizontal: 6 }}
+      >
+        <Ionicons name="help-circle-outline" size={18} color={isDark ? '#64748b' : '#94a3b8'} />
+      </TouchableOpacity>
+      {showTooltip && (
+        <View style={[styles.tooltipContainer, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
+          <Text style={[styles.tooltipTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+            {info.label}
+          </Text>
+          <Text style={[styles.tooltipText, { color: isDark ? '#94a3b8' : '#475569' }]}>
+            {info.explanation}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setShowTooltip(false)}
+            style={styles.tooltipClose}
+          >
+            <Text style={[styles.tooltipCloseText, { color: '#6366f1' }]}>Got it</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+};
+
 // ─── COMPONENT ────────────────────────────────────────────────────────────
 export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
   const insets = useSafeAreaInsets();
@@ -151,6 +221,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
   }>({ type: null });
   const [creatorRelationship, setCreatorRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Mother');
+  const [showTermTooltip, setShowTermTooltip] = useState<string | null>(null);
 
   const imagePickerLock = useRef(false);
   const isCreatingRef = useRef(false);
@@ -324,124 +395,110 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     }
   }, [currentStep, navigation, triggerHaptic]);
 
-const handleCreateProfile = useCallback(async (andContinue = false) => {
-  if (isCreatingRef.current) {
-    toast('A profile is already being created', 'warning');
-    return;
-  }
-  if (!validateStep1() || !validateStep2()) return;
+  const handleCreateProfile = useCallback(async (andContinue = false) => {
+    if (isCreatingRef.current) {
+      toast('A profile is already being created', 'warning');
+      return;
+    }
+    if (!validateStep1() || !validateStep2()) return;
 
-  // ─── DEBUG: Verify authentication status ──────────────────────────────
-  // Get the authenticated user directly from Supabase
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  console.log('[BabyProfile] Auth check - user:', user?.id);
-  console.log('[BabyProfile] Auth check - error:', userError?.message);
-  console.log('[BabyProfile] Auth check - userProfile:', userProfile?.id);
+    // ─── DEBUG: Verify authentication status ──────────────────────────────
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    console.log('[BabyProfile] Auth check - user:', user?.id);
+    console.log('[BabyProfile] Auth check - error:', userError?.message);
 
-  if (userError || !user) {
-    toast('Please sign in again to create a baby profile', 'error');
-    navigation.replace('Login');
-    return;
-  }
-
-  // Use the session user ID instead of userProfile.id
-  const userId = user.id;
-  console.log('[BabyProfile] Creating baby with parent1Id (from session):', userId);
-
-  // Ensure we're not using a stale userProfile
-  if (userProfile && user.id !== userProfile.id) {
-    console.warn('[BabyProfile] User ID mismatch - using session user:', user.id, 'vs profile:', userProfile.id);
-    // Continue with the session user ID
-  }
-
-  // ─── CONTINUE WITH PROFILE CREATION ──────────────────────────────────
-
-  const trimmedName = name.trim();
-  const birthIso = birthDate.toISOString();
-  const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
-  if (duplicate) {
-    toast('A baby with this name and birth date already exists', 'warning');
-    return;
-  }
-
-  isCreatingRef.current = true;
-  setIsLoading(true);
-  triggerHaptic('medium');
-
-  let babyId: string | null = null;
-
-  try {
-    const hasCustomImage = isImageUri(avatar);
-    const avatarToSave = hasCustomImage ? '👶' : avatar;
-
-    // ─── CREATE BABY WITH ALL FIELDS ──────────────────────────────────
-    const babyData: any = {
-      name: trimmedName,
-      birthDate: birthIso,
-      gender,
-      skinTone,
-      avatar: avatarToSave,
-      weight: weight.trim() || undefined,
-      height: height.trim() || undefined,
-      bloodType: bloodType.trim().toUpperCase() || undefined,
-      allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
-      medicalNotes: medicalNotes.trim() || undefined,
-      parent1Id: userId,
-      parent2Id: undefined,
-      // Additional fields
-      birthWeight: birthWeight.trim() || undefined,
-      birthHeight: birthHeight.trim() || undefined,
-      birthHeadCircumference: birthHeadCircumference.trim() || undefined,
-      gestationalWeeks: gestationalWeeks.trim() || undefined,
-      apgar1Min: apgar1Min.trim() || undefined,
-      apgar5Min: apgar5Min.trim() || undefined,
-      deliveryType: deliveryType || undefined,
-      birthAttendant: birthAttendant || undefined,
-      birthPlace: birthPlace.trim() || undefined,
-      multipleBirth: multipleBirth,
-      birthOrder: birthOrder.trim() || undefined,
-      feedingPlan: feedingPlan || undefined,
-      birthTime: birthTime.trim() || undefined,
-    };
-
-    babyId = await createBaby(babyData);
-
-    if (!babyId) {
-      if (isMounted.current) {
-        toast('Failed to create profile. Please try again.', 'error');
-      }
-      isCreatingRef.current = false;
-      setIsLoading(false);
+    if (userError || !user) {
+      toast('Please sign in again to create a baby profile', 'error');
+      navigation.replace('Login');
       return;
     }
 
-    if (hasCustomImage && babyId) {
-      try {
-        const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
-        await updateBaby(babyId, { avatar: permanentUri });
-        if (isMounted.current) {
-          toast('Profile photo saved!', 'success');
-        }
-      } catch (imgError) {
-        console.warn('Failed to persist baby image:', imgError);
-        if (isMounted.current) {
-          toast('Profile created but image could not be saved', 'warning');
-        }
-      }
-    }
+    const userId = user.id;
+    console.log('[BabyProfile] Creating baby with parent1Id (from session):', userId);
 
-    if (isMounted.current) {
-      toast(`${trimmedName}'s profile created! 🎉`, 'success');
-    }
-
-    if (!isMounted.current) {
-      isCreatingRef.current = false;
-      setIsLoading(false);
+    const trimmedName = name.trim();
+    const birthIso = birthDate.toISOString();
+    
+    // Check for duplicate
+    const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
+    if (duplicate) {
+      toast('A baby with this name and birth date already exists', 'warning');
       return;
     }
+
+    isCreatingRef.current = true;
+    setIsLoading(true);
+    triggerHaptic('medium');
+
+    let babyId: string | null = null;
 
     try {
-      await loadBabies();
+      const hasCustomImage = isImageUri(avatar);
+      const avatarToSave = hasCustomImage ? '👶' : avatar;
+
+      // ─── CREATE BABY WITH ALL FIELDS ──────────────────────────────────
+      const babyData: any = {
+        name: trimmedName,
+        birthDate: birthIso,
+        gender,
+        skinTone,
+        avatar: avatarToSave,
+        weight: weight.trim() || undefined,
+        height: height.trim() || undefined,
+        bloodType: bloodType.trim().toUpperCase() || undefined,
+        allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
+        medicalNotes: medicalNotes.trim() || undefined,
+        parent1Id: userId,
+        parent2Id: undefined,
+        // Additional fields
+        birthWeight: birthWeight.trim() || undefined,
+        birthHeight: birthHeight.trim() || undefined,
+        birthHeadCircumference: birthHeadCircumference.trim() || undefined,
+        gestationalWeeks: gestationalWeeks.trim() || undefined,
+        apgar1Min: apgar1Min.trim() || undefined,
+        apgar5Min: apgar5Min.trim() || undefined,
+        deliveryType: deliveryType || undefined,
+        birthAttendant: birthAttendant || undefined,
+        birthPlace: birthPlace.trim() || undefined,
+        multipleBirth: multipleBirth,
+        birthOrder: birthOrder.trim() || undefined,
+        feedingPlan: feedingPlan || undefined,
+        birthTime: birthTime.trim() || undefined,
+      };
+
+      console.log('[BabyProfile] Creating baby with data:', babyData);
+      
+      babyId = await createBaby(babyData);
+
+      if (!babyId) {
+        if (isMounted.current) {
+          toast('Failed to create profile. Please try again.', 'error');
+        }
+        isCreatingRef.current = false;
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('[BabyProfile] Baby created with ID:', babyId);
+
+      if (hasCustomImage && babyId) {
+        try {
+          const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
+          await updateBaby(babyId, { avatar: permanentUri });
+          if (isMounted.current) {
+            toast('Profile photo saved!', 'success');
+          }
+        } catch (imgError) {
+          console.warn('Failed to persist baby image:', imgError);
+          if (isMounted.current) {
+            toast('Profile created but image could not be saved', 'warning');
+          }
+        }
+      }
+
+      if (isMounted.current) {
+        toast(`${trimmedName}'s profile created! 🎉`, 'success');
+      }
 
       if (!isMounted.current) {
         isCreatingRef.current = false;
@@ -449,123 +506,129 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
         return;
       }
 
-      const persisted = await getBabyByIdFromDb(babyId);
-
-      if (!persisted) {
-        console.error('CRITICAL: Baby profile was not persisted to the database!');
-        if (isMounted.current) {
-          toast('Profile could not be saved. Please try again.', 'error');
-        }
-        isCreatingRef.current = false;
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('✅ Baby profile verified in database:', persisted.id);
-
       try {
-        await switchBaby(babyId);
-      } catch (switchErr) {
-        console.warn('Failed to auto-switch to new baby:', switchErr);
-      }
+        // Reload babies to get the new one
+        await loadBabies();
+        console.log('[BabyProfile] Babies reloaded');
 
-      if (andContinue) {
-        if (navigation.canGoBack()) {
-          navigation.goBack();
-        } else {
-          const { hasParent2 } = await wasSetupCompleted();
-          if (hasParent2 === false) {
-            navigation.replace('CoParentInviteScreen');
+        // Verify the baby was created in the database
+        const persisted = await getBabyByIdFromDb(babyId);
+        console.log('[BabyProfile] Verified baby in DB:', persisted);
+
+        if (!persisted) {
+          console.error('CRITICAL: Baby profile was not persisted to the database!');
+          if (isMounted.current) {
+            toast('Profile could not be saved. Please try again.', 'error');
+          }
+          isCreatingRef.current = false;
+          setIsLoading(false);
+          return;
+        }
+
+        try {
+          await switchBaby(babyId);
+          console.log('[BabyProfile] Switched to new baby');
+        } catch (switchErr) {
+          console.warn('Failed to auto-switch to new baby:', switchErr);
+        }
+
+        if (andContinue) {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
           } else {
-            navigation.replace('Main');
+            const { hasParent2 } = await wasSetupCompleted();
+            if (hasParent2 === false) {
+              navigation.replace('CoParentInviteScreen');
+            } else {
+              navigation.replace('Main');
+            }
+          }
+        } else {
+          // Reset form for another baby
+          setName('');
+          setBirthDate(new Date());
+          setBirthTime('');
+          setGender('boy');
+          setSkinTone(0);
+          setAvatar('👶');
+          setWeight('');
+          setHeight('');
+          setBloodType('');
+          setAllergies('');
+          setMedicalNotes('');
+          setBirthWeight('');
+          setBirthHeight('');
+          setBirthHeadCircumference('');
+          setGestationalWeeks('');
+          setApgar1Min('');
+          setApgar5Min('');
+          setDeliveryType('');
+          setBirthAttendant('');
+          setBirthPlace('');
+          setMultipleBirth(false);
+          setBirthOrder('');
+          setFeedingPlan('');
+          setCurrentStep(1);
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+          if (isMounted.current) {
+            toast('Baby added! Ready for another?', 'success');
           }
         }
-      } else {
-        // Reset form for another baby
-        setName('');
-        setBirthDate(new Date());
-        setBirthTime('');
-        setGender('boy');
-        setSkinTone(0);
-        setAvatar('👶');
-        setWeight('');
-        setHeight('');
-        setBloodType('');
-        setAllergies('');
-        setMedicalNotes('');
-        setBirthWeight('');
-        setBirthHeight('');
-        setBirthHeadCircumference('');
-        setGestationalWeeks('');
-        setApgar1Min('');
-        setApgar5Min('');
-        setDeliveryType('');
-        setBirthAttendant('');
-        setBirthPlace('');
-        setMultipleBirth(false);
-        setBirthOrder('');
-        setFeedingPlan('');
-        setCurrentStep(1);
-        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      } catch (navError) {
+        console.error('Post-create error:', navError);
         if (isMounted.current) {
-          toast('Baby added! Ready for another?', 'success');
+          toast('Could not finalize setup', 'error');
         }
       }
-    } catch (navError) {
-      console.error('Post-create error:', navError);
+    } catch (error) {
+      console.error('Create baby error:', error);
       if (isMounted.current) {
-        toast('Could not finalize setup', 'error');
+        toast('An unexpected error occurred. Please try again.', 'error');
+      }
+    } finally {
+      isCreatingRef.current = false;
+      if (isMounted.current) {
+        setIsLoading(false);
       }
     }
-  } catch (error) {
-    console.error('Create baby error:', error);
-    if (isMounted.current) {
-      toast('An unexpected error occurred. Please try again.', 'error');
-    }
-  } finally {
-    isCreatingRef.current = false;
-    if (isMounted.current) {
-      setIsLoading(false);
-    }
-  }
-}, [
-  name,
-  birthDate,
-  birthTime,
-  gender,
-  skinTone,
-  avatar,
-  weight,
-  height,
-  bloodType,
-  allergies,
-  medicalNotes,
-  birthWeight,
-  birthHeight,
-  birthHeadCircumference,
-  gestationalWeeks,
-  apgar1Min,
-  apgar5Min,
-  deliveryType,
-  birthAttendant,
-  birthPlace,
-  multipleBirth,
-  birthOrder,
-  feedingPlan,
-  babies,
-  createBaby,
-  updateBaby,
-  loadBabies,
-  navigation,
-  validateStep1,
-  validateStep2,
-  toast,
-  triggerHaptic,
-  switchBaby,
-  wasSetupCompleted,
-  isAuthenticated,
-  userProfile,
-]);
+  }, [
+    name,
+    birthDate,
+    birthTime,
+    gender,
+    skinTone,
+    avatar,
+    weight,
+    height,
+    bloodType,
+    allergies,
+    medicalNotes,
+    birthWeight,
+    birthHeight,
+    birthHeadCircumference,
+    gestationalWeeks,
+    apgar1Min,
+    apgar5Min,
+    deliveryType,
+    birthAttendant,
+    birthPlace,
+    multipleBirth,
+    birthOrder,
+    feedingPlan,
+    babies,
+    createBaby,
+    updateBaby,
+    loadBabies,
+    navigation,
+    validateStep1,
+    validateStep2,
+    toast,
+    triggerHaptic,
+    switchBaby,
+    wasSetupCompleted,
+    userProfile,
+  ]);
+
   // ─── RENDER PICKER MODAL ──────────────────────────────────────────────
   const renderPickerModal = (
     title: string,
@@ -666,6 +729,17 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
       />
     );
   };
+
+  // ─── RENDER FIELD WITH TOOLTIP ──────────────────────────────────────
+  const renderFieldWithTooltip = (label: string, field: React.ReactNode, termKey: string) => (
+    <View style={styles.fieldWithTooltip}>
+      <View style={styles.fieldLabelRow}>
+        <Text style={[styles.label, isDark && styles.textDark]}>{label}</Text>
+        <TermTooltip term={termKey} isDark={isDark} />
+      </View>
+      {field}
+    </View>
+  );
 
   // ─── RENDER STEPS ──────────────────────────────────────────────────────
   const renderStep1 = () => (
@@ -880,6 +954,9 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
       <Text style={[styles.sectionSubtitle, { color: themeColors.primary }]}>
         ✨ Health & Birth Details
       </Text>
+      <Text style={[styles.sectionHint, isDark && { color: '#94a3b8' }]}>
+        Tap the ℹ️ icons for explanations of medical terms
+      </Text>
 
       {/* Current Measurements */}
       <View style={styles.sectionHeader}>
@@ -933,138 +1010,162 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
 
       <View style={styles.rowContainer}>
         <View style={[styles.halfWidth, { marginRight: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Birth Weight (kg)</Text>
-          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-            <Ionicons name="scale-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, isDark && styles.textDark]}
-              value={birthWeight}
-              onChangeText={(text) => {
-                const cleaned = text.replace(/[^0-9.]/g, '');
-                const parts = cleaned.split('.');
-                const formatted = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
-                setBirthWeight(formatted);
-              }}
-              placeholder="e.g., 3.2"
-              placeholderTextColor={isDark ? '#64748b' : '#999'}
-              keyboardType="decimal-pad"
-              maxLength={5}
-            />
-          </View>
+          {renderFieldWithTooltip(
+            'Birth Weight (kg)',
+            <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+              <Ionicons name="scale-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, isDark && styles.textDark]}
+                value={birthWeight}
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/[^0-9.]/g, '');
+                  const parts = cleaned.split('.');
+                  const formatted = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
+                  setBirthWeight(formatted);
+                }}
+                placeholder="e.g., 3.2"
+                placeholderTextColor={isDark ? '#64748b' : '#999'}
+                keyboardType="decimal-pad"
+                maxLength={5}
+              />
+            </View>,
+            'Birth Weight'
+          )}
         </View>
         <View style={[styles.halfWidth, { marginLeft: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Birth Height (cm)</Text>
-          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-            <Ionicons name="resize-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, isDark && styles.textDark]}
-              value={birthHeight}
-              onChangeText={(text) => setBirthHeight(text.replace(/[^0-9]/g, '').slice(0, 3))}
-              placeholder="e.g., 48"
-              placeholderTextColor={isDark ? '#64748b' : '#999'}
-              keyboardType="number-pad"
-              maxLength={3}
-            />
-          </View>
+          {renderFieldWithTooltip(
+            'Birth Height (cm)',
+            <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+              <Ionicons name="resize-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, isDark && styles.textDark]}
+                value={birthHeight}
+                onChangeText={(text) => setBirthHeight(text.replace(/[^0-9]/g, '').slice(0, 3))}
+                placeholder="e.g., 48"
+                placeholderTextColor={isDark ? '#64748b' : '#999'}
+                keyboardType="number-pad"
+                maxLength={3}
+              />
+            </View>,
+            'Birth Height'
+          )}
         </View>
       </View>
 
       <View style={styles.rowContainer}>
         <View style={[styles.halfWidth, { marginRight: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Head Circumference (cm)</Text>
-          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-            <Ionicons name="aperture-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, isDark && styles.textDark]}
-              value={birthHeadCircumference}
-              onChangeText={(text) => setBirthHeadCircumference(text.replace(/[^0-9.]/g, '').slice(0, 5))}
-              placeholder="e.g., 33"
-              placeholderTextColor={isDark ? '#64748b' : '#999'}
-              keyboardType="decimal-pad"
-              maxLength={5}
-            />
-          </View>
+          {renderFieldWithTooltip(
+            'Head Circumference (cm)',
+            <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+              <Ionicons name="aperture-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, isDark && styles.textDark]}
+                value={birthHeadCircumference}
+                onChangeText={(text) => setBirthHeadCircumference(text.replace(/[^0-9.]/g, '').slice(0, 5))}
+                placeholder="e.g., 33"
+                placeholderTextColor={isDark ? '#64748b' : '#999'}
+                keyboardType="decimal-pad"
+                maxLength={5}
+              />
+            </View>,
+            'Head Circumference'
+          )}
         </View>
         <View style={[styles.halfWidth, { marginLeft: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Gestational Weeks</Text>
-          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-            <Ionicons name="calendar-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, isDark && styles.textDark]}
-              value={gestationalWeeks}
-              onChangeText={(text) => setGestationalWeeks(text.replace(/[^0-9]/g, '').slice(0, 2))}
-              placeholder="e.g., 40"
-              placeholderTextColor={isDark ? '#64748b' : '#999'}
-              keyboardType="number-pad"
-              maxLength={2}
-            />
-          </View>
+          {renderFieldWithTooltip(
+            'Gestational Weeks',
+            <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+              <Ionicons name="calendar-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, isDark && styles.textDark]}
+                value={gestationalWeeks}
+                onChangeText={(text) => setGestationalWeeks(text.replace(/[^0-9]/g, '').slice(0, 2))}
+                placeholder="e.g., 40"
+                placeholderTextColor={isDark ? '#64748b' : '#999'}
+                keyboardType="number-pad"
+                maxLength={2}
+              />
+            </View>,
+            'Gestational Weeks'
+          )}
         </View>
       </View>
 
       {/* Apgar Scores */}
       <View style={styles.rowContainer}>
         <View style={[styles.halfWidth, { marginRight: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Apgar 1 min</Text>
-          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-            <Ionicons name="pulse-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, isDark && styles.textDark]}
-              value={apgar1Min}
-              onChangeText={(text) => setApgar1Min(text.replace(/[^0-9]/g, '').slice(0, 2))}
-              placeholder="e.g., 8"
-              placeholderTextColor={isDark ? '#64748b' : '#999'}
-              keyboardType="number-pad"
-              maxLength={2}
-            />
-          </View>
+          {renderFieldWithTooltip(
+            'Apgar 1 min',
+            <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+              <Ionicons name="pulse-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, isDark && styles.textDark]}
+                value={apgar1Min}
+                onChangeText={(text) => setApgar1Min(text.replace(/[^0-9]/g, '').slice(0, 2))}
+                placeholder="e.g., 8"
+                placeholderTextColor={isDark ? '#64748b' : '#999'}
+                keyboardType="number-pad"
+                maxLength={2}
+              />
+            </View>,
+            'Apgar Score'
+          )}
         </View>
         <View style={[styles.halfWidth, { marginLeft: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Apgar 5 min</Text>
-          <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
-            <Ionicons name="pulse-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, isDark && styles.textDark]}
-              value={apgar5Min}
-              onChangeText={(text) => setApgar5Min(text.replace(/[^0-9]/g, '').slice(0, 2))}
-              placeholder="e.g., 9"
-              placeholderTextColor={isDark ? '#64748b' : '#999'}
-              keyboardType="number-pad"
-              maxLength={2}
-            />
-          </View>
+          {renderFieldWithTooltip(
+            'Apgar 5 min',
+            <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+              <Ionicons name="pulse-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, isDark && styles.textDark]}
+                value={apgar5Min}
+                onChangeText={(text) => setApgar5Min(text.replace(/[^0-9]/g, '').slice(0, 2))}
+                placeholder="e.g., 9"
+                placeholderTextColor={isDark ? '#64748b' : '#999'}
+                keyboardType="number-pad"
+                maxLength={2}
+              />
+            </View>,
+            'Apgar Score'
+          )}
         </View>
       </View>
 
       {/* Delivery & Attendant */}
       <View style={styles.rowContainer}>
         <View style={[styles.halfWidth, { marginRight: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Delivery Type</Text>
-          <TouchableOpacity
-            style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
-            onPress={() => setShowPicker({ type: 'deliveryType' })}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="medkit-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <Text style={[styles.input, isDark && styles.textDark, !deliveryType && { color: isDark ? '#64748b' : '#999' }]}>
-              {deliveryType || 'Select delivery type'}
-            </Text>
-            <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
-          </TouchableOpacity>
+          {renderFieldWithTooltip(
+            'Delivery Type',
+            <TouchableOpacity
+              style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
+              onPress={() => setShowPicker({ type: 'deliveryType' })}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="medkit-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <Text style={[styles.input, isDark && styles.textDark, !deliveryType && { color: isDark ? '#64748b' : '#999' }]}>
+                {deliveryType || 'Select delivery type'}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
+            </TouchableOpacity>,
+            'Delivery Type'
+          )}
         </View>
         <View style={[styles.halfWidth, { marginLeft: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Birth Attendant</Text>
-          <TouchableOpacity
-            style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
-            onPress={() => setShowPicker({ type: 'birthAttendant' })}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="people-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <Text style={[styles.input, isDark && styles.textDark, !birthAttendant && { color: isDark ? '#64748b' : '#999' }]}>
-              {birthAttendant || 'Select attendant'}
-            </Text>
-            <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
-          </TouchableOpacity>
+          {renderFieldWithTooltip(
+            'Birth Attendant',
+            <TouchableOpacity
+              style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
+              onPress={() => setShowPicker({ type: 'birthAttendant' })}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="people-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <Text style={[styles.input, isDark && styles.textDark, !birthAttendant && { color: isDark ? '#64748b' : '#999' }]}>
+                {birthAttendant || 'Select attendant'}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
+            </TouchableOpacity>,
+            'Birth Attendant'
+          )}
         </View>
       </View>
 
@@ -1132,18 +1233,21 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
           </View>
         </View>
         <View style={[styles.halfWidth, { marginLeft: 8 }]}>
-          <Text style={[styles.label, isDark && styles.textDark]}>Feeding Plan</Text>
-          <TouchableOpacity
-            style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
-            onPress={() => setShowPicker({ type: 'feedingPlan' })}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="nutrition-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-            <Text style={[styles.input, isDark && styles.textDark, !feedingPlan && { color: isDark ? '#64748b' : '#999' }]}>
-              {feedingPlan || 'Select feeding plan'}
-            </Text>
-            <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
-          </TouchableOpacity>
+          {renderFieldWithTooltip(
+            'Feeding Plan',
+            <TouchableOpacity
+              style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
+              onPress={() => setShowPicker({ type: 'feedingPlan' })}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="nutrition-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+              <Text style={[styles.input, isDark && styles.textDark, !feedingPlan && { color: isDark ? '#64748b' : '#999' }]}>
+                {feedingPlan || 'Select feeding plan'}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color={isDark ? '#64748b' : '#999'} />
+            </TouchableOpacity>,
+            'Feeding Plan'
+          )}
         </View>
       </View>
 
@@ -1432,6 +1536,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
   required: { color: '#ef4444', fontSize: 14, fontWeight: '700', marginLeft: 2 },
   sectionSubtitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
+  sectionHint: { fontSize: 12, marginBottom: 12, fontStyle: 'italic' },
 
   rowContainer: { flexDirection: 'row', justifyContent: 'space-between' },
   halfWidth: { flex: 1 },
@@ -1622,4 +1727,28 @@ const styles = StyleSheet.create({
   backStepText: { fontSize: 15, fontWeight: '600' },
   createButton: { flex: 2, borderRadius: 14, overflow: 'hidden' },
   buttonDisabled: { opacity: 0.5 },
+
+  // ─── TOOLTIP STYLES ──────────────────────────────────────────────────
+  fieldWithTooltip: { flex: 1 },
+  fieldLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  tooltipContainer: {
+    position: 'absolute',
+    top: 24,
+    right: -8,
+    width: 280,
+    padding: 14,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  tooltipTitle: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
+  tooltipText: { fontSize: 13, lineHeight: 19 },
+  tooltipClose: { marginTop: 10, alignSelf: 'flex-end' },
+  tooltipCloseText: { fontSize: 14, fontWeight: '700' },
 });
