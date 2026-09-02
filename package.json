@@ -46,7 +46,7 @@
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
     "drizzle-orm": "^0.45.2",
-    "expo": "^57.0.16",
+    "expo": "~57.0.19",
     "expo-apple-authentication": "~57.0.1",
     "expo-application": "~57.0.2",
     "expo-asset": "^57.0.14",
@@ -105,6 +105,7 @@
     "js-sha256": "^0.11.1",
     "lodash": "^4.17.21",
     "lottie-react-native": "~7.3.8",
+    "patch-package": "^8.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-hook-form": "^7.53.0",
@@ -129,8 +130,7 @@
     "react-native-web": "^0.21.2",
     "uuid": "^14.0.2",
     "zod": "^3.23.0",
-    "zustand": "^4.5.2",
-    "patch-package": "^8.0.0"
+    "zustand": "^4.5.2"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
