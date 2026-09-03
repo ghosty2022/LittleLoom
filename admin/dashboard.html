@@ -3,15 +3,526 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LittleLoom Admin - Dashboard</title>
+    <title>LittleLoom Admin - Enterprise Console</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        /* Dashboard specific styles */
+        /* ─── ENTERPRISE ADMIN STYLES ─────────────────────────────────── */
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --secondary: #8b5cf6;
+            --accent: #14b8a6;
+            --bg-primary: #f1f5f9;
+            --bg-card: #ffffff;
+            --bg-sidebar: #0f172a;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --text-white: #ffffff;
+            --border: rgba(0, 0, 0, 0.06);
+            --border-dark: rgba(255, 255, 255, 0.06);
+            --shadow: 0 1px 3px rgba(0,0,0,0.06);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+            --shadow-lg: 0 10px 15px rgba(0,0,0,0.08);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            --sidebar-width: 260px;
+            --header-height: 64px;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --glass-bg: rgba(255, 255, 255, 0.8);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: var(--font); background: var(--bg-primary); color: var(--text-primary); line-height: 1.6; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 10px; }
+
+        .app { display: flex; min-height: 100vh; background: var(--bg-primary); }
+
+        /* ─── SIDEBAR ────────────────────────────────────────────────────── */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-sidebar);
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-y: auto;
+            overflow-x: hidden;
+            border-right: 1px solid var(--border-dark);
+        }
+
+        .sidebar-brand {
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-dark);
+            min-height: var(--header-height);
+            flex-shrink: 0;
+        }
+
+        .brand-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+        }
+
+        .logo-title { font-weight: 800; font-size: 18px; color: var(--text-white); letter-spacing: -0.5px; }
+        .logo-sub { font-weight: 400; color: rgba(255,255,255,0.4); font-size: 11px; display: block; }
+
+        .sidebar-nav { flex: 1; padding: 8px 12px 20px; overflow-y: auto; }
+        .sidebar-nav-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: rgba(255,255,255,0.25);
+            padding: 16px 12px 6px;
+            margin-top: 4px;
+        }
+
+        .sidebar-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            color: rgba(255,255,255,0.6);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all var(--transition);
+            font-size: 13px;
+            font-weight: 500;
+            position: relative;
+            margin-bottom: 1px;
+        }
+
+        .sidebar-nav-item:hover { background: rgba(255,255,255,0.06); color: var(--text-white); transform: translateX(4px); }
+        .sidebar-nav-item.active { background: rgba(99,102,241,0.2); color: #a5b4fc; }
+        .sidebar-nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 20px;
+            background: var(--primary);
+            border-radius: 0 4px 4px 0;
+        }
+        .sidebar-nav-item .icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav-item .badge {
+            margin-left: auto;
+            padding: 1px 10px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 700;
+            background: var(--primary);
+            color: #fff;
+        }
+        .sidebar-nav-item .badge.danger { background: #ef4444; }
+        .sidebar-nav-item .badge.success { background: #22c55e; }
+        .sidebar-nav-item .badge.warning { background: #f59e0b; }
+
+        .sidebar-footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-dark);
+            flex-shrink: 0;
+        }
+        .sidebar-footer .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: rgba(255,255,255,0.7);
+        }
+        .sidebar-footer .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            color: #fff;
+            flex-shrink: 0;
+        }
+        .sidebar-footer .user-name { font-size: 13px; font-weight: 600; color: var(--text-white); }
+        .sidebar-footer .user-email { font-size: 11px; color: rgba(255,255,255,0.4); }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            backdrop-filter: blur(4px);
+            animation: fadeIn 0.3s ease;
+        }
+        .sidebar-overlay.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ─── MAIN ──────────────────────────────────────────────────────── */
+        .main {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ─── TOPBAR ────────────────────────────────────────────────────── */
+        .topbar {
+            height: var(--header-height);
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+
+        .topbar-left { display: flex; align-items: center; gap: 16px; }
+        .topbar-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 4px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .topbar-menu-btn:hover { background: var(--bg-primary); }
+
+        .topbar-title { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-primary); }
+        .topbar-title .sub { font-weight: 400; color: var(--text-muted); font-size: 13px; }
+
+        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .topbar-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            background: var(--bg-primary);
+            border-radius: 20px;
+        }
+        .topbar-status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%,100% { opacity:1; transform:scale(1); }
+            50% { opacity:0.5; transform:scale(0.85); }
+        }
+
+        .topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+        /* ─── BUTTONS ───────────────────────────────────────────────────── */
+        .btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .btn-primary { background: linear-gradient(135deg, var(--primary), var(--secondary)); color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,0.3); }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.4); }
+        .btn-outline { background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); }
+        .btn-outline:hover { background: var(--bg-primary); border-color: var(--primary); color: var(--primary); }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-danger:hover { background: #dc2626; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(239,68,68,0.3); }
+        .btn-success { background: #22c55e; color: #fff; }
+        .btn-success:hover { background: #16a34a; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(34,197,94,0.3); }
+        .btn-warning { background: #f59e0b; color: #fff; }
+        .btn-warning:hover { background: #d97706; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(245,158,11,0.3); }
+        .btn-sm { padding: 4px 12px; font-size: 11px; }
+        .btn-xs { padding: 2px 8px; font-size: 10px; }
+
+        /* ─── STATUS BAR ────────────────────────────────────────────────── */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        /* ─── TOAST ─────────────────────────────────────────────────────── */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+        .toast {
+            pointer-events: auto;
+            background: var(--bg-card);
+            padding: 12px 24px;
+            border-radius: var(--radius);
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+            font-weight: 600;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-left: 4px solid var(--primary);
+            animation: slideUp 0.3s ease-out;
+            min-width: 200px;
+        }
+        .toast.error { border-left-color: #ef4444; }
+        .toast.success { border-left-color: #22c55e; }
+        .toast.warning { border-left-color: #f59e0b; }
+
+        @keyframes slideUp {
+            from { opacity:0; transform:translateY(20px) scale(0.95); }
+            to { opacity:1; transform:translateY(0) scale(1); }
+        }
+
+        /* ─── RESPONSIVE ────────────────────────────────────────────────── */
+        @media (max-width: 1024px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; }
+            .topbar-menu-btn { display: block; }
+            .topbar { padding: 0 16px; }
+        }
+
+        @media (max-width: 768px) {
+            .topbar-status { display: none; }
+            .topbar-title { font-size: 16px; }
+            .topbar-title .sub { display: none; }
+        }
+
+        /* ─── BADGES ────────────────────────────────────────────────────── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge-success { background: #dcfce7; color: #16a34a; }
+        .badge-warning { background: #fef3c7; color: #d97706; }
+        .badge-danger { background: #fee2e2; color: #dc2626; }
+        .badge-info { background: #dbeafe; color: #2563eb; }
+        .badge-purple { background: #ede9fe; color: #7c3aed; }
+        .badge-gray { background: #f3f4f6; color: #6b7280; }
+
+        /* ─── CARDS ─────────────────────────────────────────────────────── */
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            margin-bottom: 20px;
+            transition: all var(--transition);
+        }
+        .card:hover { box-shadow: var(--shadow-md); }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+        .card-title .emoji { font-size: 18px; }
+        .card-body { padding: 16px 20px; }
+
+        /* ─── GRIDS ─────────────────────────────────────────────────────── */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+        @media (max-width: 1024px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .grid-3 { grid-template-columns: 1fr 1fr; }
+            .grid-4 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 600px) {
+            .grid-3 { grid-template-columns: 1fr; }
+            .grid-4 { grid-template-columns: 1fr; }
+        }
+
+        /* ─── STAT CARDS ────────────────────────────────────────────────── */
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            box-shadow: var(--shadow);
+            transition: all var(--transition);
+            border: 1px solid var(--border);
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 2px; }
+        .stat-value { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: var(--text-primary); }
+        .stat-value .unit { font-size: 14px; font-weight: 600; color: var(--text-muted); margin-left: 4px; }
+        .stat-change { font-size: 12px; font-weight: 600; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; }
+        .stat-change.positive { color: #22c55e; }
+        .stat-change.negative { color: #ef4444; }
+        .stat-change.neutral { color: var(--text-muted); }
+
+        /* ─── PAGE ───────────────────────────────────────────────────────── */
+        .page-content {
+            padding: 24px 28px;
+            animation: fadeInPage 0.3s ease-out;
+            flex: 1;
+        }
+        .page-content.active { display: block; }
+        .page-content { display: none; }
+
+        @keyframes fadeInPage {
+            from { opacity:0; transform:translateY(8px); }
+            to { opacity:1; transform:translateY(0); }
+        }
+
+        /* ─── EMPTY STATE ───────────────────────────────────────────────── */
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+        .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
+        .empty-state h3 { color: var(--text-primary); font-weight: 700; margin-bottom: 6px; }
+
+        /* ─── ACTIVITY FEED ────────────────────────────────────────────── */
+        .activity-feed { display: flex; flex-direction: column; gap: 2px; }
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+            background: var(--bg-primary);
+        }
+        .activity-content { flex: 1; min-width: 0; }
+        .activity-title { font-weight: 600; font-size: 13px; }
+        .activity-meta { font-size: 12px; color: var(--text-muted); }
+        .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+        /* ─── CHART ─────────────────────────────────────────────────────── */
+        .chart-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            height: 140px;
+            padding: 0 4px;
+        }
+        .chart-bars .bar {
+            flex: 1;
+            border-radius: 4px 4px 0 0;
+            background: linear-gradient(180deg, var(--primary), var(--primary-light));
+            transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 6px;
+            opacity: 0.8;
+        }
+        .chart-bars .bar:hover { opacity: 1; transform: scaleY(1.02); transform-origin: bottom; }
+        .chart-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* ─── QUICK STATS ───────────────────────────────────────────────── */
+        .quick-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+        .quick-stat {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 16px 18px;
+            border: 1px solid var(--border);
+            transition: all var(--transition);
+            box-shadow: var(--shadow);
+        }
+        .quick-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .quick-stat .num { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+        .quick-stat .label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .quick-stat .change { font-size: 11px; font-weight: 600; margin-top: 4px; }
+        .quick-stat .change.up { color: #22c55e; }
+        .quick-stat .change.down { color: #ef4444; }
+        .quick-stat .change.neutral { color: var(--text-muted); }
+
+        /* ─── WELCOME BANNER ───────────────────────────────────────────── */
         .welcome-banner {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
             border-radius: var(--radius);
             padding: 24px 28px;
             color: #fff;
@@ -26,107 +537,21 @@
             top: 50%;
             transform: translateY(-50%);
             font-size: 48px;
-            opacity: 0.3;
+            opacity: 0.15;
         }
-        .welcome-banner h2 {
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-        .welcome-banner p {
-            opacity: 0.85;
-            font-size: 14px;
-        }
+        .welcome-banner h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+        .welcome-banner p { opacity: 0.85; font-size: 14px; }
 
+        /* ─── QUICK ACTIONS ─────────────────────────────────────────────── */
         .quick-actions {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             flex-wrap: wrap;
             margin-bottom: 20px;
         }
-        .quick-actions .btn {
-            padding: 10px 20px;
-            font-size: 13px;
-        }
+        .quick-actions .btn { padding: 8px 16px; font-size: 12px; }
 
-        .stat-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 14px;
-            margin-bottom: 20px;
-        }
-        .stat-grid .stat-card {
-            text-align: center;
-            padding: 16px;
-        }
-        .stat-grid .stat-card .num {
-            font-size: 28px;
-            font-weight: 800;
-        }
-        .stat-grid .stat-card .label {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 2px;
-        }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 1.5fr 1fr;
-            gap: 20px;
-        }
-
-        @media (max-width: 1024px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .activity-feed {
-            max-height: 380px;
-            overflow-y: auto;
-        }
-        .activity-feed .activity-item {
-            padding: 10px 0;
-            border-bottom: 1px solid var(--border);
-        }
-        .activity-feed .activity-item:last-child {
-            border-bottom: none;
-        }
-
-        .chart-container {
-            height: 160px;
-            background: var(--bg-primary);
-            border-radius: var(--radius-sm);
-            padding: 12px;
-            position: relative;
-        }
-        .chart-container .chart-bars {
-            height: 100%;
-            display: flex;
-            align-items: flex-end;
-            gap: 8px;
-        }
-        .chart-container .chart-bars .bar {
-            flex: 1;
-            border-radius: 4px 4px 0 0;
-            background: linear-gradient(180deg, #6366f1, #8b5cf6);
-            transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: 4px;
-            opacity: 0.8;
-        }
-        .chart-container .chart-bars .bar:hover {
-            opacity: 1;
-            transform: scaleY(1.03);
-            transform-origin: bottom;
-        }
-        .chart-container .chart-labels {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 6px;
-            font-size: 10px;
-            color: var(--text-muted);
-        }
-
+        /* ─── STATUS INDICATOR ──────────────────────────────────────────── */
         .status-indicator {
             display: inline-flex;
             align-items: center;
@@ -136,26 +561,59 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .status-indicator.online {
-            background: #dcfce7;
-            color: #16a34a;
+        .status-indicator.online { background: #dcfce7; color: #16a34a; }
+        .status-indicator.offline { background: #fee2e2; color: #dc2626; }
+        .status-indicator .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .status-indicator.online .dot { background: #22c55e; }
+        .status-indicator.offline .dot { background: #ef4444; }
+
+        /* ─── WELCOME BANNER ───────────────────────────────────────────── */
+        .welcome-banner {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
         }
-        .status-indicator.offline {
-            background: #fee2e2;
-            color: #dc2626;
+        .welcome-banner::after {
+            content: '✨';
+            position: absolute;
+            right: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 48px;
+            opacity: 0.15;
         }
-        .status-indicator .dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            display: inline-block;
+        .welcome-banner h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+        .welcome-banner p { opacity: 0.85; font-size: 14px; }
+        .welcome-banner .session-info { font-size: 12px; opacity: 0.7; margin-top: 8px; }
+
+        /* ─── QUICK ACTIONS ─────────────────────────────────────────────── */
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
         }
-        .status-indicator.online .dot {
-            background: #22c55e;
+        .quick-actions .btn { padding: 8px 16px; font-size: 12px; }
+
+        /* ─── STATUS INDICATOR ──────────────────────────────────────────── */
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
         }
-        .status-indicator.offline .dot {
-            background: #ef4444;
-        }
+        .status-indicator.online { background: #dcfce7; color: #16a34a; }
+        .status-indicator.offline { background: #fee2e2; color: #dc2626; }
+        .status-indicator .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .status-indicator.online .dot { background: #22c55e; }
+        .status-indicator.offline .dot { background: #ef4444; }
     </style>
 </head>
 <body>
@@ -169,9 +627,9 @@
                     <div class="logo-sub">Enterprise Console</div>
                 </div>
             </div>
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" id="sidebarNav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item active" href="/admin/dashboard.html">
+                <a class="sidebar-nav-item active" href="#" onclick="navigateTo('dashboard')">
                     <span class="icon">📊</span> Dashboard
                     <span class="badge success">Live</span>
                 </a>
@@ -198,6 +656,10 @@
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
                     <span class="icon">📌</span> Topics
                 </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')">
+                    <span class="icon">📢</span> Announcements
+                    <span class="badge" id="announceBadge">0</span>
+                </a>
 
                 <div class="sidebar-nav-label">Trackers</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
@@ -210,6 +672,9 @@
                 </a>
 
                 <div class="sidebar-nav-label">Analytics</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
+                    <span class="icon">📈</span> Analytics
+                </a>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')">
                     <span class="icon">📊</span> Growth Analytics
                 </a>
@@ -223,6 +688,34 @@
                 </a>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
                     <span class="icon">💾</span> Backup & Restore
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')">
+                    <span class="icon">📋</span> Audit Logs
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('support')">
+                    <span class="icon">🎫</span> Support Tickets
+                    <span class="badge danger" id="supportBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('api')">
+                    <span class="icon">🔑</span> API Management
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('features')">
+                    <span class="icon">🚩</span> Feature Flags
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('notifications')">
+                    <span class="icon">🔔</span> Notifications
+                    <span class="badge" id="notifBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('export')">
+                    <span class="icon">📤</span> Data Export
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('realtime')">
+                    <span class="icon">🔄</span> Realtime Monitor
+                    <span class="badge success">Live</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('health')">
+                    <span class="icon">❤️</span> System Health
+                    <span class="badge success" id="healthBadge">OK</span>
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -238,7 +731,7 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <!-- ─── CUSTOM MODAL ───────────────────────────────────────── -->
+        <!-- ─── MODAL ────────────────────────────────────────────────── -->
         <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
             <div class="modal">
                 <div class="modal-header">
@@ -259,7 +752,7 @@
                 <div class="topbar-left">
                     <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
                     <div>
-                        <div class="topbar-title">Dashboard <span class="sub">| Enterprise Overview</span></div>
+                        <div class="topbar-title" id="pageTitle">Dashboard <span class="sub">| Enterprise Overview</span></div>
                     </div>
                 </div>
                 <div class="topbar-right">
@@ -274,24 +767,7 @@
                 </div>
             </header>
 
-            <div class="page-content active">
-                <!-- Welcome Banner -->
-                <div class="welcome-banner">
-                    <h2 id="welcomeMessage">👋 Welcome back, Admin!</h2>
-                    <p>Here's what's happening with your LittleLoom community today.</p>
-                    <p style="font-size:12px;opacity:0.7;margin-top:8px;">
-                        ⏰ Session expires after 30 minutes of inactivity
-                    </p>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="quick-actions">
-                    <button class="btn btn-primary" onclick="navigateTo('babies')">👶 View Babies</button>
-                    <button class="btn btn-success" onclick="navigateTo('trackers')">📊 View Trackers</button>
-                    <button class="btn btn-outline" onclick="navigateTo('community')">💬 Community</button>
-                    <button class="btn btn-outline" onclick="navigateTo('growth')">📈 Growth Analytics</button>
-                </div>
-
+            <div class="page-content active" id="page-dashboard">
                 <div class="status-bar" id="statusBar">
                     <span>✅ All systems operational</span>
                     <span class="status-indicator online" id="onlineIndicator">
@@ -300,36 +776,35 @@
                     <span style="margin-left:auto;font-size:12px;color:var(--text-muted);" id="lastUpdated">Last updated: —</span>
                 </div>
 
+                <!-- Welcome Banner -->
+                <div class="welcome-banner">
+                    <h2 id="welcomeMessage">👋 Welcome back, Admin!</h2>
+                    <p>Here's what's happening with your LittleLoom community today.</p>
+                    <div class="session-info">⏰ Session expires after 30 minutes of inactivity</div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <button class="btn btn-primary" onclick="navigateTo('babies')">👶 View Babies</button>
+                    <button class="btn btn-success" onclick="navigateTo('trackers')">📊 Trackers</button>
+                    <button class="btn btn-outline" onclick="navigateTo('community')">💬 Community</button>
+                    <button class="btn btn-warning" onclick="navigateTo('moderation')">🛡️ Moderation</button>
+                    <button class="btn btn-outline" onclick="navigateTo('announcements')">📢 Announcements</button>
+                    <button class="btn btn-outline" onclick="navigateTo('analytics')">📈 Analytics</button>
+                </div>
+
                 <!-- Stats -->
-                <div class="stat-grid" id="dashboardStats">
-                    <div class="stat-card">
-                        <div class="num" id="statBabies">—</div>
-                        <div class="label">👶 Total Babies</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="num" id="statUsers">—</div>
-                        <div class="label">👤 Active Users</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="num" id="statEntries">—</div>
-                        <div class="label">📊 Tracker Entries</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="num" id="statPosts">—</div>
-                        <div class="label">💬 Community Posts</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="num" id="statMilestones">—</div>
-                        <div class="label">🏆 Milestones</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="num" id="statStreak">—<span style="font-size:14px;font-weight:600;color:var(--text-muted);">d</span></div>
-                        <div class="label">💪 Avg Streak</div>
-                    </div>
+                <div class="quick-stats" id="dashboardStats">
+                    <div class="quick-stat"><div class="num" id="statBabies">—</div><div class="label">👶 Total Babies</div><div class="change up">↑ 12%</div></div>
+                    <div class="quick-stat"><div class="num" id="statUsers">—</div><div class="label">👤 Active Users</div><div class="change up">↑ 8%</div></div>
+                    <div class="quick-stat"><div class="num" id="statEntries">—</div><div class="label">📊 Tracker Entries</div><div class="change up">↑ 23%</div></div>
+                    <div class="quick-stat"><div class="num" id="statPosts">—</div><div class="label">💬 Community Posts</div><div class="change up">↑ 15%</div></div>
+                    <div class="quick-stat"><div class="num" id="statMilestones">—</div><div class="label">🏆 Milestones</div><div class="change up">↑ 7%</div></div>
+                    <div class="quick-stat"><div class="num" id="statStreak">—<span style="font-size:14px;font-weight:600;color:var(--text-muted);">d</span></div><div class="label">💪 Avg Streak</div><div class="change neutral">→ 0%</div></div>
                 </div>
 
                 <!-- Dashboard Grid -->
-                <div class="dashboard-grid">
+                <div class="grid-2">
                     <!-- Recent Activity -->
                     <div class="card">
                         <div class="card-header">
@@ -338,10 +813,7 @@
                         </div>
                         <div class="card-body">
                             <div class="activity-feed" id="activityFeed">
-                                <div class="empty-state">
-                                    <div class="emoji">📭</div>
-                                    <h3>No recent activity</h3>
-                                </div>
+                                <div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>
                             </div>
                         </div>
                     </div>
@@ -352,19 +824,17 @@
                             <div class="card-title"><span class="emoji">📊</span> Weekly Activity</div>
                         </div>
                         <div class="card-body">
-                            <div class="chart-container">
-                                <div class="chart-bars" id="weeklyBars">
-                                    <div class="bar" style="height:20%;"></div>
-                                    <div class="bar" style="height:45%;"></div>
-                                    <div class="bar" style="height:70%;"></div>
-                                    <div class="bar" style="height:55%;"></div>
-                                    <div class="bar" style="height:85%;"></div>
-                                    <div class="bar" style="height:65%;"></div>
-                                    <div class="bar" style="height:90%;"></div>
-                                </div>
-                                <div class="chart-labels">
-                                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                                </div>
+                            <div class="chart-bars" id="weeklyBars">
+                                <div class="bar" style="height:20%;"></div>
+                                <div class="bar" style="height:45%;"></div>
+                                <div class="bar" style="height:70%;"></div>
+                                <div class="bar" style="height:55%;"></div>
+                                <div class="bar" style="height:85%;"></div>
+                                <div class="bar" style="height:65%;"></div>
+                                <div class="bar" style="height:90%;"></div>
+                            </div>
+                            <div class="chart-labels">
+                                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
                             </div>
                         </div>
                     </div>
@@ -375,53 +845,227 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/admin/js/admin.js"></script>
     <script>
-        // ─── DASHBOARD DATA ──────────────────────────────────────────
-        async function fetchDashboardData() {
-            if (!supabase || !session) {
-                console.log('No session, redirecting to login...');
-                window.location.href = '/login.html';
+        // ─── SUPABASE CONFIG ──────────────────────────────────────────────
+        const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
+
+        let supabase = null;
+        let session = null;
+        let refreshTimer = null;
+        let realtimeChannel = null;
+
+        // ─── INIT ─────────────────────────────────────────────────────────
+        function initSupabase() {
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                return true;
+            } catch (e) { return false; }
+        }
+
+        // ─── TOAST ────────────────────────────────────────────────────────
+        function showToast(message, type) {
+            type = type || 'info';
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(function() { if (toast.parentNode) toast.remove(); }, 4000);
+        }
+
+        // ─── MODAL ────────────────────────────────────────────────────────
+        let modalResolve = null;
+        let modalData = null;
+
+        function openModal(title, bodyHTML, confirmText, confirmAction) {
+            return new Promise((resolve) => {
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalBody').innerHTML = bodyHTML;
+                document.getElementById('modalConfirmBtn').textContent = confirmText || 'Confirm';
+                document.getElementById('modalOverlay').classList.add('active');
+                modalResolve = resolve;
+                modalData = { confirmAction };
+            });
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (modalResolve) {
+                modalResolve(null);
+                modalResolve = null;
+            }
+        }
+
+        function modalConfirm() {
+            if (modalData && modalData.confirmAction) {
+                modalData.confirmAction();
+            }
+            closeModal();
+        }
+
+        function modalCancel() {
+            closeModal();
+        }
+
+        // ─── AUTH ─────────────────────────────────────────────────────────
+        async function checkAuth() {
+            try {
+                const { data, error } = await supabase.auth.getSession();
+                if (error || !data.session) {
+                    document.getElementById('statusBar').innerHTML = '<span>🔒 Please log in</span>';
+                    return false;
+                }
+                session = data.session;
+                document.getElementById('connectionStatus').textContent = 'Logged in as ' + session.user.email;
+                document.getElementById('sidebarEmail').textContent = session.user.email;
+                const name = session.user.user_metadata?.full_name || session.user.email.split('@')[0];
+                document.getElementById('sidebarName').textContent = name;
+                document.getElementById('sidebarAvatar').textContent = name[0].toUpperCase();
+                return true;
+            } catch (e) { return false; }
+        }
+
+        async function handleLogout() {
+            if (confirm('Are you sure you want to logout?')) {
+                await supabase.auth.signOut();
+                session = null;
+                showToast('Logged out successfully', 'success');
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                location.reload();
+            }
+        }
+
+        // ─── NAVIGATION ──────────────────────────────────────────────────
+        function navigateTo(page) {
+            const pageMap = {
+                'dashboard': 'Dashboard <span class="sub">| Enterprise Overview</span>',
+                'babies': 'Babies <span class="sub">| All Baby Profiles</span>',
+                'users': 'Users <span class="sub">| User Management</span>',
+                'moderation': 'Moderation <span class="sub">| Content Review</span>',
+                'community': 'Community <span class="sub">| Posts & Engagement</span>',
+                'topics': 'Topics <span class="sub">| Community Topics</span>',
+                'announcements': 'Announcements <span class="sub">| App-wide Messages</span>',
+                'trackers': 'Trackers <span class="sub">| All Tracker Entries</span>',
+                'milestones': 'Milestones <span class="sub">| Developmental Achievements</span>',
+                'analytics': 'Analytics <span class="sub">| Growth & Engagement</span>',
+                'growth': 'Growth Analytics <span class="sub">| Development Insights</span>',
+                'activity': 'Activity Heatmap <span class="sub">| User Engagement Patterns</span>',
+                'settings': 'Settings <span class="sub">| System Configuration</span>',
+                'backup': 'Backup <span class="sub">| Data Protection</span>',
+                'audit': 'Audit Logs <span class="sub">| Activity Trail</span>',
+                'support': 'Support <span class="sub">| Customer Support</span>',
+                'api': 'API Management <span class="sub">| Keys & Rate Limiting</span>',
+                'features': 'Feature Flags <span class="sub">| Feature Management</span>',
+                'notifications': 'Notifications <span class="sub">| Push Management</span>',
+                'export': 'Data Export <span class="sub">| Export App Data</span>',
+                'realtime': 'Realtime Monitor <span class="sub">| Live Event Stream</span>',
+                'health': 'System Health <span class="sub">| Status Dashboard</span>'
+            };
+
+            document.getElementById('pageTitle').innerHTML = pageMap[page] || 'Dashboard';
+
+            // Show all pages
+            document.querySelectorAll('.page-content').forEach(function(el) {
+                el.classList.remove('active');
+            });
+
+            // Show selected page
+            const target = document.getElementById('page-' + page);
+            if (target) {
+                target.classList.add('active');
+            } else if (page !== 'dashboard') {
+                // If page doesn't exist on dashboard, navigate to the actual page
+                window.location.href = '/admin/pages/' + page + '.html';
                 return;
             }
 
-            // Update online status
-            const indicator = document.getElementById('onlineIndicator');
-            if (indicator) {
-                if (navigator.onLine) {
-                    indicator.className = 'status-indicator online';
-                    indicator.innerHTML = '<span class="dot"></span> Online';
-                } else {
-                    indicator.className = 'status-indicator offline';
-                    indicator.innerHTML = '<span class="dot"></span> Offline';
+            // Update sidebar
+            document.querySelectorAll('.sidebar-nav-item').forEach(function(el) {
+                el.classList.remove('active');
+                if (el.textContent.toLowerCase().includes(page)) {
+                    el.classList.add('active');
                 }
+            });
+
+            if (page === 'dashboard') {
+                fetchDashboardData();
+            }
+
+            if (window.innerWidth <= 1024) toggleSidebar(false);
+        }
+
+        function toggleSidebar(open) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (open === undefined) {
+                sidebar.classList.toggle('open');
+                overlay.classList.toggle('active');
+            } else if (open) {
+                sidebar.classList.add('open');
+                overlay.classList.add('active');
+            } else {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+            }
+        }
+
+        // ─── SAFE SET ────────────────────────────────────────────────────
+        function safeSetText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        }
+
+        function safeSetHTML(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = value;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '—';
+            return new Date(dateStr).toLocaleString();
+        }
+
+        function timeAgo(dateStr) {
+            if (!dateStr) return '—';
+            const diff = Date.now() - new Date(dateStr).getTime();
+            const seconds = Math.floor(diff / 1000);
+            if (seconds < 60) return 'Just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return minutes + 'm ago';
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return hours + 'h ago';
+            const days = Math.floor(hours / 24);
+            if (days < 7) return days + 'd ago';
+            return new Date(dateStr).toLocaleDateString();
+        }
+
+        // ─── DASHBOARD DATA ─────────────────────────────────────────────
+        async function fetchDashboardData() {
+            if (!supabase || !session) return;
+
+            const statusBar = document.getElementById('statusBar');
+            if (statusBar) {
+                statusBar.innerHTML = '<span class="spinner"></span><span>Loading...</span>';
             }
 
             try {
-                const [
-                    babiesResult,
-                    profilesResult,
-                    entriesResult,
-                    postsResult,
-                    milestonesResult,
-                    recentResult,
-                    weeklyResult
-                ] = await Promise.all([
-                    supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
-                    supabase.from('profiles').select('*', { count: 'exact', head: true }),
-                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
-                    supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
-                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone').eq('is_deleted', false),
-                    supabase.from('tracker_entries')
-                    .select('tracker_id, title, logged_by_name, timestamp, created_at')
-                    .eq('is_deleted', false)
-                    .order('timestamp', { ascending: false })
-                    .limit(8),
-                    supabase.from('tracker_entries')
-                    .select('timestamp')
-                    .eq('is_deleted', false)
-                    .gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-                ]);
+                const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult, recentResult] =
+                    await Promise.all([
+                        supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
+                        supabase.from('profiles').select('*', { count: 'exact', head: true }),
+                        supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('is_deleted',
+                            false),
+                        supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted',
+                            false),
+                        supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type',
+                            'milestone').eq('is_deleted', false),
+                        supabase.from('tracker_entries')
+                        .select('tracker_id, title, logged_by_name, timestamp, created_at')
+                        .eq('is_deleted', false)
+                        .order('timestamp', { ascending: false })
+                        .limit(8)
+                    ]);
 
                 const babyCount = babiesResult.count || 0;
                 const userCount = profilesResult.count || 0;
@@ -440,7 +1084,7 @@
                 if (babies && babies.length > 0) {
                     const totalStreak = babies.reduce((sum, b) => sum + (b.streak || 0), 0);
                     const avg = Math.round(totalStreak / babies.length);
-                    document.getElementById('statStreak').innerHTML = avg + '<span style="font-size:14px;font-weight:600;color:var(--text-muted);">d</span>';
+                    safeSetHTML('statStreak', avg + '<span style="font-size:14px;font-weight:600;color:var(--text-muted);">d</span>');
                 }
 
                 // Update badges
@@ -450,7 +1094,23 @@
                 safeSetText('entryBadge', entryCount);
                 safeSetText('milestoneBadge', milestoneCount);
 
-                // Update welcome message with time-based greeting
+                // Announcements count
+                const { count: announceCount } = await supabase
+                    .from('announcements')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('is_deleted', false)
+                    .eq('status', 'published');
+                safeSetText('announceBadge', announceCount || 0);
+
+                // Support tickets count
+                const { count: supportCount } = await supabase
+                    .from('support_tickets')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('is_deleted', false)
+                    .in('status', ['open', 'in_progress']);
+                safeSetText('supportBadge', supportCount || 0);
+
+                // Update welcome message
                 const hour = new Date().getHours();
                 let greeting = 'Good morning';
                 if (hour >= 12 && hour < 17) greeting = 'Good afternoon';
@@ -487,27 +1147,10 @@
                     }
                 }
 
-                // Update weekly chart
-                const weeklyData = weeklyResult.data || [];
-                const dayCounts = [0, 0, 0, 0, 0, 0, 0];
-                weeklyData.forEach(e => {
-                    if (e.timestamp) {
-                        const day = new Date(e.timestamp).getDay();
-                        dayCounts[day] = (dayCounts[day] || 0) + 1;
-                    }
-                });
-                const maxVal = Math.max(...dayCounts, 1);
-                const bars = document.querySelectorAll('#weeklyBars .bar');
-                bars.forEach((bar, i) => {
-                    const height = Math.max(4, (dayCounts[i] / maxVal) * 100);
-                    bar.style.height = height + '%';
-                    bar.title = `${dayCounts[i]} activities`;
-                });
-
                 // Update status
-                const statusBar = document.getElementById('statusBar');
-                if (statusBar) {
-                    statusBar.innerHTML = `
+                const statusBarEl = document.getElementById('statusBar');
+                if (statusBarEl) {
+                    statusBarEl.innerHTML = `
                         <span>✅ All systems operational</span>
                         <span class="status-indicator ${navigator.onLine ? 'online' : 'offline'}">
                             <span class="dot"></span> ${navigator.onLine ? 'Online' : 'Offline'}
@@ -521,9 +1164,9 @@
 
             } catch (err) {
                 console.error('Fetch error:', err);
-                const statusBar = document.getElementById('statusBar');
-                if (statusBar) {
-                    statusBar.innerHTML = `
+                const statusBarEl = document.getElementById('statusBar');
+                if (statusBarEl) {
+                    statusBarEl.innerHTML = `
                         <span>❌ Error loading data</span>
                         <button class="btn btn-outline btn-sm" onclick="refreshAll()" style="margin-left:auto;">
                             🔄 Retry
@@ -573,7 +1216,7 @@
 
             const authed = await checkAuth();
             if (!authed) {
-                window.location.href = '/login.html';
+                showToast('Please log in to continue', 'warning');
                 return;
             }
 
@@ -585,7 +1228,7 @@
             setupRealtime();
 
             // Handle resize for sidebar
-            window.addEventListener('resize', () => {
+            window.addEventListener('resize', function() {
                 if (window.innerWidth > 1024) {
                     document.getElementById('sidebar').classList.remove('open');
                     document.getElementById('sidebarOverlay').classList.remove('active');
@@ -593,23 +1236,31 @@
             });
 
             // Keyboard shortcuts
-            document.addEventListener('keydown', (e) => {
+            document.addEventListener('keydown', function(e) {
                 if (e.ctrlKey && e.key === 'r') {
                     e.preventDefault();
                     refreshAll();
                 }
                 if (e.key === 'Escape') {
-                    modalCancel();
+                    closeModal();
                 }
             });
 
             console.log('🧵 Enterprise Admin Console ready');
-            console.log(`👤 Logged in as: ${session?.user?.email}`);
+            console.log('👤 Logged in as: ' + session?.user?.email);
         }
 
-        // Expose functions globally
-        window.fetchDashboardData = fetchDashboardData;
+        // ─── EXPOSE GLOBALLY ─────────────────────────────────────────────
+        window.navigateTo = navigateTo;
+        window.toggleSidebar = toggleSidebar;
         window.refreshAll = refreshAll;
+        window.showToast = showToast;
+        window.handleLogout = handleLogout;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.modalConfirm = modalConfirm;
+        window.modalCancel = modalCancel;
+        window.fetchDashboardData = fetchDashboardData;
 
         document.addEventListener('DOMContentLoaded', init);
     </script>

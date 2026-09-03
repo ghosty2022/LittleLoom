@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>System Health - LittleLoom Admin</title>
+    <title>Settings - LittleLoom Admin</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -19,7 +19,7 @@
             overflow: hidden;
         }
         .page-hero::after {
-            content: '❤️';
+            content: '⚙️';
             position: absolute;
             right: 28px;
             top: 50%;
@@ -27,114 +27,141 @@
             font-size: 64px;
             opacity: 0.1;
         }
-        .page-hero h1 { font-size: 24px; font-weight: 800; }
-        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
-        .page-hero .stats-row {
-            display: flex;
-            gap: 32px;
-            margin-top: 16px;
-            flex-wrap: wrap;
+        .page-hero h1 {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
         }
-        .page-hero .stats-row .stat {
-            display: flex;
-            align-items: baseline;
-            gap: 6px;
+        .page-hero p {
+            opacity: 0.85;
+            font-size: 14px;
+            margin-top: 4px;
         }
-        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
-        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
-        .page-hero .stats-row .stat .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        .page-hero .stats-row .stat .status-dot.green { background: #22c55e; }
-        .page-hero .stats-row .stat .status-dot.yellow { background: #f59e0b; }
-        .page-hero .stats-row .stat .status-dot.red { background: #ef4444; }
 
-        .health-grid {
+        .settings-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
-            margin-top: 16px;
         }
-        .health-card {
+        .settings-card {
             background: var(--bg-card);
             border-radius: var(--radius);
             border: 1px solid var(--border);
             padding: 24px;
+            box-shadow: var(--shadow);
             transition: all var(--transition);
-            box-shadow: var(--shadow);
         }
-        .health-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
-        .health-card .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 12px;
+        .settings-card:hover {
+            box-shadow: var(--shadow-lg);
         }
-        .health-card .header .name { font-size: 16px; font-weight: 700; }
-        .health-card .header .status {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .health-card .header .status.healthy { background: #dcfce7; color: #16a34a; }
-        .health-card .header .status.degraded { background: #fef3c7; color: #d97706; }
-        .health-card .header .status.unhealthy { background: #fee2e2; color: #dc2626; }
-        .health-card .metrics {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .health-card .metrics .metric {
-            text-align: center;
-            padding: 8px;
-            background: var(--bg-primary);
-            border-radius: var(--radius-sm);
-        }
-        .health-card .metrics .metric .value { font-size: 18px; font-weight: 700; }
-        .health-card .metrics .metric .label { font-size: 11px; color: var(--text-muted); }
-
-        .health-timeline {
-            background: var(--bg-card);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 20px;
-            margin-top: 20px;
-            box-shadow: var(--shadow);
-        }
-        .health-timeline .event {
+        .settings-card .header {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 8px 0;
+            margin-bottom: 16px;
+        }
+        .settings-card .header .icon {
+            font-size: 28px;
+        }
+        .settings-card .header h3 {
+            font-size: 17px;
+            font-weight: 700;
+        }
+        .settings-card .header p {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
             border-bottom: 1px solid var(--border);
         }
-        .health-timeline .event:last-child { border-bottom: none; }
-        .health-timeline .event .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
+        .setting-item:last-child {
+            border-bottom: none;
         }
-        .health-timeline .event .dot.green { background: #22c55e; }
-        .health-timeline .event .dot.yellow { background: #f59e0b; }
-        .health-timeline .event .dot.red { background: #ef4444; }
-        .health-timeline .event .time { font-size: 12px; color: var(--text-muted); min-width: 80px; }
-        .health-timeline .event .message { font-size: 13px; }
+        .setting-item .info {
+            flex: 1;
+        }
+        .setting-item .info .label {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .setting-item .info .desc {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: #d1d5db;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: var(--transition);
+            flex-shrink: 0;
+        }
+        .toggle-switch.active {
+            background: var(--primary);
+        }
+        .toggle-switch .slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            transition: var(--transition);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        .toggle-switch.active .slider {
+            left: 22px;
+        }
+
+        .settings-select {
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            font-family: var(--font);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            transition: var(--transition);
+            min-width: 120px;
+        }
+        .settings-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .settings-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
 
         @media (max-width: 768px) {
-            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
-            .health-grid { grid-template-columns: 1fr; }
-            .health-card .metrics { grid-template-columns: 1fr; }
+            .settings-grid {
+                grid-template-columns: 1fr;
+            }
+            .setting-item {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="app">
+        <!-- ─── SIDEBAR ────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
@@ -146,13 +173,45 @@
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
                 <a class="sidebar-nav-item" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard <span class="badge success">Live</span>
+                    <span class="icon">📊</span> Dashboard
+                    <span class="badge success">Live</span>
+                </a>
+                <div class="sidebar-nav-label">Management</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
+                    <span class="icon">👶</span> Babies
+                    <span class="badge" id="babyBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
+                    <span class="icon">👤</span> Users
+                    <span class="badge" id="userBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
+                    <span class="icon">🛡️</span> Moderation
+                    <span class="badge danger" id="modBadge">0</span>
+                </a>
+                <div class="sidebar-nav-label">Community</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
+                    <span class="icon">💬</span> Community
+                    <span class="badge" id="postBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
+                    <span class="icon">📌</span> Topics
+                </a>
+                <div class="sidebar-nav-label">Trackers</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
+                    <span class="icon">📈</span> Tracker Entries
+                    <span class="badge" id="entryBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
+                    <span class="icon">🏆</span> Milestones
+                    <span class="badge" id="milestoneBadge">0</span>
+                </a>
+                <div class="sidebar-nav-label">Analytics</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
+                    <span class="icon">📈</span> Analytics
                 </a>
                 <div class="sidebar-nav-label">System</div>
                 <a class="sidebar-nav-item active" href="#">
-                    <span class="icon">❤️</span> System Health
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
                     <span class="icon">⚙️</span> Settings
                 </a>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
@@ -172,12 +231,28 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
+        <!-- ─── MODAL ────────────────────────────────────────────────── -->
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2 id="modalTitle">Modal</h2>
+                    <button class="modal-close" onclick="modalCancel()">✕</button>
+                </div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── MAIN ────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left">
                     <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
                     <div>
-                        <div class="topbar-title">System Health <span class="sub">| Live Monitoring</span></div>
+                        <div class="topbar-title">Settings <span class="sub">| System Configuration</span></div>
                     </div>
                 </div>
                 <div class="topbar-right">
@@ -186,7 +261,7 @@
                         <span id="connectionStatus">Connected</span>
                     </div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadHealth()">🔄 Refresh</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadSettings()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
@@ -194,66 +269,224 @@
 
             <div class="page-content active">
                 <div class="status-bar" id="statusBar">
-                    <span>✅ All systems operational</span>
+                    <span>✅ Ready</span>
                     <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
                 </div>
 
+                <!-- ─── HERO ──────────────────────────────────────────── -->
                 <div class="page-hero">
-                    <h1>❤️ System Health</h1>
-                    <p>Real-time monitoring of all system components</p>
-                    <div class="stats-row">
-                        <div class="stat">
-                            <span class="status-dot green"></span>
-                            <span class="num" id="statHealthy">0</span>
-                            <span class="label">Healthy</span>
-                        </div>
-                        <div class="stat">
-                            <span class="status-dot yellow"></span>
-                            <span class="num" id="statDegraded">0</span>
-                            <span class="label">Degraded</span>
-                        </div>
-                        <div class="stat">
-                            <span class="status-dot red"></span>
-                            <span class="num" id="statUnhealthy">0</span>
-                            <span class="label">Unhealthy</span>
-                        </div>
-                        <div class="stat">
-                            <span class="num" id="statUptime">99.9%</span>
-                            <span class="label">Uptime</span>
-                        </div>
-                    </div>
+                    <h1>⚙️ System Settings</h1>
+                    <p>Configure your admin dashboard preferences and system settings</p>
                 </div>
 
-                <div id="healthContainer">
-                    <div class="empty-state-modern">
-                        <div class="emoji">❤️</div>
-                        <h3>Loading health data...</h3>
-                        <p>Please wait while we check system status</p>
-                    </div>
-                </div>
+                <!-- ─── SETTINGS GRID ──────────────────────────────────── -->
+                <div class="settings-grid">
+                    <!-- General Settings -->
+                    <div class="settings-card">
+                        <div class="header">
+                            <span class="icon">⚙️</span>
+                            <div>
+                                <h3>General</h3>
+                                <p>Basic dashboard settings</p>
+                            </div>
+                        </div>
 
-                <div class="health-timeline" id="healthTimeline">
-                    <h3 style="font-size:14px;font-weight:700;margin-bottom:12px;">📋 Recent Events</h3>
-                    <div id="timelineEvents">
-                        <div class="event">
-                            <span class="dot green"></span>
-                            <span class="time">Just now</span>
-                            <span class="message">All systems operational</span>
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🌙 Dark Mode</div>
+                                <div class="desc">Toggle dark/light theme</div>
+                            </div>
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
                         </div>
-                        <div class="event">
-                            <span class="dot green"></span>
-                            <span class="time">2 hours ago</span>
-                            <span class="message">Database backup completed successfully</span>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🔄 Auto-Refresh</div>
+                                <div class="desc">Automatically refresh dashboard data</div>
+                            </div>
+                            <select class="settings-select" id="refreshInterval">
+                                <option value="0">Off</option>
+                                <option value="10">10s</option>
+                                <option value="30" selected>30s</option>
+                                <option value="60">1m</option>
+                                <option value="120">2m</option>
+                                <option value="300">5m</option>
+                            </select>
                         </div>
-                        <div class="event">
-                            <span class="dot yellow"></span>
-                            <span class="time">5 hours ago</span>
-                            <span class="message">API response time increased (45ms → 78ms)</span>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🔔 Notifications</div>
+                                <div class="desc">Show desktop notifications</div>
+                            </div>
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
                         </div>
-                        <div class="event">
-                            <span class="dot green"></span>
-                            <span class="time">1 day ago</span>
-                            <span class="message">System update deployed successfully</span>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">📊 Analytics</div>
+                                <div class="desc">Enable usage analytics</div>
+                            </div>
+                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Security Settings -->
+                    <div class="settings-card">
+                        <div class="header">
+                            <span class="icon">🔐</span>
+                            <div>
+                                <h3>Security</h3>
+                                <p>Security and access controls</p>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🔑 Session Timeout</div>
+                                <div class="desc">Auto-logout after inactivity</div>
+                            </div>
+                            <select class="settings-select" id="sessionTimeout">
+                                <option value="5">5 min</option>
+                                <option value="15">15 min</option>
+                                <option value="30" selected>30 min</option>
+                                <option value="60">1 hour</option>
+                                <option value="120">2 hours</option>
+                                <option value="0">Never</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🔒 2FA Required</div>
+                                <div class="desc">Require two-factor authentication</div>
+                            </div>
+                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">📧 Email Verification</div>
+                                <div class="desc">Require email verification</div>
+                            </div>
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🛡️ IP Whitelist</div>
+                                <div class="desc">Restrict access to specific IPs</div>
+                            </div>
+                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Appearance Settings -->
+                    <div class="settings-card">
+                        <div class="header">
+                            <span class="icon">🎨</span>
+                            <div>
+                                <h3>Appearance</h3>
+                                <p>Customize the dashboard look</p>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🎨 Primary Color</div>
+                                <div class="desc">Choose your accent color</div>
+                            </div>
+                            <select class="settings-select" id="primaryColor">
+                                <option value="#6366f1" selected>Indigo</option>
+                                <option value="#8b5cf6">Purple</option>
+                                <option value="#ec4899">Pink</option>
+                                <option value="#22c55e">Green</option>
+                                <option value="#f59e0b">Amber</option>
+                                <option value="#ef4444">Red</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">📐 Layout</div>
+                                <div class="desc">Dashboard layout style</div>
+                            </div>
+                            <select class="settings-select" id="layoutStyle">
+                                <option value="default" selected>Default</option>
+                                <option value="compact">Compact</option>
+                                <option value="spacious">Spacious</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🔤 Font Size</div>
+                                <div class="desc">Text size preference</div>
+                            </div>
+                            <select class="settings-select" id="fontSize">
+                                <option value="small">Small</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="large">Large</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- System Settings -->
+                    <div class="settings-card">
+                        <div class="header">
+                            <span class="icon">🖥️</span>
+                            <div>
+                                <h3>System</h3>
+                                <p>System-level configurations</p>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">📊 Debug Mode</div>
+                                <div class="desc">Enable debug logging</div>
+                            </div>
+                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">📈 Performance Mode</div>
+                                <div class="desc">Optimize for performance</div>
+                            </div>
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="info">
+                                <div class="label">🗑️ Auto-Cleanup</div>
+                                <div class="desc">Auto-delete old logs (30 days)</div>
+                            </div>
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="slider"></div>
+                            </div>
+                        </div>
+
+                        <div class="settings-actions">
+                            <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+                            <button class="btn btn-outline" onclick="resetSettings()">🔄 Reset Defaults</button>
+                            <button class="btn btn-danger" onclick="clearCache()">🗑️ Clear Cache</button>
                         </div>
                     </div>
                 </div>
@@ -265,114 +498,122 @@
 
     <script src="/admin/js/admin.js"></script>
     <script>
-        async function loadHealth() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
-
+        function loadSettings() {
+            // Load saved settings from localStorage
             try {
-                const { data, error } = await supabase
-                    .from('system_health')
-                    .select('*')
-                    .order('last_check', { ascending: false });
+                const settings = JSON.parse(localStorage.getItem('adminSettings') || '{}');
 
-                if (error) throw error;
+                if (settings.darkMode !== undefined) {
+                    const toggle = document.querySelector('.toggle-switch');
+                    if (toggle) {
+                        if (settings.darkMode) toggle.classList.add('active');
+                        else toggle.classList.remove('active');
+                    }
+                }
 
-                if (data && data.length > 0) {
-                    renderHealth(data);
-                    updateStats(data);
-                } else {
-                    showDemoHealth();
+                if (settings.refreshInterval) {
+                    document.getElementById('refreshInterval').value = settings.refreshInterval;
+                }
+
+                if (settings.sessionTimeout) {
+                    document.getElementById('sessionTimeout').value = settings.sessionTimeout;
+                }
+
+                if (settings.primaryColor) {
+                    document.getElementById('primaryColor').value = settings.primaryColor;
+                    document.documentElement.style.setProperty('--primary', settings.primaryColor);
                 }
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Health data loaded', 'success');
+                showToast('⚙️ Settings loaded', 'info');
             } catch (e) {
-                console.error('Load error:', e);
-                showDemoHealth();
+                console.error('Load settings error:', e);
             }
         }
 
-        function showDemoHealth() {
-            const demoData = [
-                { service_name: 'Database', status: 'healthy', response_time_ms: 12, error_rate: 0.1, last_check: new Date().toISOString() },
-                { service_name: 'API Server', status: 'healthy', response_time_ms: 45, error_rate: 0.3, last_check: new Date().toISOString() },
-                { service_name: 'Authentication', status: 'healthy', response_time_ms: 8, error_rate: 0.0, last_check: new Date().toISOString() },
-                { service_name: 'Storage', status: 'degraded', response_time_ms: 234, error_rate: 2.1, last_check: new Date().toISOString() },
-                { service_name: 'Email Service', status: 'healthy', response_time_ms: 156, error_rate: 0.5, last_check: new Date().toISOString() },
-            ];
-            renderHealth(demoData);
-            updateStats(demoData);
-            showToast('📋 Showing demo health data', 'info');
+        function toggleSetting(el) {
+            el.classList.toggle('active');
+            const isActive = el.classList.contains('active');
+            showToast(`Setting ${isActive ? 'enabled' : 'disabled'}`, 'info');
         }
 
-        function renderHealth(services) {
-            const container = document.getElementById('healthContainer');
+        function saveSettings() {
+            const settings = {
+                darkMode: document.querySelector('.toggle-switch')?.classList.contains('active') || false,
+                refreshInterval: document.getElementById('refreshInterval')?.value || '30',
+                sessionTimeout: document.getElementById('sessionTimeout')?.value || '30',
+                primaryColor: document.getElementById('primaryColor')?.value || '#6366f1',
+                layoutStyle: document.getElementById('layoutStyle')?.value || 'default',
+                fontSize: document.getElementById('fontSize')?.value || 'medium'
+            };
 
-            if (!services || services.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state-modern">
-                        <div class="emoji">📭</div>
-                        <h3>No health data available</h3>
-                    </div>
-                `;
-                return;
+            localStorage.setItem('adminSettings', JSON.stringify(settings));
+            document.documentElement.style.setProperty('--primary', settings.primaryColor);
+
+            // Apply dark mode
+            if (settings.darkMode) {
+                document.documentElement.style.setProperty('--bg-primary', '#0f172a');
+                document.documentElement.style.setProperty('--bg-card', '#1e293b');
+                document.documentElement.style.setProperty('--text-primary', '#f1f5f9');
+                document.documentElement.style.setProperty('--text-secondary', '#94a3b8');
+                document.documentElement.style.setProperty('--border', 'rgba(255,255,255,0.06)');
+            } else {
+                document.documentElement.style.setProperty('--bg-primary', '#f0f2f8');
+                document.documentElement.style.setProperty('--bg-card', '#ffffff');
+                document.documentElement.style.setProperty('--text-primary', '#0f0f1a');
+                document.documentElement.style.setProperty('--text-secondary', '#4b5563');
+                document.documentElement.style.setProperty('--border', 'rgba(0,0,0,0.06)');
             }
 
-            let html = '<div class="health-grid">';
-            services.forEach(service => {
-                const statusClass = service.status || 'unknown';
-                const statusLabel = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
-                const uptime = service.status === 'healthy' ? '99.9%' : service.status === 'degraded' ? '97.5%' : '89.2%';
-
-                html += `
-                    <div class="health-card">
-                        <div class="header">
-                            <span class="name">${service.service_name || 'Service'}</span>
-                            <span class="status ${statusClass}">${statusLabel}</span>
-                        </div>
-                        <div class="metrics">
-                            <div class="metric">
-                                <div class="value">${service.response_time_ms || 0}ms</div>
-                                <div class="label">Response Time</div>
-                            </div>
-                            <div class="metric">
-                                <div class="value">${service.error_rate || 0}%</div>
-                                <div class="label">Error Rate</div>
-                            </div>
-                            <div class="metric">
-                                <div class="value">${uptime}</div>
-                                <div class="label">Uptime</div>
-                            </div>
-                            <div class="metric">
-                                <div class="value">${service.last_check ? new Date(service.last_check).toLocaleTimeString() : '—'}</div>
-                                <div class="label">Last Check</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            html += '</div>';
-
-            container.innerHTML = html;
+            showToast('✅ Settings saved successfully!', 'success');
         }
 
-        function updateStats(services) {
-            const healthy = services.filter(s => s.status === 'healthy').length;
-            const degraded = services.filter(s => s.status === 'degraded').length;
-            const unhealthy = services.filter(s => s.status === 'unhealthy').length;
+        function resetSettings() {
+            if (!confirm('Reset all settings to default?')) return;
 
-            document.getElementById('statHealthy').textContent = healthy;
-            document.getElementById('statDegraded').textContent = degraded;
-            document.getElementById('statUnhealthy').textContent = unhealthy;
+            localStorage.removeItem('adminSettings');
+            document.getElementById('refreshInterval').value = '30';
+            document.getElementById('sessionTimeout').value = '30';
+            document.getElementById('primaryColor').value = '#6366f1';
+            document.getElementById('layoutStyle').value = 'default';
+            document.getElementById('fontSize').value = 'medium';
 
-            const total = services.length;
-            const uptime = total > 0 ? Math.round((healthy / total) * 100 * 10) / 10 : 99.9;
-            document.getElementById('statUptime').textContent = uptime + '%';
+            // Reset dark mode toggle
+            const toggle = document.querySelector('.toggle-switch');
+            if (toggle && toggle.classList.contains('active')) {
+                toggle.classList.remove('active');
+            }
+
+            document.documentElement.style.setProperty('--primary', '#6366f1');
+            document.documentElement.style.setProperty('--bg-primary', '#f0f2f8');
+            document.documentElement.style.setProperty('--bg-card', '#ffffff');
+            document.documentElement.style.setProperty('--text-primary', '#0f0f1a');
+            document.documentElement.style.setProperty('--text-secondary', '#4b5563');
+            document.documentElement.style.setProperty('--border', 'rgba(0,0,0,0.06)');
+
+            showToast('🔄 Settings reset to defaults', 'success');
         }
 
-        document.addEventListener('DOMContentLoaded', () => setTimeout(loadHealth, 500));
-        window.loadHealth = loadHealth;
+        function clearCache() {
+            if (!confirm('Clear all cached data?')) return;
+
+            localStorage.removeItem('adminSettings');
+            localStorage.removeItem('backupHistory');
+            sessionStorage.clear();
+
+            showToast('🗑️ Cache cleared successfully', 'success');
+            setTimeout(() => location.reload(), 1000);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(loadSettings, 500);
+        });
+
+        window.loadSettings = loadSettings;
+        window.toggleSetting = toggleSetting;
+        window.saveSettings = saveSettings;
+        window.resetSettings = resetSettings;
+        window.clearCache = clearCache;
     </script>
 </body>
 </html>

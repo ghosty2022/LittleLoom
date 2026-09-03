@@ -4,11 +4,76 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Milestones - LittleLoom Admin</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        /* Page-specific styles */
+        .page-hero {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-hero::after { content: '🏆'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
+        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
+        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
+        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
+
+        .milestone-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+        .milestone-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 20px;
+            transition: all var(--transition);
+            box-shadow: var(--shadow);
+        }
+        .milestone-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+        .milestone-card .header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .milestone-card .title { font-size: 16px; font-weight: 700; }
+        .milestone-card .category { display: inline-flex; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--bg-primary); color: var(--text-secondary); }
+        .milestone-card .baby { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+        .milestone-card .meta { display: flex; gap: 12px; margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+        .milestone-card .actions { display: flex; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .milestone-card .actions .btn-sm { padding: 3px 12px; font-size: 10px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
+        .milestone-card .actions .btn-delete { background: #fee2e2; color: #dc2626; }
+        .milestone-card .actions .btn-delete:hover { background: #fecaca; }
+
+        .filter-bar-modern {
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+        }
+        .filter-bar-modern select, .filter-bar-modern input {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern select:focus, .filter-bar-modern input:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
+        @media (max-width: 768px) {
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .milestone-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -16,219 +81,210 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" data-page="dashboard" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item active" data-page="milestones" href="#">
-                    <span class="icon">🏆</span> Milestones
-                </a>
-                <a class="sidebar-nav-item" data-page="users" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" data-page="activity" href="#" onclick="navigateTo('activity')">
-                    <span class="icon">📈</span> Activity Heatmap
-                </a>
-                <a class="sidebar-nav-item" data-page="growth" href="#" onclick="navigateTo('growth')">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
+                <div class="sidebar-nav-label">Trackers</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')"><span class="icon">📈</span> Tracker Entries <span class="badge" id="entryBadge">0</span></a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">🏆</span> Milestones <span class="badge" id="milestoneBadge">0</span></a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
+
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Milestones <span class="sub">| Developmental Achievements</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Milestones <span class="sub">| Developmental Achievements</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline" onclick="loadData()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadMilestones()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
+
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
-                <div class="page-header">
-                    <span class="icon">🏆</span>
-                    <h1>Milestones <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="countDisplay">0</span></h1>
-                    <div class="page-actions">
-                        <button class="btn btn-primary" onclick="handleAdd()">➕ Add</button>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
+                <div class="page-hero">
+                    <h1>🏆 Milestones</h1>
+                    <p>Track developmental achievements and celebrations</p>
+                    <div class="stats-row">
+                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Milestones</span></div>
+                        <div class="stat"><span class="num" id="statToday">0</span><span class="label">Today</span></div>
+                        <div class="stat"><span class="num" id="statBabies">0</span><span class="label">Babies</span></div>
                     </div>
                 </div>
-                <div class="stat-grid" id="statsGrid">
-                    <div class="stat-card"><div class="num" id="stat1">0</div><div class="stat-label">Total</div></div>
-                    <div class="stat-card"><div class="num" id="stat2">0</div><div class="stat-label">Active</div></div>
-                    <div class="stat-card"><div class="num" id="stat3">0</div><div class="stat-label">Today</div></div>
-                </div>
-                <div class="filter-bar">
-                    <input type="text" placeholder="Search..." id="searchInput" oninput="filterData()">
-                    <select id="filterSelect" onchange="filterData()">
-                        <option value="all">All</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
+
+                <div class="filter-bar-modern">
+                    <input type="text" placeholder="🔍 Search milestones..." id="searchInput" oninput="filterMilestones()">
+                    <select id="categoryFilter" onchange="filterMilestones()">
+                        <option value="all">All Categories</option>
+                        <option value="physical">💪 Physical</option>
+                        <option value="cognitive">🧠 Cognitive</option>
+                        <option value="social">👥 Social</option>
+                        <option value="language">🗣️ Language</option>
+                        <option value="emotional">❤️ Emotional</option>
                     </select>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-                                <tbody id="tableBody"><tr><td colspan="5" class="empty-state"><div class="emoji">📊</div><h3>Loading data...</h3></td></tr></tbody>
-                            </table>
-                        </div>
+                    <div class="btn-group">
+                        <button class="btn btn-outline" onclick="loadMilestones()">🔄 Refresh</button>
                     </div>
+                </div>
+
+                <div id="milestonesContainer">
+                    <div class="empty-state-modern"><div class="emoji">🏆</div><h3>Loading milestones...</h3><p>Please wait while we fetch the data</p></div>
                 </div>
             </div>
         </main>
     </div>
+
     <div class="toast-container" id="toastContainer"></div>
+
     <script src="/admin/js/admin.js"></script>
     <script>
-        let dataCache = [];
-        let tableName = 'tracker_entries';
-        async function loadData() {
+        let milestonesCache = [];
+        let currentFiltered = [];
+
+        async function loadMilestones() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
+
             try {
-                let { data, error } = await supabase.from(tableName).select('*').limit(100);
+                const { data, error } = await supabase
+                    .from('tracker_entries')
+                    .select('*, babies!tracker_entries_baby_id_fkey(name)')
+                    .eq('tracker_type', 'milestone')
+                    .eq('is_deleted', false)
+                    .order('timestamp', { ascending: false })
+                    .limit(50);
+
                 if (error) throw error;
-                dataCache = data || [];
-                renderData(dataCache);
-                const total = dataCache.length;
-                const active = dataCache.filter(d => d.is_active !== false).length;
-                const today = dataCache.filter(d => { if (d.created_at) { return new Date(d.created_at).toDateString() === new Date().toDateString(); } return false; }).length;
-                document.getElementById('stat1').textContent = total;
-                document.getElementById('stat2').textContent = active;
-                document.getElementById('stat3').textContent = today;
-                document.getElementById('countDisplay').textContent = total + ' items';
-                showToast('✅ Data loaded successfully', 'success');
+
+                milestonesCache = data || [];
+                currentFiltered = [...milestonesCache];
+                renderMilestones(currentFiltered);
+                updateStats(currentFiltered);
+
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                showToast('✅ Milestones loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                document.getElementById('tableBody').innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">❌</div><h3>Error loading data</h3><p>' + e.message + '</p></td></tr>';
-                showToast('Error loading data: ' + e.message, 'error');
+                showToast('Error loading milestones: ' + e.message, 'error');
             }
         }
-        function renderData(data) {
-            const tbody = document.getElementById('tableBody');
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">📭</div><h3>No data found</h3></td></tr>';
+
+        function renderMilestones(milestones) {
+            const container = document.getElementById('milestonesContainer');
+            if (!milestones || milestones.length === 0) {
+                container.innerHTML = `<div class="empty-state-modern"><div class="emoji">📭</div><h3>No milestones yet</h3><p>Start celebrating achievements!</p></div>`;
                 return;
             }
-            let html = '';
-            data.slice(0, 50).forEach(function(item) {
-                const id = item.id || '—';
-                const name = item.name || item.full_name || item.title || 'Unnamed';
-                const status = item.is_active !== false ? '✅ Active' : '❌ Inactive';
-                const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
-                html += '<tr><td><code style="background:var(--bg-primary);padding:2px 6px;border-radius:4px;font-size:11px;">' + (typeof id === 'string' ? id.substring(0, 8) : id) + '</code></td><td><strong>' + name + '</strong></td><td><span class="badge ' + (item.is_active !== false ? 'badge-success' : 'badge-gray') + '">' + (item.is_active !== false ? 'Active' : 'Inactive') + '</span></td><td style="font-size:12px;color:var(--text-muted);">' + created + '</td><td class="btn-group"><button class="action-btn" onclick="viewItem(\'' + id + '\')" title="View">👁️</button> <button class="action-btn" onclick="editItem(\'' + id + '\')" title="Edit">✏️</button> <button class="action-btn danger" onclick="deleteItem(\'' + id + '\')" title="Delete">🗑️</button></td></tr>';
+
+            let html = '<div class="milestone-grid">';
+            milestones.forEach(m => {
+                const category = m.data?.category || m.data?.milestoneType || 'General';
+                const babyName = m.babies?.name || m.baby_id?.substring(0, 8) || '—';
+                const title = m.title || m.data?.title || 'Milestone';
+                const loggedBy = m.logged_by_name || m.created_by_name || 'Someone';
+                const time = m.timestamp ? new Date(m.timestamp).toLocaleString() : '—';
+                const categoryEmojis = { physical: '💪', cognitive: '🧠', social: '👥', language: '🗣️', emotional: '❤️' };
+                const emoji = categoryEmojis[category.toLowerCase()] || '🏆';
+
+                html += `
+                    <div class="milestone-card">
+                        <div class="header">
+                            <div>
+                                <div class="title">${emoji} ${title}</div>
+                                <div class="baby">👶 ${babyName}</div>
+                            </div>
+                            <span class="category">${category}</span>
+                        </div>
+                        <div class="meta">
+                            <span>👤 ${loggedBy}</span>
+                            <span>📅 ${time}</span>
+                        </div>
+                        <div class="actions">
+                            <button class="btn-sm btn-delete" onclick="deleteMilestone('${m.id}')">🗑️ Delete</button>
+                        </div>
+                    </div>
+                `;
             });
-            tbody.innerHTML = html;
+            html += '</div>';
+            container.innerHTML = html;
         }
-        function filterData() {
+
+        function updateStats(milestones) {
+            const total = milestones.length;
+            const today = milestones.filter(m => {
+                if (m.timestamp) return new Date(m.timestamp).toDateString() === new Date().toDateString();
+                return false;
+            }).length;
+            const babies = new Set(milestones.map(m => m.baby_id).filter(Boolean)).size;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statToday').textContent = today;
+            document.getElementById('statBabies').textContent = babies;
+            document.getElementById('milestoneBadge').textContent = total;
+        }
+
+        function filterMilestones() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
-            const filter = document.getElementById('filterSelect')?.value || 'all';
-            let filtered = dataCache;
-            if (search) filtered = filtered.filter(d => JSON.stringify(d).toLowerCase().includes(search));
-            if (filter === 'active') filtered = filtered.filter(d => d.is_active !== false);
-            else if (filter === 'inactive') filtered = filtered.filter(d => d.is_active === false);
-            renderData(filtered);
+            const category = document.getElementById('categoryFilter')?.value || 'all';
+
+            let filtered = milestonesCache;
+            if (search) {
+                filtered = filtered.filter(m =>
+                    (m.title || '').toLowerCase().includes(search) ||
+                    (m.data?.title || '').toLowerCase().includes(search)
+                );
+            }
+            if (category !== 'all') {
+                filtered = filtered.filter(m => (m.data?.category || '').toLowerCase() === category);
+            }
+            currentFiltered = filtered;
+            renderMilestones(filtered);
         }
-        function handleAdd() { showToast('Add functionality coming soon', 'info'); }
-        async function viewItem(id) {
-            const item = dataCache.find(d => d.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-            let details = '<div style="display:grid;gap:8px;max-height:400px;overflow-y:auto;">';
-            Object.entries(item).forEach(([key, val]) => {
-                if (key === 'id') return;
-                let displayVal = val;
-                if (typeof val === 'boolean') displayVal = val ? '✅ Yes' : '❌ No';
-                else if (val && typeof val === 'string' && val.length > 100) displayVal = val.substring(0, 100) + '...';
-                else if (val === null || val === undefined) displayVal = '—';
-                else if (key.includes('_at') || key === 'created_at' || key === 'updated_at') displayVal = new Date(val).toLocaleString();
-                details += '<div style="padding:4px 0;border-bottom:1px solid var(--border);"><strong>' + key.replace(/_/g, ' ') + ':</strong> ' + displayVal + '</div>';
-            });
-            details += '</div>';
-            openModal('📄 Details', details, 'Close', closeModal);
-        }
-        async function editItem(id) {
-            const item = dataCache.find(d => d.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-            let form = '<div class="form-group"><label>ID</label><input type="text" value="' + id + '" disabled style="background:var(--bg-primary);"></div>';
-            Object.entries(item).forEach(([key, val]) => {
-                if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
-                let displayVal = val === null || val === undefined ? '' : String(val);
-                if (typeof val === 'boolean') displayVal = val ? 'true' : 'false';
-                form += '<div class="form-group"><label>' + key.replace(/_/g, ' ') + '</label><input type="text" id="edit_' + key + '" value="' + displayVal + '"></div>';
-            });
-            openModal('✏️ Edit Item', form, 'Save', async function() {
-                let updates = {};
-                let hasChanges = false;
-                Object.entries(item).forEach(([key, val]) => {
-                    if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
-                    const input = document.getElementById('edit_' + key);
-                    if (input) {
-                        let value = input.value;
-                        if (typeof val === 'number') value = parseFloat(value);
-                        else if (typeof val === 'boolean') value = value === 'true';
-                        if (String(value) !== String(val)) { updates[key] = value; hasChanges = true; }
-                    }
-                });
-                if (!hasChanges) { showToast('No changes detected', 'info'); return; }
-                try {
-                    const { error } = await supabase.from(tableName).update(updates).eq('id', id);
-                    if (error) throw error;
-                    showToast('✅ Item updated successfully', 'success');
-                    closeModal();
-                    loadData();
-                } catch (e) { showToast('Error updating: ' + e.message, 'error'); }
-            });
-        }
-        async function deleteItem(id) {
-            if (!confirm('Are you sure you want to delete this item?')) return;
+
+        async function deleteMilestone(id) {
+            if (!confirm('Are you sure you want to delete this milestone?')) return;
             try {
-                const { error } = await supabase.from(tableName).update({ is_active: false }).eq('id', id);
+                const { error } = await supabase.from('tracker_entries').update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', id);
                 if (error) throw error;
-                showToast('✅ Item deleted successfully', 'success');
-                loadData();
-            } catch (e) { showToast('Error deleting: ' + e.message, 'error'); }
+                showToast('✅ Milestone deleted successfully', 'success');
+                loadMilestones();
+            } catch (e) {
+                showToast('Error deleting milestone: ' + e.message, 'error');
+            }
         }
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadData, 500); });
-        window.loadData = loadData; window.filterData = filterData; window.handleAdd = handleAdd;
-        window.viewItem = viewItem; window.editItem = editItem; window.deleteItem = deleteItem;
+
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadMilestones, 500); });
+
+        window.loadMilestones = loadMilestones;
+        window.filterMilestones = filterMilestones;
+        window.deleteMilestone = deleteMilestone;
     </script>
 </body>
 </html>
