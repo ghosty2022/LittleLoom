@@ -206,7 +206,6 @@
             min-height: 100vh;
         }
 
-        /* Sidebar */
         .sidebar {
             width: var(--sidebar-width);
             background: var(--bg-sidebar);
@@ -350,7 +349,6 @@
             color: rgba(255, 255, 255, 0.4);
         }
 
-        /* Main */
         .main {
             flex: 1;
             margin-left: var(--sidebar-width);
@@ -488,6 +486,11 @@
         .page {
             padding: 24px 32px;
             animation: fadeIn 0.3s ease-out;
+            display: none;
+        }
+
+        .page.active {
+            display: block;
         }
 
         @keyframes fadeIn {
@@ -631,6 +634,10 @@
         .badge-info {
             background: #dbeafe;
             color: #2563eb;
+        }
+        .badge-purple {
+            background: #ede9fe;
+            color: #7c3aed;
         }
 
         .pill {
@@ -889,6 +896,31 @@
             .quick-stats-row {
                 grid-template-columns: repeat(2, 1fr);
             }
+        }
+
+        .achievement-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .achievement-item:last-child {
+            border-bottom: none;
+        }
+        .achievement-item .ach-icon {
+            font-size: 24px;
+        }
+        .achievement-item .ach-info {
+            flex: 1;
+        }
+        .achievement-item .ach-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .achievement-item .ach-desc {
+            font-size: 12px;
+            color: var(--text-muted);
         }
     </style>
 </head>
@@ -1269,6 +1301,8 @@
         let session = null;
         let refreshTimer = null;
         let currentPage = 'dashboard';
+        let eventCount = 0;
+        let realtimeChannel = null;
 
         // ============================================================
         // INIT SUPABASE
@@ -1288,8 +1322,8 @@
         // ============================================================
         function showToast(message, type) {
             type = type || 'info';
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
+            var container = document.getElementById('toastContainer');
+            var toast = document.createElement('div');
             toast.className = 'toast ' + type;
             toast.textContent = message;
             container.appendChild(toast);
@@ -1303,10 +1337,10 @@
         // ============================================================
         async function handleLogin(event) {
             event.preventDefault();
-            const email = document.getElementById('loginEmail').value.trim();
-            const password = document.getElementById('loginPassword').value;
-            const btn = document.getElementById('loginBtn');
-            const errorEl = document.getElementById('loginError');
+            var email = document.getElementById('loginEmail').value.trim();
+            var password = document.getElementById('loginPassword').value;
+            var btn = document.getElementById('loginBtn');
+            var errorEl = document.getElementById('loginError');
 
             if (!email || !password) {
                 errorEl.textContent = 'Please enter both email and password';
@@ -1319,21 +1353,21 @@
             errorEl.classList.remove('show');
 
             try {
-                const { data, error } = await supabase.auth.signInWithPassword({
+                var result = await supabase.auth.signInWithPassword({
                     email: email,
                     password: password
                 });
 
-                if (error) {
-                    errorEl.textContent = error.message || 'Invalid email or password';
+                if (result.error) {
+                    errorEl.textContent = result.error.message || 'Invalid email or password';
                     errorEl.classList.add('show');
                     btn.disabled = false;
                     btn.textContent = 'Sign In';
                     return;
                 }
 
-                if (data.session) {
-                    session = data.session;
+                if (result.data.session) {
+                    session = result.data.session;
                     showToast('Welcome back!', 'success');
                     showDashboard();
                 } else {
@@ -1361,7 +1395,7 @@
 
             // Update user info
             document.getElementById('sidebarEmail').textContent = session.user.email;
-            const name = session.user.user_metadata?.full_name || session.user.email.split('@')[0];
+            var name = session.user.user_metadata?.full_name || session.user.email.split('@')[0];
             document.getElementById('sidebarName').textContent = name;
             document.getElementById('sidebarAvatar').textContent = name[0].toUpperCase();
             document.getElementById('connectionStatus').textContent = 'Logged in as ' + session.user.email;
@@ -1388,11 +1422,9 @@
                 await supabase.auth.signOut();
                 session = null;
 
-                // Hide dashboard, show login
                 document.getElementById('app').classList.remove('active');
                 document.getElementById('loginPage').classList.add('active');
 
-                // Reset form
                 document.getElementById('loginBtn').disabled = false;
                 document.getElementById('loginBtn').textContent = 'Sign In';
                 document.getElementById('loginError').classList.remove('show');
@@ -1400,6 +1432,11 @@
                 if (refreshTimer) {
                     clearInterval(refreshTimer);
                     refreshTimer = null;
+                }
+
+                if (realtimeChannel) {
+                    realtimeChannel.unsubscribe();
+                    realtimeChannel = null;
                 }
 
                 showToast('Logged out successfully', 'success');
@@ -1411,18 +1448,17 @@
         // ============================================================
         function navigateTo(page) {
             currentPage = page;
-            const pages = ['dashboard', 'babies', 'users', 'community', 'topics', 'trackers', 'milestones', 'realtime',
+            var pages = ['dashboard', 'babies', 'users', 'community', 'topics', 'trackers', 'milestones', 'realtime',
                 'settings'
             ];
             pages.forEach(function(p) {
-                const el = document.getElementById('page-' + p);
+                var el = document.getElementById('page-' + p);
                 if (el) el.classList.remove('active');
             });
 
-            const target = document.getElementById('page-' + page);
+            var target = document.getElementById('page-' + page);
             if (target) target.classList.add('active');
 
-            // Update sidebar
             document.querySelectorAll('.sidebar-nav-item').forEach(function(el) {
                 el.classList.remove('active');
             });
@@ -1433,8 +1469,7 @@
                 }
             });
 
-            // Update title
-            const titles = {
+            var titles = {
                 dashboard: 'Dashboard <span class="sub">| Real-time overview</span>',
                 babies: 'Babies <span class="sub">| All baby profiles</span>',
                 users: 'Users <span class="sub">| All user accounts</span>',
@@ -1447,18 +1482,12 @@
             };
             document.getElementById('pageTitle').innerHTML = titles[page] || 'Dashboard';
 
-            // Close sidebar on mobile
             if (window.innerWidth <= 768) toggleSidebar(false);
-
-            // Load page data if needed
-            if (page === 'realtime') {
-                // Realtime is already live
-            }
         }
 
         function toggleSidebar(open) {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
+            var sidebar = document.getElementById('sidebar');
+            var overlay = document.getElementById('sidebarOverlay');
             if (open === undefined) {
                 sidebar.classList.toggle('open');
                 overlay.classList.toggle('active');
@@ -1472,18 +1501,37 @@
         }
 
         // ============================================================
+        // SAFE ELEMENT UPDATE
+        // ============================================================
+        function safeSetText(id, value) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.textContent = value;
+            }
+        }
+
+        function safeSetHTML(id, value) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.innerHTML = value;
+            }
+        }
+
+        // ============================================================
         // DATA FETCHING
         // ============================================================
         async function fetchDashboardData() {
             if (!supabase || !session) return;
 
-            const statusBar = document.getElementById('statusBar');
-            statusBar.innerHTML =
-                '<span class="spinner"></span><span>Loading...</span><span style="margin-left:auto;font-size:12px;">Fetching data</span>';
+            var statusBar = document.getElementById('statusBar');
+            if (statusBar) {
+                statusBar.innerHTML =
+                    '<span class="spinner"></span><span>Loading...</span><span style="margin-left:auto;font-size:12px;">Fetching data</span>';
+            }
 
             try {
                 // Fetch all data in parallel
-                const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult] = await Promise.all([
+                var [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult] = await Promise.all([
                     supabase.from('babies').select('id, name, date_of_birth, streak, milestones_count').eq('is_active',
                         true),
                     supabase.from('profiles').select('id, full_name, email, role, last_active'),
@@ -1493,82 +1541,88 @@
                         'milestone').eq('is_deleted', false)
                 ]);
 
-                const babies = babiesResult.data || [];
-                const profiles = profilesResult.data || [];
-                const entriesCount = entriesResult.count || 0;
-                const postsCount = postsResult.count || 0;
-                const milestonesCount = milestonesResult.count || 0;
+                var babies = babiesResult.data || [];
+                var profiles = profilesResult.data || [];
+                var entriesCount = entriesResult.count || 0;
+                var postsCount = postsResult.count || 0;
+                var milestonesCount = milestonesResult.count || 0;
 
-                // Update stats
-                document.getElementById('statBabies').textContent = babies.length;
-                document.getElementById('statUsers').textContent = profiles.length;
-                document.getElementById('statEntries').textContent = entriesCount;
-                document.getElementById('statPosts').textContent = postsCount;
-                document.getElementById('statMilestones').textContent = milestonesCount;
+                // Update stats - safe
+                safeSetText('statBabies', babies.length);
+                safeSetText('statUsers', profiles.length);
+                safeSetText('statEntries', entriesCount);
+                safeSetText('statPosts', postsCount);
+                safeSetText('statMilestones', milestonesCount);
 
                 // Quick stats
-                document.getElementById('qsBabies').textContent = babies.length;
-                document.getElementById('qsUsers').textContent = profiles.length;
-                document.getElementById('qsEntries').textContent = entriesCount;
-                document.getElementById('qsPosts').textContent = postsCount;
-                document.getElementById('qsMilestones').textContent = milestonesCount;
+                safeSetText('qsBabies', babies.length);
+                safeSetText('qsUsers', profiles.length);
+                safeSetText('qsEntries', entriesCount);
+                safeSetText('qsPosts', postsCount);
+                safeSetText('qsMilestones', milestonesCount);
 
                 // Avg streak
                 if (babies.length > 0) {
-                    let totalStreak = 0;
+                    var totalStreak = 0;
                     babies.forEach(function(b) { totalStreak += (b.streak || 0); });
-                    const avg = Math.round(totalStreak / babies.length);
-                    document.getElementById('statStreak').innerHTML = avg + '<span class="unit">d</span>';
-                    document.getElementById('qsStreak').textContent = avg + 'd';
+                    var avg = Math.round(totalStreak / babies.length);
+                    safeSetHTML('statStreak', avg + '<span class="unit">d</span>');
+                    safeSetText('qsStreak', avg + 'd');
                 }
 
                 // Update badges
-                document.getElementById('babyBadge').textContent = babies.length;
-                document.getElementById('userBadge').textContent = profiles.length;
-                document.getElementById('postBadge').textContent = postsCount;
-                document.getElementById('entryBadge').textContent = entriesCount;
-                document.getElementById('milestoneBadge').textContent = milestonesCount;
+                safeSetText('babyBadge', babies.length);
+                safeSetText('userBadge', profiles.length);
+                safeSetText('postBadge', postsCount);
+                safeSetText('entryBadge', entriesCount);
+                safeSetText('milestoneBadge', milestonesCount);
 
-                // Baby page count
-                document.getElementById('babyCountPage').textContent = babies.length + ' babies';
-                document.getElementById('userCountPage').textContent = profiles.length + ' users';
-                document.getElementById('postCountPage').textContent = postsCount + ' posts';
-                document.getElementById('entryCountPage').textContent = entriesCount + ' entries';
-                document.getElementById('milestoneCountPage').textContent = milestonesCount + ' milestones';
+                // Page counts
+                safeSetText('babyCountPage', babies.length + ' babies');
+                safeSetText('userCountPage', profiles.length + ' users');
+                safeSetText('postCountPage', postsCount + ' posts');
+                safeSetText('entryCountPage', entriesCount + ' entries');
+                safeSetText('milestoneCountPage', milestonesCount + ' milestones');
+                safeSetText('topicCountPage', '0 topics');
 
                 // Recent activity
-                const { data: recent } = await supabase
+                var { data: recent } = await supabase
                     .from('tracker_entries')
                     .select('tracker_id, title, logged_by_name, timestamp')
                     .eq('is_deleted', false)
                     .order('timestamp', { ascending: false })
                     .limit(10);
 
-                const feed = document.getElementById('activityFeed');
-                if (!recent || recent.length === 0) {
-                    feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
-                    document.getElementById('activityCount').textContent = '0';
-                } else {
-                    document.getElementById('activityCount').textContent = recent.length;
-                    const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊',
-                        milestone: '🏆' };
-                    var html = '';
-                    recent.forEach(function(a) {
-                        html += '<div class="activity-item">' +
-                            '<div class="activity-icon">' + (iconMap[a.tracker_id] || '📌') + '</div>' +
-                            '<div class="activity-content">' +
-                            '<div class="activity-title">' + (a.title || a.tracker_id || 'Activity') + '</div>' +
-                            '<div class="activity-meta">by ' + (a.logged_by_name || 'Someone') + '</div>' +
-                            '</div>' +
-                            '<div class="activity-time">' + (a.timestamp ? new Date(a.timestamp).toLocaleString() :
-                                '') + '</div>' +
-                            '</div>';
-                    });
-                    feed.innerHTML = html;
+                var feed = document.getElementById('activityFeed');
+                if (feed) {
+                    if (!recent || recent.length === 0) {
+                        feed.innerHTML =
+                        '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
+                        safeSetText('activityCount', '0');
+                    } else {
+                        safeSetText('activityCount', recent.length);
+                        var iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊',
+                            milestone: '🏆' };
+                        var html = '';
+                        recent.forEach(function(a) {
+                            html += '<div class="activity-item">' +
+                                '<div class="activity-icon">' + (iconMap[a.tracker_id] || '📌') + '</div>' +
+                                '<div class="activity-content">' +
+                                '<div class="activity-title">' + (a.title || a.tracker_id || 'Activity') +
+                                '</div>' +
+                                '<div class="activity-meta">by ' + (a.logged_by_name || 'Someone') + '</div>' +
+                                '</div>' +
+                                '<div class="activity-time">' + (a.timestamp ? new Date(a.timestamp)
+                                    .toLocaleString() :
+                                    '') + '</div>' +
+                                '</div>';
+                        });
+                        feed.innerHTML = html;
+                    }
                 }
 
                 // Achievements
-                const { data: achievements } = await supabase
+                var { data: achievements } = await supabase
                     .from('tracker_entries')
                     .select('title, data, logged_by_name, timestamp')
                     .eq('tracker_type', 'milestone')
@@ -1576,150 +1630,169 @@
                     .order('timestamp', { ascending: false })
                     .limit(8);
 
-                const achList = document.getElementById('achievementList');
-                if (!achievements || achievements.length === 0) {
-                    achList.innerHTML = '<div class="empty-state"><div class="emoji">🏆</div><p>No achievements yet</p></div>';
-                    document.getElementById('achievementCount').textContent = '0';
-                } else {
-                    document.getElementById('achievementCount').textContent = achievements.length;
-                    var html2 = '';
-                    achievements.forEach(function(a) {
-                        html2 += '<div class="achievement-item" style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);">' +
-                            '<div style="font-size:24px;">🏆</div>' +
-                            '<div style="flex:1;">' +
-                            '<div style="font-weight:600;font-size:14px;">' + (a.title || 'Milestone') + '</div>' +
-                            '<div style="font-size:12px;color:var(--text-muted);">by ' + (a.logged_by_name ||
-                                'Someone') + (a.timestamp ? ' · ' + new Date(a.timestamp).toLocaleDateString() :
-                                '') + '</div>' +
-                            '</div>' +
-                            '<span class="badge badge-success">✨</span>' +
-                            '</div>';
-                    });
-                    achList.innerHTML = html2;
+                var achList = document.getElementById('achievementList');
+                if (achList) {
+                    if (!achievements || achievements.length === 0) {
+                        achList.innerHTML =
+                        '<div class="empty-state"><div class="emoji">🏆</div><p>No achievements yet</p></div>';
+                        safeSetText('achievementCount', '0');
+                    } else {
+                        safeSetText('achievementCount', achievements.length);
+                        var html2 = '';
+                        achievements.forEach(function(a) {
+                            html2 += '<div class="achievement-item">' +
+                                '<div class="ach-icon">🏆</div>' +
+                                '<div class="ach-info">' +
+                                '<div class="ach-title">' + (a.title || 'Milestone') + '</div>' +
+                                '<div class="ach-desc">by ' + (a.logged_by_name || 'Someone') + (a
+                                    .timestamp ? ' · ' + new Date(a.timestamp).toLocaleDateString() :
+                                    '') + '</div>' +
+                                '</div>' +
+                                '<span class="badge badge-success">✨</span>' +
+                                '</div>';
+                        });
+                        achList.innerHTML = html2;
+                    }
                 }
 
                 // Baby table
-                const babyTable = document.getElementById('babyTable');
-                if (!babies || babies.length === 0) {
-                    babyTable.innerHTML = '<tr><td colspan="6" class="empty-state">No babies found</td></tr>';
-                } else {
-                    var html3 = '';
-                    babies.slice(0, 20).forEach(function(b) {
-                        var age = '—';
-                        if (b.date_of_birth) {
-                            var years = new Date().getFullYear() - new Date(b.date_of_birth).getFullYear();
-                            age = years + 'y';
-                        }
-                        html3 += '<tr>' +
-                            '<td><strong>' + (b.name || 'Unnamed') + '</strong></td>' +
-                            '<td>' + age + '</td>' +
-                            '<td><span class="pill">' + (b.parent1_id ? 'Parent 1' : '—') + '</span></td>' +
-                            '<td>' + (b.streak || 0) + ' 🔥</td>' +
-                            '<td>' + (b.milestones_count || 0) + '</td>' +
-                            '<td style="font-size:12px;color:var(--text-muted);">' + (b.created_at ? new Date(b
-                                .created_at).toLocaleDateString() : '—') + '</td>' +
-                            '</tr>';
-                    });
-                    babyTable.innerHTML = html3;
+                var babyTable = document.getElementById('babyTable');
+                if (babyTable) {
+                    if (!babies || babies.length === 0) {
+                        babyTable.innerHTML = '<tr><td colspan="6" class="empty-state">No babies found</td></tr>';
+                    } else {
+                        var html3 = '';
+                        babies.slice(0, 20).forEach(function(b) {
+                            var age = '—';
+                            if (b.date_of_birth) {
+                                var years = new Date().getFullYear() - new Date(b.date_of_birth).getFullYear();
+                                age = years + 'y';
+                            }
+                            html3 += '<tr>' +
+                                '<td><strong>' + (b.name || 'Unnamed') + '</strong></td>' +
+                                '<td>' + age + '</td>' +
+                                '<td><span class="pill">' + (b.parent1_id ? 'Parent 1' : '—') + '</span></td>' +
+                                '<td>' + (b.streak || 0) + ' 🔥</td>' +
+                                '<td>' + (b.milestones_count || 0) + '</td>' +
+                                '<td style="font-size:12px;color:var(--text-muted);">' + (b.created_at ? new Date(
+                                    b.created_at).toLocaleDateString() : '—') + '</td>' +
+                                '</tr>';
+                        });
+                        babyTable.innerHTML = html3;
+                    }
                 }
 
                 // Users list
-                const userList = document.getElementById('userList');
-                if (!profiles || profiles.length === 0) {
-                    userList.innerHTML = '<div class="empty-state"><div class="emoji">👤</div><p>No users found</p></div>';
-                } else {
-                    var html4 = '';
-                    profiles.slice(0, 20).forEach(function(p) {
-                        var initial = (p.full_name || p.email || 'U')[0].toUpperCase();
-                        html4 += '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-                            '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">' +
-                            initial + '</div>' +
-                            '<div style="flex:1;"><div style="font-weight:600;font-size:14px;">' + (p.full_name ||
-                                'Unknown') + '</div>' +
-                            '<div style="font-size:12px;color:var(--text-muted);">' + (p.email || '') + '</div></div>' +
-                            '<div style="font-weight:700;font-size:14px;color:var(--primary);">' + (p.role ||
-                                'member') + '</div>' +
-                            '<span style="font-size:11px;color:var(--text-muted);">' + (p.last_active ? '🟢' :
-                            '⚪') + '</span>' +
-                            '</div>';
-                    });
-                    userList.innerHTML = html4;
+                var userList = document.getElementById('userList');
+                if (userList) {
+                    if (!profiles || profiles.length === 0) {
+                        userList.innerHTML =
+                        '<div class="empty-state"><div class="emoji">👤</div><p>No users found</p></div>';
+                    } else {
+                        var html4 = '';
+                        profiles.slice(0, 20).forEach(function(p) {
+                            var initial = (p.full_name || p.email || 'U')[0].toUpperCase();
+                            html4 += '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">' +
+                                '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">' +
+                                initial + '</div>' +
+                                '<div style="flex:1;"><div style="font-weight:600;font-size:14px;">' + (p
+                                    .full_name || 'Unknown') + '</div>' +
+                                '<div style="font-size:12px;color:var(--text-muted);">' + (p.email || '') +
+                                '</div></div>' +
+                                '<div style="font-weight:700;font-size:14px;color:var(--primary);">' + (p.role ||
+                                    'member') + '</div>' +
+                                '<span style="font-size:11px;color:var(--text-muted);">' + (p.last_active ?
+                                    '🟢' : '⚪') + '</span>' +
+                                '</div>';
+                        });
+                        userList.innerHTML = html4;
+                    }
                 }
 
                 // Posts table
-                const { data: posts } = await supabase
+                var { data: posts } = await supabase
                     .from('community_posts')
                     .select('author_id, topic_id, content, likes_count, comments_count, created_at')
                     .eq('is_deleted', false)
                     .order('created_at', { ascending: false })
                     .limit(15);
 
-                const postTable = document.getElementById('postTable');
-                if (!posts || posts.length === 0) {
-                    postTable.innerHTML = '<tr><td colspan="6" class="empty-state">No posts yet</td></tr>';
-                } else {
-                    var html5 = '';
-                    posts.forEach(function(p) {
-                        var content = p.content ? p.content.substring(0, 60) + (p.content.length > 60 ? '...' :
-                            '') : '';
-                        html5 += '<tr><td><span class="pill">' + (p.author_id ? p.author_id.substring(0, 8) :
-                            '—') + '</span></td>' +
-                            '<td><span class="pill">' + (p.topic_id || 'General') + '</span></td>' +
-                            '<td>' + content + '</td>' +
-                            '<td>❤️ ' + (p.likes_count || 0) + '</td>' +
-                            '<td>💬 ' + (p.comments_count || 0) + '</td>' +
-                            '<td style="font-size:12px;color:var(--text-muted);">' + (p.created_at ? new Date(p
-                                .created_at).toLocaleString() : '') + '</td></tr>';
-                    });
-                    postTable.innerHTML = html5;
+                var postTable = document.getElementById('postTable');
+                if (postTable) {
+                    if (!posts || posts.length === 0) {
+                        postTable.innerHTML = '<tr><td colspan="6" class="empty-state">No posts yet</td></tr>';
+                    } else {
+                        var html5 = '';
+                        posts.forEach(function(p) {
+                            var content = p.content ? p.content.substring(0, 60) + (p.content.length > 60 ?
+                                '...' :
+                                '') : '';
+                            html5 += '<tr><td><span class="pill">' + (p.author_id ? p.author_id.substring(0,
+                                8) :
+                                '—') + '</span></td>' +
+                                '<td><span class="pill">' + (p.topic_id || 'General') + '</span></td>' +
+                                '<td>' + content + '</td>' +
+                                '<td>❤️ ' + (p.likes_count || 0) + '</td>' +
+                                '<td>💬 ' + (p.comments_count || 0) + '</td>' +
+                                '<td style="font-size:12px;color:var(--text-muted);">' + (p.created_at ? new Date(
+                                    p.created_at).toLocaleString() : '') + '</td></tr>';
+                        });
+                        postTable.innerHTML = html5;
+                    }
                 }
 
                 // Topics
-                const { data: topics } = await supabase.from('community_topics').select('*').order('name');
-                const topicList = document.getElementById('topicList');
-                if (!topics || topics.length === 0) {
-                    topicList.innerHTML = '<div class="empty-state"><div class="emoji">📌</div><p>No topics yet</p></div>';
-                    document.getElementById('topicCountPage').textContent = '0 topics';
-                } else {
-                    document.getElementById('topicCountPage').textContent = topics.length + ' topics';
-                    var html6 = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-                    topics.forEach(function(t) {
-                        html6 += '<span style="padding:6px 16px;border-radius:14px;font-size:13px;font-weight:600;background:var(--bg-primary);color:var(--text-secondary);">' +
-                            (t.emoji || '📌') + ' ' + t.name + ' <span style="color:var(--text-muted);font-weight:400;">(' +
-                            (t.category || 'general') + ')</span></span>';
-                    });
-                    html6 += '</div>';
-                    topicList.innerHTML = html6;
+                var { data: topics } = await supabase.from('community_topics').select('*').order('name');
+                var topicList = document.getElementById('topicList');
+                if (topicList) {
+                    if (!topics || topics.length === 0) {
+                        topicList.innerHTML =
+                        '<div class="empty-state"><div class="emoji">📌</div><p>No topics yet</p></div>';
+                    } else {
+                        safeSetText('topicCountPage', topics.length + ' topics');
+                        var html6 = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+                        topics.forEach(function(t) {
+                            html6 += '<span style="padding:6px 16px;border-radius:14px;font-size:13px;font-weight:600;background:var(--bg-primary);color:var(--text-secondary);">' +
+                                (t.emoji || '📌') + ' ' + t.name +
+                                ' <span style="color:var(--text-muted);font-weight:400;">(' +
+                                (t.category || 'general') + ')</span></span>';
+                        });
+                        html6 += '</div>';
+                        topicList.innerHTML = html6;
+                    }
                 }
 
                 // Tracker entries
-                const { data: entries } = await supabase
+                var { data: entries } = await supabase
                     .from('tracker_entries')
                     .select('tracker_id, baby_id, title, logged_by_name, timestamp')
                     .eq('is_deleted', false)
                     .order('timestamp', { ascending: false })
                     .limit(30);
 
-                const entryTable = document.getElementById('entryTable');
-                if (!entries || entries.length === 0) {
-                    entryTable.innerHTML = '<tr><td colspan="5" class="empty-state">No entries found</td></tr>';
-                } else {
-                    var html7 = '';
-                    entries.forEach(function(e) {
-                        html7 += '<tr>' +
-                            '<td><span class="badge badge-info">' + (e.tracker_id || 'unknown') + '</span></td>' +
-                            '<td><span class="pill">' + (e.baby_id ? e.baby_id.substring(0, 8) : '—') +
-                            '</span></td>' +
-                            '<td>' + (e.title || e.tracker_id || 'Activity') + '</td>' +
-                            '<td>' + (e.logged_by_name || 'Someone') + '</td>' +
-                            '<td style="font-size:12px;color:var(--text-muted);">' + (e.timestamp ? new Date(e
-                                .timestamp).toLocaleString() : '') + '</td></tr>';
-                    });
-                    entryTable.innerHTML = html7;
+                var entryTable = document.getElementById('entryTable');
+                if (entryTable) {
+                    if (!entries || entries.length === 0) {
+                        entryTable.innerHTML = '<tr><td colspan="5" class="empty-state">No entries found</td></tr>';
+                    } else {
+                        var html7 = '';
+                        entries.forEach(function(e) {
+                            html7 += '<tr>' +
+                                '<td><span class="badge badge-info">' + (e.tracker_id || 'unknown') +
+                                '</span></td>' +
+                                '<td><span class="pill">' + (e.baby_id ? e.baby_id.substring(0, 8) : '—') +
+                                '</span></td>' +
+                                '<td>' + (e.title || e.tracker_id || 'Activity') + '</td>' +
+                                '<td>' + (e.logged_by_name || 'Someone') + '</td>' +
+                                '<td style="font-size:12px;color:var(--text-muted);">' + (e.timestamp ? new Date(
+                                    e.timestamp).toLocaleString() : '') + '</td></tr>';
+                        });
+                        entryTable.innerHTML = html7;
+                    }
                 }
 
                 // Milestones
-                const { data: milestones } = await supabase
+                var { data: milestones } = await supabase
                     .from('tracker_entries')
                     .select('title, data, baby_id, logged_by_name, timestamp')
                     .eq('tracker_type', 'milestone')
@@ -1727,33 +1800,42 @@
                     .order('timestamp', { ascending: false })
                     .limit(30);
 
-                const milestoneTable = document.getElementById('milestoneTable');
-                if (!milestones || milestones.length === 0) {
-                    milestoneTable.innerHTML = '<tr><td colspan="5" class="empty-state">No milestones found</td></tr>';
-                } else {
-                    var html8 = '';
-                    milestones.forEach(function(m) {
-                        var category = m.data?.category || m.data?.milestoneType || 'General';
-                        html8 += '<tr>' +
-                            '<td><strong>' + (m.title || m.data?.title || 'Milestone') + '</strong></td>' +
-                            '<td><span class="pill">' + (m.baby_id ? m.baby_id.substring(0, 8) : '—') +
-                            '</span></td>' +
-                            '<td><span class="badge badge-purple">' + category + '</span></td>' +
-                            '<td>' + (m.logged_by_name || 'Someone') + '</td>' +
-                            '<td style="font-size:12px;color:var(--text-muted);">' + (m.timestamp ? new Date(m
-                                .timestamp).toLocaleString() : '') + '</td></tr>';
-                    });
-                    milestoneTable.innerHTML = html8;
+                var milestoneTable = document.getElementById('milestoneTable');
+                if (milestoneTable) {
+                    if (!milestones || milestones.length === 0) {
+                        milestoneTable.innerHTML =
+                        '<tr><td colspan="5" class="empty-state">No milestones found</td></tr>';
+                    } else {
+                        var html8 = '';
+                        milestones.forEach(function(m) {
+                            var category = m.data?.category || m.data?.milestoneType || 'General';
+                            html8 += '<tr>' +
+                                '<td><strong>' + (m.title || m.data?.title || 'Milestone') + '</strong></td>' +
+                                '<td><span class="pill">' + (m.baby_id ? m.baby_id.substring(0, 8) : '—') +
+                                '</span></td>' +
+                                '<td><span class="badge badge-purple">' + category + '</span></td>' +
+                                '<td>' + (m.logged_by_name || 'Someone') + '</td>' +
+                                '<td style="font-size:12px;color:var(--text-muted);">' + (m.timestamp ? new Date(
+                                    m.timestamp).toLocaleString() : '') + '</td></tr>';
+                        });
+                        milestoneTable.innerHTML = html8;
+                    }
                 }
 
-                statusBar.innerHTML =
-                    '<span>✅ All systems operational</span><span style="margin-left:auto;font-size:12px;">Last updated: ' +
-                    new Date().toLocaleString() + '</span>';
-                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                // Update status bar
+                if (statusBar) {
+                    statusBar.innerHTML =
+                        '<span>✅ All systems operational</span><span style="margin-left:auto;font-size:12px;">Last updated: ' +
+                        new Date().toLocaleString() + '</span>';
+                }
+                safeSetText('lastUpdated', new Date().toLocaleString());
 
             } catch (err) {
                 console.error('Fetch error:', err);
-                statusBar.innerHTML = '<span>❌ Error: ' + err.message + '</span>';
+                var statusBar = document.getElementById('statusBar');
+                if (statusBar) {
+                    statusBar.innerHTML = '<span>❌ Error: ' + err.message + '</span>';
+                }
                 showToast('Error loading data: ' + err.message, 'error');
             }
         }
@@ -1766,13 +1848,9 @@
         // ============================================================
         // REALTIME
         // ============================================================
-        var eventCount = 0;
-        var realtimeChannel = null;
-
         function setupRealtime() {
             if (!supabase || !session) return;
 
-            // Clean up existing channel
             if (realtimeChannel) {
                 realtimeChannel.unsubscribe();
                 realtimeChannel = null;
@@ -1801,9 +1879,11 @@
 
         function addEvent(payload, table) {
             eventCount++;
-            document.getElementById('eventCount').textContent = eventCount + ' events';
+            safeSetText('eventCount', eventCount + ' events');
 
             var feed = document.getElementById('eventFeed');
+            if (!feed) return;
+
             var empty = feed.querySelector('.empty-state');
             if (empty) empty.remove();
 
@@ -1824,10 +1904,8 @@
                 '<div class="activity-time">' + new Date().toLocaleTimeString() + '</div>';
             feed.prepend(entry);
 
-            // Limit to 50 items
             while (feed.children.length > 50) feed.removeChild(feed.lastChild);
 
-            // Auto-refresh dashboard after 5 events
             if (eventCount % 5 === 0) {
                 fetchDashboardData();
             }
@@ -1839,9 +1917,8 @@
         async function init() {
             if (!initSupabase()) return;
 
-            // Check if already logged in
             try {
-                const { data, error } = await supabase.auth.getSession();
+                var { data, error } = await supabase.auth.getSession();
                 if (!error && data.session) {
                     session = data.session;
                     showDashboard();
@@ -1851,7 +1928,6 @@
                 console.log('No existing session');
             }
 
-            // Show login page
             document.getElementById('loginPage').classList.add('active');
             document.getElementById('app').classList.remove('active');
         }
@@ -1865,7 +1941,6 @@
         window.showSignup = showSignup;
         window.showToast = showToast;
 
-        // Start
         document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
