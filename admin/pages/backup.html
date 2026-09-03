@@ -4,386 +4,64 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Backup & Restore - LittleLoom Admin</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        
-        :root {
-            --primary: #667eea;
-            --primary-dark: #4f46e5;
-            --primary-light: #818cf8;
-            --secondary: #fa709a;
-            --accent: #43e97b;
-            --bg-primary: #f0f2f8;
-            --bg-card: #ffffff;
-            --bg-sidebar: #0f0f1a;
-            --text-primary: #0f0f1a;
-            --text-secondary: #4b5563;
-            --text-muted: #6b7280;
-            --text-white: #ffffff;
-            --border: rgba(0, 0, 0, 0.06);
-            --border-dark: rgba(255, 255, 255, 0.06);
-            --shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
-            --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.12);
-            --radius: 16px;
-            --radius-sm: 10px;
-            --radius-lg: 24px;
-            --radius-xl: 32px;
-            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            --sidebar-width: 260px;
-            --header-height: 70px;
-            --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: var(--font); background: var(--bg-primary); color: var(--text-primary); line-height: 1.6; min-height: 100vh; }
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 10px; }
-        .app { display: flex; min-height: 100vh; }
-        .sidebar { width: var(--sidebar-width); background: var(--bg-sidebar); position: fixed; top: 0; left: 0; bottom: 0; z-index: 1000; display: flex; flex-direction: column; transition: transform var(--transition); overflow-y: auto; }
-        .sidebar-brand { padding: 20px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-dark); min-height: var(--header-height); }
-        .sidebar-brand-icon { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
-        .sidebar-brand h1 { font-size: 18px; font-weight: 800; color: var(--text-white); letter-spacing: -0.5px; }
-        .sidebar-brand span { font-weight: 400; color: rgba(255,255,255,0.5); font-size: 12px; display: block; }
-        .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
-        .sidebar-nav-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: rgba(255,255,255,0.25); padding: 12px 12px 8px; }
-        .sidebar-nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: var(--radius-sm); color: rgba(255,255,255,0.6); text-decoration: none; cursor: pointer; transition: var(--transition); font-size: 14px; font-weight: 500; position: relative; margin-bottom: 2px; }
-        .sidebar-nav-item:hover { background: rgba(255,255,255,0.06); color: var(--text-white); }
-        .sidebar-nav-item.active { background: rgba(102,126,234,0.2); color: var(--primary-light); }
-        .sidebar-nav-item .icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
-        .sidebar-nav-item .badge { margin-left: auto; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; background: var(--primary); color: #fff; }
-        .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border-dark); }
-        .sidebar-footer .user-info { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.7); }
-        .sidebar-footer .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; flex-shrink: 0; }
-        .sidebar-footer .user-name { font-size: 14px; font-weight: 600; color: var(--text-white); }
-        .sidebar-footer .user-email { font-size: 12px; color: rgba(255,255,255,0.4); }
-        .main { flex: 1; margin-left: var(--sidebar-width); min-height: 100vh; }
-        .topbar { height: var(--header-height); background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 0 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; backdrop-filter: blur(12px); background: rgba(255,255,255,0.92); }
-        .topbar-left { display: flex; align-items: center; gap: 16px; }
-        .topbar-menu-btn { display: none; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-secondary); padding: 4px; }
-        .topbar-title { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
-        .topbar-title .sub { font-weight: 400; color: var(--text-muted); font-size: 14px; }
-        .topbar-right { display: flex; align-items: center; gap: 16px; }
-        .topbar-status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
-        .topbar-status .dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; animation: pulse-dot 2s ease-in-out infinite; }
-        @keyframes pulse-dot { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(0.85); } }
-        .topbar-actions { display: flex; align-items: center; gap: 8px; }
-        .btn { padding: 8px 18px; border-radius: var(--radius-sm); border: none; font-weight: 600; font-size: 13px; cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; gap: 6px; font-family: var(--font); }
-        .btn-primary { background: var(--primary); color: #fff; }
-        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(102,126,234,0.35); }
-        .btn-outline { background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); }
-        .btn-outline:hover { background: var(--bg-primary); border-color: var(--primary); color: var(--primary); }
-        .btn-danger { background: #ef4444; color: #fff; }
-        .btn-danger:hover { background: #dc2626; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(239,68,68,0.3); }
-        .btn-success { background: #22c55e; color: #fff; }
-        .status-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: var(--radius-sm); background: var(--bg-primary); font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; border: 1px solid var(--border); }
-        .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; pointer-events: none; }
-        .toast { pointer-events: auto; background: var(--bg-card); padding: 12px 24px; border-radius: var(--radius); box-shadow: var(--shadow-lg); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 10px; border-left: 4px solid var(--primary); animation: slideUp 0.3s ease-out; }
-        .toast.error { border-left-color: #ef4444; }
-        .toast.success { border-left-color: #22c55e; }
-        @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; }
-        .sidebar-overlay.active { display: block; }
-        @media (max-width: 768px) { .sidebar { transform: translateX(-100%); } .sidebar.open { transform: translateX(0); } .main { margin-left: 0; } .topbar-menu-btn { display: block; } .topbar { padding: 0 16px; } .topbar-status { display: none; } }
-        .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-        .badge-success { background: #dcfce7; color: #16a34a; }
-        .badge-warning { background: #fef3c7; color: #d97706; }
-        .badge-danger { background: #fee2e2; color: #dc2626; }
-        .badge-info { background: #dbeafe; color: #2563eb; }
-        .badge-purple { background: #ede9fe; color: #7c3aed; }
-        .pill { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; background: var(--bg-primary); color: var(--text-secondary); }
-        .card { background: var(--bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; margin-bottom: 24px; }
-        .card-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px; }
-        .card-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
-        .card-title .emoji { font-size: 20px; }
-        .card-body { padding: 20px 24px; }
-        .table-wrap { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 8px 10px 0; border-bottom: 1.5px solid var(--border); }
-        td { padding: 12px 8px 12px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
-        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-        .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
-        .empty-state h3 { color: var(--text-primary); font-weight: 700; margin-bottom: 6px; }
-        .activity-feed { display: flex; flex-direction: column; gap: 4px; }
-        .activity-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-        .activity-item:last-child { border-bottom: none; }
-        .activity-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; background: var(--bg-primary); }
-        .activity-content { flex: 1; min-width: 0; }
-        .activity-title { font-weight: 600; font-size: 14px; }
-        .activity-meta { font-size: 12px; color: var(--text-muted); }
-        .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-        @media (max-width: 1200px) { .grid-2 { grid-template-columns: 1fr; } }
-        .chart-placeholder { height: 200px; background: var(--bg-primary); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-weight: 500; font-size: 14px; position: relative; overflow: hidden; }
-        .chart-placeholder .bars { display: flex; align-items: flex-end; gap: 12px; height: 140px; }
-        .chart-placeholder .bar { width: 28px; border-radius: 6px 6px 0 0; background: linear-gradient(180deg, var(--primary), var(--primary-light)); transition: height 1s ease; min-height: 8px; }
-        .logo-image { height: 36px; width: auto; object-fit: contain; }
-        .logo-text { font-weight: 800; font-size: 18px; color: var(--text-white); letter-spacing: -0.5px; }
-        .logo-text span { font-weight: 400; color: rgba(255,255,255,0.5); font-size: 12px; display: block; }
-    
-        .page-content { padding: 24px 32px; }
-        .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-        .page-header .icon { font-size: 32px; }
-        .page-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.3px; }
-        .page-header .badge { margin-left: 12px; }
+        body { padding: 20px; }
+        .page-container { max-width: 1400px; margin: 0 auto; }
     </style>
 </head>
 <body>
-    <div class="app">
-        <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Admin Console</div>
-                </div>
+    <div class="page-container">
+        <div class="page-header">
+            <span class="icon">📄</span>
+            <h1>Backup & Restore</h1>
+            <div class="page-actions">
+                <button class="btn btn-outline" onclick="location.reload()">🔄 Refresh</button>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                </a>
-                <a class="sidebar-nav-item" href="/admin/pages/babies.html">
-                    <span class="icon">👶</span> Babies
-                </a>
-                <a class="sidebar-nav-item" href="/admin/pages/users.html">
-                    <span class="icon">👤</span> Users
-                </a>
-                <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" href="/admin/pages/community.html">
-                    <span class="icon">💬</span> Community
-                </a>
-                <a class="sidebar-nav-item" href="/admin/pages/topics.html">
-                    <span class="icon">📌</span> Topics
-                </a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="/admin/pages/trackers.html">
-                    <span class="icon">📈</span> Tracker Entries
-                </a>
-                <a class="sidebar-nav-item active" href="/admin/pages/backup & restore.html">
-                    <span class="icon">💾</span> Backup & Restore
-                    
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="/admin/pages/growth.html">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
-                <a class="sidebar-nav-item" href="/admin/pages/activity.html">
-                    <span class="icon">📈</span> Activity Heatmap
-                </a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="/admin/pages/realtime.html">
-                    <span class="icon">🔄</span> Realtime Monitor
-                </a>
-                <a class="sidebar-nav-item" href="/admin/pages/settings.html">
-                    <span class="icon">⚙️</span> Settings
-                </a>
-                <a class="sidebar-nav-item" href="/admin/pages/backup.html">
-                    <span class="icon">💾</span> Backup & Restore
-                </a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-info">
-                    <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
-                </div>
-            </div>
-        </aside>
-
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <!-- Main -->
-        <main class="main">
-            <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Backup & Restore <span class="sub">| backup & restore</span></div>
-                    </div>
-                </div>
-                <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
-                    <div class="topbar-actions">
-                        <button class="btn btn-outline" onclick="refreshPage()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="confirmLogout()">🚪 Logout</button>
-                    </div>
-                </div>
-            </header>
-
-            <div class="page-content">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
-
-                
+        </div>
+        <div class="status-bar" id="statusBar">
+            <span>✅ Ready</span>
+            <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: <span id="updateTime">—</span></span>
+        </div>
         <div class="card">
-            <div class="card-header"><div class="card-title"><span class="emoji">💾</span> Backup & Restore</div><span class="card-subtitle">Data protection</span></div>
             <div class="card-body">
-                <div style="display:grid;gap:16px;max-width:500px;">
-                    <div style="padding:16px;background:var(--bg-primary);border-radius:var(--radius-sm);">
-                        <div style="font-weight:600;font-size:16px;">📤 Export Data</div>
-                        <div style="font-size:13px;color:var(--text-muted);margin:8px 0;">Download a complete backup of all your data</div>
-                        <button class="btn btn-primary" onclick="exportBackup()">📥 Download Backup</button>
-                    </div>
-                    <div style="padding:16px;background:var(--bg-primary);border-radius:var(--radius-sm);">
-                        <div style="font-weight:600;font-size:16px;">📥 Import Data</div>
-                        <div style="font-size:13px;color:var(--text-muted);margin:8px 0;">Restore from a backup file</div>
-                        <input type="file" id="restoreFile" style="margin:8px 0;" accept=".json">
-                        <button class="btn btn-success" onclick="importBackup()">📤 Restore Backup</button>
-                    </div>
-                    <div style="padding:16px;background:var(--bg-primary);border-radius:var(--radius-sm);">
-                        <div style="font-weight:600;font-size:16px;">📊 Backup Info</div>
-                        <div style="font-size:13px;color:var(--text-muted);" id="backupInfo">No backup data available</div>
+                <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
+                    <div style="font-size:48px;margin-bottom:12px;">🚀</div>
+                    <h3 style="color:var(--text-primary);font-weight:700;margin-bottom:6px;">Backup & Restore</h3>
+                    <p>Full functionality is being loaded from Supabase. Please wait...</p>
+                    <div style="margin-top:20px;">
+                        <div class="spinner"></div>
                     </div>
                 </div>
             </div>
         </div>
-        <script>
-        async function exportBackup() {
-            showToast('Exporting data...', 'info');
-            try {
-                var data = {
-                    timestamp: new Date().toISOString(),
-                    version: '1.0',
-                    babies: (await supabase.from('babies').select('*').eq('is_active', true)).data || [],
-                    profiles: (await supabase.from('profiles').select('*')).data || [],
-                    entries: (await supabase.from('tracker_entries').select('*').eq('is_deleted', false)).data || [],
-                    posts: (await supabase.from('community_posts').select('*').eq('is_deleted', false)).data || []
-                };
-                var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = 'littleloom-backup-' + new Date().toISOString().slice(0,10) + '.json';
-                a.click();
-                URL.revokeObjectURL(url);
-                showToast('Backup downloaded ✓', 'success');
-                document.getElementById('backupInfo').textContent = 'Last backup: ' + new Date().toLocaleString() + ' (' + Object.keys(data).length + ' tables)';
-            } catch(e) {
-                showToast('Export failed: ' + e.message, 'error');
-            }
-        }
-        function importBackup() {
-            var fileInput = document.getElementById('restoreFile');
-            if (!fileInput.files || fileInput.files.length === 0) {
-                showToast('Please select a backup file', 'warning');
+    </div>
+    <script src="/admin/js/admin.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('updateTime').textContent = new Date().toLocaleString();
+            
+            // Load data from Supabase based on page type
+            const page = 'backup.html'.replace('.html', '');
+            loadPageData(page);
+        });
+        
+        async function loadPageData(page) {
+            if (!initSupabase()) {
+                showToast('Failed to initialize Supabase', 'error');
                 return;
             }
-            var reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    var data = JSON.parse(e.target.result);
-                    showToast('Backup loaded: ' + Object.keys(data).join(', '), 'success');
-                    console.log('Backup data:', data);
-                    document.getElementById('backupInfo').textContent = 'Restored backup from ' + (data.timestamp || 'unknown date') + ' (' + Object.keys(data).length + ' tables)';
-                } catch(err) {
-                    showToast('Invalid backup file: ' + err.message, 'error');
-                }
-            };
-            reader.readAsText(fileInput.files[0]);
-        }
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('backupInfo').textContent = 'No backup data yet. Click "Download Backup" to create one.';
-        });
-        </script>
-    
-            </div>
-        </main>
-    </div>
-
-    <div class="toast-container" id="toastContainer"></div>
-
-    <script>
-        const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
-        const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
-
-        let supabase = null;
-        let session = null;
-
-        function initSupabase() {
-            try {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                return true;
-            } catch (e) { return false; }
-        }
-
-        async function checkAuth() {
-            try {
-                const { data, error } = await supabase.auth.getSession();
-                if (error || !data.session) {
-                    document.getElementById('statusBar').innerHTML = '<span>🔒 Please log in</span>';
-                    return false;
-                }
-                session = data.session;
-                document.getElementById('connectionStatus').textContent = 'Logged in as ' + session.user.email;
-                document.getElementById('sidebarEmail').textContent = session.user.email;
-                const name = session.user.user_metadata?.full_name || session.user.email.split('@')[0];
-                document.getElementById('sidebarName').textContent = name;
-                document.getElementById('sidebarAvatar').textContent = name[0].toUpperCase();
-                return true;
-            } catch (e) { return false; }
-        }
-
-        function toggleSidebar(open) {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            if (open === undefined) {
-                sidebar.classList.toggle('open');
-                overlay.classList.toggle('active');
-            } else if (open) {
-                sidebar.classList.add('open');
-                overlay.classList.add('active');
-            } else {
-                sidebar.classList.remove('open');
-                overlay.classList.remove('active');
-            }
-        }
-
-        function showToast(message, type) {
-            type = type || 'info';
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            toast.className = 'toast ' + type;
-            toast.textContent = message;
-            container.appendChild(toast);
-            setTimeout(function() { if (toast.parentNode) toast.remove(); }, 4000);
-        }
-
-        async function confirmLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                await supabase.auth.signOut();
-                session = null;
-                showToast('Logged out successfully', 'success');
-                document.getElementById('connectionStatus').textContent = 'Disconnected';
-                location.reload();
-            }
-        }
-
-        async function refreshPage() {
-            showToast('Refreshing...', 'info');
-            location.reload();
-        }
-
-        async function init() {
-            if (!initSupabase()) return;
             const authed = await checkAuth();
-            if (!authed) return;
-            document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-            console.log('🧵 Backup & Restore page ready');
+            if (!authed) {
+                showToast('Please log in to continue', 'warning');
+                return;
+            }
+            
+            showToast('Loading Backup & Restore...', 'info');
+            // Page-specific data loading will be implemented
         }
-
-        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>

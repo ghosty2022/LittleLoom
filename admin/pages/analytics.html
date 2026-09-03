@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Milestone Management - LittleLoom Admin</title>
+    <title>Analytics Dashboard - LittleLoom Admin</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
@@ -16,7 +16,7 @@
     <div class="page-container">
         <div class="page-header">
             <span class="icon">📄</span>
-            <h1>Milestone Management</h1>
+            <h1>Analytics Dashboard</h1>
             <div class="page-actions">
                 <button class="btn btn-outline" onclick="location.reload()">🔄 Refresh</button>
             </div>
@@ -29,7 +29,7 @@
             <div class="card-body">
                 <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
                     <div style="font-size:48px;margin-bottom:12px;">🚀</div>
-                    <h3 style="color:var(--text-primary);font-weight:700;margin-bottom:6px;">Milestone Management</h3>
+                    <h3 style="color:var(--text-primary);font-weight:700;margin-bottom:6px;">Analytics Dashboard</h3>
                     <p>Full functionality is being loaded from Supabase. Please wait...</p>
                     <div style="margin-top:20px;">
                         <div class="spinner"></div>
@@ -44,7 +44,7 @@
             document.getElementById('updateTime').textContent = new Date().toLocaleString();
             
             // Load data from Supabase based on page type
-            const page = 'milestones.html'.replace('.html', '');
+            const page = 'analytics.html'.replace('.html', '');
             loadPageData(page);
         });
         
@@ -59,7 +59,7 @@
                 return;
             }
             
-            showToast('Loading Milestone Management...', 'info');
+            showToast('Loading Analytics Dashboard...', 'info');
             // Page-specific data loading will be implemented
         }
     </script>
