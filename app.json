@@ -151,8 +151,7 @@
       "expo-localization",
       "expo-asset",
       "expo-audio",
-      "expo-video",
-      "react-native-iap"
+      "expo-video"
     ],
     "extra": {
       "eas": {

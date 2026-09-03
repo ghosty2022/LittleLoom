@@ -1001,6 +1001,29 @@
         .quick-stat .emoji {
             font-size: 16px;
         }
+
+        /* ═══ REALTIME EVENT BADGE ═══ */
+        .event-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .event-badge.insert {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .event-badge.update {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .event-badge.delete {
+            background: #fee2e2;
+            color: #dc2626;
+        }
     </style>
 </head>
 <body>
@@ -1477,10 +1500,10 @@
 
     <script>
         /* ═══════════════════════════════════════════════════════════════════
-           CONFIG — Replace with your Supabase credentials
+           CONFIG — YOUR SUPABASE CREDENTIALS (from .env)
            ═══════════════════════════════════════════════════════════════════ */
-        const SUPABASE_URL = 'https://your-project.supabase.co';
-        const SUPABASE_ANON_KEY = 'your-anon-key';
+        const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
 
         /* ═══════════════════════════════════════════════════════════════════
            STATE
@@ -1494,7 +1517,7 @@
         let eventCount = 0;
         let eventStats = { inserts: 0, updates: 0, deletes: 0, total: 0 };
         let subscriptions = [];
-        let realtimeChannels = [];
+        let realtimeSubscriptions = [];
 
         /* ═══════════════════════════════════════════════════════════════════
            TOAST SYSTEM
@@ -1561,7 +1584,10 @@
                 session = null;
                 showToast('Logged out successfully', 'success');
                 document.getElementById('connectionStatus').textContent = 'Disconnected';
-                location.reload();
+                // Clear the page
+                document.querySelectorAll('.stat-value').forEach(el => el.textContent = '—');
+                document.getElementById('activityFeed').innerHTML =
+                    `<div class="empty-state"><div class="emoji">🔒</div><h3>Logged out</h3><p>Please refresh to log in again.</p></div>`;
             }
         }
 
@@ -1596,11 +1622,6 @@
 
             // Close sidebar on mobile
             if (window.innerWidth <= 768) toggleSidebar(false);
-
-            // Load data for page if needed
-            if (page === 'realtime') {
-                // Realtime page is already live
-            }
 
             // Update badges
             updateBadges();
@@ -2059,8 +2080,6 @@
         /* ═══════════════════════════════════════════════════════════════════
            REALTIME SUBSCRIPTIONS — Full multi-table real-time
            ═══════════════════════════════════════════════════════════════════ */
-        let realtimeSubscriptions = [];
-
         function setupRealtime() {
             if (!supabase || !session) return;
 
@@ -2147,13 +2166,14 @@
             entry.className = 'activity-item';
             const emoji = event === 'INSERT' ? '🟢' : event === 'UPDATE' ? '🟡' : '🔴';
             const title = data?.title || data?.name || data?.full_name || 'Record';
+            const eventBadge = event === 'INSERT' ? 'insert' : event === 'UPDATE' ? 'update' : 'delete';
             entry.innerHTML = `
                         <div class="activity-icon" style="background:${event === 'INSERT' ? '#dcfce7' : event === 'UPDATE' ? '#fef3c7' : '#fee2e2'};">${emoji}</div>
                         <div class="activity-content">
                             <div class="activity-title">${event} on ${table}</div>
                             <div class="activity-meta">${title}${data?.id ? ' · ' + data.id.substring(0, 8) : ''}</div>
                         </div>
-                        <div class="activity-time">${time}</div>
+                        <div class="activity-time"><span class="event-badge ${eventBadge}">${event}</span> ${time}</div>
                     `;
             feed.prepend(entry);
 
