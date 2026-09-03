@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QR Code Management - LittleLoom Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/admin/css/admin.css" />
+    <style>
+        .page-hero {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-hero::after { content: '📱'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
+        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
+        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
+        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
+
+        .qr-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 16px;
+        }
+        .qr-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 20px;
+            transition: all var(--transition);
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+        .qr-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--primary-light); }
+        .qr-card .qr-code {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 12px;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            border: 2px dashed var(--border);
+        }
+        .qr-card .qr-code img { width: 100%; height: 100%; object-fit: contain; }
+        .qr-card .name { font-weight: 700; font-size: 14px; }
+        .qr-card .meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+        .qr-card .status-badge {
+            display: inline-flex;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .qr-card .status-badge.active { background: #dcfce7; color: #16a34a; }
+        .qr-card .status-badge.inactive { background: #fee2e2; color: #dc2626; }
+        .qr-card .actions { display: flex; gap: 6px; justify-content: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+        .qr-card .actions .btn-sm { padding: 3px 12px; font-size: 10px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
+        .qr-card .actions .btn-download { background: var(--primary); color: #fff; }
+        .qr-card .actions .btn-download:hover { background: var(--primary-dark); }
+        .qr-card .actions .btn-delete { background: #fee2e2; color: #dc2626; }
+        .qr-card .actions .btn-delete:hover { background: #fecaca; }
+
+        .filter-bar-modern {
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+        }
+        .filter-bar-modern input, .filter-bar-modern select {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern input:focus, .filter-bar-modern select:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .modal-qr-form .form-group { margin-bottom: 14px; }
+        .modal-qr-form .form-group label { display: block; font-weight: 600; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+        .modal-qr-form .form-group input, .modal-qr-form .form-group select {
+            width: 100%; padding: 10px 14px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-card); color: var(--text-primary);
+            transition: var(--transition);
+        }
+        .modal-qr-form .form-group input:focus, .modal-qr-form .form-group select:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+        .modal-qr-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+        .qr-preview {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            border: 2px dashed var(--border);
+        }
+
+        @media (max-width: 768px) {
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .qr-grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 480px) {
+            .qr-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-icon">🧵</div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="sidebar-nav-label">Overview</div>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
+                <div class="sidebar-nav-label">Management</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')"><span class="icon">👶</span> Babies</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')"><span class="icon">👤</span> Users</a>
+                <div class="sidebar-nav-label">System</div>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">📱</span> QR Codes</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="sidebarAvatar">A</div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                </div>
+            </div>
+        </aside>
+
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">QR Codes <span class="sub">| QR Code Management</span></div></div></div>
+                <div class="topbar-right">
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-actions">
+                        <button class="btn btn-outline btn-sm" onclick="loadQRCodes()">🔄 Refresh</button>
+                        <button class="btn btn-primary btn-sm" onclick="openGenerateQRModal()">➕ Generate</button>
+                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="page-content active">
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
+                <div class="page-hero">
+                    <h1>📱 QR Code Management</h1>
+                    <p>Generate and manage QR codes for baby profiles, family sharing, and invites</p>
+                    <div class="stats-row">
+                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total QR Codes</span></div>
+                        <div class="stat"><span class="num" id="statActive">0</span><span class="label">Active</span></div>
+                        <div class="stat"><span class="num" id="statScans">0</span><span class="label">Total Scans</span></div>
+                    </div>
+                </div>
+
+                <div class="filter-bar-modern">
+                    <input type="text" placeholder="🔍 Search QR codes..." id="searchInput" oninput="filterQRCodes()">
+                    <select id="typeFilter" onchange="filterQRCodes()">
+                        <option value="all">All Types</option>
+                        <option value="baby">👶 Baby Profile</option>
+                        <option value="family">👨‍👩‍👧‍👦 Family Share</option>
+                        <option value="invite">📨 Invite</option>
+                        <option value="tracker">📊 Tracker</option>
+                    </select>
+                    <div class="btn-group">
+                        <button class="btn btn-outline" onclick="loadQRCodes()">🔄 Refresh</button>
+                    </div>
+                </div>
+
+                <div id="qrContainer">
+                    <div class="empty-state-modern"><div class="emoji">📱</div><h3>Loading QR codes...</h3><p>Please wait while we fetch the data</p></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="/admin/js/admin.js"></script>
+    <script>
+        let qrCache = [];
+        let currentFiltered = [];
+
+        // Generate demo QR codes
+        function generateDemoQRCodes() {
+            const types = ['baby', 'family', 'invite', 'tracker'];
+            const names = ['Emma', 'Family Group', 'Parent Invite', 'Growth Tracker'];
+            const emojis = ['👶', '👨‍👩‍👧‍👦', '📨', '📊'];
+            
+            return Array.from({ length: 6 }, (_, i) => ({
+                id: 'qr_' + Date.now() + '_' + i,
+                name: names[i % names.length] + (i > 3 ? ' #' + (i+1) : ''),
+                type: types[i % types.length],
+                emoji: emojis[i % emojis.length],
+                code: 'LL_' + Math.random().toString(36).substring(2, 10).toUpperCase(),
+                is_active: i % 3 !== 0,
+                scans: Math.floor(Math.random() * 100),
+                created_at: new Date(Date.now() - i * 86400000).toISOString(),
+                expires_at: i % 2 === 0 ? new Date(Date.now() + 30 * 86400000).toISOString() : null,
+                target: i % 2 === 0 ? '/baby/emma' : '/family/share'
+            }));
+        }
+
+        async function loadQRCodes() {
+            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
+            const authed = await checkAuth();
+            if (!authed) { showToast('Please log in', 'warning'); return; }
+
+            try {
+                const { data, error } = await supabase
+                    .from('qr_codes')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error || !data || data.length === 0) {
+                    data = generateDemoQRCodes();
+                }
+
+                qrCache = data || [];
+                currentFiltered = [...qrCache];
+                renderQRCodes(currentFiltered);
+                updateStats(currentFiltered);
+
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                showToast('✅ QR codes loaded successfully', 'success');
+            } catch (e) {
+                console.error('Load error:', e);
+                showToast('Error loading QR codes: ' + e.message, 'error');
+            }
+        }
+
+        function renderQRCodes(qrs) {
+            const container = document.getElementById('qrContainer');
+            if (!qrs || qrs.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state-modern">
+                        <div class="emoji">📱</div>
+                        <h3>No QR codes found</h3>
+                        <p>Generate QR codes for baby profiles, family sharing, or invites</p>
+                        <button class="btn btn-primary" onclick="openGenerateQRModal()" style="margin-top:12px;">➕ Generate QR Code</button>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="qr-grid">';
+            qrs.forEach(q => {
+                const isActive = q.is_active !== false;
+                const isExpired = q.expires_at && new Date(q.expires_at) < new Date();
+                const status = isExpired ? 'expired' : (isActive ? 'active' : 'inactive');
+                const statusLabel = isExpired ? '⏰ Expired' : (isActive ? '✅ Active' : '❌ Inactive');
+                const statusClass = isExpired ? 'inactive' : (isActive ? 'active' : 'inactive');
+                const created = q.created_at ? new Date(q.created_at).toLocaleDateString() : '—';
+                const typeLabel = q.type === 'baby' ? '👶 Baby' : q.type === 'family' ? '👨‍👩‍👧‍👦 Family' : q.type === 'invite' ? '📨 Invite' : '📊 Tracker';
+
+                html += `
+                    <div class="qr-card">
+                        <div class="qr-code">
+                            ${q.emoji || '📱'}
+                        </div>
+                        <div class="name">${q.name}</div>
+                        <div class="meta">
+                            ${typeLabel} · ${q.code}
+                        </div>
+                        <div style="margin-top:6px;">
+                            <span class="status-badge ${statusClass}">${statusLabel}</span>
+                        </div>
+                        <div class="meta">
+                            <span>📅 ${created}</span>
+                            <span>👁️ ${q.scans || 0} scans</span>
+                            ${q.expires_at ? `<span>⏰ ${new Date(q.expires_at).toLocaleDateString()}</span>` : ''}
+                        </div>
+                        <div class="actions">
+                            <button class="btn-sm btn-download" onclick="downloadQR('${q.id}')">⬇️ Download</button>
+                            <button class="btn-sm btn-outline" onclick="copyQR('${q.code}')">📋 Copy</button>
+                            <button class="btn-sm btn-delete" onclick="deleteQR('${q.id}')">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function updateStats(qrs) {
+            const total = qrs.length;
+            const active = qrs.filter(q => q.is_active !== false && (!q.expires_at || new Date(q.expires_at) > new Date())).length;
+            const scans = qrs.reduce((sum, q) => sum + (q.scans || 0), 0);
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statActive').textContent = active;
+            document.getElementById('statScans').textContent = scans;
+        }
+
+        function filterQRCodes() {
+            const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+            const type = document.getElementById('typeFilter')?.value || 'all';
+
+            let filtered = qrCache;
+            if (search) {
+                filtered = filtered.filter(q =>
+                    (q.name || '').toLowerCase().includes(search) ||
+                    (q.code || '').toLowerCase().includes(search)
+                );
+            }
+            if (type !== 'all') {
+                filtered = filtered.filter(q => q.type === type);
+            }
+            currentFiltered = filtered;
+            renderQRCodes(filtered);
+        }
+
+        function openGenerateQRModal() {
+            const body = `
+                <div class="modal-qr-form">
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" id="qrName" placeholder="QR Code name">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Type</label>
+                            <select id="qrType">
+                                <option value="baby">👶 Baby Profile</option>
+                                <option value="family">👨‍👩‍👧‍👦 Family Share</option>
+                                <option value="invite">📨 Invite</option>
+                                <option value="tracker">📊 Tracker</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Target</label>
+                            <input type="text" id="qrTarget" placeholder="/baby/emma">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Emoji</label>
+                        <input type="text" id="qrEmoji" placeholder="📱" maxlength="2">
+                    </div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:8px;padding:12px;background:var(--bg-primary);border-radius:var(--radius-sm);">
+                        💡 QR codes can be scanned to access baby profiles, family sharing links, and invites.
+                    </div>
+                </div>
+            `;
+
+            openModal('📱 Generate QR Code', body, 'Generate', async function() {
+                const name = document.getElementById('qrName')?.value?.trim();
+                const type = document.getElementById('qrType')?.value || 'baby';
+                const target = document.getElementById('qrTarget')?.value?.trim() || '/';
+                const emoji = document.getElementById('qrEmoji')?.value?.trim() || '📱';
+
+                if (!name) { showToast('Please enter a name', 'warning'); return; }
+
+                const code = 'LL_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+
+                try {
+                    const { error } = await supabase.from('qr_codes').insert({
+                        id: 'qr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                        name: name,
+                        type: type,
+                        code: code,
+                        target: target,
+                        emoji: emoji,
+                        is_active: true,
+                        scans: 0,
+                        created_at: new Date().toISOString()
+                    });
+
+                    if (error) throw error;
+                    showToast('✅ QR code generated successfully!', 'success');
+                    showToast('🔑 Code: ' + code, 'info', 5000);
+                    closeModal(true);
+                    loadQRCodes();
+                } catch (e) {
+                    showToast('Error generating QR code: ' + e.message, 'error');
+                }
+            });
+        }
+
+        function downloadQR(id) {
+            const qr = qrCache.find(q => q.id === id);
+            if (!qr) { showToast('QR code not found', 'error'); return; }
+            
+            // Create a simple QR code visualization
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 300;
+            const ctx = canvas.getContext('2d');
+            
+            // Background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 300, 300);
+            
+            // QR pattern (simplified)
+            const size = 10;
+            const pattern = [
+                [1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1],
+                [1,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,1],
+                [1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1],
+                [1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1],
+                [1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1],
+                [1,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,1],
+                [1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1],
+                [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0],
+                [1,1,1,0,1,1,1,1,0,1,1,0,1,1,1,1,1],
+                [0,1,0,0,1,0,1,0,0,1,1,1,0,0,0,1,0],
+                [1,0,1,1,1,0,1,1,0,0,1,1,0,1,0,0,1]
+            ];
+
+            const startX = (300 - pattern[0].length * size) / 2;
+            const startY = (300 - pattern.length * size) / 2;
+
+            pattern.forEach((row, y) => {
+                row.forEach((cell, x) => {
+                    if (cell === 1) {
+                        ctx.fillStyle = '#000000';
+                        ctx.fillRect(startX + x * size, startY + y * size, size, size);
+                    }
+                });
+            });
+
+            // Add text
+            ctx.fillStyle = '#000000';
+            ctx.font = '16px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(qr.code, 150, 280);
+
+            // Download
+            const link = document.createElement('a');
+            link.download = `qr_${qr.code}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            showToast('⬇️ QR code downloaded', 'success');
+        }
+
+        function copyQR(code) {
+            navigator.clipboard.writeText(code).then(() => {
+                showToast('📋 QR code copied: ' + code, 'success');
+            }).catch(() => {
+                showToast('Failed to copy code', 'error');
+            });
+        }
+
+        async function deleteQR(id) {
+            const qr = qrCache.find(q => q.id === id);
+            if (!qr) { showToast('QR code not found', 'error'); return; }
+
+            const confirmed = await new Promise((resolve) => {
+                openModal('🗑️ Delete QR Code', `
+                    <div style="text-align:center;padding:12px 0;">
+                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete "${qr.name}"?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">This will permanently remove this QR code.</p>
+                    </div>
+                `, 'Yes, Delete', () => resolve(true), 'Cancel');
+            });
+            if (!confirmed) return;
+
+            try {
+                const { error } = await supabase.from('qr_codes').delete().eq('id', id);
+                if (error) throw error;
+                showToast('✅ QR code deleted successfully', 'success');
+                loadQRCodes();
+            } catch (e) {
+                showToast('Error deleting QR code: ' + e.message, 'error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadQRCodes, 500); });
+        window.loadQRCodes = loadQRCodes;
+        window.filterQRCodes = filterQRCodes;
+        window.openGenerateQRModal = openGenerateQRModal;
+        window.downloadQR = downloadQR;
+        window.copyQR = copyQR;
+        window.deleteQR = deleteQR;
+    </script>
+</body>
+</html>

@@ -3,12 +3,110 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Export - LittleLoom Admin</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    <title>Data Export - LittleLoom Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        /* Page-specific styles */
+        .page-hero {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-hero::after { content: '📤'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
+        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
+        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
+        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
+
+        .export-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 16px;
+        }
+        .export-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 24px;
+            transition: all var(--transition);
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+        .export-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--primary-light); }
+        .export-card .icon { font-size: 48px; margin-bottom: 12px; }
+        .export-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+        .export-card p { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+        .export-card .meta { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+
+        .format-selector {
+            display: flex; gap: 8px; justify-content: center; margin-bottom: 16px;
+        }
+        .format-selector .format-btn {
+            padding: 6px 16px;
+            border-radius: var(--radius-sm);
+            border: 1.5px solid var(--border);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+        }
+        .format-selector .format-btn.active {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: #fff;
+        }
+        .format-selector .format-btn:hover:not(.active) { border-color: var(--primary); }
+
+        .filter-bar-modern {
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+        }
+        .filter-bar-modern select {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern select:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .progress-bar-container { margin-top: 12px; }
+        .progress-bar-container .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .progress-bar-container .progress-track {
+            height: 6px;
+            background: var(--bg-primary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-bar-container .progress-track .fill {
+            height: 100%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
+            transition: width 0.6s ease;
+        }
+
+        @media (max-width: 768px) {
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .export-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -16,219 +114,395 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" data-page="dashboard" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item active" data-page="export" href="#">
-                    <span class="icon">📤</span> Export
-                </a>
-                <a class="sidebar-nav-item" data-page="users" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" data-page="activity" href="#" onclick="navigateTo('activity')">
-                    <span class="icon">📈</span> Activity Heatmap
-                </a>
-                <a class="sidebar-nav-item" data-page="growth" href="#" onclick="navigateTo('growth')">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">📤</span> Data Export</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
+
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Export <span class="sub">| Export App Data</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Data Export <span class="sub">| Export App Data</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline" onclick="loadData()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadExportData()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
+
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
-                <div class="page-header">
-                    <span class="icon">📤</span>
-                    <h1>Export <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="countDisplay">0</span></h1>
-                    <div class="page-actions">
-                        <button class="btn btn-primary" onclick="handleAdd()">➕ Add</button>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
+                <div class="page-hero">
+                    <h1>📤 Data Export</h1>
+                    <p>Export application data in various formats for analysis and reporting</p>
+                    <div class="stats-row">
+                        <div class="stat"><span class="num" id="statUsers">0</span><span class="label">Users</span></div>
+                        <div class="stat"><span class="num" id="statBabies">0</span><span class="label">Babies</span></div>
+                        <div class="stat"><span class="num" id="statEntries">0</span><span class="label">Tracker Entries</span></div>
+                        <div class="stat"><span class="num" id="statPosts">0</span><span class="label">Posts</span></div>
                     </div>
                 </div>
-                <div class="stat-grid" id="statsGrid">
-                    <div class="stat-card"><div class="num" id="stat1">0</div><div class="stat-label">Total</div></div>
-                    <div class="stat-card"><div class="num" id="stat2">0</div><div class="stat-label">Active</div></div>
-                    <div class="stat-card"><div class="num" id="stat3">0</div><div class="stat-label">Today</div></div>
-                </div>
-                <div class="filter-bar">
-                    <input type="text" placeholder="Search..." id="searchInput" oninput="filterData()">
-                    <select id="filterSelect" onchange="filterData()">
-                        <option value="all">All</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
+
+                <div class="filter-bar-modern">
+                    <select id="exportPeriod" onchange="updateExportStats()">
+                        <option value="all">All Time</option>
+                        <option value="30">Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                        <option value="365">Last Year</option>
                     </select>
+                    <span style="font-size:13px;color:var(--text-muted);">Records: <strong id="recordCount">0</strong></span>
                 </div>
-                <div class="card">
+
+                <div class="export-grid">
+                    <!-- Users Export -->
+                    <div class="export-card">
+                        <div class="icon">👤</div>
+                        <h3>Users</h3>
+                        <p>Export user profiles and account data</p>
+                        <div class="format-selector">
+                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="csv" onclick="selectFormat(this)">CSV</button>
+                            <button class="format-btn" data-format="xlsx" onclick="selectFormat(this)">Excel</button>
+                        </div>
+                        <button class="btn btn-primary" onclick="exportData('users')">📥 Export Users</button>
+                    </div>
+
+                    <!-- Babies Export -->
+                    <div class="export-card">
+                        <div class="icon">👶</div>
+                        <h3>Babies</h3>
+                        <p>Export baby profiles and health data</p>
+                        <div class="format-selector">
+                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="csv" onclick="selectFormat(this)">CSV</button>
+                            <button class="format-btn" data-format="xlsx" onclick="selectFormat(this)">Excel</button>
+                        </div>
+                        <button class="btn btn-primary" onclick="exportData('babies')">📥 Export Babies</button>
+                    </div>
+
+                    <!-- Tracker Entries Export -->
+                    <div class="export-card">
+                        <div class="icon">📊</div>
+                        <h3>Tracker Entries</h3>
+                        <p>Export all tracker entries and logs</p>
+                        <div class="format-selector">
+                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="csv" onclick="selectFormat(this)">CSV</button>
+                            <button class="format-btn" data-format="xlsx" onclick="selectFormat(this)">Excel</button>
+                        </div>
+                        <button class="btn btn-primary" onclick="exportData('tracker_entries')">📥 Export Entries</button>
+                    </div>
+
+                    <!-- Community Export -->
+                    <div class="export-card">
+                        <div class="icon">💬</div>
+                        <h3>Community</h3>
+                        <p>Export posts, comments, and interactions</p>
+                        <div class="format-selector">
+                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="csv" onclick="selectFormat(this)">CSV</button>
+                            <button class="format-btn" data-format="xlsx" onclick="selectFormat(this)">Excel</button>
+                        </div>
+                        <button class="btn btn-primary" onclick="exportData('community_posts')">📥 Export Community</button>
+                    </div>
+
+                    <!-- Full Export -->
+                    <div class="export-card" style="grid-column: span 2; border-color: var(--primary);">
+                        <div class="icon">📦</div>
+                        <h3>Complete Export</h3>
+                        <p>Export all data in a single package</p>
+                        <div class="meta">Includes: Users, Babies, Tracker Entries, Community Posts, Topics, Announcements</div>
+                        <div class="format-selector">
+                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="zip" onclick="selectFormat(this)">ZIP</button>
+                        </div>
+                        <button class="btn btn-success" onclick="exportData('all')">📦 Export All</button>
+                        <div class="progress-bar-container" id="exportProgress" style="display:none;margin-top:12px;">
+                            <div class="progress-label">
+                                <span>Exporting...</span>
+                                <span id="exportProgressText">0%</span>
+                            </div>
+                            <div class="progress-track">
+                                <div class="fill" id="exportProgressFill" style="width:0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export History -->
+                <div class="card" style="margin-top:20px;">
+                    <div class="card-header">
+                        <div class="card-title"><span class="emoji">📋</span> Export History</div>
+                        <button class="btn btn-outline btn-sm" onclick="clearExportHistory()">🗑️ Clear</button>
+                    </div>
                     <div class="card-body">
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-                                <tbody id="tableBody"><tr><td colspan="5" class="empty-state"><div class="emoji">📊</div><h3>Loading data...</h3></td></tr></tbody>
-                            </table>
+                        <div id="exportHistory">
+                            <div class="empty-state-modern" style="padding:20px;">
+                                <div class="emoji" style="font-size:32px;">📭</div>
+                                <p style="font-size:13px;">No export history available</p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </main>
     </div>
+
     <div class="toast-container" id="toastContainer"></div>
+
     <script src="/admin/js/admin.js"></script>
     <script>
-        let dataCache = [];
-        let tableName = 'babies';
-        async function loadData() {
+        let exportHistory = [];
+        let selectedFormat = 'json';
+        let exportDataCache = {};
+
+        async function loadExportData() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
+
             try {
-                let { data, error } = await supabase.from(tableName).select('*').limit(100);
-                if (error) throw error;
-                dataCache = data || [];
-                renderData(dataCache);
-                const total = dataCache.length;
-                const active = dataCache.filter(d => d.is_active !== false).length;
-                const today = dataCache.filter(d => { if (d.created_at) { return new Date(d.created_at).toDateString() === new Date().toDateString(); } return false; }).length;
-                document.getElementById('stat1').textContent = total;
-                document.getElementById('stat2').textContent = active;
-                document.getElementById('stat3').textContent = today;
-                document.getElementById('countDisplay').textContent = total + ' items';
-                showToast('✅ Data loaded successfully', 'success');
+                const period = document.getElementById('exportPeriod')?.value || 'all';
+                const dateFilter = period !== 'all' ? new Date(Date.now() - parseInt(period) * 24 * 60 * 60 * 1000).toISOString() : null;
+
+                const [users, babies, entries, posts] = await Promise.all([
+                    supabase.from('profiles').select('*', { count: 'exact', head: true }),
+                    supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
+                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
+                    supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted', false)
+                ]);
+
+                document.getElementById('statUsers').textContent = users.count || 0;
+                document.getElementById('statBabies').textContent = babies.count || 0;
+                document.getElementById('statEntries').textContent = entries.count || 0;
+                document.getElementById('statPosts').textContent = posts.count || 0;
+
+                const total = (users.count || 0) + (babies.count || 0) + (entries.count || 0) + (posts.count || 0);
+                document.getElementById('recordCount').textContent = total;
+
+                // Load history
+                const history = localStorage.getItem('exportHistory');
+                if (history) {
+                    try {
+                        exportHistory = JSON.parse(history);
+                        renderExportHistory();
+                    } catch (e) {}
+                }
+
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                showToast('✅ Export data loaded', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                document.getElementById('tableBody').innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">❌</div><h3>Error loading data</h3><p>' + e.message + '</p></td></tr>';
-                showToast('Error loading data: ' + e.message, 'error');
+                showToast('Error loading export data: ' + e.message, 'error');
             }
         }
-        function renderData(data) {
-            const tbody = document.getElementById('tableBody');
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">📭</div><h3>No data found</h3></td></tr>';
+
+        function selectFormat(el) {
+            const parent = el.closest('.format-selector');
+            parent.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            selectedFormat = el.dataset.format;
+        }
+
+        async function exportData(type) {
+            const progress = document.getElementById('exportProgress');
+            const progressFill = document.getElementById('exportProgressFill');
+            const progressText = document.getElementById('exportProgressText');
+
+            if (progress) {
+                progress.style.display = 'block';
+                progressFill.style.width = '0%';
+                progressText.textContent = '0%';
+            }
+
+            showToast('📤 Preparing export...', 'info');
+
+            try {
+                let data = {};
+                let filename = `littleloom_export_${type}_${new Date().toISOString().slice(0, 10)}`;
+                let records = 0;
+
+                const tables = type === 'all' 
+                    ? ['profiles', 'babies', 'tracker_entries', 'community_posts', 'community_topics', 'announcements']
+                    : [type];
+
+                for (let i = 0; i < tables.length; i++) {
+                    const table = tables[i];
+                    if (progress) {
+                        const pct = Math.round(((i + 1) / tables.length) * 100);
+                        progressFill.style.width = pct + '%';
+                        progressText.textContent = pct + '%';
+                    }
+
+                    const { data: tableData, error } = await supabase
+                        .from(table)
+                        .select('*')
+                        .eq(table === 'babies' ? 'is_active' : table === 'tracker_entries' ? 'is_deleted' : table === 'community_posts' ? 'is_deleted' : 'is_deleted', false);
+
+                    if (!error && tableData) {
+                        data[table] = tableData;
+                        records += tableData.length;
+                    }
+                }
+
+                if (Object.keys(data).length === 0) {
+                    showToast('No data to export', 'warning');
+                    return;
+                }
+
+                let blob;
+                let extension = 'json';
+
+                if (selectedFormat === 'json' || selectedFormat === 'zip') {
+                    const jsonData = JSON.stringify(data, null, 2);
+                    blob = new Blob([jsonData], { type: 'application/json' });
+                    extension = 'json';
+                } else if (selectedFormat === 'csv') {
+                    // Simple CSV conversion for first table
+                    const firstTable = Object.keys(data)[0];
+                    const rows = data[firstTable] || [];
+                    if (rows.length > 0) {
+                        const headers = Object.keys(rows[0]);
+                        const csvRows = [headers.join(',')];
+                        rows.forEach(row => {
+                            const values = headers.map(h => {
+                                let val = row[h] ?? '';
+                                if (typeof val === 'string' && (val.includes(',') || val.includes('"'))) {
+                                    val = `"${val.replace(/"/g, '""')}"`;
+                                }
+                                return val;
+                            });
+                            csvRows.push(values.join(','));
+                        });
+                        blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                        extension = 'csv';
+                    } else {
+                        showToast('No data to export in CSV format', 'warning');
+                        return;
+                    }
+                } else if (selectedFormat === 'xlsx') {
+                    showToast('Excel export coming soon. Use CSV or JSON for now.', 'info');
+                    return;
+                }
+
+                // Download file
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${filename}.${extension}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                // Save to history
+                const entry = {
+                    timestamp: new Date().toISOString(),
+                    type: type,
+                    format: selectedFormat,
+                    records: records,
+                    size: (blob.size / 1024).toFixed(1) + ' KB'
+                };
+                exportHistory.unshift(entry);
+                localStorage.setItem('exportHistory', JSON.stringify(exportHistory.slice(0, 20)));
+                renderExportHistory();
+
+                if (progress) {
+                    progressFill.style.width = '100%';
+                    progressText.textContent = '100% - Done!';
+                    setTimeout(() => { progress.style.display = 'none'; }, 1500);
+                }
+
+                showToast(`✅ Exported ${records} records successfully!`, 'success');
+
+            } catch (e) {
+                console.error('Export error:', e);
+                showToast('Error exporting data: ' + e.message, 'error');
+                if (progress) { progress.style.display = 'none'; }
+            }
+        }
+
+        function renderExportHistory() {
+            const container = document.getElementById('exportHistory');
+            if (!exportHistory || exportHistory.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state-modern" style="padding:20px;">
+                        <div class="emoji" style="font-size:32px;">📭</div>
+                        <p style="font-size:13px;">No export history available</p>
+                    </div>
+                `;
                 return;
             }
+
             let html = '';
-            data.slice(0, 50).forEach(function(item) {
-                const id = item.id || '—';
-                const name = item.name || item.full_name || item.title || 'Unnamed';
-                const status = item.is_active !== false ? '✅ Active' : '❌ Inactive';
-                const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
-                html += '<tr><td><code style="background:var(--bg-primary);padding:2px 6px;border-radius:4px;font-size:11px;">' + (typeof id === 'string' ? id.substring(0, 8) : id) + '</code></td><td><strong>' + name + '</strong></td><td><span class="badge ' + (item.is_active !== false ? 'badge-success' : 'badge-gray') + '">' + (item.is_active !== false ? 'Active' : 'Inactive') + '</span></td><td style="font-size:12px;color:var(--text-muted);">' + created + '</td><td class="btn-group"><button class="action-btn" onclick="viewItem(\'' + id + '\')" title="View">👁️</button> <button class="action-btn" onclick="editItem(\'' + id + '\')" title="Edit">✏️</button> <button class="action-btn danger" onclick="deleteItem(\'' + id + '\')" title="Delete">🗑️</button></td></tr>';
+            exportHistory.slice(0, 15).forEach(item => {
+                const date = new Date(item.timestamp);
+                const icon = item.type === 'all' ? '📦' : '📤';
+                const typeLabel = item.type === 'all' ? 'Complete' : item.type.replace('_', ' ');
+
+                html += `
+                    <div class="backup-history-item" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+                        <div>
+                            <span>${icon}</span>
+                            <span style="font-weight:600;">${typeLabel}</span>
+                            <span style="color:var(--text-muted);margin-left:8px;">${date.toLocaleString()}</span>
+                        </div>
+                        <div style="color:var(--text-muted);">
+                            ${item.format.toUpperCase()} · ${item.records} records · ${item.size}
+                        </div>
+                    </div>
+                `;
             });
-            tbody.innerHTML = html;
+            container.innerHTML = html;
         }
-        function filterData() {
-            const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
-            const filter = document.getElementById('filterSelect')?.value || 'all';
-            let filtered = dataCache;
-            if (search) filtered = filtered.filter(d => JSON.stringify(d).toLowerCase().includes(search));
-            if (filter === 'active') filtered = filtered.filter(d => d.is_active !== false);
-            else if (filter === 'inactive') filtered = filtered.filter(d => d.is_active === false);
-            renderData(filtered);
+
+        function updateExportStats() {
+            loadExportData();
         }
-        function handleAdd() { showToast('Add functionality coming soon', 'info'); }
-        async function viewItem(id) {
-            const item = dataCache.find(d => d.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-            let details = '<div style="display:grid;gap:8px;max-height:400px;overflow-y:auto;">';
-            Object.entries(item).forEach(([key, val]) => {
-                if (key === 'id') return;
-                let displayVal = val;
-                if (typeof val === 'boolean') displayVal = val ? '✅ Yes' : '❌ No';
-                else if (val && typeof val === 'string' && val.length > 100) displayVal = val.substring(0, 100) + '...';
-                else if (val === null || val === undefined) displayVal = '—';
-                else if (key.includes('_at') || key === 'created_at' || key === 'updated_at') displayVal = new Date(val).toLocaleString();
-                details += '<div style="padding:4px 0;border-bottom:1px solid var(--border);"><strong>' + key.replace(/_/g, ' ') + ':</strong> ' + displayVal + '</div>';
-            });
-            details += '</div>';
-            openModal('📄 Details', details, 'Close', closeModal);
+
+        function clearExportHistory() {
+            const confirmed = confirm('Clear export history?');
+            if (!confirmed) return;
+            exportHistory = [];
+            localStorage.removeItem('exportHistory');
+            renderExportHistory();
+            showToast('✅ Export history cleared', 'success');
         }
-        async function editItem(id) {
-            const item = dataCache.find(d => d.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-            let form = '<div class="form-group"><label>ID</label><input type="text" value="' + id + '" disabled style="background:var(--bg-primary);"></div>';
-            Object.entries(item).forEach(([key, val]) => {
-                if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
-                let displayVal = val === null || val === undefined ? '' : String(val);
-                if (typeof val === 'boolean') displayVal = val ? 'true' : 'false';
-                form += '<div class="form-group"><label>' + key.replace(/_/g, ' ') + '</label><input type="text" id="edit_' + key + '" value="' + displayVal + '"></div>';
-            });
-            openModal('✏️ Edit Item', form, 'Save', async function() {
-                let updates = {};
-                let hasChanges = false;
-                Object.entries(item).forEach(([key, val]) => {
-                    if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
-                    const input = document.getElementById('edit_' + key);
-                    if (input) {
-                        let value = input.value;
-                        if (typeof val === 'number') value = parseFloat(value);
-                        else if (typeof val === 'boolean') value = value === 'true';
-                        if (String(value) !== String(val)) { updates[key] = value; hasChanges = true; }
-                    }
-                });
-                if (!hasChanges) { showToast('No changes detected', 'info'); return; }
-                try {
-                    const { error } = await supabase.from(tableName).update(updates).eq('id', id);
-                    if (error) throw error;
-                    showToast('✅ Item updated successfully', 'success');
-                    closeModal();
-                    loadData();
-                } catch (e) { showToast('Error updating: ' + e.message, 'error'); }
-            });
-        }
-        async function deleteItem(id) {
-            if (!confirm('Are you sure you want to delete this item?')) return;
-            try {
-                const { error } = await supabase.from(tableName).update({ is_active: false }).eq('id', id);
-                if (error) throw error;
-                showToast('✅ Item deleted successfully', 'success');
-                loadData();
-            } catch (e) { showToast('Error deleting: ' + e.message, 'error'); }
-        }
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadData, 500); });
-        window.loadData = loadData; window.filterData = filterData; window.handleAdd = handleAdd;
-        window.viewItem = viewItem; window.editItem = editItem; window.deleteItem = deleteItem;
+
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadExportData, 500); });
+        window.loadExportData = loadExportData;
+        window.selectFormat = selectFormat;
+        window.exportData = exportData;
+        window.updateExportStats = updateExportStats;
+        window.clearExportHistory = clearExportHistory;
     </script>
 </body>
 </html>
