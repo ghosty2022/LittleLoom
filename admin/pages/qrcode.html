@@ -124,24 +124,121 @@
 <body>
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
-                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+                <div>
+                    <div class="logo-title">LittleLoom</div>
+                    <div class="logo-sub">Enterprise Console</div>
+                </div>
             </div>
             <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')"><span class="icon">👶</span> Babies</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')"><span class="icon">👤</span> Users</a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">📱</span> QR Codes</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
+                <div class="sidebar-nav-label">📊 Overview</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('dashboard')">
+                    <span class="icon">📊</span> Dashboard
+                    <span class="badge success">Live</span>
+                </a>
+
+                <div class="sidebar-nav-label">👑 Management</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
+                    <span class="icon">👶</span> Babies
+                    <span class="badge" id="babyBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
+                    <span class="icon">👤</span> Users
+                    <span class="badge" id="userBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
+                    <span class="icon">🛡️</span> Moderation
+                    <span class="badge danger" id="modBadge">0</span>
+                </a>
+
+                <div class="sidebar-nav-label">💬 Community</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
+                    <span class="icon">💬</span> Community Posts
+                    <span class="badge" id="postBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
+                    <span class="icon">📌</span> Topics
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')">
+                    <span class="icon">📢</span> Announcements
+                    <span class="badge" id="announceBadge">0</span>
+                </a>
+
+                <div class="sidebar-nav-label">📊 Trackers</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
+                    <span class="icon">📈</span> Tracker Entries
+                    <span class="badge" id="entryBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
+                    <span class="icon">🏆</span> Milestones
+                    <span class="badge" id="milestoneBadge">0</span>
+                </a>
+
+                <div class="sidebar-nav-label">📈 Analytics</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
+                    <span class="icon">📈</span> Analytics Dashboard
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')">
+                    <span class="icon">📊</span> Growth Analytics
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')">
+                    <span class="icon">📈</span> Activity Heatmap
+                </a>
+
+                <div class="sidebar-nav-label">⚙️ System</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
+                    <span class="icon">⚙️</span> Settings
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
+                    <span class="icon">💾</span> Backup & Restore
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')">
+                    <span class="icon">📋</span> Audit Logs
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('support')">
+                    <span class="icon">🎫</span> Support Tickets
+                    <span class="badge danger" id="supportBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('api')">
+                    <span class="icon">🔑</span> API Management
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('features')">
+                    <span class="icon">🚩</span> Feature Flags
+                </a>
+
+                <div class="sidebar-nav-label">❤️ Health</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('health')">
+                    <span class="icon">❤️</span> System Health
+                    <span class="badge success" id="healthBadge">OK</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('performance')">
+                    <span class="icon">⚡</span> Performance
+                </a>
+
+                <div class="sidebar-nav-label">🛠️ Tools</div>
+                <a class="sidebar-nav-item active" href="#" onclick="navigateTo('qrcode')">
+                    <span class="icon">📱</span> QR Codes
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('realtime')">
+                    <span class="icon">🔄</span> Realtime Monitor
+                    <span class="badge success">Live</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('export')">
+                    <span class="icon">📤</span> Data Export
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('notifications')">
+                    <span class="icon">🔔</span> Notifications
+                    <span class="badge" id="notifBadge">0</span>
+                </a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -244,11 +341,13 @@
                     .select('*')
                     .order('created_at', { ascending: false });
 
-                if (error || !data || data.length === 0) {
-                    data = generateDemoQRCodes();
+                let qrData = data || [];
+                
+                if (error || qrData.length === 0) {
+                    qrData = generateDemoQRCodes();
                 }
 
-                qrCache = data || [];
+                qrCache = qrData;
                 currentFiltered = [...qrCache];
                 renderQRCodes(currentFiltered);
                 updateStats(currentFiltered);
@@ -412,17 +511,14 @@
             const qr = qrCache.find(q => q.id === id);
             if (!qr) { showToast('QR code not found', 'error'); return; }
             
-            // Create a simple QR code visualization
             const canvas = document.createElement('canvas');
             canvas.width = 300;
             canvas.height = 300;
             const ctx = canvas.getContext('2d');
             
-            // Background
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, 300, 300);
             
-            // QR pattern (simplified)
             const size = 10;
             const pattern = [
                 [1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1],
@@ -450,13 +546,11 @@
                 });
             });
 
-            // Add text
             ctx.fillStyle = '#000000';
             ctx.font = '16px Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(qr.code, 150, 280);
 
-            // Download
             const link = document.createElement('a');
             link.download = `qr_${qr.code}.png`;
             link.href = canvas.toDataURL('image/png');
@@ -508,6 +602,3 @@
     </script>
 </body>
 </html>
-
-
-
