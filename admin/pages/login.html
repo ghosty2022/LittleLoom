@@ -85,6 +85,7 @@
         }
         .form-group {
             margin-bottom: 16px;
+            position: relative;
         }
         .form-group label {
             display: block;
@@ -102,6 +103,7 @@
             font-family: inherit;
             transition: all 0.2s;
             background: #f8fafc;
+            padding-right: 48px;
         }
         .form-group input:focus {
             outline: none;
@@ -111,6 +113,26 @@
         }
         .form-group input::placeholder {
             color: #94a3b8;
+        }
+        .password-toggle {
+            position: absolute;
+            right: 12px;
+            bottom: 12px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #94a3b8;
+            font-size: 20px;
+            padding: 4px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .password-toggle:hover {
+            color: #6366f1;
+            background: rgba(99, 102, 241, 0.08);
         }
         .btn-login {
             width: 100%;
@@ -173,9 +195,7 @@
             vertical-align: middle;
         }
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
         @media (max-width: 480px) {
             .login-container {
@@ -211,6 +231,9 @@
             <div class="form-group">
                 <label for="password">Password</label>
                 <input type="password" id="password" placeholder="Enter your password" required autocomplete="current-password" />
+                <button type="button" class="password-toggle" id="passwordToggle" onclick="togglePasswordVisibility()">
+                    👁️
+                </button>
             </div>
             <button type="submit" class="btn-login" id="loginBtn">
                 Sign In
@@ -226,6 +249,7 @@
         const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
         let supabase = null;
+        let passwordVisible = false;
 
         function initSupabase() {
             try {
@@ -235,6 +259,14 @@
                 console.error('Supabase init error:', e);
                 return false;
             }
+        }
+
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('password');
+            const toggleBtn = document.getElementById('passwordToggle');
+            passwordVisible = !passwordVisible;
+            passwordInput.type = passwordVisible ? 'text' : 'password';
+            toggleBtn.textContent = passwordVisible ? '🙈' : '👁️';
         }
 
         async function handleLoginSubmit(e) {
@@ -303,6 +335,14 @@
                 console.log('Session check failed:', e);
             }
         }
+
+        // Enter key support
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const form = document.getElementById('loginForm');
+                if (form) form.dispatchEvent(new Event('submit'));
+            }
+        });
 
         document.addEventListener('DOMContentLoaded', checkSession);
     </script>
