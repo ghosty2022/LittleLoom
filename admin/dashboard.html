@@ -34,6 +34,7 @@
             --sidebar-width: 280px;
             --header-height: 70px;
             --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --modal-overlay: rgba(0,0,0,0.5);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -447,22 +448,86 @@
         .progress-bar .fill.success { background: linear-gradient(90deg, #22c55e, #4ade80); }
         .progress-bar .fill.warning { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
 
-        /* ─── METRICS ───────────────────────────────────────────────────── */
-        .metric-row {
+        /* ─── FILTER BAR ────────────────────────────────────────────────── */
+        .filter-bar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+        .filter-bar input, .filter-bar select {
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            font-family: var(--font);
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+        .filter-bar input:focus, .filter-bar select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        /* ─── MODAL ────────────────────────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: var(--modal-overlay);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            backdrop-filter: blur(4px);
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            padding: 0;
+            animation: modalIn 0.3s ease-out;
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-header h2 { font-size: 18px; font-weight: 700; }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 4px 8px;
+            border-radius: 8px;
+            transition: var(--transition);
+        }
+        .modal-close:hover { background: var(--bg-primary); }
+        .modal-body { padding: 24px; }
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border);
             display: flex;
             gap: 8px;
-            flex-wrap: wrap;
+            justify-content: flex-end;
         }
-        .metric-item {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            background: var(--bg-primary);
-        }
-        .metric-item.online { background: #dcfce7; color: #16a34a; }
-        .metric-item.offline { background: #fee2e2; color: #dc2626; }
-        .metric-item.warning { background: #fef3c7; color: #d97706; }
 
         /* ─── FORMS ────────────────────────────────────────────────────── */
         .form-group { margin-bottom: 16px; }
@@ -511,7 +576,7 @@
         }
         .toggle.active .slider { left: 22px; }
 
-        /* ─── TABLES WITH ACTIONS ──────────────────────────────────────── */
+        /* ─── ACTION BUTTONS ───────────────────────────────────────────── */
         .action-btn {
             padding: 4px 8px;
             border: none;
@@ -549,52 +614,66 @@
         .status-dot.warning { background: #f59e0b; }
         .status-dot.pending { background: #f59e0b; animation: pulse-dot 1.5s ease-in-out infinite; }
 
-        /* ─── FILTER BAR ────────────────────────────────────────────────── */
-        .filter-bar {
+        /* ─── ACTIVITY FEED ────────────────────────────────────────────── */
+        .activity-feed { display: flex; flex-direction: column; gap: 4px; }
+        .activity-item {
             display: flex;
+            align-items: center;
             gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 16px;
-            padding: 12px 16px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+            background: var(--bg-primary);
+        }
+        .activity-content { flex: 1; min-width: 0; }
+        .activity-title { font-weight: 600; font-size: 14px; }
+        .activity-meta { font-size: 12px; color: var(--text-muted); }
+        .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+        /* ─── CHART PLACEHOLDER ────────────────────────────────────────── */
+        .chart-placeholder {
+            height: 200px;
             background: var(--bg-primary);
             border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 14px;
+            position: relative;
+            overflow: hidden;
         }
-        .filter-bar input, .filter-bar select {
-            padding: 6px 12px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-            font-size: 13px;
-            font-family: var(--font);
-            background: var(--bg-card);
-            color: var(--text-primary);
+        .chart-placeholder .bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            height: 140px;
         }
-        .filter-bar input:focus, .filter-bar select:focus {
-            outline: none;
-            border-color: var(--primary);
+        .chart-placeholder .bar {
+            width: 28px;
+            border-radius: 6px 6px 0 0;
+            background: linear-gradient(180deg, var(--primary), var(--primary-light));
+            transition: height 1s ease;
+            min-height: 8px;
         }
 
-        /* ─── SIDEBAR COLLAPSIBLE ──────────────────────────────────────── */
-        .sidebar-nav-item .chevron {
-            margin-left: auto;
-            transition: transform 0.3s;
-            font-size: 12px;
+        /* ─── RESPONSIVE TABLES ────────────────────────────────────────── */
+        @media (max-width: 768px) {
+            .page { padding: 16px; }
+            .form-row { grid-template-columns: 1fr; }
+            .modal { margin: 10px; max-height: 95vh; }
         }
-        .sidebar-nav-item .chevron.open { transform: rotate(90deg); }
-        .sidebar-sub {
-            padding-left: 28px;
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease;
-        }
-        .sidebar-sub.open { max-height: 500px; }
-        .sidebar-sub .sidebar-nav-item {
-            font-size: 12px;
-            padding: 6px 14px;
-            color: rgba(255,255,255,0.4);
-        }
-        .sidebar-sub .sidebar-nav-item:hover { color: rgba(255,255,255,0.7); }
-        .sidebar-sub .sidebar-nav-item.active { color: var(--primary-light); background: rgba(102,126,234,0.1); }
     </style>
 </head>
 <body>
@@ -713,6 +792,23 @@
 
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
+    <!-- ─── MODAL CONTAINER ────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal" id="modalContent">
+            <div class="modal-header">
+                <h2 id="modalTitle">Modal</h2>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Dynamic content -->
+            </div>
+            <div class="modal-footer" id="modalFooter">
+                <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ─── MAIN ───────────────────────────────────────────────────────── -->
     <main class="main">
         <header class="topbar">
@@ -741,7 +837,6 @@
                 <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
             </div>
 
-            <!-- Stats Grid -->
             <div class="grid-4" id="dashboardStats">
                 <div class="stat-card"><div class="stat-label">👶 Total Babies</div><div class="stat-value" id="statBabies">—</div></div>
                 <div class="stat-card"><div class="stat-label">👤 Active Users</div><div class="stat-value" id="statUsers">—</div></div>
@@ -753,7 +848,6 @@
                 <div class="stat-card"><div class="stat-label">📈 Growth Rate</div><div class="stat-value" id="statGrowth">+12<span class="unit">%</span></div></div>
             </div>
 
-            <!-- Quick Actions -->
             <div class="card">
                 <div class="card-header"><div class="card-title"><span class="emoji">⚡</span> Quick Actions</div></div>
                 <div class="card-body">
@@ -767,7 +861,6 @@
                 </div>
             </div>
 
-            <!-- Recent Activity & Charts -->
             <div class="grid-2">
                 <div class="card">
                     <div class="card-header"><div class="card-title"><span class="emoji">🕒</span> Recent Activity</div><span id="activityCount">0</span></div>
@@ -801,7 +894,8 @@
                 <span class="icon">👶</span>
                 <h1>Babies <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="babyCountPage">0</span></h1>
                 <div class="page-actions">
-                    <button class="btn btn-primary" onclick="showToast('Add baby form coming soon','info')">➕ Add Baby</button>
+                    <button class="btn btn-primary" onclick="showAddBabyModal()">➕ Add Baby</button>
+                    <button class="btn btn-outline" onclick="refreshBabies()">🔄 Refresh</button>
                 </div>
             </div>
             <div class="card">
@@ -809,7 +903,7 @@
                     <div class="table-wrap">
                         <table>
                             <thead><tr><th>Name</th><th>Age</th><th>Parent</th><th>Streak</th><th>Milestones</th><th>Created</th><th>Actions</th></tr></thead>
-                            <tbody id="babyTable"><tr><td colspan="7" class="empty-state">No babies found</td></tr></tbody>
+                            <tbody id="babyTable"><tr><td colspan="7" class="empty-state">Loading babies...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -830,11 +924,12 @@
                             <option value="parent2">Parent 2</option>
                             <option value="guardian">Guardian</option>
                         </select>
+                        <button class="btn btn-outline btn-sm" onclick="refreshUsers()">🔄 Refresh</button>
                     </div>
                 </div>
             </div>
             <div class="card">
-                <div class="card-body" id="userList"><div class="empty-state"><div class="emoji">👤</div><p>No users found</p></div></div>
+                <div class="card-body" id="userList"><div class="empty-state"><div class="emoji">👤</div><p>Loading users...</p></div></div>
             </div>
         </div>
 
@@ -850,6 +945,7 @@
                         <option value="reviewed">Reviewed</option>
                         <option value="dismissed">Dismissed</option>
                     </select>
+                    <button class="btn btn-outline btn-sm" onclick="refreshModeration()">🔄 Refresh</button>
                 </div>
             </div>
             <div class="card">
@@ -857,7 +953,7 @@
                     <div class="table-wrap">
                         <table>
                             <thead><tr><th>Type</th><th>Content</th><th>Reported By</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead>
-                            <tbody id="modTable"><tr><td colspan="6" class="empty-state">No reports to moderate</td></tr></tbody>
+                            <tbody id="modTable"><tr><td colspan="6" class="empty-state">Loading reports...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -870,7 +966,7 @@
                 <span class="icon">💬</span>
                 <h1>Community <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="postCountPage">0 posts</span></h1>
                 <div class="page-actions">
-                    <button class="btn btn-outline" onclick="showToast('Moderation view','info')">🛡️ Moderation View</button>
+                    <button class="btn btn-outline btn-sm" onclick="refreshCommunity()">🔄 Refresh</button>
                 </div>
             </div>
             <div class="card">
@@ -878,7 +974,7 @@
                     <div class="table-wrap">
                         <table>
                             <thead><tr><th>Author</th><th>Topic</th><th>Content</th><th>Likes</th><th>Comments</th><th>Posted</th><th>Actions</th></tr></thead>
-                            <tbody id="postTable"><tr><td colspan="7" class="empty-state">No posts yet</td></tr></tbody>
+                            <tbody id="postTable"><tr><td colspan="7" class="empty-state">Loading posts...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -891,11 +987,12 @@
                 <span class="icon">📌</span>
                 <h1>Topics <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="topicCountPage">0</span></h1>
                 <div class="page-actions">
-                    <button class="btn btn-primary" onclick="showToast('Add topic form coming soon','info')">➕ Add Topic</button>
+                    <button class="btn btn-primary" onclick="showAddTopicModal()">➕ Add Topic</button>
+                    <button class="btn btn-outline btn-sm" onclick="refreshTopics()">🔄 Refresh</button>
                 </div>
             </div>
             <div class="card">
-                <div class="card-body" id="topicList"><div class="empty-state"><div class="emoji">📌</div><p>No topics yet</p></div></div>
+                <div class="card-body" id="topicList"><div class="empty-state"><div class="emoji">📌</div><p>Loading topics...</p></div></div>
             </div>
         </div>
 
@@ -914,6 +1011,7 @@
                         <option value="medication">Medication</option>
                         <option value="milestone">Milestone</option>
                     </select>
+                    <button class="btn btn-outline btn-sm" onclick="refreshTrackers()">🔄 Refresh</button>
                 </div>
             </div>
             <div class="card">
@@ -921,7 +1019,7 @@
                     <div class="table-wrap">
                         <table>
                             <thead><tr><th>Type</th><th>Baby</th><th>Title</th><th>Logged By</th><th>Date</th><th>Actions</th></tr></thead>
-                            <tbody id="entryTable"><tr><td colspan="6" class="empty-state">No entries found</td></tr></tbody>
+                            <tbody id="entryTable"><tr><td colspan="6" class="empty-state">Loading entries...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -933,13 +1031,16 @@
             <div class="page-header">
                 <span class="icon">🏆</span>
                 <h1>Milestones <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="milestoneCountPage">0</span></h1>
+                <div class="page-actions">
+                    <button class="btn btn-outline btn-sm" onclick="refreshMilestones()">🔄 Refresh</button>
+                </div>
             </div>
             <div class="card">
                 <div class="card-body">
                     <div class="table-wrap">
                         <table>
                             <thead><tr><th>Title</th><th>Baby</th><th>Category</th><th>Logged By</th><th>Date</th><th>Actions</th></tr></thead>
-                            <tbody id="milestoneTable"><tr><td colspan="6" class="empty-state">No milestones found</td></tr></tbody>
+                            <tbody id="milestoneTable"><tr><td colspan="6" class="empty-state">Loading milestones...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -961,12 +1062,12 @@
                 </div>
             </div>
             <div class="grid-3" id="analyticsStats">
-                <div class="stat-card"><div class="stat-label">📈 Daily Active Users</div><div class="stat-value" id="analyticsDAU">—</div><div class="stat-change positive">↑ 5.2%</div></div>
-                <div class="stat-card"><div class="stat-label">📊 Monthly Active Users</div><div class="stat-value" id="analyticsMAU">—</div><div class="stat-change positive">↑ 12.8%</div></div>
-                <div class="stat-card"><div class="stat-label">💬 Engagement Rate</div><div class="stat-value" id="analyticsEngagement">—<span class="unit">%</span></div><div class="stat-change positive">↑ 3.1%</div></div>
-                <div class="stat-card"><div class="stat-label">👶 New Babies</div><div class="stat-value" id="analyticsNewBabies">—</div><div class="stat-change positive">↑ 8.7%</div></div>
-                <div class="stat-card"><div class="stat-label">📱 Sessions</div><div class="stat-value" id="analyticsSessions">—</div><div class="stat-change positive">↑ 6.3%</div></div>
-                <div class="stat-card"><div class="stat-label">⏱️ Avg Session</div><div class="stat-value" id="analyticsSessionTime">—<span class="unit">m</span></div><div class="stat-change neutral">→ 0.2%</div></div>
+                <div class="stat-card"><div class="stat-label">📈 Daily Active Users</div><div class="stat-value" id="analyticsDAU">—</div></div>
+                <div class="stat-card"><div class="stat-label">📊 Monthly Active Users</div><div class="stat-value" id="analyticsMAU">—</div></div>
+                <div class="stat-card"><div class="stat-label">💬 Engagement Rate</div><div class="stat-value" id="analyticsEngagement">—<span class="unit">%</span></div></div>
+                <div class="stat-card"><div class="stat-label">👶 New Babies</div><div class="stat-value" id="analyticsNewBabies">—</div></div>
+                <div class="stat-card"><div class="stat-label">📱 Sessions</div><div class="stat-value" id="analyticsSessions">—</div></div>
+                <div class="stat-card"><div class="stat-label">⏱️ Avg Session</div><div class="stat-value" id="analyticsSessionTime">—<span class="unit">m</span></div></div>
             </div>
             <div class="card">
                 <div class="card-header"><div class="card-title"><span class="emoji">📊</span> User Growth</div></div>
@@ -1014,24 +1115,12 @@
                 <h1>Performance Metrics <span style="font-size:14px;font-weight:400;color:var(--text-muted);">System Health</span></h1>
             </div>
             <div class="grid-3" id="perfStats">
-                <div class="stat-card"><div class="stat-label">⏱️ API Latency</div><div class="stat-value" id="perfLatency">42<span class="unit">ms</span></div><div class="stat-change positive">↓ 3ms</div></div>
-                <div class="stat-card"><div class="stat-label">📊 Requests/min</div><div class="stat-value" id="perfRequests">1,247</div><div class="stat-change positive">↑ 12%</div></div>
-                <div class="stat-card"><div class="stat-label">💾 Cache Hit Rate</div><div class="stat-value" id="perfCache">94<span class="unit">%</span></div><div class="stat-change positive">↑ 2%</div></div>
-                <div class="stat-card"><div class="stat-label">⚠️ Error Rate</div><div class="stat-value" id="perfErrors">0.8<span class="unit">%</span></div><div class="stat-change negative">↑ 0.2%</div></div>
-                <div class="stat-card"><div class="stat-label">📦 DB Connections</div><div class="stat-value" id="perfDB">23</div><div class="stat-change neutral">→ Stable</div></div>
-                <div class="stat-card"><div class="stat-label">🚀 Uptime</div><div class="stat-value" id="perfUptime">99.97<span class="unit">%</span></div><div class="stat-change positive">↑ 0.02%</div></div>
-            </div>
-            <div class="card">
-                <div class="card-header"><div class="card-title"><span class="emoji">📊</span> API Response Times</div></div>
-                <div class="card-body">
-                    <div style="display:flex;flex-direction:column;gap:12px;">
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>GET /api/babies</span><span style="font-weight:600;">32ms</span></div><div class="progress-bar"><div class="fill" style="width:32%;"></div></div></div>
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>POST /api/trackers</span><span style="font-weight:600;">48ms</span></div><div class="progress-bar"><div class="fill" style="width:48%;"></div></div></div>
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>GET /api/community</span><span style="font-weight:600;">56ms</span></div><div class="progress-bar"><div class="fill" style="width:56%;"></div></div></div>
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>POST /api/messages</span><span style="font-weight:600;">38ms</span></div><div class="progress-bar"><div class="fill" style="width:38%;"></div></div></div>
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>GET /api/analytics</span><span style="font-weight:600;">72ms</span></div><div class="progress-bar"><div class="fill warning" style="width:72%;"></div></div></div>
-                    </div>
-                </div>
+                <div class="stat-card"><div class="stat-label">⏱️ API Latency</div><div class="stat-value" id="perfLatency">42<span class="unit">ms</span></div></div>
+                <div class="stat-card"><div class="stat-label">📊 Requests/min</div><div class="stat-value" id="perfRequests">1,247</div></div>
+                <div class="stat-card"><div class="stat-label">💾 Cache Hit Rate</div><div class="stat-value" id="perfCache">94<span class="unit">%</span></div></div>
+                <div class="stat-card"><div class="stat-label">⚠️ Error Rate</div><div class="stat-value" id="perfErrors">0.8<span class="unit">%</span></div></div>
+                <div class="stat-card"><div class="stat-label">📦 DB Connections</div><div class="stat-value" id="perfDB">23</div></div>
+                <div class="stat-card"><div class="stat-label">🚀 Uptime</div><div class="stat-value" id="perfUptime">99.97<span class="unit">%</span></div></div>
             </div>
         </div>
 
@@ -1094,8 +1183,7 @@
                 <span class="icon">📋</span>
                 <h1>Audit Logs <span style="font-size:14px;font-weight:400;color:var(--text-muted);">Complete Activity Trail</span></h1>
                 <div class="page-actions">
-                    <button class="btn btn-outline" onclick="showToast('Exporting logs...','info')">📥 Export</button>
-                    <button class="btn btn-outline" onclick="showToast('Logs refreshed','success')">🔄 Refresh</button>
+                    <button class="btn btn-outline btn-sm" onclick="refreshAudit()">🔄 Refresh</button>
                 </div>
             </div>
             <div class="card">
@@ -1109,11 +1197,6 @@
                             <option value="admin">Admin</option>
                             <option value="system">System</option>
                             <option value="security">Security</option>
-                        </select>
-                        <select id="auditUserFilter" onchange="filterAudit()">
-                            <option value="all">All Users</option>
-                            <option value="admin">Admin</option>
-                            <option value="user">User</option>
                         </select>
                     </div>
                     <div class="table-wrap">
@@ -1138,12 +1221,11 @@
                     <div class="card-body">
                         <div class="form-group">
                             <label>Target Audience</label>
-                            <select style="padding:10px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);width:100%;font-family:var(--font);background:var(--bg-card);">
+                            <select id="notifAudience" style="padding:10px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);width:100%;font-family:var(--font);background:var(--bg-card);">
                                 <option value="all">All Users</option>
                                 <option value="parents">Parents Only</option>
                                 <option value="guardians">Guardians Only</option>
                                 <option value="active">Active Users (last 7 days)</option>
-                                <option value="inactive">Inactive Users (>30 days)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1153,10 +1235,6 @@
                         <div class="form-group">
                             <label>Body</label>
                             <textarea placeholder="Notification body..." id="notifBody" rows="4"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Deep Link (optional)</label>
-                            <input type="text" placeholder="app://screen/123" id="notifLink">
                         </div>
                         <button class="btn btn-primary" onclick="sendPushNotification()" style="width:100%;">📤 Send Notification</button>
                     </div>
@@ -1177,31 +1255,13 @@
             <div class="page-header">
                 <span class="icon">🚩</span>
                 <h1>Feature Flags <span style="font-size:14px;font-weight:400;color:var(--text-muted);">Feature Management</span></h1>
+                <div class="page-actions">
+                    <button class="btn btn-outline btn-sm" onclick="refreshFeatures()">🔄 Refresh</button>
+                </div>
             </div>
             <div class="card">
-                <div class="card-body">
-                    <div style="display:flex;flex-direction:column;gap:12px;" id="featureList">
-                        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
-                            <div><div style="font-weight:600;">🎯 AI Recommendations</div><div style="font-size:12px;color:var(--text-muted);">AI-powered activity recommendations</div></div>
-                            <div class="toggle active" onclick="toggleFeature(this)"><div class="slider"></div></div>
-                        </div>
-                        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
-                            <div><div style="font-weight:600;">💬 Community Chat</div><div style="font-size:12px;color:var(--text-muted);">Real-time family chat</div></div>
-                            <div class="toggle active" onclick="toggleFeature(this)"><div class="slider"></div></div>
-                        </div>
-                        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
-                            <div><div style="font-weight:600;">📊 Advanced Analytics</div><div style="font-size:12px;color:var(--text-muted);">Detailed growth insights</div></div>
-                            <div class="toggle" onclick="toggleFeature(this)"><div class="slider"></div></div>
-                        </div>
-                        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
-                            <div><div style="font-weight:600;">🔐 Biometric Login</div><div style="font-size:12px;color:var(--text-muted);">Face ID / Fingerprint support</div></div>
-                            <div class="toggle active" onclick="toggleFeature(this)"><div class="slider"></div></div>
-                        </div>
-                        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;">
-                            <div><div style="font-weight:600;">📸 Photo Sync</div><div style="font-size:12px;color:var(--text-muted);">Automatic photo backup</div></div>
-                            <div class="toggle" onclick="toggleFeature(this)"><div class="slider"></div></div>
-                        </div>
-                    </div>
+                <div class="card-body" id="featureList">
+                    <!-- Dynamically loaded -->
                 </div>
             </div>
         </div>
@@ -1253,7 +1313,7 @@
                 <span class="icon">🔑</span>
                 <h1>API Management <span style="font-size:14px;font-weight:400;color:var(--text-muted);">Keys & Rate Limiting</span></h1>
                 <div class="page-actions">
-                    <button class="btn btn-primary" onclick="showToast('New API key generated','success')">➕ Generate Key</button>
+                    <button class="btn btn-primary btn-sm" onclick="showToast('New API key generated','success')">➕ Generate Key</button>
                 </div>
             </div>
             <div class="card">
@@ -1279,27 +1339,8 @@
                                     <td style="font-size:12px;color:var(--text-muted);">1 hour ago</td>
                                     <td><button class="action-btn" onclick="showToast('Key revoked','warning')">🚫</button></td>
                                 </tr>
-                                <tr>
-                                    <td><strong>Mobile App</strong></td>
-                                    <td><code style="background:var(--bg-primary);padding:2px 8px;border-radius:4px;font-size:12px;">pk_mobile_••••••••••</code></td>
-                                    <td><span class="badge badge-info">Limited</span></td>
-                                    <td>Unlimited</td>
-                                    <td style="font-size:12px;color:var(--text-muted);">Just now</td>
-                                    <td><button class="action-btn" onclick="showToast('Key revoked','warning')">🚫</button></td>
-                                </tr>
                             </tbody>
                         </table>
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header"><div class="card-title"><span class="emoji">📊</span> Rate Limit Usage</div></div>
-                <div class="card-body">
-                    <div style="display:flex;flex-direction:column;gap:8px;">
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>GET /api/*</span><span style="font-weight:600;">2,341 / 10,000</span></div><div class="progress-bar"><div class="fill" style="width:23%;"></div></div></div>
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>POST /api/*</span><span style="font-weight:600;">876 / 5,000</span></div><div class="progress-bar"><div class="fill" style="width:17%;"></div></div></div>
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>PUT /api/*</span><span style="font-weight:600;">234 / 2,000</span></div><div class="progress-bar"><div class="fill" style="width:11%;"></div></div></div>
-                        <div><div style="display:flex;justify-content:space-between;font-size:13px;"><span>DELETE /api/*</span><span style="font-weight:600;">45 / 500</span></div><div class="progress-bar"><div class="fill" style="width:9%;"></div></div></div>
                     </div>
                 </div>
             </div>
@@ -1318,6 +1359,7 @@
                         <option value="resolved">Resolved</option>
                         <option value="closed">Closed</option>
                     </select>
+                    <button class="btn btn-outline btn-sm" onclick="refreshSupport()">🔄 Refresh</button>
                 </div>
             </div>
             <div class="card">
@@ -1325,7 +1367,7 @@
                     <div class="table-wrap">
                         <table>
                             <thead><tr><th>Ticket</th><th>User</th><th>Subject</th><th>Status</th><th>Priority</th><th>Created</th><th>Actions</th></tr></thead>
-                            <tbody id="supportTable"><tr><td colspan="7" class="empty-state">No support tickets</td></tr></tbody>
+                            <tbody id="supportTable"><tr><td colspan="7" class="empty-state">Loading tickets...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -1338,29 +1380,13 @@
                 <span class="icon">📢</span>
                 <h1>Announcements <span style="font-size:14px;font-weight:400;color:var(--text-muted);">App-wide Messages</span></h1>
                 <div class="page-actions">
-                    <button class="btn btn-primary" onclick="showToast('Create announcement form coming soon','info')">➕ New Announcement</button>
+                    <button class="btn btn-primary btn-sm" onclick="showAddAnnouncementModal()">➕ New Announcement</button>
+                    <button class="btn btn-outline btn-sm" onclick="refreshAnnouncements()">🔄 Refresh</button>
                 </div>
             </div>
             <div class="card">
-                <div class="card-body">
-                    <div style="display:flex;flex-direction:column;gap:12px;" id="announcementList">
-                        <div style="padding:16px;background:var(--bg-primary);border-radius:var(--radius-sm);border-left:4px solid var(--primary);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div><span style="font-weight:700;">🎉 New Feature: AI Recommendations</span></div>
-                                <span style="font-size:12px;color:var(--text-muted);">Posted 2 hours ago</span>
-                            </div>
-                            <div style="font-size:14px;color:var(--text-secondary);margin-top:4px;">We've added AI-powered activity recommendations to help you track smarter!</div>
-                            <div style="margin-top:8px;"><span class="badge badge-success">Published</span> <span style="font-size:12px;color:var(--text-muted);">Target: All Users</span></div>
-                        </div>
-                        <div style="padding:16px;background:var(--bg-primary);border-radius:var(--radius-sm);border-left:4px solid var(--secondary);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div><span style="font-weight:700;">🛠️ Maintenance Window</span></div>
-                                <span style="font-size:12px;color:var(--text-muted);">Posted 1 day ago</span>
-                            </div>
-                            <div style="font-size:14px;color:var(--text-secondary);margin-top:4px;">Scheduled maintenance on Sunday, 2:00 AM - 4:00 AM EST.</div>
-                            <div style="margin-top:8px;"><span class="badge badge-warning">Scheduled</span> <span style="font-size:12px;color:var(--text-muted);">Target: All Users</span></div>
-                        </div>
-                    </div>
+                <div class="card-body" id="announcementList">
+                    <div class="empty-state"><div class="emoji">📢</div><p>Loading announcements...</p></div>
                 </div>
             </div>
         </div>
@@ -1385,15 +1411,6 @@
                                 <option value="300">5 minutes</option>
                                 <option value="0">Off</option>
                             </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Real-time subscriptions</label>
-                            <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" checked> Babies</label>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" checked> Tracker Entries</label>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" checked> Community Posts</label>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" checked> Users</label>
-                            </div>
                         </div>
                         <div style="padding-top:16px;border-top:1px solid var(--border);display:flex;gap:12px;flex-wrap:wrap;">
                             <button class="btn btn-danger" onclick="localStorage.clear();showToast('Cache cleared ✓','success');">🗑️ Clear Cache</button>
@@ -1461,6 +1478,10 @@
         let eventCount = 0;
         let realtimeChannel = null;
 
+        // ─── MODAL STATE ──────────────────────────────────────────────────
+        let modalResolve = null;
+        let modalData = null;
+
         // ─── INIT ─────────────────────────────────────────────────────────
         function initSupabase() {
             try {
@@ -1478,6 +1499,33 @@
             toast.textContent = message;
             container.appendChild(toast);
             setTimeout(function() { if (toast.parentNode) toast.remove(); }, 4000);
+        }
+
+        // ─── MODAL ────────────────────────────────────────────────────────
+        function openModal(title, bodyHTML, confirmText, confirmAction) {
+            return new Promise((resolve) => {
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalBody').innerHTML = bodyHTML;
+                document.getElementById('modalConfirmBtn').textContent = confirmText || 'Confirm';
+                document.getElementById('modalOverlay').classList.add('active');
+                modalResolve = resolve;
+                modalData = { confirmAction };
+            });
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (modalResolve) {
+                modalResolve(null);
+                modalResolve = null;
+            }
+        }
+
+        function modalConfirm() {
+            if (modalData && modalData.confirmAction) {
+                modalData.confirmAction();
+            }
+            closeModal();
         }
 
         // ─── AUTH ─────────────────────────────────────────────────────────
@@ -1573,6 +1621,8 @@
             else if (page === 'support') loadSupportTickets();
             else if (page === 'notifications') loadNotificationHistory();
             else if (page === 'audit') loadAuditLogs();
+            else if (page === 'features') loadFeatures();
+            else if (page === 'announcements') loadAnnouncements();
         }
 
         function toggleSidebar(open) {
@@ -1647,7 +1697,6 @@
                 safeSetText('postBadge', postCount);
                 safeSetText('entryBadge', entryCount);
                 safeSetText('milestoneBadge', milestoneCount);
-                safeSetText('modBadge', Math.floor(Math.random() * 5));
 
                 // Recent activity
                 const { data: recent } = await supabase
@@ -1669,14 +1718,15 @@
                             milestone: '🏆' };
                         let html = '';
                         recent.forEach(function(a) {
-                            html += '<div class="activity-item" style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);">' +
-                                '<div style="font-size:20px;">' + (iconMap[a.tracker_id] || '📌') + '</div>' +
-                                '<div style="flex:1;"><div style="font-weight:600;font-size:14px;">' + (a.title ||
-                                    a.tracker_id || 'Activity') + '</div>' +
-                                '<div style="font-size:12px;color:var(--text-muted);">by ' + (a.logged_by_name ||
-                                    'Someone') + '</div></div>' +
-                                '<div style="font-size:11px;color:var(--text-muted);">' + (a.timestamp ? new Date(a
-                                    .timestamp).toLocaleString() : '') + '</div>' +
+                            html += '<div class="activity-item">' +
+                                '<div class="activity-icon">' + (iconMap[a.tracker_id] || '📌') + '</div>' +
+                                '<div class="activity-content">' +
+                                '<div class="activity-title">' + (a.title || a.tracker_id || 'Activity') +
+                                '</div>' +
+                                '<div class="activity-meta">by ' + (a.logged_by_name || 'Someone') + '</div>' +
+                                '</div>' +
+                                '<div class="activity-time">' + (a.timestamp ? new Date(a.timestamp)
+                                    .toLocaleString() : '') + '</div>' +
                                 '</div>';
                         });
                         feed.innerHTML = html;
@@ -1726,11 +1776,105 @@
                     '<td>' + (b.milestones_count || 0) + '</td>' +
                     '<td style="font-size:12px;color:var(--text-muted);">' + (b.created_at ? new Date(b.created_at)
                         .toLocaleDateString() : '—') + '</td>' +
-                    '<td><button class="action-btn" onclick="showToast(\'View baby details\',\'info\')">👁️</button> ' +
-                    '<button class="action-btn" onclick="showToast(\'Edit baby\',\'info\')">✏️</button></td>' +
+                    '<td><button class="action-btn" onclick="viewBaby(\'' + b.id + '\')">👁️</button> ' +
+                    '<button class="action-btn" onclick="editBaby(\'' + b.id + '\')">✏️</button> ' +
+                    '<button class="action-btn danger" onclick="deleteBaby(\'' + b.id + '\')">🗑️</button></td>' +
                     '</tr>';
             });
             tbody.innerHTML = html;
+        }
+
+        function refreshBabies() { loadBabies();
+            showToast('Babies refreshed', 'success'); }
+
+        async function viewBaby(id) {
+            const { data, error } = await supabase.from('babies').select('*').eq('id', id).single();
+            if (error) { showToast('Error loading baby', 'error'); return; }
+            openModal('👶 Baby Details',
+                '<div style="display:grid;gap:12px;">' +
+                '<div><strong>Name:</strong> ' + (data.name || 'Unnamed') + '</div>' +
+                '<div><strong>Age:</strong> ' + (data.date_of_birth ? new Date().getFullYear() - new Date(data
+                    .date_of_birth).getFullYear() + 'y' : '—') + '</div>' +
+                '<div><strong>Streak:</strong> ' + (data.streak || 0) + ' 🔥</div>' +
+                '<div><strong>Milestones:</strong> ' + (data.milestones_count || 0) + '</div>' +
+                '<div><strong>Created:</strong> ' + (data.created_at ? new Date(data.created_at).toLocaleString() :
+                    '—') + '</div>' +
+                '</div>',
+                'Close', closeModal);
+        }
+
+        function showAddBabyModal() {
+            openModal('👶 Add Baby',
+                '<div class="form-group"><label>Name</label><input type="text" id="babyName" placeholder="Baby name..."></div>' +
+                '<div class="form-group"><label>Date of Birth</label><input type="date" id="babyDob"></div>' +
+                '<div class="form-group"><label>Gender</label><select id="babyGender"><option value="boy">Boy</option><option value="girl">Girl</option><option value="other">Other</option></select></div>',
+                'Create',
+                async function() {
+                    const name = document.getElementById('babyName').value.trim();
+                    const dob = document.getElementById('babyDob').value;
+                    const gender = document.getElementById('babyGender').value;
+                    if (!name || !dob) { showToast('Please fill in all fields', 'warning'); return; }
+                    const userId = session.user.id;
+                    const { data, error } = await supabase.from('babies').insert({
+                        id: 'baby_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                        name: name,
+                        date_of_birth: dob,
+                        gender: gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'other',
+                        parent1_id: userId,
+                        is_active: true,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }).select().single();
+                    if (error) { showToast('Error creating baby: ' + error.message, 'error'); return; }
+                    showToast('Baby created successfully', 'success');
+                    loadBabies();
+                    fetchDashboardData();
+                }
+            );
+        }
+
+        async function editBaby(id) {
+            const { data, error } = await supabase.from('babies').select('*').eq('id', id).single();
+            if (error) { showToast('Error loading baby', 'error'); return; }
+            openModal('✏️ Edit Baby',
+                '<div class="form-group"><label>Name</label><input type="text" id="editBabyName" value="' + (data
+                    .name || '') + '"></div>' +
+                '<div class="form-group"><label>Date of Birth</label><input type="date" id="editBabyDob" value="' + (data
+                    .date_of_birth || '') + '"></div>' +
+                '<div class="form-group"><label>Gender</label><select id="editBabyGender"><option value="boy"' + (data
+                    .gender === 'male' ? ' selected' : '') + '>Boy</option><option value="girl"' + (data.gender ===
+                    'female' ? ' selected' : '') + '>Girl</option><option value="other"' + (data.gender === 'other' ?
+                    ' selected' : '') + '>Other</option></select></div>',
+                'Save',
+                async function() {
+                    const name = document.getElementById('editBabyName').value.trim();
+                    const dob = document.getElementById('editBabyDob').value;
+                    const gender = document.getElementById('editBabyGender').value;
+                    if (!name || !dob) { showToast('Please fill in all fields', 'warning'); return; }
+                    const { error } = await supabase.from('babies').update({
+                        name: name,
+                        date_of_birth: dob,
+                        gender: gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'other',
+                        updated_at: new Date().toISOString()
+                    }).eq('id', id);
+                    if (error) { showToast('Error updating baby: ' + error.message, 'error'); return; }
+                    showToast('Baby updated successfully', 'success');
+                    loadBabies();
+                    fetchDashboardData();
+                }
+            );
+        }
+
+        async function deleteBaby(id) {
+            if (!confirm('Are you sure you want to delete this baby? This action cannot be undone.')) return;
+            const { error } = await supabase.from('babies').update({
+                is_active: false,
+                updated_at: new Date().toISOString()
+            }).eq('id', id);
+            if (error) { showToast('Error deleting baby: ' + error.message, 'error'); return; }
+            showToast('Baby deleted successfully', 'success');
+            loadBabies();
+            fetchDashboardData();
         }
 
         // ─── USERS ──────────────────────────────────────────────────────
@@ -1744,7 +1888,7 @@
                 return;
             }
             let html = '';
-            data.slice(0, 20).forEach(function(p) {
+            data.slice(0, 50).forEach(function(p) {
                 const initial = (p.full_name || p.email || 'U')[0].toUpperCase();
                 html += '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">' +
                     '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">' +
@@ -1756,12 +1900,15 @@
                     '</div>' +
                     '<span style="font-size:11px;color:var(--text-muted);">' + (p.last_active ? '🟢' : '⚪') +
                     '</span>' +
-                    '<div><button class="action-btn" onclick="showToast(\'View user\',\'info\')">👁️</button> ' +
-                    '<button class="action-btn" onclick="showToast(\'Edit user\',\'info\')">✏️</button></div>' +
+                    '<div><button class="action-btn" onclick="viewUser(\'' + p.id + '\')">👁️</button> ' +
+                    '<button class="action-btn" onclick="editUser(\'' + p.id + '\')">✏️</button></div>' +
                     '</div>';
             });
             container.innerHTML = html;
         }
+
+        function refreshUsers() { loadUsers();
+            showToast('Users refreshed', 'success'); }
 
         function filterUsers() {
             const search = document.getElementById('userSearch')?.value?.toLowerCase() || '';
@@ -1775,10 +1922,24 @@
             });
         }
 
+        async function viewUser(id) {
+            const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
+            if (error) { showToast('Error loading user', 'error'); return; }
+            openModal('👤 User Details',
+                '<div style="display:grid;gap:12px;">' +
+                '<div><strong>Name:</strong> ' + (data.full_name || 'Unknown') + '</div>' +
+                '<div><strong>Email:</strong> ' + (data.email || '—') + '</div>' +
+                '<div><strong>Role:</strong> ' + (data.role || 'member') + '</div>' +
+                '<div><strong>Joined:</strong> ' + (data.created_at ? new Date(data.created_at).toLocaleString() :
+                    '—') + '</div>' +
+                '</div>',
+                'Close', closeModal);
+        }
+
         // ─── COMMUNITY ──────────────────────────────────────────────────
         async function loadCommunity() {
             const { data, error } = await supabase.from('community_posts').select('*').eq('is_deleted', false).order(
-                'created_at', { ascending: false }).limit(15);
+                'created_at', { ascending: false }).limit(20);
             if (error) { showToast('Error loading community', 'error'); return; }
             safeSetText('postCountPage', (data ? data.length : 0) + ' posts');
             const tbody = document.getElementById('postTable');
@@ -1797,11 +1958,40 @@
                     '<td>💬 ' + (p.comments_count || 0) + '</td>' +
                     '<td style="font-size:12px;color:var(--text-muted);">' + (p.created_at ? new Date(p.created_at)
                         .toLocaleString() : '') + '</td>' +
-                    '<td><button class="action-btn" onclick="showToast(\'View post\',\'info\')">👁️</button> ' +
-                    '<button class="action-btn danger" onclick="showToast(\'Delete post\',\'warning\')">🗑️</button></td>' +
+                    '<td><button class="action-btn" onclick="viewPost(\'' + p.id + '\')">👁️</button> ' +
+                    '<button class="action-btn danger" onclick="deletePost(\'' + p.id + '\')">🗑️</button></td>' +
                     '</tr>';
             });
             tbody.innerHTML = html;
+        }
+
+        function refreshCommunity() { loadCommunity();
+            showToast('Community refreshed', 'success'); }
+
+        async function viewPost(id) {
+            const { data, error } = await supabase.from('community_posts').select('*').eq('id', id).single();
+            if (error) { showToast('Error loading post', 'error'); return; }
+            openModal('💬 Post Details',
+                '<div style="display:grid;gap:12px;">' +
+                '<div><strong>Content:</strong> ' + (data.content || '—') + '</div>' +
+                '<div><strong>Likes:</strong> ❤️ ' + (data.likes_count || 0) + '</div>' +
+                '<div><strong>Comments:</strong> 💬 ' + (data.comments_count || 0) + '</div>' +
+                '<div><strong>Posted:</strong> ' + (data.created_at ? new Date(data.created_at).toLocaleString() :
+                    '—') + '</div>' +
+                '</div>',
+                'Close', closeModal);
+        }
+
+        async function deletePost(id) {
+            if (!confirm('Are you sure you want to delete this post?')) return;
+            const { error } = await supabase.from('community_posts').update({
+                is_deleted: true,
+                updated_at: new Date().toISOString()
+            }).eq('id', id);
+            if (error) { showToast('Error deleting post: ' + error.message, 'error'); return; }
+            showToast('Post deleted successfully', 'success');
+            loadCommunity();
+            fetchDashboardData();
         }
 
         // ─── TOPICS ──────────────────────────────────────────────────────
@@ -1819,10 +2009,50 @@
                 html += '<span style="padding:6px 16px;border-radius:14px;font-size:13px;font-weight:600;background:var(--bg-primary);color:var(--text-secondary);">' +
                     (t.emoji || '📌') + ' ' + t.name +
                     ' <span style="color:var(--text-muted);font-weight:400;">(' + (t.category || 'general') +
-                    ')</span></span>';
+                    ')</span>' +
+                    ' <button class="action-btn" onclick="editTopic(\'' + t.id + '\')">✏️</button>' +
+                    ' <button class="action-btn danger" onclick="deleteTopic(\'' + t.id + '\')">🗑️</button>' +
+                    '</span>';
             });
             html += '</div>';
             container.innerHTML = html;
+        }
+
+        function refreshTopics() { loadTopics();
+            showToast('Topics refreshed', 'success'); }
+
+        function showAddTopicModal() {
+            openModal('📌 Add Topic',
+                '<div class="form-group"><label>Name</label><input type="text" id="topicName" placeholder="Topic name..."></div>' +
+                '<div class="form-group"><label>Emoji</label><input type="text" id="topicEmoji" placeholder="📌" maxlength="2"></div>' +
+                '<div class="form-group"><label>Category</label><input type="text" id="topicCategory" placeholder="Category..."></div>',
+                'Create',
+                async function() {
+                    const name = document.getElementById('topicName').value.trim();
+                    const emoji = document.getElementById('topicEmoji').value.trim() || '📌';
+                    const category = document.getElementById('topicCategory').value.trim() || 'general';
+                    if (!name) { showToast('Please enter a topic name', 'warning'); return; }
+                    const { data, error } = await supabase.from('community_topics').insert({
+                        id: 'topic_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                        name: name,
+                        emoji: emoji,
+                        color: '#667eea',
+                        description: '',
+                        category: category
+                    }).select().single();
+                    if (error) { showToast('Error creating topic: ' + error.message, 'error'); return; }
+                    showToast('Topic created successfully', 'success');
+                    loadTopics();
+                }
+            );
+        }
+
+        async function deleteTopic(id) {
+            if (!confirm('Are you sure you want to delete this topic?')) return;
+            const { error } = await supabase.from('community_topics').delete().eq('id', id);
+            if (error) { showToast('Error deleting topic: ' + error.message, 'error'); return; }
+            showToast('Topic deleted successfully', 'success');
+            loadTopics();
         }
 
         // ─── TRACKERS ────────────────────────────────────────────────────
@@ -1839,19 +2069,22 @@
             let html = '';
             data.forEach(function(e) {
                 html += '<tr>' +
-                    '<td><span class="badge badge-info">' + (e.tracker_id || 'unknown') + '</span></td>' +
+                    '<td><span class="badge badge-info">' + (e.tracker_type || e.tracker_id || 'unknown') +
+                    '</span></td>' +
                     '<td><span class="pill">' + (e.baby_id ? e.baby_id.substring(0, 8) : '—') + '</span></td>' +
                     '<td>' + (e.title || e.tracker_id || 'Activity') + '</td>' +
                     '<td>' + (e.logged_by_name || 'Someone') + '</td>' +
                     '<td style="font-size:12px;color:var(--text-muted);">' + (e.timestamp ? new Date(e.timestamp)
                         .toLocaleString() : '') + '</td>' +
-                    '<td><button class="action-btn" onclick="showToast(\'View entry\',\'info\')">👁️</button> ' +
-                    '<button class="action-btn" onclick="showToast(\'Edit entry\',\'info\')">✏️</button> ' +
-                    '<button class="action-btn danger" onclick="showToast(\'Delete entry\',\'warning\')">🗑️</button></td>' +
+                    '<td><button class="action-btn" onclick="viewEntry(\'' + e.id + '\')">👁️</button> ' +
+                    '<button class="action-btn danger" onclick="deleteEntry(\'' + e.id + '\')">🗑️</button></td>' +
                     '</tr>';
             });
             tbody.innerHTML = html;
         }
+
+        function refreshTrackers() { loadTrackers();
+            showToast('Trackers refreshed', 'success'); }
 
         function filterTrackers() {
             const filter = document.getElementById('trackerFilter')?.value || 'all';
@@ -1865,6 +2098,18 @@
                     row.style.display = 'none';
                 }
             });
+        }
+
+        async function deleteEntry(id) {
+            if (!confirm('Are you sure you want to delete this entry?')) return;
+            const { error } = await supabase.from('tracker_entries').update({
+                is_deleted: true,
+                updated_at: new Date().toISOString()
+            }).eq('id', id);
+            if (error) { showToast('Error deleting entry: ' + error.message, 'error'); return; }
+            showToast('Entry deleted successfully', 'success');
+            loadTrackers();
+            fetchDashboardData();
         }
 
         // ─── MILESTONES ──────────────────────────────────────────────────
@@ -1888,16 +2133,31 @@
                     '<td>' + (m.logged_by_name || 'Someone') + '</td>' +
                     '<td style="font-size:12px;color:var(--text-muted);">' + (m.timestamp ? new Date(m.timestamp)
                         .toLocaleString() : '') + '</td>' +
-                    '<td><button class="action-btn" onclick="showToast(\'View milestone\',\'info\')">👁️</button> ' +
-                    '<button class="action-btn danger" onclick="showToast(\'Delete milestone\',\'warning\')">🗑️</button></td>' +
+                    '<td><button class="action-btn" onclick="viewMilestone(\'' + m.id + '\')">👁️</button> ' +
+                    '<button class="action-btn danger" onclick="deleteMilestone(\'' + m.id + '\')">🗑️</button></td>' +
                     '</tr>';
             });
             tbody.innerHTML = html;
         }
 
+        function refreshMilestones() { loadMilestones();
+            showToast('Milestones refreshed', 'success'); }
+
+        async function deleteMilestone(id) {
+            if (!confirm('Are you sure you want to delete this milestone?')) return;
+            const { error } = await supabase.from('tracker_entries').update({
+                is_deleted: true,
+                updated_at: new Date().toISOString()
+            }).eq('id', id);
+            if (error) { showToast('Error deleting milestone: ' + error.message, 'error'); return; }
+            showToast('Milestone deleted successfully', 'success');
+            loadMilestones();
+            fetchDashboardData();
+        }
+
         // ─── MODERATION ──────────────────────────────────────────────────
         async function loadModeration() {
-            // Simulate moderation data
+            // Fetch reported content - simplified for demo
             const reports = [{
                 id: 1,
                 type: 'Post',
@@ -1941,13 +2201,18 @@
                     '<td>' + r.reason + '</td>' +
                     '<td><span class="badge ' + statusBadge + '">' + r.status + '</span></td>' +
                     '<td>' +
-                    '<button class="btn btn-success btn-xs" onclick="showToast(\'Report approved\',\'success\')">✓ Approve</button> ' +
-                    '<button class="btn btn-danger btn-xs" onclick="showToast(\'Report dismissed\',\'warning\')">✕ Dismiss</button>' +
+                    '<button class="btn btn-success btn-xs" onclick="approveReport(' + r.id +
+                    ')">✓ Approve</button> ' +
+                    '<button class="btn btn-danger btn-xs" onclick="dismissReport(' + r.id +
+                    ')">✕ Dismiss</button>' +
                     '</td>' +
                     '</tr>';
             });
             tbody.innerHTML = html;
         }
+
+        function refreshModeration() { loadModeration();
+            showToast('Moderation refreshed', 'success'); }
 
         function filterModeration() {
             const filter = document.getElementById('modFilter')?.value || 'all';
@@ -1963,8 +2228,19 @@
             });
         }
 
+        function approveReport(id) {
+            showToast('Report #' + id + ' approved', 'success');
+            loadModeration();
+        }
+
+        function dismissReport(id) {
+            showToast('Report #' + id + ' dismissed', 'warning');
+            loadModeration();
+        }
+
         // ─── SUPPORT TICKETS ─────────────────────────────────────────────
         async function loadSupportTickets() {
+            // Simulate support tickets
             const tickets = [{
                 id: 'T-1001',
                 user: 'John Doe',
@@ -1986,13 +2262,6 @@
                 status: 'resolved',
                 priority: 'low',
                 created: '1 day ago'
-            }, {
-                id: 'T-1004',
-                user: 'Sarah Wilson',
-                subject: 'Feature request: Dark mode',
-                status: 'open',
-                priority: 'low',
-                created: '2 days ago'
             }];
 
             safeSetText('supportCount', tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length +
@@ -2015,12 +2284,16 @@
                     '<td><span class="badge ' + statusBadge + '">' + t.status.replace('_', ' ') + '</span></td>' +
                     '<td><span class="badge ' + priorityBadge + '">' + t.priority + '</span></td>' +
                     '<td style="font-size:12px;color:var(--text-muted);">' + t.created + '</td>' +
-                    '<td><button class="action-btn" onclick="showToast(\'View ticket\',\'info\')">👁️</button> ' +
-                    '<button class="action-btn" onclick="showToast(\'Assign ticket\',\'info\')">📌</button></td>' +
+                    '<td><button class="action-btn" onclick="viewTicket(\'' + t.id + '\')">👁️</button> ' +
+                    '<button class="action-btn" onclick="updateTicketStatus(\'' + t.id +
+                    '\')">📌</button></td>' +
                     '</tr>';
             });
             tbody.innerHTML = html;
         }
+
+        function refreshSupport() { loadSupportTickets();
+            showToast('Support tickets refreshed', 'success'); }
 
         function filterSupport() {
             const filter = document.getElementById('supportFilter')?.value || 'all';
@@ -2036,15 +2309,23 @@
             });
         }
 
-        // ─── NOTIFICATION HISTORY ────────────────────────────────────────
-        async function loadNotificationHistory() {
+        function viewTicket(id) {
+            showToast('Viewing ticket ' + id, 'info');
+        }
+
+        function updateTicketStatus(id) {
+            showToast('Ticket ' + id + ' status updated', 'success');
+            loadSupportTickets();
+        }
+
+        // ─── NOTIFICATIONS ──────────────────────────────────────────────
+        function loadNotificationHistory() {
             const history = [{
                 id: 1,
                 title: 'Welcome to LittleLoom!',
                 body: 'Thank you for joining our community...',
                 audience: 'All Users',
                 sent: '1 hour ago',
-                status: 'Delivered',
                 opens: 245
             }, {
                 id: 2,
@@ -2052,16 +2333,7 @@
                 body: 'Check out our new AI-powered suggestions...',
                 audience: 'Active Users',
                 sent: '3 hours ago',
-                status: 'Delivered',
                 opens: 189
-            }, {
-                id: 3,
-                title: 'Weekly Digest',
-                body: 'Your weekly activity summary is ready...',
-                audience: 'Parents',
-                sent: '1 day ago',
-                status: 'Delivered',
-                opens: 567
             }];
 
             safeSetText('notifHistoryCount', history.length);
@@ -2072,11 +2344,13 @@
             }
             let html = '';
             history.forEach(function(n) {
-                html += '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-                    '<div style="font-size:20px;">📨</div>' +
-                    '<div style="flex:1;"><div style="font-weight:600;font-size:14px;">' + n.title + '</div>' +
-                    '<div style="font-size:12px;color:var(--text-muted);">' + n.body.substring(0, 60) + (n.body
-                    .length > 60 ? '...' : '') + '</div></div>' +
+                html += '<div class="activity-item">' +
+                    '<div class="activity-icon">📨</div>' +
+                    '<div class="activity-content">' +
+                    '<div class="activity-title">' + n.title + '</div>' +
+                    '<div class="activity-meta">' + n.body.substring(0, 60) + (n.body.length > 60 ? '...' : '') +
+                    '</div>' +
+                    '</div>' +
                     '<div style="text-align:right;font-size:11px;color:var(--text-muted);">' +
                     '<div>' + n.sent + '</div>' +
                     '<div>👁️ ' + n.opens + '</div>' +
@@ -2089,18 +2363,20 @@
         function sendPushNotification() {
             const title = document.getElementById('notifTitle')?.value || 'Test Notification';
             const body = document.getElementById('notifBody')?.value || 'This is a test notification';
-            showToast('📤 Notification sent to all users', 'success');
+            const audience = document.getElementById('notifAudience')?.value || 'all';
+
+            showToast('📤 Notification sent to ' + audience + ' users', 'success');
             // Add to history
             const history = document.getElementById('notifHistory');
             const empty = history.querySelector('.empty-state');
             if (empty) empty.remove();
             const entry = document.createElement('div');
-            entry.style.cssText =
-                'display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);';
-            entry.innerHTML = '<div style="font-size:20px;">📨</div>' +
-                '<div style="flex:1;"><div style="font-weight:600;font-size:14px;">' + title + '</div>' +
-                '<div style="font-size:12px;color:var(--text-muted);">' + body.substring(0, 60) + (body.length > 60 ?
-                    '...' : '') + '</div></div>' +
+            entry.className = 'activity-item';
+            entry.innerHTML = '<div class="activity-icon">📨</div>' +
+                '<div class="activity-content">' +
+                '<div class="activity-title">' + title + '</div>' +
+                '<div class="activity-meta">' + body.substring(0, 60) + (body.length > 60 ? '...' : '') + '</div>' +
+                '</div>' +
                 '<div style="text-align:right;font-size:11px;color:var(--text-muted);">' +
                 '<div>Just now</div>' +
                 '<div>👁️ 0</div>' +
@@ -2109,17 +2385,197 @@
             // Clear form
             if (document.getElementById('notifTitle')) document.getElementById('notifTitle').value = '';
             if (document.getElementById('notifBody')) document.getElementById('notifBody').value = '';
-            if (document.getElementById('notifLink')) document.getElementById('notifLink').value = '';
             // Update count
-            const count = document.querySelectorAll('#notifHistory > div').length;
+            const count = document.querySelectorAll('#notifHistory .activity-item').length;
             safeSetText('notifHistoryCount', count);
         }
 
-        // ─── FEATURE TOGGLE ─────────────────────────────────────────────
-        function toggleFeature(el) {
+        // ─── FEATURES ─────────────────────────────────────────────────────
+        function loadFeatures() {
+            const features = [
+                { id: 'ai_recommendations', name: 'AI Recommendations', desc: 'AI-powered activity recommendations',
+                    enabled: true },
+                { id: 'community_chat', name: 'Community Chat', desc: 'Real-time family chat', enabled: true },
+                { id: 'advanced_analytics', name: 'Advanced Analytics', desc: 'Detailed growth insights',
+                    enabled: false },
+                { id: 'biometric_login', name: 'Biometric Login', desc: 'Face ID / Fingerprint support',
+                    enabled: true },
+                { id: 'photo_sync', name: 'Photo Sync', desc: 'Automatic photo backup', enabled: false }
+            ];
+
+            const container = document.getElementById('featureList');
+            let html = '';
+            features.forEach(function(f) {
+                html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">' +
+                    '<div><div style="font-weight:600;">' + f.name + '</div><div style="font-size:12px;color:var(--text-muted);">' +
+                    f.desc + '</div></div>' +
+                    '<div class="toggle' + (f.enabled ? ' active' : '') +
+                    '" onclick="toggleFeature(this, \'' + f.id + '\')"><div class="slider"></div></div>' +
+                    '</div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function refreshFeatures() { loadFeatures();
+            showToast('Features refreshed', 'success'); }
+
+        function toggleFeature(el, id) {
             el.classList.toggle('active');
-            const name = el.parentElement?.querySelector('div div:first-child')?.textContent || 'Feature';
-            showToast(name + (el.classList.contains('active') ? ' enabled' : ' disabled'), 'info');
+            const enabled = el.classList.contains('active');
+            showToast('Feature "' + id + '" ' + (enabled ? 'enabled' : 'disabled'), 'info');
+        }
+
+        // ─── ANNOUNCEMENTS ──────────────────────────────────────────────
+        function loadAnnouncements() {
+            const announcements = [{
+                id: 1,
+                title: '🎉 New Feature: AI Recommendations',
+                body: 'We\'ve added AI-powered activity recommendations to help you track smarter!',
+                status: 'Published',
+                target: 'All Users',
+                posted: '2 hours ago'
+            }, {
+                id: 2,
+                title: '🛠️ Maintenance Window',
+                body: 'Scheduled maintenance on Sunday, 2:00 AM - 4:00 AM EST.',
+                status: 'Scheduled',
+                target: 'All Users',
+                posted: '1 day ago'
+            }];
+
+            const container = document.getElementById('announcementList');
+            if (announcements.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="emoji">📢</div><p>No announcements</p></div>';
+                return;
+            }
+            let html = '';
+            announcements.forEach(function(a) {
+                const statusBadge = a.status === 'Published' ? 'badge-success' : 'badge-warning';
+                html += '<div style="padding:16px;background:var(--bg-primary);border-radius:var(--radius-sm);border-left:4px solid var(--primary);margin-bottom:12px;">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                    '<div><span style="font-weight:700;">' + a.title + '</span></div>' +
+                    '<span style="font-size:12px;color:var(--text-muted);">' + a.posted + '</span>' +
+                    '</div>' +
+                    '<div style="font-size:14px;color:var(--text-secondary);margin-top:4px;">' + a.body +
+                    '</div>' +
+                    '<div style="margin-top:8px;"><span class="badge ' + statusBadge + '">' + a.status +
+                    '</span> <span style="font-size:12px;color:var(--text-muted);">Target: ' + a.target +
+                    '</span>' +
+                    ' <button class="action-btn" onclick="editAnnouncement(' + a.id + ')">✏️</button>' +
+                    ' <button class="action-btn danger" onclick="deleteAnnouncement(' + a.id +
+                    ')">🗑️</button></div>' +
+                    '</div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function refreshAnnouncements() { loadAnnouncements();
+            showToast('Announcements refreshed', 'success'); }
+
+        function showAddAnnouncementModal() {
+            openModal('📢 New Announcement',
+                '<div class="form-group"><label>Title</label><input type="text" id="announcementTitle" placeholder="Announcement title..."></div>' +
+                '<div class="form-group"><label>Body</label><textarea id="announcementBody" rows="4" placeholder="Announcement content..."></textarea></div>' +
+                '<div class="form-group"><label>Target Audience</label><select id="announcementTarget"><option value="all">All Users</option><option value="parents">Parents Only</option><option value="active">Active Users</option></select></div>',
+                'Publish',
+                function() {
+                    const title = document.getElementById('announcementTitle').value.trim();
+                    const body = document.getElementById('announcementBody').value.trim();
+                    const target = document.getElementById('announcementTarget').value;
+                    if (!title || !body) { showToast('Please fill in all fields', 'warning'); return; }
+                    showToast('📢 Announcement published to ' + target, 'success');
+                    loadAnnouncements();
+                }
+            );
+        }
+
+        // ─── AUDIT LOGS ──────────────────────────────────────────────────
+        async function loadAuditLogs() {
+            const logs = [{
+                time: '2 mins ago',
+                user: 'Admin',
+                action: 'User logged in',
+                type: 'auth',
+                details: 'IP: 192.168.1.1',
+                ip: '192.168.1.1'
+            }, {
+                time: '15 mins ago',
+                user: 'System',
+                action: 'Backup completed',
+                type: 'system',
+                details: 'Size: 2.4MB',
+                ip: '—'
+            }, {
+                time: '1 hour ago',
+                user: 'Admin',
+                action: 'User role updated',
+                type: 'admin',
+                details: 'User #1234 → Guardian',
+                ip: '192.168.1.1'
+            }];
+
+            const tbody = document.getElementById('auditTable');
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No audit logs available</td></tr>';
+                return;
+            }
+            let html = '';
+            logs.forEach(function(log) {
+                const typeBadge = log.type === 'auth' ? 'badge-info' : log.type === 'admin' ? 'badge-purple' :
+                    log.type === 'system' ? 'badge-success' : 'badge-gray';
+                html += '<tr>' +
+                    '<td style="font-size:12px;color:var(--text-muted);">' + log.time + '</td>' +
+                    '<td>' + log.user + '</td>' +
+                    '<td>' + log.action + '</td>' +
+                    '<td><span class="badge ' + typeBadge + '">' + log.type + '</span></td>' +
+                    '<td style="font-size:13px;color:var(--text-secondary);">' + log.details + '</td>' +
+                    '<td style="font-size:12px;color:var(--text-muted);">' + log.ip + '</td>' +
+                    '</tr>';
+            });
+            tbody.innerHTML = html;
+        }
+
+        function refreshAudit() { loadAuditLogs();
+            showToast('Audit logs refreshed', 'success'); }
+
+        function filterAudit() {
+            const search = document.getElementById('auditSearch')?.value?.toLowerCase() || '';
+            const type = document.getElementById('auditTypeFilter')?.value || 'all';
+            const rows = document.querySelectorAll('#auditTable tr');
+            rows.forEach(function(row, index) {
+                if (index === 0 && row.classList.contains('empty-state')) return;
+                const text = row.textContent.toLowerCase();
+                const typeMatch = type === 'all' || text.includes(type);
+                const searchMatch = text.includes(search);
+                row.style.display = (typeMatch && searchMatch) ? '' : 'none';
+            });
+        }
+
+        // ─── ANALYTICS ───────────────────────────────────────────────────
+        function updateAnalytics() {
+            const period = document.getElementById('analyticsPeriod')?.value || '30d';
+            showToast('📊 Loading analytics for ' + period, 'info');
+            // Simulate data
+            const dau = Math.floor(100 + Math.random() * 200);
+            const mau = Math.floor(500 + Math.random() * 500);
+            const engagement = (60 + Math.random() * 30).toFixed(1);
+            const newBabies = Math.floor(10 + Math.random() * 30);
+            const sessions = Math.floor(1000 + Math.random() * 2000);
+            const sessionTime = (2 + Math.random() * 4).toFixed(1);
+
+            safeSetText('analyticsDAU', dau);
+            safeSetText('analyticsMAU', mau);
+            safeSetText('analyticsEngagement', engagement);
+            safeSetText('analyticsNewBabies', newBabies);
+            safeSetText('analyticsSessions', sessions);
+            safeSetText('analyticsSessionTime', sessionTime);
+
+            // Update growth chart
+            const bars = document.querySelectorAll('#growthChart > div > div:first-child');
+            bars.forEach(function(bar, i) {
+                const height = 15 + Math.random() * 85;
+                bar.style.height = height + '%';
+            });
         }
 
         // ─── DATA EXPORT ─────────────────────────────────────────────────
@@ -2132,13 +2588,13 @@
                 const empty = history.querySelector('.empty-state');
                 if (empty) empty.remove();
                 const entry = document.createElement('div');
-                entry.style.cssText =
-                    'display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);';
-                entry.innerHTML = '<div style="font-size:18px;">📄</div>' +
-                    '<div style="flex:1;"><div style="font-weight:600;font-size:14px;">' + type.charAt(0).toUpperCase() +
-                    type.slice(1) + ' Export</div>' +
-                    '<div style="font-size:12px;color:var(--text-muted);">' + new Date().toLocaleString() +
-                    ' • 245 records</div></div>' +
+                entry.className = 'activity-item';
+                entry.innerHTML = '<div class="activity-icon">📄</div>' +
+                    '<div class="activity-content">' +
+                    '<div class="activity-title">' + type.charAt(0).toUpperCase() + type.slice(1) +
+                    ' Export</div>' +
+                    '<div class="activity-meta">' + new Date().toLocaleString() + ' • 245 records</div>' +
+                    '</div>' +
                     '<button class="btn btn-outline btn-xs" onclick="showToast(\'Download started\',\'success\')">📥</button>';
                 history.prepend(entry);
             }, 1500);
@@ -2195,128 +2651,6 @@
             reader.readAsText(fileInput.files[0]);
         }
 
-        // ─── AUDIT LOGS ──────────────────────────────────────────────────
-        async function loadAuditLogs() {
-            const logs = [{
-                time: '2 mins ago',
-                user: 'Admin',
-                action: 'User logged in',
-                type: 'auth',
-                details: 'IP: 192.168.1.1',
-                ip: '192.168.1.1'
-            }, {
-                time: '15 mins ago',
-                user: 'System',
-                action: 'Backup completed',
-                type: 'system',
-                details: 'Size: 2.4MB',
-                ip: '—'
-            }, {
-                time: '1 hour ago',
-                user: 'Admin',
-                action: 'User role updated',
-                type: 'admin',
-                details: 'User #1234 → Guardian',
-                ip: '192.168.1.1'
-            }, {
-                time: '2 hours ago',
-                user: 'User #5678',
-                action: 'Data exported',
-                type: 'data',
-                details: 'Exported 245 records',
-                ip: '10.0.0.5'
-            }, {
-                time: '3 hours ago',
-                user: 'System',
-                action: 'Security scan completed',
-                type: 'security',
-                details: 'No threats detected',
-                ip: '—'
-            }];
-
-            const tbody = document.getElementById('auditTable');
-            if (logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No audit logs available</td></tr>';
-                return;
-            }
-            let html = '';
-            logs.forEach(function(log) {
-                const typeBadge = log.type === 'auth' ? 'badge-info' : log.type === 'admin' ? 'badge-purple' :
-                    log.type === 'system' ? 'badge-success' : log.type === 'security' ? 'badge-danger' :
-                    'badge-gray';
-                html += '<tr>' +
-                    '<td style="font-size:12px;color:var(--text-muted);">' + log.time + '</td>' +
-                    '<td>' + log.user + '</td>' +
-                    '<td>' + log.action + '</td>' +
-                    '<td><span class="badge ' + typeBadge + '">' + log.type + '</span></td>' +
-                    '<td style="font-size:13px;color:var(--text-secondary);">' + log.details + '</td>' +
-                    '<td style="font-size:12px;color:var(--text-muted);">' + log.ip + '</td>' +
-                    '</tr>';
-            });
-            tbody.innerHTML = html;
-        }
-
-        function filterAudit() {
-            const search = document.getElementById('auditSearch')?.value?.toLowerCase() || '';
-            const type = document.getElementById('auditTypeFilter')?.value || 'all';
-            const user = document.getElementById('auditUserFilter')?.value || 'all';
-            const rows = document.querySelectorAll('#auditTable tr');
-            rows.forEach(function(row, index) {
-                if (index === 0 && row.classList.contains('empty-state')) return;
-                const text = row.textContent.toLowerCase();
-                const typeMatch = type === 'all' || text.includes(type);
-                const userMatch = user === 'all' || (user === 'admin' ? text.includes('admin') : text.includes(
-                'user'));
-                const searchMatch = text.includes(search);
-                row.style.display = (typeMatch && userMatch && searchMatch) ? '' : 'none';
-            });
-        }
-
-        // ─── ANALYTICS ───────────────────────────────────────────────────
-        function updateAnalytics() {
-            const period = document.getElementById('analyticsPeriod')?.value || '30d';
-            showToast('📊 Loading analytics for ' + period, 'info');
-            // Simulate data
-            const dau = Math.floor(100 + Math.random() * 200);
-            const mau = Math.floor(500 + Math.random() * 500);
-            const engagement = (60 + Math.random() * 30).toFixed(1);
-            const newBabies = Math.floor(10 + Math.random() * 30);
-            const sessions = Math.floor(1000 + Math.random() * 2000);
-            const sessionTime = (2 + Math.random() * 4).toFixed(1);
-
-            safeSetText('analyticsDAU', dau);
-            safeSetText('analyticsMAU', mau);
-            safeSetText('analyticsEngagement', engagement);
-            safeSetText('analyticsNewBabies', newBabies);
-            safeSetText('analyticsSessions', sessions);
-            safeSetText('analyticsSessionTime', sessionTime);
-
-            // Update growth chart
-            const bars = document.querySelectorAll('#growthChart > div > div:first-child');
-            bars.forEach(function(bar, i) {
-                const height = 15 + Math.random() * 85;
-                bar.style.height = height + '%';
-            });
-        }
-
-        // ─── REFRESH ─────────────────────────────────────────────────────
-        async function refreshAll() {
-            showToast('🔄 Refreshing all data...', 'info');
-            await fetchDashboardData();
-            if (currentPage === 'babies') loadBabies();
-            else if (currentPage === 'users') loadUsers();
-            else if (currentPage === 'community') loadCommunity();
-            else if (currentPage === 'topics') loadTopics();
-            else if (currentPage === 'trackers') loadTrackers();
-            else if (currentPage === 'milestones') loadMilestones();
-            else if (currentPage === 'moderation') loadModeration();
-            else if (currentPage === 'support') loadSupportTickets();
-            else if (currentPage === 'notifications') loadNotificationHistory();
-            else if (currentPage === 'audit') loadAuditLogs();
-            else if (currentPage === 'analytics') updateAnalytics();
-            showToast('✅ All data refreshed', 'success');
-        }
-
         // ─── REALTIME ────────────────────────────────────────────────────
         function setupRealtime() {
             if (!supabase || !session) return;
@@ -2327,15 +2661,19 @@
 
             realtimeChannel = supabase.channel('admin-realtime')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, function(p) { addEvent(p,
-                        'babies'); })
+                        'babies');
+                    fetchDashboardData(); })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, function(p) {
                     addEvent(p, 'tracker_entries');
+                    fetchDashboardData();
                 })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, function(p) {
                     addEvent(p, 'community_posts');
+                    fetchDashboardData();
                 })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, function(p) { addEvent(p,
-                        'profiles'); })
+                        'profiles');
+                    fetchDashboardData(); })
                 .subscribe(function(status) {
                     if (status === 'SUBSCRIBED') {
                         console.log('✅ Realtime connected');
@@ -2364,24 +2702,36 @@
 
             const entry = document.createElement('div');
             entry.className = 'activity-item';
-            entry.style.cssText =
-                'display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);';
             entry.innerHTML =
-                '<div style="width:32px;height:32px;border-radius:8px;background:' + color +
-                ';display:flex;align-items:center;justify-content:center;font-size:16px;">' + emoji + '</div>' +
-                '<div style="flex:1;">' +
-                '<div style="font-weight:600;font-size:14px;">' + event + ' on ' + table + '</div>' +
-                '<div style="font-size:12px;color:var(--text-muted);">' + title + (data?.id ? ' · ' + data.id.substring(
-                    0, 8) : '') + '</div>' +
+                '<div class="activity-icon" style="background:' + color + ';">' + emoji + '</div>' +
+                '<div class="activity-content">' +
+                '<div class="activity-title">' + event + ' on ' + table + '</div>' +
+                '<div class="activity-meta">' + title + (data?.id ? ' · ' + data.id.substring(0, 8) : '') + '</div>' +
                 '</div>' +
-                '<div style="font-size:11px;color:var(--text-muted);">' + new Date().toLocaleTimeString() + '</div>';
+                '<div class="activity-time">' + new Date().toLocaleTimeString() + '</div>';
             feed.prepend(entry);
 
             while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+        }
 
-            if (eventCount % 5 === 0) {
-                fetchDashboardData();
-            }
+        // ─── REFRESH ─────────────────────────────────────────────────────
+        async function refreshAll() {
+            showToast('🔄 Refreshing all data...', 'info');
+            await fetchDashboardData();
+            if (currentPage === 'babies') loadBabies();
+            else if (currentPage === 'users') loadUsers();
+            else if (currentPage === 'community') loadCommunity();
+            else if (currentPage === 'topics') loadTopics();
+            else if (currentPage === 'trackers') loadTrackers();
+            else if (currentPage === 'milestones') loadMilestones();
+            else if (currentPage === 'moderation') loadModeration();
+            else if (currentPage === 'support') loadSupportTickets();
+            else if (currentPage === 'notifications') loadNotificationHistory();
+            else if (currentPage === 'audit') loadAuditLogs();
+            else if (currentPage === 'analytics') updateAnalytics();
+            else if (currentPage === 'features') loadFeatures();
+            else if (currentPage === 'announcements') loadAnnouncements();
+            showToast('✅ All data refreshed', 'success');
         }
 
         // ─── INIT ─────────────────────────────────────────────────────────
@@ -2421,6 +2771,8 @@
             loadNotificationHistory();
             loadAuditLogs();
             updateAnalytics();
+            loadFeatures();
+            loadAnnouncements();
         }
 
         // ─── EXPOSE GLOBALLY ─────────────────────────────────────────────
@@ -2440,6 +2792,53 @@
         window.exportData = exportData;
         window.exportBackup = exportBackup;
         window.importBackup = importBackup;
+        window.loadBabies = loadBabies;
+        window.loadUsers = loadUsers;
+        window.loadCommunity = loadCommunity;
+        window.loadTopics = loadTopics;
+        window.loadTrackers = loadTrackers;
+        window.loadMilestones = loadMilestones;
+        window.loadModeration = loadModeration;
+        window.loadSupportTickets = loadSupportTickets;
+        window.loadNotificationHistory = loadNotificationHistory;
+        window.loadAuditLogs = loadAuditLogs;
+        window.loadFeatures = loadFeatures;
+        window.loadAnnouncements = loadAnnouncements;
+        window.refreshBabies = refreshBabies;
+        window.refreshUsers = refreshUsers;
+        window.refreshCommunity = refreshCommunity;
+        window.refreshTopics = refreshTopics;
+        window.refreshTrackers = refreshTrackers;
+        window.refreshMilestones = refreshMilestones;
+        window.refreshModeration = refreshModeration;
+        window.refreshSupport = refreshSupport;
+        window.refreshAudit = refreshAudit;
+        window.refreshFeatures = refreshFeatures;
+        window.refreshAnnouncements = refreshAnnouncements;
+        window.showAddBabyModal = showAddBabyModal;
+        window.showAddTopicModal = showAddTopicModal;
+        window.showAddAnnouncementModal = showAddAnnouncementModal;
+        window.approveReport = approveReport;
+        window.dismissReport = dismissReport;
+        window.viewTicket = viewTicket;
+        window.updateTicketStatus = updateTicketStatus;
+        window.editAnnouncement = function(id) { showToast('Editing announcement ' + id, 'info'); };
+        window.deleteAnnouncement = function(id) { if (confirm('Delete announcement?')) { showToast(
+                'Announcement deleted', 'success');
+                loadAnnouncements(); } };
+        window.viewEntry = function(id) { showToast('Viewing entry ' + id, 'info'); };
+        window.viewMilestone = function(id) { showToast('Viewing milestone ' + id, 'info'); };
+        window.viewBaby = viewBaby;
+        window.editBaby = editBaby;
+        window.deleteBaby = deleteBaby;
+        window.viewUser = viewUser;
+        window.viewPost = viewPost;
+        window.deletePost = deletePost;
+        window.deleteTopic = deleteTopic;
+        window.deleteEntry = deleteEntry;
+        window.deleteMilestone = deleteMilestone;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
 
         document.addEventListener('DOMContentLoaded', init);
     </script>
