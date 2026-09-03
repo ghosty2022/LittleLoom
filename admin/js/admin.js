@@ -1,4 +1,5 @@
 // ─── admin.js - Complete Fixed Version ──────────────────────────────────
+
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
@@ -96,7 +97,7 @@ async function checkAuth() {
                 statusBar.innerHTML = `
                     <span>🔒</span>
                     <span>Please log in to continue</span>
-                    <button class="btn btn-primary btn-sm" onclick="window.location.href='/login.html'" style="margin-left:auto;">
+                    <button class="btn btn-primary btn-sm" onclick="window.location.href='/login'" style="margin-left:auto;">
                         Login
                     </button>
                 `;
@@ -188,7 +189,7 @@ async function handleLogout() {
         if (sessionTimeout) { clearInterval(sessionTimeout); sessionTimeout = null; }
         localStorage.removeItem('lastActivity');
         showToast('✅ Logged out successfully', 'success');
-        window.location.href = '/login.html';
+        window.location.href = '/login';
     } catch (e) {
         showToast('❌ Logout failed: ' + e.message, 'error');
     }
@@ -196,10 +197,15 @@ async function handleLogout() {
 
 // ─── NAVIGATION ────────────────────────────────────────────────────────────
 function navigateTo(page) {
+    // Close sidebar on mobile
     if (window.innerWidth <= 1024) toggleSidebar(false);
-    showToast(`📂 Loading ${page}...`, 'info', 1000);
+    
+    // Update activity
     localStorage.setItem('lastActivity', Date.now().toString());
-    window.location.href = `/admin/pages/${page}.html`;
+    
+    // Navigate to the page using the clean URL format
+    // This will use /admin/:page which the server handles
+    window.location.href = `/admin/${page}`;
 }
 
 function toggleSidebar(open) {
@@ -297,6 +303,225 @@ window.addEventListener('offline', () => {
     showToast('📡 You are offline', 'warning');
 });
 
+// ─── DASHBOARD DATA ──────────────────────────────────────────────────────
+async function fetchDashboardData() {
+    if (!supabase || !session) {
+        console.warn('Supabase or session not ready');
+        return;
+    }
+
+    const statusBar = document.getElementById('statusBar');
+    if (statusBar) {
+        statusBar.innerHTML = '<span>🔄 Loading...</span>';
+    }
+
+    try {
+        console.log('📊 Fetching dashboard data...');
+
+        const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult, recentResult] = await Promise.all([
+            supabase.from('babies').select('*', { count: 'exact', head: true }),
+            supabase.from('profiles').select('*', { count: 'exact', head: true }),
+            supabase.from('tracker_entries').select('*', { count: 'exact', head: true }),
+            supabase.from('community_posts').select('*', { count: 'exact', head: true }),
+            supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone'),
+            supabase.from('tracker_entries')
+                .select('tracker_id, title, logged_by_name, timestamp, created_at')
+                .order('timestamp', { ascending: false })
+                .limit(8)
+        ]);
+
+        const babyCount = babiesResult.count || 0;
+        const userCount = profilesResult.count || 0;
+        const entryCount = entriesResult.count || 0;
+        const postCount = postsResult.count || 0;
+        const milestoneCount = milestonesResult.count || 0;
+
+        safeSetText('statBabies', babyCount);
+        safeSetText('statUsers', userCount);
+        safeSetText('statEntries', entryCount);
+        safeSetText('statPosts', postCount);
+        safeSetText('statMilestones', milestoneCount);
+
+        safeSetText('babyBadge', babyCount);
+        safeSetText('userBadge', userCount);
+        safeSetText('postBadge', postCount);
+        safeSetText('entryBadge', entryCount);
+        safeSetText('milestoneBadge', milestoneCount);
+
+        const { data: streakData } = await supabase
+            .from('babies')
+            .select('streak')
+            .not('streak', 'is', null)
+            .limit(100);
+
+        let avgStreak = 0;
+        if (streakData && streakData.length > 0) {
+            const totalStreak = streakData.reduce((sum, b) => sum + (b.streak || 0), 0);
+            avgStreak = Math.round(totalStreak / streakData.length);
+        }
+        safeSetText('statStreak', avgStreak + 'd');
+
+        const feed = document.getElementById('activityFeed');
+        const recent = recentResult.data || [];
+
+        if (feed) {
+            if (recent.length === 0) {
+                feed.innerHTML = `
+                    <div class="empty-state">
+                        <div class="emoji">📭</div>
+                        <h3>No recent activity</h3>
+                    </div>
+                `;
+                safeSetText('activityCount', '0');
+            } else {
+                safeSetText('activityCount', recent.length);
+                const iconMap = {
+                    feed: '🍼',
+                    sleep: '😴',
+                    diaper: '🧷',
+                    potty: '🚽',
+                    growth: '📏',
+                    medication: '💊',
+                    milestone: '🏆'
+                };
+                let html = '';
+                recent.forEach(function(a) {
+                    const type = a.tracker_id || 'custom';
+                    html += `
+                        <div class="activity-item">
+                            <div class="activity-icon">${iconMap[type] || '📌'}</div>
+                            <div class="activity-content">
+                                <div class="activity-title">${a.title || type || 'Activity'}</div>
+                                <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
+                            </div>
+                            <div class="activity-time">${formatDate(a.timestamp)}</div>
+                        </div>
+                    `;
+                });
+                feed.innerHTML = html;
+            }
+        }
+
+        const hour = new Date().getHours();
+        let greeting = 'Good morning';
+        if (hour >= 12 && hour < 17) greeting = 'Good afternoon';
+        else if (hour >= 17) greeting = 'Good evening';
+        const userName = session?.user?.user_metadata?.full_name ||
+            session?.user?.email?.split('@')[0] || 'Admin';
+        document.getElementById('welcomeMessage').textContent = `👋 ${greeting}, ${userName}!`;
+
+        const statusBarEl = document.getElementById('statusBar');
+        if (statusBarEl) {
+            statusBarEl.innerHTML = `
+                <span>✅ All systems operational</span>
+                <span class="status-indicator ${navigator.onLine ? 'online' : 'offline'}">
+                    <span class="dot"></span> ${navigator.onLine ? 'Online' : 'Offline'}
+                </span>
+                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">
+                    Last updated: ${new Date().toLocaleString()}
+                </span>
+            `;
+        }
+        safeSetText('lastUpdated', new Date().toLocaleString());
+
+        console.log('✅ Dashboard data loaded');
+
+    } catch (err) {
+        console.error('Fetch error:', err);
+        const statusBarEl = document.getElementById('statusBar');
+        if (statusBarEl) {
+            statusBarEl.innerHTML = `
+                <span>❌ Error loading data</span>
+                <button class="btn btn-outline btn-sm" onclick="refreshAll()" style="margin-left:auto;">
+                    🔄 Retry
+                </button>
+            `;
+        }
+        showToast('Error loading dashboard data: ' + err.message, 'error');
+    }
+}
+
+// ─── REFRESH ──────────────────────────────────────────────────────────────
+async function refreshAll() {
+    showToast('🔄 Refreshing...', 'info');
+    await fetchDashboardData();
+    showToast('✅ All data refreshed', 'success');
+}
+
+// ─── REALTIME ──────────────────────────────────────────────────────────────
+function setupRealtime() {
+    if (!supabase || !session) return;
+    if (realtimeChannel) {
+        realtimeChannel.unsubscribe();
+        realtimeChannel = null;
+    }
+
+    realtimeChannel = supabase.channel('admin-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, () => fetchDashboardData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, () => fetchDashboardData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, () => fetchDashboardData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchDashboardData())
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ Realtime connected');
+            } else if (status === 'CHANNEL_ERROR') {
+                console.warn('⚠️ Realtime error, reconnecting...');
+                setTimeout(setupRealtime, 5000);
+            }
+        });
+}
+
+// ─── UPDATE SIDEBAR LINKS ────────────────────────────────────────────────
+function updateSidebarLinks() {
+    document.querySelectorAll('.sidebar-nav-item[onclick*="navigateTo"]').forEach(el => {
+        const originalOnclick = el.getAttribute('onclick');
+        // The navigateTo function handles the routing now
+        // No changes needed - it already uses the clean URL format
+    });
+}
+
+// ─── INIT ──────────────────────────────────────────────────────────────────
+async function init() {
+    if (!initSupabase()) {
+        showToast('Failed to initialize Supabase', 'error');
+        return;
+    }
+
+    const authed = await checkAuth();
+    if (!authed) {
+        showToast('Please log in to continue', 'warning');
+        return;
+    }
+
+    await fetchDashboardData();
+
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(fetchDashboardData, 30000);
+
+    setupRealtime();
+    updateSidebarLinks();
+
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 1024) {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('active');
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'r') {
+            e.preventDefault();
+            refreshAll();
+        }
+        if (e.key === 'Escape') {
+            closeModal();
+        }
+    });
+
+    console.log('🧵 Enterprise Admin Console ready');
+    console.log('👤 Logged in as: ' + session?.user?.email);
+}
+
 // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────────────
 window.showToast = showToast;
 window.handleLogout = handleLogout;
@@ -314,5 +539,9 @@ window.timeAgo = timeAgo;
 window.formatNumber = formatNumber;
 window.initSupabase = initSupabase;
 window.checkAuth = checkAuth;
+window.fetchDashboardData = fetchDashboardData;
+window.refreshAll = refreshAll;
 window.session = session;
 window.isOnline = isOnline;
+
+document.addEventListener('DOMContentLoaded', init);
