@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/admin/css/admin.css" />
+    <link rel="stylesheet" href="/css/admin.css" />
     <style>
         /* ─── ROOT VARIABLES ────────────────────────────────────────────── */
         :root {
@@ -98,6 +98,11 @@
             min-height: var(--header-height);
             flex-shrink: 0;
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
+            cursor: pointer;
+        }
+
+        .sidebar-brand:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.1));
         }
 
         .brand-icon {
@@ -1022,7 +1027,7 @@
     <div class="app">
         <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div>
                     <div class="logo-title">LittleLoom</div>
@@ -1272,7 +1277,7 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/admin/js/admin.js"></script>
+    <script src="/js/admin.js"></script>
     <script>
         // ─── SUPABASE CONFIG ──────────────────────────────────────────────
         const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
@@ -1368,7 +1373,7 @@
                         statusBar.innerHTML = `
                             <span>🔒</span>
                             <span>Please log in to continue</span>
-                            <button class="btn btn-primary btn-sm" onclick="window.location.href='/login.html'" style="margin-left:auto;">
+                            <button class="btn btn-primary btn-sm" onclick="window.location.href='/login'" style="margin-left:auto;">
                                 Login
                             </button>
                         `;
@@ -1431,7 +1436,7 @@
                     realtimeChannel = null; }
                 localStorage.removeItem('lastActivity');
                 showToast('✅ Logged out successfully', 'success');
-                window.location.href = '/login.html';
+                window.location.href = '/login';
             } catch (e) {
                 showToast('❌ Logout failed: ' + e.message, 'error');
             }
@@ -1439,10 +1444,14 @@
 
         // ─── NAVIGATION ────────────────────────────────────────────────────
         function navigateTo(page) {
+            // Close sidebar on mobile
             if (window.innerWidth <= 1024) toggleSidebar(false);
-            showToast(`📂 Loading ${page}...`, 'info', 1000);
+            
+            // Update activity
             localStorage.setItem('lastActivity', Date.now().toString());
-            window.location.href = `/admin/pages/${page}.html`;
+            
+            // Navigate to the page using clean URL format
+            window.location.href = `/admin/${page}`;
         }
 
         function toggleSidebar(open) {

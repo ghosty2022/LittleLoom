@@ -10,11 +10,10 @@ app.use((req, res, next) => {
 });
 
 // ─── STATIC FILES ──────────────────────────────────────────────
-// Serve static files directly from the admin folder (NO /admin prefix)
+// Serve static files directly from the admin folder
 app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
-app.use('/pages', express.static(path.join(__dirname, 'pages')));
 
 // ─── LOGIN ROUTE ──────────────────────────────────────────────
 app.get('/login', (req, res) => {
@@ -72,18 +71,6 @@ app.get('/admin/:page', (req, res) => {
     });
 });
 
-// Handle /admin/pages/:page (legacy support)
-app.get('/admin/pages/:page', (req, res) => {
-    const page = req.params.page.replace('.html', '');
-    const filePath = path.join(__dirname, 'pages', page + '.html');
-    res.sendFile(filePath, (err) => {
-        if (err) {
-            console.log(`❌ Page not found: ${page}`);
-            res.redirect('/login');
-        }
-    });
-});
-
 // ─── API ROUTES ────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -105,7 +92,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('🚀 LittleLoom Admin Dashboard');
     console.log('🔐 Login:  http://localhost:' + PORT + '/login');
     console.log('📊 Dashboard: http://localhost:' + PORT + '/admin/dashboard');
-    console.log('📁 Pages: http://localhost:' + PORT + '/admin/pages/');
+    console.log('📁 Pages: http://localhost:' + PORT + '/admin/:page (e.g., /admin/babies)');
     console.log('');
     console.log('⚡ Press Ctrl+C to stop');
     console.log('');
