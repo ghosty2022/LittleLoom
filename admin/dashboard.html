@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LittleLoom Admin - Enterprise Console</title>
+    <title>LittleLoom Admin - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -12,10 +12,6 @@
         .page-content { padding: 24px 32px; }
         .page-content.active { display: block; }
         .page-content { display: none; }
-        .iframe-container { width: 100%; height: calc(100vh - var(--header-height) - 40px); border: none; background: var(--bg-primary); border-radius: var(--radius); overflow: hidden; }
-        .iframe-container iframe { width: 100%; height: 100%; border: none; background: var(--bg-primary); }
-        .page-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 16px; flex-direction: column; gap: 16px; }
-        .page-loading .spinner { width: 40px; height: 40px; border-width: 3px; }
         .quick-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
         .quick-stat { background: var(--bg-card); border-radius: var(--radius); padding: 16px 20px; border: 1px solid var(--border); transition: var(--transition); }
         .quick-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
@@ -42,269 +38,201 @@
     </style>
 </head>
 <body>
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-            <div class="brand-icon">🧵</div>
-            <div>
-                <div class="logo-title">LittleLoom</div>
-                <div class="logo-sub">Enterprise Console</div>
-            </div>
-        </div>
-        <nav class="sidebar-nav" id="sidebarNav">
-            <div class="sidebar-nav-label">Overview</div>
-            <a class="sidebar-nav-item active" data-page="dashboard" href="#" onclick="loadPage('dashboard')">
-                <span class="icon">📊</span> Dashboard <span class="badge success">Live</span>
-            </a>
-            <div class="sidebar-nav-label">Management</div>
-            <a class="sidebar-nav-item" data-page="babies" href="#" onclick="loadPage('babies')">
-                <span class="icon">👶</span> Babies <span class="badge" id="babyBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" data-page="users" href="#" onclick="loadPage('users')">
-                <span class="icon">👤</span> Users <span class="badge" id="userBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" data-page="moderation" href="#" onclick="loadPage('moderation')">
-                <span class="icon">🛡️</span> Moderation <span class="badge danger" id="modBadge">0</span>
-            </a>
-            <div class="sidebar-nav-label">Community</div>
-            <a class="sidebar-nav-item" data-page="community" href="#" onclick="loadPage('community')">
-                <span class="icon">💬</span> Community <span class="badge" id="postBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" data-page="topics" href="#" onclick="loadPage('topics')">
-                <span class="icon">📌</span> Topics
-            </a>
-            <div class="sidebar-nav-label">Trackers</div>
-            <a class="sidebar-nav-item" data-page="trackers" href="#" onclick="loadPage('trackers')">
-                <span class="icon">📈</span> Tracker Entries <span class="badge" id="entryBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" data-page="milestones" href="#" onclick="loadPage('milestones')">
-                <span class="icon">🏆</span> Milestones <span class="badge" id="milestoneBadge">0</span>
-            </a>
-            <div class="sidebar-nav-label">Analytics</div>
-            <a class="sidebar-nav-item" data-page="analytics" href="#" onclick="loadPage('analytics')">
-                <span class="icon">📈</span> Analytics
-            </a>
-            <a class="sidebar-nav-item" data-page="performance" href="#" onclick="loadPage('performance')">
-                <span class="icon">⚡</span> Performance <span class="badge success">Live</span>
-            </a>
-            <div class="sidebar-nav-label">System</div>
-            <a class="sidebar-nav-item" data-page="realtime" href="#" onclick="loadPage('realtime')">
-                <span class="icon">🔄</span> Realtime <span class="badge success">Live</span>
-            </a>
-            <a class="sidebar-nav-item" data-page="health" href="#" onclick="loadPage('health')">
-                <span class="icon">❤️</span> System Health <span class="badge success" id="healthBadge">OK</span>
-            </a>
-            <a class="sidebar-nav-item" data-page="audit" href="#" onclick="loadPage('audit')">
-                <span class="icon">📋</span> Audit Logs
-            </a>
-            <a class="sidebar-nav-item" data-page="notifications" href="#" onclick="loadPage('notifications')">
-                <span class="icon">🔔</span> Push Notifications <span class="badge" id="notifBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" data-page="features" href="#" onclick="loadPage('features')">
-                <span class="icon">🚩</span> Feature Flags
-            </a>
-            <a class="sidebar-nav-item" data-page="export" href="#" onclick="loadPage('export')">
-                <span class="icon">📤</span> Data Export
-            </a>
-            <a class="sidebar-nav-item" data-page="api" href="#" onclick="loadPage('api')">
-                <span class="icon">🔑</span> API Management
-            </a>
-            <a class="sidebar-nav-item" data-page="support" href="#" onclick="loadPage('support')">
-                <span class="icon">🎫</span> Support Tickets <span class="badge danger" id="supportBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" data-page="announcements" href="#" onclick="loadPage('announcements')">
-                <span class="icon">📢</span> Announcements
-            </a>
-            <div class="sidebar-nav-label">Settings</div>
-            <a class="sidebar-nav-item" data-page="settings" href="#" onclick="loadPage('settings')">
-                <span class="icon">⚙️</span> Settings
-            </a>
-            <a class="sidebar-nav-item" data-page="backup" href="#" onclick="loadPage('backup')">
-                <span class="icon">💾</span> Backup & Restore
-            </a>
-        </nav>
-        <div class="sidebar-footer">
-            <div class="user-info">
-                <div class="user-avatar" id="sidebarAvatar">A</div>
+    <div class="app">
+        <!-- ─── SIDEBAR ────────────────────────────────────────────── -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-icon">🧵</div>
                 <div>
-                    <div class="user-name" id="sidebarName">Admin</div>
-                    <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                    <div class="logo-title">LittleLoom</div>
+                    <div class="logo-sub">Enterprise Console</div>
+                </div>
+            </div>
+            <nav class="sidebar-nav" id="sidebarNav">
+                <div class="sidebar-nav-label">Overview</div>
+                <a class="sidebar-nav-item active" data-page="dashboard" href="/admin/dashboard.html">
+                    <span class="icon">📊</span> Dashboard
+                    <span class="badge success">Live</span>
+                </a>
+                <div class="sidebar-nav-label">Management</div>
+                <a class="sidebar-nav-item" data-page="babies" href="#" onclick="navigateTo('babies')">
+                    <span class="icon">👶</span> Babies
+                    <span class="badge" id="babyBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" data-page="users" href="#" onclick="navigateTo('users')">
+                    <span class="icon">👤</span> Users
+                    <span class="badge" id="userBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" data-page="moderation" href="#" onclick="navigateTo('moderation')">
+                    <span class="icon">🛡️</span> Moderation
+                    <span class="badge danger" id="modBadge">0</span>
+                </a>
+                <div class="sidebar-nav-label">Community</div>
+                <a class="sidebar-nav-item" data-page="community" href="#" onclick="navigateTo('community')">
+                    <span class="icon">💬</span> Community
+                    <span class="badge" id="postBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" data-page="topics" href="#" onclick="navigateTo('topics')">
+                    <span class="icon">📌</span> Topics
+                </a>
+                <div class="sidebar-nav-label">Trackers</div>
+                <a class="sidebar-nav-item" data-page="trackers" href="#" onclick="navigateTo('trackers')">
+                    <span class="icon">📈</span> Tracker Entries
+                    <span class="badge" id="entryBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" data-page="milestones" href="#" onclick="navigateTo('milestones')">
+                    <span class="icon">🏆</span> Milestones
+                    <span class="badge" id="milestoneBadge">0</span>
+                </a>
+                <div class="sidebar-nav-label">Analytics</div>
+                <a class="sidebar-nav-item" data-page="analytics" href="#" onclick="navigateTo('analytics')">
+                    <span class="icon">📈</span> Analytics
+                </a>
+                <a class="sidebar-nav-item" data-page="growth" href="#" onclick="navigateTo('growth')">
+                    <span class="icon">📊</span> Growth Analytics
+                </a>
+                <a class="sidebar-nav-item" data-page="activity" href="#" onclick="navigateTo('activity')">
+                    <span class="icon">📈</span> Activity Heatmap
+                </a>
+                <div class="sidebar-nav-label">System</div>
+                <a class="sidebar-nav-item" data-page="realtime" href="#" onclick="navigateTo('realtime')">
+                    <span class="icon">🔄</span> Realtime
+                    <span class="badge success">Live</span>
+                </a>
+                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
+                    <span class="icon">⚙️</span> Settings
+                </a>
+                <a class="sidebar-nav-item" data-page="backup" href="#" onclick="navigateTo('backup')">
+                    <span class="icon">💾</span> Backup & Restore
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="sidebarAvatar">A</div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <!-- ─── MODAL ────────────────────────────────────────────────── -->
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+            <div class="modal" id="modalContent">
+                <div class="modal-header">
+                    <h2 id="modalTitle">Modal</h2>
+                    <button class="modal-close" onclick="closeModal()">✕</button>
+                </div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer" id="modalFooter">
+                    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
-    </aside>
 
-    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+        <!-- ─── MAIN ────────────────────────────────────────────────── -->
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
+                    <div>
+                        <div class="topbar-title">Dashboard <span class="sub">| Enterprise Overview</span></div>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <div class="topbar-status">
+                        <span class="dot"></span>
+                        <span id="connectionStatus">Connected</span>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn btn-outline" onclick="refreshAll()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                    </div>
+                </div>
+            </header>
 
-    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
-        <div class="modal" id="modalContent">
-            <div class="modal-header">
-                <h2 id="modalTitle">Modal</h2>
-                <button class="modal-close" onclick="closeModal()">✕</button>
+            <div class="page-content active" id="page-dashboard">
+                <div class="status-bar" id="statusBar">
+                    <span>✅ All systems operational</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                </div>
+
+                <div class="quick-stats" id="dashboardStats">
+                    <div class="quick-stat"><div class="num" id="statBabies">—</div><div class="label">👶 Total Babies</div><div class="change up">↑ 12%</div></div>
+                    <div class="quick-stat"><div class="num" id="statUsers">—</div><div class="label">👤 Active Users</div><div class="change up">↑ 8%</div></div>
+                    <div class="quick-stat"><div class="num" id="statEntries">—</div><div class="label">📊 Tracker Entries</div><div class="change up">↑ 23%</div></div>
+                    <div class="quick-stat"><div class="num" id="statPosts">—</div><div class="label">💬 Community Posts</div><div class="change up">↑ 15%</div></div>
+                    <div class="quick-stat"><div class="num" id="statMilestones">—</div><div class="label">🏆 Milestones</div><div class="change up">↑ 7%</div></div>
+                    <div class="quick-stat"><div class="num" id="statStreak">—<span style="font-size:16px;font-weight:600;color:var(--text-muted);">d</span></div><div class="label">💪 Avg Streak</div><div class="change neutral">→ 0%</div></div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="emoji">🕒</span> Recent Activity</div>
+                            <span id="activityCount">0</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="activity-feed" id="activityFeed">
+                                <div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="emoji">📊</span> Weekly Activity</div>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-bars" id="weeklyBars">
+                                <div class="bar" style="height:20%;"></div>
+                                <div class="bar" style="height:45%;"></div>
+                                <div class="bar" style="height:70%;"></div>
+                                <div class="bar" style="height:55%;"></div>
+                                <div class="bar" style="height:85%;"></div>
+                                <div class="bar" style="height:65%;"></div>
+                                <div class="bar" style="height:90%;"></div>
+                            </div>
+                            <div class="chart-labels">
+                                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="modal-body" id="modalBody"></div>
-            <div class="modal-footer" id="modalFooter">
-                <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-                <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-            </div>
-        </div>
+        </main>
     </div>
-
-    <main class="main">
-        <header class="topbar">
-            <div class="topbar-left">
-                <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                <div>
-                    <div class="topbar-title" id="pageTitle">Dashboard <span class="sub">| Enterprise Overview</span></div>
-                </div>
-            </div>
-            <div class="topbar-right">
-                <div class="topbar-status">
-                    <span class="dot"></span>
-                    <span id="connectionStatus">Connected</span>
-                </div>
-                <div class="topbar-actions">
-                    <button class="btn btn-outline" onclick="refreshAll()">🔄 Refresh</button>
-                    <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
-                </div>
-            </div>
-        </header>
-
-        <div id="page-dashboard" class="page-content active">
-            <div class="status-bar" id="statusBar">
-                <span>✅ All systems operational</span>
-                <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-            </div>
-
-            <div class="quick-stats" id="dashboardStats">
-                <div class="quick-stat"><div class="num" id="statBabies">—</div><div class="label">👶 Total Babies</div><div class="change up">↑ 12%</div></div>
-                <div class="quick-stat"><div class="num" id="statUsers">—</div><div class="label">👤 Active Users</div><div class="change up">↑ 8%</div></div>
-                <div class="quick-stat"><div class="num" id="statEntries">—</div><div class="label">📊 Tracker Entries</div><div class="change up">↑ 23%</div></div>
-                <div class="quick-stat"><div class="num" id="statPosts">—</div><div class="label">💬 Community Posts</div><div class="change up">↑ 15%</div></div>
-                <div class="quick-stat"><div class="num" id="statMilestones">—</div><div class="label">🏆 Milestones</div><div class="change up">↑ 7%</div></div>
-                <div class="quick-stat"><div class="num" id="statStreak">—<span style="font-size:16px;font-weight:600;color:var(--text-muted);">d</span></div><div class="label">💪 Avg Streak</div><div class="change neutral">→ 0%</div></div>
-            </div>
-
-            <div class="grid-2">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title"><span class="emoji">🕒</span> Recent Activity</div>
-                        <span id="activityCount">0</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="activity-feed" id="activityFeed">
-                            <div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title"><span class="emoji">📊</span> Weekly Activity</div>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-bars" id="weeklyBars">
-                            <div class="bar" style="height:20%;"></div>
-                            <div class="bar" style="height:45%;"></div>
-                            <div class="bar" style="height:70%;"></div>
-                            <div class="bar" style="height:55%;"></div>
-                            <div class="bar" style="height:85%;"></div>
-                            <div class="bar" style="height:65%;"></div>
-                            <div class="bar" style="height:90%;"></div>
-                        </div>
-                        <div class="chart-labels">
-                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="page-container" class="page-content" style="padding:0;display:none;">
-            <div class="iframe-container" id="iframeContainer">
-                <div class="page-loading" id="pageLoading">
-                    <div class="spinner"></div>
-                    <span>Loading page...</span>
-                </div>
-                <iframe id="pageFrame" style="display:none;width:100%;height:100%;border:none;" 
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
-            </div>
-        </div>
-    </main>
 
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="/admin/js/admin.js"></script>
     <script>
-        function loadPage(page) {
-            const dashboard = document.getElementById('page-dashboard');
-            const container = document.getElementById('page-container');
-            const iframe = document.getElementById('pageFrame');
-            const loading = document.getElementById('pageLoading');
-            
-            document.querySelectorAll('.sidebar-nav-item').forEach(el => {
-                el.classList.remove('active');
-                if (el.getAttribute('data-page') === page) {
-                    el.classList.add('active');
-                }
-            });
-            
-            const titles = {
-                'dashboard': 'Dashboard <span class="sub">| Enterprise Overview</span>',
-                'babies': 'Babies <span class="sub">| All Baby Profiles</span>',
-                'users': 'Users <span class="sub">| User Management</span>',
-                'moderation': 'Moderation <span class="sub">| Content Review</span>',
-                'community': 'Community <span class="sub">| Posts & Engagement</span>',
-                'topics': 'Topics <span class="sub">| Community Topics</span>',
-                'trackers': 'Trackers <span class="sub">| All Tracker Entries</span>',
-                'milestones': 'Milestones <span class="sub">| Developmental Achievements</span>',
-                'analytics': 'Analytics <span class="sub">| Growth & Engagement</span>',
-                'performance': 'Performance <span class="sub">| System Metrics</span>',
-                'realtime': 'Realtime <span class="sub">| Live Event Stream</span>',
-                'health': 'Health <span class="sub">| System Status</span>',
-                'audit': 'Audit <span class="sub">| Activity Trail</span>',
-                'notifications': 'Notifications <span class="sub">| Push Management</span>',
-                'features': 'Feature Flags <span class="sub">| Feature Management</span>',
-                'export': 'Data Export <span class="sub">| Export App Data</span>',
-                'api': 'API Management <span class="sub">| Keys & Rate Limiting</span>',
-                'support': 'Support <span class="sub">| Customer Support</span>',
-                'announcements': 'Announcements <span class="sub">| App-wide Messages</span>',
-                'settings': 'Settings <span class="sub">| System Configuration</span>',
-                'backup': 'Backup <span class="sub">| Data Protection</span>'
-            };
-            document.getElementById('pageTitle').innerHTML = titles[page] || 'Dashboard';
-            
-            if (page === 'dashboard') {
-                dashboard.style.display = 'block';
-                container.style.display = 'none';
-                fetchDashboardData();
-                return;
-            }
-            
-            dashboard.style.display = 'none';
-            container.style.display = 'block';
-            
-            loading.style.display = 'flex';
-            iframe.style.display = 'none';
-            
-            iframe.onload = function() {
-                loading.style.display = 'none';
-                iframe.style.display = 'block';
-            };
-            
-            iframe.src = '/admin/pages/' + page + '.html';
-            
-            if (window.innerWidth <= 768) toggleSidebar(false);
-        }
-        
         async function fetchDashboardData() {
             if (!supabase || !session) return;
             
             try {
-                const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult] = await Promise.all([
+                // Get counts from all tables
+                const [
+                    babiesResult, 
+                    profilesResult, 
+                    entriesResult, 
+                    postsResult, 
+                    milestonesResult,
+                    recentResult
+                ] = await Promise.all([
                     supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
                     supabase.from('profiles').select('*', { count: 'exact', head: true }),
                     supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
                     supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
-                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone').eq('is_deleted', false)
+                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone').eq('is_deleted', false),
+                    supabase.from('tracker_entries')
+                        .select('tracker_id, title, logged_by_name, timestamp, created_at')
+                        .eq('is_deleted', false)
+                        .order('timestamp', { ascending: false })
+                        .limit(10)
                 ]);
                 
                 const babyCount = babiesResult.count || 0;
@@ -319,6 +247,7 @@
                 safeSetText('statPosts', postCount);
                 safeSetText('statMilestones', milestoneCount);
                 
+                // Get average streak
                 const { data: babies } = await supabase.from('babies').select('streak').eq('is_active', true);
                 if (babies && babies.length > 0) {
                     const totalStreak = babies.reduce((sum, b) => sum + (b.streak || 0), 0);
@@ -326,22 +255,18 @@
                     document.getElementById('statStreak').innerHTML = avg + '<span style="font-size:16px;font-weight:600;color:var(--text-muted);">d</span>';
                 }
                 
+                // Update badges
                 safeSetText('babyBadge', babyCount);
                 safeSetText('userBadge', userCount);
                 safeSetText('postBadge', postCount);
                 safeSetText('entryBadge', entryCount);
                 safeSetText('milestoneBadge', milestoneCount);
                 
-                const { data: recent } = await supabase
-                    .from('tracker_entries')
-                    .select('tracker_id, title, logged_by_name, timestamp')
-                    .eq('is_deleted', false)
-                    .order('timestamp', { ascending: false })
-                    .limit(10);
-                
+                // Update activity feed
                 const feed = document.getElementById('activityFeed');
                 if (feed) {
-                    if (!recent || recent.length === 0) {
+                    const recent = recentResult.data || [];
+                    if (recent.length === 0) {
                         feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
                         safeSetText('activityCount', '0');
                     } else {
@@ -362,6 +287,7 @@
                     }
                 }
                 
+                // Update status
                 const statusBar = document.getElementById('statusBar');
                 if (statusBar) {
                     statusBar.innerHTML = '<span>✅ All systems operational</span><span style="margin-left:auto;font-size:12px;">Last updated: ' + new Date().toLocaleString() + '</span>';
@@ -376,13 +302,35 @@
                 }
             }
         }
-        
+
         async function refreshAll() {
             showToast('🔄 Refreshing all data...', 'info');
             await fetchDashboardData();
             showToast('✅ All data refreshed', 'success');
         }
-        
+
+        function setupRealtime() {
+            if (!supabase || !session) return;
+            if (realtimeChannel) {
+                realtimeChannel.unsubscribe();
+                realtimeChannel = null;
+            }
+            
+            realtimeChannel = supabase.channel('admin-realtime')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, function(p) { fetchDashboardData(); })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, function(p) { fetchDashboardData(); })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, function(p) { fetchDashboardData(); })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, function(p) { fetchDashboardData(); })
+                .subscribe(function(status) {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('✅ Realtime connected');
+                    } else if (status === 'CHANNEL_ERROR') {
+                        console.warn('⚠️ Realtime error, reconnecting...');
+                        setTimeout(setupRealtime, 5000);
+                    }
+                });
+        }
+
         async function init() {
             if (!initSupabase()) {
                 showToast('Failed to initialize Supabase', 'error');
@@ -410,33 +358,11 @@
             
             console.log('🧵 Enterprise Admin Console ready');
         }
-        
-        function setupRealtime() {
-            if (!supabase || !session) return;
-            if (realtimeChannel) {
-                realtimeChannel.unsubscribe();
-                realtimeChannel = null;
-            }
-            
-            realtimeChannel = supabase.channel('admin-realtime')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, function(p) { fetchDashboardData(); })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, function(p) { fetchDashboardData(); })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, function(p) { fetchDashboardData(); })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, function(p) { fetchDashboardData(); })
-                .subscribe(function(status) {
-                    if (status === 'SUBSCRIBED') {
-                        console.log('✅ Realtime connected');
-                    } else if (status === 'CHANNEL_ERROR') {
-                        console.warn('⚠️ Realtime error, reconnecting...');
-                        setTimeout(setupRealtime, 5000);
-                    }
-                });
-        }
-        
-        window.loadPage = loadPage;
-        window.refreshAll = refreshAll;
+
+        // Expose functions globally
         window.fetchDashboardData = fetchDashboardData;
-        
+        window.refreshAll = refreshAll;
+
         document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>

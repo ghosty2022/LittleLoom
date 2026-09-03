@@ -7,13 +7,18 @@ let session = null;
 let refreshTimer = null;
 let realtimeChannel = null;
 
+// ─── INIT ─────────────────────────────────────────────────────────
 function initSupabase() {
     try {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         return true;
-    } catch (e) { console.error('Supabase init error:', e); return false; }
+    } catch (e) { 
+        console.error('Supabase init error:', e); 
+        return false; 
+    }
 }
 
+// ─── TOAST ────────────────────────────────────────────────────────
 function showToast(message, type) {
     type = type || 'info';
     let container = document.getElementById('toastContainer');
@@ -27,9 +32,12 @@ function showToast(message, type) {
     toast.className = 'toast ' + type;
     toast.textContent = message;
     container.appendChild(toast);
-    setTimeout(function() { if (toast.parentNode) toast.remove(); }, 4000);
+    setTimeout(function() { 
+        if (toast.parentNode) toast.remove(); 
+    }, 4000);
 }
 
+// ─── AUTH ─────────────────────────────────────────────────────────
 async function checkAuth() {
     try {
         const { data, error } = await supabase.auth.getSession();
@@ -51,7 +59,10 @@ async function checkAuth() {
             if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
         }
         return true;
-    } catch (e) { console.error('Auth check error:', e); return false; }
+    } catch (e) { 
+        console.error('Auth check error:', e); 
+        return false; 
+    }
 }
 
 async function handleLogout() {
@@ -63,6 +74,11 @@ async function handleLogout() {
         if (statusEl) statusEl.textContent = 'Disconnected';
         window.location.href = '/admin/dashboard.html';
     }
+}
+
+// ─── NAVIGATION ──────────────────────────────────────────────────
+function navigateTo(page) {
+    window.location.href = '/admin/pages/' + page + '.html';
 }
 
 function toggleSidebar(open) {
@@ -80,6 +96,7 @@ function toggleSidebar(open) {
     }
 }
 
+// ─── MODAL ────────────────────────────────────────────────────────
 let modalResolve = null;
 let modalData = null;
 
@@ -112,6 +129,7 @@ function modalConfirm() {
     closeModal();
 }
 
+// ─── SAFE SET ────────────────────────────────────────────────────
 function safeSetText(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
@@ -122,6 +140,7 @@ function safeSetHTML(id, value) {
     if (el) el.innerHTML = value;
 }
 
+// ─── FORMAT HELPERS ─────────────────────────────────────────────
 function formatDate(dateStr) {
     if (!dateStr) return '—';
     return new Date(dateStr).toLocaleString();
@@ -146,8 +165,98 @@ function timeAgo(dateStr) {
     return new Date(dateStr).toLocaleDateString();
 }
 
+// ─── PAGE LOADER ─────────────────────────────────────────────────
+function loadPage(page) {
+    const iframe = document.getElementById('pageFrame');
+    const loading = document.getElementById('pageLoading');
+    const container = document.getElementById('iframeContainer');
+    
+    // Update sidebar
+    document.querySelectorAll('.sidebar-nav-item').forEach(el => {
+        el.classList.remove('active');
+        if (el.getAttribute('data-page') === page) {
+            el.classList.add('active');
+        }
+    });
+    
+    // Update title
+    const titles = {
+        'dashboard': 'Dashboard <span class="sub">| Enterprise Overview</span>',
+        'babies': 'Babies <span class="sub">| All Baby Profiles</span>',
+        'users': 'Users <span class="sub">| User Management</span>',
+        'moderation': 'Moderation <span class="sub">| Content Review</span>',
+        'community': 'Community <span class="sub">| Posts & Engagement</span>',
+        'topics': 'Topics <span class="sub">| Community Topics</span>',
+        'trackers': 'Trackers <span class="sub">| All Tracker Entries</span>',
+        'milestones': 'Milestones <span class="sub">| Developmental Achievements</span>',
+        'analytics': 'Analytics <span class="sub">| Growth & Engagement</span>',
+        'performance': 'Performance <span class="sub">| System Metrics</span>',
+        'realtime': 'Realtime <span class="sub">| Live Event Stream</span>',
+        'health': 'Health <span class="sub">| System Status</span>',
+        'audit': 'Audit <span class="sub">| Activity Trail</span>',
+        'notifications': 'Notifications <span class="sub">| Push Management</span>',
+        'features': 'Feature Flags <span class="sub">| Feature Management</span>',
+        'export': 'Data Export <span class="sub">| Export App Data</span>',
+        'api': 'API Management <span class="sub">| Keys & Rate Limiting</span>',
+        'support': 'Support <span class="sub">| Customer Support</span>',
+        'announcements': 'Announcements <span class="sub">| App-wide Messages</span>',
+        'settings': 'Settings <span class="sub">| System Configuration</span>',
+        'backup': 'Backup <span class="sub">| Data Protection</span>'
+    };
+    document.getElementById('pageTitle').innerHTML = titles[page] || 'Dashboard';
+    
+    // Load iframe
+    loading.style.display = 'flex';
+    iframe.style.display = 'none';
+    
+    if (page === 'dashboard') {
+        loading.style.display = 'none';
+        iframe.style.display = 'none';
+        window.location.href = '/admin/dashboard.html';
+        return;
+    }
+    
+    iframe.onload = function() {
+        loading.style.display = 'none';
+        iframe.style.display = 'block';
+    };
+    iframe.src = '/admin/pages/' + page + '.html';
+    
+    // Close sidebar on mobile
+    if (window.innerWidth <= 768) toggleSidebar(false);
+}
+
+// ─── TABLE HELPERS ──────────────────────────────────────────────
+function getTableConfig(page) {
+    const configs = {
+        'babies': { table: 'babies', nameField: 'name', title: 'Babies', icon: '👶' },
+        'users': { table: 'profiles', nameField: 'full_name', title: 'Users', icon: '👤' },
+        'moderation': { table: 'community_posts', nameField: 'title', title: 'Moderation', icon: '🛡️' },
+        'community': { table: 'community_posts', nameField: 'title', title: 'Community', icon: '💬' },
+        'topics': { table: 'community_topics', nameField: 'title', title: 'Topics', icon: '📌' },
+        'trackers': { table: 'tracker_entries', nameField: 'title', title: 'Trackers', icon: '📈' },
+        'milestones': { table: 'tracker_entries', nameField: 'title', title: 'Milestones', icon: '🏆' },
+        'analytics': { table: 'babies', nameField: 'name', title: 'Analytics', icon: '📈' },
+        'performance': { table: 'babies', nameField: 'name', title: 'Performance', icon: '⚡' },
+        'realtime': { table: 'babies', nameField: 'name', title: 'Realtime', icon: '🔄' },
+        'health': { table: 'babies', nameField: 'name', title: 'Health', icon: '❤️' },
+        'audit': { table: 'babies', nameField: 'name', title: 'Audit', icon: '📋' },
+        'notifications': { table: 'babies', nameField: 'name', title: 'Notifications', icon: '🔔' },
+        'features': { table: 'babies', nameField: 'name', title: 'Features', icon: '🚩' },
+        'export': { table: 'babies', nameField: 'name', title: 'Export', icon: '📤' },
+        'api': { table: 'babies', nameField: 'name', title: 'API', icon: '🔑' },
+        'support': { table: 'babies', nameField: 'name', title: 'Support', icon: '🎫' },
+        'announcements': { table: 'babies', nameField: 'name', title: 'Announcements', icon: '📢' },
+        'settings': { table: 'babies', nameField: 'name', title: 'Settings', icon: '⚙️' },
+        'backup': { table: 'babies', nameField: 'name', title: 'Backup', icon: '💾' }
+    };
+    return configs[page] || configs['babies'];
+}
+
+// ─── EXPOSE GLOBALLY ─────────────────────────────────────────────
 window.showToast = showToast;
 window.handleLogout = handleLogout;
+window.navigateTo = navigateTo;
 window.toggleSidebar = toggleSidebar;
 window.openModal = openModal;
 window.closeModal = closeModal;
@@ -159,4 +268,6 @@ window.formatDateShort = formatDateShort;
 window.timeAgo = timeAgo;
 window.initSupabase = initSupabase;
 window.checkAuth = checkAuth;
+window.loadPage = loadPage;
+window.getTableConfig = getTableConfig;
 window.session = session;

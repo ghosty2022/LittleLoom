@@ -8,116 +8,133 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        body { padding: 20px; background: var(--bg-primary); }
-        .page-container { max-width: 1400px; margin: 0 auto; }
-        .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-        .page-header h1 { font-size: 24px; font-weight: 700; }
-        .page-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
-        .stat-card { background: var(--bg-card); padding: 16px; border-radius: var(--radius); border: 1px solid var(--border); text-align: center; }
-        .stat-card .num { font-size: 24px; font-weight: 800; }
-        .stat-card .label { font-size: 12px; color: var(--text-muted); }
-        .filter-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 16px; background: var(--bg-primary); border-radius: var(--radius-sm); border: 1px solid var(--border); }
-        .filter-bar input, .filter-bar select { padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); font-size: 13px; font-family: var(--font); background: var(--bg-card); color: var(--text-primary); flex: 1; min-width: 120px; }
-        .table-wrap { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 8px 10px 0; border-bottom: 1.5px solid var(--border); }
-        td { padding: 12px 8px 12px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
-        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-        .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
-        .empty-state h3 { color: var(--text-primary); font-weight: 700; margin-bottom: 6px; }
-        .action-btn { padding: 4px 8px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; background: transparent; transition: var(--transition); }
-        .action-btn:hover { background: var(--bg-primary); }
-        .action-btn.danger:hover { background: #fee2e2; }
-        .card { background: var(--bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; margin-bottom: 24px; }
-        .card-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px; }
-        .card-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
-        .card-title .emoji { font-size: 20px; }
-        .card-body { padding: 20px 24px; }
-        .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-        .badge-success { background: #dcfce7; color: #16a34a; }
-        .badge-warning { background: #fef3c7; color: #d97706; }
-        .badge-danger { background: #fee2e2; color: #dc2626; }
-        .badge-info { background: #dbeafe; color: #2563eb; }
-        .badge-purple { background: #ede9fe; color: #7c3aed; }
-        .badge-gray { background: #f3f4f6; color: #6b7280; }
-        .pill { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; background: var(--bg-primary); color: var(--text-secondary); }
-        .activity-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-        .activity-item:last-child { border-bottom: none; }
-        .activity-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; background: var(--bg-primary); }
-        .activity-content { flex: 1; }
-        .activity-title { font-weight: 600; font-size: 14px; }
-        .activity-meta { font-size: 12px; color: var(--text-muted); }
-        .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-        .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+        /* Page-specific styles */
     </style>
 </head>
 <body>
-    <div class="page-container">
-        <div class="page-header">
-            <span class="icon" style="font-size:32px;">🔑</span>
-            <h1>API <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="countDisplay">0</span></h1>
-            <div class="page-actions">
-                <button class="btn btn-primary" onclick="handleAdd()">➕ Add</button>
-                <button class="btn btn-outline" onclick="loadData()">🔄 Refresh</button>
-            </div>
-        </div>
-        
-        <div class="stat-grid" id="statsGrid">
-            <div class="stat-card"><div class="num" id="stat1">0</div><div class="label">Total</div></div>
-            <div class="stat-card"><div class="num" id="stat2">0</div><div class="label">Active</div></div>
-            <div class="stat-card"><div class="num" id="stat3">0</div><div class="label">Today</div></div>
-        </div>
-        
-        <div class="filter-bar">
-            <input type="text" placeholder="Search..." id="searchInput" oninput="filterData()">
-            <select id="filterSelect" onchange="filterData()">
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-            </select>
-        </div>
-        
-        <div class="card">
-            <div class="card-body">
-                <div class="table-wrap">
-                    <table>
-                        <thead id="tableHead"><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-                        <tbody id="tableBody"><tr><td colspan="5" class="empty-state"><div class="emoji">📊</div><h3>Loading data...</h3></td></tr></tbody>
-                    </table>
+    <div class="app">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-icon">🧵</div>
+                <div>
+                    <div class="logo-title">LittleLoom</div>
+                    <div class="logo-sub">Enterprise Console</div>
                 </div>
             </div>
-        </div>
+            <nav class="sidebar-nav">
+                <div class="sidebar-nav-label">Overview</div>
+                <a class="sidebar-nav-item" data-page="dashboard" href="/admin/dashboard.html">
+                    <span class="icon">📊</span> Dashboard
+                    <span class="badge success">Live</span>
+                </a>
+                <div class="sidebar-nav-label">Management</div>
+                <a class="sidebar-nav-item active" data-page="api" href="#">
+                    <span class="icon">🔑</span> API
+                </a>
+                <a class="sidebar-nav-item" data-page="users" href="#" onclick="navigateTo('users')">
+                    <span class="icon">👤</span> Users
+                </a>
+                <div class="sidebar-nav-label">Analytics</div>
+                <a class="sidebar-nav-item" data-page="activity" href="#" onclick="navigateTo('activity')">
+                    <span class="icon">📈</span> Activity Heatmap
+                </a>
+                <a class="sidebar-nav-item" data-page="growth" href="#" onclick="navigateTo('growth')">
+                    <span class="icon">📊</span> Growth Analytics
+                </a>
+                <div class="sidebar-nav-label">System</div>
+                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
+                    <span class="icon">⚙️</span> Settings
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="sidebarAvatar">A</div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
+                    <div>
+                        <div class="topbar-title">API <span class="sub">| API Management</span></div>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <div class="topbar-status">
+                        <span class="dot"></span>
+                        <span id="connectionStatus">Connected</span>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn btn-outline" onclick="loadData()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                    </div>
+                </div>
+            </header>
+            <div class="page-content active">
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                </div>
+                <div class="page-header">
+                    <span class="icon">🔑</span>
+                    <h1>API <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="countDisplay">0</span></h1>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" onclick="handleAdd()">➕ Add</button>
+                    </div>
+                </div>
+                <div class="stat-grid" id="statsGrid">
+                    <div class="stat-card"><div class="num" id="stat1">0</div><div class="stat-label">Total</div></div>
+                    <div class="stat-card"><div class="num" id="stat2">0</div><div class="stat-label">Active</div></div>
+                    <div class="stat-card"><div class="num" id="stat3">0</div><div class="stat-label">Today</div></div>
+                </div>
+                <div class="filter-bar">
+                    <input type="text" placeholder="Search..." id="searchInput" oninput="filterData()">
+                    <select id="filterSelect" onchange="filterData()">
+                        <option value="all">All</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+                                <tbody id="tableBody"><tr><td colspan="5" class="empty-state"><div class="emoji">📊</div><h3>Loading data...</h3></td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
-    
+    <div class="toast-container" id="toastContainer"></div>
     <script src="/admin/js/admin.js"></script>
     <script>
         let dataCache = [];
         let tableName = 'babies';
-        
         async function loadData() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
-            
             try {
                 let { data, error } = await supabase.from(tableName).select('*').limit(100);
                 if (error) throw error;
-                
                 dataCache = data || [];
                 renderData(dataCache);
-                
-                document.getElementById('stat1').textContent = dataCache.length;
-                document.getElementById('stat2').textContent = dataCache.filter(d => d.is_active !== false).length;
-                document.getElementById('stat3').textContent = dataCache.filter(d => {
-                    if (d.created_at) {
-                        const today = new Date().toDateString();
-                        return new Date(d.created_at).toDateString() === today;
-                    }
-                    return false;
-                }).length;
-                document.getElementById('countDisplay').textContent = dataCache.length + ' items';
-                
+                const total = dataCache.length;
+                const active = dataCache.filter(d => d.is_active !== false).length;
+                const today = dataCache.filter(d => { if (d.created_at) { return new Date(d.created_at).toDateString() === new Date().toDateString(); } return false; }).length;
+                document.getElementById('stat1').textContent = total;
+                document.getElementById('stat2').textContent = active;
+                document.getElementById('stat3').textContent = today;
+                document.getElementById('countDisplay').textContent = total + ' items';
                 showToast('✅ Data loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
@@ -125,52 +142,32 @@
                 showToast('Error loading data: ' + e.message, 'error');
             }
         }
-        
         function renderData(data) {
             const tbody = document.getElementById('tableBody');
             if (!data || data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">📭</div><h3>No data found</h3></td></tr>';
                 return;
             }
-            
             let html = '';
             data.slice(0, 50).forEach(function(item) {
                 const id = item.id || '—';
                 const name = item.name || item.full_name || item.title || 'Unnamed';
                 const status = item.is_active !== false ? '✅ Active' : '❌ Inactive';
                 const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
-                
-                html += '<tr>' +
-                    '<td><code style="background:var(--bg-primary);padding:2px 6px;border-radius:4px;font-size:11px;">' + (typeof id === 'string' ? id.substring(0, 8) : id) + '</code></td>' +
-                    '<td><strong>' + name + '</strong></td>' +
-                    '<td><span class="badge ' + (item.is_active !== false ? 'badge-success' : 'badge-gray') + '">' + (item.is_active !== false ? 'Active' : 'Inactive') + '</span></td>' +
-                    '<td style="font-size:12px;color:var(--text-muted);">' + created + '</td>' +
-                    '<td class="btn-group">' +
-                    '<button class="action-btn" onclick="viewItem(\'' + id + '\')" title="View">👁️</button> ' +
-                    '<button class="action-btn" onclick="editItem(\'' + id + '\')" title="Edit">✏️</button> ' +
-                    '<button class="action-btn danger" onclick="deleteItem(\'' + id + '\')" title="Delete">🗑️</button>' +
-                    '</td>' +
-                    '</tr>';
+                html += '<tr><td><code style="background:var(--bg-primary);padding:2px 6px;border-radius:4px;font-size:11px;">' + (typeof id === 'string' ? id.substring(0, 8) : id) + '</code></td><td><strong>' + name + '</strong></td><td><span class="badge ' + (item.is_active !== false ? 'badge-success' : 'badge-gray') + '">' + (item.is_active !== false ? 'Active' : 'Inactive') + '</span></td><td style="font-size:12px;color:var(--text-muted);">' + created + '</td><td class="btn-group"><button class="action-btn" onclick="viewItem(\'' + id + '\')" title="View">👁️</button> <button class="action-btn" onclick="editItem(\'' + id + '\')" title="Edit">✏️</button> <button class="action-btn danger" onclick="deleteItem(\'' + id + '\')" title="Delete">🗑️</button></td></tr>';
             });
             tbody.innerHTML = html;
         }
-        
         function filterData() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
             const filter = document.getElementById('filterSelect')?.value || 'all';
-            
             let filtered = dataCache;
             if (search) filtered = filtered.filter(d => JSON.stringify(d).toLowerCase().includes(search));
             if (filter === 'active') filtered = filtered.filter(d => d.is_active !== false);
             else if (filter === 'inactive') filtered = filtered.filter(d => d.is_active === false);
-            
             renderData(filtered);
         }
-        
-        function handleAdd() {
-            showToast('Add functionality coming soon', 'info');
-        }
-        
+        function handleAdd() { showToast('Add functionality coming soon', 'info'); }
         async function viewItem(id) {
             const item = dataCache.find(d => d.id === id);
             if (!item) { showToast('Item not found', 'error'); return; }
@@ -181,15 +178,12 @@
                 if (typeof val === 'boolean') displayVal = val ? '✅ Yes' : '❌ No';
                 else if (val && typeof val === 'string' && val.length > 100) displayVal = val.substring(0, 100) + '...';
                 else if (val === null || val === undefined) displayVal = '—';
-                else if (key.includes('_at') || key === 'created_at' || key === 'updated_at') {
-                    displayVal = new Date(val).toLocaleString();
-                }
+                else if (key.includes('_at') || key === 'created_at' || key === 'updated_at') displayVal = new Date(val).toLocaleString();
                 details += '<div style="padding:4px 0;border-bottom:1px solid var(--border);"><strong>' + key.replace(/_/g, ' ') + ':</strong> ' + displayVal + '</div>';
             });
             details += '</div>';
             openModal('📄 Details', details, 'Close', closeModal);
         }
-        
         async function editItem(id) {
             const item = dataCache.find(d => d.id === id);
             if (!item) { showToast('Item not found', 'error'); return; }
@@ -210,10 +204,7 @@
                         let value = input.value;
                         if (typeof val === 'number') value = parseFloat(value);
                         else if (typeof val === 'boolean') value = value === 'true';
-                        if (String(value) !== String(val)) {
-                            updates[key] = value;
-                            hasChanges = true;
-                        }
+                        if (String(value) !== String(val)) { updates[key] = value; hasChanges = true; }
                     }
                 });
                 if (!hasChanges) { showToast('No changes detected', 'info'); return; }
@@ -223,12 +214,9 @@
                     showToast('✅ Item updated successfully', 'success');
                     closeModal();
                     loadData();
-                } catch (e) {
-                    showToast('Error updating: ' + e.message, 'error');
-                }
+                } catch (e) { showToast('Error updating: ' + e.message, 'error'); }
             });
         }
-        
         async function deleteItem(id) {
             if (!confirm('Are you sure you want to delete this item?')) return;
             try {
@@ -236,14 +224,11 @@
                 if (error) throw error;
                 showToast('✅ Item deleted successfully', 'success');
                 loadData();
-            } catch (e) {
-                showToast('Error deleting: ' + e.message, 'error');
-            }
+            } catch (e) { showToast('Error deleting: ' + e.message, 'error'); }
         }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(loadData, 500);
-        });
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadData, 500); });
+        window.loadData = loadData; window.filterData = filterData; window.handleAdd = handleAdd;
+        window.viewItem = viewItem; window.editItem = editItem; window.deleteItem = deleteItem;
     </script>
 </body>
 </html>
