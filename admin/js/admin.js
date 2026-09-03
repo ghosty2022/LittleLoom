@@ -1,4 +1,5 @@
-// ─── SUPABASE CONFIG ──────────────────────────────────────────────
+// ─── admin.js - Complete Fixed Version ──────────────────────────────────
+// ─── SUPABASE CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
 
@@ -8,9 +9,9 @@ let refreshTimer = null;
 let realtimeChannel = null;
 let isOnline = navigator.onLine;
 let sessionTimeout = null;
-const SESSION_TIMEOUT_MINUTES = 30; // Auto-logout after 30 minutes
+const SESSION_TIMEOUT_MINUTES = 30;
 
-// ─── INIT ─────────────────────────────────────────────────────────
+// ─── INIT ──────────────────────────────────────────────────────────────────
 function initSupabase() {
     try {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -21,7 +22,7 @@ function initSupabase() {
     }
 }
 
-// ─── TOAST ────────────────────────────────────────────────────────
+// ─── TOAST ────────────────────────────────────────────────────────────────
 function showToast(message, type = 'info', duration = 4000) {
     let container = document.getElementById('toastContainer');
     if (!container) {
@@ -31,16 +32,9 @@ function showToast(message, type = 'info', duration = 4000) {
         document.body.appendChild(container);
     }
 
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-
-    const icons = {
-        success: '✅',
-        error: '❌',
-        warning: '⚠️',
-        info: 'ℹ️'
-    };
-
     toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span> ${message}`;
     container.appendChild(toast);
 
@@ -53,7 +47,46 @@ function showToast(message, type = 'info', duration = 4000) {
     }, duration);
 }
 
-// ─── AUTH ─────────────────────────────────────────────────────────
+// ─── MODAL ────────────────────────────────────────────────────────────────
+let modalResolve = null;
+let modalData = null;
+
+function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('modalOverlay');
+        if (!overlay) return;
+
+        document.getElementById('modalTitle').textContent = title;
+        document.getElementById('modalBody').innerHTML = bodyHTML;
+        document.getElementById('modalConfirmBtn').textContent = confirmText;
+        document.getElementById('modalCancelBtn').textContent = cancelText;
+        overlay.classList.add('active');
+
+        modalResolve = resolve;
+        modalData = { confirmAction };
+    });
+}
+
+function closeModal(result) {
+    document.getElementById('modalOverlay').classList.remove('active');
+    if (modalResolve) {
+        modalResolve(result !== undefined ? result : null);
+        modalResolve = null;
+    }
+}
+
+function modalConfirm() {
+    if (modalData && modalData.confirmAction) {
+        modalData.confirmAction();
+    }
+    closeModal(true);
+}
+
+function modalCancel() {
+    closeModal(false);
+}
+
+// ─── AUTH ──────────────────────────────────────────────────────────────────
 async function checkAuth() {
     try {
         const { data, error } = await supabase.auth.getSession();
@@ -73,10 +106,7 @@ async function checkAuth() {
 
         session = data.session;
         updateUIForAuth(session);
-
-        // Start session timeout tracking
         startSessionTimeout();
-
         return true;
     } catch (e) {
         console.error('Auth check error:', e);
@@ -101,33 +131,28 @@ function updateUIForAuth(session) {
     }
 }
 
-// ─── SESSION TIMEOUT ─────────────────────────────────────────────
+// ─── SESSION TIMEOUT ──────────────────────────────────────────────────────
 function startSessionTimeout() {
-    // Clear any existing timeout
     if (sessionTimeout) {
         clearInterval(sessionTimeout);
         sessionTimeout = null;
     }
 
-    // Check activity every 30 seconds
     sessionTimeout = setInterval(() => {
         const lastActivity = localStorage.getItem('lastActivity');
         if (lastActivity) {
             const elapsed = (Date.now() - parseInt(lastActivity)) / (1000 * 60);
             if (elapsed > SESSION_TIMEOUT_MINUTES) {
-                // Session expired - auto logout
                 showToast(`⏰ Session expired after ${SESSION_TIMEOUT_MINUTES} minutes`, 'warning');
                 handleLogout();
             }
         }
-    }, 30000); // Check every 30 seconds
+    }, 30000);
 
-    // Update last activity on user interaction
     const updateActivity = () => {
         localStorage.setItem('lastActivity', Date.now().toString());
     };
 
-    // Track user activity
     document.addEventListener('click', updateActivity);
     document.addEventListener('keydown', updateActivity);
     document.addEventListener('mousemove', updateActivity);
@@ -135,9 +160,8 @@ function startSessionTimeout() {
     document.addEventListener('touchstart', updateActivity);
 }
 
-// ─── LOGOUT WITH CUSTOM MODAL ────────────────────────────────────
+// ─── LOGOUT ────────────────────────────────────────────────────────────────
 async function handleLogout() {
-    // Show custom confirmation modal instead of browser confirm
     const confirmed = await new Promise((resolve) => {
         openModal(
             '🚪 Confirm Logout',
@@ -159,24 +183,10 @@ async function handleLogout() {
     try {
         await supabase.auth.signOut();
         session = null;
-
-        // Clear timers
-        if (refreshTimer) {
-            clearInterval(refreshTimer);
-            refreshTimer = null;
-        }
-        if (realtimeChannel) {
-            realtimeChannel.unsubscribe();
-            realtimeChannel = null;
-        }
-        if (sessionTimeout) {
-            clearInterval(sessionTimeout);
-            sessionTimeout = null;
-        }
-
-        // Clear local storage
+        if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+        if (realtimeChannel) { realtimeChannel.unsubscribe(); realtimeChannel = null; }
+        if (sessionTimeout) { clearInterval(sessionTimeout); sessionTimeout = null; }
         localStorage.removeItem('lastActivity');
-
         showToast('✅ Logged out successfully', 'success');
         window.location.href = '/login.html';
     } catch (e) {
@@ -184,21 +194,17 @@ async function handleLogout() {
     }
 }
 
-// ─── NAVIGATION ──────────────────────────────────────────────────
+// ─── NAVIGATION ────────────────────────────────────────────────────────────
 function navigateTo(page) {
     if (window.innerWidth <= 1024) toggleSidebar(false);
     showToast(`📂 Loading ${page}...`, 'info', 1000);
-
-    // Update last activity
     localStorage.setItem('lastActivity', Date.now().toString());
-
     window.location.href = `/admin/pages/${page}.html`;
 }
 
 function toggleSidebar(open) {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
-
     if (open === undefined) {
         sidebar.classList.toggle('open');
         overlay.classList.toggle('active');
@@ -211,84 +217,17 @@ function toggleSidebar(open) {
     }
 }
 
-// ─── MODAL ────────────────────────────────────────────────────────
-let modalResolve = null;
-let modalData = null;
-
-function openModal(title, bodyHTML, confirmText, confirmAction, cancelText = 'Cancel') {
-    return new Promise((resolve) => {
-        const overlay = document.getElementById('modalOverlay');
-        if (!overlay) return;
-
-        document.getElementById('modalTitle').textContent = title;
-        document.getElementById('modalBody').innerHTML = bodyHTML;
-        document.getElementById('modalConfirmBtn').textContent = confirmText || 'Confirm';
-        document.getElementById('modalCancelBtn').textContent = cancelText || 'Cancel';
-
-        // Store the resolve function
-        modalResolve = (result) => {
-            resolve(result);
-            modalResolve = null;
-        };
-
-        modalData = {
-            confirmAction: () => {
-                if (confirmAction) confirmAction();
-                closeModal(true);
-            },
-            cancelAction: () => {
-                closeModal(false);
-            }
-        };
-
-        overlay.classList.add('active');
-    });
-}
-
-function closeModal(result) {
-    const overlay = document.getElementById('modalOverlay');
-    if (overlay) overlay.classList.remove('active');
-
-    if (modalResolve) {
-        modalResolve(result !== undefined ? result : null);
-        modalResolve = null;
-    }
-}
-
-function modalConfirm() {
-    if (modalData?.confirmAction) {
-        modalData.confirmAction();
-    }
-}
-
-function modalCancel() {
-    if (modalData?.cancelAction) {
-        modalData.cancelAction();
-    } else {
-        closeModal(false);
-    }
-}
-
-// ─── SAFE SET ────────────────────────────────────────────────────
+// ─── SAFE SET ─────────────────────────────────────────────────────────────
 function safeSetText(id, value) {
     const el = document.getElementById(id);
-    if (el) {
-        el.textContent = value ?? '—';
-        return true;
-    }
-    return false;
+    if (el) el.textContent = value ?? '—';
 }
 
 function safeSetHTML(id, value) {
     const el = document.getElementById(id);
-    if (el) {
-        el.innerHTML = value ?? '—';
-        return true;
-    }
-    return false;
+    if (el) el.innerHTML = value ?? '—';
 }
 
-// ─── FORMAT HELPERS ─────────────────────────────────────────────
 function formatDate(dateStr) {
     if (!dateStr) return '—';
     try {
@@ -322,7 +261,6 @@ function timeAgo(dateStr) {
     try {
         const diff = Date.now() - new Date(dateStr).getTime();
         const seconds = Math.floor(diff / 1000);
-
         if (seconds < 60) return 'Just now';
         const minutes = Math.floor(seconds / 60);
         if (minutes < 60) return `${minutes}m ago`;
@@ -345,7 +283,7 @@ function formatNumber(num) {
     return num.toString();
 }
 
-// ─── ONLINE/OFFLINE HANDLING ────────────────────────────────────
+// ─── ONLINE/OFFLINE ───────────────────────────────────────────────────────
 window.addEventListener('online', () => {
     isOnline = true;
     showToast('🔄 Back online', 'success');
@@ -359,7 +297,7 @@ window.addEventListener('offline', () => {
     showToast('📡 You are offline', 'warning');
 });
 
-// ─── EXPOSE GLOBALLY ─────────────────────────────────────────────
+// ─── EXPOSE GLOBALLY ──────────────────────────────────────────────────────
 window.showToast = showToast;
 window.handleLogout = handleLogout;
 window.navigateTo = navigateTo;

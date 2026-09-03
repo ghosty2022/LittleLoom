@@ -16,7 +16,7 @@
             --primary-light: #818cf8;
             --secondary: #8b5cf6;
             --accent: #14b8a6;
-            --bg-primary: #f1f5f9;
+            --bg-primary: #f0f4ff;
             --bg-card: #ffffff;
             --bg-sidebar: #0f172a;
             --text-primary: #0f172a;
@@ -25,9 +25,10 @@
             --text-white: #ffffff;
             --border: rgba(0, 0, 0, 0.06);
             --border-dark: rgba(255, 255, 255, 0.06);
-            --shadow: 0 1px 3px rgba(0,0,0,0.06);
-            --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
-            --shadow-lg: 0 10px 15px rgba(0,0,0,0.08);
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.08);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
             --radius: 12px;
             --radius-sm: 8px;
             --radius-lg: 16px;
@@ -39,14 +40,37 @@
             --glass-bg: rgba(255, 255, 255, 0.8);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: var(--font); background: var(--bg-primary); color: var(--text-primary); line-height: 1.6; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
 
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 10px; }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary-light);
+            border-radius: 10px;
+        }
 
-        .app { display: flex; min-height: 100vh; background: var(--bg-primary); }
+        .app {
+            display: flex;
+            min-height: 100vh;
+            background: var(--bg-primary);
+        }
 
         /* ─── SIDEBAR ────────────────────────────────────────────────────── */
         .sidebar {
@@ -73,6 +97,7 @@
             border-bottom: 1px solid var(--border-dark);
             min-height: var(--header-height);
             flex-shrink: 0;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
         }
 
         .brand-icon {
@@ -85,19 +110,33 @@
             justify-content: center;
             font-size: 20px;
             flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
         }
 
-        .logo-title { font-weight: 800; font-size: 18px; color: var(--text-white); letter-spacing: -0.5px; }
-        .logo-sub { font-weight: 400; color: rgba(255,255,255,0.4); font-size: 11px; display: block; }
+        .logo-title {
+            font-weight: 800;
+            font-size: 18px;
+            color: var(--text-white);
+            letter-spacing: -0.5px;
+        }
+        .logo-sub {
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 11px;
+            display: block;
+        }
 
-        .sidebar-nav { flex: 1; padding: 8px 12px 20px; overflow-y: auto; }
+        .sidebar-nav {
+            flex: 1;
+            padding: 8px 12px 20px;
+            overflow-y: auto;
+        }
         .sidebar-nav-label {
             font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.8px;
-            color: rgba(255,255,255,0.25);
+            color: rgba(255, 255, 255, 0.25);
             padding: 16px 12px 6px;
             margin-top: 4px;
         }
@@ -108,7 +147,7 @@
             gap: 12px;
             padding: 8px 14px;
             border-radius: var(--radius-sm);
-            color: rgba(255,255,255,0.6);
+            color: rgba(255, 255, 255, 0.6);
             text-decoration: none;
             cursor: pointer;
             transition: all var(--transition);
@@ -118,8 +157,15 @@
             margin-bottom: 1px;
         }
 
-        .sidebar-nav-item:hover { background: rgba(255,255,255,0.06); color: var(--text-white); transform: translateX(4px); }
-        .sidebar-nav-item.active { background: rgba(99,102,241,0.2); color: #a5b4fc; }
+        .sidebar-nav-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-white);
+            transform: translateX(4px);
+        }
+        .sidebar-nav-item.active {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+        }
         .sidebar-nav-item.active::before {
             content: '';
             position: absolute;
@@ -131,7 +177,12 @@
             background: var(--primary);
             border-radius: 0 4px 4px 0;
         }
-        .sidebar-nav-item .icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav-item .icon {
+            font-size: 16px;
+            width: 24px;
+            text-align: center;
+            flex-shrink: 0;
+        }
         .sidebar-nav-item .badge {
             margin-left: auto;
             padding: 1px 10px;
@@ -141,9 +192,15 @@
             background: var(--primary);
             color: #fff;
         }
-        .sidebar-nav-item .badge.danger { background: #ef4444; }
-        .sidebar-nav-item .badge.success { background: #22c55e; }
-        .sidebar-nav-item .badge.warning { background: #f59e0b; }
+        .sidebar-nav-item .badge.danger {
+            background: #ef4444;
+        }
+        .sidebar-nav-item .badge.success {
+            background: #22c55e;
+        }
+        .sidebar-nav-item .badge.warning {
+            background: #f59e0b;
+        }
 
         .sidebar-footer {
             padding: 12px 16px;
@@ -154,7 +211,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            color: rgba(255,255,255,0.7);
+            color: rgba(255, 255, 255, 0.7);
         }
         .sidebar-footer .user-avatar {
             width: 36px;
@@ -169,23 +226,36 @@
             color: #fff;
             flex-shrink: 0;
         }
-        .sidebar-footer .user-name { font-size: 13px; font-weight: 600; color: var(--text-white); }
-        .sidebar-footer .user-email { font-size: 11px; color: rgba(255,255,255,0.4); }
+        .sidebar-footer .user-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-white);
+        }
+        .sidebar-footer .user-email {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.4);
+        }
 
         .sidebar-overlay {
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0, 0, 0, 0.5);
             z-index: 999;
             backdrop-filter: blur(4px);
             animation: fadeIn 0.3s ease;
         }
-        .sidebar-overlay.active { display: block; }
+        .sidebar-overlay.active {
+            display: block;
+        }
 
         @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
         }
 
         /* ─── MAIN ──────────────────────────────────────────────────────── */
@@ -214,7 +284,11 @@
             flex-shrink: 0;
         }
 
-        .topbar-left { display: flex; align-items: center; gap: 16px; }
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
         .topbar-menu-btn {
             display: none;
             background: none;
@@ -226,12 +300,27 @@
             border-radius: var(--radius-sm);
             transition: var(--transition);
         }
-        .topbar-menu-btn:hover { background: var(--bg-primary); }
+        .topbar-menu-btn:hover {
+            background: var(--bg-primary);
+        }
 
-        .topbar-title { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-primary); }
-        .topbar-title .sub { font-weight: 400; color: var(--text-muted); font-size: 13px; }
+        .topbar-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            color: var(--text-primary);
+        }
+        .topbar-title .sub {
+            font-weight: 400;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
 
-        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
         .topbar-status {
             display: flex;
             align-items: center;
@@ -250,11 +339,22 @@
             animation: pulse-dot 2s ease-in-out infinite;
         }
         @keyframes pulse-dot {
-            0%,100% { opacity:1; transform:scale(1); }
-            50% { opacity:0.5; transform:scale(0.85); }
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.5;
+                transform: scale(0.85);
+            }
         }
 
-        .topbar-actions { display: flex; align-items: center; gap: 8px; }
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
         /* ─── BUTTONS ───────────────────────────────────────────────────── */
         .btn {
@@ -272,18 +372,60 @@
             text-decoration: none;
             white-space: nowrap;
         }
-        .btn-primary { background: linear-gradient(135deg, var(--primary), var(--secondary)); color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,0.3); }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.4); }
-        .btn-outline { background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); }
-        .btn-outline:hover { background: var(--bg-primary); border-color: var(--primary); color: var(--primary); }
-        .btn-danger { background: #ef4444; color: #fff; }
-        .btn-danger:hover { background: #dc2626; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(239,68,68,0.3); }
-        .btn-success { background: #22c55e; color: #fff; }
-        .btn-success:hover { background: #16a34a; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(34,197,94,0.3); }
-        .btn-warning { background: #f59e0b; color: #fff; }
-        .btn-warning:hover { background: #d97706; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(245,158,11,0.3); }
-        .btn-sm { padding: 4px 12px; font-size: 11px; }
-        .btn-xs { padding: 2px 8px; font-size: 10px; }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+        }
+        .btn-outline {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border);
+        }
+        .btn-outline:hover {
+            background: var(--bg-primary);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .btn-danger {
+            background: #ef4444;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+        }
+        .btn-success {
+            background: #22c55e;
+            color: #fff;
+        }
+        .btn-success:hover {
+            background: #16a34a;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
+        }
+        .btn-warning {
+            background: #f59e0b;
+            color: #fff;
+        }
+        .btn-warning:hover {
+            background: #d97706;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+        }
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 11px;
+        }
+        .btn-xs {
+            padding: 2px 8px;
+            font-size: 10px;
+        }
 
         /* ─── STATUS BAR ────────────────────────────────────────────────── */
         .status-bar {
@@ -318,7 +460,7 @@
             background: var(--bg-card);
             padding: 12px 24px;
             border-radius: var(--radius);
-            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
             font-weight: 600;
             font-size: 13px;
             display: flex;
@@ -327,29 +469,58 @@
             border-left: 4px solid var(--primary);
             animation: slideUp 0.3s ease-out;
             min-width: 200px;
+            max-width: 90vw;
         }
-        .toast.error { border-left-color: #ef4444; }
-        .toast.success { border-left-color: #22c55e; }
-        .toast.warning { border-left-color: #f59e0b; }
+        .toast.error {
+            border-left-color: #ef4444;
+        }
+        .toast.success {
+            border-left-color: #22c55e;
+        }
+        .toast.warning {
+            border-left-color: #f59e0b;
+        }
 
         @keyframes slideUp {
-            from { opacity:0; transform:translateY(20px) scale(0.95); }
-            to { opacity:1; transform:translateY(0) scale(1); }
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
         }
 
         /* ─── RESPONSIVE ────────────────────────────────────────────────── */
         @media (max-width: 1024px) {
-            .sidebar { transform: translateX(-100%); }
-            .sidebar.open { transform: translateX(0); }
-            .main { margin-left: 0; }
-            .topbar-menu-btn { display: block; }
-            .topbar { padding: 0 16px; }
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main {
+                margin-left: 0;
+            }
+            .topbar-menu-btn {
+                display: block;
+            }
+            .topbar {
+                padding: 0 16px;
+            }
         }
 
         @media (max-width: 768px) {
-            .topbar-status { display: none; }
-            .topbar-title { font-size: 16px; }
-            .topbar-title .sub { display: none; }
+            .topbar-status {
+                display: none;
+            }
+            .topbar-title {
+                font-size: 16px;
+            }
+            .topbar-title .sub {
+                display: none;
+            }
         }
 
         /* ─── BADGES ────────────────────────────────────────────────────── */
@@ -362,12 +533,30 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .badge-success { background: #dcfce7; color: #16a34a; }
-        .badge-warning { background: #fef3c7; color: #d97706; }
-        .badge-danger { background: #fee2e2; color: #dc2626; }
-        .badge-info { background: #dbeafe; color: #2563eb; }
-        .badge-purple { background: #ede9fe; color: #7c3aed; }
-        .badge-gray { background: #f3f4f6; color: #6b7280; }
+        .badge-success {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .badge-warning {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .badge-danger {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .badge-info {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+        .badge-purple {
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+        .badge-gray {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
 
         /* ─── CARDS ─────────────────────────────────────────────────────── */
         .card {
@@ -379,7 +568,9 @@
             margin-bottom: 20px;
             transition: all var(--transition);
         }
-        .card:hover { box-shadow: var(--shadow-md); }
+        .card:hover {
+            box-shadow: var(--shadow-md);
+        }
 
         .card-header {
             display: flex;
@@ -390,23 +581,56 @@
             flex-wrap: wrap;
             gap: 8px;
         }
-        .card-title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
-        .card-title .emoji { font-size: 18px; }
-        .card-body { padding: 16px 20px; }
+        .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-primary);
+        }
+        .card-title .emoji {
+            font-size: 18px;
+        }
+        .card-body {
+            padding: 16px 20px;
+        }
 
         /* ─── GRIDS ─────────────────────────────────────────────────────── */
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
 
         @media (max-width: 1024px) {
-            .grid-2 { grid-template-columns: 1fr; }
-            .grid-3 { grid-template-columns: 1fr 1fr; }
-            .grid-4 { grid-template-columns: 1fr 1fr; }
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            .grid-3 {
+                grid-template-columns: 1fr 1fr;
+            }
+            .grid-4 {
+                grid-template-columns: 1fr 1fr;
+            }
         }
         @media (max-width: 600px) {
-            .grid-3 { grid-template-columns: 1fr; }
-            .grid-4 { grid-template-columns: 1fr; }
+            .grid-3 {
+                grid-template-columns: 1fr;
+            }
+            .grid-4 {
+                grid-template-columns: 1fr;
+            }
         }
 
         /* ─── STAT CARDS ────────────────────────────────────────────────── */
@@ -418,14 +642,47 @@
             transition: all var(--transition);
             border: 1px solid var(--border);
         }
-        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-        .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 2px; }
-        .stat-value { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: var(--text-primary); }
-        .stat-value .unit { font-size: 14px; font-weight: 600; color: var(--text-muted); margin-left: 4px; }
-        .stat-change { font-size: 12px; font-weight: 600; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; }
-        .stat-change.positive { color: #22c55e; }
-        .stat-change.negative { color: #ef4444; }
-        .stat-change.neutral { color: var(--text-muted); }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        .stat-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+        .stat-value {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
+        }
+        .stat-value .unit {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-left: 4px;
+        }
+        .stat-change {
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .stat-change.positive {
+            color: #22c55e;
+        }
+        .stat-change.negative {
+            color: #ef4444;
+        }
+        .stat-change.neutral {
+            color: var(--text-muted);
+        }
 
         /* ─── PAGE ───────────────────────────────────────────────────────── */
         .page-content {
@@ -433,21 +690,46 @@
             animation: fadeInPage 0.3s ease-out;
             flex: 1;
         }
-        .page-content.active { display: block; }
-        .page-content { display: none; }
+        .page-content.active {
+            display: block;
+        }
+        .page-content {
+            display: block;
+        }
 
         @keyframes fadeInPage {
-            from { opacity:0; transform:translateY(8px); }
-            to { opacity:1; transform:translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* ─── EMPTY STATE ───────────────────────────────────────────────── */
-        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-        .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
-        .empty-state h3 { color: var(--text-primary); font-weight: 700; margin-bottom: 6px; }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state .emoji {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+        .empty-state h3 {
+            color: var(--text-primary);
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
 
         /* ─── ACTIVITY FEED ────────────────────────────────────────────── */
-        .activity-feed { display: flex; flex-direction: column; gap: 2px; }
+        .activity-feed {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
         .activity-item {
             display: flex;
             align-items: center;
@@ -455,7 +737,9 @@
             padding: 10px 0;
             border-bottom: 1px solid var(--border);
         }
-        .activity-item:last-child { border-bottom: none; }
+        .activity-item:last-child {
+            border-bottom: none;
+        }
         .activity-icon {
             width: 36px;
             height: 36px;
@@ -467,10 +751,23 @@
             flex-shrink: 0;
             background: var(--bg-primary);
         }
-        .activity-content { flex: 1; min-width: 0; }
-        .activity-title { font-weight: 600; font-size: 13px; }
-        .activity-meta { font-size: 12px; color: var(--text-muted); }
-        .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+        .activity-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .activity-title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .activity-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .activity-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
 
         /* ─── CHART ─────────────────────────────────────────────────────── */
         .chart-bars {
@@ -488,7 +785,11 @@
             min-height: 6px;
             opacity: 0.8;
         }
-        .chart-bars .bar:hover { opacity: 1; transform: scaleY(1.02); transform-origin: bottom; }
+        .chart-bars .bar:hover {
+            opacity: 1;
+            transform: scaleY(1.02);
+            transform-origin: bottom;
+        }
         .chart-labels {
             display: flex;
             justify-content: space-between;
@@ -512,19 +813,40 @@
             transition: all var(--transition);
             box-shadow: var(--shadow);
         }
-        .quick-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-        .quick-stat .num { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
-        .quick-stat .label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-        .quick-stat .change { font-size: 11px; font-weight: 600; margin-top: 4px; }
-        .quick-stat .change.up { color: #22c55e; }
-        .quick-stat .change.down { color: #ef4444; }
-        .quick-stat .change.neutral { color: var(--text-muted); }
+        .quick-stat:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        .quick-stat .num {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+        .quick-stat .label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .quick-stat .change {
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .quick-stat .change.up {
+            color: #22c55e;
+        }
+        .quick-stat .change.down {
+            color: #ef4444;
+        }
+        .quick-stat .change.neutral {
+            color: var(--text-muted);
+        }
 
         /* ─── WELCOME BANNER ───────────────────────────────────────────── */
         .welcome-banner {
             background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
-            border-radius: var(--radius);
-            padding: 24px 28px;
+            border-radius: var(--radius-lg);
+            padding: 28px 32px;
             color: #fff;
             margin-bottom: 24px;
             position: relative;
@@ -536,12 +858,23 @@
             right: 24px;
             top: 50%;
             transform: translateY(-50%);
-            font-size: 48px;
+            font-size: 64px;
             opacity: 0.15;
         }
-        .welcome-banner h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-        .welcome-banner p { opacity: 0.85; font-size: 14px; }
-        .welcome-banner .session-info { font-size: 12px; opacity: 0.7; margin-top: 8px; }
+        .welcome-banner h2 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .welcome-banner p {
+            opacity: 0.85;
+            font-size: 14px;
+        }
+        .welcome-banner .session-info {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 8px;
+        }
 
         /* ─── QUICK ACTIONS ─────────────────────────────────────────────── */
         .quick-actions {
@@ -550,7 +883,11 @@
             flex-wrap: wrap;
             margin-bottom: 20px;
         }
-        .quick-actions .btn { padding: 8px 16px; font-size: 12px; }
+        .quick-actions .btn {
+            padding: 8px 18px;
+            font-size: 12px;
+            border-radius: var(--radius-sm);
+        }
 
         /* ─── STATUS INDICATOR ──────────────────────────────────────────── */
         .status-indicator {
@@ -562,29 +899,50 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .status-indicator.online { background: #dcfce7; color: #16a34a; }
-        .status-indicator.offline { background: #fee2e2; color: #dc2626; }
-        .status-indicator .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-        .status-indicator.online .dot { background: #22c55e; }
-        .status-indicator.offline .dot { background: #ef4444; }
+        .status-indicator.online {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .status-indicator.offline {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .status-indicator .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-indicator.online .dot {
+            background: #22c55e;
+        }
+        .status-indicator.offline .dot {
+            background: #ef4444;
+        }
 
         /* ─── MODAL ─────────────────────────────────────────────────────── */
         .modal-overlay {
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.6);
+            background: rgba(0, 0, 0, 0.6);
             z-index: 9999;
             justify-content: center;
             align-items: center;
             backdrop-filter: blur(4px);
             animation: modalFade 0.3s ease;
         }
-        .modal-overlay.active { display: flex; }
+        .modal-overlay.active {
+            display: flex;
+        }
 
         @keyframes modalFade {
-            from { opacity:0; }
-            to { opacity:1; }
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
         }
 
         .modal {
@@ -594,12 +952,18 @@
             width: 90%;
             max-height: 90vh;
             overflow-y: auto;
-            box-shadow: 0 24px 48px rgba(0,0,0,0.2);
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
             animation: modalSlide 0.3s ease;
         }
         @keyframes modalSlide {
-            from { transform: translateY(20px) scale(0.95); opacity:0; }
-            to { transform: translateY(0) scale(1); opacity:1; }
+            from {
+                transform: translateY(20px) scale(0.95);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
         }
 
         .modal-header {
@@ -609,7 +973,10 @@
             padding: 16px 24px;
             border-bottom: 1px solid var(--border);
         }
-        .modal-header h2 { font-size: 18px; font-weight: 700; }
+        .modal-header h2 {
+            font-size: 18px;
+            font-weight: 700;
+        }
         .modal-close {
             background: none;
             border: none;
@@ -620,8 +987,12 @@
             border-radius: var(--radius-sm);
             transition: var(--transition);
         }
-        .modal-close:hover { background: var(--bg-primary); }
-        .modal-body { padding: 20px 24px; }
+        .modal-close:hover {
+            background: var(--bg-primary);
+        }
+        .modal-body {
+            padding: 20px 24px;
+        }
         .modal-footer {
             padding: 14px 24px;
             border-top: 1px solid var(--border);
@@ -629,11 +1000,27 @@
             gap: 8px;
             justify-content: flex-end;
         }
+
+        /* ─── LOADING SHIMMER ───────────────────────────────────────────── */
+        .shimmer {
+            background: linear-gradient(90deg, var(--bg-primary) 25%, var(--border) 50%, var(--bg-primary) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite;
+            border-radius: 4px;
+        }
+        @keyframes shimmer {
+            0% {
+                background-position: 200% 0;
+            }
+            100% {
+                background-position: -200% 0;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="app">
-        <!-- ─── SIDEBAR ────────────────────────────────────────────── -->
+        <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
@@ -643,12 +1030,14 @@
                 </div>
             </div>
             <nav class="sidebar-nav" id="sidebarNav">
+                <!-- Overview -->
                 <div class="sidebar-nav-label">Overview</div>
                 <a class="sidebar-nav-item active" href="#" onclick="navigateTo('dashboard')">
                     <span class="icon">📊</span> Dashboard
                     <span class="badge success">Live</span>
                 </a>
 
+                <!-- Management -->
                 <div class="sidebar-nav-label">Management</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
                     <span class="icon">👶</span> Babies
@@ -663,6 +1052,7 @@
                     <span class="badge danger" id="modBadge">0</span>
                 </a>
 
+                <!-- Community -->
                 <div class="sidebar-nav-label">Community</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
                     <span class="icon">💬</span> Community
@@ -676,6 +1066,7 @@
                     <span class="badge" id="announceBadge">0</span>
                 </a>
 
+                <!-- Trackers -->
                 <div class="sidebar-nav-label">Trackers</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
                     <span class="icon">📈</span> Tracker Entries
@@ -686,6 +1077,7 @@
                     <span class="badge" id="milestoneBadge">0</span>
                 </a>
 
+                <!-- Analytics -->
                 <div class="sidebar-nav-label">Analytics</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
                     <span class="icon">📈</span> Analytics
@@ -697,6 +1089,7 @@
                     <span class="icon">📈</span> Activity Heatmap
                 </a>
 
+                <!-- System -->
                 <div class="sidebar-nav-label">System</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
                     <span class="icon">⚙️</span> Settings
@@ -795,12 +1188,36 @@
 
                 <!-- Stats -->
                 <div class="quick-stats" id="dashboardStats">
-                    <div class="quick-stat"><div class="num" id="statBabies">—</div><div class="label">👶 Total Babies</div><div class="change up">↑ 12%</div></div>
-                    <div class="quick-stat"><div class="num" id="statUsers">—</div><div class="label">👤 Active Users</div><div class="change up">↑ 8%</div></div>
-                    <div class="quick-stat"><div class="num" id="statEntries">—</div><div class="label">📊 Tracker Entries</div><div class="change up">↑ 23%</div></div>
-                    <div class="quick-stat"><div class="num" id="statPosts">—</div><div class="label">💬 Community Posts</div><div class="change up">↑ 15%</div></div>
-                    <div class="quick-stat"><div class="num" id="statMilestones">—</div><div class="label">🏆 Milestones</div><div class="change up">↑ 7%</div></div>
-                    <div class="quick-stat"><div class="num" id="statStreak">—<span style="font-size:14px;font-weight:600;color:var(--text-muted);">d</span></div><div class="label">💪 Avg Streak</div><div class="change neutral">→ 0%</div></div>
+                    <div class="quick-stat">
+                        <div class="num" id="statBabies">—</div>
+                        <div class="label">👶 Total Babies</div>
+                        <div class="change up" id="babyChange">↑ 0%</div>
+                    </div>
+                    <div class="quick-stat">
+                        <div class="num" id="statUsers">—</div>
+                        <div class="label">👤 Active Users</div>
+                        <div class="change up" id="userChange">↑ 0%</div>
+                    </div>
+                    <div class="quick-stat">
+                        <div class="num" id="statEntries">—</div>
+                        <div class="label">📊 Tracker Entries</div>
+                        <div class="change up" id="entryChange">↑ 0%</div>
+                    </div>
+                    <div class="quick-stat">
+                        <div class="num" id="statPosts">—</div>
+                        <div class="label">💬 Community Posts</div>
+                        <div class="change up" id="postChange">↑ 0%</div>
+                    </div>
+                    <div class="quick-stat">
+                        <div class="num" id="statMilestones">—</div>
+                        <div class="label">🏆 Milestones</div>
+                        <div class="change up" id="milestoneChange">↑ 0%</div>
+                    </div>
+                    <div class="quick-stat">
+                        <div class="num" id="statStreak">—</div>
+                        <div class="label">💪 Avg Streak</div>
+                        <div class="change neutral" id="streakChange">→ 0%</div>
+                    </div>
                 </div>
 
                 <!-- Dashboard Grid -->
@@ -813,7 +1230,10 @@
                         </div>
                         <div class="card-body">
                             <div class="activity-feed" id="activityFeed">
-                                <div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>
+                                <div class="empty-state">
+                                    <div class="emoji">📭</div>
+                                    <h3>No recent activity</h3>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -839,6 +1259,13 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- New: Quick Stats Footer -->
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid var(--border);margin-top:12px;font-size:12px;color:var(--text-muted);flex-wrap:wrap;gap:8px;">
+                    <span>📊 Data refreshed in real-time</span>
+                    <span>🔐 Secure admin access</span>
+                    <span>🧵 LittleLoom v2.0</span>
+                </div>
             </div>
         </main>
     </div>
@@ -861,7 +1288,10 @@
             try {
                 supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 return true;
-            } catch (e) { return false; }
+            } catch (e) {
+                console.error('Supabase init error:', e);
+                return false;
+            }
         }
 
         // ─── TOAST ────────────────────────────────────────────────────────
@@ -933,19 +1363,46 @@
             try {
                 const { data, error } = await supabase.auth.getSession();
                 if (error || !data.session) {
-                    document.getElementById('statusBar').innerHTML = '<span>🔒 Please log in</span>';
+                    const statusBar = document.getElementById('statusBar');
+                    if (statusBar) {
+                        statusBar.innerHTML = `
+                            <span>🔒</span>
+                            <span>Please log in to continue</span>
+                            <button class="btn btn-primary btn-sm" onclick="window.location.href='/login.html'" style="margin-left:auto;">
+                                Login
+                            </button>
+                        `;
+                    }
                     return false;
                 }
+
                 session = data.session;
-                document.getElementById('connectionStatus').textContent = '👤 ' + session.user.email;
-                document.getElementById('sidebarEmail').textContent = session.user.email;
-                const name = session.user.user_metadata?.full_name || session.user.email.split('@')[0];
-                document.getElementById('sidebarName').textContent = name;
-                document.getElementById('sidebarAvatar').textContent = name[0].toUpperCase();
+                updateUIForAuth(session);
                 return true;
-            } catch (e) { return false; }
+            } catch (e) {
+                console.error('Auth check error:', e);
+                return false;
+            }
         }
 
+        function updateUIForAuth(session) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) statusEl.textContent = `👤 ${session.user.email}`;
+
+            const emailEl = document.getElementById('sidebarEmail');
+            if (emailEl) emailEl.textContent = session.user.email;
+
+            const nameEl = document.getElementById('sidebarName');
+            const avatarEl = document.getElementById('sidebarAvatar');
+            if (nameEl) {
+                const name = session.user.user_metadata?.full_name ||
+                    session.user.email.split('@')[0];
+                nameEl.textContent = name;
+                if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
+            }
+        }
+
+        // ─── LOGOUT ────────────────────────────────────────────────────────
         async function handleLogout() {
             const confirmed = await new Promise((resolve) => {
                 openModal(
@@ -965,18 +1422,26 @@
 
             if (!confirmed) return;
 
-            await supabase.auth.signOut();
-            session = null;
-            if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-            if (realtimeChannel) { realtimeChannel.unsubscribe(); realtimeChannel = null; }
-            showToast('✅ Logged out successfully', 'success');
-            window.location.href = '/login.html';
+            try {
+                await supabase.auth.signOut();
+                session = null;
+                if (refreshTimer) { clearInterval(refreshTimer);
+                    refreshTimer = null; }
+                if (realtimeChannel) { realtimeChannel.unsubscribe();
+                    realtimeChannel = null; }
+                localStorage.removeItem('lastActivity');
+                showToast('✅ Logged out successfully', 'success');
+                window.location.href = '/login.html';
+            } catch (e) {
+                showToast('❌ Logout failed: ' + e.message, 'error');
+            }
         }
 
-        // ─── NAVIGATION ──────────────────────────────────────────────────
+        // ─── NAVIGATION ────────────────────────────────────────────────────
         function navigateTo(page) {
             if (window.innerWidth <= 1024) toggleSidebar(false);
             showToast(`📂 Loading ${page}...`, 'info', 1000);
+            localStorage.setItem('lastActivity', Date.now().toString());
             window.location.href = `/admin/pages/${page}.html`;
         }
 
@@ -995,7 +1460,7 @@
             }
         }
 
-        // ─── SAFE SET ────────────────────────────────────────────────────
+        // ─── SAFE SET ─────────────────────────────────────────────────────
         function safeSetText(id, value) {
             const el = document.getElementById(id);
             if (el) el.textContent = value ?? '—';
@@ -1008,26 +1473,64 @@
 
         function formatDate(dateStr) {
             if (!dateStr) return '—';
-            return new Date(dateStr).toLocaleString();
+            try {
+                return new Date(dateStr).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch {
+                return dateStr;
+            }
         }
 
         function timeAgo(dateStr) {
             if (!dateStr) return '—';
-            const diff = Date.now() - new Date(dateStr).getTime();
-            const seconds = Math.floor(diff / 1000);
-            if (seconds < 60) return 'Just now';
-            const minutes = Math.floor(seconds / 60);
-            if (minutes < 60) return minutes + 'm ago';
-            const hours = Math.floor(minutes / 60);
-            if (hours < 24) return hours + 'h ago';
-            const days = Math.floor(hours / 24);
-            if (days < 7) return days + 'd ago';
-            return new Date(dateStr).toLocaleDateString();
+            try {
+                const diff = Date.now() - new Date(dateStr).getTime();
+                const seconds = Math.floor(diff / 1000);
+                if (seconds < 60) return 'Just now';
+                const minutes = Math.floor(seconds / 60);
+                if (minutes < 60) return `${minutes}m ago`;
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${hours}h ago`;
+                const days = Math.floor(hours / 24);
+                if (days < 7) return `${days}d ago`;
+                if (days < 30) return `${Math.floor(days / 7)}w ago`;
+                if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+                return `${Math.floor(days / 365)}y ago`;
+            } catch {
+                return dateStr;
+            }
         }
 
-        // ─── DASHBOARD DATA ─────────────────────────────────────────────
+        function formatNumber(num) {
+            if (num === null || num === undefined) return '—';
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+        // ─── ONLINE/OFFLINE ──────────────────────────────────────────────
+        window.addEventListener('online', () => {
+            showToast('🔄 Back online', 'success');
+            if (typeof fetchDashboardData === 'function') {
+                fetchDashboardData();
+            }
+        });
+
+        window.addEventListener('offline', () => {
+            showToast('📡 You are offline', 'warning');
+        });
+
+        // ─── DASHBOARD DATA ──────────────────────────────────────────────
         async function fetchDashboardData() {
-            if (!supabase || !session) return;
+            if (!supabase || !session) {
+                console.warn('Supabase or session not ready');
+                return;
+            }
 
             const statusBar = document.getElementById('statusBar');
             if (statusBar) {
@@ -1035,113 +1538,94 @@
             }
 
             try {
-                // Use the admin stats function
-                const { data: stats, error: statsError } = await supabase
-                    .rpc('get_admin_stats');
+                console.log('📊 Fetching dashboard data...');
 
-                if (statsError) {
-                    console.warn('Stats function error, falling back to direct queries:', statsError);
-                    // Fallback to direct queries
-                    const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult, recentResult] = await Promise.all([
-                        supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
-                        supabase.from('profiles').select('*', { count: 'exact', head: true }),
-                        supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
-                        supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
-                        supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone').eq('is_deleted', false),
-                        supabase.from('tracker_entries')
-                            .select('tracker_id, title, logged_by_name, timestamp, created_at')
-                            .eq('is_deleted', false)
-                            .order('timestamp', { ascending: false })
-                            .limit(8)
-                    ]);
+                // Fetch counts from each table
+                const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult, recentResult] = await Promise.all([
+                    supabase.from('babies').select('*', { count: 'exact', head: true }),
+                    supabase.from('profiles').select('*', { count: 'exact', head: true }),
+                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }),
+                    supabase.from('community_posts').select('*', { count: 'exact', head: true }),
+                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone'),
+                    supabase.from('tracker_entries')
+                    .select('tracker_id, title, logged_by_name, timestamp, created_at')
+                    .order('timestamp', { ascending: false })
+                    .limit(8)
+                ]);
 
-                    safeSetText('statBabies', babiesResult.count || 0);
-                    safeSetText('statUsers', profilesResult.count || 0);
-                    safeSetText('statEntries', entriesResult.count || 0);
-                    safeSetText('statPosts', postsResult.count || 0);
-                    safeSetText('statMilestones', milestonesResult.count || 0);
+                const babyCount = babiesResult.count || 0;
+                const userCount = profilesResult.count || 0;
+                const entryCount = entriesResult.count || 0;
+                const postCount = postsResult.count || 0;
+                const milestoneCount = milestonesResult.count || 0;
 
-                    // Update badges
-                    safeSetText('babyBadge', babiesResult.count || 0);
-                    safeSetText('userBadge', profilesResult.count || 0);
-                    safeSetText('postBadge', postsResult.count || 0);
-                    safeSetText('entryBadge', entriesResult.count || 0);
-                    safeSetText('milestoneBadge', milestonesResult.count || 0);
+                // Update stats
+                safeSetText('statBabies', babyCount);
+                safeSetText('statUsers', userCount);
+                safeSetText('statEntries', entryCount);
+                safeSetText('statPosts', postCount);
+                safeSetText('statMilestones', milestoneCount);
 
-                    // Activity feed
-                    const feed = document.getElementById('activityFeed');
-                    const recent = recentResult.data || [];
-                    if (feed) {
-                        if (recent.length === 0) {
-                            feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
-                            safeSetText('activityCount', '0');
-                        } else {
-                            safeSetText('activityCount', recent.length);
-                            const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊', milestone: '🏆' };
-                            let html = '';
-                            recent.forEach(function(a) {
-                                html += `
-                                    <div class="activity-item">
-                                        <div class="activity-icon">${iconMap[a.tracker_id] || '📌'}</div>
-                                        <div class="activity-content">
-                                            <div class="activity-title">${a.title || a.tracker_id || 'Activity'}</div>
-                                            <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
-                                        </div>
-                                        <div class="activity-time">${formatDate(a.timestamp)}</div>
+                // Update badges
+                safeSetText('babyBadge', babyCount);
+                safeSetText('userBadge', userCount);
+                safeSetText('postBadge', postCount);
+                safeSetText('entryBadge', entryCount);
+                safeSetText('milestoneBadge', milestoneCount);
+
+                // Calculate average streak
+                const { data: streakData } = await supabase
+                    .from('babies')
+                    .select('streak')
+                    .not('streak', 'is', null)
+                    .limit(100);
+
+                let avgStreak = 0;
+                if (streakData && streakData.length > 0) {
+                    const totalStreak = streakData.reduce((sum, b) => sum + (b.streak || 0), 0);
+                    avgStreak = Math.round(totalStreak / streakData.length);
+                }
+                safeSetText('statStreak', avgStreak + 'd');
+
+                // Activity feed
+                const feed = document.getElementById('activityFeed');
+                const recent = recentResult.data || [];
+
+                if (feed) {
+                    if (recent.length === 0) {
+                        feed.innerHTML = `
+                            <div class="empty-state">
+                                <div class="emoji">📭</div>
+                                <h3>No recent activity</h3>
+                            </div>
+                        `;
+                        safeSetText('activityCount', '0');
+                    } else {
+                        safeSetText('activityCount', recent.length);
+                        const iconMap = {
+                            feed: '🍼',
+                            sleep: '😴',
+                            diaper: '🧷',
+                            potty: '🚽',
+                            growth: '📏',
+                            medication: '💊',
+                            milestone: '🏆'
+                        };
+                        let html = '';
+                        recent.forEach(function(a) {
+                            const type = a.tracker_id || 'custom';
+                            html += `
+                                <div class="activity-item">
+                                    <div class="activity-icon">${iconMap[type] || '📌'}</div>
+                                    <div class="activity-content">
+                                        <div class="activity-title">${a.title || type || 'Activity'}</div>
+                                        <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
                                     </div>
-                                `;
-                            });
-                            feed.innerHTML = html;
-                        }
-                    }
-
-                } else if (stats) {
-                    safeSetText('statBabies', stats.total_babies || 0);
-                    safeSetText('statUsers', stats.total_users || 0);
-                    safeSetText('statEntries', stats.total_entries || 0);
-                    safeSetText('statPosts', stats.total_posts || 0);
-                    safeSetText('statMilestones', stats.total_milestones || 0);
-
-                    safeSetText('babyBadge', stats.total_babies || 0);
-                    safeSetText('userBadge', stats.total_users || 0);
-                    safeSetText('postBadge', stats.total_posts || 0);
-                    safeSetText('entryBadge', stats.total_entries || 0);
-                    safeSetText('milestoneBadge', stats.total_milestones || 0);
-                    safeSetText('modBadge', stats.pending_moderation || 0);
-                    safeSetText('supportBadge', stats.open_tickets || 0);
-                    safeSetText('announceBadge', 0);
-
-                    // Get recent activity
-                    const { data: recent } = await supabase
-                        .from('tracker_entries')
-                        .select('tracker_id, title, logged_by_name, timestamp, created_at')
-                        .eq('is_deleted', false)
-                        .order('timestamp', { ascending: false })
-                        .limit(8);
-
-                    const feed = document.getElementById('activityFeed');
-                    if (feed) {
-                        if (!recent || recent.length === 0) {
-                            feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
-                            safeSetText('activityCount', '0');
-                        } else {
-                            safeSetText('activityCount', recent.length);
-                            const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊', milestone: '🏆' };
-                            let html = '';
-                            recent.forEach(function(a) {
-                                html += `
-                                    <div class="activity-item">
-                                        <div class="activity-icon">${iconMap[a.tracker_id] || '📌'}</div>
-                                        <div class="activity-content">
-                                            <div class="activity-title">${a.title || a.tracker_id || 'Activity'}</div>
-                                            <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
-                                        </div>
-                                        <div class="activity-time">${formatDate(a.timestamp)}</div>
-                                    </div>
-                                `;
-                            });
-                            feed.innerHTML = html;
-                        }
+                                    <div class="activity-time">${formatDate(a.timestamp)}</div>
+                                </div>
+                            `;
+                        });
+                        feed.innerHTML = html;
                     }
                 }
 
@@ -1169,6 +1653,13 @@
                 }
                 safeSetText('lastUpdated', new Date().toLocaleString());
 
+                console.log('✅ Dashboard data loaded:', {
+                    babies: babyCount,
+                    users: userCount,
+                    entries: entryCount,
+                    posts: postCount
+                });
+
             } catch (err) {
                 console.error('Fetch error:', err);
                 const statusBarEl = document.getElementById('statusBar');
@@ -1180,18 +1671,18 @@
                         </button>
                     `;
                 }
-                showToast('Error loading dashboard data', 'error');
+                showToast('Error loading dashboard data: ' + err.message, 'error');
             }
         }
 
-        // ─── REFRESH ──────────────────────────────────────────────────
+        // ─── REFRESH ──────────────────────────────────────────────────────
         async function refreshAll() {
             showToast('🔄 Refreshing...', 'info');
             await fetchDashboardData();
             showToast('✅ All data refreshed', 'success');
         }
 
-        // ─── REALTIME ──────────────────────────────────────────────────
+        // ─── REALTIME ──────────────────────────────────────────────────────
         function setupRealtime() {
             if (!supabase || !session) return;
             if (realtimeChannel) {
@@ -1214,7 +1705,7 @@
                 });
         }
 
-        // ─── INIT ──────────────────────────────────────────────────────
+        // ─── INIT ──────────────────────────────────────────────────────────
         async function init() {
             if (!initSupabase()) {
                 showToast('Failed to initialize Supabase', 'error');
@@ -1257,7 +1748,7 @@
             console.log('👤 Logged in as: ' + session?.user?.email);
         }
 
-        // ─── EXPOSE GLOBALLY ─────────────────────────────────────────────
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────
         window.navigateTo = navigateTo;
         window.toggleSidebar = toggleSidebar;
         window.refreshAll = refreshAll;
@@ -1268,6 +1759,12 @@
         window.modalConfirm = modalConfirm;
         window.modalCancel = modalCancel;
         window.fetchDashboardData = fetchDashboardData;
+        window.safeSetText = safeSetText;
+        window.safeSetHTML = safeSetHTML;
+        window.formatDate = formatDate;
+        window.timeAgo = timeAgo;
+        window.formatNumber = formatNumber;
+        window.session = session;
 
         document.addEventListener('DOMContentLoaded', init);
     </script>
