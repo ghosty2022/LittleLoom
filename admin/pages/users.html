@@ -49,6 +49,7 @@
         .activity-title { font-weight: 600; font-size: 14px; }
         .activity-meta { font-size: 12px; color: var(--text-muted); }
         .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+        .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
     </style>
 </head>
 <body>
@@ -81,7 +82,7 @@
             <div class="card-body">
                 <div class="table-wrap">
                     <table>
-                        <thead id="tableHead"></thead>
+                        <thead id="tableHead"><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
                         <tbody id="tableBody"><tr><td colspan="5" class="empty-state"><div class="emoji">📊</div><h3>Loading data...</h3></td></tr></tbody>
                     </table>
                 </div>
@@ -92,7 +93,7 @@
     <script src="/admin/js/admin.js"></script>
     <script>
         let dataCache = [];
-        let pageType = 'profiles';
+        let tableName = 'profiles';
         
         async function loadData() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
@@ -100,8 +101,7 @@
             if (!authed) { showToast('Please log in', 'warning'); return; }
             
             try {
-                let tableName = 'profiles';
-                let { data, error } = await supabase.from(tableName).select('*').limit(50);
+                let { data, error } = await supabase.from(tableName).select('*').limit(100);
                 if (error) throw error;
                 
                 dataCache = data || [];
@@ -133,24 +133,24 @@
                 return;
             }
             
-            let headers = Object.keys(data[0]).filter(k => !['id', 'password', 'token'].includes(k)).slice(0, 4);
-            document.getElementById('tableHead').innerHTML = '<tr>' + headers.map(h => '<th>' + h.replace(/_/g, ' ').toUpperCase() + '</th>').join('') + '<th>Actions</th></tr>';
-            
             let html = '';
-            data.slice(0, 20).forEach(function(item) {
-                html += '<tr>';
-                headers.forEach(function(h) {
-                    let val = item[h];
-                    if (val === null || val === undefined) val = '—';
-                    else if (typeof val === 'string' && val.length > 30) val = val.substring(0, 30) + '...';
-                    else if (typeof val === 'boolean') val = val ? '✅' : '❌';
-                    else if (h.includes('_at') || h === 'created_at' || h === 'updated_at') {
-                        val = new Date(val).toLocaleString();
-                    }
-                    html += '<td>' + val + '</td>';
-                });
-                html += '<td><button class="action-btn" onclick="viewItem(\'' + item.id + '\')">👁️</button> <button class="action-btn" onclick="editItem(\'' + item.id + '\')">✏️</button> <button class="action-btn danger" onclick="deleteItem(\'' + item.id + '\')">🗑️</button></td>';
-                html += '</tr>';
+            data.slice(0, 50).forEach(function(item) {
+                const id = item.id || '—';
+                const name = item.name || item.full_name || item.title || 'Unnamed';
+                const status = item.is_active !== false ? '✅ Active' : '❌ Inactive';
+                const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
+                
+                html += '<tr>' +
+                    '<td><code style="background:var(--bg-primary);padding:2px 6px;border-radius:4px;font-size:11px;">' + (typeof id === 'string' ? id.substring(0, 8) : id) + '</code></td>' +
+                    '<td><strong>' + name + '</strong></td>' +
+                    '<td><span class="badge ' + (item.is_active !== false ? 'badge-success' : 'badge-gray') + '">' + (item.is_active !== false ? 'Active' : 'Inactive') + '</span></td>' +
+                    '<td style="font-size:12px;color:var(--text-muted);">' + created + '</td>' +
+                    '<td class="btn-group">' +
+                    '<button class="action-btn" onclick="viewItem(\'' + id + '\')" title="View">👁️</button> ' +
+                    '<button class="action-btn" onclick="editItem(\'' + id + '\')" title="Edit">✏️</button> ' +
+                    '<button class="action-btn danger" onclick="deleteItem(\'' + id + '\')" title="Delete">🗑️</button>' +
+                    '</td>' +
+                    '</tr>';
             });
             tbody.innerHTML = html;
         }
@@ -174,14 +174,17 @@
         async function viewItem(id) {
             const item = dataCache.find(d => d.id === id);
             if (!item) { showToast('Item not found', 'error'); return; }
-            let details = '<div style="display:grid;gap:8px;">';
+            let details = '<div style="display:grid;gap:8px;max-height:400px;overflow-y:auto;">';
             Object.entries(item).forEach(([key, val]) => {
                 if (key === 'id') return;
                 let displayVal = val;
                 if (typeof val === 'boolean') displayVal = val ? '✅ Yes' : '❌ No';
                 else if (val && typeof val === 'string' && val.length > 100) displayVal = val.substring(0, 100) + '...';
                 else if (val === null || val === undefined) displayVal = '—';
-                details += '<div><strong>' + key.replace(/_/g, ' ') + ':</strong> ' + displayVal + '</div>';
+                else if (key.includes('_at') || key === 'created_at' || key === 'updated_at') {
+                    displayVal = new Date(val).toLocaleString();
+                }
+                details += '<div style="padding:4px 0;border-bottom:1px solid var(--border);"><strong>' + key.replace(/_/g, ' ') + ':</strong> ' + displayVal + '</div>';
             });
             details += '</div>';
             openModal('📄 Details', details, 'Close', closeModal);
@@ -190,14 +193,16 @@
         async function editItem(id) {
             const item = dataCache.find(d => d.id === id);
             if (!item) { showToast('Item not found', 'error'); return; }
-            let form = '<div class="form-group"><label>ID</label><input type="text" value="' + id + '" disabled></div>';
+            let form = '<div class="form-group"><label>ID</label><input type="text" value="' + id + '" disabled style="background:var(--bg-primary);"></div>';
             Object.entries(item).forEach(([key, val]) => {
                 if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
                 let displayVal = val === null || val === undefined ? '' : String(val);
+                if (typeof val === 'boolean') displayVal = val ? 'true' : 'false';
                 form += '<div class="form-group"><label>' + key.replace(/_/g, ' ') + '</label><input type="text" id="edit_' + key + '" value="' + displayVal + '"></div>';
             });
             openModal('✏️ Edit Item', form, 'Save', async function() {
                 let updates = {};
+                let hasChanges = false;
                 Object.entries(item).forEach(([key, val]) => {
                     if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
                     const input = document.getElementById('edit_' + key);
@@ -205,11 +210,15 @@
                         let value = input.value;
                         if (typeof val === 'number') value = parseFloat(value);
                         else if (typeof val === 'boolean') value = value === 'true';
-                        updates[key] = value;
+                        if (String(value) !== String(val)) {
+                            updates[key] = value;
+                            hasChanges = true;
+                        }
                     }
                 });
+                if (!hasChanges) { showToast('No changes detected', 'info'); return; }
                 try {
-                    const { error } = await supabase.from(pageType).update(updates).eq('id', id);
+                    const { error } = await supabase.from(tableName).update(updates).eq('id', id);
                     if (error) throw error;
                     showToast('✅ Item updated successfully', 'success');
                     closeModal();
@@ -223,7 +232,7 @@
         async function deleteItem(id) {
             if (!confirm('Are you sure you want to delete this item?')) return;
             try {
-                const { error } = await supabase.from(pageType).update({ is_active: false }).eq('id', id);
+                const { error } = await supabase.from(tableName).update({ is_active: false }).eq('id', id);
                 if (error) throw error;
                 showToast('✅ Item deleted successfully', 'success');
                 loadData();
@@ -233,8 +242,6 @@
         }
         
         document.addEventListener('DOMContentLoaded', function() {
-            // Set up table head
-            document.getElementById('tableHead').innerHTML = '<tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr>';
             setTimeout(loadData, 500);
         });
     </script>

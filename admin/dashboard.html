@@ -9,57 +9,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        .page-content {
-            padding: 24px 32px;
-        }
-        .page-content.active {
-            display: block;
-        }
-        .page-content {
-            display: none;
-        }
-        .iframe-container {
-            width: 100%;
-            height: calc(100vh - var(--header-height) - 40px);
-            border: none;
-            background: var(--bg-primary);
-            border-radius: var(--radius);
-            overflow: hidden;
-        }
-        .iframe-container iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: var(--bg-primary);
-        }
-        .page-loading {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--text-muted);
-            font-size: 16px;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .page-loading .spinner {
-            width: 40px;
-            height: 40px;
-            border-width: 3px;
-        }
-        .quick-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .quick-stat {
-            background: var(--bg-card);
-            border-radius: var(--radius);
-            padding: 16px 20px;
-            border: 1px solid var(--border);
-            transition: var(--transition);
-        }
+        .page-content { padding: 24px 32px; }
+        .page-content.active { display: block; }
+        .page-content { display: none; }
+        .iframe-container { width: 100%; height: calc(100vh - var(--header-height) - 40px); border: none; background: var(--bg-primary); border-radius: var(--radius); overflow: hidden; }
+        .iframe-container iframe { width: 100%; height: 100%; border: none; background: var(--bg-primary); }
+        .page-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 16px; flex-direction: column; gap: 16px; }
+        .page-loading .spinner { width: 40px; height: 40px; border-width: 3px; }
+        .quick-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .quick-stat { background: var(--bg-card); border-radius: var(--radius); padding: 16px 20px; border: 1px solid var(--border); transition: var(--transition); }
         .quick-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
         .quick-stat .num { font-size: 28px; font-weight: 800; }
         .quick-stat .label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
@@ -67,63 +25,23 @@
         .quick-stat .change.up { color: #22c55e; }
         .quick-stat .change.down { color: #ef4444; }
         .quick-stat .change.neutral { color: var(--text-muted); }
-        
-        .activity-feed {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        .activity-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 0;
-            border-bottom: 1px solid var(--border);
-        }
+        .activity-feed { max-height: 400px; overflow-y: auto; }
+        .activity-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
         .activity-item:last-child { border-bottom: none; }
-        .activity-icon {
-            width: 38px;
-            height: 38px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            flex-shrink: 0;
-            background: var(--bg-primary);
-        }
+        .activity-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; background: var(--bg-primary); }
         .activity-content { flex: 1; }
         .activity-title { font-weight: 600; font-size: 14px; }
         .activity-meta { font-size: 12px; color: var(--text-muted); }
         .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-        
-        .chart-bars {
-            display: flex;
-            align-items: flex-end;
-            gap: 12px;
-            height: 140px;
-            padding: 0 4px;
-        }
-        .chart-bars .bar {
-            flex: 1;
-            border-radius: 6px 6px 0 0;
-            background: linear-gradient(180deg, var(--primary), var(--primary-light));
-            transition: height 1s ease;
-            min-height: 8px;
-        }
-        .chart-labels {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
-            font-size: 11px;
-            color: var(--text-muted);
-        }
+        .chart-bars { display: flex; align-items: flex-end; gap: 12px; height: 140px; padding: 0 4px; }
+        .chart-bars .bar { flex: 1; border-radius: 6px 6px 0 0; background: linear-gradient(180deg, var(--primary), var(--primary-light)); transition: height 1s ease; min-height: 8px; }
+        .chart-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
         @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
     </style>
 </head>
 <body>
-
-    <!-- ─── SIDEBAR ────────────────────────────────────────────────────── -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
             <div class="brand-icon">🧵</div>
@@ -135,62 +53,51 @@
         <nav class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-nav-label">Overview</div>
             <a class="sidebar-nav-item active" data-page="dashboard" href="#" onclick="loadPage('dashboard')">
-                <span class="icon">📊</span> Dashboard
-                <span class="badge success">Live</span>
+                <span class="icon">📊</span> Dashboard <span class="badge success">Live</span>
             </a>
             <div class="sidebar-nav-label">Management</div>
             <a class="sidebar-nav-item" data-page="babies" href="#" onclick="loadPage('babies')">
-                <span class="icon">👶</span> Babies
-                <span class="badge" id="babyBadge">0</span>
+                <span class="icon">👶</span> Babies <span class="badge" id="babyBadge">0</span>
             </a>
             <a class="sidebar-nav-item" data-page="users" href="#" onclick="loadPage('users')">
-                <span class="icon">👤</span> Users
-                <span class="badge" id="userBadge">0</span>
+                <span class="icon">👤</span> Users <span class="badge" id="userBadge">0</span>
             </a>
             <a class="sidebar-nav-item" data-page="moderation" href="#" onclick="loadPage('moderation')">
-                <span class="icon">🛡️</span> Moderation
-                <span class="badge danger" id="modBadge">0</span>
+                <span class="icon">🛡️</span> Moderation <span class="badge danger" id="modBadge">0</span>
             </a>
             <div class="sidebar-nav-label">Community</div>
             <a class="sidebar-nav-item" data-page="community" href="#" onclick="loadPage('community')">
-                <span class="icon">💬</span> Community
-                <span class="badge" id="postBadge">0</span>
+                <span class="icon">💬</span> Community <span class="badge" id="postBadge">0</span>
             </a>
             <a class="sidebar-nav-item" data-page="topics" href="#" onclick="loadPage('topics')">
                 <span class="icon">📌</span> Topics
             </a>
             <div class="sidebar-nav-label">Trackers</div>
             <a class="sidebar-nav-item" data-page="trackers" href="#" onclick="loadPage('trackers')">
-                <span class="icon">📈</span> Tracker Entries
-                <span class="badge" id="entryBadge">0</span>
+                <span class="icon">📈</span> Tracker Entries <span class="badge" id="entryBadge">0</span>
             </a>
             <a class="sidebar-nav-item" data-page="milestones" href="#" onclick="loadPage('milestones')">
-                <span class="icon">🏆</span> Milestones
-                <span class="badge" id="milestoneBadge">0</span>
+                <span class="icon">🏆</span> Milestones <span class="badge" id="milestoneBadge">0</span>
             </a>
             <div class="sidebar-nav-label">Analytics</div>
             <a class="sidebar-nav-item" data-page="analytics" href="#" onclick="loadPage('analytics')">
                 <span class="icon">📈</span> Analytics
             </a>
             <a class="sidebar-nav-item" data-page="performance" href="#" onclick="loadPage('performance')">
-                <span class="icon">⚡</span> Performance
-                <span class="badge success">Live</span>
+                <span class="icon">⚡</span> Performance <span class="badge success">Live</span>
             </a>
             <div class="sidebar-nav-label">System</div>
             <a class="sidebar-nav-item" data-page="realtime" href="#" onclick="loadPage('realtime')">
-                <span class="icon">🔄</span> Realtime
-                <span class="badge success">Live</span>
+                <span class="icon">🔄</span> Realtime <span class="badge success">Live</span>
             </a>
             <a class="sidebar-nav-item" data-page="health" href="#" onclick="loadPage('health')">
-                <span class="icon">❤️</span> System Health
-                <span class="badge success" id="healthBadge">OK</span>
+                <span class="icon">❤️</span> System Health <span class="badge success" id="healthBadge">OK</span>
             </a>
             <a class="sidebar-nav-item" data-page="audit" href="#" onclick="loadPage('audit')">
                 <span class="icon">📋</span> Audit Logs
             </a>
             <a class="sidebar-nav-item" data-page="notifications" href="#" onclick="loadPage('notifications')">
-                <span class="icon">🔔</span> Push Notifications
-                <span class="badge" id="notifBadge">0</span>
+                <span class="icon">🔔</span> Push Notifications <span class="badge" id="notifBadge">0</span>
             </a>
             <a class="sidebar-nav-item" data-page="features" href="#" onclick="loadPage('features')">
                 <span class="icon">🚩</span> Feature Flags
@@ -202,8 +109,7 @@
                 <span class="icon">🔑</span> API Management
             </a>
             <a class="sidebar-nav-item" data-page="support" href="#" onclick="loadPage('support')">
-                <span class="icon">🎫</span> Support Tickets
-                <span class="badge danger" id="supportBadge">0</span>
+                <span class="icon">🎫</span> Support Tickets <span class="badge danger" id="supportBadge">0</span>
             </a>
             <a class="sidebar-nav-item" data-page="announcements" href="#" onclick="loadPage('announcements')">
                 <span class="icon">📢</span> Announcements
@@ -229,7 +135,6 @@
 
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-    <!-- ─── MODAL ────────────────────────────────────────────────────── -->
     <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
         <div class="modal" id="modalContent">
             <div class="modal-header">
@@ -244,7 +149,6 @@
         </div>
     </div>
 
-    <!-- ─── MAIN ───────────────────────────────────────────────────────── -->
     <main class="main">
         <header class="topbar">
             <div class="topbar-left">
@@ -265,7 +169,6 @@
             </div>
         </header>
 
-        <!-- ─── PAGE: DASHBOARD ────────────────────────────────────────── -->
         <div id="page-dashboard" class="page-content active">
             <div class="status-bar" id="statusBar">
                 <span>✅ All systems operational</span>
@@ -315,7 +218,6 @@
             </div>
         </div>
 
-        <!-- ─── PAGE CONTAINER FOR OTHER PAGES ─────────────────────────── -->
         <div id="page-container" class="page-content" style="padding:0;display:none;">
             <div class="iframe-container" id="iframeContainer">
                 <div class="page-loading" id="pageLoading">
@@ -328,7 +230,6 @@
         </div>
     </main>
 
-    <!-- ─── TOAST ──────────────────────────────────────────────────────── -->
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="/admin/js/admin.js"></script>
@@ -518,18 +419,10 @@
             }
             
             realtimeChannel = supabase.channel('admin-realtime')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, function(p) { 
-                    fetchDashboardData(); 
-                })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, function(p) { 
-                    fetchDashboardData(); 
-                })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, function(p) { 
-                    fetchDashboardData(); 
-                })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, function(p) { 
-                    fetchDashboardData(); 
-                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, function(p) { fetchDashboardData(); })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, function(p) { fetchDashboardData(); })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, function(p) { fetchDashboardData(); })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, function(p) { fetchDashboardData(); })
                 .subscribe(function(status) {
                     if (status === 'SUBSCRIBED') {
                         console.log('✅ Realtime connected');
