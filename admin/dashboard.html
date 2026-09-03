@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        /* ─── ENTERPRISE ADMIN STYLES ─────────────────────────────────── */
+        /* ─── ROOT VARIABLES ────────────────────────────────────────────── */
         :root {
             --primary: #6366f1;
             --primary-dark: #4f46e5;
@@ -541,53 +541,6 @@
         }
         .welcome-banner h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
         .welcome-banner p { opacity: 0.85; font-size: 14px; }
-
-        /* ─── QUICK ACTIONS ─────────────────────────────────────────────── */
-        .quick-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-        }
-        .quick-actions .btn { padding: 8px 16px; font-size: 12px; }
-
-        /* ─── STATUS INDICATOR ──────────────────────────────────────────── */
-        .status-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .status-indicator.online { background: #dcfce7; color: #16a34a; }
-        .status-indicator.offline { background: #fee2e2; color: #dc2626; }
-        .status-indicator .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-        .status-indicator.online .dot { background: #22c55e; }
-        .status-indicator.offline .dot { background: #ef4444; }
-
-        /* ─── WELCOME BANNER ───────────────────────────────────────────── */
-        .welcome-banner {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
-            border-radius: var(--radius);
-            padding: 24px 28px;
-            color: #fff;
-            margin-bottom: 24px;
-            position: relative;
-            overflow: hidden;
-        }
-        .welcome-banner::after {
-            content: '✨';
-            position: absolute;
-            right: 24px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 48px;
-            opacity: 0.15;
-        }
-        .welcome-banner h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-        .welcome-banner p { opacity: 0.85; font-size: 14px; }
         .welcome-banner .session-info { font-size: 12px; opacity: 0.7; margin-top: 8px; }
 
         /* ─── QUICK ACTIONS ─────────────────────────────────────────────── */
@@ -614,6 +567,68 @@
         .status-indicator .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
         .status-indicator.online .dot { background: #22c55e; }
         .status-indicator.offline .dot { background: #ef4444; }
+
+        /* ─── MODAL ─────────────────────────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+            animation: modalFade 0.3s ease;
+        }
+        .modal-overlay.active { display: flex; }
+
+        @keyframes modalFade {
+            from { opacity:0; }
+            to { opacity:1; }
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            max-width: 520px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 24px 48px rgba(0,0,0,0.2);
+            animation: modalSlide 0.3s ease;
+        }
+        @keyframes modalSlide {
+            from { transform: translateY(20px) scale(0.95); opacity:0; }
+            to { transform: translateY(0) scale(1); opacity:1; }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-header h2 { font-size: 18px; font-weight: 700; }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .modal-close:hover { background: var(--bg-primary); }
+        .modal-body { padding: 20px 24px; }
+        .modal-footer {
+            padding: 14px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
     </style>
 </head>
 <body>
@@ -701,21 +716,6 @@
                 </a>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('features')">
                     <span class="icon">🚩</span> Feature Flags
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('notifications')">
-                    <span class="icon">🔔</span> Notifications
-                    <span class="badge" id="notifBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('export')">
-                    <span class="icon">📤</span> Data Export
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('realtime')">
-                    <span class="icon">🔄</span> Realtime Monitor
-                    <span class="badge success">Live</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('health')">
-                    <span class="icon">❤️</span> System Health
-                    <span class="badge success" id="healthBadge">OK</span>
                 </a>
             </nav>
             <div class="sidebar-footer">
@@ -845,6 +845,7 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
+    <script src="/admin/js/admin.js"></script>
     <script>
         // ─── SUPABASE CONFIG ──────────────────────────────────────────────
         const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
@@ -864,35 +865,54 @@
         }
 
         // ─── TOAST ────────────────────────────────────────────────────────
-        function showToast(message, type) {
-            type = type || 'info';
-            const container = document.getElementById('toastContainer');
+        function showToast(message, type = 'info', duration = 4000) {
+            let container = document.getElementById('toastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'toast-container';
+                container.id = 'toastContainer';
+                document.body.appendChild(container);
+            }
+
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
             const toast = document.createElement('div');
-            toast.className = 'toast ' + type;
-            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span> ${message}`;
             container.appendChild(toast);
-            setTimeout(function() { if (toast.parentNode) toast.remove(); }, 4000);
+
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-10px)';
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, duration);
         }
 
         // ─── MODAL ────────────────────────────────────────────────────────
         let modalResolve = null;
         let modalData = null;
 
-        function openModal(title, bodyHTML, confirmText, confirmAction) {
+        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
             return new Promise((resolve) => {
+                const overlay = document.getElementById('modalOverlay');
+                if (!overlay) return;
+
                 document.getElementById('modalTitle').textContent = title;
                 document.getElementById('modalBody').innerHTML = bodyHTML;
-                document.getElementById('modalConfirmBtn').textContent = confirmText || 'Confirm';
-                document.getElementById('modalOverlay').classList.add('active');
+                document.getElementById('modalConfirmBtn').textContent = confirmText;
+                document.getElementById('modalCancelBtn').textContent = cancelText;
+                overlay.classList.add('active');
+
                 modalResolve = resolve;
                 modalData = { confirmAction };
             });
         }
 
-        function closeModal() {
+        function closeModal(result) {
             document.getElementById('modalOverlay').classList.remove('active');
             if (modalResolve) {
-                modalResolve(null);
+                modalResolve(result !== undefined ? result : null);
                 modalResolve = null;
             }
         }
@@ -901,11 +921,11 @@
             if (modalData && modalData.confirmAction) {
                 modalData.confirmAction();
             }
-            closeModal();
+            closeModal(true);
         }
 
         function modalCancel() {
-            closeModal();
+            closeModal(false);
         }
 
         // ─── AUTH ─────────────────────────────────────────────────────────
@@ -917,7 +937,7 @@
                     return false;
                 }
                 session = data.session;
-                document.getElementById('connectionStatus').textContent = 'Logged in as ' + session.user.email;
+                document.getElementById('connectionStatus').textContent = '👤 ' + session.user.email;
                 document.getElementById('sidebarEmail').textContent = session.user.email;
                 const name = session.user.user_metadata?.full_name || session.user.email.split('@')[0];
                 document.getElementById('sidebarName').textContent = name;
@@ -927,72 +947,37 @@
         }
 
         async function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                await supabase.auth.signOut();
-                session = null;
-                showToast('Logged out successfully', 'success');
-                document.getElementById('connectionStatus').textContent = 'Disconnected';
-                location.reload();
-            }
+            const confirmed = await new Promise((resolve) => {
+                openModal(
+                    '🚪 Confirm Logout',
+                    `
+                        <div style="text-align:center;padding:12px 0;">
+                            <div style="font-size:48px;margin-bottom:12px;">👋</div>
+                            <p style="font-size:16px;font-weight:500;margin-bottom:8px;">Are you sure you want to logout?</p>
+                            <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
+                        </div>
+                    `,
+                    'Yes, Logout',
+                    () => resolve(true),
+                    'Cancel'
+                );
+            });
+
+            if (!confirmed) return;
+
+            await supabase.auth.signOut();
+            session = null;
+            if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+            if (realtimeChannel) { realtimeChannel.unsubscribe(); realtimeChannel = null; }
+            showToast('✅ Logged out successfully', 'success');
+            window.location.href = '/login.html';
         }
 
         // ─── NAVIGATION ──────────────────────────────────────────────────
         function navigateTo(page) {
-            const pageMap = {
-                'dashboard': 'Dashboard <span class="sub">| Enterprise Overview</span>',
-                'babies': 'Babies <span class="sub">| All Baby Profiles</span>',
-                'users': 'Users <span class="sub">| User Management</span>',
-                'moderation': 'Moderation <span class="sub">| Content Review</span>',
-                'community': 'Community <span class="sub">| Posts & Engagement</span>',
-                'topics': 'Topics <span class="sub">| Community Topics</span>',
-                'announcements': 'Announcements <span class="sub">| App-wide Messages</span>',
-                'trackers': 'Trackers <span class="sub">| All Tracker Entries</span>',
-                'milestones': 'Milestones <span class="sub">| Developmental Achievements</span>',
-                'analytics': 'Analytics <span class="sub">| Growth & Engagement</span>',
-                'growth': 'Growth Analytics <span class="sub">| Development Insights</span>',
-                'activity': 'Activity Heatmap <span class="sub">| User Engagement Patterns</span>',
-                'settings': 'Settings <span class="sub">| System Configuration</span>',
-                'backup': 'Backup <span class="sub">| Data Protection</span>',
-                'audit': 'Audit Logs <span class="sub">| Activity Trail</span>',
-                'support': 'Support <span class="sub">| Customer Support</span>',
-                'api': 'API Management <span class="sub">| Keys & Rate Limiting</span>',
-                'features': 'Feature Flags <span class="sub">| Feature Management</span>',
-                'notifications': 'Notifications <span class="sub">| Push Management</span>',
-                'export': 'Data Export <span class="sub">| Export App Data</span>',
-                'realtime': 'Realtime Monitor <span class="sub">| Live Event Stream</span>',
-                'health': 'System Health <span class="sub">| Status Dashboard</span>'
-            };
-
-            document.getElementById('pageTitle').innerHTML = pageMap[page] || 'Dashboard';
-
-            // Show all pages
-            document.querySelectorAll('.page-content').forEach(function(el) {
-                el.classList.remove('active');
-            });
-
-            // Show selected page
-            const target = document.getElementById('page-' + page);
-            if (target) {
-                target.classList.add('active');
-            } else if (page !== 'dashboard') {
-                // If page doesn't exist on dashboard, navigate to the actual page
-                window.location.href = '/admin/pages/' + page + '.html';
-                return;
-            }
-
-            // Update sidebar
-            document.querySelectorAll('.sidebar-nav-item').forEach(function(el) {
-                el.classList.remove('active');
-                if (el.textContent.toLowerCase().includes(page)) {
-                    el.classList.add('active');
-                }
-            });
-
-            if (page === 'dashboard') {
-                fetchDashboardData();
-            }
-
             if (window.innerWidth <= 1024) toggleSidebar(false);
+            showToast(`📂 Loading ${page}...`, 'info', 1000);
+            window.location.href = `/admin/pages/${page}.html`;
         }
 
         function toggleSidebar(open) {
@@ -1013,12 +998,12 @@
         // ─── SAFE SET ────────────────────────────────────────────────────
         function safeSetText(id, value) {
             const el = document.getElementById(id);
-            if (el) el.textContent = value;
+            if (el) el.textContent = value ?? '—';
         }
 
         function safeSetHTML(id, value) {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = value;
+            if (el) el.innerHTML = value ?? '—';
         }
 
         function formatDate(dateStr) {
@@ -1046,69 +1031,119 @@
 
             const statusBar = document.getElementById('statusBar');
             if (statusBar) {
-                statusBar.innerHTML = '<span class="spinner"></span><span>Loading...</span>';
+                statusBar.innerHTML = '<span>🔄 Loading...</span>';
             }
 
             try {
-                const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult, recentResult] =
-                    await Promise.all([
+                // Use the admin stats function
+                const { data: stats, error: statsError } = await supabase
+                    .rpc('get_admin_stats');
+
+                if (statsError) {
+                    console.warn('Stats function error, falling back to direct queries:', statsError);
+                    // Fallback to direct queries
+                    const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult, recentResult] = await Promise.all([
                         supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
                         supabase.from('profiles').select('*', { count: 'exact', head: true }),
-                        supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('is_deleted',
-                            false),
-                        supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted',
-                            false),
-                        supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type',
-                            'milestone').eq('is_deleted', false),
+                        supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
+                        supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
+                        supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone').eq('is_deleted', false),
                         supabase.from('tracker_entries')
+                            .select('tracker_id, title, logged_by_name, timestamp, created_at')
+                            .eq('is_deleted', false)
+                            .order('timestamp', { ascending: false })
+                            .limit(8)
+                    ]);
+
+                    safeSetText('statBabies', babiesResult.count || 0);
+                    safeSetText('statUsers', profilesResult.count || 0);
+                    safeSetText('statEntries', entriesResult.count || 0);
+                    safeSetText('statPosts', postsResult.count || 0);
+                    safeSetText('statMilestones', milestonesResult.count || 0);
+
+                    // Update badges
+                    safeSetText('babyBadge', babiesResult.count || 0);
+                    safeSetText('userBadge', profilesResult.count || 0);
+                    safeSetText('postBadge', postsResult.count || 0);
+                    safeSetText('entryBadge', entriesResult.count || 0);
+                    safeSetText('milestoneBadge', milestonesResult.count || 0);
+
+                    // Activity feed
+                    const feed = document.getElementById('activityFeed');
+                    const recent = recentResult.data || [];
+                    if (feed) {
+                        if (recent.length === 0) {
+                            feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
+                            safeSetText('activityCount', '0');
+                        } else {
+                            safeSetText('activityCount', recent.length);
+                            const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊', milestone: '🏆' };
+                            let html = '';
+                            recent.forEach(function(a) {
+                                html += `
+                                    <div class="activity-item">
+                                        <div class="activity-icon">${iconMap[a.tracker_id] || '📌'}</div>
+                                        <div class="activity-content">
+                                            <div class="activity-title">${a.title || a.tracker_id || 'Activity'}</div>
+                                            <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
+                                        </div>
+                                        <div class="activity-time">${formatDate(a.timestamp)}</div>
+                                    </div>
+                                `;
+                            });
+                            feed.innerHTML = html;
+                        }
+                    }
+
+                } else if (stats) {
+                    safeSetText('statBabies', stats.total_babies || 0);
+                    safeSetText('statUsers', stats.total_users || 0);
+                    safeSetText('statEntries', stats.total_entries || 0);
+                    safeSetText('statPosts', stats.total_posts || 0);
+                    safeSetText('statMilestones', stats.total_milestones || 0);
+
+                    safeSetText('babyBadge', stats.total_babies || 0);
+                    safeSetText('userBadge', stats.total_users || 0);
+                    safeSetText('postBadge', stats.total_posts || 0);
+                    safeSetText('entryBadge', stats.total_entries || 0);
+                    safeSetText('milestoneBadge', stats.total_milestones || 0);
+                    safeSetText('modBadge', stats.pending_moderation || 0);
+                    safeSetText('supportBadge', stats.open_tickets || 0);
+                    safeSetText('announceBadge', 0);
+
+                    // Get recent activity
+                    const { data: recent } = await supabase
+                        .from('tracker_entries')
                         .select('tracker_id, title, logged_by_name, timestamp, created_at')
                         .eq('is_deleted', false)
                         .order('timestamp', { ascending: false })
-                        .limit(8)
-                    ]);
+                        .limit(8);
 
-                const babyCount = babiesResult.count || 0;
-                const userCount = profilesResult.count || 0;
-                const entryCount = entriesResult.count || 0;
-                const postCount = postsResult.count || 0;
-                const milestoneCount = milestonesResult.count || 0;
-
-                safeSetText('statBabies', babyCount);
-                safeSetText('statUsers', userCount);
-                safeSetText('statEntries', entryCount);
-                safeSetText('statPosts', postCount);
-                safeSetText('statMilestones', milestoneCount);
-
-                // Average streak
-                const { data: babies } = await supabase.from('babies').select('streak').eq('is_active', true);
-                if (babies && babies.length > 0) {
-                    const totalStreak = babies.reduce((sum, b) => sum + (b.streak || 0), 0);
-                    const avg = Math.round(totalStreak / babies.length);
-                    safeSetHTML('statStreak', avg + '<span style="font-size:14px;font-weight:600;color:var(--text-muted);">d</span>');
+                    const feed = document.getElementById('activityFeed');
+                    if (feed) {
+                        if (!recent || recent.length === 0) {
+                            feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
+                            safeSetText('activityCount', '0');
+                        } else {
+                            safeSetText('activityCount', recent.length);
+                            const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊', milestone: '🏆' };
+                            let html = '';
+                            recent.forEach(function(a) {
+                                html += `
+                                    <div class="activity-item">
+                                        <div class="activity-icon">${iconMap[a.tracker_id] || '📌'}</div>
+                                        <div class="activity-content">
+                                            <div class="activity-title">${a.title || a.tracker_id || 'Activity'}</div>
+                                            <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
+                                        </div>
+                                        <div class="activity-time">${formatDate(a.timestamp)}</div>
+                                    </div>
+                                `;
+                            });
+                            feed.innerHTML = html;
+                        }
+                    }
                 }
-
-                // Update badges
-                safeSetText('babyBadge', babyCount);
-                safeSetText('userBadge', userCount);
-                safeSetText('postBadge', postCount);
-                safeSetText('entryBadge', entryCount);
-                safeSetText('milestoneBadge', milestoneCount);
-
-                // Announcements count
-                const { count: announceCount } = await supabase
-                    .from('announcements')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('is_deleted', false)
-                    .eq('status', 'published');
-                safeSetText('announceBadge', announceCount || 0);
-
-                // Support tickets count
-                const { count: supportCount } = await supabase
-                    .from('support_tickets')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('is_deleted', false)
-                    .in('status', ['open', 'in_progress']);
-                safeSetText('supportBadge', supportCount || 0);
 
                 // Update welcome message
                 const hour = new Date().getHours();
@@ -1118,34 +1153,6 @@
                 const userName = session?.user?.user_metadata?.full_name ||
                     session?.user?.email?.split('@')[0] || 'Admin';
                 document.getElementById('welcomeMessage').textContent = `👋 ${greeting}, ${userName}!`;
-
-                // Update activity feed
-                const feed = document.getElementById('activityFeed');
-                const recent = recentResult.data || [];
-                if (feed) {
-                    if (recent.length === 0) {
-                        feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
-                        safeSetText('activityCount', '0');
-                    } else {
-                        safeSetText('activityCount', recent.length);
-                        const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊',
-                            milestone: '🏆' };
-                        let html = '';
-                        recent.forEach(function(a) {
-                            html += `
-                                <div class="activity-item">
-                                    <div class="activity-icon">${iconMap[a.tracker_id] || '📌'}</div>
-                                    <div class="activity-content">
-                                        <div class="activity-title">${a.title || a.tracker_id || 'Activity'}</div>
-                                        <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
-                                    </div>
-                                    <div class="activity-time">${formatDate(a.timestamp)}</div>
-                                </div>
-                            `;
-                        });
-                        feed.innerHTML = html;
-                    }
-                }
 
                 // Update status
                 const statusBarEl = document.getElementById('statusBar');
