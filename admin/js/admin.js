@@ -12,6 +12,17 @@ let isOnline = navigator.onLine;
 let sessionTimeout = null;
 const SESSION_TIMEOUT_MINUTES = 30;
 
+// ─── SAFE SET FUNCTIONS ──────────────────────────────────────────────────
+function safeSetText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value ?? '—';
+}
+
+function safeSetHTML(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = value ?? '—';
+}
+
 // ─── INIT ──────────────────────────────────────────────────────────────────
 function initSupabase() {
     try {
@@ -54,13 +65,39 @@ let modalData = null;
 
 function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
     return new Promise((resolve) => {
-        const overlay = document.getElementById('modalOverlay');
+        let overlay = document.getElementById('modalOverlay');
+        if (!overlay) {
+            const modalHTML = `
+                <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <h2 id="modalTitle">Modal</h2>
+                            <button class="modal-close" onclick="modalCancel()">✕</button>
+                        </div>
+                        <div class="modal-body" id="modalBody"></div>
+                        <div class="modal-footer">
+                            <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                            <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            overlay = document.getElementById('modalOverlay');
+        }
+        
         if (!overlay) return;
 
-        document.getElementById('modalTitle').textContent = title;
-        document.getElementById('modalBody').innerHTML = bodyHTML;
-        document.getElementById('modalConfirmBtn').textContent = confirmText;
-        document.getElementById('modalCancelBtn').textContent = cancelText;
+        const titleEl = document.getElementById('modalTitle');
+        const bodyEl = document.getElementById('modalBody');
+        const confirmBtn = document.getElementById('modalConfirmBtn');
+        const cancelBtn = document.getElementById('modalCancelBtn');
+        
+        if (titleEl) titleEl.textContent = title;
+        if (bodyEl) bodyEl.innerHTML = bodyHTML;
+        if (confirmBtn) confirmBtn.textContent = confirmText;
+        if (cancelBtn) cancelBtn.textContent = cancelText;
+        
         overlay.classList.add('active');
 
         modalResolve = resolve;
@@ -69,7 +106,8 @@ function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = nul
 }
 
 function closeModal(result) {
-    document.getElementById('modalOverlay').classList.remove('active');
+    const overlay = document.getElementById('modalOverlay');
+    if (overlay) overlay.classList.remove('active');
     if (modalResolve) {
         modalResolve(result !== undefined ? result : null);
         modalResolve = null;
@@ -197,14 +235,8 @@ async function handleLogout() {
 
 // ─── NAVIGATION ────────────────────────────────────────────────────────────
 function navigateTo(page) {
-    // Close sidebar on mobile
     if (window.innerWidth <= 1024) toggleSidebar(false);
-    
-    // Update activity
     localStorage.setItem('lastActivity', Date.now().toString());
-    
-    // Navigate to the page using the clean URL format
-    // This will use /admin/:page which the server handles
     window.location.href = `/admin/${page}`;
 }
 
@@ -212,28 +244,18 @@ function toggleSidebar(open) {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
     if (open === undefined) {
-        sidebar.classList.toggle('open');
-        overlay.classList.toggle('active');
+        if (sidebar) sidebar.classList.toggle('open');
+        if (overlay) overlay.classList.toggle('active');
     } else if (open) {
-        sidebar.classList.add('open');
-        overlay.classList.add('active');
+        if (sidebar) sidebar.classList.add('open');
+        if (overlay) overlay.classList.add('active');
     } else {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('active');
+        if (sidebar) sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('active');
     }
 }
 
-// ─── SAFE SET ─────────────────────────────────────────────────────────────
-function safeSetText(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value ?? '—';
-}
-
-function safeSetHTML(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = value ?? '—';
-}
-
+// ─── FORMAT HELPERS ──────────────────────────────────────────────────────
 function formatDate(dateStr) {
     if (!dateStr) return '—';
     try {
@@ -289,19 +311,39 @@ function formatNumber(num) {
     return num.toString();
 }
 
-// ─── ONLINE/OFFLINE ───────────────────────────────────────────────────────
-window.addEventListener('online', () => {
-    isOnline = true;
-    showToast('🔄 Back online', 'success');
-    if (typeof fetchDashboardData === 'function') {
-        fetchDashboardData();
-    }
-});
+// ─── UPDATE ALL BADGES ───────────────────────────────────────────────────
+async function updateAllBadges() {
+    if (!supabase || !session) return;
 
-window.addEventListener('offline', () => {
-    isOnline = false;
-    showToast('📡 You are offline', 'warning');
-});
+    try {
+        const [babiesResult, profilesResult, entriesResult, postsResult] = await Promise.all([
+            supabase.from('babies').select('*', { count: 'exact', head: true }),
+            supabase.from('profiles').select('*', { count: 'exact', head: true }),
+            supabase.from('tracker_entries').select('*', { count: 'exact', head: true }),
+            supabase.from('community_posts').select('*', { count: 'exact', head: true })
+        ]);
+
+        const babyCount = babiesResult.count || 0;
+        const userCount = profilesResult.count || 0;
+        const entryCount = entriesResult.count || 0;
+        const postCount = postsResult.count || 0;
+
+        safeSetText('babyBadge', babyCount);
+        safeSetText('userBadge', userCount);
+        safeSetText('postBadge', postCount);
+        safeSetText('entryBadge', entryCount);
+        safeSetText('modBadge', 0);
+
+        // Update footer counts if they exist
+        const footerCount = document.getElementById('footerCount');
+        const footerActive = document.getElementById('footerActive');
+        if (footerCount) footerCount.textContent = userCount + ' users';
+        if (footerActive) footerActive.textContent = userCount + ' active';
+
+    } catch (err) {
+        console.error('Error updating badges:', err);
+    }
+}
 
 // ─── DASHBOARD DATA ──────────────────────────────────────────────────────
 async function fetchDashboardData() {
@@ -336,17 +378,20 @@ async function fetchDashboardData() {
         const postCount = postsResult.count || 0;
         const milestoneCount = milestonesResult.count || 0;
 
+        // Update stats
         safeSetText('statBabies', babyCount);
         safeSetText('statUsers', userCount);
         safeSetText('statEntries', entryCount);
         safeSetText('statPosts', postCount);
         safeSetText('statMilestones', milestoneCount);
 
+        // Update badges
         safeSetText('babyBadge', babyCount);
         safeSetText('userBadge', userCount);
         safeSetText('postBadge', postCount);
         safeSetText('entryBadge', entryCount);
         safeSetText('milestoneBadge', milestoneCount);
+        safeSetText('modBadge', 0);
 
         const { data: streakData } = await supabase
             .from('babies')
@@ -408,7 +453,8 @@ async function fetchDashboardData() {
         else if (hour >= 17) greeting = 'Good evening';
         const userName = session?.user?.user_metadata?.full_name ||
             session?.user?.email?.split('@')[0] || 'Admin';
-        document.getElementById('welcomeMessage').textContent = `👋 ${greeting}, ${userName}!`;
+        const welcomeEl = document.getElementById('welcomeMessage');
+        if (welcomeEl) welcomeEl.textContent = `👋 ${greeting}, ${userName}!`;
 
         const statusBarEl = document.getElementById('statusBar');
         if (statusBarEl) {
@@ -423,6 +469,12 @@ async function fetchDashboardData() {
             `;
         }
         safeSetText('lastUpdated', new Date().toLocaleString());
+
+        // Update footer counts if they exist
+        const footerCount = document.getElementById('footerCount');
+        const footerActive = document.getElementById('footerActive');
+        if (footerCount) footerCount.textContent = userCount + ' users';
+        if (footerActive) footerActive.textContent = userCount + ' active';
 
         console.log('✅ Dashboard data loaded');
 
@@ -457,10 +509,22 @@ function setupRealtime() {
     }
 
     realtimeChannel = supabase.channel('admin-realtime')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, () => fetchDashboardData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, () => fetchDashboardData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, () => fetchDashboardData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchDashboardData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, () => {
+            fetchDashboardData();
+            updateAllBadges();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, () => {
+            fetchDashboardData();
+            updateAllBadges();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, () => {
+            fetchDashboardData();
+            updateAllBadges();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+            fetchDashboardData();
+            updateAllBadges();
+        })
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('✅ Realtime connected');
@@ -471,56 +535,16 @@ function setupRealtime() {
         });
 }
 
-// ─── UPDATE SIDEBAR LINKS ────────────────────────────────────────────────
-function updateSidebarLinks() {
-    document.querySelectorAll('.sidebar-nav-item[onclick*="navigateTo"]').forEach(el => {
-        const originalOnclick = el.getAttribute('onclick');
-        // The navigateTo function handles the routing now
-        // No changes needed - it already uses the clean URL format
-    });
-}
+// ─── ONLINE/OFFLINE ───────────────────────────────────────────────────────
+window.addEventListener('online', () => {
+    isOnline = true;
+    showToast('🔄 Back online', 'success');
+});
 
-// ─── INIT ──────────────────────────────────────────────────────────────────
-async function init() {
-    if (!initSupabase()) {
-        showToast('Failed to initialize Supabase', 'error');
-        return;
-    }
-
-    const authed = await checkAuth();
-    if (!authed) {
-        showToast('Please log in to continue', 'warning');
-        return;
-    }
-
-    await fetchDashboardData();
-
-    if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = setInterval(fetchDashboardData, 30000);
-
-    setupRealtime();
-    updateSidebarLinks();
-
-    window.addEventListener('resize', function() {
-        if (window.innerWidth > 1024) {
-            document.getElementById('sidebar').classList.remove('open');
-            document.getElementById('sidebarOverlay').classList.remove('active');
-        }
-    });
-
-    document.addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'r') {
-            e.preventDefault();
-            refreshAll();
-        }
-        if (e.key === 'Escape') {
-            closeModal();
-        }
-    });
-
-    console.log('🧵 Enterprise Admin Console ready');
-    console.log('👤 Logged in as: ' + session?.user?.email);
-}
+window.addEventListener('offline', () => {
+    isOnline = false;
+    showToast('📡 You are offline', 'warning');
+});
 
 // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────────────
 window.showToast = showToast;
@@ -540,8 +564,42 @@ window.formatNumber = formatNumber;
 window.initSupabase = initSupabase;
 window.checkAuth = checkAuth;
 window.fetchDashboardData = fetchDashboardData;
+window.updateAllBadges = updateAllBadges;
 window.refreshAll = refreshAll;
 window.session = session;
 window.isOnline = isOnline;
 
-document.addEventListener('DOMContentLoaded', init);
+// ─── INIT ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async function() {
+    if (!initSupabase()) {
+        showToast('Failed to initialize Supabase', 'error');
+        return;
+    }
+
+    const authed = await checkAuth();
+    if (!authed) {
+        showToast('Please log in to continue', 'warning');
+        return;
+    }
+
+    // Update badges on all pages
+    await updateAllBadges();
+
+    // Only run dashboard-specific code if dashboard elements exist
+    if (document.getElementById('welcomeMessage') || document.getElementById('statBabies')) {
+        await fetchDashboardData();
+        if (refreshTimer) clearInterval(refreshTimer);
+        refreshTimer = setInterval(() => {
+            fetchDashboardData();
+            updateAllBadges();
+        }, 30000);
+        setupRealtime();
+    } else {
+        // On non-dashboard pages, update badges periodically
+        if (refreshTimer) clearInterval(refreshTimer);
+        refreshTimer = setInterval(updateAllBadges, 30000);
+    }
+
+    console.log('🧵 Enterprise Admin Console ready');
+    console.log('👤 Logged in as: ' + session?.user?.email);
+});
