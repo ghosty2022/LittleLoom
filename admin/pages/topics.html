@@ -28,7 +28,7 @@
 
         .topic-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
             gap: 16px;
             margin-top: 16px;
         }
@@ -40,14 +40,13 @@
             text-align: center;
             transition: all var(--transition);
             box-shadow: var(--shadow);
-            cursor: pointer;
         }
         .topic-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
         .topic-card .emoji { font-size: 40px; display: block; margin-bottom: 8px; }
         .topic-card .name { font-size: 15px; font-weight: 700; }
         .topic-card .desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
         .topic-card .meta { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
-        .topic-card .actions { display: flex; gap: 6px; justify-content: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+        .topic-card .actions { display: flex; gap: 6px; justify-content: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
         .topic-card .actions .btn-sm { padding: 3px 12px; font-size: 10px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
         .topic-card .actions .btn-edit { background: var(--primary); color: #fff; }
         .topic-card .actions .btn-edit:hover { background: var(--primary-dark); }
@@ -67,10 +66,17 @@
         .filter-bar-modern input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
         .filter-bar-modern .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
 
-        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-        .empty-state-modern p { font-size: 14px; }
+        .modal-topic-form .form-group { margin-bottom: 14px; }
+        .modal-topic-form .form-group label { display: block; font-weight: 600; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+        .modal-topic-form .form-group input, .modal-topic-form .form-group textarea {
+            width: 100%; padding: 10px 14px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-card); color: var(--text-primary);
+            transition: var(--transition);
+        }
+        .modal-topic-form .form-group input:focus, .modal-topic-form .form-group textarea:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+        .modal-topic-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
@@ -88,15 +94,10 @@
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
                 <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')"><span class="icon">👶</span> Babies <span class="badge" id="babyBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')"><span class="icon">👤</span> Users <span class="badge" id="userBadge">0</span></a>
                 <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')"><span class="icon">💬</span> Community <span class="badge" id="postBadge">0</span></a>
                 <a class="sidebar-nav-item active" href="#"><span class="icon">📌</span> Topics <span class="badge" id="topicBadge">0</span></a>
                 <div class="sidebar-nav-label">System</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
@@ -171,7 +172,11 @@
             if (!authed) { showToast('Please log in', 'warning'); return; }
 
             try {
-                const { data, error } = await supabase.from('community_topics').select('*').order('name');
+                const { data, error } = await supabase
+                    .from('community_topics')
+                    .select('*')
+                    .order('name');
+
                 if (error) throw error;
 
                 topicsCache = data || [];
@@ -190,19 +195,25 @@
         function renderTopics(topics) {
             const container = document.getElementById('topicsContainer');
             if (!topics || topics.length === 0) {
-                container.innerHTML = `<div class="empty-state-modern"><div class="emoji">📭</div><h3>No topics yet</h3><p>Create your first community topic</p><button class="btn btn-primary" onclick="openAddTopicModal()" style="margin-top:12px;">➕ Add Topic</button></div>`;
+                container.innerHTML = `
+                    <div class="empty-state-modern">
+                        <div class="emoji">📭</div>
+                        <h3>No topics yet</h3>
+                        <p>Create your first community topic</p>
+                        <button class="btn btn-primary" onclick="openAddTopicModal()" style="margin-top:12px;">➕ Add Topic</button>
+                    </div>
+                `;
                 return;
             }
 
             let html = '<div class="topic-grid">';
             topics.forEach(t => {
-                const categories = new Set(topics.map(t => t.category).filter(Boolean));
                 html += `
                     <div class="topic-card">
                         <span class="emoji">${t.emoji || '📌'}</span>
                         <div class="name">${t.name}</div>
                         <div class="desc">${t.description || 'No description'}</div>
-                        <div class="meta">${t.category || 'General'} · ${t.id?.substring(0, 8) || ''}</div>
+                        <div class="meta">${t.category || 'General'} · ${t.members || 0} members</div>
                         <div class="actions">
                             <button class="btn-sm btn-edit" onclick="editTopic('${t.id}')">✏️</button>
                             <button class="btn-sm btn-delete" onclick="deleteTopic('${t.id}')">🗑️</button>
@@ -237,12 +248,29 @@
 
         function openAddTopicModal() {
             const body = `
-                <div class="modal-baby-form">
-                    <div class="form-group"><label>Topic Name *</label><input type="text" id="topicName" placeholder="Enter topic name"></div>
-                    <div class="form-group"><label>Emoji</label><input type="text" id="topicEmoji" placeholder="📌" maxlength="2"></div>
-                    <div class="form-group"><label>Description</label><textarea id="topicDesc" rows="2" placeholder="Topic description..."></textarea></div>
-                    <div class="form-group"><label>Category</label><input type="text" id="topicCategory" placeholder="e.g., Health, Development"></div>
-                    <div class="form-group"><label>Color</label><input type="color" id="topicColor" value="#6366f1"></div>
+                <div class="modal-topic-form">
+                    <div class="form-group">
+                        <label>Topic Name *</label>
+                        <input type="text" id="topicName" placeholder="Enter topic name">
+                    </div>
+                    <div class="form-group">
+                        <label>Emoji</label>
+                        <input type="text" id="topicEmoji" placeholder="📌" maxlength="2">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="topicDesc" rows="2" placeholder="Topic description..."></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Category</label>
+                            <input type="text" id="topicCategory" placeholder="e.g., Health, Development">
+                        </div>
+                        <div class="form-group">
+                            <label>Color</label>
+                            <input type="color" id="topicColor" value="#6366f1">
+                        </div>
+                    </div>
                 </div>
             `;
 
@@ -263,12 +291,13 @@
                         description: desc || '',
                         category: category,
                         color: color,
+                        members: 0,
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     });
                     if (error) throw error;
                     showToast('✅ Topic created successfully', 'success');
-                    closeModal();
+                    closeModal(true);
                     loadTopics();
                 } catch (e) {
                     showToast('Error creating topic: ' + e.message, 'error');
@@ -281,12 +310,29 @@
             if (!topic) { showToast('Topic not found', 'error'); return; }
 
             const body = `
-                <div class="modal-baby-form">
-                    <div class="form-group"><label>Topic Name *</label><input type="text" id="editTopicName" value="${topic.name || ''}"></div>
-                    <div class="form-group"><label>Emoji</label><input type="text" id="editTopicEmoji" value="${topic.emoji || '📌'}" maxlength="2"></div>
-                    <div class="form-group"><label>Description</label><textarea id="editTopicDesc" rows="2">${topic.description || ''}</textarea></div>
-                    <div class="form-group"><label>Category</label><input type="text" id="editTopicCategory" value="${topic.category || 'General'}"></div>
-                    <div class="form-group"><label>Color</label><input type="color" id="editTopicColor" value="${topic.color || '#6366f1'}"></div>
+                <div class="modal-topic-form">
+                    <div class="form-group">
+                        <label>Topic Name *</label>
+                        <input type="text" id="editTopicName" value="${topic.name || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Emoji</label>
+                        <input type="text" id="editTopicEmoji" value="${topic.emoji || '📌'}" maxlength="2">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="editTopicDesc" rows="2">${topic.description || ''}</textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Category</label>
+                            <input type="text" id="editTopicCategory" value="${topic.category || 'General'}">
+                        </div>
+                        <div class="form-group">
+                            <label>Color</label>
+                            <input type="color" id="editTopicColor" value="${topic.color || '#6366f1'}">
+                        </div>
+                    </div>
                 </div>
             `;
 
@@ -310,7 +356,7 @@
                     }).eq('id', id);
                     if (error) throw error;
                     showToast('✅ Topic updated successfully', 'success');
-                    closeModal();
+                    closeModal(true);
                     loadTopics();
                 } catch (e) {
                     showToast('Error updating topic: ' + e.message, 'error');
@@ -319,7 +365,17 @@
         }
 
         async function deleteTopic(id) {
-            if (!confirm('Are you sure you want to delete this topic?')) return;
+            const confirmed = await new Promise((resolve) => {
+                openModal('🗑️ Delete Topic', `
+                    <div style="text-align:center;padding:12px 0;">
+                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this topic?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">This will also remove all posts in this topic.</p>
+                    </div>
+                `, 'Yes, Delete', () => resolve(true), 'Cancel');
+            });
+            if (!confirmed) return;
+
             try {
                 const { error } = await supabase.from('community_topics').delete().eq('id', id);
                 if (error) throw error;
@@ -331,7 +387,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() { setTimeout(loadTopics, 500); });
-
         window.loadTopics = loadTopics;
         window.filterTopics = filterTopics;
         window.openAddTopicModal = openAddTopicModal;

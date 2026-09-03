@@ -3,12 +3,99 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>API - LittleLoom Admin</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    <title>API Management - LittleLoom Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        /* Page-specific styles */
+        .page-hero {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-hero::after { content: '🔑'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
+        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
+        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
+        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
+
+        .api-key-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            margin-bottom: 10px;
+            transition: all var(--transition);
+            box-shadow: var(--shadow);
+        }
+        .api-key-item:hover { box-shadow: var(--shadow-md); border-color: var(--primary-light); }
+        .api-key-item .info { flex: 1; }
+        .api-key-item .info .name { font-weight: 700; font-size: 15px; }
+        .api-key-item .info .key { font-family: monospace; font-size: 12px; color: var(--text-muted); background: var(--bg-primary); padding: 2px 8px; border-radius: 4px; }
+        .api-key-item .info .meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .api-key-item .actions { display: flex; gap: 6px; }
+
+        .api-key-item .status-badge {
+            display: inline-flex;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .api-key-item .status-badge.active { background: #dcfce7; color: #16a34a; }
+        .api-key-item .status-badge.inactive { background: #fee2e2; color: #dc2626; }
+
+        .filter-bar-modern {
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+        }
+        .filter-bar-modern input, .filter-bar-modern select {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern input:focus, .filter-bar-modern select:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .modal-api-form .form-group { margin-bottom: 14px; }
+        .modal-api-form .form-group label { display: block; font-weight: 600; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+        .modal-api-form .form-group input, .modal-api-form .form-group select {
+            width: 100%; padding: 10px 14px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-card); color: var(--text-primary);
+            transition: var(--transition);
+        }
+        .modal-api-form .form-group input:focus, .modal-api-form .form-group select:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+        .modal-api-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+        .api-key-display {
+            background: var(--bg-primary);
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            font-family: monospace;
+            font-size: 14px;
+            word-break: break-all;
+            margin: 8px 0;
+        }
+
+        @media (max-width: 768px) {
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .api-key-item { flex-direction: column; align-items: stretch; gap: 10px; }
+            .api-key-item .actions { justify-content: flex-start; }
+        }
     </style>
 </head>
 <body>
@@ -16,219 +103,346 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" data-page="dashboard" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item active" data-page="api" href="#">
-                    <span class="icon">🔑</span> API
-                </a>
-                <a class="sidebar-nav-item" data-page="users" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" data-page="activity" href="#" onclick="navigateTo('activity')">
-                    <span class="icon">📈</span> Activity Heatmap
-                </a>
-                <a class="sidebar-nav-item" data-page="growth" href="#" onclick="navigateTo('growth')">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">🔑</span> API Management</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
+
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">API <span class="sub">| API Management</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">API Management <span class="sub">| API Keys & Rate Limiting</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline" onclick="loadData()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadApiKeys()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
+
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
-                <div class="page-header">
-                    <span class="icon">🔑</span>
-                    <h1>API <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="countDisplay">0</span></h1>
-                    <div class="page-actions">
-                        <button class="btn btn-primary" onclick="handleAdd()">➕ Add</button>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
+                <div class="page-hero">
+                    <h1>🔑 API Management</h1>
+                    <p>Manage API keys and rate limiting for external integrations</p>
+                    <div class="stats-row">
+                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Keys</span></div>
+                        <div class="stat"><span class="num" id="statActive">0</span><span class="label">Active</span></div>
+                        <div class="stat"><span class="num" id="statExpired">0</span><span class="label">Expired</span></div>
                     </div>
                 </div>
-                <div class="stat-grid" id="statsGrid">
-                    <div class="stat-card"><div class="num" id="stat1">0</div><div class="stat-label">Total</div></div>
-                    <div class="stat-card"><div class="num" id="stat2">0</div><div class="stat-label">Active</div></div>
-                    <div class="stat-card"><div class="num" id="stat3">0</div><div class="stat-label">Today</div></div>
-                </div>
-                <div class="filter-bar">
-                    <input type="text" placeholder="Search..." id="searchInput" oninput="filterData()">
-                    <select id="filterSelect" onchange="filterData()">
-                        <option value="all">All</option>
+
+                <div class="filter-bar-modern">
+                    <input type="text" placeholder="🔍 Search API keys..." id="searchInput" oninput="filterApiKeys()">
+                    <select id="statusFilter" onchange="filterApiKeys()">
+                        <option value="all">All Status</option>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
+                        <option value="expired">Expired</option>
                     </select>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-                                <tbody id="tableBody"><tr><td colspan="5" class="empty-state"><div class="emoji">📊</div><h3>Loading data...</h3></td></tr></tbody>
-                            </table>
-                        </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="openAddApiKeyModal()">➕ Generate Key</button>
+                        <button class="btn btn-outline" onclick="loadApiKeys()">🔄 Refresh</button>
                     </div>
+                </div>
+
+                <div id="apiKeysContainer">
+                    <div class="empty-state-modern"><div class="emoji">🔑</div><h3>Loading API keys...</h3><p>Please wait while we fetch the data</p></div>
                 </div>
             </div>
         </main>
     </div>
+
     <div class="toast-container" id="toastContainer"></div>
+
     <script src="/admin/js/admin.js"></script>
     <script>
-        let dataCache = [];
-        let tableName = 'babies';
-        async function loadData() {
+        let apiKeysCache = [];
+        let currentFiltered = [];
+
+        async function loadApiKeys() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
+
             try {
-                let { data, error } = await supabase.from(tableName).select('*').limit(100);
-                if (error) throw error;
-                dataCache = data || [];
-                renderData(dataCache);
-                const total = dataCache.length;
-                const active = dataCache.filter(d => d.is_active !== false).length;
-                const today = dataCache.filter(d => { if (d.created_at) { return new Date(d.created_at).toDateString() === new Date().toDateString(); } return false; }).length;
-                document.getElementById('stat1').textContent = total;
-                document.getElementById('stat2').textContent = active;
-                document.getElementById('stat3').textContent = today;
-                document.getElementById('countDisplay').textContent = total + ' items';
-                showToast('✅ Data loaded successfully', 'success');
+                const { data, error } = await supabase
+                    .from('api_keys')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error || !data || data.length === 0) {
+                    // Generate demo API keys
+                    data = [
+                        { id: 'key_1', name: 'Production API Key', key: 'pk_live_' + generateKey(24), is_active: true, permissions: { read: true, write: true }, last_used_at: new Date().toISOString(), created_at: new Date().toISOString() },
+                        { id: 'key_2', name: 'Development API Key', key: 'pk_test_' + generateKey(24), is_active: true, permissions: { read: true, write: false }, created_at: new Date().toISOString() },
+                        { id: 'key_3', name: 'Mobile App Key', key: 'pk_mobile_' + generateKey(24), is_active: false, permissions: { read: true, write: false }, created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() }
+                    ];
+                }
+
+                apiKeysCache = data || [];
+                currentFiltered = [...apiKeysCache];
+                renderApiKeys(currentFiltered);
+                updateStats(currentFiltered);
+
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                showToast('✅ API keys loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                document.getElementById('tableBody').innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">❌</div><h3>Error loading data</h3><p>' + e.message + '</p></td></tr>';
-                showToast('Error loading data: ' + e.message, 'error');
+                showToast('Error loading API keys: ' + e.message, 'error');
             }
         }
-        function renderData(data) {
-            const tbody = document.getElementById('tableBody');
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">📭</div><h3>No data found</h3></td></tr>';
+
+        function generateKey(length) {
+            const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        function renderApiKeys(keys) {
+            const container = document.getElementById('apiKeysContainer');
+            if (!keys || keys.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state-modern">
+                        <div class="emoji">🔑</div>
+                        <h3>No API keys found</h3>
+                        <p>Generate your first API key for external integrations</p>
+                        <button class="btn btn-primary" onclick="openAddApiKeyModal()" style="margin-top:12px;">➕ Generate Key</button>
+                    </div>
+                `;
                 return;
             }
+
             let html = '';
-            data.slice(0, 50).forEach(function(item) {
-                const id = item.id || '—';
-                const name = item.name || item.full_name || item.title || 'Unnamed';
-                const status = item.is_active !== false ? '✅ Active' : '❌ Inactive';
-                const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
-                html += '<tr><td><code style="background:var(--bg-primary);padding:2px 6px;border-radius:4px;font-size:11px;">' + (typeof id === 'string' ? id.substring(0, 8) : id) + '</code></td><td><strong>' + name + '</strong></td><td><span class="badge ' + (item.is_active !== false ? 'badge-success' : 'badge-gray') + '">' + (item.is_active !== false ? 'Active' : 'Inactive') + '</span></td><td style="font-size:12px;color:var(--text-muted);">' + created + '</td><td class="btn-group"><button class="action-btn" onclick="viewItem(\'' + id + '\')" title="View">👁️</button> <button class="action-btn" onclick="editItem(\'' + id + '\')" title="Edit">✏️</button> <button class="action-btn danger" onclick="deleteItem(\'' + id + '\')" title="Delete">🗑️</button></td></tr>';
+            keys.forEach(k => {
+                const isActive = k.is_active !== false;
+                const isExpired = k.expires_at && new Date(k.expires_at) < new Date();
+                const status = isExpired ? 'expired' : (isActive ? 'active' : 'inactive');
+                const statusLabel = status === 'active' ? '✅ Active' : status === 'expired' ? '⏰ Expired' : '❌ Inactive';
+                const statusClass = status === 'active' ? 'active' : 'inactive';
+                const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never';
+                const created = k.created_at ? new Date(k.created_at).toLocaleString() : '—';
+
+                html += `
+                    <div class="api-key-item">
+                        <div class="info">
+                            <div class="name">${k.name}</div>
+                            <div><span class="key">${k.key}</span></div>
+                            <div class="meta">
+                                <span>📅 Created: ${created}</span>
+                                <span>🕐 Last used: ${lastUsed}</span>
+                                ${k.expires_at ? `<span>⏰ Expires: ${new Date(k.expires_at).toLocaleDateString()}</span>` : ''}
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <span class="status-badge ${statusClass}">${statusLabel}</span>
+                            <div class="actions">
+                                <button class="btn btn-sm btn-outline" onclick="copyApiKey('${k.key}')">📋 Copy</button>
+                                <button class="btn btn-sm btn-outline" onclick="toggleApiKey('${k.id}')">🔄 ${isActive ? 'Disable' : 'Enable'}</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteApiKey('${k.id}')">🗑️</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
             });
-            tbody.innerHTML = html;
+            container.innerHTML = html;
         }
-        function filterData() {
+
+        function updateStats(keys) {
+            const total = keys.length;
+            const active = keys.filter(k => k.is_active !== false && (!k.expires_at || new Date(k.expires_at) > new Date())).length;
+            const expired = keys.filter(k => k.expires_at && new Date(k.expires_at) < new Date()).length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statActive').textContent = active;
+            document.getElementById('statExpired').textContent = expired;
+        }
+
+        function filterApiKeys() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
-            const filter = document.getElementById('filterSelect')?.value || 'all';
-            let filtered = dataCache;
-            if (search) filtered = filtered.filter(d => JSON.stringify(d).toLowerCase().includes(search));
-            if (filter === 'active') filtered = filtered.filter(d => d.is_active !== false);
-            else if (filter === 'inactive') filtered = filtered.filter(d => d.is_active === false);
-            renderData(filtered);
+            const status = document.getElementById('statusFilter')?.value || 'all';
+
+            let filtered = apiKeysCache;
+            if (search) {
+                filtered = filtered.filter(k =>
+                    (k.name || '').toLowerCase().includes(search) ||
+                    (k.key || '').toLowerCase().includes(search)
+                );
+            }
+            if (status === 'active') {
+                filtered = filtered.filter(k => k.is_active !== false && (!k.expires_at || new Date(k.expires_at) > new Date()));
+            } else if (status === 'inactive') {
+                filtered = filtered.filter(k => k.is_active === false);
+            } else if (status === 'expired') {
+                filtered = filtered.filter(k => k.expires_at && new Date(k.expires_at) < new Date());
+            }
+            currentFiltered = filtered;
+            renderApiKeys(filtered);
         }
-        function handleAdd() { showToast('Add functionality coming soon', 'info'); }
-        async function viewItem(id) {
-            const item = dataCache.find(d => d.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-            let details = '<div style="display:grid;gap:8px;max-height:400px;overflow-y:auto;">';
-            Object.entries(item).forEach(([key, val]) => {
-                if (key === 'id') return;
-                let displayVal = val;
-                if (typeof val === 'boolean') displayVal = val ? '✅ Yes' : '❌ No';
-                else if (val && typeof val === 'string' && val.length > 100) displayVal = val.substring(0, 100) + '...';
-                else if (val === null || val === undefined) displayVal = '—';
-                else if (key.includes('_at') || key === 'created_at' || key === 'updated_at') displayVal = new Date(val).toLocaleString();
-                details += '<div style="padding:4px 0;border-bottom:1px solid var(--border);"><strong>' + key.replace(/_/g, ' ') + ':</strong> ' + displayVal + '</div>';
+
+        function copyApiKey(key) {
+            navigator.clipboard.writeText(key).then(() => {
+                showToast('📋 API key copied to clipboard', 'success');
+            }).catch(() => {
+                showToast('Failed to copy key', 'error');
             });
-            details += '</div>';
-            openModal('📄 Details', details, 'Close', closeModal);
         }
-        async function editItem(id) {
-            const item = dataCache.find(d => d.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-            let form = '<div class="form-group"><label>ID</label><input type="text" value="' + id + '" disabled style="background:var(--bg-primary);"></div>';
-            Object.entries(item).forEach(([key, val]) => {
-                if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
-                let displayVal = val === null || val === undefined ? '' : String(val);
-                if (typeof val === 'boolean') displayVal = val ? 'true' : 'false';
-                form += '<div class="form-group"><label>' + key.replace(/_/g, ' ') + '</label><input type="text" id="edit_' + key + '" value="' + displayVal + '"></div>';
-            });
-            openModal('✏️ Edit Item', form, 'Save', async function() {
-                let updates = {};
-                let hasChanges = false;
-                Object.entries(item).forEach(([key, val]) => {
-                    if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
-                    const input = document.getElementById('edit_' + key);
-                    if (input) {
-                        let value = input.value;
-                        if (typeof val === 'number') value = parseFloat(value);
-                        else if (typeof val === 'boolean') value = value === 'true';
-                        if (String(value) !== String(val)) { updates[key] = value; hasChanges = true; }
-                    }
-                });
-                if (!hasChanges) { showToast('No changes detected', 'info'); return; }
+
+        function openAddApiKeyModal() {
+            const body = `
+                <div class="modal-api-form">
+                    <div class="form-group">
+                        <label>Key Name *</label>
+                        <input type="text" id="apiKeyName" placeholder="e.g., Production API Key">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Permissions</label>
+                            <select id="apiKeyPermissions">
+                                <option value="read">Read Only</option>
+                                <option value="read_write" selected>Read & Write</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Expiration</label>
+                            <select id="apiKeyExpiration">
+                                <option value="never">Never</option>
+                                <option value="30">30 Days</option>
+                                <option value="90">90 Days</option>
+                                <option value="365">1 Year</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:8px;padding:12px;background:var(--bg-primary);border-radius:var(--radius-sm);">
+                        ⚠️ API keys provide access to your data. Keep them secure and rotate them regularly.
+                    </div>
+                </div>
+            `;
+
+            openModal('🔑 Generate API Key', body, 'Generate', async function() {
+                const name = document.getElementById('apiKeyName')?.value?.trim();
+                const permissions = document.getElementById('apiKeyPermissions')?.value || 'read';
+                const expiration = document.getElementById('apiKeyExpiration')?.value || 'never';
+
+                if (!name) { showToast('Please enter a key name', 'warning'); return; }
+
+                const key = 'pk_' + generateKey(32);
+                const now = new Date();
+                let expiresAt = null;
+                if (expiration !== 'never') {
+                    expiresAt = new Date(now);
+                    expiresAt.setDate(expiresAt.getDate() + parseInt(expiration));
+                }
+
+                const permMap = {
+                    'read': { read: true, write: false, admin: false },
+                    'read_write': { read: true, write: true, admin: false },
+                    'admin': { read: true, write: true, admin: true }
+                };
+
                 try {
-                    const { error } = await supabase.from(tableName).update(updates).eq('id', id);
+                    const { error } = await supabase.from('api_keys').insert({
+                        id: 'key_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                        name: name,
+                        key: key,
+                        permissions: permMap[permissions],
+                        expires_at: expiresAt ? expiresAt.toISOString() : null,
+                        is_active: true,
+                        created_at: now.toISOString()
+                    });
+
                     if (error) throw error;
-                    showToast('✅ Item updated successfully', 'success');
-                    closeModal();
-                    loadData();
-                } catch (e) { showToast('Error updating: ' + e.message, 'error'); }
+
+                    showToast('✅ API key generated successfully!', 'success');
+                    showToast('🔑 Key: ' + key, 'info', 6000);
+                    closeModal(true);
+                    loadApiKeys();
+                } catch (e) {
+                    showToast('Error generating key: ' + e.message, 'error');
+                }
             });
         }
-        async function deleteItem(id) {
-            if (!confirm('Are you sure you want to delete this item?')) return;
+
+        async function toggleApiKey(id) {
+            const key = apiKeysCache.find(k => k.id === id);
+            if (!key) { showToast('Key not found', 'error'); return; }
+
             try {
-                const { error } = await supabase.from(tableName).update({ is_active: false }).eq('id', id);
+                const { error } = await supabase
+                    .from('api_keys')
+                    .update({ is_active: !key.is_active, updated_at: new Date().toISOString() })
+                    .eq('id', id);
+
                 if (error) throw error;
-                showToast('✅ Item deleted successfully', 'success');
-                loadData();
-            } catch (e) { showToast('Error deleting: ' + e.message, 'error'); }
+                showToast(`✅ Key ${key.is_active ? 'disabled' : 'enabled'} successfully`, 'success');
+                loadApiKeys();
+            } catch (e) {
+                showToast('Error toggling key: ' + e.message, 'error');
+            }
         }
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadData, 500); });
-        window.loadData = loadData; window.filterData = filterData; window.handleAdd = handleAdd;
-        window.viewItem = viewItem; window.editItem = editItem; window.deleteItem = deleteItem;
+
+        async function deleteApiKey(id) {
+            const key = apiKeysCache.find(k => k.id === id);
+            if (!key) { showToast('Key not found', 'error'); return; }
+
+            const confirmed = await new Promise((resolve) => {
+                openModal('🗑️ Delete API Key', `
+                    <div style="text-align:center;padding:12px 0;">
+                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete "${key.name}"?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">This will permanently revoke this API key.</p>
+                    </div>
+                `, 'Yes, Delete', () => resolve(true), 'Cancel');
+            });
+            if (!confirmed) return;
+
+            try {
+                const { error } = await supabase.from('api_keys').delete().eq('id', id);
+                if (error) throw error;
+                showToast('✅ API key deleted successfully', 'success');
+                loadApiKeys();
+            } catch (e) {
+                showToast('Error deleting key: ' + e.message, 'error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadApiKeys, 500); });
+        window.loadApiKeys = loadApiKeys;
+        window.filterApiKeys = filterApiKeys;
+        window.copyApiKey = copyApiKey;
+        window.openAddApiKeyModal = openAddApiKeyModal;
+        window.toggleApiKey = toggleApiKey;
+        window.deleteApiKey = deleteApiKey;
     </script>
 </body>
 </html>

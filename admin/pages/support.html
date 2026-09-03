@@ -75,15 +75,10 @@
         .filter-bar-modern select:focus, .filter-bar-modern input:focus {
             outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
-        .filter-bar-modern .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
-
-        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-        .empty-state-modern p { font-size: 14px; }
 
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .ticket-card .header { flex-direction: column; }
         }
     </style>
 </head>
@@ -100,6 +95,7 @@
                 <div class="sidebar-nav-label">System</div>
                 <a class="sidebar-nav-item active" href="#"><span class="icon">🎫</span> Support Tickets <span class="badge danger" id="supportBadge">0</span></a>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
@@ -128,7 +124,7 @@
                 <div class="topbar-right">
                     <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadSupportTickets()">🔄 Refresh</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadTickets()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
@@ -164,7 +160,7 @@
                         <option value="urgent">Urgent</option>
                     </select>
                     <div class="btn-group">
-                        <button class="btn btn-outline" onclick="loadSupportTickets()">🔄 Refresh</button>
+                        <button class="btn btn-outline" onclick="loadTickets()">🔄 Refresh</button>
                     </div>
                 </div>
 
@@ -182,23 +178,20 @@
         let ticketsCache = [];
         let currentFiltered = [];
 
-        async function loadSupportTickets() {
+        async function loadTickets() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
 
             try {
-                let { data, error } = await supabase
+                const { data, error } = await supabase
                     .from('support_tickets')
-                    .select('*, profiles!support_tickets_user_id_fkey(full_name, email)')
+                    .select('*, profiles!support_tickets_user_id_fkey(full_name, email, avatar)')
                     .eq('is_deleted', false)
                     .order('created_at', { ascending: false })
                     .limit(50);
 
-                if (error || !data || data.length === 0) {
-                    // Generate simulated tickets
-                    data = generateSimulatedTickets();
-                }
+                if (error) throw error;
 
                 ticketsCache = data || [];
                 currentFiltered = [...ticketsCache];
@@ -210,26 +203,10 @@
             } catch (e) {
                 console.error('Load error:', e);
                 showToast('Error loading tickets: ' + e.message, 'error');
+                document.getElementById('ticketsContainer').innerHTML = `
+                    <div class="empty-state-modern"><div class="emoji">❌</div><h3>Error loading tickets</h3><p>${e.message}</p></div>
+                `;
             }
-        }
-
-        function generateSimulatedTickets() {
-            const subjects = ['Cannot sync tracker data', 'Bug in sleep tracker', 'Account recovery help', 'Payment issue', 'Feature request', 'App crashing on startup', 'Lost access to account'];
-            const users = ['John Doe', 'Jane Smith', 'Mike Johnson', 'Sarah Williams', 'David Brown'];
-            const priorities = ['low', 'medium', 'high', 'urgent'];
-            const statuses = ['open', 'in_progress', 'resolved', 'closed'];
-
-            return Array.from({ length: 8 }, (_, i) => ({
-                id: 'ticket_' + Date.now() + '_' + i,
-                user_id: 'user_' + i,
-                profiles: { full_name: users[i % users.length], email: 'user@littleloom.com' },
-                subject: subjects[i % subjects.length] + (i > 3 ? ' #' + i : ''),
-                description: 'Detailed description of the issue...',
-                status: statuses[i % statuses.length],
-                priority: priorities[i % priorities.length],
-                created_at: new Date(Date.now() - i * 3600000).toISOString(),
-                updated_at: new Date(Date.now() - i * 1800000).toISOString()
-            }));
         }
 
         function renderTickets(tickets) {
@@ -242,7 +219,7 @@
             let html = '';
             tickets.forEach(t => {
                 const userName = t.profiles?.full_name || t.user_id?.substring(0, 8) || 'Unknown';
-                const statusClass = t.status === 'open' ? 'open' : t.status === 'in_progress' ? 'in_progress' : t.status === 'resolved' ? 'resolved' : 'closed';
+                const statusClass = t.status || 'open';
                 const priorityClass = t.priority || 'medium';
                 const time = t.created_at ? new Date(t.created_at).toLocaleString() : '—';
 
@@ -255,7 +232,7 @@
                             </div>
                             <div>
                                 <span class="priority-badge ${priorityClass}">${priorityClass}</span>
-                                <span class="status-badge ${statusClass}">${t.status?.replace('_', ' ') || 'open'}</span>
+                                <span class="status-badge ${statusClass}">${statusClass.replace('_', ' ')}</span>
                             </div>
                         </div>
                         <div class="desc">${t.description || 'No description provided'}</div>
@@ -322,7 +299,7 @@
                     .eq('id', id);
                 if (error) throw error;
                 showToast(`✅ Status updated to ${statuses[nextIdx]}`, 'success');
-                loadSupportTickets();
+                loadTickets();
             } catch (e) {
                 showToast('Error updating status: ' + e.message, 'error');
             }
@@ -336,27 +313,36 @@
                     .eq('id', id);
                 if (error) throw error;
                 showToast('✅ Ticket resolved successfully', 'success');
-                loadSupportTickets();
+                loadTickets();
             } catch (e) {
                 showToast('Error resolving ticket: ' + e.message, 'error');
             }
         }
 
         async function deleteTicket(id) {
-            if (!confirm('Are you sure you want to delete this ticket?')) return;
+            const confirmed = await new Promise((resolve) => {
+                openModal('🗑️ Delete Ticket', `
+                    <div style="text-align:center;padding:12px 0;">
+                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this ticket?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">This action cannot be undone.</p>
+                    </div>
+                `, 'Yes, Delete', () => resolve(true), 'Cancel');
+            });
+            if (!confirmed) return;
+
             try {
                 const { error } = await supabase.from('support_tickets').update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', id);
                 if (error) throw error;
                 showToast('✅ Ticket deleted successfully', 'success');
-                loadSupportTickets();
+                loadTickets();
             } catch (e) {
                 showToast('Error deleting ticket: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadSupportTickets, 500); });
-
-        window.loadSupportTickets = loadSupportTickets;
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadTickets, 500); });
+        window.loadTickets = loadTickets;
         window.filterTickets = filterTickets;
         window.updateTicketStatus = updateTicketStatus;
         window.resolveTicket = resolveTicket;

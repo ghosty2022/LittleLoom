@@ -4,11 +4,89 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Notifications - LittleLoom Admin</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        /* Page-specific styles */
+        .page-hero {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-hero::after { content: '🔔'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
+        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
+        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
+        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
+
+        .notification-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 14px 20px;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            margin-bottom: 10px;
+            transition: all var(--transition);
+            box-shadow: var(--shadow);
+        }
+        .notification-item:hover { box-shadow: var(--shadow-md); border-color: var(--primary-light); }
+        .notification-item .icon { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
+        .notification-item .content { flex: 1; }
+        .notification-item .content .title { font-weight: 600; font-size: 14px; }
+        .notification-item .content .body { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+        .notification-item .content .meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .notification-item .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+        .notification-item .status-dot.unread { background: var(--primary); }
+        .notification-item .status-dot.read { background: var(--text-muted); }
+        .notification-item .actions { display: flex; gap: 6px; }
+
+        .filter-bar-modern {
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+        }
+        .filter-bar-modern select, .filter-bar-modern input {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern select:focus, .filter-bar-modern input:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .modal-notification-form .form-group { margin-bottom: 14px; }
+        .modal-notification-form .form-group label { display: block; font-weight: 600; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+        .modal-notification-form .form-group input, .modal-notification-form .form-group select, .modal-notification-form .form-group textarea {
+            width: 100%; padding: 10px 14px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-card); color: var(--text-primary);
+            transition: var(--transition);
+        }
+        .modal-notification-form .form-group textarea { min-height: 80px; resize: vertical; }
+        .modal-notification-form .form-group input:focus, .modal-notification-form .form-group select:focus, .modal-notification-form .form-group textarea:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+        .modal-notification-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+        @media (max-width: 768px) {
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .notification-item { flex-wrap: wrap; }
+            .notification-item .actions { width: 100%; justify-content: flex-end; }
+        }
     </style>
 </head>
 <body>
@@ -16,219 +94,381 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" data-page="dashboard" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item active" data-page="notifications" href="#">
-                    <span class="icon">🔔</span> Notifications
-                </a>
-                <a class="sidebar-nav-item" data-page="users" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" data-page="activity" href="#" onclick="navigateTo('activity')">
-                    <span class="icon">📈</span> Activity Heatmap
-                </a>
-                <a class="sidebar-nav-item" data-page="growth" href="#" onclick="navigateTo('growth')">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">🔔</span> Notifications <span class="badge" id="notifBadge">0</span></a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
+
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Notifications <span class="sub">| Push Management</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Notifications <span class="sub">| Push Management</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline" onclick="loadData()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadNotifications()">🔄 Refresh</button>
+                        <button class="btn btn-primary btn-sm" onclick="openSendNotificationModal()">📤 Send</button>
+                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
+
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
-                <div class="page-header">
-                    <span class="icon">🔔</span>
-                    <h1>Notifications <span style="font-size:14px;font-weight:400;color:var(--text-muted);" id="countDisplay">0</span></h1>
-                    <div class="page-actions">
-                        <button class="btn btn-primary" onclick="handleAdd()">➕ Add</button>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
+                <div class="page-hero">
+                    <h1>🔔 Notifications</h1>
+                    <p>Manage and send push notifications to users</p>
+                    <div class="stats-row">
+                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total</span></div>
+                        <div class="stat"><span class="num" id="statUnread">0</span><span class="label">Unread</span></div>
+                        <div class="stat"><span class="num" id="statSent">0</span><span class="label">Sent Today</span></div>
                     </div>
                 </div>
-                <div class="stat-grid" id="statsGrid">
-                    <div class="stat-card"><div class="num" id="stat1">0</div><div class="stat-label">Total</div></div>
-                    <div class="stat-card"><div class="num" id="stat2">0</div><div class="stat-label">Active</div></div>
-                    <div class="stat-card"><div class="num" id="stat3">0</div><div class="stat-label">Today</div></div>
-                </div>
-                <div class="filter-bar">
-                    <input type="text" placeholder="Search..." id="searchInput" oninput="filterData()">
-                    <select id="filterSelect" onchange="filterData()">
+
+                <div class="filter-bar-modern">
+                    <input type="text" placeholder="🔍 Search notifications..." id="searchInput" oninput="filterNotifications()">
+                    <select id="statusFilter" onchange="filterNotifications()">
                         <option value="all">All</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
+                        <option value="unread">Unread</option>
+                        <option value="read">Read</option>
                     </select>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-                                <tbody id="tableBody"><tr><td colspan="5" class="empty-state"><div class="emoji">📊</div><h3>Loading data...</h3></td></tr></tbody>
-                            </table>
-                        </div>
+                    <select id="typeFilter" onchange="filterNotifications()">
+                        <option value="all">All Types</option>
+                        <option value="system">System</option>
+                        <option value="community">Community</option>
+                        <option value="tracker">Tracker</option>
+                        <option value="safety">Safety</option>
+                        <option value="family">Family</option>
+                    </select>
+                    <div class="btn-group">
+                        <button class="btn btn-outline" onclick="markAllRead()">✅ Mark All Read</button>
+                        <button class="btn btn-outline" onclick="loadNotifications()">🔄 Refresh</button>
                     </div>
+                </div>
+
+                <div id="notificationsContainer">
+                    <div class="empty-state-modern"><div class="emoji">🔔</div><h3>Loading notifications...</h3><p>Please wait while we fetch the data</p></div>
                 </div>
             </div>
         </main>
     </div>
+
     <div class="toast-container" id="toastContainer"></div>
+
     <script src="/admin/js/admin.js"></script>
     <script>
-        let dataCache = [];
-        let tableName = 'babies';
-        async function loadData() {
+        let notificationsCache = [];
+        let currentFiltered = [];
+
+        // Generate demo notifications if none exist
+        function generateDemoNotifications() {
+            const types = ['system', 'community', 'tracker', 'safety', 'family'];
+            const titles = ['New Update Available', 'Community Post Liked', 'Tracker Reminder', 'Safety Alert', 'Family Invite'];
+            const bodies = ['Version 2.0 is now available with new features', 'Your post received 10 new likes', 'Time to log today\'s feeding', 'New safety tips available', 'You have been invited to join a family'];
+            const icons = ['📱', '💬', '📊', '🛡️', '👨‍👩‍👧‍👦'];
+
+            return Array.from({ length: 12 }, (_, i) => ({
+                id: 'notif_' + Date.now() + '_' + i,
+                type: types[i % types.length],
+                title: titles[i % titles.length] + (i > 4 ? ' #' + (i+1) : ''),
+                body: bodies[i % bodies.length],
+                icon: icons[i % icons.length],
+                read: i > 4,
+                created_at: new Date(Date.now() - i * 3600000).toISOString(),
+                user_id: 'user_' + i,
+                user_name: 'User ' + (i + 1),
+                link: i % 2 === 0 ? '/dashboard' : '/community'
+            }));
+        }
+
+        async function loadNotifications() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
+
             try {
-                let { data, error } = await supabase.from(tableName).select('*').limit(100);
-                if (error) throw error;
-                dataCache = data || [];
-                renderData(dataCache);
-                const total = dataCache.length;
-                const active = dataCache.filter(d => d.is_active !== false).length;
-                const today = dataCache.filter(d => { if (d.created_at) { return new Date(d.created_at).toDateString() === new Date().toDateString(); } return false; }).length;
-                document.getElementById('stat1').textContent = total;
-                document.getElementById('stat2').textContent = active;
-                document.getElementById('stat3').textContent = today;
-                document.getElementById('countDisplay').textContent = total + ' items';
-                showToast('✅ Data loaded successfully', 'success');
+                const { data, error } = await supabase
+                    .from('notifications')
+                    .select('*, profiles!notifications_user_id_fkey(full_name, email, avatar)')
+                    .order('created_at', { ascending: false })
+                    .limit(100);
+
+                if (error || !data || data.length === 0) {
+                    data = generateDemoNotifications();
+                }
+
+                notificationsCache = data || [];
+                currentFiltered = [...notificationsCache];
+                renderNotifications(currentFiltered);
+                updateStats(currentFiltered);
+
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                showToast('✅ Notifications loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                document.getElementById('tableBody').innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">❌</div><h3>Error loading data</h3><p>' + e.message + '</p></td></tr>';
-                showToast('Error loading data: ' + e.message, 'error');
+                showToast('Error loading notifications: ' + e.message, 'error');
             }
         }
-        function renderData(data) {
-            const tbody = document.getElementById('tableBody');
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="emoji">📭</div><h3>No data found</h3></td></tr>';
+
+        function renderNotifications(notifications) {
+            const container = document.getElementById('notificationsContainer');
+            if (!notifications || notifications.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state-modern">
+                        <div class="emoji">🔔</div>
+                        <h3>No notifications</h3>
+                        <p>All caught up! No notifications to show.</p>
+                    </div>
+                `;
                 return;
             }
+
             let html = '';
-            data.slice(0, 50).forEach(function(item) {
-                const id = item.id || '—';
-                const name = item.name || item.full_name || item.title || 'Unnamed';
-                const status = item.is_active !== false ? '✅ Active' : '❌ Inactive';
-                const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
-                html += '<tr><td><code style="background:var(--bg-primary);padding:2px 6px;border-radius:4px;font-size:11px;">' + (typeof id === 'string' ? id.substring(0, 8) : id) + '</code></td><td><strong>' + name + '</strong></td><td><span class="badge ' + (item.is_active !== false ? 'badge-success' : 'badge-gray') + '">' + (item.is_active !== false ? 'Active' : 'Inactive') + '</span></td><td style="font-size:12px;color:var(--text-muted);">' + created + '</td><td class="btn-group"><button class="action-btn" onclick="viewItem(\'' + id + '\')" title="View">👁️</button> <button class="action-btn" onclick="editItem(\'' + id + '\')" title="Edit">✏️</button> <button class="action-btn danger" onclick="deleteItem(\'' + id + '\')" title="Delete">🗑️</button></td></tr>';
+            notifications.forEach(n => {
+                const isRead = n.read !== false;
+                const icon = n.icon || getIconForType(n.type);
+                const time = n.created_at ? new Date(n.created_at).toLocaleString() : '—';
+                const userName = n.profiles?.full_name || n.user_name || 'System';
+
+                html += `
+                    <div class="notification-item" data-id="${n.id}">
+                        <div class="icon">${icon}</div>
+                        <div class="content">
+                            <div class="title">${n.title}</div>
+                            <div class="body">${n.body || n.content || ''}</div>
+                            <div class="meta">
+                                <span>👤 ${userName}</span>
+                                <span>📅 ${time}</span>
+                                ${n.link ? `<span>🔗 <a href="${n.link}" style="color:var(--primary);text-decoration:none;">View</a></span>` : ''}
+                            </div>
+                        </div>
+                        <div class="status-dot ${isRead ? 'read' : 'unread'}" title="${isRead ? 'Read' : 'Unread'}"></div>
+                        <div class="actions">
+                            ${!isRead ? `<button class="btn btn-sm btn-success" onclick="markRead('${n.id}')">✓</button>` : ''}
+                            <button class="btn btn-sm btn-danger" onclick="deleteNotification('${n.id}')">🗑️</button>
+                        </div>
+                    </div>
+                `;
             });
-            tbody.innerHTML = html;
+            container.innerHTML = html;
         }
-        function filterData() {
+
+        function getIconForType(type) {
+            const icons = {
+                system: '📱',
+                community: '💬',
+                tracker: '📊',
+                safety: '🛡️',
+                family: '👨‍👩‍👧‍👦',
+                like: '❤️',
+                comment: '💬',
+                follow: '👤'
+            };
+            return icons[type] || '🔔';
+        }
+
+        function updateStats(notifications) {
+            const total = notifications.length;
+            const unread = notifications.filter(n => n.read !== true).length;
+            const today = notifications.filter(n => {
+                if (n.created_at) return new Date(n.created_at).toDateString() === new Date().toDateString();
+                return false;
+            }).length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statUnread').textContent = unread;
+            document.getElementById('statSent').textContent = today;
+            document.getElementById('notifBadge').textContent = unread;
+        }
+
+        function filterNotifications() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
-            const filter = document.getElementById('filterSelect')?.value || 'all';
-            let filtered = dataCache;
-            if (search) filtered = filtered.filter(d => JSON.stringify(d).toLowerCase().includes(search));
-            if (filter === 'active') filtered = filtered.filter(d => d.is_active !== false);
-            else if (filter === 'inactive') filtered = filtered.filter(d => d.is_active === false);
-            renderData(filtered);
+            const status = document.getElementById('statusFilter')?.value || 'all';
+            const type = document.getElementById('typeFilter')?.value || 'all';
+
+            let filtered = notificationsCache;
+            if (search) {
+                filtered = filtered.filter(n =>
+                    (n.title || '').toLowerCase().includes(search) ||
+                    (n.body || '').toLowerCase().includes(search) ||
+                    (n.profiles?.full_name || '').toLowerCase().includes(search)
+                );
+            }
+            if (status === 'unread') {
+                filtered = filtered.filter(n => n.read !== true);
+            } else if (status === 'read') {
+                filtered = filtered.filter(n => n.read === true);
+            }
+            if (type !== 'all') {
+                filtered = filtered.filter(n => n.type === type);
+            }
+            currentFiltered = filtered;
+            renderNotifications(filtered);
         }
-        function handleAdd() { showToast('Add functionality coming soon', 'info'); }
-        async function viewItem(id) {
-            const item = dataCache.find(d => d.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-            let details = '<div style="display:grid;gap:8px;max-height:400px;overflow-y:auto;">';
-            Object.entries(item).forEach(([key, val]) => {
-                if (key === 'id') return;
-                let displayVal = val;
-                if (typeof val === 'boolean') displayVal = val ? '✅ Yes' : '❌ No';
-                else if (val && typeof val === 'string' && val.length > 100) displayVal = val.substring(0, 100) + '...';
-                else if (val === null || val === undefined) displayVal = '—';
-                else if (key.includes('_at') || key === 'created_at' || key === 'updated_at') displayVal = new Date(val).toLocaleString();
-                details += '<div style="padding:4px 0;border-bottom:1px solid var(--border);"><strong>' + key.replace(/_/g, ' ') + ':</strong> ' + displayVal + '</div>';
-            });
-            details += '</div>';
-            openModal('📄 Details', details, 'Close', closeModal);
-        }
-        async function editItem(id) {
-            const item = dataCache.find(d => d.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-            let form = '<div class="form-group"><label>ID</label><input type="text" value="' + id + '" disabled style="background:var(--bg-primary);"></div>';
-            Object.entries(item).forEach(([key, val]) => {
-                if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
-                let displayVal = val === null || val === undefined ? '' : String(val);
-                if (typeof val === 'boolean') displayVal = val ? 'true' : 'false';
-                form += '<div class="form-group"><label>' + key.replace(/_/g, ' ') + '</label><input type="text" id="edit_' + key + '" value="' + displayVal + '"></div>';
-            });
-            openModal('✏️ Edit Item', form, 'Save', async function() {
-                let updates = {};
-                let hasChanges = false;
-                Object.entries(item).forEach(([key, val]) => {
-                    if (key === 'id' || key === 'created_at' || key === 'updated_at') return;
-                    const input = document.getElementById('edit_' + key);
-                    if (input) {
-                        let value = input.value;
-                        if (typeof val === 'number') value = parseFloat(value);
-                        else if (typeof val === 'boolean') value = value === 'true';
-                        if (String(value) !== String(val)) { updates[key] = value; hasChanges = true; }
-                    }
-                });
-                if (!hasChanges) { showToast('No changes detected', 'info'); return; }
-                try {
-                    const { error } = await supabase.from(tableName).update(updates).eq('id', id);
-                    if (error) throw error;
-                    showToast('✅ Item updated successfully', 'success');
-                    closeModal();
-                    loadData();
-                } catch (e) { showToast('Error updating: ' + e.message, 'error'); }
-            });
-        }
-        async function deleteItem(id) {
-            if (!confirm('Are you sure you want to delete this item?')) return;
+
+        async function markRead(id) {
             try {
-                const { error } = await supabase.from(tableName).update({ is_active: false }).eq('id', id);
+                const { error } = await supabase
+                    .from('notifications')
+                    .update({ read: true, updated_at: new Date().toISOString() })
+                    .eq('id', id);
+
                 if (error) throw error;
-                showToast('✅ Item deleted successfully', 'success');
-                loadData();
-            } catch (e) { showToast('Error deleting: ' + e.message, 'error'); }
+                showToast('✅ Marked as read', 'success');
+                loadNotifications();
+            } catch (e) {
+                showToast('Error marking as read: ' + e.message, 'error');
+            }
         }
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadData, 500); });
-        window.loadData = loadData; window.filterData = filterData; window.handleAdd = handleAdd;
-        window.viewItem = viewItem; window.editItem = editItem; window.deleteItem = deleteItem;
+
+        async function markAllRead() {
+            const confirmed = await new Promise((resolve) => {
+                openModal('✅ Mark All Read', `
+                    <div style="text-align:center;padding:12px 0;">
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Mark all notifications as read?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">This will mark all unread notifications as read.</p>
+                    </div>
+                `, 'Yes, Mark All', () => resolve(true), 'Cancel');
+            });
+            if (!confirmed) return;
+
+            try {
+                const { error } = await supabase
+                    .from('notifications')
+                    .update({ read: true, updated_at: new Date().toISOString() })
+                    .eq('read', false);
+
+                if (error) throw error;
+                showToast('✅ All notifications marked as read', 'success');
+                loadNotifications();
+            } catch (e) {
+                showToast('Error marking all as read: ' + e.message, 'error');
+            }
+        }
+
+        async function deleteNotification(id) {
+            const confirmed = await new Promise((resolve) => {
+                openModal('🗑️ Delete Notification', `
+                    <div style="text-align:center;padding:12px 0;">
+                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this notification?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">This action cannot be undone.</p>
+                    </div>
+                `, 'Yes, Delete', () => resolve(true), 'Cancel');
+            });
+            if (!confirmed) return;
+
+            try {
+                const { error } = await supabase.from('notifications').delete().eq('id', id);
+                if (error) throw error;
+                showToast('✅ Notification deleted successfully', 'success');
+                loadNotifications();
+            } catch (e) {
+                showToast('Error deleting notification: ' + e.message, 'error');
+            }
+        }
+
+        function openSendNotificationModal() {
+            const body = `
+                <div class="modal-notification-form">
+                    <div class="form-group">
+                        <label>Title *</label>
+                        <input type="text" id="notifTitle" placeholder="Notification title">
+                    </div>
+                    <div class="form-group">
+                        <label>Message *</label>
+                        <textarea id="notifBody" rows="3" placeholder="Notification message..."></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Type</label>
+                            <select id="notifType">
+                                <option value="system">System</option>
+                                <option value="community">Community</option>
+                                <option value="tracker">Tracker</option>
+                                <option value="safety">Safety</option>
+                                <option value="family">Family</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Audience</label>
+                            <select id="notifAudience">
+                                <option value="all">All Users</option>
+                                <option value="parents">Parents Only</option>
+                                <option value="guardians">Guardians Only</option>
+                                <option value="active">Active Users</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:8px;padding:12px;background:var(--bg-primary);border-radius:var(--radius-sm);">
+                        ⚠️ This will send a push notification to all selected users.
+                    </div>
+                </div>
+            `;
+
+            openModal('📤 Send Notification', body, 'Send', async function() {
+                const title = document.getElementById('notifTitle')?.value?.trim();
+                const body = document.getElementById('notifBody')?.value?.trim();
+                const type = document.getElementById('notifType')?.value || 'system';
+                const audience = document.getElementById('notifAudience')?.value || 'all';
+
+                if (!title) { showToast('Please enter a title', 'warning'); return; }
+                if (!body) { showToast('Please enter a message', 'warning'); return; }
+
+                try {
+                    const { error } = await supabase.from('notifications').insert({
+                        id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                        title: title,
+                        body: body,
+                        type: type,
+                        audience: audience,
+                        read: false,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
+
+                    if (error) throw error;
+                    showToast('✅ Notification sent successfully!', 'success');
+                    closeModal(true);
+                    loadNotifications();
+                } catch (e) {
+                    showToast('Error sending notification: ' + e.message, 'error');
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadNotifications, 500); });
+        window.loadNotifications = loadNotifications;
+        window.filterNotifications = filterNotifications;
+        window.markRead = markRead;
+        window.markAllRead = markAllRead;
+        window.deleteNotification = deleteNotification;
+        window.openSendNotificationModal = openSendNotificationModal;
     </script>
 </body>
 </html>

@@ -60,13 +60,25 @@
             border-radius: var(--radius);
             border: 1px solid var(--border);
         }
-        .heatmap-stat .num {
-            font-size: 28px;
-            font-weight: 800;
+        .heatmap-stat .num { font-size: 28px; font-weight: 800; }
+        .heatmap-stat .label { font-size: 12px; color: var(--text-muted); }
+
+        .filter-bar-modern {
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
         }
-        .heatmap-stat .label {
-            font-size: 12px;
-            color: var(--text-muted);
+        .filter-bar-modern select {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern select:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        @media (max-width: 768px) {
+            .heatmap-grid { max-width: 100%; }
         }
     </style>
 </head>
@@ -75,73 +87,84 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" data-page="dashboard" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
                 <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item active" data-page="activity" href="#">
-                    <span class="icon">📈</span> Activity Heatmap
-                </a>
-                <a class="sidebar-nav-item" data-page="growth" href="#" onclick="navigateTo('growth')">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">📈</span> Activity Heatmap</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')"><span class="icon">📈</span> Analytics</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')"><span class="icon">📊</span> Growth Analytics</a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
+
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Activity Heatmap <span class="sub">| User Engagement Patterns</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Activity Heatmap <span class="sub">| User Engagement Patterns</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
                         <button class="btn btn-outline" onclick="loadHeatmap()">🔄 Refresh</button>
                         <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
+
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
                 <div class="page-header">
                     <span class="icon">📈</span>
                     <h1>Activity Heatmap</h1>
                 </div>
+
+                <div class="filter-bar-modern">
+                    <select id="heatmapPeriod" onchange="loadHeatmap()">
+                        <option value="7">Last 7 Days</option>
+                        <option value="14">Last 14 Days</option>
+                        <option value="30" selected>Last 30 Days</option>
+                        <option value="60">Last 60 Days</option>
+                        <option value="90">Last 90 Days</option>
+                    </select>
+                    <select id="heatmapType" onchange="loadHeatmap()">
+                        <option value="all">All Activities</option>
+                        <option value="feed">Feeding</option>
+                        <option value="sleep">Sleep</option>
+                        <option value="potty">Potty</option>
+                        <option value="growth">Growth</option>
+                        <option value="milestone">Milestones</option>
+                    </select>
+                    <button class="btn btn-primary btn-sm" onclick="loadHeatmap()">📊 Update</button>
+                </div>
+
                 <div class="heatmap-stats" id="heatmapStats">
                     <div class="heatmap-stat"><div class="num" id="totalActivities">—</div><div class="label">Total Activities</div></div>
                     <div class="heatmap-stat"><div class="num" id="mostActiveDay">—</div><div class="label">Most Active Day</div></div>
                     <div class="heatmap-stat"><div class="num" id="avgDaily">—</div><div class="label">Avg Daily</div></div>
                 </div>
+
                 <div class="card">
                     <div class="card-header">
                         <div class="card-title"><span class="emoji">📊</span> Weekly Activity Distribution</div>
@@ -163,51 +186,87 @@
             </div>
         </main>
     </div>
+
     <div class="toast-container" id="toastContainer"></div>
+
     <script src="/admin/js/admin.js"></script>
     <script>
         async function loadHeatmap() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
+
+            const days = parseInt(document.getElementById('heatmapPeriod')?.value || '30');
+            const type = document.getElementById('heatmapType')?.value || 'all';
+
             try {
-                const thirtyDaysAgo = new Date();
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                const { data, error } = await supabase
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+
+                let query = supabase
                     .from('tracker_entries')
-                    .select('timestamp, tracker_id')
+                    .select('timestamp, tracker_type, tracker_id, title')
                     .eq('is_deleted', false)
-                    .gte('timestamp', thirtyDaysAgo.toISOString())
+                    .gte('timestamp', startDate.toISOString())
                     .order('timestamp', { ascending: false });
+
+                if (type !== 'all') {
+                    query = query.eq('tracker_type', type);
+                }
+
+                const { data, error } = await query;
                 if (error) throw error;
+
                 const entries = data || [];
                 const total = entries.length;
+
+                // Count by day of week
                 const dayCounts = {};
                 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                 entries.forEach(function(e) {
                     const day = new Date(e.timestamp).getDay();
                     dayCounts[day] = (dayCounts[day] || 0) + 1;
                 });
+
+                // Count by date
+                const dateCounts = {};
+                entries.forEach(function(e) {
+                    const date = new Date(e.timestamp).toISOString().split('T')[0];
+                    dateCounts[date] = (dateCounts[date] || 0) + 1;
+                });
+
                 let maxDay = 0, maxCount = 0;
                 Object.entries(dayCounts).forEach(([day, count]) => {
                     if (count > maxCount) { maxCount = count; maxDay = parseInt(day); }
                 });
-                const avg = entries.length > 0 ? Math.round(entries.length / 30) : 0;
+
+                const avg = entries.length > 0 ? Math.round(entries.length / days) : 0;
                 document.getElementById('totalActivities').textContent = total;
                 document.getElementById('mostActiveDay').textContent = maxCount > 0 ? dayNames[maxDay] : '—';
                 document.getElementById('avgDaily').textContent = avg;
+
+                // Build heatmap grid
                 const grid = document.getElementById('heatmapGrid');
                 const maxCountVal = Math.max(...Object.values(dayCounts), 1);
                 const colors = ['#dbeafe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8'];
+
                 let html = '';
-                for (let i = 0; i < 35; i++) {
-                    const day = i % 7;
-                    const count = dayCounts[day] || 0;
-                    const intensity = Math.min(Math.round((count / maxCountVal) * 5), 5);
-                    const color = colors[intensity] || '#dbeafe';
-                    if (i < 7) { html += '<div class="heatmap-day-label">' + dayNames[day] + '</div>'; }
-                    html += '<div class="heatmap-cell" style="background:' + color + ';" title="' + dayNames[day] + ': ' + count + ' activities"></div>';
+                // Day labels
+                for (let i = 0; i < 7; i++) {
+                    html += '<div class="heatmap-day-label">' + dayNames[i] + '</div>';
                 }
+
+                // 5 weeks of data
+                for (let week = 0; week < 5; week++) {
+                    for (let day = 0; day < 7; day++) {
+                        const count = dayCounts[day] || 0;
+                        const intensity = Math.min(Math.round((count / maxCountVal) * 5), 5);
+                        const color = colors[intensity] || '#dbeafe';
+                        const dayLabel = dayNames[day];
+                        html += `<div class="heatmap-cell" style="background:${color};" title="${dayLabel}: ${count} activities"></div>`;
+                    }
+                }
+
                 grid.innerHTML = html;
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
                 showToast('✅ Heatmap loaded successfully', 'success');
@@ -215,6 +274,7 @@
                 showToast('Error loading heatmap: ' + e.message, 'error');
             }
         }
+
         document.addEventListener('DOMContentLoaded', function() { setTimeout(loadHeatmap, 500); });
         window.loadHeatmap = loadHeatmap;
     </script>

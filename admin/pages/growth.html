@@ -9,21 +9,90 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        .growth-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .growth-card { background: var(--bg-card); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border); text-align: center; }
+        .growth-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .growth-card {
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            text-align: center;
+        }
         .growth-card .num { font-size: 32px; font-weight: 800; }
         .growth-card .label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
         .growth-card .trend { font-size: 13px; font-weight: 600; margin-top: 4px; }
         .growth-card .trend.up { color: #22c55e; }
         .growth-card .trend.down { color: #ef4444; }
         .growth-card .trend.neutral { color: var(--text-muted); }
-        .chart-container { height: 250px; background: var(--bg-primary); border-radius: var(--radius-sm); padding: 20px; position: relative; overflow: hidden; }
-        .chart-bars { display: flex; align-items: flex-end; gap: 8px; height: 100%; padding: 0 4px; }
-        .chart-bars .bar { flex: 1; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--primary), var(--primary-light)); transition: height 0.8s ease; min-height: 4px; position: relative; }
+
+        .chart-container {
+            height: 250px;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .chart-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            height: 100%;
+            padding: 0 4px;
+        }
+        .chart-bars .bar {
+            flex: 1;
+            border-radius: 4px 4px 0 0;
+            background: linear-gradient(180deg, var(--primary), var(--primary-light));
+            transition: height 0.8s ease;
+            min-height: 4px;
+            position: relative;
+            max-width: 40px;
+        }
         .chart-bars .bar:hover { opacity: 0.8; }
-        .chart-bars .bar .tooltip { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 600; color: var(--text-muted); display: none; }
+        .chart-bars .bar .tooltip {
+            position: absolute;
+            top: -24px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            display: none;
+        }
         .chart-bars .bar:hover .tooltip { display: block; }
-        .chart-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
+        .chart-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .filter-bar-modern {
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+        }
+        .filter-bar-modern select {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern select:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        @media (max-width: 768px) {
+            .growth-grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 480px) {
+            .growth-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -31,74 +100,76 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" data-page="dashboard" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
                 <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item active" data-page="growth" href="#">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
-                <a class="sidebar-nav-item" data-page="activity" href="#" onclick="navigateTo('activity')">
-                    <span class="icon">📈</span> Activity Heatmap
-                </a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">📊</span> Growth Analytics</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')"><span class="icon">📈</span> Analytics</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')"><span class="icon">📈</span> Activity Heatmap</a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
+
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Growth Analytics <span class="sub">| Baby Development Insights</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Growth Analytics <span class="sub">| Baby Development Insights</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
                         <button class="btn btn-outline" onclick="loadGrowth()">🔄 Refresh</button>
                         <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
+
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
                 <div class="page-header">
                     <span class="icon">📊</span>
                     <h1>Growth Analytics</h1>
                 </div>
+
+                <div class="filter-bar-modern">
+                    <select id="growthPeriod" onchange="loadGrowth()">
+                        <option value="6">Last 6 Months</option>
+                        <option value="12" selected>Last 12 Months</option>
+                        <option value="24">Last 24 Months</option>
+                        <option value="all">All Time</option>
+                    </select>
+                    <button class="btn btn-primary btn-sm" onclick="loadGrowth()">📊 Update</button>
+                </div>
+
                 <div class="growth-grid">
                     <div class="growth-card"><div class="num" id="totalBabies">—</div><div class="label">Total Babies</div><div class="trend up" id="babyTrend">↑ 0%</div></div>
                     <div class="growth-card"><div class="num" id="newThisMonth">—</div><div class="label">New This Month</div><div class="trend up" id="monthTrend">↑ 0%</div></div>
                     <div class="growth-card"><div class="num" id="avgAge">—</div><div class="label">Average Age (months)</div><div class="trend neutral">→ 0%</div></div>
                     <div class="growth-card"><div class="num" id="growthRate">—</div><div class="label">Monthly Growth Rate</div><div class="trend up" id="rateTrend">↑ 0%</div></div>
                 </div>
+
                 <div class="card">
                     <div class="card-header"><div class="card-title"><span class="emoji">📈</span> Monthly Baby Growth</div></div>
                     <div class="card-body">
@@ -127,45 +198,106 @@
             </div>
         </main>
     </div>
+
     <div class="toast-container" id="toastContainer"></div>
+
     <script src="/admin/js/admin.js"></script>
     <script>
         async function loadGrowth() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
+
+            const months = parseInt(document.getElementById('growthPeriod')?.value || '12');
+
             try {
-                const { data: babies, error } = await supabase.from('babies').select('*').eq('is_active', true);
+                const { data: babies, error } = await supabase
+                    .from('babies')
+                    .select('*')
+                    .eq('is_active', true);
+
                 if (error) throw error;
+
                 const total = babies.length;
                 document.getElementById('totalBabies').textContent = total;
+
                 const now = new Date();
                 const thisMonth = now.getMonth(), thisYear = now.getFullYear();
-                const newThisMonth = babies.filter(b => { if (!b.created_at) return false; const d = new Date(b.created_at); return d.getMonth() === thisMonth && d.getFullYear() === thisYear; }).length;
+
+                const newThisMonth = babies.filter(b => {
+                    if (!b.created_at) return false;
+                    const d = new Date(b.created_at);
+                    return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+                }).length;
                 document.getElementById('newThisMonth').textContent = newThisMonth;
+
                 let totalAge = 0, ageCount = 0;
-                babies.forEach(b => { if (b.date_of_birth) { const dob = new Date(b.date_of_birth); const ageMonths = (now - dob) / (1000 * 60 * 60 * 24 * 30.44); if (ageMonths > 0) { totalAge += ageMonths; ageCount++; } } });
+                babies.forEach(b => {
+                    if (b.date_of_birth) {
+                        const dob = new Date(b.date_of_birth);
+                        const ageMonths = (now - dob) / (1000 * 60 * 60 * 24 * 30.44);
+                        if (ageMonths > 0) { totalAge += ageMonths; ageCount++; }
+                    }
+                });
                 const avgAge = ageCount > 0 ? Math.round((totalAge / ageCount) * 10) / 10 : 0;
                 document.getElementById('avgAge').textContent = avgAge;
+
+                // Monthly counts
                 const monthCounts = {};
-                babies.forEach(b => { if (b.created_at) { const d = new Date(b.created_at); const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); monthCounts[key] = (monthCounts[key] || 0) + 1; } });
-                const months = [], counts = [];
-                for (let i = 11; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); months.push(d.toLocaleString('default', { month: 'short' })); counts.push(monthCounts[key] || 0); }
+                babies.forEach(b => {
+                    if (b.created_at) {
+                        const d = new Date(b.created_at);
+                        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                        monthCounts[key] = (monthCounts[key] || 0) + 1;
+                    }
+                });
+
+                const displayMonths = Math.min(months, 24);
+                const monthNames = [];
+                const counts = [];
+
+                for (let i = displayMonths - 1; i >= 0; i--) {
+                    const d = new Date();
+                    d.setMonth(d.getMonth() - i);
+                    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                    monthNames.push(d.toLocaleString('default', { month: 'short' }));
+                    counts.push(monthCounts[key] || 0);
+                }
+
                 const maxCount = Math.max(...counts, 1);
                 const bars = document.querySelectorAll('#growthBars .bar');
-                bars.forEach((bar, index) => { if (index < counts.length) { const height = Math.max(4, (counts[index] / maxCount) * 100); bar.style.height = height + '%'; bar.querySelector('.tooltip').textContent = counts[index]; } });
-                document.getElementById('monthLabels').innerHTML = months.map(m => '<span>' + m + '</span>').join('');
-                const older = counts.slice(0, 6).reduce((a, b) => a + b, 0);
-                const newer = counts.slice(6).reduce((a, b) => a + b, 0);
+                bars.forEach((bar, index) => {
+                    if (index < counts.length) {
+                        const height = Math.max(4, (counts[index] / maxCount) * 100);
+                        bar.style.height = height + '%';
+                        const tooltip = bar.querySelector('.tooltip');
+                        if (tooltip) tooltip.textContent = counts[index];
+                    }
+                });
+
+                // Update month labels
+                const monthLabels = document.getElementById('monthLabels');
+                if (monthLabels) {
+                    monthLabels.innerHTML = monthNames.map(m => `<span>${m}</span>`).join('');
+                }
+
+                // Calculate growth rate
+                const older = counts.slice(0, Math.floor(counts.length / 2)).reduce((a, b) => a + b, 0);
+                const newer = counts.slice(Math.floor(counts.length / 2)).reduce((a, b) => a + b, 0);
                 const rate = older > 0 ? Math.round(((newer - older) / older) * 100) : 0;
                 document.getElementById('growthRate').textContent = (rate > 0 ? '+' : '') + rate + '%';
+
                 const trendEl = document.getElementById('rateTrend');
                 trendEl.textContent = (rate > 0 ? '↑' : rate < 0 ? '↓' : '→') + ' ' + Math.abs(rate) + '%';
                 trendEl.className = 'trend ' + (rate > 0 ? 'up' : rate < 0 ? 'down' : 'neutral');
+
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
                 showToast('✅ Growth data loaded', 'success');
-            } catch (e) { showToast('Error loading growth data: ' + e.message, 'error'); }
+            } catch (e) {
+                showToast('Error loading growth data: ' + e.message, 'error');
+            }
         }
+
         document.addEventListener('DOMContentLoaded', function() { setTimeout(loadGrowth, 500); });
         window.loadGrowth = loadGrowth;
     </script>

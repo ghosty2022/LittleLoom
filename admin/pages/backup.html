@@ -18,25 +18,9 @@
             position: relative;
             overflow: hidden;
         }
-        .page-hero::after {
-            content: '💾';
-            position: absolute;
-            right: 28px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 64px;
-            opacity: 0.1;
-        }
-        .page-hero h1 {
-            font-size: 24px;
-            font-weight: 800;
-            letter-spacing: -0.3px;
-        }
-        .page-hero p {
-            opacity: 0.85;
-            font-size: 14px;
-            margin-top: 4px;
-        }
+        .page-hero::after { content: '💾'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
 
         .backup-grid {
             display: grid;
@@ -51,23 +35,10 @@
             box-shadow: var(--shadow);
             transition: all var(--transition);
         }
-        .backup-card:hover {
-            box-shadow: var(--shadow-lg);
-        }
-        .backup-card .icon {
-            font-size: 48px;
-            margin-bottom: 12px;
-        }
-        .backup-card h3 {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-        .backup-card p {
-            font-size: 14px;
-            color: var(--text-muted);
-            margin-bottom: 16px;
-        }
+        .backup-card:hover { box-shadow: var(--shadow-lg); }
+        .backup-card .icon { font-size: 48px; margin-bottom: 12px; }
+        .backup-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+        .backup-card p { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
         .backup-card .info-row {
             display: flex;
             justify-content: space-between;
@@ -75,15 +46,9 @@
             border-bottom: 1px solid var(--border);
             font-size: 13px;
         }
-        .backup-card .info-row:last-child {
-            border-bottom: none;
-        }
-        .backup-card .info-row .label {
-            color: var(--text-muted);
-        }
-        .backup-card .info-row .value {
-            font-weight: 600;
-        }
+        .backup-card .info-row:last-child { border-bottom: none; }
+        .backup-card .info-row .label { color: var(--text-muted); }
+        .backup-card .info-row .value { font-weight: 600; }
 
         .backup-actions {
             display: flex;
@@ -94,9 +59,7 @@
             border-top: 1px solid var(--border);
         }
 
-        .progress-bar-container {
-            margin-top: 12px;
-        }
+        .progress-bar-container { margin-top: 12px; }
         .progress-bar-container .progress-label {
             display: flex;
             justify-content: space-between;
@@ -116,99 +79,64 @@
             background: linear-gradient(90deg, var(--primary), var(--primary-light));
             transition: width 0.6s ease;
         }
-        .progress-bar-container .progress-track .fill.success {
-            background: linear-gradient(90deg, #22c55e, #4ade80);
+        .progress-bar-container .progress-track .fill.success { background: linear-gradient(90deg, #22c55e, #4ade80); }
+        .progress-bar-container .progress-track .fill.warning { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+
+        .backup-history-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
         }
-        .progress-bar-container .progress-track .fill.warning {
-            background: linear-gradient(90deg, #f59e0b, #fbbf24);
+        .backup-history-item:last-child { border-bottom: none; }
+
+        .file-upload-area {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-sm);
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-top: 12px;
         }
+        .file-upload-area:hover { border-color: var(--primary); background: var(--bg-primary); }
+        .file-upload-area .icon { font-size: 32px; margin-bottom: 8px; }
+        .file-upload-area .label { font-size: 13px; color: var(--text-muted); }
 
         @media (max-width: 768px) {
-            .backup-grid {
-                grid-template-columns: 1fr;
-            }
+            .backup-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
     <div class="app">
-        <!-- ─── SIDEBAR ────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
-                    <span class="icon">👶</span> Babies
-                    <span class="badge" id="babyBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                    <span class="badge" id="userBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
-                    <span class="icon">🛡️</span> Moderation
-                    <span class="badge danger" id="modBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
-                    <span class="icon">💬</span> Community
-                    <span class="badge" id="postBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
-                    <span class="icon">📌</span> Topics
-                </a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
-                    <span class="icon">📈</span> Tracker Entries
-                    <span class="badge" id="entryBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
-                    <span class="icon">🏆</span> Milestones
-                    <span class="badge" id="milestoneBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
-                    <span class="icon">📈</span> Analytics
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
-                <a class="sidebar-nav-item active" href="#">
-                    <span class="icon">💾</span> Backup & Restore
-                </a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">💾</span> Backup & Restore</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')"><span class="icon">📋</span> Audit Logs</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <!-- ─── MODAL ────────────────────────────────────────────────── -->
         <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
             <div class="modal">
-                <div class="modal-header">
-                    <h2 id="modalTitle">Modal</h2>
-                    <button class="modal-close" onclick="modalCancel()">✕</button>
-                </div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
                     <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
@@ -217,20 +145,11 @@
             </div>
         </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Backup & Restore <span class="sub">| Data Protection</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Backup & Restore <span class="sub">| Data Protection</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
                         <button class="btn btn-outline btn-sm" onclick="loadBackupInfo()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
@@ -239,18 +158,13 @@
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
 
-                <!-- ─── HERO ──────────────────────────────────────────── -->
                 <div class="page-hero">
                     <h1>💾 Backup & Restore</h1>
                     <p>Protect your data with automated backups and restore capabilities</p>
                 </div>
 
-                <!-- ─── BACKUP GRID ────────────────────────────────────── -->
                 <div class="backup-grid">
                     <!-- Export Card -->
                     <div class="backup-card">
@@ -289,7 +203,7 @@
 
                     <!-- Import Card -->
                     <div class="backup-card">
-                        <div class="icon">📤</div>
+                        <div class="icon">📥</div>
                         <h3>Import Data</h3>
                         <p>Restore your data from a previously exported backup file</p>
 
@@ -302,21 +216,26 @@
                             <span class="value">50 MB</span>
                         </div>
 
+                        <div class="file-upload-area" id="fileUploadArea" onclick="document.getElementById('restoreFileInput').click()">
+                            <div class="icon">📁</div>
+                            <div class="label">Click to select a backup file</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;" id="selectedFile">No file selected</div>
+                        </div>
+                        <input type="file" id="restoreFileInput" accept=".json" style="display:none;" onchange="handleRestoreFile(event)">
+
                         <div class="backup-actions">
-                            <input type="file" id="restoreFileInput" accept=".json" style="display:none;" onchange="handleRestoreFile(event)">
-                            <button class="btn btn-success" onclick="document.getElementById('restoreFileInput').click()">📤 Select File</button>
-                            <button class="btn btn-outline" id="restoreBtn" onclick="restoreBackup()" disabled>Restore</button>
+                            <button class="btn btn-success" id="restoreBtn" onclick="restoreBackup()" disabled>📤 Restore</button>
                         </div>
 
                         <div id="restoreStatus" style="margin-top:12px;font-size:13px;color:var(--text-muted);display:none;"></div>
                     </div>
                 </div>
 
-                <!-- ─── BACKUP HISTORY ────────────────────────────────── -->
+                <!-- Backup History -->
                 <div class="backup-card" style="margin-top:20px;">
                     <h3>📋 Backup History</h3>
                     <p style="font-size:13px;color:var(--text-muted);">Recent backup operations</p>
-                    <div id="backupHistory">
+                    <div id="backupHistory" style="margin-top:12px;">
                         <div class="empty-state-modern" style="padding:20px;">
                             <div class="emoji" style="font-size:32px;">📭</div>
                             <p style="font-size:13px;">No backup history available</p>
@@ -336,7 +255,6 @@
 
         async function loadBackupInfo() {
             try {
-                // Get counts for backup info
                 const [babies, profiles, entries, posts] = await Promise.all([
                     supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
                     supabase.from('profiles').select('*', { count: 'exact', head: true }),
@@ -347,7 +265,6 @@
                 const totalTables = 4;
                 document.getElementById('backupTables').textContent = totalTables;
 
-                // Load history from localStorage
                 const history = localStorage.getItem('backupHistory');
                 if (history) {
                     try {
@@ -374,7 +291,6 @@
             showToast('📥 Creating backup...', 'info');
 
             try {
-                // Step 1: Fetch all data
                 progressFill.style.width = '20%';
                 progressText.textContent = '20% - Fetching data...';
 
@@ -425,12 +341,10 @@
                 progressFill.style.width = '100%';
                 progressText.textContent = '100% - Done!';
 
-                // Update backup info
                 const sizeKB = (blob.size / 1024).toFixed(1);
                 document.getElementById('lastBackupTime').textContent = new Date().toLocaleString();
                 document.getElementById('backupSize').textContent = sizeKB + ' KB';
 
-                // Add to history
                 const entry = {
                     timestamp: new Date().toISOString(),
                     type: 'export',
@@ -470,9 +384,10 @@
 
             selectedRestoreFile = file;
             document.getElementById('restoreBtn').disabled = false;
+            document.getElementById('selectedFile').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
             document.getElementById('restoreStatus').style.display = 'block';
             document.getElementById('restoreStatus').innerHTML = `
-                <span style="color:#22c55e;">✅ File loaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB)</span>
+                <span style="color:#22c55e;">✅ File loaded: ${file.name}</span>
             `;
             showToast('📤 File loaded successfully', 'success');
         }
@@ -483,7 +398,15 @@
                 return;
             }
 
-            const confirmed = confirm('⚠️ Restoring will overwrite existing data. Are you sure?');
+            const confirmed = await new Promise((resolve) => {
+                openModal('⚠️ Restore Data', `
+                    <div style="text-align:center;padding:12px 0;">
+                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Restore from backup?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">This will overwrite existing data. This action cannot be undone.</p>
+                    </div>
+                `, 'Yes, Restore', () => resolve(true), 'Cancel');
+            });
             if (!confirmed) return;
 
             try {
@@ -499,30 +422,23 @@
 
                         showToast('📤 Restoring data...', 'info');
 
-                        // Restore each table
                         let restored = 0;
                         const tables = data.tables;
 
                         for (const [tableName, records] of Object.entries(tables)) {
                             if (records && records.length > 0) {
-                                // For each record, upsert
                                 for (const record of records) {
                                     const { error } = await supabase
                                         .from(tableName)
                                         .upsert(record, { onConflict: 'id' });
 
-                                    if (error) {
-                                        console.warn(`Failed to restore ${tableName}:`, error);
-                                    } else {
-                                        restored++;
-                                    }
+                                    if (!error) restored++;
                                 }
                             }
                         }
 
                         showToast(`✅ Restored ${restored} records successfully!`, 'success');
 
-                        // Add to history
                         const entry = {
                             timestamp: new Date().toISOString(),
                             type: 'import',
@@ -569,7 +485,7 @@
                 const icon = item.type === 'export' ? '📤' : '📥';
                 const label = item.type === 'export' ? 'Export' : 'Import';
                 html += `
-                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+                    <div class="backup-history-item">
                         <div>
                             <span>${icon}</span>
                             <span style="font-weight:600;">${label}</span>
@@ -584,10 +500,7 @@
             container.innerHTML = html;
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(loadBackupInfo, 500);
-        });
-
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadBackupInfo, 500); });
         window.loadBackupInfo = loadBackupInfo;
         window.createBackup = createBackup;
         window.scheduleBackup = scheduleBackup;

@@ -45,17 +45,18 @@
         th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 8px 10px 0; border-bottom: 1.5px solid var(--border); }
         td { padding: 10px 8px 10px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
 
-        .type-badge { display: inline-flex; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .type-badge {
+            display: inline-flex;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
         .type-badge.auth { background: #dbeafe; color: #2563eb; }
         .type-badge.data { background: #dcfce7; color: #16a34a; }
         .type-badge.admin { background: #ede9fe; color: #7c3aed; }
         .type-badge.system { background: #fef3c7; color: #d97706; }
         .type-badge.security { background: #fee2e2; color: #dc2626; }
-
-        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-        .empty-state-modern p { font-size: 14px; }
 
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
@@ -88,6 +89,17 @@
         </aside>
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
 
         <main class="main">
             <header class="topbar">
@@ -156,10 +168,9 @@
             if (!authed) { showToast('Please log in', 'warning'); return; }
 
             try {
-                // Try to fetch from audit_logs table, fallback to simulated data
-                let { data, error } = await supabase
+                const { data, error } = await supabase
                     .from('audit_logs')
-                    .select('*')
+                    .select('*, profiles!audit_logs_user_id_fkey(full_name, email, avatar)')
                     .order('created_at', { ascending: false })
                     .limit(100);
 
@@ -198,7 +209,7 @@
             return actions.map((a, i) => ({
                 id: 'audit_' + Date.now() + '_' + i,
                 user_id: 'user_' + i,
-                user_email: a.user === 'Admin' ? 'admin@littleloom.com' : 'user@littleloom.com',
+                profiles: { full_name: a.user === 'Admin' ? 'Admin' : 'User', email: a.user === 'Admin' ? 'admin@littleloom.com' : 'user@littleloom.com' },
                 action: a.action,
                 resource_type: a.type,
                 details: a.details,
@@ -219,7 +230,7 @@
                 const type = log.resource_type || log.type || 'system';
                 const typeClass = type === 'auth' ? 'auth' : type === 'data' ? 'data' : type === 'admin' ? 'admin' : type === 'system' ? 'system' : 'security';
                 const time = log.created_at ? new Date(log.created_at).toLocaleString() : '—';
-                const user = log.user_email || log.user_id?.substring(0, 8) || 'System';
+                const user = log.profiles?.full_name || log.user_email || log.user_id?.substring(0, 8) || 'System';
 
                 html += `<tr>
                     <td style="font-size:12px;color:var(--text-muted);">${time}</td>
@@ -238,7 +249,7 @@
                 if (log.created_at) return new Date(log.created_at).toDateString() === new Date().toDateString();
                 return false;
             }).length;
-            const users = new Set(logs.map(log => log.user_email || log.user_id).filter(Boolean)).size;
+            const users = new Set(logs.map(log => log.profiles?.full_name || log.user_email || log.user_id).filter(Boolean)).size;
 
             document.getElementById('statTotal').textContent = total;
             document.getElementById('statToday').textContent = today;
@@ -253,7 +264,7 @@
             if (search) {
                 filtered = filtered.filter(log =>
                     (log.action || '').toLowerCase().includes(search) ||
-                    (log.user_email || '').toLowerCase().includes(search) ||
+                    (log.profiles?.full_name || '').toLowerCase().includes(search) ||
                     (log.details || '').toLowerCase().includes(search)
                 );
             }
@@ -265,7 +276,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() { setTimeout(loadAuditLogs, 500); });
-
         window.loadAuditLogs = loadAuditLogs;
         window.filterLogs = filterLogs;
     </script>

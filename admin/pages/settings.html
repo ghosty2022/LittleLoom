@@ -18,25 +18,9 @@
             position: relative;
             overflow: hidden;
         }
-        .page-hero::after {
-            content: '⚙️';
-            position: absolute;
-            right: 28px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 64px;
-            opacity: 0.1;
-        }
-        .page-hero h1 {
-            font-size: 24px;
-            font-weight: 800;
-            letter-spacing: -0.3px;
-        }
-        .page-hero p {
-            opacity: 0.85;
-            font-size: 14px;
-            margin-top: 4px;
-        }
+        .page-hero::after { content: '⚙️'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
 
         .settings-grid {
             display: grid;
@@ -51,26 +35,16 @@
             box-shadow: var(--shadow);
             transition: all var(--transition);
         }
-        .settings-card:hover {
-            box-shadow: var(--shadow-lg);
-        }
+        .settings-card:hover { box-shadow: var(--shadow-lg); }
         .settings-card .header {
             display: flex;
             align-items: center;
             gap: 12px;
             margin-bottom: 16px;
         }
-        .settings-card .header .icon {
-            font-size: 28px;
-        }
-        .settings-card .header h3 {
-            font-size: 17px;
-            font-weight: 700;
-        }
-        .settings-card .header p {
-            font-size: 13px;
-            color: var(--text-muted);
-        }
+        .settings-card .header .icon { font-size: 28px; }
+        .settings-card .header h3 { font-size: 17px; font-weight: 700; }
+        .settings-card .header p { font-size: 13px; color: var(--text-muted); }
 
         .setting-item {
             display: flex;
@@ -79,48 +53,10 @@
             padding: 12px 0;
             border-bottom: 1px solid var(--border);
         }
-        .setting-item:last-child {
-            border-bottom: none;
-        }
-        .setting-item .info {
-            flex: 1;
-        }
-        .setting-item .info .label {
-            font-weight: 600;
-            font-size: 14px;
-        }
-        .setting-item .info .desc {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-
-        .toggle-switch {
-            position: relative;
-            width: 44px;
-            height: 24px;
-            background: #d1d5db;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: var(--transition);
-            flex-shrink: 0;
-        }
-        .toggle-switch.active {
-            background: var(--primary);
-        }
-        .toggle-switch .slider {
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 20px;
-            height: 20px;
-            background: #fff;
-            border-radius: 50%;
-            transition: var(--transition);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-        }
-        .toggle-switch.active .slider {
-            left: 22px;
-        }
+        .setting-item:last-child { border-bottom: none; }
+        .setting-item .info { flex: 1; }
+        .setting-item .info .label { font-weight: 600; font-size: 14px; }
+        .setting-item .info .desc { font-size: 12px; color: var(--text-muted); }
 
         .settings-select {
             padding: 6px 12px;
@@ -149,95 +85,39 @@
         }
 
         @media (max-width: 768px) {
-            .settings-grid {
-                grid-template-columns: 1fr;
-            }
-            .setting-item {
-                flex-wrap: wrap;
-                gap: 8px;
-            }
+            .settings-grid { grid-template-columns: 1fr; }
+            .setting-item { flex-wrap: wrap; gap: 8px; }
         }
     </style>
 </head>
 <body>
     <div class="app">
-        <!-- ─── SIDEBAR ────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
-                    <span class="icon">👶</span> Babies
-                    <span class="badge" id="babyBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                    <span class="badge" id="userBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
-                    <span class="icon">🛡️</span> Moderation
-                    <span class="badge danger" id="modBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
-                    <span class="icon">💬</span> Community
-                    <span class="badge" id="postBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
-                    <span class="icon">📌</span> Topics
-                </a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
-                    <span class="icon">📈</span> Tracker Entries
-                    <span class="badge" id="entryBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
-                    <span class="icon">🏆</span> Milestones
-                    <span class="badge" id="milestoneBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
-                    <span class="icon">📈</span> Analytics
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#">
-                    <span class="icon">⚙️</span> Settings
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
-                    <span class="icon">💾</span> Backup & Restore
-                </a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">⚙️</span> Settings</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')"><span class="icon">📋</span> Audit Logs</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <!-- ─── MODAL ────────────────────────────────────────────────── -->
         <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
             <div class="modal">
-                <div class="modal-header">
-                    <h2 id="modalTitle">Modal</h2>
-                    <button class="modal-close" onclick="modalCancel()">✕</button>
-                </div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
                     <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
@@ -246,20 +126,11 @@
             </div>
         </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Settings <span class="sub">| System Configuration</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Settings <span class="sub">| System Configuration</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
                         <button class="btn btn-outline btn-sm" onclick="loadSettings()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
@@ -268,44 +139,30 @@
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
 
-                <!-- ─── HERO ──────────────────────────────────────────── -->
                 <div class="page-hero">
                     <h1>⚙️ System Settings</h1>
                     <p>Configure your admin dashboard preferences and system settings</p>
                 </div>
 
-                <!-- ─── SETTINGS GRID ──────────────────────────────────── -->
                 <div class="settings-grid">
                     <!-- General Settings -->
                     <div class="settings-card">
                         <div class="header">
                             <span class="icon">⚙️</span>
-                            <div>
-                                <h3>General</h3>
-                                <p>Basic dashboard settings</p>
-                            </div>
+                            <div><h3>General</h3><p>Basic dashboard settings</p></div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🌙 Dark Mode</div>
-                                <div class="desc">Toggle dark/light theme</div>
-                            </div>
+                            <div class="info"><div class="label">🌙 Dark Mode</div><div class="desc">Toggle dark/light theme</div></div>
                             <div class="toggle-switch active" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🔄 Auto-Refresh</div>
-                                <div class="desc">Automatically refresh dashboard data</div>
-                            </div>
+                            <div class="info"><div class="label">🔄 Auto-Refresh</div><div class="desc">Automatically refresh dashboard data</div></div>
                             <select class="settings-select" id="refreshInterval">
                                 <option value="0">Off</option>
                                 <option value="10">10s</option>
@@ -317,20 +174,14 @@
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🔔 Notifications</div>
-                                <div class="desc">Show desktop notifications</div>
-                            </div>
+                            <div class="info"><div class="label">🔔 Notifications</div><div class="desc">Show desktop notifications</div></div>
                             <div class="toggle-switch active" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">📊 Analytics</div>
-                                <div class="desc">Enable usage analytics</div>
-                            </div>
+                            <div class="info"><div class="label">📊 Analytics</div><div class="desc">Enable usage analytics</div></div>
                             <div class="toggle-switch" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
@@ -341,17 +192,11 @@
                     <div class="settings-card">
                         <div class="header">
                             <span class="icon">🔐</span>
-                            <div>
-                                <h3>Security</h3>
-                                <p>Security and access controls</p>
-                            </div>
+                            <div><h3>Security</h3><p>Security and access controls</p></div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🔑 Session Timeout</div>
-                                <div class="desc">Auto-logout after inactivity</div>
-                            </div>
+                            <div class="info"><div class="label">🔑 Session Timeout</div><div class="desc">Auto-logout after inactivity</div></div>
                             <select class="settings-select" id="sessionTimeout">
                                 <option value="5">5 min</option>
                                 <option value="15">15 min</option>
@@ -363,30 +208,21 @@
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🔒 2FA Required</div>
-                                <div class="desc">Require two-factor authentication</div>
-                            </div>
+                            <div class="info"><div class="label">🔒 2FA Required</div><div class="desc">Require two-factor authentication</div></div>
                             <div class="toggle-switch" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">📧 Email Verification</div>
-                                <div class="desc">Require email verification</div>
-                            </div>
+                            <div class="info"><div class="label">📧 Email Verification</div><div class="desc">Require email verification</div></div>
                             <div class="toggle-switch active" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🛡️ IP Whitelist</div>
-                                <div class="desc">Restrict access to specific IPs</div>
-                            </div>
+                            <div class="info"><div class="label">🛡️ IP Whitelist</div><div class="desc">Restrict access to specific IPs</div></div>
                             <div class="toggle-switch" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
@@ -397,18 +233,12 @@
                     <div class="settings-card">
                         <div class="header">
                             <span class="icon">🎨</span>
-                            <div>
-                                <h3>Appearance</h3>
-                                <p>Customize the dashboard look</p>
-                            </div>
+                            <div><h3>Appearance</h3><p>Customize the dashboard look</p></div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🎨 Primary Color</div>
-                                <div class="desc">Choose your accent color</div>
-                            </div>
-                            <select class="settings-select" id="primaryColor">
+                            <div class="info"><div class="label">🎨 Primary Color</div><div class="desc">Choose your accent color</div></div>
+                            <select class="settings-select" id="primaryColor" onchange="applyPrimaryColor(this.value)">
                                 <option value="#6366f1" selected>Indigo</option>
                                 <option value="#8b5cf6">Purple</option>
                                 <option value="#ec4899">Pink</option>
@@ -419,10 +249,7 @@
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">📐 Layout</div>
-                                <div class="desc">Dashboard layout style</div>
-                            </div>
+                            <div class="info"><div class="label">📐 Layout</div><div class="desc">Dashboard layout style</div></div>
                             <select class="settings-select" id="layoutStyle">
                                 <option value="default" selected>Default</option>
                                 <option value="compact">Compact</option>
@@ -431,10 +258,7 @@
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🔤 Font Size</div>
-                                <div class="desc">Text size preference</div>
-                            </div>
+                            <div class="info"><div class="label">🔤 Font Size</div><div class="desc">Text size preference</div></div>
                             <select class="settings-select" id="fontSize">
                                 <option value="small">Small</option>
                                 <option value="medium" selected>Medium</option>
@@ -447,37 +271,25 @@
                     <div class="settings-card">
                         <div class="header">
                             <span class="icon">🖥️</span>
-                            <div>
-                                <h3>System</h3>
-                                <p>System-level configurations</p>
-                            </div>
+                            <div><h3>System</h3><p>System-level configurations</p></div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">📊 Debug Mode</div>
-                                <div class="desc">Enable debug logging</div>
-                            </div>
+                            <div class="info"><div class="label">📊 Debug Mode</div><div class="desc">Enable debug logging</div></div>
                             <div class="toggle-switch" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">📈 Performance Mode</div>
-                                <div class="desc">Optimize for performance</div>
-                            </div>
+                            <div class="info"><div class="label">📈 Performance Mode</div><div class="desc">Optimize for performance</div></div>
                             <div class="toggle-switch active" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
-                            <div class="info">
-                                <div class="label">🗑️ Auto-Cleanup</div>
-                                <div class="desc">Auto-delete old logs (30 days)</div>
-                            </div>
+                            <div class="info"><div class="label">🗑️ Auto-Cleanup</div><div class="desc">Auto-delete old logs (30 days)</div></div>
                             <div class="toggle-switch active" onclick="toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
@@ -499,29 +311,34 @@
     <script src="/admin/js/admin.js"></script>
     <script>
         function loadSettings() {
-            // Load saved settings from localStorage
             try {
                 const settings = JSON.parse(localStorage.getItem('adminSettings') || '{}');
 
-                if (settings.darkMode !== undefined) {
-                    const toggle = document.querySelector('.toggle-switch');
-                    if (toggle) {
-                        if (settings.darkMode) toggle.classList.add('active');
-                        else toggle.classList.remove('active');
-                    }
+                // Apply dark mode
+                if (settings.darkMode) {
+                    document.documentElement.style.setProperty('--bg-primary', '#0f172a');
+                    document.documentElement.style.setProperty('--bg-card', '#1e293b');
+                    document.documentElement.style.setProperty('--text-primary', '#f1f5f9');
+                    document.documentElement.style.setProperty('--text-secondary', '#94a3b8');
+                    document.documentElement.style.setProperty('--border', 'rgba(255,255,255,0.06)');
+                    document.querySelector('.toggle-switch')?.classList.add('active');
                 }
 
                 if (settings.refreshInterval) {
                     document.getElementById('refreshInterval').value = settings.refreshInterval;
                 }
-
                 if (settings.sessionTimeout) {
                     document.getElementById('sessionTimeout').value = settings.sessionTimeout;
                 }
-
                 if (settings.primaryColor) {
                     document.getElementById('primaryColor').value = settings.primaryColor;
-                    document.documentElement.style.setProperty('--primary', settings.primaryColor);
+                    applyPrimaryColor(settings.primaryColor);
+                }
+                if (settings.layoutStyle) {
+                    document.getElementById('layoutStyle').value = settings.layoutStyle;
+                }
+                if (settings.fontSize) {
+                    document.getElementById('fontSize').value = settings.fontSize;
                 }
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
@@ -537,6 +354,26 @@
             showToast(`Setting ${isActive ? 'enabled' : 'disabled'}`, 'info');
         }
 
+        function applyPrimaryColor(color) {
+            document.documentElement.style.setProperty('--primary', color);
+            document.documentElement.style.setProperty('--primary-dark', color);
+            // Update gradient
+            document.querySelectorAll('.btn-primary, .brand-icon').forEach(el => {
+                if (el.tagName === 'BUTTON') {
+                    el.style.background = `linear-gradient(135deg, ${color}, ${adjustColor(color, 20)})`;
+                }
+            });
+        }
+
+        function adjustColor(color, percent) {
+            const num = parseInt(color.replace('#', ''), 16);
+            const amt = Math.round(2.55 * percent);
+            const R = Math.min(255, Math.max(0, (num >> 16) + amt));
+            const G = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amt));
+            const B = Math.min(255, Math.max(0, (num & 0x0000FF) + amt));
+            return `#${(1 << 24 | R << 16 | G << 8 | B).toString(16).slice(1)}`;
+        }
+
         function saveSettings() {
             const settings = {
                 darkMode: document.querySelector('.toggle-switch')?.classList.contains('active') || false,
@@ -548,9 +385,8 @@
             };
 
             localStorage.setItem('adminSettings', JSON.stringify(settings));
-            document.documentElement.style.setProperty('--primary', settings.primaryColor);
+            applyPrimaryColor(settings.primaryColor);
 
-            // Apply dark mode
             if (settings.darkMode) {
                 document.documentElement.style.setProperty('--bg-primary', '#0f172a');
                 document.documentElement.style.setProperty('--bg-card', '#1e293b');
@@ -558,10 +394,10 @@
                 document.documentElement.style.setProperty('--text-secondary', '#94a3b8');
                 document.documentElement.style.setProperty('--border', 'rgba(255,255,255,0.06)');
             } else {
-                document.documentElement.style.setProperty('--bg-primary', '#f0f2f8');
+                document.documentElement.style.setProperty('--bg-primary', '#f1f5f9');
                 document.documentElement.style.setProperty('--bg-card', '#ffffff');
-                document.documentElement.style.setProperty('--text-primary', '#0f0f1a');
-                document.documentElement.style.setProperty('--text-secondary', '#4b5563');
+                document.documentElement.style.setProperty('--text-primary', '#0f172a');
+                document.documentElement.style.setProperty('--text-secondary', '#475569');
                 document.documentElement.style.setProperty('--border', 'rgba(0,0,0,0.06)');
             }
 
@@ -569,7 +405,8 @@
         }
 
         function resetSettings() {
-            if (!confirm('Reset all settings to default?')) return;
+            const confirmed = confirm('Reset all settings to default?');
+            if (!confirmed) return;
 
             localStorage.removeItem('adminSettings');
             document.getElementById('refreshInterval').value = '30';
@@ -578,24 +415,24 @@
             document.getElementById('layoutStyle').value = 'default';
             document.getElementById('fontSize').value = 'medium';
 
-            // Reset dark mode toggle
             const toggle = document.querySelector('.toggle-switch');
             if (toggle && toggle.classList.contains('active')) {
                 toggle.classList.remove('active');
             }
 
             document.documentElement.style.setProperty('--primary', '#6366f1');
-            document.documentElement.style.setProperty('--bg-primary', '#f0f2f8');
+            document.documentElement.style.setProperty('--bg-primary', '#f1f5f9');
             document.documentElement.style.setProperty('--bg-card', '#ffffff');
-            document.documentElement.style.setProperty('--text-primary', '#0f0f1a');
-            document.documentElement.style.setProperty('--text-secondary', '#4b5563');
+            document.documentElement.style.setProperty('--text-primary', '#0f172a');
+            document.documentElement.style.setProperty('--text-secondary', '#475569');
             document.documentElement.style.setProperty('--border', 'rgba(0,0,0,0.06)');
 
             showToast('🔄 Settings reset to defaults', 'success');
         }
 
         function clearCache() {
-            if (!confirm('Clear all cached data?')) return;
+            const confirmed = confirm('Clear all cached data?');
+            if (!confirmed) return;
 
             localStorage.removeItem('adminSettings');
             localStorage.removeItem('backupHistory');
@@ -605,15 +442,13 @@
             setTimeout(() => location.reload(), 1000);
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(loadSettings, 500);
-        });
-
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadSettings, 500); });
         window.loadSettings = loadSettings;
         window.toggleSetting = toggleSetting;
         window.saveSettings = saveSettings;
         window.resetSettings = resetSettings;
         window.clearCache = clearCache;
+        window.applyPrimaryColor = applyPrimaryColor;
     </script>
 </body>
 </html>

@@ -18,44 +18,13 @@
             position: relative;
             overflow: hidden;
         }
-        .page-hero::after {
-            content: '📢';
-            position: absolute;
-            right: 28px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 64px;
-            opacity: 0.1;
-        }
-        .page-hero h1 {
-            font-size: 24px;
-            font-weight: 800;
-            letter-spacing: -0.3px;
-        }
-        .page-hero p {
-            opacity: 0.85;
-            font-size: 14px;
-            margin-top: 4px;
-        }
-        .page-hero .stats-row {
-            display: flex;
-            gap: 32px;
-            margin-top: 16px;
-            flex-wrap: wrap;
-        }
-        .page-hero .stats-row .stat {
-            display: flex;
-            align-items: baseline;
-            gap: 6px;
-        }
-        .page-hero .stats-row .stat .num {
-            font-size: 28px;
-            font-weight: 800;
-        }
-        .page-hero .stats-row .stat .label {
-            font-size: 13px;
-            opacity: 0.75;
-        }
+        .page-hero::after { content: '📢'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
+        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
+        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
+        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
 
         .announcement-card {
             background: var(--bg-card);
@@ -66,65 +35,19 @@
             transition: all var(--transition);
             box-shadow: var(--shadow);
         }
-        .announcement-card:hover {
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-2px);
-        }
-        .announcement-card .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .announcement-card .title {
-            font-size: 17px;
-            font-weight: 700;
-        }
-        .announcement-card .meta {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-top: 8px;
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-        .announcement-card .content {
-            margin-top: 10px;
-            font-size: 14px;
-            color: var(--text-secondary);
-            line-height: 1.6;
-        }
-        .announcement-card .actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid var(--border);
-        }
-        .announcement-card .actions .btn-sm {
-            padding: 4px 14px;
-            font-size: 11px;
-            border-radius: var(--radius-sm);
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-        .announcement-card .actions .btn-edit {
-            background: var(--primary);
-            color: #fff;
-        }
-        .announcement-card .actions .btn-edit:hover {
-            background: var(--primary-dark);
-        }
-        .announcement-card .actions .btn-delete {
-            background: #fee2e2;
-            color: #dc2626;
-        }
-        .announcement-card .actions .btn-delete:hover {
-            background: #fecaca;
-        }
+        .announcement-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+        .announcement-card .header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+        .announcement-card .title { font-size: 17px; font-weight: 700; }
+        .announcement-card .meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--text-muted); }
+        .announcement-card .content { margin-top: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+        .announcement-card .actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+        .announcement-card .actions .btn-sm { padding: 4px 14px; font-size: 11px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
+        .announcement-card .actions .btn-edit { background: var(--primary); color: #fff; }
+        .announcement-card .actions .btn-edit:hover { background: var(--primary-dark); }
+        .announcement-card .actions .btn-publish { background: #dcfce7; color: #16a34a; }
+        .announcement-card .actions .btn-publish:hover { background: #bbf7d0; }
+        .announcement-card .actions .btn-delete { background: #fee2e2; color: #dc2626; }
+        .announcement-card .actions .btn-delete:hover { background: #fecaca; }
 
         .status-badge {
             display: inline-flex;
@@ -135,171 +58,73 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .status-badge.published {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        .status-badge.draft {
-            background: #f3f4f6;
-            color: #6b7280;
-        }
-        .status-badge.scheduled {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .status-badge.archived {
-            background: #fee2e2;
-            color: #dc2626;
-        }
+        .status-badge.published { background: #dcfce7; color: #16a34a; }
+        .status-badge.draft { background: #f3f4f6; color: #6b7280; }
+        .status-badge.scheduled { background: #fef3c7; color: #d97706; }
+        .status-badge.archived { background: #fee2e2; color: #dc2626; }
 
         .filter-bar-modern {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            align-items: center;
-            background: var(--bg-card);
-            border-radius: var(--radius);
-            padding: 12px 20px;
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
-            margin-bottom: 20px;
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
         }
-        .filter-bar-modern select,
-        .filter-bar-modern input {
-            padding: 8px 16px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-            font-size: 13px;
-            font-family: var(--font);
-            background: var(--bg-primary);
-            color: var(--text-primary);
+        .filter-bar-modern select, .filter-bar-modern input {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern select:focus, .filter-bar-modern input:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .modal-announcement-form .form-group { margin-bottom: 14px; }
+        .modal-announcement-form .form-group label { display: block; font-weight: 600; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+        .modal-announcement-form .form-group input, .modal-announcement-form .form-group select, .modal-announcement-form .form-group textarea {
+            width: 100%; padding: 10px 14px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-card); color: var(--text-primary);
             transition: var(--transition);
         }
-        .filter-bar-modern select:focus,
-        .filter-bar-modern input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        .modal-announcement-form .form-group textarea { min-height: 80px; resize: vertical; }
+        .modal-announcement-form .form-group input:focus, .modal-announcement-form .form-group select:focus, .modal-announcement-form .form-group textarea:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
-        .filter-bar-modern .btn-group {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .empty-state-modern {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-muted);
-        }
-        .empty-state-modern .emoji {
-            font-size: 64px;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-        .empty-state-modern h3 {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 6px;
-        }
-        .empty-state-modern p {
-            font-size: 14px;
-        }
+        .modal-announcement-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
         @media (max-width: 768px) {
-            .page-hero .stats-row {
-                flex-wrap: wrap;
-                gap: 16px;
-            }
-            .announcement-card .header {
-                flex-direction: column;
-            }
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .announcement-card .header { flex-direction: column; }
+            .modal-announcement-form .form-row { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
     <div class="app">
-        <!-- ─── SIDEBAR ────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
-                    <span class="icon">👶</span> Babies
-                    <span class="badge" id="babyBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                    <span class="badge" id="userBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
-                    <span class="icon">🛡️</span> Moderation
-                    <span class="badge danger" id="modBadge">0</span>
-                </a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
                 <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
-                    <span class="icon">💬</span> Community
-                    <span class="badge" id="postBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
-                    <span class="icon">📌</span> Topics
-                </a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
-                    <span class="icon">📈</span> Tracker Entries
-                    <span class="badge" id="entryBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
-                    <span class="icon">🏆</span> Milestones
-                    <span class="badge" id="milestoneBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
-                    <span class="icon">📈</span> Analytics
-                </a>
-                <a class="sidebar-nav-item active" href="#">
-                    <span class="icon">📢</span> Announcements
-                </a>
+                <a class="sidebar-nav-item active" href="#"><span class="icon">📢</span> Announcements <span class="badge" id="announceBadge">0</span></a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
-                    <span class="icon">💾</span> Backup & Restore
-                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
+                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
                 </div>
             </div>
         </aside>
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <!-- ─── MODAL ────────────────────────────────────────────────── -->
         <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
             <div class="modal">
-                <div class="modal-header">
-                    <h2 id="modalTitle">Modal</h2>
-                    <button class="modal-close" onclick="modalCancel()">✕</button>
-                </div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
                     <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
@@ -308,20 +133,11 @@
             </div>
         </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Announcements <span class="sub">| App-wide Messages</span></div>
-                    </div>
-                </div>
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Announcements <span class="sub">| App-wide Messages</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
                         <button class="btn btn-outline btn-sm" onclick="loadAnnouncements()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
@@ -330,12 +146,8 @@
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
 
-                <!-- ─── HERO ──────────────────────────────────────────── -->
                 <div class="page-hero">
                     <h1>📢 Announcements</h1>
                     <p>Create and manage app-wide announcements for your community</p>
@@ -347,7 +159,6 @@
                     </div>
                 </div>
 
-                <!-- ─── FILTER BAR ────────────────────────────────────── -->
                 <div class="filter-bar-modern">
                     <input type="text" placeholder="🔍 Search announcements..." id="searchInput" oninput="filterAnnouncements()">
                     <select id="statusFilter" onchange="filterAnnouncements()">
@@ -363,13 +174,8 @@
                     </div>
                 </div>
 
-                <!-- ─── ANNOUNCEMENTS LIST ─────────────────────────────── -->
                 <div id="announcementsContainer">
-                    <div class="empty-state-modern">
-                        <div class="emoji">📢</div>
-                        <h3>Loading announcements...</h3>
-                        <p>Please wait while we fetch the data</p>
-                    </div>
+                    <div class="empty-state-modern"><div class="emoji">📢</div><h3>Loading announcements...</h3><p>Please wait while we fetch the data</p></div>
                 </div>
             </div>
         </main>
@@ -390,7 +196,7 @@
             try {
                 const { data, error } = await supabase
                     .from('announcements')
-                    .select('*')
+                    .select('*, profiles!announcements_created_by_fkey(full_name, email, avatar)')
                     .eq('is_deleted', false)
                     .order('created_at', { ascending: false });
 
@@ -427,6 +233,7 @@
             let html = '';
             announcements.forEach(a => {
                 const statusClass = a.status || 'draft';
+                const authorName = a.profiles?.full_name || 'System';
                 const target = a.target_audience || 'all';
                 const date = a.published_at || a.created_at;
                 const formattedDate = date ? new Date(date).toLocaleString() : '—';
@@ -437,6 +244,7 @@
                             <div>
                                 <div class="title">${a.title || 'Untitled'}</div>
                                 <div class="meta">
+                                    <span>👤 ${authorName}</span>
                                     <span>🎯 ${target}</span>
                                     <span>📅 ${formattedDate}</span>
                                     ${a.scheduled_for ? `<span>⏰ Scheduled: ${new Date(a.scheduled_for).toLocaleString()}</span>` : ''}
@@ -447,7 +255,7 @@
                         <div class="content">${a.content || ''}</div>
                         <div class="actions">
                             <button class="btn-sm btn-edit" onclick="editAnnouncement('${a.id}')">✏️ Edit</button>
-                            ${a.status !== 'published' ? `<button class="btn-sm" style="background:#dcfce7;color:#16a34a;" onclick="publishAnnouncement('${a.id}')">📢 Publish</button>` : ''}
+                            ${a.status !== 'published' ? `<button class="btn-sm btn-publish" onclick="publishAnnouncement('${a.id}')">📢 Publish</button>` : ''}
                             <button class="btn-sm btn-delete" onclick="deleteAnnouncement('${a.id}')">🗑️ Delete</button>
                         </div>
                     </div>
@@ -467,6 +275,7 @@
             document.getElementById('statPublished').textContent = published;
             document.getElementById('statDraft').textContent = draft;
             document.getElementById('statScheduled').textContent = scheduled;
+            document.getElementById('announceBadge').textContent = published;
         }
 
         function filterAnnouncements() {
@@ -490,7 +299,7 @@
 
         function openAddAnnouncementModal() {
             const body = `
-                <div class="modal-baby-form">
+                <div class="modal-announcement-form">
                     <div class="form-group">
                         <label>Title *</label>
                         <input type="text" id="announcementTitle" placeholder="Enter announcement title">
@@ -525,6 +334,15 @@
                 </div>
             `;
 
+            // Show/hide scheduled date based on status selection
+            const statusSelect = document.getElementById('announcementStatus');
+            if (statusSelect) {
+                statusSelect.onchange = function() {
+                    const group = document.getElementById('scheduledDateGroup');
+                    if (group) group.style.display = this.value === 'scheduled' ? 'block' : 'none';
+                };
+            }
+
             openModal('📝 New Announcement', body, 'Create', async function() {
                 const title = document.getElementById('announcementTitle')?.value?.trim();
                 const content = document.getElementById('announcementContent')?.value?.trim();
@@ -551,7 +369,7 @@
                     if (error) throw error;
 
                     showToast('✅ Announcement created successfully', 'success');
-                    closeModal();
+                    closeModal(true);
                     loadAnnouncements();
                 } catch (e) {
                     showToast('Error creating announcement: ' + e.message, 'error');
@@ -564,7 +382,7 @@
             if (!announcement) { showToast('Announcement not found', 'error'); return; }
 
             const body = `
-                <div class="modal-baby-form">
+                <div class="modal-announcement-form">
                     <div class="form-group">
                         <label>Title *</label>
                         <input type="text" id="editAnnouncementTitle" value="${announcement.title || ''}">
@@ -626,7 +444,7 @@
                     if (error) throw error;
 
                     showToast('✅ Announcement updated successfully', 'success');
-                    closeModal();
+                    closeModal(true);
                     loadAnnouncements();
                 } catch (e) {
                     showToast('Error updating announcement: ' + e.message, 'error');
@@ -655,7 +473,16 @@
         }
 
         async function deleteAnnouncement(id) {
-            if (!confirm('Are you sure you want to delete this announcement?')) return;
+            const confirmed = await new Promise((resolve) => {
+                openModal('🗑️ Delete Announcement', `
+                    <div style="text-align:center;padding:12px 0;">
+                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this announcement?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">This action cannot be undone.</p>
+                    </div>
+                `, 'Yes, Delete', () => resolve(true), 'Cancel');
+            });
+            if (!confirmed) return;
 
             try {
                 const { error } = await supabase
@@ -672,10 +499,7 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(loadAnnouncements, 500);
-        });
-
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadAnnouncements, 500); });
         window.loadAnnouncements = loadAnnouncements;
         window.filterAnnouncements = filterAnnouncements;
         window.openAddAnnouncementModal = openAddAnnouncementModal;
