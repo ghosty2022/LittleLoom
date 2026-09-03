@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Serve static files with proper MIME types
 app.use('/admin', express.static(path.join(__dirname, 'admin'), {
@@ -50,11 +50,8 @@ app.get('/admin/dashboard.html', (req, res) => {
 
 // Handle direct page navigation
 app.get('/admin/pages/:page', (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin/pages', req.params.page));
-});
-
-app.get('/admin/pages/:page.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin/pages', req.params.page + '.html'));
+    const pageFile = req.params.page.endsWith('.html') ? req.params.page : req.params.page + '.html';
+    res.sendFile(path.join(__dirname, 'admin/pages', pageFile));
 });
 
 // Handle root page without extension
@@ -66,16 +63,23 @@ app.get('/admin/:page', (req, res) => {
     }
 });
 
-// ─── CATCH-ALL ──────────────────────────────────────────────────
-app.get('*', (req, res) => {
+// ─── CATCH-ALL ROUTE ──────────────────────────────────────────
+app.get('/*', (req, res) => {
+    // Don't redirect if it's a static asset
+    if (req.path.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
+        return res.status(404).send('File not found');
+    }
     res.redirect('/login.html');
 });
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-    console.log('\n🚀 LittleLoom Admin Dashboard');
-    console.log('🔐 Login:  http://localhost:3000/login.html');
-    console.log('📊 Dashboard: http://localhost:3000/admin/dashboard.html');
-    console.log('📁 Pages: http://localhost:3000/admin/pages/');
-    console.log('\n⚡ Press Ctrl+C to stop\n');
+    console.log('');
+    console.log('🚀 LittleLoom Admin Dashboard');
+    console.log('🔐 Login:  http://localhost:' + PORT + '/login.html');
+    console.log('📊 Dashboard: http://localhost:' + PORT + '/admin/dashboard.html');
+    console.log('📁 Pages: http://localhost:' + PORT + '/admin/pages/');
+    console.log('');
+    console.log('⚡ Press Ctrl+C to stop');
+    console.log('');
 });
