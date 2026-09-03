@@ -4,14 +4,18 @@ const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
 
 let supabase = null;
 let session = null;
-let currentPage = 'dashboard';
+let refreshTimer = null;
+let realtimeChannel = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────
 function initSupabase() {
     try {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         return true;
-    } catch (e) { console.error('Supabase init error:', e); return false; }
+    } catch (e) { 
+        console.error('Supabase init error:', e); 
+        return false; 
+    }
 }
 
 // ─── TOAST ────────────────────────────────────────────────────────
@@ -28,7 +32,9 @@ function showToast(message, type) {
     toast.className = 'toast ' + type;
     toast.textContent = message;
     container.appendChild(toast);
-    setTimeout(function() { if (toast.parentNode) toast.remove(); }, 4000);
+    setTimeout(function() { 
+        if (toast.parentNode) toast.remove(); 
+    }, 4000);
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────
@@ -36,7 +42,8 @@ async function checkAuth() {
     try {
         const { data, error } = await supabase.auth.getSession();
         if (error || !data.session) {
-            document.getElementById('statusBar').innerHTML = '<span>🔒 Please log in</span>';
+            const statusBar = document.getElementById('statusBar');
+            if (statusBar) statusBar.innerHTML = '<span>🔒 Please log in</span>';
             return false;
         }
         session = data.session;
@@ -52,7 +59,10 @@ async function checkAuth() {
             if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
         }
         return true;
-    } catch (e) { console.error('Auth check error:', e); return false; }
+    } catch (e) { 
+        console.error('Auth check error:', e); 
+        return false; 
+    }
 }
 
 async function handleLogout() {
@@ -68,27 +78,7 @@ async function handleLogout() {
 
 // ─── NAVIGATION ──────────────────────────────────────────────────
 function navigateTo(page) {
-    currentPage = page;
-    // Update sidebar active state
-    document.querySelectorAll('.sidebar-nav-item').forEach(function(el) {
-        el.classList.remove('active');
-        if (el.getAttribute('data-page') === page) {
-            el.classList.add('active');
-        }
-    });
-    // Load page content via iframe or fetch
-    const contentArea = document.getElementById('pageContent');
-    if (contentArea) {
-        // If using iframe approach
-        const iframe = document.getElementById('pageFrame');
-        if (iframe) {
-            iframe.src = '/admin/pages/' + page + '.html';
-            iframe.style.display = 'block';
-        }
-    } else {
-        // Direct navigation
-        window.location.href = '/admin/pages/' + page + '.html';
-    }
+    window.location.href = '/admin/pages/' + page + '.html';
 }
 
 function toggleSidebar(open) {
@@ -188,3 +178,6 @@ window.safeSetHTML = safeSetHTML;
 window.formatDate = formatDate;
 window.formatDateShort = formatDateShort;
 window.timeAgo = timeAgo;
+window.initSupabase = initSupabase;
+window.checkAuth = checkAuth;
+window.session = session;

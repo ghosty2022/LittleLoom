@@ -4,9 +4,9 @@ const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
 
 let supabase = null;
 let session = null;
-let currentPage = 'dashboard';
+let refreshTimer = null;
+let realtimeChannel = null;
 
-// ─── INIT ─────────────────────────────────────────────────────────
 function initSupabase() {
     try {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -14,7 +14,6 @@ function initSupabase() {
     } catch (e) { console.error('Supabase init error:', e); return false; }
 }
 
-// ─── TOAST ────────────────────────────────────────────────────────
 function showToast(message, type) {
     type = type || 'info';
     let container = document.getElementById('toastContainer');
@@ -31,12 +30,12 @@ function showToast(message, type) {
     setTimeout(function() { if (toast.parentNode) toast.remove(); }, 4000);
 }
 
-// ─── AUTH ─────────────────────────────────────────────────────────
 async function checkAuth() {
     try {
         const { data, error } = await supabase.auth.getSession();
         if (error || !data.session) {
-            document.getElementById('statusBar').innerHTML = '<span>🔒 Please log in</span>';
+            const statusBar = document.getElementById('statusBar');
+            if (statusBar) statusBar.innerHTML = '<span>🔒 Please log in</span>';
             return false;
         }
         session = data.session;
@@ -66,27 +65,6 @@ async function handleLogout() {
     }
 }
 
-// ─── NAVIGATION ──────────────────────────────────────────────────
-function navigateTo(page) {
-    currentPage = page;
-    document.querySelectorAll('.sidebar-nav-item').forEach(function(el) {
-        el.classList.remove('active');
-        if (el.getAttribute('data-page') === page) {
-            el.classList.add('active');
-        }
-    });
-    const contentArea = document.getElementById('pageContent');
-    if (contentArea) {
-        const iframe = document.getElementById('pageFrame');
-        if (iframe) {
-            iframe.src = '/admin/pages/' + page + '.html';
-            iframe.style.display = 'block';
-        }
-    } else {
-        window.location.href = '/admin/pages/' + page + '.html';
-    }
-}
-
 function toggleSidebar(open) {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
@@ -102,7 +80,6 @@ function toggleSidebar(open) {
     }
 }
 
-// ─── MODAL ────────────────────────────────────────────────────────
 let modalResolve = null;
 let modalData = null;
 
@@ -135,7 +112,6 @@ function modalConfirm() {
     closeModal();
 }
 
-// ─── SAFE SET ────────────────────────────────────────────────────
 function safeSetText(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
@@ -146,7 +122,6 @@ function safeSetHTML(id, value) {
     if (el) el.innerHTML = value;
 }
 
-// ─── FORMAT HELPERS ─────────────────────────────────────────────
 function formatDate(dateStr) {
     if (!dateStr) return '—';
     return new Date(dateStr).toLocaleString();
@@ -171,10 +146,8 @@ function timeAgo(dateStr) {
     return new Date(dateStr).toLocaleDateString();
 }
 
-// ─── EXPOSE GLOBALLY ─────────────────────────────────────────────
 window.showToast = showToast;
 window.handleLogout = handleLogout;
-window.navigateTo = navigateTo;
 window.toggleSidebar = toggleSidebar;
 window.openModal = openModal;
 window.closeModal = closeModal;
@@ -184,3 +157,6 @@ window.safeSetHTML = safeSetHTML;
 window.formatDate = formatDate;
 window.formatDateShort = formatDateShort;
 window.timeAgo = timeAgo;
+window.initSupabase = initSupabase;
+window.checkAuth = checkAuth;
+window.session = session;

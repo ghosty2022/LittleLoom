@@ -4,21 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LittleLoom Admin - Enterprise Console</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
+        .page-content {
+            padding: 24px 32px;
+        }
+        .page-content.active {
+            display: block;
+        }
+        .page-content {
+            display: none;
+        }
         .iframe-container {
             width: 100%;
-            height: calc(100vh - var(--header-height) - 20px);
+            height: calc(100vh - var(--header-height) - 40px);
             border: none;
             background: var(--bg-primary);
+            border-radius: var(--radius);
+            overflow: hidden;
         }
         .iframe-container iframe {
             width: 100%;
             height: 100%;
             border: none;
-            border-radius: var(--radius);
             background: var(--bg-primary);
         }
         .page-loading {
@@ -28,10 +39,91 @@
             height: 100%;
             color: var(--text-muted);
             font-size: 16px;
+            flex-direction: column;
+            gap: 16px;
         }
+        .page-loading .spinner {
+            width: 40px;
+            height: 40px;
+            border-width: 3px;
+        }
+        /* Quick stats on dashboard */
+        .quick-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .quick-stat {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            border: 1px solid var(--border);
+            transition: var(--transition);
+        }
+        .quick-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+        .quick-stat .num { font-size: 28px; font-weight: 800; }
+        .quick-stat .label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+        .quick-stat .change { font-size: 12px; font-weight: 600; margin-top: 4px; }
+        .quick-stat .change.up { color: #22c55e; }
+        .quick-stat .change.down { color: #ef4444; }
+        .quick-stat .change.neutral { color: var(--text-muted); }
+        
+        .activity-feed {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .activity-content { flex: 1; }
+        .activity-title { font-weight: 600; font-size: 14px; }
+        .activity-meta { font-size: 12px; color: var(--text-muted); }
+        .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+        
+        .chart-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            height: 140px;
+            padding: 0 4px;
+        }
+        .chart-bars .bar {
+            flex: 1;
+            border-radius: 6px 6px 0 0;
+            background: linear-gradient(180deg, var(--primary), var(--primary-light));
+            transition: height 1s ease;
+            min-height: 8px;
+        }
+        .chart-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
+
+    <!-- ─── SIDEBAR ────────────────────────────────────────────────────── -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
             <div class="brand-icon">🧵</div>
@@ -137,6 +229,7 @@
 
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
+    <!-- ─── MODAL ────────────────────────────────────────────────────── -->
     <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
         <div class="modal" id="modalContent">
             <div class="modal-header">
@@ -151,6 +244,7 @@
         </div>
     </div>
 
+    <!-- ─── MAIN ───────────────────────────────────────────────────────── -->
     <main class="main">
         <header class="topbar">
             <div class="topbar-left">
@@ -165,33 +259,88 @@
                     <span id="connectionStatus">Connected</span>
                 </div>
                 <div class="topbar-actions">
-                    <button class="btn btn-outline" onclick="location.reload()">🔄 Refresh</button>
+                    <button class="btn btn-outline" onclick="refreshAll()">🔄 Refresh</button>
                     <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
                 </div>
             </div>
         </header>
-        <div class="page" id="pageContainer">
-            <div class="iframe-container" id="iframeContainer">
-                <div class="page-loading" id="pageLoading">
-                    <div>
-                        <div class="spinner"></div>
-                        <div style="margin-top:12px;">Loading page...</div>
+
+        <!-- ─── PAGE: DASHBOARD ────────────────────────────────────────── -->
+        <div id="page-dashboard" class="page-content active">
+            <div class="status-bar" id="statusBar">
+                <span>✅ All systems operational</span>
+                <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+            </div>
+
+            <div class="quick-stats" id="dashboardStats">
+                <div class="quick-stat"><div class="num" id="statBabies">—</div><div class="label">👶 Total Babies</div><div class="change up">↑ 12%</div></div>
+                <div class="quick-stat"><div class="num" id="statUsers">—</div><div class="label">👤 Active Users</div><div class="change up">↑ 8%</div></div>
+                <div class="quick-stat"><div class="num" id="statEntries">—</div><div class="label">📊 Tracker Entries</div><div class="change up">↑ 23%</div></div>
+                <div class="quick-stat"><div class="num" id="statPosts">—</div><div class="label">💬 Community Posts</div><div class="change up">↑ 15%</div></div>
+                <div class="quick-stat"><div class="num" id="statMilestones">—</div><div class="label">🏆 Milestones</div><div class="change up">↑ 7%</div></div>
+                <div class="quick-stat"><div class="num" id="statStreak">—<span style="font-size:16px;font-weight:600;color:var(--text-muted);">d</span></div><div class="label">💪 Avg Streak</div><div class="change neutral">→ 0%</div></div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="emoji">🕒</span> Recent Activity</div>
+                        <span id="activityCount">0</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="activity-feed" id="activityFeed">
+                            <div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>
+                        </div>
                     </div>
                 </div>
-                <iframe id="pageFrame" style="display:none;" frameborder="0" sandbox="allow-scripts allow-same-origin"></iframe>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="emoji">📊</span> Weekly Activity</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-bars" id="weeklyBars">
+                            <div class="bar" style="height:20%;"></div>
+                            <div class="bar" style="height:45%;"></div>
+                            <div class="bar" style="height:70%;"></div>
+                            <div class="bar" style="height:55%;"></div>
+                            <div class="bar" style="height:85%;"></div>
+                            <div class="bar" style="height:65%;"></div>
+                            <div class="bar" style="height:90%;"></div>
+                        </div>
+                        <div class="chart-labels">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── PAGE CONTAINER FOR OTHER PAGES ─────────────────────────── -->
+        <div id="page-container" class="page-content" style="padding:0;display:none;">
+            <div class="iframe-container" id="iframeContainer">
+                <div class="page-loading" id="pageLoading">
+                    <div class="spinner"></div>
+                    <span>Loading page...</span>
+                </div>
+                <iframe id="pageFrame" style="display:none;width:100%;height:100%;border:none;" 
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
             </div>
         </div>
     </main>
 
+    <!-- ─── TOAST ──────────────────────────────────────────────────────── -->
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="/admin/js/admin.js"></script>
     <script>
+        // ─── PAGE LOADER ──────────────────────────────────────────────────
         function loadPage(page) {
+            const dashboard = document.getElementById('page-dashboard');
+            const container = document.getElementById('page-container');
             const iframe = document.getElementById('pageFrame');
             const loading = document.getElementById('pageLoading');
-            const container = document.getElementById('iframeContainer');
             
+            // Update sidebar
             document.querySelectorAll('.sidebar-nav-item').forEach(el => {
                 el.classList.remove('active');
                 if (el.getAttribute('data-page') === page) {
@@ -199,6 +348,7 @@
                 }
             });
             
+            // Update title
             const titles = {
                 'dashboard': 'Dashboard <span class="sub">| Enterprise Overview</span>',
                 'babies': 'Babies <span class="sub">| All Baby Profiles</span>',
@@ -224,25 +374,127 @@
             };
             document.getElementById('pageTitle').innerHTML = titles[page] || 'Dashboard';
             
-            loading.style.display = 'flex';
-            iframe.style.display = 'none';
-            
             if (page === 'dashboard') {
-                loading.style.display = 'none';
-                iframe.style.display = 'none';
-                window.location.href = '/admin/dashboard-content.html';
+                dashboard.style.display = 'block';
+                container.style.display = 'none';
+                fetchDashboardData();
                 return;
             }
             
+            dashboard.style.display = 'none';
+            container.style.display = 'block';
+            
+            loading.style.display = 'flex';
+            iframe.style.display = 'none';
+            
+            // Load the page in iframe
             iframe.onload = function() {
                 loading.style.display = 'none';
                 iframe.style.display = 'block';
             };
+            
+            // Use the correct path
             iframe.src = '/admin/pages/' + page + '.html';
             
+            // Close sidebar on mobile
             if (window.innerWidth <= 768) toggleSidebar(false);
         }
         
+        // ─── DASHBOARD DATA ─────────────────────────────────────────────
+        async function fetchDashboardData() {
+            if (!supabase || !session) return;
+            
+            try {
+                const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult] = await Promise.all([
+                    supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
+                    supabase.from('profiles').select('*', { count: 'exact', head: true }),
+                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
+                    supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
+                    supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone').eq('is_deleted', false)
+                ]);
+                
+                const babyCount = babiesResult.count || 0;
+                const userCount = profilesResult.count || 0;
+                const entryCount = entriesResult.count || 0;
+                const postCount = postsResult.count || 0;
+                const milestoneCount = milestonesResult.count || 0;
+                
+                safeSetText('statBabies', babyCount);
+                safeSetText('statUsers', userCount);
+                safeSetText('statEntries', entryCount);
+                safeSetText('statPosts', postCount);
+                safeSetText('statMilestones', milestoneCount);
+                
+                // Avg streak
+                const { data: babies } = await supabase.from('babies').select('streak').eq('is_active', true);
+                if (babies && babies.length > 0) {
+                    const totalStreak = babies.reduce((sum, b) => sum + (b.streak || 0), 0);
+                    const avg = Math.round(totalStreak / babies.length);
+                    document.getElementById('statStreak').innerHTML = avg + '<span style="font-size:16px;font-weight:600;color:var(--text-muted);">d</span>';
+                }
+                
+                // Update badges
+                safeSetText('babyBadge', babyCount);
+                safeSetText('userBadge', userCount);
+                safeSetText('postBadge', postCount);
+                safeSetText('entryBadge', entryCount);
+                safeSetText('milestoneBadge', milestoneCount);
+                
+                // Recent activity
+                const { data: recent } = await supabase
+                    .from('tracker_entries')
+                    .select('tracker_id, title, logged_by_name, timestamp')
+                    .eq('is_deleted', false)
+                    .order('timestamp', { ascending: false })
+                    .limit(10);
+                
+                const feed = document.getElementById('activityFeed');
+                if (feed) {
+                    if (!recent || recent.length === 0) {
+                        feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
+                        safeSetText('activityCount', '0');
+                    } else {
+                        safeSetText('activityCount', recent.length);
+                        const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊', milestone: '🏆' };
+                        let html = '';
+                        recent.forEach(function(a) {
+                            html += '<div class="activity-item">' +
+                                '<div class="activity-icon" style="background:var(--bg-primary);">' + (iconMap[a.tracker_id] || '📌') + '</div>' +
+                                '<div class="activity-content">' +
+                                '<div class="activity-title">' + (a.title || a.tracker_id || 'Activity') + '</div>' +
+                                '<div class="activity-meta">by ' + (a.logged_by_name || 'Someone') + '</div>' +
+                                '</div>' +
+                                '<div class="activity-time">' + (a.timestamp ? new Date(a.timestamp).toLocaleString() : '') + '</div>' +
+                                '</div>';
+                        });
+                        feed.innerHTML = html;
+                    }
+                }
+                
+                // Update status
+                const statusBar = document.getElementById('statusBar');
+                if (statusBar) {
+                    statusBar.innerHTML = '<span>✅ All systems operational</span><span style="margin-left:auto;font-size:12px;">Last updated: ' + new Date().toLocaleString() + '</span>';
+                }
+                safeSetText('lastUpdated', new Date().toLocaleString());
+                
+            } catch (err) {
+                console.error('Fetch error:', err);
+                const statusBar = document.getElementById('statusBar');
+                if (statusBar) {
+                    statusBar.innerHTML = '<span>❌ Error loading data</span>';
+                }
+            }
+        }
+        
+        // ─── REFRESH ─────────────────────────────────────────────────────
+        async function refreshAll() {
+            showToast('🔄 Refreshing all data...', 'info');
+            await fetchDashboardData();
+            showToast('✅ All data refreshed', 'success');
+        }
+        
+        // ─── INIT ─────────────────────────────────────────────────────────
         async function init() {
             if (!initSupabase()) {
                 showToast('Failed to initialize Supabase', 'error');
@@ -254,8 +506,17 @@
                 return;
             }
             
-            loadPage('dashboard');
+            // Load dashboard data
+            await fetchDashboardData();
             
+            // Setup auto-refresh
+            if (refreshTimer) clearInterval(refreshTimer);
+            refreshTimer = setInterval(fetchDashboardData, 30000);
+            
+            // Setup realtime
+            setupRealtime();
+            
+            // Handle resize
             window.addEventListener('resize', function() {
                 if (window.innerWidth > 768) {
                     document.getElementById('sidebar').classList.remove('open');
@@ -265,6 +526,52 @@
             
             console.log('🧵 Enterprise Admin Console ready');
         }
+        
+        // ─── REALTIME ────────────────────────────────────────────────────
+        function setupRealtime() {
+            if (!supabase || !session) return;
+            if (realtimeChannel) {
+                realtimeChannel.unsubscribe();
+                realtimeChannel = null;
+            }
+            
+            realtimeChannel = supabase.channel('admin-realtime')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, function(p) { 
+                    addEvent(p, 'babies'); 
+                    fetchDashboardData(); 
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, function(p) { 
+                    addEvent(p, 'tracker_entries'); 
+                    fetchDashboardData(); 
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, function(p) { 
+                    addEvent(p, 'community_posts'); 
+                    fetchDashboardData(); 
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, function(p) { 
+                    addEvent(p, 'profiles'); 
+                    fetchDashboardData(); 
+                })
+                .subscribe(function(status) {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('✅ Realtime connected');
+                    } else if (status === 'CHANNEL_ERROR') {
+                        console.warn('⚠️ Realtime error, reconnecting...');
+                        setTimeout(setupRealtime, 5000);
+                    }
+                });
+        }
+        
+        function addEvent(payload, table) {
+            const feed = document.getElementById('eventFeed');
+            if (!feed) return;
+            // For dashboard, we just refresh data
+        }
+        
+        // Expose functions
+        window.loadPage = loadPage;
+        window.refreshAll = refreshAll;
+        window.fetchDashboardData = fetchDashboardData;
         
         document.addEventListener('DOMContentLoaded', init);
     </script>
