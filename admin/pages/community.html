@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
+        /* ─── Page Hero ────────────────────────────────────────────────── */
         .page-hero {
             background: linear-gradient(135deg, #0f172a, #1e293b);
             border-radius: var(--radius);
@@ -18,14 +19,38 @@
             position: relative;
             overflow: hidden;
         }
-        .page-hero::after { content: '💬'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero::after {
+            content: '💬';
+            position: absolute;
+            right: 28px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 64px;
+            opacity: 0.1;
+        }
         .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
         .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
-        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
-        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
-        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
-        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
+        .page-hero .stats-row {
+            display: flex;
+            gap: 32px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+        .page-hero .stats-row .stat {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+        .page-hero .stats-row .stat .num {
+            font-size: 28px;
+            font-weight: 800;
+        }
+        .page-hero .stats-row .stat .label {
+            font-size: 13px;
+            opacity: 0.75;
+        }
 
+        /* ─── Post Card ────────────────────────────────────────────────── */
         .post-card {
             background: var(--bg-card);
             border-radius: var(--radius);
@@ -35,89 +60,326 @@
             transition: all var(--transition);
             box-shadow: var(--shadow);
         }
-        .post-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
-        .post-card .header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
-        .post-card .author { display: flex; align-items: center; gap: 10px; }
-        .post-card .author .avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 14px; flex-shrink: 0; }
-        .post-card .author .name { font-weight: 600; font-size: 14px; }
-        .post-card .author .handle { font-size: 12px; color: var(--text-muted); }
-        .post-card .content { margin-top: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
-        .post-card .meta { display: flex; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--text-muted); }
-        .post-card .meta span { display: flex; align-items: center; gap: 4px; }
-        .post-card .actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-        .post-card .actions .btn-sm { padding: 4px 14px; font-size: 11px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
-        .post-card .actions .btn-edit { background: var(--primary); color: #fff; }
-        .post-card .actions .btn-edit:hover { background: var(--primary-dark); }
-        .post-card .actions .btn-delete { background: #fee2e2; color: #dc2626; }
-        .post-card .actions .btn-delete:hover { background: #fecaca; }
-        .post-card .topic-tag { display: inline-flex; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--bg-primary); color: var(--text-secondary); }
+        .post-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+        .post-card .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .post-card .author {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .post-card .author .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #fff;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .post-card .author .avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .post-card .author .name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .post-card .author .handle {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .post-card .author .verified {
+            color: #3b82f6;
+            font-size: 14px;
+        }
+        .post-card .content {
+            margin-top: 10px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .post-card .content .images {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .post-card .content .images img {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            border-radius: var(--radius-sm);
+        }
+        .post-card .meta {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+        }
+        .post-card .meta span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .post-card .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+        .post-card .actions .btn-sm {
+            padding: 4px 14px;
+            font-size: 11px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .post-card .actions .btn-view {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+        }
+        .post-card .actions .btn-view:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+        .post-card .actions .btn-delete {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .post-card .actions .btn-delete:hover {
+            background: #fecaca;
+        }
+        .post-card .actions .btn-moderate {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .post-card .actions .btn-moderate:hover {
+            background: #fde68a;
+        }
+        .post-card .actions .btn-approve {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .post-card .actions .btn-approve:hover {
+            background: #bbf7d0;
+        }
+        .post-card .topic-tag {
+            display: inline-flex;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+        }
+        .post-card .status-badge {
+            display: inline-flex;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .post-card .status-badge.pending {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .post-card .status-badge.approved {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .post-card .status-badge.rejected {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .post-card .status-badge.flagged {
+            background: #fecaca;
+            color: #b91c1c;
+        }
 
+        /* ─── Filter Bar ────────────────────────────────────────────────── */
         .filter-bar-modern {
-            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
-            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
-            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
         }
-        .filter-bar-modern select, .filter-bar-modern input {
-            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
-            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
-            color: var(--text-primary); transition: var(--transition);
+        .filter-bar-modern select,
+        .filter-bar-modern input {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: var(--transition);
         }
-        .filter-bar-modern select:focus, .filter-bar-modern input:focus {
-            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        .filter-bar-modern select:focus,
+        .filter-bar-modern input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
-        .filter-bar-modern .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-bar-modern .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
 
-        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-        .empty-state-modern p { font-size: 14px; }
+        /* ─── Empty State ────────────────────────────────────────────────── */
+        .empty-state-modern {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-modern .emoji {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        .empty-state-modern h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        .empty-state-modern p {
+            font-size: 14px;
+        }
 
+        /* ─── Responsive ────────────────────────────────────────────────── */
         @media (max-width: 768px) {
-            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
-            .post-card .header { flex-direction: column; }
+            .page-hero .stats-row {
+                flex-wrap: wrap;
+                gap: 16px;
+            }
+            .post-card .header {
+                flex-direction: column;
+            }
+            .filter-bar-modern {
+                flex-direction: column;
+            }
+            .filter-bar-modern .btn-group {
+                width: 100%;
+            }
+            .filter-bar-modern .btn-group button {
+                flex: 1;
+            }
         }
     </style>
 </head>
 <body>
     <div class="app">
+        <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
-                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+                <div>
+                    <div class="logo-title">LittleLoom</div>
+                    <div class="logo-sub">Enterprise Console</div>
+                </div>
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
+                <a class="sidebar-nav-item" href="/admin/dashboard.html">
+                    <span class="icon">📊</span> Dashboard
+                    <span class="badge success">Live</span>
+                </a>
                 <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')"><span class="icon">👶</span> Babies <span class="badge" id="babyBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')"><span class="icon">👤</span> Users <span class="badge" id="userBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')"><span class="icon">🛡️</span> Moderation <span class="badge danger" id="modBadge">0</span></a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
+                    <span class="icon">👶</span> Babies
+                    <span class="badge" id="babyBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
+                    <span class="icon">👤</span> Users
+                    <span class="badge" id="userBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
+                    <span class="icon">🛡️</span> Moderation
+                    <span class="badge danger" id="modBadge">0</span>
+                </a>
                 <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">💬</span> Community <span class="badge" id="postBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')"><span class="icon">📌</span> Topics</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')"><span class="icon">📢</span> Announcements <span class="badge" id="announceBadge">0</span></a>
+                <a class="sidebar-nav-item active" href="#">
+                    <span class="icon">💬</span> Community
+                    <span class="badge" id="postBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
+                    <span class="icon">📌</span> Topics
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')">
+                    <span class="icon">📢</span> Announcements
+                    <span class="badge" id="announceBadge">0</span>
+                </a>
                 <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')"><span class="icon">📈</span> Tracker Entries <span class="badge" id="entryBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')"><span class="icon">🏆</span> Milestones <span class="badge" id="milestoneBadge">0</span></a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
+                    <span class="icon">📈</span> Tracker Entries
+                    <span class="badge" id="entryBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
+                    <span class="icon">🏆</span> Milestones
+                    <span class="badge" id="milestoneBadge">0</span>
+                </a>
                 <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')"><span class="icon">📈</span> Analytics</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
+                    <span class="icon">📈</span> Analytics
+                </a>
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
+                    <span class="icon">⚙️</span> Settings
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
+                    <span class="icon">💾</span> Backup & Restore
+                </a>
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                    </div>
                 </div>
             </div>
         </aside>
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
+        <!-- ─── MODAL ────────────────────────────────────────────────────── -->
         <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header">
+                    <h2 id="modalTitle">Modal</h2>
+                    <button class="modal-close" onclick="modalCancel()">✕</button>
+                </div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
                     <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
@@ -126,11 +388,20 @@
             </div>
         </div>
 
+        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Community <span class="sub">| Posts & Engagement</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
+                    <div>
+                        <div class="topbar-title">Community <span class="sub">| Posts & Engagement</span></div>
+                    </div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status">
+                        <span class="dot"></span>
+                        <span id="connectionStatus">Connected</span>
+                    </div>
                     <div class="topbar-actions">
                         <button class="btn btn-outline btn-sm" onclick="loadCommunity()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
@@ -139,7 +410,10 @@
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                </div>
 
                 <div class="page-hero">
                     <h1>💬 Community</h1>
@@ -154,6 +428,13 @@
 
                 <div class="filter-bar-modern">
                     <input type="text" placeholder="🔍 Search posts..." id="searchInput" oninput="filterPosts()">
+                    <select id="statusFilter" onchange="filterPosts()">
+                        <option value="all">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="flagged">Flagged</option>
+                    </select>
                     <select id="topicFilter" onchange="filterPosts()">
                         <option value="all">All Topics</option>
                     </select>
@@ -163,7 +444,11 @@
                 </div>
 
                 <div id="postsContainer">
-                    <div class="empty-state-modern"><div class="emoji">💬</div><h3>Loading posts...</h3><p>Please wait while we fetch the data</p></div>
+                    <div class="empty-state-modern">
+                        <div class="emoji">💬</div>
+                        <h3>Loading posts...</h3>
+                        <p>Please wait while we fetch the data</p>
+                    </div>
                 </div>
             </div>
         </main>
@@ -177,22 +462,44 @@
         let topicsCache = [];
         let currentFiltered = [];
 
+        // ─── LOAD COMMUNITY ──────────────────────────────────────────────
         async function loadCommunity() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
 
             try {
-                const [postsResult, topicsResult] = await Promise.all([
-                    supabase.from('community_posts').select('*, profiles!community_posts_author_id_fkey(full_name, avatar)').eq('is_deleted', false).order('created_at', { ascending: false }).limit(50),
-                    supabase.from('community_topics').select('*').order('name')
-                ]);
+                // Use the view we created for better data
+                let { data: posts, error: postsError } = await supabase
+                    .from('v_community_posts')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(50);
 
-                if (postsResult.error) throw postsResult.error;
-                if (topicsResult.error) throw topicsResult.error;
+                // If view fails, fallback to direct query
+                if (postsError) {
+                    console.warn('View query failed, falling back:', postsError);
+                    const { data: fallback, error: fallbackError } = await supabase
+                        .from('community_posts')
+                        .select('*, profiles!community_posts_author_id_fkey(full_name, avatar, email, community_handle, is_verified)')
+                        .eq('is_deleted', false)
+                        .order('created_at', { ascending: false })
+                        .limit(50);
 
-                postsCache = postsResult.data || [];
-                topicsCache = topicsResult.data || [];
+                    if (fallbackError) throw fallbackError;
+                    posts = fallback;
+                }
+
+                // Load topics
+                const { data: topics, error: topicsError } = await supabase
+                    .from('community_topics')
+                    .select('*')
+                    .order('name');
+
+                if (topicsError) throw topicsError;
+
+                postsCache = posts || [];
+                topicsCache = topics || [];
                 currentFiltered = [...postsCache];
 
                 // Populate topic filter
@@ -210,48 +517,103 @@
             } catch (e) {
                 console.error('Load error:', e);
                 showToast('Error loading community: ' + e.message, 'error');
+                document.getElementById('postsContainer').innerHTML = `
+                    <div class="empty-state-modern">
+                        <div class="emoji">❌</div>
+                        <h3>Error loading data</h3>
+                        <p>${e.message}</p>
+                        <button class="btn btn-primary" onclick="loadCommunity()" style="margin-top:12px;">Retry</button>
+                    </div>
+                `;
             }
         }
 
+        // ─── RENDER POSTS ─────────────────────────────────────────────────
         function renderPosts(posts) {
             const container = document.getElementById('postsContainer');
             if (!posts || posts.length === 0) {
-                container.innerHTML = `<div class="empty-state-modern"><div class="emoji">📭</div><h3>No posts yet</h3><p>Be the first to start a conversation</p></div>`;
+                container.innerHTML = `
+                    <div class="empty-state-modern">
+                        <div class="emoji">📭</div>
+                        <h3>No posts yet</h3>
+                        <p>Be the first to start a conversation</p>
+                    </div>
+                `;
                 return;
             }
 
             let html = '';
             posts.forEach(p => {
-                const authorName = p.profiles?.full_name || p.author_id?.substring(0, 8) || 'Anonymous';
-                const initial = authorName[0].toUpperCase();
+                const authorName = p.author_name || p.profiles?.full_name || p.author_id?.substring(0, 8) || 'Anonymous';
+                const authorAvatar = p.author_avatar || p.profiles?.avatar || '👤';
+                const authorHandle = p.author_handle || p.profiles?.community_handle || '';
+                const isVerified = p.author_is_verified || p.profiles?.is_verified || false;
+                const initial = typeof authorAvatar === 'string' && authorAvatar.startsWith('http') ? '👤' : (authorName[0] || 'A').toUpperCase();
+
                 const topic = topicsCache.find(t => t.id === p.topic_id);
-                const topicName = topic?.name || p.topic_id || 'General';
+                const topicName = topic?.name || p.topic || 'General';
                 const topicEmoji = topic?.emoji || '📌';
+
                 const content = p.content || '—';
-                const likes = p.likes_count || 0;
-                const comments = p.comments_count || 0;
+                const likes = p.likes_count || p.likes || 0;
+                const comments = p.comments_count || p.comments || 0;
                 const time = p.created_at ? new Date(p.created_at).toLocaleString() : '—';
+                const status = p.status || 'pending';
+                const statusClass = status === 'approved' ? 'approved' : status === 'pending' ? 'pending' : status === 'rejected' ? 'rejected' : 'flagged';
+
+                // Parse images
+                let images = [];
+                if (p.images) {
+                    if (Array.isArray(p.images)) images = p.images;
+                    else if (typeof p.images === 'string') {
+                        try { images = JSON.parse(p.images); } catch { images = []; }
+                    }
+                }
+
+                const avatarHtml = typeof authorAvatar === 'string' && authorAvatar.startsWith('http')
+                    ? `<img src="${authorAvatar}" alt="${authorName}" />`
+                    : initial;
 
                 html += `
-                    <div class="post-card">
+                    <div class="post-card" data-id="${p.id}">
                         <div class="header">
                             <div class="author">
-                                <div class="avatar">${initial}</div>
+                                <div class="avatar">${avatarHtml}</div>
                                 <div>
-                                    <div class="name">${authorName}</div>
-                                    <div class="handle">${p.author_id?.substring(0, 12) || '—'}</div>
+                                    <div class="name">
+                                        ${authorName}
+                                        ${isVerified ? '<span class="verified">✓</span>' : ''}
+                                    </div>
+                                    <div class="handle">${authorHandle || `@${authorName.toLowerCase().replace(/\s+/g, '_')}`}</div>
                                 </div>
                             </div>
-                            <span class="topic-tag">${topicEmoji} ${topicName}</span>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                <span class="topic-tag">${topicEmoji} ${topicName}</span>
+                                <span class="status-badge ${statusClass}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+                            </div>
                         </div>
-                        <div class="content">${content}</div>
+                        <div class="content">
+                            ${content}
+                            ${images.length > 0 ? `
+                                <div class="images">
+                                    ${images.map(img => `<img src="${img}" alt="Post image" />`).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
                         <div class="meta">
                             <span>❤️ ${likes}</span>
                             <span>💬 ${comments}</span>
                             <span>📅 ${time}</span>
                         </div>
                         <div class="actions">
-                            <button class="btn-sm btn-edit" onclick="viewPost('${p.id}')">👁️ View</button>
+                            <button class="btn-sm btn-view" onclick="viewPost('${p.id}')">👁️ View</button>
+                            ${status === 'pending' ? `
+                                <button class="btn-sm btn-approve" onclick="approvePost('${p.id}')">✅ Approve</button>
+                                <button class="btn-sm btn-moderate" onclick="rejectPost('${p.id}')">❌ Reject</button>
+                            ` : ''}
+                            ${status !== 'flagged' ? `
+                                <button class="btn-sm btn-moderate" onclick="flagPost('${p.id}')">🚩 Flag</button>
+                            ` : ''}
                             <button class="btn-sm btn-delete" onclick="deletePost('${p.id}')">🗑️ Delete</button>
                         </div>
                     </div>
@@ -260,14 +622,15 @@
             container.innerHTML = html;
         }
 
+        // ─── UPDATE STATS ──────────────────────────────────────────────────
         function updateStats(posts) {
             const total = posts.length;
             const today = posts.filter(p => {
                 if (p.created_at) return new Date(p.created_at).toDateString() === new Date().toDateString();
                 return false;
             }).length;
-            const comments = posts.reduce((sum, p) => sum + (p.comments_count || 0), 0);
-            const likes = posts.reduce((sum, p) => sum + (p.likes_count || 0), 0);
+            const comments = posts.reduce((sum, p) => sum + (p.comments_count || p.comments || 0), 0);
+            const likes = posts.reduce((sum, p) => sum + (p.likes_count || p.likes || 0), 0);
 
             document.getElementById('statTotal').textContent = total;
             document.getElementById('statToday').textContent = today;
@@ -276,16 +639,21 @@
             document.getElementById('postBadge').textContent = total;
         }
 
+        // ─── FILTER POSTS ──────────────────────────────────────────────────
         function filterPosts() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+            const status = document.getElementById('statusFilter')?.value || 'all';
             const topicId = document.getElementById('topicFilter')?.value || 'all';
 
             let filtered = postsCache;
             if (search) {
                 filtered = filtered.filter(p =>
                     (p.content || '').toLowerCase().includes(search) ||
-                    (p.profiles?.full_name || '').toLowerCase().includes(search)
+                    (p.author_name || '').toLowerCase().includes(search)
                 );
+            }
+            if (status !== 'all') {
+                filtered = filtered.filter(p => (p.status || 'pending') === status);
             }
             if (topicId !== 'all') {
                 filtered = filtered.filter(p => p.topic_id === topicId);
@@ -294,36 +662,162 @@
             renderPosts(filtered);
         }
 
+        // ─── VIEW POST ─────────────────────────────────────────────────────
         async function viewPost(id) {
             const post = postsCache.find(p => p.id === id);
             if (!post) { showToast('Post not found', 'error'); return; }
 
+            const authorName = post.author_name || post.profiles?.full_name || 'Unknown';
+            const content = post.content || '—';
+
+            let images = [];
+            if (post.images) {
+                if (Array.isArray(post.images)) images = post.images;
+                else if (typeof post.images === 'string') {
+                    try { images = JSON.parse(post.images); } catch { images = []; }
+                }
+            }
+
             const fields = [
                 { label: 'ID', value: post.id },
-                { label: 'Author', value: post.profiles?.full_name || post.author_id || '—' },
-                { label: 'Topic', value: topicsCache.find(t => t.id === post.topic_id)?.name || post.topic_id || '—' },
-                { label: 'Content', value: post.content || '—' },
-                { label: 'Likes', value: post.likes_count || 0 },
-                { label: 'Comments', value: post.comments_count || 0 },
+                { label: 'Author', value: authorName },
+                { label: 'Topic', value: post.topic || 'General' },
+                { label: 'Status', value: (post.status || 'pending').charAt(0).toUpperCase() + (post.status || 'pending').slice(1) },
+                { label: 'Content', value: content },
+                { label: 'Likes', value: post.likes_count || post.likes || 0 },
+                { label: 'Comments', value: post.comments_count || post.comments || 0 },
+                { label: 'Reposts', value: post.reposts_count || post.reposts || 0 },
                 { label: 'Created', value: post.created_at ? new Date(post.created_at).toLocaleString() : '—' }
             ];
 
             let details = '<div style="display:grid;gap:6px;max-height:400px;overflow-y:auto;padding:4px 0;">';
             fields.forEach(({ label, value }) => {
-                details += `<div style="display:flex;padding:6px 0;border-bottom:1px solid var(--border);">
-                    <span style="font-weight:600;font-size:12px;color:var(--text-muted);width:100px;flex-shrink:0;">${label}</span>
-                    <span style="font-size:13px;color:var(--text-primary);word-break:break-word;">${value}</span>
-                </div>`;
+                details += `
+                    <div style="display:flex;padding:6px 0;border-bottom:1px solid var(--border);">
+                        <span style="font-weight:600;font-size:12px;color:var(--text-muted);width:100px;flex-shrink:0;">${label}</span>
+                        <span style="font-size:13px;color:var(--text-primary);word-break:break-word;">${value}</span>
+                    </div>
+                `;
             });
+
+            if (images.length > 0) {
+                details += `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:8px;">
+                        ${images.map(img => `<img src="${img}" style="width:100%;height:80px;object-fit:cover;border-radius:8px;" />`).join('')}
+                    </div>
+                `;
+            }
+
             details += '</div>';
 
-            openModal('💬 Post Details', details, 'Close', closeModal);
+            openModal('💬 Post Details', details, 'Close', () => {});
         }
 
-        async function deletePost(id) {
-            if (!confirm('Are you sure you want to delete this post?')) return;
+        // ─── APPROVE POST ─────────────────────────────────────────────────
+        async function approvePost(id) {
             try {
-                const { error } = await supabase.from('community_posts').update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', id);
+                const { error } = await supabase
+                    .from('community_posts')
+                    .update({
+                        status: 'approved',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', id);
+
+                if (error) throw error;
+                showToast('✅ Post approved successfully', 'success');
+                loadCommunity();
+            } catch (e) {
+                showToast('Error approving post: ' + e.message, 'error');
+            }
+        }
+
+        // ─── REJECT POST ──────────────────────────────────────────────────
+        async function rejectPost(id) {
+            const confirmed = await new Promise((resolve) => {
+                openModal(
+                    '❌ Reject Post',
+                    `
+                        <div style="text-align:center;padding:12px 0;">
+                            <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                            <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Reject this post?</p>
+                            <p style="font-size:13px;color:var(--text-muted);">The post will be marked as rejected and hidden from the community feed.</p>
+                        </div>
+                    `,
+                    'Yes, Reject',
+                    () => resolve(true),
+                    'Cancel'
+                );
+            });
+
+            if (!confirmed) return;
+
+            try {
+                const { error } = await supabase
+                    .from('community_posts')
+                    .update({
+                        status: 'rejected',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', id);
+
+                if (error) throw error;
+                showToast('✅ Post rejected successfully', 'success');
+                loadCommunity();
+            } catch (e) {
+                showToast('Error rejecting post: ' + e.message, 'error');
+            }
+        }
+
+        // ─── FLAG POST ────────────────────────────────────────────────────
+        async function flagPost(id) {
+            try {
+                const { error } = await supabase
+                    .from('community_posts')
+                    .update({
+                        status: 'flagged',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', id);
+
+                if (error) throw error;
+                showToast('🚩 Post flagged successfully', 'warning');
+                loadCommunity();
+            } catch (e) {
+                showToast('Error flagging post: ' + e.message, 'error');
+            }
+        }
+
+        // ─── DELETE POST ──────────────────────────────────────────────────
+        async function deletePost(id) {
+            const confirmed = await new Promise((resolve) => {
+                openModal(
+                    '🗑️ Delete Post',
+                    `
+                        <div style="text-align:center;padding:12px 0;">
+                            <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                            <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this post?</p>
+                            <p style="font-size:13px;color:var(--text-muted);">This action cannot be undone. The post will be permanently removed.</p>
+                        </div>
+                    `,
+                    'Yes, Delete',
+                    () => resolve(true),
+                    'Cancel'
+                );
+            });
+
+            if (!confirmed) return;
+
+            try {
+                const { error } = await supabase
+                    .from('community_posts')
+                    .update({
+                        is_deleted: true,
+                        deleted_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', id);
+
                 if (error) throw error;
                 showToast('✅ Post deleted successfully', 'success');
                 loadCommunity();
@@ -332,11 +826,17 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadCommunity, 500); });
+        // ─── INIT ─────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(loadCommunity, 500);
+        });
 
         window.loadCommunity = loadCommunity;
         window.filterPosts = filterPosts;
         window.viewPost = viewPost;
+        window.approvePost = approvePost;
+        window.rejectPost = rejectPost;
+        window.flagPost = flagPost;
         window.deletePost = deletePost;
     </script>
 </body>

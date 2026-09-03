@@ -1,3 +1,5 @@
+/* ─── admin.css - Complete Fixed Version ────────────────────────────────── */
+
 :root {
     --primary: #6366f1;
     --primary-dark: #4f46e5;
@@ -17,8 +19,10 @@
     --border-dark: rgba(255,255,255,0.06);
     --shadow: 0 1px 3px rgba(0,0,0,0.06);
     --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.08);
     --radius: 12px;
     --radius-sm: 8px;
+    --radius-lg: 16px;
     --transition: 0.2s ease;
     --sidebar-width: 260px;
     --header-height: 64px;
@@ -40,6 +44,7 @@ body {
 
 .app { display: flex; min-height: 100vh; }
 
+/* ─── SIDEBAR ──────────────────────────────────────────────────────────────── */
 .sidebar {
     width: var(--sidebar-width);
     background: var(--bg-sidebar);
@@ -194,6 +199,7 @@ body {
 }
 .sidebar-overlay.active { display: block; }
 
+/* ─── MAIN ──────────────────────────────────────────────────────────────────── */
 .main {
     flex: 1;
     margin-left: var(--sidebar-width);
@@ -202,6 +208,7 @@ body {
     flex-direction: column;
 }
 
+/* ─── TOPBAR ────────────────────────────────────────────────────────────────── */
 .topbar {
     height: var(--header-height);
     background: rgba(255,255,255,0.9);
@@ -262,6 +269,7 @@ body {
 
 .topbar-actions { display: flex; gap: 8px; }
 
+/* ─── BUTTONS ────────────────────────────────────────────────────────────────── */
 .btn {
     padding: 8px 16px;
     border-radius: var(--radius-sm);
@@ -295,13 +303,27 @@ body {
 }
 .btn-danger:hover { background: #dc2626; }
 
-.btn-sm { padding: 5px 12px; font-size: 11px; }
+.btn-success {
+    background: var(--success);
+    color: #fff;
+}
+.btn-success:hover { background: #16a34a; }
 
+.btn-sm { padding: 5px 12px; font-size: 11px; }
+.btn-xs { padding: 2px 8px; font-size: 10px; }
+
+/* ─── PAGE CONTENT ──────────────────────────────────────────────────────────── */
 .page-content {
     padding: 24px 28px;
     flex: 1;
+    animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
+/* ─── CARDS ─────────────────────────────────────────────────────────────────── */
 .card {
     background: var(--bg-card);
     border-radius: var(--radius);
@@ -310,6 +332,7 @@ body {
     overflow: hidden;
     margin-bottom: 20px;
 }
+.card:hover { box-shadow: var(--shadow-md); }
 
 .card-header {
     display: flex;
@@ -330,6 +353,7 @@ body {
 
 .card-body { padding: 16px 20px; }
 
+/* ─── EMPTY STATE ───────────────────────────────────────────────────────────── */
 .empty-state {
     text-align: center;
     padding: 40px 20px;
@@ -338,6 +362,7 @@ body {
 .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
 .empty-state h3 { color: var(--text-primary); font-weight: 700; margin-bottom: 6px; }
 
+/* ─── STATUS BAR ────────────────────────────────────────────────────────────── */
 .status-bar {
     display: flex;
     align-items: center;
@@ -351,6 +376,7 @@ body {
     border: 1px solid var(--border);
 }
 
+/* ─── TOAST CONTAINER ───────────────────────────────────────────────────────── */
 .toast-container {
     position: fixed;
     bottom: 24px;
@@ -380,12 +406,14 @@ body {
 }
 .toast.error { border-left-color: var(--danger); }
 .toast.success { border-left-color: var(--success); }
+.toast.warning { border-left-color: var(--warning); }
 
 @keyframes slideUp {
     from { opacity:0; transform:translateY(20px); }
     to { opacity:1; transform:translateY(0); }
 }
 
+/* ─── MODAL ──────────────────────────────────────────────────────────────────── */
 .modal-overlay {
     display: none;
     position: fixed;
@@ -439,6 +467,7 @@ body {
     justify-content: flex-end;
 }
 
+/* ─── RESPONSIVE ────────────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
     .sidebar { transform: translateX(-100%); }
     .sidebar.open { transform: translateX(0); }
@@ -453,7 +482,8 @@ body {
     .topbar-title .sub { display: none; }
     .page-content { padding: 16px; }
 }
-/* ─── TOGGLE SWITCH ─────────────────────────────────────────────────── */
+
+/* ─── TOGGLE SWITCH ──────────────────────────────────────────────────────────── */
 .toggle-switch {
     position: relative;
     width: 44px;
@@ -481,3 +511,36 @@ body {
 .toggle-switch.active .slider {
     left: 22px;
 }
+
+/* ─── BADGES ────────────────────────────────────────────────────────────────── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.badge-success { background: #dcfce7; color: #16a34a; }
+.badge-warning { background: #fef3c7; color: #d97706; }
+.badge-danger { background: #fee2e2; color: #dc2626; }
+.badge-info { background: #dbeafe; color: #2563eb; }
+.badge-purple { background: #ede9fe; color: #7c3aed; }
+.badge-gray { background: #f3f4f6; color: #6b7280; }
+
+/* ─── STATUS INDICATOR ──────────────────────────────────────────────────────── */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.status-indicator.online { background: #dcfce7; color: #16a34a; }
+.status-indicator.offline { background: #fee2e2; color: #dc2626; }
+.status-indicator .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.status-indicator.online .dot { background: #22c55e; }
+.status-indicator.offline .dot { background: #ef4444; }

@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        /* ─── Page Hero ────────────────────────────────────────────── */
+        /* ─── Page Hero ────────────────────────────────────────────────── */
         .page-hero {
             background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
             border-radius: var(--radius);
@@ -28,16 +28,8 @@
             font-size: 64px;
             opacity: 0.15;
         }
-        .page-hero h1 {
-            font-size: 24px;
-            font-weight: 800;
-            letter-spacing: -0.3px;
-        }
-        .page-hero p {
-            opacity: 0.85;
-            font-size: 14px;
-            margin-top: 4px;
-        }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
         .page-hero .stats-row {
             display: flex;
             gap: 32px;
@@ -58,7 +50,7 @@
             opacity: 0.75;
         }
 
-        /* ─── Baby Card ────────────────────────────────────────────── */
+        /* ─── Baby Card ────────────────────────────────────────────────── */
         .baby-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -98,6 +90,12 @@
             color: #fff;
             font-weight: 700;
             flex-shrink: 0;
+            overflow: hidden;
+        }
+        .baby-card .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
         .baby-card .baby-info {
             flex: 1;
@@ -132,26 +130,16 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .baby-card .status-badge.active {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        .baby-card .status-badge.inactive {
-            background: #fee2e2;
-            color: #dc2626;
-        }
+        .baby-card .status-badge.active { background: #dcfce7; color: #16a34a; }
+        .baby-card .status-badge.inactive { background: #fee2e2; color: #dc2626; }
         .baby-card .status-badge .dot {
             width: 6px;
             height: 6px;
             border-radius: 50%;
             display: inline-block;
         }
-        .baby-card .status-badge.active .dot {
-            background: #22c55e;
-        }
-        .baby-card .status-badge.inactive .dot {
-            background: #ef4444;
-        }
+        .baby-card .status-badge.active .dot { background: #22c55e; }
+        .baby-card .status-badge.inactive .dot { background: #ef4444; }
 
         .baby-card .meta-grid {
             display: grid;
@@ -171,9 +159,7 @@
             padding: 4px 10px;
             border-radius: 16px;
         }
-        .baby-card .meta-item .emoji {
-            font-size: 14px;
-        }
+        .baby-card .meta-item .emoji { font-size: 14px; }
 
         .baby-card .actions {
             display: flex;
@@ -218,7 +204,7 @@
             background: #fecaca;
         }
 
-        /* ─── Filter Bar ────────────────────────────────────────────── */
+        /* ─── Filter Bar ────────────────────────────────────────────────── */
         .filter-bar-modern {
             display: flex;
             gap: 12px;
@@ -256,7 +242,7 @@
             flex-wrap: wrap;
         }
 
-        /* ─── Modal ────────────────────────────────────────────────── */
+        /* ─── Modal Forms ────────────────────────────────────────────────── */
         .modal-baby-form .form-group {
             margin-bottom: 14px;
         }
@@ -297,7 +283,7 @@
             gap: 14px;
         }
 
-        /* ─── Empty State ───────────────────────────────────────────── */
+        /* ─── Empty State ────────────────────────────────────────────────── */
         .empty-state-modern {
             text-align: center;
             padding: 60px 20px;
@@ -318,48 +304,26 @@
             font-size: 14px;
         }
 
-        /* ─── Responsive ────────────────────────────────────────────── */
+        /* ─── Responsive ────────────────────────────────────────────────── */
         @media (max-width: 1024px) {
-            .baby-grid {
-                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            }
+            .baby-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
         }
         @media (max-width: 768px) {
-            .page-hero .stats-row {
-                flex-wrap: wrap;
-                gap: 16px;
-            }
-            .baby-grid {
-                grid-template-columns: 1fr;
-            }
-            .filter-bar-modern {
-                flex-direction: column;
-            }
-            .filter-bar-modern .btn-group {
-                width: 100%;
-            }
-            .filter-bar-modern .btn-group button {
-                flex: 1;
-            }
-            .modal-baby-form .form-row {
-                grid-template-columns: 1fr;
-            }
-            .baby-card .meta-grid {
-                grid-template-columns: 1fr;
-            }
-            .baby-card .actions {
-                flex-wrap: wrap;
-            }
-            .baby-card .actions .btn-sm {
-                flex: 1 1 calc(50% - 4px);
-                min-width: 60px;
-            }
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .baby-grid { grid-template-columns: 1fr; }
+            .filter-bar-modern { flex-direction: column; }
+            .filter-bar-modern .btn-group { width: 100%; }
+            .filter-bar-modern .btn-group button { flex: 1; }
+            .modal-baby-form .form-row { grid-template-columns: 1fr; }
+            .baby-card .meta-grid { grid-template-columns: 1fr; }
+            .baby-card .actions { flex-wrap: wrap; }
+            .baby-card .actions .btn-sm { flex: 1 1 calc(50% - 4px); min-width: 60px; }
         }
     </style>
 </head>
 <body>
     <div class="app">
-        <!-- ─── SIDEBAR ────────────────────────────────────────────── -->
+        <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
@@ -405,11 +369,8 @@
                     <span class="badge" id="milestoneBadge">0</span>
                 </a>
                 <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')">
-                    <span class="icon">📈</span> Activity Heatmap
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
+                    <span class="icon">📈</span> Analytics
                 </a>
                 <div class="sidebar-nav-label">System</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
@@ -432,7 +393,7 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <!-- ─── MODAL ────────────────────────────────────────────────── -->
+        <!-- ─── MODAL ────────────────────────────────────────────────────── -->
         <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
             <div class="modal">
                 <div class="modal-header">
@@ -447,7 +408,7 @@
             </div>
         </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────── -->
+        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left">
@@ -462,7 +423,7 @@
                         <span id="connectionStatus">Connected</span>
                     </div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadData()">🔄 Refresh</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadBabies()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
@@ -474,7 +435,6 @@
                     <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
                 </div>
 
-                <!-- ─── HERO ──────────────────────────────────────────── -->
                 <div class="page-hero">
                     <h1>👶 Baby Management</h1>
                     <p>View and manage all baby profiles in the LittleLoom community</p>
@@ -486,21 +446,19 @@
                     </div>
                 </div>
 
-                <!-- ─── FILTER BAR ────────────────────────────────────── -->
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search babies..." id="searchInput" oninput="filterData()">
-                    <select id="filterSelect" onchange="filterData()">
+                    <input type="text" placeholder="🔍 Search babies..." id="searchInput" oninput="filterBabies()">
+                    <select id="filterSelect" onchange="filterBabies()">
                         <option value="all">All Status</option>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
                     <div class="btn-group">
                         <button class="btn btn-primary" onclick="openAddBabyModal()">➕ Add Baby</button>
-                        <button class="btn btn-outline" onclick="loadData()">🔄 Refresh</button>
+                        <button class="btn btn-outline" onclick="loadBabies()">🔄 Refresh</button>
                     </div>
                 </div>
 
-                <!-- ─── BABY GRID ─────────────────────────────────────── -->
                 <div id="babiesContainer">
                     <div class="empty-state-modern">
                         <div class="emoji">👶</div>
@@ -509,7 +467,6 @@
                     </div>
                 </div>
 
-                <!-- ─── FOOTER ────────────────────────────────────────── -->
                 <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;border-top:1px solid var(--border);margin-top:20px;">
                     <span id="footerCount">0 babies</span> • <span id="footerActive">0 active</span>
                 </div>
@@ -521,49 +478,43 @@
 
     <script src="/admin/js/admin.js"></script>
     <script>
-        // ─── STATE ──────────────────────────────────────────────────────
         let babiesCache = [];
         let currentFiltered = [];
 
-        // ─── LOAD DATA ──────────────────────────────────────────────────
-        async function loadData() {
+        // ─── LOAD BABIES ──────────────────────────────────────────────────
+        async function loadBabies() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
 
             try {
-                // Use the view we created, or fallback to direct query
-                let query = supabase
+                // Try to fetch with parent info
+                let { data, error } = await supabase
                     .from('babies')
-                    .select('*')
+                    .select('*, profiles!babies_parent_id_fkey(full_name, email, avatar)')
                     .order('created_at', { ascending: false });
 
-                // Try to get parent info
-                try {
-                    query = supabase
-                        .from('babies')
-                        .select('*, profiles!babies_parent_id_fkey(full_name, email)')
-                        .order('created_at', { ascending: false });
-                } catch (e) {
-                    // If relationship doesn't exist, just get babies
-                    query = supabase
+                // If relationship doesn't exist, try without
+                if (error && error.message.includes('relation')) {
+                    const { data: fallback, error: fallbackError } = await supabase
                         .from('babies')
                         .select('*')
                         .order('created_at', { ascending: false });
+
+                    if (fallbackError) throw fallbackError;
+                    data = fallback;
+                } else if (error) {
+                    throw error;
                 }
 
-                const { data, error } = await query;
-
-                if (error) throw error;
-
-                // Try to get parent info separately if needed
+                // Enrich with parent info if needed
                 if (data && data.length > 0) {
                     for (let baby of data) {
                         if (baby.parent_id && !baby.profiles) {
                             try {
                                 const { data: parentData } = await supabase
                                     .from('profiles')
-                                    .select('full_name, email')
+                                    .select('full_name, email, avatar')
                                     .eq('id', baby.parent_id)
                                     .single();
                                 if (parentData) {
@@ -592,13 +543,13 @@
                         <div class="emoji">❌</div>
                         <h3>Error loading data</h3>
                         <p>${e.message}</p>
-                        <button class="btn btn-primary" onclick="loadData()" style="margin-top:12px;">Retry</button>
+                        <button class="btn btn-primary" onclick="loadBabies()" style="margin-top:12px;">Retry</button>
                     </div>
                 `;
             }
         }
 
-        // ─── RENDER BABIES ──────────────────────────────────────────────
+        // ─── RENDER BABIES ─────────────────────────────────────────────────
         function renderBabies(babies) {
             const container = document.getElementById('babiesContainer');
 
@@ -618,16 +569,21 @@
             babies.forEach(baby => {
                 const isActive = baby.is_active !== false;
                 const parentName = baby.profiles?.full_name || baby.parent_name || 'Unknown';
+                const parentAvatar = baby.profiles?.avatar || '👤';
                 const initials = (baby.name || 'B').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
                 const streak = baby.streak || 0;
                 const dob = baby.date_of_birth ? new Date(baby.date_of_birth).toLocaleDateString() : 'Not set';
                 const created = baby.created_at ? new Date(baby.created_at).toLocaleDateString() : '—';
                 const gender = baby.gender || 'Not specified';
 
+                const avatarHtml = baby.avatar_url && baby.avatar_url.startsWith('http')
+                    ? `<img src="${baby.avatar_url}" alt="${baby.name}" />`
+                    : initials;
+
                 html += `
                     <div class="baby-card" data-id="${baby.id}">
                         <div class="header">
-                            <div class="avatar">${initials}</div>
+                            <div class="avatar">${avatarHtml}</div>
                             <div class="baby-info">
                                 <div class="name">${baby.name || 'Unnamed Baby'}</div>
                                 <div class="parent">👤 ${parentName}</div>
@@ -661,7 +617,7 @@
             document.getElementById('footerActive').textContent = babies.filter(b => b.is_active !== false).length + ' active';
         }
 
-        // ─── UPDATE STATS ──────────────────────────────────────────────
+        // ─── UPDATE STATS ─────────────────────────────────────────────────
         function updateStats(babies) {
             const total = babies.length;
             const active = babies.filter(b => b.is_active !== false).length;
@@ -680,14 +636,14 @@
             document.getElementById('statAvgStreak').innerHTML = avgStreak + '<span style="font-size:16px;opacity:0.7;">d</span>';
         }
 
-        // ─── UPDATE BADGES ─────────────────────────────────────────────
+        // ─── UPDATE BADGES ─────────────────────────────────────────────────
         function updateBadges() {
             const total = babiesCache.length;
             document.getElementById('babyBadge').textContent = total;
         }
 
-        // ─── FILTER DATA ──────────────────────────────────────────────
-        function filterData() {
+        // ─── FILTER BABIES ──────────────────────────────────────────────────
+        function filterBabies() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
             const filter = document.getElementById('filterSelect')?.value || 'all';
 
@@ -710,7 +666,7 @@
             renderBabies(filtered);
         }
 
-        // ─── MODAL HELPERS ─────────────────────────────────────────────
+        // ─── ADD BABY ──────────────────────────────────────────────────────
         function openAddBabyModal() {
             const body = `
                 <div class="modal-baby-form">
@@ -773,14 +729,15 @@
                     if (error) throw error;
 
                     showToast('✅ Baby added successfully', 'success');
-                    closeModal();
-                    loadData();
+                    closeModal(true);
+                    loadBabies();
                 } catch (e) {
                     showToast('Error adding baby: ' + e.message, 'error');
                 }
             });
         }
 
+        // ─── EDIT BABY ──────────────────────────────────────────────────────
         function openEditBabyModal(babyId) {
             const baby = babiesCache.find(b => b.id === babyId);
             if (!baby) { showToast('Baby not found', 'error'); return; }
@@ -851,14 +808,15 @@
                     if (error) throw error;
 
                     showToast('✅ Baby updated successfully', 'success');
-                    closeModal();
-                    loadData();
+                    closeModal(true);
+                    loadBabies();
                 } catch (e) {
                     showToast('Error updating baby: ' + e.message, 'error');
                 }
             });
         }
 
+        // ─── VIEW BABY ─────────────────────────────────────────────────────
         function viewBaby(babyId) {
             const baby = babiesCache.find(b => b.id === babyId);
             if (!baby) { showToast('Baby not found', 'error'); return; }
@@ -891,19 +849,25 @@
             openModal('👶 Baby Details', details, 'Close', closeModal);
         }
 
+        // ─── DELETE BABY ──────────────────────────────────────────────────
         async function deleteBaby(babyId) {
             const baby = babiesCache.find(b => b.id === babyId);
             if (!baby) { showToast('Baby not found', 'error'); return; }
 
-            const confirmed = await new Promise(resolve => {
-                const body = `
-                    <div style="text-align:center;padding:12px 0;">
-                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
-                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete "${baby.name || 'Unnamed Baby'}"?</p>
-                        <p style="font-size:13px;color:var(--text-muted);">This action cannot be undone. The baby profile will be permanently removed.</p>
-                    </div>
-                `;
-                openModal('🗑️ Confirm Delete', body, 'Yes, Delete', () => resolve(true), 'Cancel');
+            const confirmed = await new Promise((resolve) => {
+                openModal(
+                    '🗑️ Confirm Delete',
+                    `
+                        <div style="text-align:center;padding:12px 0;">
+                            <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                            <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete "${baby.name || 'Unnamed Baby'}"?</p>
+                            <p style="font-size:13px;color:var(--text-muted);">This action cannot be undone. The baby profile will be permanently removed.</p>
+                        </div>
+                    `,
+                    'Yes, Delete',
+                    () => resolve(true),
+                    'Cancel'
+                );
             });
 
             if (!confirmed) return;
@@ -913,20 +877,19 @@
                 if (error) throw error;
 
                 showToast('✅ Baby deleted successfully', 'success');
-                loadData();
+                loadBabies();
             } catch (e) {
                 showToast('Error deleting baby: ' + e.message, 'error');
             }
         }
 
-        // ─── INIT ──────────────────────────────────────────────────────
+        // ─── INIT ─────────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(loadData, 500);
+            setTimeout(loadBabies, 500);
         });
 
-        // Expose functions globally
-        window.loadData = loadData;
-        window.filterData = filterData;
+        window.loadBabies = loadBabies;
+        window.filterBabies = filterBabies;
         window.openAddBabyModal = openAddBabyModal;
         window.openEditBabyModal = openEditBabyModal;
         window.viewBaby = viewBaby;

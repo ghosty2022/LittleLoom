@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        /* ─── Page Hero ────────────────────────────────────────────── */
+        /* ─── Page Hero ────────────────────────────────────────────────── */
         .page-hero {
             background: linear-gradient(135deg, #0f172a, #1e293b);
             border-radius: var(--radius);
@@ -28,16 +28,8 @@
             font-size: 64px;
             opacity: 0.1;
         }
-        .page-hero h1 {
-            font-size: 24px;
-            font-weight: 800;
-            letter-spacing: -0.3px;
-        }
-        .page-hero p {
-            opacity: 0.85;
-            font-size: 14px;
-            margin-top: 4px;
-        }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
         .page-hero .stats-row {
             display: flex;
             gap: 32px;
@@ -58,7 +50,7 @@
             opacity: 0.75;
         }
 
-        /* ─── User Card ────────────────────────────────────────────── */
+        /* ─── User Card ────────────────────────────────────────────────── */
         .user-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -98,6 +90,12 @@
             color: #fff;
             font-weight: 700;
             flex-shrink: 0;
+            overflow: hidden;
+        }
+        .user-card .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
         .user-card .user-info {
             flex: 1;
@@ -132,24 +130,12 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .user-card .role-badge.admin {
-            background: #ede9fe;
-            color: #7c3aed;
-        }
+        .user-card .role-badge.admin { background: #ede9fe; color: #7c3aed; }
         .user-card .role-badge.parent,
         .user-card .role-badge.parent1,
-        .user-card .role-badge.parent2 {
-            background: #dbeafe;
-            color: #2563eb;
-        }
-        .user-card .role-badge.guardian {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .user-card .role-badge.guest {
-            background: #f3f4f6;
-            color: #6b7280;
-        }
+        .user-card .role-badge.parent2 { background: #dbeafe; color: #2563eb; }
+        .user-card .role-badge.guardian { background: #fef3c7; color: #d97706; }
+        .user-card .role-badge.guest { background: #f3f4f6; color: #6b7280; }
         .user-card .status-badge {
             display: inline-flex;
             align-items: center;
@@ -159,26 +145,16 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .user-card .status-badge.active {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        .user-card .status-badge.inactive {
-            background: #fee2e2;
-            color: #dc2626;
-        }
+        .user-card .status-badge.active { background: #dcfce7; color: #16a34a; }
+        .user-card .status-badge.inactive { background: #fee2e2; color: #dc2626; }
         .user-card .status-badge .dot {
             width: 6px;
             height: 6px;
             border-radius: 50%;
             display: inline-block;
         }
-        .user-card .status-badge.active .dot {
-            background: #22c55e;
-        }
-        .user-card .status-badge.inactive .dot {
-            background: #ef4444;
-        }
+        .user-card .status-badge.active .dot { background: #22c55e; }
+        .user-card .status-badge.inactive .dot { background: #ef4444; }
 
         .user-card .meta-grid {
             display: grid;
@@ -198,9 +174,7 @@
             padding: 4px 10px;
             border-radius: 16px;
         }
-        .user-card .meta-item .emoji {
-            font-size: 14px;
-        }
+        .user-card .meta-item .emoji { font-size: 14px; }
 
         .user-card .security-section {
             margin-top: 12px;
@@ -220,19 +194,10 @@
             background: var(--bg-primary);
             border-radius: 12px;
         }
-        .user-card .security-section .security-item .icon {
-            font-size: 14px;
-        }
-        .user-card .security-section .security-item .status {
-            font-weight: 600;
-            font-size: 11px;
-        }
-        .user-card .security-section .security-item .status.granted {
-            color: #22c55e;
-        }
-        .user-card .security-section .security-item .status.denied {
-            color: #ef4444;
-        }
+        .user-card .security-section .security-item .icon { font-size: 14px; }
+        .user-card .security-section .security-item .status { font-weight: 600; font-size: 11px; }
+        .user-card .security-section .security-item .status.granted { color: #22c55e; }
+        .user-card .security-section .security-item .status.denied { color: #ef4444; }
 
         .user-card .actions {
             display: flex;
@@ -284,7 +249,7 @@
             background: #fecaca;
         }
 
-        /* ─── Filter Bar ────────────────────────────────────────────── */
+        /* ─── Filter Bar ────────────────────────────────────────────────── */
         .filter-bar-modern {
             display: flex;
             gap: 12px;
@@ -322,7 +287,7 @@
             flex-wrap: wrap;
         }
 
-        /* ─── Modal ────────────────────────────────────────────────── */
+        /* ─── Modal Forms ────────────────────────────────────────────────── */
         .modal-user-form .form-group {
             margin-bottom: 14px;
         }
@@ -357,61 +322,7 @@
             gap: 14px;
         }
 
-        /* ─── Security Modal ────────────────────────────────────────── */
-        .security-toggles {
-            display: grid;
-            gap: 12px;
-        }
-        .security-toggles .toggle-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            background: var(--bg-primary);
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-        }
-        .security-toggles .toggle-item .info {
-            display: flex;
-            flex-direction: column;
-        }
-        .security-toggles .toggle-item .info .label {
-            font-weight: 600;
-            font-size: 13px;
-        }
-        .security-toggles .toggle-item .info .desc {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-        .toggle-switch {
-            position: relative;
-            width: 44px;
-            height: 24px;
-            background: #d1d5db;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: var(--transition);
-            flex-shrink: 0;
-        }
-        .toggle-switch.active {
-            background: var(--primary);
-        }
-        .toggle-switch .slider {
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 20px;
-            height: 20px;
-            background: #fff;
-            border-radius: 50%;
-            transition: var(--transition);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-        }
-        .toggle-switch.active .slider {
-            left: 22px;
-        }
-
-        /* ─── Empty State ───────────────────────────────────────────── */
+        /* ─── Empty State ────────────────────────────────────────────────── */
         .empty-state-modern {
             text-align: center;
             padding: 60px 20px;
@@ -432,51 +343,27 @@
             font-size: 14px;
         }
 
-        /* ─── Responsive ────────────────────────────────────────────── */
+        /* ─── Responsive ────────────────────────────────────────────────── */
         @media (max-width: 1024px) {
-            .user-grid {
-                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            }
+            .user-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
         }
         @media (max-width: 768px) {
-            .page-hero .stats-row {
-                flex-wrap: wrap;
-                gap: 16px;
-            }
-            .user-grid {
-                grid-template-columns: 1fr;
-            }
-            .filter-bar-modern {
-                flex-direction: column;
-            }
-            .filter-bar-modern .btn-group {
-                width: 100%;
-            }
-            .filter-bar-modern .btn-group button {
-                flex: 1;
-            }
-            .modal-user-form .form-row {
-                grid-template-columns: 1fr;
-            }
-            .user-card .meta-grid {
-                grid-template-columns: 1fr;
-            }
-            .user-card .security-section {
-                grid-template-columns: 1fr;
-            }
-            .user-card .actions {
-                flex-wrap: wrap;
-            }
-            .user-card .actions .btn-sm {
-                flex: 1 1 calc(50% - 4px);
-                min-width: 60px;
-            }
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .user-grid { grid-template-columns: 1fr; }
+            .filter-bar-modern { flex-direction: column; }
+            .filter-bar-modern .btn-group { width: 100%; }
+            .filter-bar-modern .btn-group button { flex: 1; }
+            .modal-user-form .form-row { grid-template-columns: 1fr; }
+            .user-card .meta-grid { grid-template-columns: 1fr; }
+            .user-card .security-section { grid-template-columns: 1fr; }
+            .user-card .actions { flex-wrap: wrap; }
+            .user-card .actions .btn-sm { flex: 1 1 calc(50% - 4px); min-width: 60px; }
         }
     </style>
 </head>
 <body>
     <div class="app">
-        <!-- ─── SIDEBAR ────────────────────────────────────────────── -->
+        <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
                 <div class="brand-icon">🧵</div>
@@ -522,11 +409,8 @@
                     <span class="badge" id="milestoneBadge">0</span>
                 </a>
                 <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')">
-                    <span class="icon">📈</span> Activity Heatmap
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
+                    <span class="icon">📈</span> Analytics
                 </a>
                 <div class="sidebar-nav-label">System</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
@@ -549,7 +433,7 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <!-- ─── MODAL ────────────────────────────────────────────────── -->
+        <!-- ─── MODAL ────────────────────────────────────────────────────── -->
         <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
             <div class="modal">
                 <div class="modal-header">
@@ -564,7 +448,7 @@
             </div>
         </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────── -->
+        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left">
@@ -579,7 +463,7 @@
                         <span id="connectionStatus">Connected</span>
                     </div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadData()">🔄 Refresh</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadUsers()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
@@ -591,7 +475,6 @@
                     <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
                 </div>
 
-                <!-- ─── HERO ──────────────────────────────────────────── -->
                 <div class="page-hero">
                     <h1>👤 User Management</h1>
                     <p>Manage users, roles, and security permissions across the platform</p>
@@ -603,10 +486,9 @@
                     </div>
                 </div>
 
-                <!-- ─── FILTER BAR ────────────────────────────────────── -->
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search users..." id="searchInput" oninput="filterData()">
-                    <select id="filterSelect" onchange="filterData()">
+                    <input type="text" placeholder="🔍 Search users..." id="searchInput" oninput="filterUsers()">
+                    <select id="filterSelect" onchange="filterUsers()">
                         <option value="all">All Roles</option>
                         <option value="admin">Admins</option>
                         <option value="parent">Parents</option>
@@ -615,13 +497,17 @@
                         <option value="guardian">Guardians</option>
                         <option value="guest">Guests</option>
                     </select>
+                    <select id="statusFilter" onchange="filterUsers()">
+                        <option value="all">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
                     <div class="btn-group">
                         <button class="btn btn-primary" onclick="openAddUserModal()">➕ Add User</button>
-                        <button class="btn btn-outline" onclick="loadData()">🔄 Refresh</button>
+                        <button class="btn btn-outline" onclick="loadUsers()">🔄 Refresh</button>
                     </div>
                 </div>
 
-                <!-- ─── USER GRID ─────────────────────────────────────── -->
                 <div id="usersContainer">
                     <div class="empty-state-modern">
                         <div class="emoji">👤</div>
@@ -630,7 +516,6 @@
                     </div>
                 </div>
 
-                <!-- ─── FOOTER ────────────────────────────────────────── -->
                 <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;border-top:1px solid var(--border);margin-top:20px;">
                     <span id="footerCount">0 users</span> • <span id="footerActive">0 active</span>
                 </div>
@@ -642,12 +527,11 @@
 
     <script src="/admin/js/admin.js"></script>
     <script>
-        // ─── STATE ──────────────────────────────────────────────────────
         let usersCache = [];
         let currentFiltered = [];
 
-        // ─── LOAD DATA ──────────────────────────────────────────────────
-        async function loadData() {
+        // ─── LOAD USERS ──────────────────────────────────────────────────
+        async function loadUsers() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
@@ -676,13 +560,13 @@
                         <div class="emoji">❌</div>
                         <h3>Error loading data</h3>
                         <p>${e.message}</p>
-                        <button class="btn btn-primary" onclick="loadData()" style="margin-top:12px;">Retry</button>
+                        <button class="btn btn-primary" onclick="loadUsers()" style="margin-top:12px;">Retry</button>
                     </div>
                 `;
             }
         }
 
-        // ─── RENDER USERS ──────────────────────────────────────────────
+        // ─── RENDER USERS ─────────────────────────────────────────────────
         function renderUsers(users) {
             const container = document.getElementById('usersContainer');
 
@@ -716,15 +600,17 @@
                     'guest': 'guest'
                 }[role] || 'guest';
 
-                // Security statuses - handle missing columns gracefully
                 const isVerified = user.email_confirmed || false;
                 const is2FA = user.two_factor_enabled || false;
                 const isAdmin = role === 'admin';
+                const avatarHtml = user.avatar && user.avatar.startsWith('http') 
+                    ? `<img src="${user.avatar}" alt="${user.full_name}" />` 
+                    : initials;
 
                 html += `
                     <div class="user-card" data-id="${user.id}">
                         <div class="header">
-                            <div class="avatar">${initials}</div>
+                            <div class="avatar">${avatarHtml}</div>
                             <div class="user-info">
                                 <div class="name">${user.full_name || 'Unnamed User'}</div>
                                 <div class="email">${user.email || 'No email'}</div>
@@ -791,7 +677,7 @@
             document.getElementById('footerActive').textContent = users.filter(u => u.is_active !== false).length + ' active';
         }
 
-        // ─── UPDATE STATS ──────────────────────────────────────────────
+        // ─── UPDATE STATS ─────────────────────────────────────────────────
         function updateStats(users) {
             const total = users.length;
             const active = users.filter(u => u.is_active !== false).length;
@@ -809,16 +695,17 @@
             document.getElementById('statToday').textContent = today;
         }
 
-        // ─── UPDATE BADGES ─────────────────────────────────────────────
+        // ─── UPDATE BADGES ─────────────────────────────────────────────────
         function updateBadges() {
             const total = usersCache.length;
             document.getElementById('userBadge').textContent = total;
         }
 
-        // ─── FILTER DATA ──────────────────────────────────────────────
-        function filterData() {
+        // ─── FILTER USERS ──────────────────────────────────────────────────
+        function filterUsers() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
             const filter = document.getElementById('filterSelect')?.value || 'all';
+            const status = document.getElementById('statusFilter')?.value || 'all';
 
             let filtered = usersCache;
 
@@ -834,13 +721,17 @@
                 filtered = filtered.filter(u => u.role === filter);
             }
 
+            if (status === 'active') {
+                filtered = filtered.filter(u => u.is_active !== false);
+            } else if (status === 'inactive') {
+                filtered = filtered.filter(u => u.is_active === false);
+            }
+
             currentFiltered = filtered;
             renderUsers(filtered);
         }
 
-        // ─── MODAL HELPERS ─────────────────────────────────────────────
-
-        // ─── ADD USER ──────────────────────────────────────────────────
+        // ─── ADD USER ──────────────────────────────────────────────────────
         function openAddUserModal() {
             const body = `
                 <div class="modal-user-form">
@@ -926,15 +817,15 @@
                     if (profileError) throw profileError;
 
                     showToast('✅ User created successfully', 'success');
-                    closeModal();
-                    loadData();
+                    closeModal(true);
+                    loadUsers();
                 } catch (e) {
                     showToast('Error creating user: ' + e.message, 'error');
                 }
             });
         }
 
-        // ─── EDIT USER ─────────────────────────────────────────────────
+        // ─── EDIT USER ──────────────────────────────────────────────────────
         function openEditUserModal(userId) {
             const user = usersCache.find(u => u.id === userId);
             if (!user) { showToast('User not found', 'error'); return; }
@@ -1001,28 +892,16 @@
 
                     if (error) throw error;
 
-                    // Update user metadata in Auth
-                    try {
-                        await supabase.auth.admin.updateUserById(userId, {
-                            user_metadata: {
-                                full_name: fullName,
-                                role: role
-                            }
-                        });
-                    } catch (authError) {
-                        console.warn('Auth metadata update failed:', authError);
-                    }
-
                     showToast('✅ User updated successfully', 'success');
-                    closeModal();
-                    loadData();
+                    closeModal(true);
+                    loadUsers();
                 } catch (e) {
                     showToast('Error updating user: ' + e.message, 'error');
                 }
             });
         }
 
-        // ─── VIEW USER ─────────────────────────────────────────────────
+        // ─── VIEW USER ─────────────────────────────────────────────────────
         function viewUser(userId) {
             const user = usersCache.find(u => u.id === userId);
             if (!user) { showToast('User not found', 'error'); return; }
@@ -1056,7 +935,7 @@
             openModal('👤 User Details', details, 'Close', closeModal);
         }
 
-        // ─── SECURITY MODAL ────────────────────────────────────────────
+        // ─── SECURITY MODAL ─────────────────────────────────────────────────
         function openSecurityModal(userId) {
             const user = usersCache.find(u => u.id === userId);
             if (!user) { showToast('User not found', 'error'); return; }
@@ -1067,40 +946,40 @@
             const is2FA = user.two_factor_enabled || false;
 
             const body = `
-                <div class="security-toggles">
-                    <div class="toggle-item">
+                <div class="security-toggles" style="display:grid;gap:12px;">
+                    <div class="toggle-item" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-primary);border-radius:var(--radius-sm);border:1px solid var(--border);">
                         <div class="info">
-                            <span class="label">👑 Admin Access</span>
-                            <span class="desc">Full dashboard and system control</span>
+                            <span class="label" style="font-weight:600;font-size:13px;">👑 Admin Access</span>
+                            <span class="desc" style="font-size:12px;color:var(--text-muted);">Full dashboard and system control</span>
                         </div>
-                        <div class="toggle-switch ${isAdmin ? 'active' : ''}" onclick="toggleSecurity('${userId}', 'admin')">
+                        <div class="toggle-switch ${isAdmin ? 'active' : ''}" onclick="toggleUserSecurity('${userId}', 'admin')">
                             <div class="slider"></div>
                         </div>
                     </div>
-                    <div class="toggle-item">
+                    <div class="toggle-item" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-primary);border-radius:var(--radius-sm);border:1px solid var(--border);">
                         <div class="info">
-                            <span class="label">🔓 Account Status</span>
-                            <span class="desc">Active or suspended account</span>
+                            <span class="label" style="font-weight:600;font-size:13px;">🔓 Account Status</span>
+                            <span class="desc" style="font-size:12px;color:var(--text-muted);">Active or suspended account</span>
                         </div>
-                        <div class="toggle-switch ${isActive ? 'active' : ''}" onclick="toggleSecurity('${userId}', 'status')">
+                        <div class="toggle-switch ${isActive ? 'active' : ''}" onclick="toggleUserSecurity('${userId}', 'status')">
                             <div class="slider"></div>
                         </div>
                     </div>
-                    <div class="toggle-item">
+                    <div class="toggle-item" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-primary);border-radius:var(--radius-sm);border:1px solid var(--border);">
                         <div class="info">
-                            <span class="label">📧 Email Verification</span>
-                            <span class="desc">Confirmed email address</span>
+                            <span class="label" style="font-weight:600;font-size:13px;">📧 Email Verification</span>
+                            <span class="desc" style="font-size:12px;color:var(--text-muted);">Confirmed email address</span>
                         </div>
-                        <div class="toggle-switch ${isVerified ? 'active' : ''}" onclick="toggleSecurity('${userId}', 'verify')">
+                        <div class="toggle-switch ${isVerified ? 'active' : ''}" onclick="toggleUserSecurity('${userId}', 'verify')">
                             <div class="slider"></div>
                         </div>
                     </div>
-                    <div class="toggle-item">
+                    <div class="toggle-item" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-primary);border-radius:var(--radius-sm);border:1px solid var(--border);">
                         <div class="info">
-                            <span class="label">🔑 Two-Factor Authentication</span>
-                            <span class="desc">Extra security layer</span>
+                            <span class="label" style="font-weight:600;font-size:13px;">🔑 Two-Factor Authentication</span>
+                            <span class="desc" style="font-size:12px;color:var(--text-muted);">Extra security layer</span>
                         </div>
-                        <div class="toggle-switch ${is2FA ? 'active' : ''}" onclick="toggleSecurity('${userId}', '2fa')">
+                        <div class="toggle-switch ${is2FA ? 'active' : ''}" onclick="toggleUserSecurity('${userId}', '2fa')">
                             <div class="slider"></div>
                         </div>
                     </div>
@@ -1113,8 +992,8 @@
             openModal('🔐 Security Settings - ' + (user.full_name || 'User'), body, 'Close', closeModal);
         }
 
-        // ─── TOGGLE SECURITY ───────────────────────────────────────────
-        async function toggleSecurity(userId, setting) {
+        // ─── TOGGLE USER SECURITY ──────────────────────────────────────────
+        async function toggleUserSecurity(userId, setting) {
             const user = usersCache.find(u => u.id === userId);
             if (!user) return;
 
@@ -1149,57 +1028,40 @@
                     .update({ ...updates, updated_at: new Date().toISOString() })
                     .eq('id', userId);
 
-                if (error) {
-                    // If column doesn't exist, try without it
-                    if (error.message.includes('column')) {
-                        // Remove the problematic column and retry
-                        const cleanUpdates = { ...updates };
-                        delete cleanUpdates.email_confirmed;
-                        delete cleanUpdates.two_factor_enabled;
-                        
-                        if (Object.keys(cleanUpdates).length > 0) {
-                            const { error: retryError } = await supabase
-                                .from('profiles')
-                                .update({ ...cleanUpdates, updated_at: new Date().toISOString() })
-                                .eq('id', userId);
-                            
-                            if (retryError) throw retryError;
-                        }
-                        showToast(`✅ ${message}`, 'success');
-                    } else {
-                        throw error;
-                    }
-                } else {
-                    showToast(`✅ ${message}`, 'success');
-                }
-                
-                loadData();
+                if (error) throw error;
+
+                showToast(`✅ ${message}`, 'success');
                 closeModal();
+                loadUsers();
             } catch (e) {
                 showToast('Error updating security: ' + e.message, 'error');
             }
         }
 
-        // ─── DELETE USER ──────────────────────────────────────────────
+        // ─── DELETE USER ──────────────────────────────────────────────────
         async function deleteUser(userId) {
             const user = usersCache.find(u => u.id === userId);
             if (!user) { showToast('User not found', 'error'); return; }
 
-            const confirmed = await new Promise(resolve => {
-                const body = `
-                    <div style="text-align:center;padding:12px 0;">
-                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
-                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete "${user.full_name || 'Unnamed User'}"?</p>
-                        <p style="font-size:13px;color:var(--text-muted);">This will permanently delete the user account and all associated data.</p>
-                    </div>
-                `;
-                openModal('🗑️ Confirm Delete', body, 'Yes, Delete', () => resolve(true), 'Cancel');
+            const confirmed = await new Promise((resolve) => {
+                openModal(
+                    '🗑️ Confirm Delete',
+                    `
+                        <div style="text-align:center;padding:12px 0;">
+                            <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                            <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete "${user.full_name || 'Unnamed User'}"?</p>
+                            <p style="font-size:13px;color:var(--text-muted);">This will permanently delete the user account and all associated data.</p>
+                        </div>
+                    `,
+                    'Yes, Delete',
+                    () => resolve(true),
+                    'Cancel'
+                );
             });
 
             if (!confirmed) return;
 
             try {
-                // Delete from profiles
                 const { error: profileError } = await supabase
                     .from('profiles')
                     .delete()
@@ -1207,7 +1069,6 @@
 
                 if (profileError) throw profileError;
 
-                // Delete from auth (admin only)
                 try {
                     await supabase.auth.admin.deleteUser(userId);
                 } catch (authError) {
@@ -1215,24 +1076,23 @@
                 }
 
                 showToast('✅ User deleted successfully', 'success');
-                loadData();
+                loadUsers();
             } catch (e) {
                 showToast('Error deleting user: ' + e.message, 'error');
             }
         }
 
-        // ─── INIT ──────────────────────────────────────────────────────
+        // ─── INIT ─────────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(loadData, 500);
+            setTimeout(loadUsers, 500);
         });
 
-        // Expose functions globally
-        window.loadData = loadData;
-        window.filterData = filterData;
+        window.loadUsers = loadUsers;
+        window.filterUsers = filterUsers;
         window.openAddUserModal = openAddUserModal;
         window.openEditUserModal = openEditUserModal;
         window.openSecurityModal = openSecurityModal;
-        window.toggleSecurity = toggleSecurity;
+        window.toggleUserSecurity = toggleUserSecurity;
         window.viewUser = viewUser;
         window.deleteUser = deleteUser;
     </script>
