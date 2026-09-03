@@ -1,0 +1,93 @@
+import { useCallback, useState } from 'react';
+import { Alert } from 'react-native';
+
+export interface SocialUser {
+  id: string;
+  fullName: string;
+  email: string;
+  avatar?: string;
+  provider: 'google' | 'apple' | 'facebook';
+}
+
+export interface SocialAuthState {
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  socialUser: SocialUser | null;
+  error: string | null;
+}
+
+export const useSocialAuth = () => {
+  const [state, setState] = useState<SocialAuthState>({
+    isLoading: false,
+    isAuthenticated: false,
+    socialUser: null,
+    error: null,
+  });
+
+  const signInWithGoogle = useCallback(async (): Promise<SocialUser | null> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      // This hook is currently a thin wrapper / mock.
+      // Real Google flow lives in LoginScreen / SignUpScreen via AuthSession.
+      const mockUser: SocialUser = {
+        id: `google_${Date.now()}`,
+        fullName: 'Google User',
+        email: 'user@gmail.com',
+        avatar: 'https://via.placeholder.com/100',
+        provider: 'google',
+      };
+      setState({ isLoading: false, isAuthenticated: true, socialUser: mockUser, error: null });
+      return mockUser;
+    } catch (error: any) {
+      const message = error?.message || 'Google sign-in failed';
+      setState(prev => ({ ...prev, isLoading: false, error: message }));
+      Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
+      return null;
+    }
+  }, []);
+
+  const signInWithApple = useCallback(async (): Promise<SocialUser | null> => {
+    // Apple is intentionally disabled for now
+    Alert.alert('Coming Soon', 'Apple Sign-In will be available shortly.');
+    return null;
+  }, []);
+
+  const signInWithFacebook = useCallback(async (): Promise<SocialUser | null> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const mockUser: SocialUser = {
+        id: `facebook_${Date.now()}`,
+        fullName: 'Facebook User',
+        email: 'user@facebook.com',
+        avatar: 'https://via.placeholder.com/100',
+        provider: 'facebook',
+      };
+      setState({ isLoading: false, isAuthenticated: true, socialUser: mockUser, error: null });
+      return mockUser;
+    } catch (error: any) {
+      const message = error?.message || 'Facebook sign-in failed';
+      setState(prev => ({ ...prev, isLoading: false, error: message }));
+      Alert.alert('Sign In Error', 'Sign in failed. Please try again.');
+      return null;
+    }
+  }, []);
+
+  const signOut = useCallback(() => {
+    setState({
+      isLoading: false,
+      isAuthenticated: false,
+      socialUser: null,
+      error: null,
+    });
+  }, []);
+
+  return {
+    ...state,
+    signInWithGoogle,
+    signInWithApple,
+    signInWithFacebook,
+    signOut,
+  };
+};
+
+export default useSocialAuth;

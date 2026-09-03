@@ -1,0 +1,224 @@
+// src/utils/supabase.ts
+import 'react-native-url-polyfill/auto';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
+import { supabaseStorage } from './supabaseStorage';
+
+// ─── Environment Variables ──────────────────────────────────────────
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+// ─── Validation ─────────────────────────────────────────────────────
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ Supabase credentials are missing!');
+  console.error('   EXPO_PUBLIC_SUPABASE_URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
+  console.error('   EXPO_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? '✅ Set' : '❌ Missing');
+  
+  if (!__DEV__) {
+    throw new Error('Supabase credentials are required in production');
+  }
+}
+
+// ─── Supabase Client ──────────────────────────────────────────────
+export const supabase: SupabaseClient = createClient(
+  supabaseUrl || 'https://placeholder-project.supabase.co',
+  supabaseAnonKey || 'placeholder-anon-key',
+  {
+    auth: {
+      storage: supabaseStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+      flowType: 'pkce',
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+  }
+);
+
+// ─── Custom Hooks & Helpers ──────────────────────────────────────
+
+/**
+ * Check if Supabase connection is healthy
+ */
+export async function checkSupabaseConnection(): Promise<{
+  connected: boolean;
+  message: string;
+  error?: string;
+}> {
+  try {
+    const { error } = await supabase
+      .from('babies')
+      .select('id')
+      .limit(1);
+    
+    if (error) {
+      return {
+        connected: false,
+        message: 'Connection failed',
+        error: error.message,
+      };
+    }
+    
+    return {
+      connected: true,
+      message: 'Connected to Supabase',
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      message: 'Connection error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Get the current session with error handling
+ */
+export async function getCurrentSession(): Promise<Session | null> {
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.warn('[Supabase] Failed to get session:', error.message);
+      return null;
+    }
+    return data.session;
+  } catch (error) {
+    console.warn('[Supabase] Session error:', error);
+    return null;
+  }
+}
+
+/**
+ * Get the current user with error handling
+ */
+export async function getCurrentUser() {
+  try {
+    const session = await getCurrentSession();
+    return session?.user || null;
+  } catch (error) {
+    console.warn('[Supabase] Failed to get user:', error);
+    return null;
+  }
+}
+
+/**
+ * Refresh session with retry logic
+ */
+export async function refreshSessionWithRetry(
+  maxRetries: number = 3,
+  delayMs: number = 1000
+): Promise<{ session: Session | null; success: boolean }> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (!error && data.session) {
+        return { session: data.session, success: true };
+      }
+      if (error?.status !== 400) {
+        // Only retry on certain errors
+        await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)));
+      }
+    } catch (error) {
+      console.warn(`[Supabase] Refresh attempt ${attempt + 1} failed:`, error);
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)));
+      }
+    }
+  }
+  return { session: null, success: false };
+}
+
+/**
+ * Listen for auth state changes with automatic cleanup
+ */
+export function onAuthStateChange(
+  callback: (event: string, session: Session | null) => void
+) {
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    callback(event, session);
+  });
+  
+  return data.subscription;
+}
+
+/**
+ * Sign out with error handling
+ */
+export async function signOutWithCleanup(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Get user profile with error handling
+ */
+export async function getUserProfile(userId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('community_profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (error) {
+      console.warn('[Supabase] Failed to get user profile:', error.message);
+      return null;
+    }
+    return data;
+  } catch (error) {
+    console.warn('[Supabase] User profile error:', error);
+    return null;
+  }
+}
+
+/**
+ * Upsert user profile
+ */
+export async function upsertUserProfile(profile: {
+  user_id: string;
+  display_name: string;
+  username?: string;
+  handle?: string;
+  bio?: string;
+  avatar?: string;
+}) {
+  try {
+    const { data, error } = await supabase
+      .from('community_profiles')
+      .upsert(profile, { onConflict: 'user_id' })
+      .select()
+      .single();
+    
+    if (error) {
+      console.warn('[Supabase] Failed to upsert user profile:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true, data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+// ─── Type Exports ──────────────────────────────────────────────────
+export type { SupabaseClient } from '@supabase/supabase-js';
+
+// ─── Default Export ──────────────────────────────────────────────
+export default supabase;

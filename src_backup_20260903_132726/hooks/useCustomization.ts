@@ -1,0 +1,613 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useColorScheme } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+
+export interface ThemeColors {
+  primary: string;
+  secondary: string;
+  accent: string;
+  colors: string[];
+  spinnerColor: string;
+  darkText: string;
+  lightText: string;
+}
+
+export interface FullThemeColors extends ThemeColors {
+  background: string;
+  surface: string;
+  surfaceElevated: string;
+  surfaceGlass: string;
+  card: string;
+  text: string;
+  textSecondary: string;
+  textMuted: string;
+  border: string;
+  borderLight: string;
+  success: string;
+  warning: string;
+  error: string;
+  info: string;
+  glassBg: string;
+  glassBackground: string;
+  glassBorder: string;
+  navBackground: string;
+  handleBar: string;
+  shadow: string;
+  shadowColor: string;
+  primaryLight: string;
+}
+
+const LIGHT_BASE = {
+  background: '#f4f6fa',
+  surface: '#ffffff',
+  surfaceElevated: '#ffffff',
+  surfaceGlass: 'rgba(255,255,255,0.94)',
+  card: '#ffffff',
+  text: '#111827',
+  textSecondary: '#6b7280',
+  textMuted: '#9ca3af',
+  border: 'rgba(0,0,0,0.04)',
+  borderLight: 'rgba(0,0,0,0.02)',
+  success: '#10b981',
+  warning: '#f59e0b',
+  error: '#ef4444',
+  info: '#3b82f6',
+  glassBg: 'rgba(255,255,255,0.96)',
+  glassBackground: 'rgba(255,255,255,0.95)',
+  glassBorder: 'rgba(255,255,255,0.5)',
+  navBackground: '#ffffff',
+  handleBar: 'rgba(0,0,0,0.15)',
+  shadow: '#000',
+  shadowColor: '#667eea',
+  primaryLight: '#a3bffa',
+};
+
+const DARK_BASE = {
+  background: '#08080f',
+  surface: '#12121e',
+  surfaceElevated: '#1a1a2a',
+  surfaceGlass: 'rgba(26,26,42,0.88)',
+  card: '#16162a',
+  text: '#f0f0f7',
+  textSecondary: '#9ca3af',
+  textMuted: '#6b7280',
+  border: 'rgba(255,255,255,0.05)',
+  borderLight: 'rgba(255,255,255,0.03)',
+  success: '#10b981',
+  warning: '#f59e0b',
+  error: '#ef4444',
+  info: '#3b82f6',
+  glassBg: 'rgba(26,26,42,0.96)',
+  glassBackground: 'rgba(26,26,46,0.95)',
+  glassBorder: 'rgba(255,255,255,0.1)',
+  navBackground: '#1a1a2e',
+  handleBar: 'rgba(255,255,255,0.25)',
+  shadow: '#000',
+  shadowColor: '#000000',
+  primaryLight: '#818cf8',
+};
+
+const TRUE_BLACK_BASE = {
+  background: '#000000',
+  surface: '#0a0a0a',
+  surfaceElevated: '#0d0d0d',
+  surfaceGlass: 'rgba(10,10,10,0.88)',
+  card: '#0d0d0d',
+  text: '#ffffff',
+  textSecondary: '#a0a0b0',
+  textMuted: '#6b7280',
+  border: 'rgba(255,255,255,0.06)',
+  borderLight: 'rgba(255,255,255,0.03)',
+  success: '#4ade80',
+  warning: '#fbbf24',
+  error: '#f87171',
+  info: '#60a5fa',
+  glassBg: 'rgba(10,10,10,0.96)',
+  glassBackground: 'rgba(10,10,10,0.95)',
+  glassBorder: 'rgba(255,255,255,0.08)',
+  navBackground: '#0a0a0a',
+  handleBar: 'rgba(255,255,255,0.25)',
+  shadow: '#000',
+  shadowColor: '#000000',
+  primaryLight: '#a3bffa',
+};
+
+const PURE_WHITE_BASE = {
+  background: '#ffffff',
+  surface: '#fafafa',
+  surfaceElevated: '#ffffff',
+  surfaceGlass: 'rgba(255,255,255,0.98)',
+  card: '#ffffff',
+  text: '#000000',
+  textSecondary: '#525252',
+  textMuted: '#737373',
+  border: '#e5e5e5',
+  borderLight: 'rgba(0,0,0,0.02)',
+  success: '#16a34a',
+  warning: '#d97706',
+  error: '#dc2626',
+  info: '#2563eb',
+  glassBg: 'rgba(255,255,255,0.98)',
+  glassBackground: 'rgba(255,255,255,0.98)',
+  glassBorder: 'rgba(0,0,0,0.06)',
+  navBackground: '#ffffff',
+  handleBar: 'rgba(0,0,0,0.15)',
+  shadow: '#000',
+  shadowColor: '#000000',
+  primaryLight: '#818cf8',
+};
+
+export const THEME_MAP: Record<string, ThemeColors> = {
+  purple: {
+    primary: '#667eea',
+    secondary: '#764ba2',
+    accent: '#fa709a',
+    colors: ['#e0e7ff', '#d1d5ff', '#c7b8ff'],
+    spinnerColor: '#667eea',
+    darkText: '#4338ca',
+    lightText: '#ffffff',
+  },
+  pink: {
+    primary: '#ec4899',
+    secondary: '#f472b6',
+    accent: '#fb7185',
+    colors: ['#fce7f3', '#fbcfe8', '#f9a8d4'],
+    spinnerColor: '#ec4899',
+    darkText: '#be185d',
+    lightText: '#ffffff',
+  },
+  blue: {
+    primary: '#3b82f6',
+    secondary: '#60a5fa',
+    accent: '#0ea5e9',
+    colors: ['#dbeafe', '#bfdbfe', '#93c5fd'],
+    spinnerColor: '#3b82f6',
+    darkText: '#1d4ed8',
+    lightText: '#ffffff',
+  },
+  green: {
+    primary: '#10b981',
+    secondary: '#34d399',
+    accent: '#059669',
+    colors: ['#d1fae5', '#a7f3d0', '#6ee7b7'],
+    spinnerColor: '#10b981',
+    darkText: '#047857',
+    lightText: '#ffffff',
+  },
+  yellow: {
+    primary: '#f59e0b',
+    secondary: '#fbbf24',
+    accent: '#d97706',
+    colors: ['#fef3c7', '#fde68a', '#fcd34d'],
+    spinnerColor: '#f59e0b',
+    darkText: '#92400e',
+    lightText: '#ffffff',
+  },
+  coral: {
+    primary: '#f97316',
+    secondary: '#fb923c',
+    accent: '#ea580c',
+    colors: ['#ffedd5', '#fed7aa', '#fdba74'],
+    spinnerColor: '#f97316',
+    darkText: '#9a3412',
+    lightText: '#ffffff',
+  },
+  midnight: {
+    primary: '#6366f1',
+    secondary: '#818cf8',
+    accent: '#4f46e5',
+    colors: ['#e0e7ff', '#c7d2fe', '#a5b4fc'],
+    spinnerColor: '#6366f1',
+    darkText: '#3730a3',
+    lightText: '#ffffff',
+  },
+  teal: {
+    primary: '#14b8a6',
+    secondary: '#2dd4bf',
+    accent: '#0d9488',
+    colors: ['#ccfbf1', '#99f6e4', '#5eead4'],
+    spinnerColor: '#14b8a6',
+    darkText: '#0f766e',
+    lightText: '#ffffff',
+  },
+  rose: {
+    primary: '#e11d48',
+    secondary: '#fb7185',
+    accent: '#be123c',
+    colors: ['#ffe4e6', '#fecdd3', '#fda4af'],
+    spinnerColor: '#e11d48',
+    darkText: '#9f1239',
+    lightText: '#ffffff',
+  },
+  indigo: {
+    primary: '#4f46e5',
+    secondary: '#6366f1',
+    accent: '#4338ca',
+    colors: ['#e0e7ff', '#c7d2fe', '#a5b4fc'],
+    spinnerColor: '#4f46e5',
+    darkText: '#3730a3',
+    lightText: '#ffffff',
+  },
+  emerald: {
+    primary: '#059669',
+    secondary: '#10b981',
+    accent: '#047857',
+    colors: ['#d1fae5', '#a7f3d0', '#6ee7b7'],
+    spinnerColor: '#059669',
+    darkText: '#065f46',
+    lightText: '#ffffff',
+  },
+  sunset: {
+    primary: '#f43f5e',
+    secondary: '#fb7185',
+    accent: '#e11d48',
+    colors: ['#ffe4e6', '#fecdd3', '#fda4af'],
+    spinnerColor: '#f43f5e',
+    darkText: '#9f1239',
+    lightText: '#ffffff',
+  },
+};
+
+export type AppearanceMode = 'system' | 'light' | 'dark' | 'trueBlack' | 'pureWhite';
+
+export const APPEARANCE_OPTIONS: { id: AppearanceMode; label: string; emoji: string; desc: string }[] = [
+  { id: 'system', label: 'System', emoji: '🖥️', desc: 'Follow device setting' },
+  { id: 'light', label: 'Light', emoji: '☀️', desc: 'Clean & bright' },
+  { id: 'dark', label: 'Dark', emoji: '🌙', desc: 'Easy on the eyes' },
+  { id: 'trueBlack', label: 'True Black', emoji: '⚫', desc: 'OLED optimized' },
+  { id: 'pureWhite', label: 'Pure White', emoji: '⚪', desc: 'Maximum contrast' },
+];
+
+export const AVATAR_OPTIONS = [
+  '👶', '🍼', '🧸', '🎀', '👑', '🌟', '🦁', '🐰', '🐻', '🦊',
+  '🐼', '🐨', '🦄', '🐣', '🌈', '🍭', '🎈', '🎁', '⭐', '💫',
+  '🌸', '🌺', '🌻', '🍀', '🦋', '🐞', '🐙', '🐬', '🦕', '🦖',
+];
+
+export interface CustomizationSettings {
+  theme: string;
+  avatar: number;
+  appearance: AppearanceMode;
+  fontSize: 'small' | 'normal' | 'large' | 'extraLarge';
+  borderRadius: 'sharp' | 'normal' | 'round' | 'extraRound';
+  animationSpeed: 'slow' | 'normal' | 'fast' | 'instant';
+  accentColor: string | null;
+  useGradients: boolean;
+  useBlur: boolean;
+  showShadows: boolean;
+  compactSpacing: boolean;
+  useSystemFont: boolean;
+  reduceMotion: boolean;
+  highContrast: boolean;
+  boldText: boolean;
+  hapticFeedback: boolean;
+  soundEffects: boolean;
+  notifications: boolean;
+  // ─── NEW: Language & Units ───
+  language: string;
+  units: 'metric' | 'imperial';
+}
+
+export const DEFAULT_SETTINGS: CustomizationSettings = {
+  theme: 'purple',
+  avatar: 0,
+  appearance: 'system',
+  fontSize: 'normal',
+  borderRadius: 'normal',
+  animationSpeed: 'normal',
+  accentColor: null,
+  useGradients: true,
+  useBlur: true,
+  showShadows: true,
+  compactSpacing: false,
+  useSystemFont: true,
+  reduceMotion: false,
+  highContrast: false,
+  boldText: false,
+  hapticFeedback: true,
+  soundEffects: true,
+  notifications: true,
+  // ─── NEW: Language & Units ───
+  language: 'en',
+  units: 'metric',
+};
+
+const STORAGE_KEY = '@littleloom_customization_v3';
+
+// ─── Module-level cache for instant first read ─────────────────
+let _settingsCache: CustomizationSettings | null = null;
+let _cacheInitialized = false;
+
+const getCachedSettings = (): CustomizationSettings | null => {
+  return _settingsCache;
+};
+
+const setCachedSettings = (settings: CustomizationSettings) => {
+  _settingsCache = settings;
+  _cacheInitialized = true;
+};
+
+export const getThemeColorsById = (themeId: string): ThemeColors => {
+  return THEME_MAP[themeId] || THEME_MAP.purple;
+};
+
+export const getFullThemeColors = (
+  themeId: string,
+  appearance: AppearanceMode,
+  systemDark: boolean
+): FullThemeColors => {
+  const theme = getThemeColorsById(themeId);
+
+  let isDark = false;
+  let isTrueBlack = false;
+  let isPureWhite = false;
+
+  if (appearance === 'system') {
+    isDark = systemDark;
+  } else if (appearance === 'dark') {
+    isDark = true;
+  } else if (appearance === 'trueBlack') {
+    isDark = true;
+    isTrueBlack = true;
+  } else if (appearance === 'pureWhite') {
+    isPureWhite = true;
+  }
+
+  let base;
+  if (isTrueBlack) {
+    base = TRUE_BLACK_BASE;
+  } else if (isPureWhite) {
+    base = PURE_WHITE_BASE;
+  } else if (isDark) {
+    base = DARK_BASE;
+  } else {
+    base = LIGHT_BASE;
+  }
+
+  return {
+    ...theme,
+    ...base,
+  };
+};
+
+export const getFontSizeMultiplier = (size: CustomizationSettings['fontSize']): number => {
+  switch (size) {
+    case 'small': return 0.875;
+    case 'normal': return 1;
+    case 'large': return 1.15;
+    case 'extraLarge': return 1.3;
+    default: return 1;
+  }
+};
+
+export const getBorderRadiusValue = (radius: CustomizationSettings['borderRadius']): number => {
+  switch (radius) {
+    case 'sharp': return 4;
+    case 'normal': return 14;
+    case 'round': return 22;
+    case 'extraRound': return 32;
+    default: return 14;
+  }
+};
+
+export const getAnimationDuration = (speed: CustomizationSettings['animationSpeed']): number => {
+  switch (speed) {
+    case 'slow': return 500;
+    case 'normal': return 300;
+    case 'fast': return 150;
+    case 'instant': return 0;
+    default: return 300;
+  }
+};
+
+export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection';
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXPLICIT RETURN TYPE — ensures darkMode and all fields are typed
+// ═══════════════════════════════════════════════════════════════════════
+export interface UseCustomizationReturn {
+  settings: CustomizationSettings;
+  isLoaded: boolean;
+  themeColors: ThemeColors;
+  fullThemeColors: FullThemeColors;
+  avatar: string;
+  isDark: boolean;
+  isTrueBlack: boolean;
+  isPureWhite: boolean;
+  shouldReduceMotion: boolean;
+  fontSizeMultiplier: number;
+  borderRadiusValue: number;
+  animationDuration: number;
+  hapticFeedback: boolean;
+  soundEffects: boolean;
+  reduceMotion: boolean;
+  compactView: boolean;
+  darkMode: boolean;
+  useGradients: boolean;
+  useBlur: boolean;
+  showShadows: boolean;
+  highContrast: boolean;
+  boldText: boolean;
+  notifications: boolean;
+  // ─── NEW: Language & Units ───
+  language: string;
+  units: 'metric' | 'imperial';
+  updateSettings: (newSettings: Partial<CustomizationSettings>) => Promise<void>;
+  reset: () => Promise<void>;
+  triggerHaptic: (type: HapticType) => Promise<void>;
+}
+
+export function useCustomization(): UseCustomizationReturn {
+  const systemColorScheme = useColorScheme();
+
+  // ─── Initialize from cache if available, else defaults ───────
+  const [settings, setSettings] = useState<CustomizationSettings>(() => {
+    return getCachedSettings() ?? DEFAULT_SETTINGS;
+  });
+  const [isLoaded, setIsLoaded] = useState(() => _cacheInitialized);
+
+  useEffect(() => {
+    let mounted = true;
+
+    // If already cached, skip loading
+    if (_cacheInitialized && _settingsCache) {
+      if (mounted) {
+        setSettings(_settingsCache);
+        setIsLoaded(true);
+      }
+      return;
+    }
+
+    const load = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(STORAGE_KEY);
+        if (saved && mounted) {
+          const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+          setSettings(parsed);
+          setCachedSettings(parsed);
+        }
+      } catch (e) {
+        console.warn('Failed to load customization:', e);
+      } finally {
+        if (mounted) setIsLoaded(true);
+      }
+    };
+
+    load();
+    return () => { mounted = false; };
+  }, []);
+
+  const updateSettings = useCallback(async (newSettings: Partial<CustomizationSettings>) => {
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    setCachedSettings(updated);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save customization:', e);
+    }
+  }, [settings]);
+
+  const reset = useCallback(async () => {
+    setSettings(DEFAULT_SETTINGS);
+    setCachedSettings(DEFAULT_SETTINGS);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
+    } catch (e) {
+      console.warn('Failed to reset customization:', e);
+    }
+  }, []);
+
+  const themeColors = useMemo(() => getThemeColorsById(settings.theme), [settings.theme]);
+
+  const fullThemeColors = useMemo(() =>
+    getFullThemeColors(settings.theme, settings.appearance, systemColorScheme === 'dark'),
+    [settings.theme, settings.appearance, systemColorScheme]
+  );
+
+  const avatar = useMemo(() => AVATAR_OPTIONS[settings.avatar] || AVATAR_OPTIONS[0], [settings.avatar]);
+
+  const isDark = useMemo(() => {
+    if (settings.appearance === 'system') {
+      return systemColorScheme === 'dark';
+    }
+    if (settings.appearance === 'pureWhite') {
+      return false;
+    }
+    return settings.appearance === 'dark' || settings.appearance === 'trueBlack';
+  }, [settings.appearance, systemColorScheme]);
+
+  const isTrueBlack = useMemo(() => settings.appearance === 'trueBlack', [settings.appearance]);
+  const isPureWhite = useMemo(() => settings.appearance === 'pureWhite', [settings.appearance]);
+
+  const shouldReduceMotion = useMemo(() => settings.reduceMotion, [settings.reduceMotion]);
+
+  const fontSizeMultiplier = useMemo(() => getFontSizeMultiplier(settings.fontSize), [settings.fontSize]);
+  const borderRadiusValue = useMemo(() => getBorderRadiusValue(settings.borderRadius), [settings.borderRadius]);
+  const animationDuration = useMemo(() => getAnimationDuration(settings.animationSpeed), [settings.animationSpeed]);
+
+  const triggerHaptic = useCallback(async (type: HapticType) => {
+    if (!settings.hapticFeedback) return;
+    try {
+      switch (type) {
+        case 'light':
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          break;
+        case 'medium':
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          break;
+        case 'heavy':
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          break;
+        case 'success':
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          break;
+        case 'warning':
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          break;
+        case 'error':
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          break;
+        case 'selection':
+          await Haptics.selectionAsync();
+          break;
+      }
+    } catch {
+      // Haptics not available
+    }
+  }, [settings.hapticFeedback]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ALWAYS return a complete object — never undefined, never partial
+  // ═══════════════════════════════════════════════════════════════════
+  return useMemo(() => ({
+    settings,
+    isLoaded,
+    themeColors,
+    fullThemeColors,
+    avatar,
+    isDark,
+    isTrueBlack,
+    isPureWhite,
+    shouldReduceMotion,
+    fontSizeMultiplier,
+    borderRadiusValue,
+    animationDuration,
+    hapticFeedback: settings.hapticFeedback,
+    soundEffects: settings.soundEffects,
+    reduceMotion: settings.reduceMotion,
+    compactView: settings.compactSpacing,
+    darkMode: isDark,
+    useGradients: settings.useGradients,
+    useBlur: settings.useBlur,
+    showShadows: settings.showShadows,
+    highContrast: settings.highContrast,
+    boldText: settings.boldText,
+    notifications: settings.notifications,
+    // ─── NEW: Language & Units ───
+    language: settings.language,
+    units: settings.units,
+    updateSettings,
+    reset,
+    triggerHaptic,
+  }), [
+    settings,
+    isLoaded,
+    themeColors,
+    fullThemeColors,
+    avatar,
+    isDark,
+    isTrueBlack,
+    isPureWhite,
+    shouldReduceMotion,
+    fontSizeMultiplier,
+    borderRadiusValue,
+    animationDuration,
+    updateSettings,
+    reset,
+    triggerHaptic,
+  ]);
+}
+
+export default useCustomization;
