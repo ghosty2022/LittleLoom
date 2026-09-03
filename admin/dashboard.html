@@ -47,7 +47,6 @@
             height: 40px;
             border-width: 3px;
         }
-        /* Quick stats on dashboard */
         .quick-stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -90,6 +89,7 @@
             justify-content: center;
             font-size: 18px;
             flex-shrink: 0;
+            background: var(--bg-primary);
         }
         .activity-content { flex: 1; }
         .activity-title { font-weight: 600; font-size: 14px; }
@@ -333,14 +333,12 @@
 
     <script src="/admin/js/admin.js"></script>
     <script>
-        // ─── PAGE LOADER ──────────────────────────────────────────────────
         function loadPage(page) {
             const dashboard = document.getElementById('page-dashboard');
             const container = document.getElementById('page-container');
             const iframe = document.getElementById('pageFrame');
             const loading = document.getElementById('pageLoading');
             
-            // Update sidebar
             document.querySelectorAll('.sidebar-nav-item').forEach(el => {
                 el.classList.remove('active');
                 if (el.getAttribute('data-page') === page) {
@@ -348,7 +346,6 @@
                 }
             });
             
-            // Update title
             const titles = {
                 'dashboard': 'Dashboard <span class="sub">| Enterprise Overview</span>',
                 'babies': 'Babies <span class="sub">| All Baby Profiles</span>',
@@ -387,20 +384,16 @@
             loading.style.display = 'flex';
             iframe.style.display = 'none';
             
-            // Load the page in iframe
             iframe.onload = function() {
                 loading.style.display = 'none';
                 iframe.style.display = 'block';
             };
             
-            // Use the correct path
             iframe.src = '/admin/pages/' + page + '.html';
             
-            // Close sidebar on mobile
             if (window.innerWidth <= 768) toggleSidebar(false);
         }
         
-        // ─── DASHBOARD DATA ─────────────────────────────────────────────
         async function fetchDashboardData() {
             if (!supabase || !session) return;
             
@@ -425,7 +418,6 @@
                 safeSetText('statPosts', postCount);
                 safeSetText('statMilestones', milestoneCount);
                 
-                // Avg streak
                 const { data: babies } = await supabase.from('babies').select('streak').eq('is_active', true);
                 if (babies && babies.length > 0) {
                     const totalStreak = babies.reduce((sum, b) => sum + (b.streak || 0), 0);
@@ -433,14 +425,12 @@
                     document.getElementById('statStreak').innerHTML = avg + '<span style="font-size:16px;font-weight:600;color:var(--text-muted);">d</span>';
                 }
                 
-                // Update badges
                 safeSetText('babyBadge', babyCount);
                 safeSetText('userBadge', userCount);
                 safeSetText('postBadge', postCount);
                 safeSetText('entryBadge', entryCount);
                 safeSetText('milestoneBadge', milestoneCount);
                 
-                // Recent activity
                 const { data: recent } = await supabase
                     .from('tracker_entries')
                     .select('tracker_id, title, logged_by_name, timestamp')
@@ -471,7 +461,6 @@
                     }
                 }
                 
-                // Update status
                 const statusBar = document.getElementById('statusBar');
                 if (statusBar) {
                     statusBar.innerHTML = '<span>✅ All systems operational</span><span style="margin-left:auto;font-size:12px;">Last updated: ' + new Date().toLocaleString() + '</span>';
@@ -487,14 +476,12 @@
             }
         }
         
-        // ─── REFRESH ─────────────────────────────────────────────────────
         async function refreshAll() {
             showToast('🔄 Refreshing all data...', 'info');
             await fetchDashboardData();
             showToast('✅ All data refreshed', 'success');
         }
         
-        // ─── INIT ─────────────────────────────────────────────────────────
         async function init() {
             if (!initSupabase()) {
                 showToast('Failed to initialize Supabase', 'error');
@@ -506,17 +493,13 @@
                 return;
             }
             
-            // Load dashboard data
             await fetchDashboardData();
             
-            // Setup auto-refresh
             if (refreshTimer) clearInterval(refreshTimer);
             refreshTimer = setInterval(fetchDashboardData, 30000);
             
-            // Setup realtime
             setupRealtime();
             
-            // Handle resize
             window.addEventListener('resize', function() {
                 if (window.innerWidth > 768) {
                     document.getElementById('sidebar').classList.remove('open');
@@ -527,7 +510,6 @@
             console.log('🧵 Enterprise Admin Console ready');
         }
         
-        // ─── REALTIME ────────────────────────────────────────────────────
         function setupRealtime() {
             if (!supabase || !session) return;
             if (realtimeChannel) {
@@ -537,19 +519,15 @@
             
             realtimeChannel = supabase.channel('admin-realtime')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, function(p) { 
-                    addEvent(p, 'babies'); 
                     fetchDashboardData(); 
                 })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, function(p) { 
-                    addEvent(p, 'tracker_entries'); 
                     fetchDashboardData(); 
                 })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, function(p) { 
-                    addEvent(p, 'community_posts'); 
                     fetchDashboardData(); 
                 })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, function(p) { 
-                    addEvent(p, 'profiles'); 
                     fetchDashboardData(); 
                 })
                 .subscribe(function(status) {
@@ -562,13 +540,6 @@
                 });
         }
         
-        function addEvent(payload, table) {
-            const feed = document.getElementById('eventFeed');
-            if (!feed) return;
-            // For dashboard, we just refresh data
-        }
-        
-        // Expose functions
         window.loadPage = loadPage;
         window.refreshAll = refreshAll;
         window.fetchDashboardData = fetchDashboardData;
