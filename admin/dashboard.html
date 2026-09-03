@@ -9,32 +9,153 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/admin/css/admin.css" />
     <style>
-        .page-content { padding: 24px 32px; }
-        .page-content.active { display: block; }
-        .page-content { display: none; }
-        .quick-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .quick-stat { background: var(--bg-card); border-radius: var(--radius); padding: 16px 20px; border: 1px solid var(--border); transition: var(--transition); }
-        .quick-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
-        .quick-stat .num { font-size: 28px; font-weight: 800; }
-        .quick-stat .label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-        .quick-stat .change { font-size: 12px; font-weight: 600; margin-top: 4px; }
-        .quick-stat .change.up { color: #22c55e; }
-        .quick-stat .change.down { color: #ef4444; }
-        .quick-stat .change.neutral { color: var(--text-muted); }
-        .activity-feed { max-height: 400px; overflow-y: auto; }
-        .activity-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-        .activity-item:last-child { border-bottom: none; }
-        .activity-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; background: var(--bg-primary); }
-        .activity-content { flex: 1; }
-        .activity-title { font-weight: 600; font-size: 14px; }
-        .activity-meta { font-size: 12px; color: var(--text-muted); }
-        .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-        .chart-bars { display: flex; align-items: flex-end; gap: 12px; height: 140px; padding: 0 4px; }
-        .chart-bars .bar { flex: 1; border-radius: 6px 6px 0 0; background: linear-gradient(180deg, var(--primary), var(--primary-light)); transition: height 1s ease; min-height: 8px; }
-        .chart-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
-        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        /* Dashboard specific styles */
+        .welcome-banner {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .welcome-banner::after {
+            content: '✨';
+            position: absolute;
+            right: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 48px;
+            opacity: 0.3;
+        }
+        .welcome-banner h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .welcome-banner p {
+            opacity: 0.85;
+            font-size: 14px;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .quick-actions .btn {
+            padding: 10px 20px;
+            font-size: 13px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+        .stat-grid .stat-card {
+            text-align: center;
+            padding: 16px;
+        }
+        .stat-grid .stat-card .num {
+            font-size: 28px;
+            font-weight: 800;
+        }
+        .stat-grid .stat-card .label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .activity-feed {
+            max-height: 380px;
+            overflow-y: auto;
+        }
+        .activity-feed .activity-item {
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .activity-feed .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .chart-container {
+            height: 160px;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            position: relative;
+        }
+        .chart-container .chart-bars {
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        .chart-container .chart-bars .bar {
+            flex: 1;
+            border-radius: 4px 4px 0 0;
+            background: linear-gradient(180deg, #6366f1, #8b5cf6);
+            transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 4px;
+            opacity: 0.8;
+        }
+        .chart-container .chart-bars .bar:hover {
+            opacity: 1;
+            transform: scaleY(1.03);
+            transform-origin: bottom;
+        }
+        .chart-container .chart-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 6px;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .status-indicator.online {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .status-indicator.offline {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .status-indicator .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-indicator.online .dot {
+            background: #22c55e;
+        }
+        .status-indicator.offline .dot {
+            background: #ef4444;
+        }
     </style>
 </head>
 <body>
@@ -48,61 +169,59 @@
                     <div class="logo-sub">Enterprise Console</div>
                 </div>
             </div>
-            <nav class="sidebar-nav" id="sidebarNav">
+            <nav class="sidebar-nav">
                 <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item active" data-page="dashboard" href="/admin/dashboard.html">
+                <a class="sidebar-nav-item active" href="/admin/dashboard.html">
                     <span class="icon">📊</span> Dashboard
                     <span class="badge success">Live</span>
                 </a>
+
                 <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" data-page="babies" href="#" onclick="navigateTo('babies')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
                     <span class="icon">👶</span> Babies
                     <span class="badge" id="babyBadge">0</span>
                 </a>
-                <a class="sidebar-nav-item" data-page="users" href="#" onclick="navigateTo('users')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
                     <span class="icon">👤</span> Users
                     <span class="badge" id="userBadge">0</span>
                 </a>
-                <a class="sidebar-nav-item" data-page="moderation" href="#" onclick="navigateTo('moderation')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
                     <span class="icon">🛡️</span> Moderation
                     <span class="badge danger" id="modBadge">0</span>
                 </a>
+
                 <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" data-page="community" href="#" onclick="navigateTo('community')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
                     <span class="icon">💬</span> Community
                     <span class="badge" id="postBadge">0</span>
                 </a>
-                <a class="sidebar-nav-item" data-page="topics" href="#" onclick="navigateTo('topics')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
                     <span class="icon">📌</span> Topics
                 </a>
+
                 <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" data-page="trackers" href="#" onclick="navigateTo('trackers')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
                     <span class="icon">📈</span> Tracker Entries
                     <span class="badge" id="entryBadge">0</span>
                 </a>
-                <a class="sidebar-nav-item" data-page="milestones" href="#" onclick="navigateTo('milestones')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
                     <span class="icon">🏆</span> Milestones
                     <span class="badge" id="milestoneBadge">0</span>
                 </a>
+
                 <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" data-page="analytics" href="#" onclick="navigateTo('analytics')">
-                    <span class="icon">📈</span> Analytics
-                </a>
-                <a class="sidebar-nav-item" data-page="growth" href="#" onclick="navigateTo('growth')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')">
                     <span class="icon">📊</span> Growth Analytics
                 </a>
-                <a class="sidebar-nav-item" data-page="activity" href="#" onclick="navigateTo('activity')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')">
                     <span class="icon">📈</span> Activity Heatmap
                 </a>
+
                 <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" data-page="realtime" href="#" onclick="navigateTo('realtime')">
-                    <span class="icon">🔄</span> Realtime
-                    <span class="badge success">Live</span>
-                </a>
-                <a class="sidebar-nav-item" data-page="settings" href="#" onclick="navigateTo('settings')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
                     <span class="icon">⚙️</span> Settings
                 </a>
-                <a class="sidebar-nav-item" data-page="backup" href="#" onclick="navigateTo('backup')">
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
                     <span class="icon">💾</span> Backup & Restore
                 </a>
             </nav>
@@ -119,16 +238,16 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <!-- ─── MODAL ────────────────────────────────────────────────── -->
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
-            <div class="modal" id="modalContent">
+        <!-- ─── CUSTOM MODAL ───────────────────────────────────────── -->
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
                 <div class="modal-header">
                     <h2 id="modalTitle">Modal</h2>
-                    <button class="modal-close" onclick="closeModal()">✕</button>
+                    <button class="modal-close" onclick="modalCancel()">✕</button>
                 </div>
                 <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer" id="modalFooter">
-                    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
                     <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
                 </div>
             </div>
@@ -149,55 +268,103 @@
                         <span id="connectionStatus">Connected</span>
                     </div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline" onclick="refreshAll()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="refreshAll()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
-            <div class="page-content active" id="page-dashboard">
+            <div class="page-content active">
+                <!-- Welcome Banner -->
+                <div class="welcome-banner">
+                    <h2 id="welcomeMessage">👋 Welcome back, Admin!</h2>
+                    <p>Here's what's happening with your LittleLoom community today.</p>
+                    <p style="font-size:12px;opacity:0.7;margin-top:8px;">
+                        ⏰ Session expires after 30 minutes of inactivity
+                    </p>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <button class="btn btn-primary" onclick="navigateTo('babies')">👶 View Babies</button>
+                    <button class="btn btn-success" onclick="navigateTo('trackers')">📊 View Trackers</button>
+                    <button class="btn btn-outline" onclick="navigateTo('community')">💬 Community</button>
+                    <button class="btn btn-outline" onclick="navigateTo('growth')">📈 Growth Analytics</button>
+                </div>
+
                 <div class="status-bar" id="statusBar">
                     <span>✅ All systems operational</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span class="status-indicator online" id="onlineIndicator">
+                        <span class="dot"></span> Online
+                    </span>
+                    <span style="margin-left:auto;font-size:12px;color:var(--text-muted);" id="lastUpdated">Last updated: —</span>
                 </div>
 
-                <div class="quick-stats" id="dashboardStats">
-                    <div class="quick-stat"><div class="num" id="statBabies">—</div><div class="label">👶 Total Babies</div><div class="change up">↑ 12%</div></div>
-                    <div class="quick-stat"><div class="num" id="statUsers">—</div><div class="label">👤 Active Users</div><div class="change up">↑ 8%</div></div>
-                    <div class="quick-stat"><div class="num" id="statEntries">—</div><div class="label">📊 Tracker Entries</div><div class="change up">↑ 23%</div></div>
-                    <div class="quick-stat"><div class="num" id="statPosts">—</div><div class="label">💬 Community Posts</div><div class="change up">↑ 15%</div></div>
-                    <div class="quick-stat"><div class="num" id="statMilestones">—</div><div class="label">🏆 Milestones</div><div class="change up">↑ 7%</div></div>
-                    <div class="quick-stat"><div class="num" id="statStreak">—<span style="font-size:16px;font-weight:600;color:var(--text-muted);">d</span></div><div class="label">💪 Avg Streak</div><div class="change neutral">→ 0%</div></div>
+                <!-- Stats -->
+                <div class="stat-grid" id="dashboardStats">
+                    <div class="stat-card">
+                        <div class="num" id="statBabies">—</div>
+                        <div class="label">👶 Total Babies</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="num" id="statUsers">—</div>
+                        <div class="label">👤 Active Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="num" id="statEntries">—</div>
+                        <div class="label">📊 Tracker Entries</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="num" id="statPosts">—</div>
+                        <div class="label">💬 Community Posts</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="num" id="statMilestones">—</div>
+                        <div class="label">🏆 Milestones</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="num" id="statStreak">—<span style="font-size:14px;font-weight:600;color:var(--text-muted);">d</span></div>
+                        <div class="label">💪 Avg Streak</div>
+                    </div>
                 </div>
 
-                <div class="grid-2">
+                <!-- Dashboard Grid -->
+                <div class="dashboard-grid">
+                    <!-- Recent Activity -->
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><span class="emoji">🕒</span> Recent Activity</div>
-                            <span id="activityCount">0</span>
+                            <span style="font-size:12px;color:var(--text-muted);" id="activityCount">0</span>
                         </div>
                         <div class="card-body">
                             <div class="activity-feed" id="activityFeed">
-                                <div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>
+                                <div class="empty-state">
+                                    <div class="emoji">📭</div>
+                                    <h3>No recent activity</h3>
+                                </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Weekly Activity Chart -->
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><span class="emoji">📊</span> Weekly Activity</div>
                         </div>
                         <div class="card-body">
-                            <div class="chart-bars" id="weeklyBars">
-                                <div class="bar" style="height:20%;"></div>
-                                <div class="bar" style="height:45%;"></div>
-                                <div class="bar" style="height:70%;"></div>
-                                <div class="bar" style="height:55%;"></div>
-                                <div class="bar" style="height:85%;"></div>
-                                <div class="bar" style="height:65%;"></div>
-                                <div class="bar" style="height:90%;"></div>
-                            </div>
-                            <div class="chart-labels">
-                                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                            <div class="chart-container">
+                                <div class="chart-bars" id="weeklyBars">
+                                    <div class="bar" style="height:20%;"></div>
+                                    <div class="bar" style="height:45%;"></div>
+                                    <div class="bar" style="height:70%;"></div>
+                                    <div class="bar" style="height:55%;"></div>
+                                    <div class="bar" style="height:85%;"></div>
+                                    <div class="bar" style="height:65%;"></div>
+                                    <div class="bar" style="height:90%;"></div>
+                                </div>
+                                <div class="chart-labels">
+                                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -210,18 +377,35 @@
 
     <script src="/admin/js/admin.js"></script>
     <script>
+        // ─── DASHBOARD DATA ──────────────────────────────────────────
         async function fetchDashboardData() {
-            if (!supabase || !session) return;
-            
+            if (!supabase || !session) {
+                console.log('No session, redirecting to login...');
+                window.location.href = '/login.html';
+                return;
+            }
+
+            // Update online status
+            const indicator = document.getElementById('onlineIndicator');
+            if (indicator) {
+                if (navigator.onLine) {
+                    indicator.className = 'status-indicator online';
+                    indicator.innerHTML = '<span class="dot"></span> Online';
+                } else {
+                    indicator.className = 'status-indicator offline';
+                    indicator.innerHTML = '<span class="dot"></span> Offline';
+                }
+            }
+
             try {
-                // Get counts from all tables
                 const [
-                    babiesResult, 
-                    profilesResult, 
-                    entriesResult, 
-                    postsResult, 
+                    babiesResult,
+                    profilesResult,
+                    entriesResult,
+                    postsResult,
                     milestonesResult,
-                    recentResult
+                    recentResult,
+                    weeklyResult
                 ] = await Promise.all([
                     supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
                     supabase.from('profiles').select('*', { count: 'exact', head: true }),
@@ -229,99 +413,148 @@
                     supabase.from('community_posts').select('*', { count: 'exact', head: true }).eq('is_deleted', false),
                     supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone').eq('is_deleted', false),
                     supabase.from('tracker_entries')
-                        .select('tracker_id, title, logged_by_name, timestamp, created_at')
-                        .eq('is_deleted', false)
-                        .order('timestamp', { ascending: false })
-                        .limit(10)
+                    .select('tracker_id, title, logged_by_name, timestamp, created_at')
+                    .eq('is_deleted', false)
+                    .order('timestamp', { ascending: false })
+                    .limit(8),
+                    supabase.from('tracker_entries')
+                    .select('timestamp')
+                    .eq('is_deleted', false)
+                    .gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
                 ]);
-                
+
                 const babyCount = babiesResult.count || 0;
                 const userCount = profilesResult.count || 0;
                 const entryCount = entriesResult.count || 0;
                 const postCount = postsResult.count || 0;
                 const milestoneCount = milestonesResult.count || 0;
-                
+
                 safeSetText('statBabies', babyCount);
                 safeSetText('statUsers', userCount);
                 safeSetText('statEntries', entryCount);
                 safeSetText('statPosts', postCount);
                 safeSetText('statMilestones', milestoneCount);
-                
-                // Get average streak
+
+                // Average streak
                 const { data: babies } = await supabase.from('babies').select('streak').eq('is_active', true);
                 if (babies && babies.length > 0) {
                     const totalStreak = babies.reduce((sum, b) => sum + (b.streak || 0), 0);
                     const avg = Math.round(totalStreak / babies.length);
-                    document.getElementById('statStreak').innerHTML = avg + '<span style="font-size:16px;font-weight:600;color:var(--text-muted);">d</span>';
+                    document.getElementById('statStreak').innerHTML = avg + '<span style="font-size:14px;font-weight:600;color:var(--text-muted);">d</span>';
                 }
-                
+
                 // Update badges
                 safeSetText('babyBadge', babyCount);
                 safeSetText('userBadge', userCount);
                 safeSetText('postBadge', postCount);
                 safeSetText('entryBadge', entryCount);
                 safeSetText('milestoneBadge', milestoneCount);
-                
+
+                // Update welcome message with time-based greeting
+                const hour = new Date().getHours();
+                let greeting = 'Good morning';
+                if (hour >= 12 && hour < 17) greeting = 'Good afternoon';
+                else if (hour >= 17) greeting = 'Good evening';
+                const userName = session?.user?.user_metadata?.full_name ||
+                    session?.user?.email?.split('@')[0] || 'Admin';
+                document.getElementById('welcomeMessage').textContent = `👋 ${greeting}, ${userName}!`;
+
                 // Update activity feed
                 const feed = document.getElementById('activityFeed');
+                const recent = recentResult.data || [];
                 if (feed) {
-                    const recent = recentResult.data || [];
                     if (recent.length === 0) {
                         feed.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><h3>No recent activity</h3></div>';
                         safeSetText('activityCount', '0');
                     } else {
                         safeSetText('activityCount', recent.length);
-                        const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊', milestone: '🏆' };
+                        const iconMap = { feed: '🍼', sleep: '😴', diaper: '🧷', potty: '🚽', growth: '📏', medication: '💊',
+                            milestone: '🏆' };
                         let html = '';
                         recent.forEach(function(a) {
-                            html += '<div class="activity-item">' +
-                                '<div class="activity-icon" style="background:var(--bg-primary);">' + (iconMap[a.tracker_id] || '📌') + '</div>' +
-                                '<div class="activity-content">' +
-                                '<div class="activity-title">' + (a.title || a.tracker_id || 'Activity') + '</div>' +
-                                '<div class="activity-meta">by ' + (a.logged_by_name || 'Someone') + '</div>' +
-                                '</div>' +
-                                '<div class="activity-time">' + (a.timestamp ? new Date(a.timestamp).toLocaleString() : '') + '</div>' +
-                                '</div>';
+                            html += `
+                                <div class="activity-item">
+                                    <div class="activity-icon">${iconMap[a.tracker_id] || '📌'}</div>
+                                    <div class="activity-content">
+                                        <div class="activity-title">${a.title || a.tracker_id || 'Activity'}</div>
+                                        <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
+                                    </div>
+                                    <div class="activity-time">${formatDate(a.timestamp)}</div>
+                                </div>
+                            `;
                         });
                         feed.innerHTML = html;
                     }
                 }
-                
+
+                // Update weekly chart
+                const weeklyData = weeklyResult.data || [];
+                const dayCounts = [0, 0, 0, 0, 0, 0, 0];
+                weeklyData.forEach(e => {
+                    if (e.timestamp) {
+                        const day = new Date(e.timestamp).getDay();
+                        dayCounts[day] = (dayCounts[day] || 0) + 1;
+                    }
+                });
+                const maxVal = Math.max(...dayCounts, 1);
+                const bars = document.querySelectorAll('#weeklyBars .bar');
+                bars.forEach((bar, i) => {
+                    const height = Math.max(4, (dayCounts[i] / maxVal) * 100);
+                    bar.style.height = height + '%';
+                    bar.title = `${dayCounts[i]} activities`;
+                });
+
                 // Update status
                 const statusBar = document.getElementById('statusBar');
                 if (statusBar) {
-                    statusBar.innerHTML = '<span>✅ All systems operational</span><span style="margin-left:auto;font-size:12px;">Last updated: ' + new Date().toLocaleString() + '</span>';
+                    statusBar.innerHTML = `
+                        <span>✅ All systems operational</span>
+                        <span class="status-indicator ${navigator.onLine ? 'online' : 'offline'}">
+                            <span class="dot"></span> ${navigator.onLine ? 'Online' : 'Offline'}
+                        </span>
+                        <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">
+                            Last updated: ${new Date().toLocaleString()}
+                        </span>
+                    `;
                 }
                 safeSetText('lastUpdated', new Date().toLocaleString());
-                
+
             } catch (err) {
                 console.error('Fetch error:', err);
                 const statusBar = document.getElementById('statusBar');
                 if (statusBar) {
-                    statusBar.innerHTML = '<span>❌ Error loading data</span>';
+                    statusBar.innerHTML = `
+                        <span>❌ Error loading data</span>
+                        <button class="btn btn-outline btn-sm" onclick="refreshAll()" style="margin-left:auto;">
+                            🔄 Retry
+                        </button>
+                    `;
                 }
+                showToast('Error loading dashboard data', 'error');
             }
         }
 
+        // ─── REFRESH ──────────────────────────────────────────────────
         async function refreshAll() {
-            showToast('🔄 Refreshing all data...', 'info');
+            showToast('🔄 Refreshing...', 'info');
             await fetchDashboardData();
             showToast('✅ All data refreshed', 'success');
         }
 
+        // ─── REALTIME ──────────────────────────────────────────────────
         function setupRealtime() {
             if (!supabase || !session) return;
             if (realtimeChannel) {
                 realtimeChannel.unsubscribe();
                 realtimeChannel = null;
             }
-            
+
             realtimeChannel = supabase.channel('admin-realtime')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, function(p) { fetchDashboardData(); })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, function(p) { fetchDashboardData(); })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, function(p) { fetchDashboardData(); })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, function(p) { fetchDashboardData(); })
-                .subscribe(function(status) {
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, () => fetchDashboardData())
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, () => fetchDashboardData())
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, () => fetchDashboardData())
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchDashboardData())
+                .subscribe((status) => {
                     if (status === 'SUBSCRIBED') {
                         console.log('✅ Realtime connected');
                     } else if (status === 'CHANNEL_ERROR') {
@@ -331,32 +564,47 @@
                 });
         }
 
+        // ─── INIT ──────────────────────────────────────────────────────
         async function init() {
             if (!initSupabase()) {
                 showToast('Failed to initialize Supabase', 'error');
                 return;
             }
+
             const authed = await checkAuth();
             if (!authed) {
-                showToast('Please log in to continue', 'warning');
+                window.location.href = '/login.html';
                 return;
             }
-            
+
             await fetchDashboardData();
-            
+
             if (refreshTimer) clearInterval(refreshTimer);
             refreshTimer = setInterval(fetchDashboardData, 30000);
-            
+
             setupRealtime();
-            
-            window.addEventListener('resize', function() {
-                if (window.innerWidth > 768) {
+
+            // Handle resize for sidebar
+            window.addEventListener('resize', () => {
+                if (window.innerWidth > 1024) {
                     document.getElementById('sidebar').classList.remove('open');
                     document.getElementById('sidebarOverlay').classList.remove('active');
                 }
             });
-            
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'r') {
+                    e.preventDefault();
+                    refreshAll();
+                }
+                if (e.key === 'Escape') {
+                    modalCancel();
+                }
+            });
+
             console.log('🧵 Enterprise Admin Console ready');
+            console.log(`👤 Logged in as: ${session?.user?.email}`);
         }
 
         // Expose functions globally

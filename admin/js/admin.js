@@ -6,21 +6,23 @@ let supabase = null;
 let session = null;
 let refreshTimer = null;
 let realtimeChannel = null;
+let isOnline = navigator.onLine;
+let sessionTimeout = null;
+const SESSION_TIMEOUT_MINUTES = 30; // Auto-logout after 30 minutes
 
 // ─── INIT ─────────────────────────────────────────────────────────
 function initSupabase() {
     try {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         return true;
-    } catch (e) { 
-        console.error('Supabase init error:', e); 
-        return false; 
+    } catch (e) {
+        console.error('Supabase init error:', e);
+        return false;
     }
 }
 
 // ─── TOAST ────────────────────────────────────────────────────────
-function showToast(message, type) {
-    type = type || 'info';
+function showToast(message, type = 'info', duration = 4000) {
     let container = document.getElementById('toastContainer');
     if (!container) {
         container = document.createElement('div');
@@ -28,13 +30,27 @@ function showToast(message, type) {
         container.id = 'toastContainer';
         document.body.appendChild(container);
     }
+
     const toast = document.createElement('div');
-    toast.className = 'toast ' + type;
-    toast.textContent = message;
+    toast.className = `toast ${type}`;
+
+    const icons = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️',
+        info: 'ℹ️'
+    };
+
+    toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span> ${message}`;
     container.appendChild(toast);
-    setTimeout(function() { 
-        if (toast.parentNode) toast.remove(); 
-    }, 4000);
+
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, duration);
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────
@@ -43,47 +59,146 @@ async function checkAuth() {
         const { data, error } = await supabase.auth.getSession();
         if (error || !data.session) {
             const statusBar = document.getElementById('statusBar');
-            if (statusBar) statusBar.innerHTML = '<span>🔒 Please log in</span>';
+            if (statusBar) {
+                statusBar.innerHTML = `
+                    <span>🔒</span>
+                    <span>Please log in to continue</span>
+                    <button class="btn btn-primary btn-sm" onclick="window.location.href='/login.html'" style="margin-left:auto;">
+                        Login
+                    </button>
+                `;
+            }
             return false;
         }
+
         session = data.session;
-        const statusEl = document.getElementById('connectionStatus');
-        if (statusEl) statusEl.textContent = 'Logged in as ' + session.user.email;
-        const emailEl = document.getElementById('sidebarEmail');
-        if (emailEl) emailEl.textContent = session.user.email;
-        const nameEl = document.getElementById('sidebarName');
-        const avatarEl = document.getElementById('sidebarAvatar');
-        if (nameEl) {
-            const name = session.user.user_metadata?.full_name || session.user.email.split('@')[0];
-            nameEl.textContent = name;
-            if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
-        }
+        updateUIForAuth(session);
+
+        // Start session timeout tracking
+        startSessionTimeout();
+
         return true;
-    } catch (e) { 
-        console.error('Auth check error:', e); 
-        return false; 
+    } catch (e) {
+        console.error('Auth check error:', e);
+        return false;
     }
 }
 
+function updateUIForAuth(session) {
+    const statusEl = document.getElementById('connectionStatus');
+    if (statusEl) statusEl.textContent = `👤 ${session.user.email}`;
+
+    const emailEl = document.getElementById('sidebarEmail');
+    if (emailEl) emailEl.textContent = session.user.email;
+
+    const nameEl = document.getElementById('sidebarName');
+    const avatarEl = document.getElementById('sidebarAvatar');
+    if (nameEl) {
+        const name = session.user.user_metadata?.full_name ||
+            session.user.email.split('@')[0];
+        nameEl.textContent = name;
+        if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
+    }
+}
+
+// ─── SESSION TIMEOUT ─────────────────────────────────────────────
+function startSessionTimeout() {
+    // Clear any existing timeout
+    if (sessionTimeout) {
+        clearInterval(sessionTimeout);
+        sessionTimeout = null;
+    }
+
+    // Check activity every 30 seconds
+    sessionTimeout = setInterval(() => {
+        const lastActivity = localStorage.getItem('lastActivity');
+        if (lastActivity) {
+            const elapsed = (Date.now() - parseInt(lastActivity)) / (1000 * 60);
+            if (elapsed > SESSION_TIMEOUT_MINUTES) {
+                // Session expired - auto logout
+                showToast(`⏰ Session expired after ${SESSION_TIMEOUT_MINUTES} minutes`, 'warning');
+                handleLogout();
+            }
+        }
+    }, 30000); // Check every 30 seconds
+
+    // Update last activity on user interaction
+    const updateActivity = () => {
+        localStorage.setItem('lastActivity', Date.now().toString());
+    };
+
+    // Track user activity
+    document.addEventListener('click', updateActivity);
+    document.addEventListener('keydown', updateActivity);
+    document.addEventListener('mousemove', updateActivity);
+    document.addEventListener('scroll', updateActivity);
+    document.addEventListener('touchstart', updateActivity);
+}
+
+// ─── LOGOUT WITH CUSTOM MODAL ────────────────────────────────────
 async function handleLogout() {
-    if (confirm('Are you sure you want to logout?')) {
+    // Show custom confirmation modal instead of browser confirm
+    const confirmed = await new Promise((resolve) => {
+        openModal(
+            '🚪 Confirm Logout',
+            `
+                <div style="text-align:center;padding:12px 0;">
+                    <div style="font-size:48px;margin-bottom:12px;">👋</div>
+                    <p style="font-size:16px;font-weight:500;margin-bottom:8px;">Are you sure you want to logout?</p>
+                    <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
+                </div>
+            `,
+            'Yes, Logout',
+            () => resolve(true),
+            'Cancel'
+        );
+    });
+
+    if (!confirmed) return;
+
+    try {
         await supabase.auth.signOut();
         session = null;
-        showToast('Logged out successfully', 'success');
-        const statusEl = document.getElementById('connectionStatus');
-        if (statusEl) statusEl.textContent = 'Disconnected';
-        window.location.href = '/admin/dashboard.html';
+
+        // Clear timers
+        if (refreshTimer) {
+            clearInterval(refreshTimer);
+            refreshTimer = null;
+        }
+        if (realtimeChannel) {
+            realtimeChannel.unsubscribe();
+            realtimeChannel = null;
+        }
+        if (sessionTimeout) {
+            clearInterval(sessionTimeout);
+            sessionTimeout = null;
+        }
+
+        // Clear local storage
+        localStorage.removeItem('lastActivity');
+
+        showToast('✅ Logged out successfully', 'success');
+        window.location.href = '/login.html';
+    } catch (e) {
+        showToast('❌ Logout failed: ' + e.message, 'error');
     }
 }
 
 // ─── NAVIGATION ──────────────────────────────────────────────────
 function navigateTo(page) {
-    window.location.href = '/admin/pages/' + page + '.html';
+    if (window.innerWidth <= 1024) toggleSidebar(false);
+    showToast(`📂 Loading ${page}...`, 'info', 1000);
+
+    // Update last activity
+    localStorage.setItem('lastActivity', Date.now().toString());
+
+    window.location.href = `/admin/pages/${page}.html`;
 }
 
 function toggleSidebar(open) {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
+
     if (open === undefined) {
         sidebar.classList.toggle('open');
         overlay.classList.toggle('active');
@@ -100,158 +215,149 @@ function toggleSidebar(open) {
 let modalResolve = null;
 let modalData = null;
 
-function openModal(title, bodyHTML, confirmText, confirmAction) {
+function openModal(title, bodyHTML, confirmText, confirmAction, cancelText = 'Cancel') {
     return new Promise((resolve) => {
         const overlay = document.getElementById('modalOverlay');
         if (!overlay) return;
+
         document.getElementById('modalTitle').textContent = title;
         document.getElementById('modalBody').innerHTML = bodyHTML;
         document.getElementById('modalConfirmBtn').textContent = confirmText || 'Confirm';
+        document.getElementById('modalCancelBtn').textContent = cancelText || 'Cancel';
+
+        // Store the resolve function
+        modalResolve = (result) => {
+            resolve(result);
+            modalResolve = null;
+        };
+
+        modalData = {
+            confirmAction: () => {
+                if (confirmAction) confirmAction();
+                closeModal(true);
+            },
+            cancelAction: () => {
+                closeModal(false);
+            }
+        };
+
         overlay.classList.add('active');
-        modalResolve = resolve;
-        modalData = { confirmAction };
     });
 }
 
-function closeModal() {
+function closeModal(result) {
     const overlay = document.getElementById('modalOverlay');
     if (overlay) overlay.classList.remove('active');
+
     if (modalResolve) {
-        modalResolve(null);
+        modalResolve(result !== undefined ? result : null);
         modalResolve = null;
     }
 }
 
 function modalConfirm() {
-    if (modalData && modalData.confirmAction) {
+    if (modalData?.confirmAction) {
         modalData.confirmAction();
     }
-    closeModal();
+}
+
+function modalCancel() {
+    if (modalData?.cancelAction) {
+        modalData.cancelAction();
+    } else {
+        closeModal(false);
+    }
 }
 
 // ─── SAFE SET ────────────────────────────────────────────────────
 function safeSetText(id, value) {
     const el = document.getElementById(id);
-    if (el) el.textContent = value;
+    if (el) {
+        el.textContent = value ?? '—';
+        return true;
+    }
+    return false;
 }
 
 function safeSetHTML(id, value) {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = value;
+    if (el) {
+        el.innerHTML = value ?? '—';
+        return true;
+    }
+    return false;
 }
 
 // ─── FORMAT HELPERS ─────────────────────────────────────────────
 function formatDate(dateStr) {
     if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleString();
+    try {
+        return new Date(dateStr).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch {
+        return dateStr;
+    }
 }
 
 function formatDateShort(dateStr) {
     if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString();
+    try {
+        return new Date(dateStr).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    } catch {
+        return dateStr;
+    }
 }
 
 function timeAgo(dateStr) {
     if (!dateStr) return '—';
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const seconds = Math.floor(diff / 1000);
-    if (seconds < 60) return 'Just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return minutes + 'm ago';
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return hours + 'h ago';
-    const days = Math.floor(hours / 24);
-    if (days < 7) return days + 'd ago';
-    return new Date(dateStr).toLocaleDateString();
-}
+    try {
+        const diff = Date.now() - new Date(dateStr).getTime();
+        const seconds = Math.floor(diff / 1000);
 
-// ─── PAGE LOADER ─────────────────────────────────────────────────
-function loadPage(page) {
-    const iframe = document.getElementById('pageFrame');
-    const loading = document.getElementById('pageLoading');
-    const container = document.getElementById('iframeContainer');
-    
-    // Update sidebar
-    document.querySelectorAll('.sidebar-nav-item').forEach(el => {
-        el.classList.remove('active');
-        if (el.getAttribute('data-page') === page) {
-            el.classList.add('active');
-        }
-    });
-    
-    // Update title
-    const titles = {
-        'dashboard': 'Dashboard <span class="sub">| Enterprise Overview</span>',
-        'babies': 'Babies <span class="sub">| All Baby Profiles</span>',
-        'users': 'Users <span class="sub">| User Management</span>',
-        'moderation': 'Moderation <span class="sub">| Content Review</span>',
-        'community': 'Community <span class="sub">| Posts & Engagement</span>',
-        'topics': 'Topics <span class="sub">| Community Topics</span>',
-        'trackers': 'Trackers <span class="sub">| All Tracker Entries</span>',
-        'milestones': 'Milestones <span class="sub">| Developmental Achievements</span>',
-        'analytics': 'Analytics <span class="sub">| Growth & Engagement</span>',
-        'performance': 'Performance <span class="sub">| System Metrics</span>',
-        'realtime': 'Realtime <span class="sub">| Live Event Stream</span>',
-        'health': 'Health <span class="sub">| System Status</span>',
-        'audit': 'Audit <span class="sub">| Activity Trail</span>',
-        'notifications': 'Notifications <span class="sub">| Push Management</span>',
-        'features': 'Feature Flags <span class="sub">| Feature Management</span>',
-        'export': 'Data Export <span class="sub">| Export App Data</span>',
-        'api': 'API Management <span class="sub">| Keys & Rate Limiting</span>',
-        'support': 'Support <span class="sub">| Customer Support</span>',
-        'announcements': 'Announcements <span class="sub">| App-wide Messages</span>',
-        'settings': 'Settings <span class="sub">| System Configuration</span>',
-        'backup': 'Backup <span class="sub">| Data Protection</span>'
-    };
-    document.getElementById('pageTitle').innerHTML = titles[page] || 'Dashboard';
-    
-    // Load iframe
-    loading.style.display = 'flex';
-    iframe.style.display = 'none';
-    
-    if (page === 'dashboard') {
-        loading.style.display = 'none';
-        iframe.style.display = 'none';
-        window.location.href = '/admin/dashboard.html';
-        return;
+        if (seconds < 60) return 'Just now';
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        if (days < 7) return `${days}d ago`;
+        if (days < 30) return `${Math.floor(days / 7)}w ago`;
+        if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+        return `${Math.floor(days / 365)}y ago`;
+    } catch {
+        return dateStr;
     }
-    
-    iframe.onload = function() {
-        loading.style.display = 'none';
-        iframe.style.display = 'block';
-    };
-    iframe.src = '/admin/pages/' + page + '.html';
-    
-    // Close sidebar on mobile
-    if (window.innerWidth <= 768) toggleSidebar(false);
 }
 
-// ─── TABLE HELPERS ──────────────────────────────────────────────
-function getTableConfig(page) {
-    const configs = {
-        'babies': { table: 'babies', nameField: 'name', title: 'Babies', icon: '👶' },
-        'users': { table: 'profiles', nameField: 'full_name', title: 'Users', icon: '👤' },
-        'moderation': { table: 'community_posts', nameField: 'title', title: 'Moderation', icon: '🛡️' },
-        'community': { table: 'community_posts', nameField: 'title', title: 'Community', icon: '💬' },
-        'topics': { table: 'community_topics', nameField: 'title', title: 'Topics', icon: '📌' },
-        'trackers': { table: 'tracker_entries', nameField: 'title', title: 'Trackers', icon: '📈' },
-        'milestones': { table: 'tracker_entries', nameField: 'title', title: 'Milestones', icon: '🏆' },
-        'analytics': { table: 'babies', nameField: 'name', title: 'Analytics', icon: '📈' },
-        'performance': { table: 'babies', nameField: 'name', title: 'Performance', icon: '⚡' },
-        'realtime': { table: 'babies', nameField: 'name', title: 'Realtime', icon: '🔄' },
-        'health': { table: 'babies', nameField: 'name', title: 'Health', icon: '❤️' },
-        'audit': { table: 'babies', nameField: 'name', title: 'Audit', icon: '📋' },
-        'notifications': { table: 'babies', nameField: 'name', title: 'Notifications', icon: '🔔' },
-        'features': { table: 'babies', nameField: 'name', title: 'Features', icon: '🚩' },
-        'export': { table: 'babies', nameField: 'name', title: 'Export', icon: '📤' },
-        'api': { table: 'babies', nameField: 'name', title: 'API', icon: '🔑' },
-        'support': { table: 'babies', nameField: 'name', title: 'Support', icon: '🎫' },
-        'announcements': { table: 'babies', nameField: 'name', title: 'Announcements', icon: '📢' },
-        'settings': { table: 'babies', nameField: 'name', title: 'Settings', icon: '⚙️' },
-        'backup': { table: 'babies', nameField: 'name', title: 'Backup', icon: '💾' }
-    };
-    return configs[page] || configs['babies'];
+function formatNumber(num) {
+    if (num === null || num === undefined) return '—';
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
 }
+
+// ─── ONLINE/OFFLINE HANDLING ────────────────────────────────────
+window.addEventListener('online', () => {
+    isOnline = true;
+    showToast('🔄 Back online', 'success');
+    if (typeof fetchDashboardData === 'function') {
+        fetchDashboardData();
+    }
+});
+
+window.addEventListener('offline', () => {
+    isOnline = false;
+    showToast('📡 You are offline', 'warning');
+});
 
 // ─── EXPOSE GLOBALLY ─────────────────────────────────────────────
 window.showToast = showToast;
@@ -261,13 +367,14 @@ window.toggleSidebar = toggleSidebar;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.modalConfirm = modalConfirm;
+window.modalCancel = modalCancel;
 window.safeSetText = safeSetText;
 window.safeSetHTML = safeSetHTML;
 window.formatDate = formatDate;
 window.formatDateShort = formatDateShort;
 window.timeAgo = timeAgo;
+window.formatNumber = formatNumber;
 window.initSupabase = initSupabase;
 window.checkAuth = checkAuth;
-window.loadPage = loadPage;
-window.getTableConfig = getTableConfig;
 window.session = session;
+window.isOnline = isOnline;
