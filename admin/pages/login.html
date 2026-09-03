@@ -114,6 +114,10 @@
         .form-group input::placeholder {
             color: #94a3b8;
         }
+        .form-group input:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
         .password-toggle {
             position: absolute;
             right: 12px;
@@ -129,6 +133,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            z-index: 2;
         }
         .password-toggle:hover {
             color: #6366f1;
@@ -161,6 +166,7 @@
             opacity: 0.6;
             cursor: not-allowed;
             transform: none;
+            box-shadow: none;
         }
         .login-error {
             background: #fee2e2;
@@ -197,6 +203,23 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .remember-me input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #6366f1;
+            cursor: pointer;
+        }
+        .remember-me label {
+            font-size: 13px;
+            color: #475569;
+            cursor: pointer;
+        }
         @media (max-width: 480px) {
             .login-container {
                 padding: 32px 24px;
@@ -231,9 +254,13 @@
             <div class="form-group">
                 <label for="password">Password</label>
                 <input type="password" id="password" placeholder="Enter your password" required autocomplete="current-password" />
-                <button type="button" class="password-toggle" id="passwordToggle" onclick="togglePasswordVisibility()">
+                <button type="button" class="password-toggle" id="passwordToggle" onclick="togglePasswordVisibility()" aria-label="Toggle password visibility">
                     👁️
                 </button>
+            </div>
+            <div class="remember-me">
+                <input type="checkbox" id="rememberMe" checked />
+                <label for="rememberMe">Remember me</label>
             </div>
             <button type="submit" class="btn-login" id="loginBtn">
                 Sign In
@@ -250,6 +277,8 @@
         const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
         let supabase = null;
         let passwordVisible = false;
+        let loginAttempts = 0;
+        const MAX_LOGIN_ATTEMPTS = 5;
 
         function initSupabase() {
             try {
@@ -267,6 +296,7 @@
             passwordVisible = !passwordVisible;
             passwordInput.type = passwordVisible ? 'text' : 'password';
             toggleBtn.textContent = passwordVisible ? '🙈' : '👁️';
+            toggleBtn.setAttribute('aria-label', passwordVisible ? 'Hide password' : 'Show password');
         }
 
         async function handleLoginSubmit(e) {
@@ -279,6 +309,18 @@
             const errorMsg = document.getElementById('errorMessage');
 
             errorEl.classList.remove('show');
+
+            // Rate limiting
+            if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+                errorMsg.textContent = 'Too many login attempts. Please wait 5 minutes.';
+                errorEl.classList.add('show');
+                btn.disabled = true;
+                setTimeout(() => {
+                    btn.disabled = false;
+                    loginAttempts = 0;
+                }, 300000);
+                return;
+            }
 
             if (!email || !password) {
                 errorMsg.textContent = 'Please fill in all fields';
@@ -302,17 +344,38 @@
                 });
 
                 if (error) {
+                    loginAttempts++;
                     if (error.message.includes('Invalid login credentials')) {
                         throw new Error('Invalid email or password');
                     } else if (error.message.includes('Email not confirmed')) {
-                        throw new Error('Please verify your email address');
+                        // Try to resend confirmation
+                        try {
+                            await supabase.auth.resend({
+                                type: 'signup',
+                                email: email
+                            });
+                            throw new Error('Please verify your email address. A new confirmation link has been sent.');
+                        } catch {
+                            throw new Error('Please verify your email address before signing in.');
+                        }
                     } else {
                         throw new Error(error.message);
                     }
                 }
 
+                // Reset login attempts on success
+                loginAttempts = 0;
+
                 // Store session info
                 localStorage.setItem('lastActivity', Date.now().toString());
+                
+                // Check if remember me is checked
+                if (document.getElementById('rememberMe').checked) {
+                    localStorage.setItem('rememberedEmail', email);
+                } else {
+                    localStorage.removeItem('rememberedEmail');
+                }
+
                 window.location.href = '/admin/dashboard.html';
 
             } catch (e) {
@@ -336,6 +399,15 @@
             }
         }
 
+        // Restore remembered email
+        function restoreRememberedEmail() {
+            const remembered = localStorage.getItem('rememberedEmail');
+            if (remembered) {
+                document.getElementById('email').value = remembered;
+                document.getElementById('rememberMe').checked = true;
+            }
+        }
+
         // Enter key support
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
@@ -344,7 +416,10 @@
             }
         });
 
-        document.addEventListener('DOMContentLoaded', checkSession);
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSession();
+            restoreRememberedEmail();
+        });
     </script>
 </body>
 </html>
