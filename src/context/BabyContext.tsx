@@ -33,6 +33,7 @@ export interface BabyProfile {
   gender: Gender;
   skinTone: number;
   avatar: string;
+  avatar_url?: string;
   parent1Id: string;
   parent2Id?: string;
   guardianIds?: string[];
@@ -455,7 +456,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /* ─── Helper: get current user ID with fallback ────────────────────── */
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    // Try multiple methods to get the user ID
     const methods = [
       async () => {
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -490,48 +490,46 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   }, [authProfile]);
 
-// FIND mapBabyRowToProfile in BabyContext.tsx and update:
-
-const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
-  return {
-    id: row.id,
-    name: row.name,
-    birthDate: row.date_of_birth,
-    age: calculateAge(row.date_of_birth),
-    gender: row.gender === 'male' ? 'boy' : row.gender === 'female' ? 'girl' : 'other',
-    skinTone: row.skin_tone ?? 0,
-    avatar: row.avatar || row.avatar_url || '',  // Try avatar_url if avatar is empty
-    avatar_url: row.avatar_url || row.avatar || '',  // Store both
-    parent1Id: row.parent1_id || '',
-    parent2Id: row.parent2_id || undefined,
-    bloodType: row.blood_type || undefined,
-    medicalNotes: row.medical_notes || undefined,
-    allergies: row.allergies || undefined,
-    weight: row.current_weight_kg ? String(row.current_weight_kg) : undefined,
-    height: row.current_height_cm ? String(row.current_height_cm) : undefined,
-    birthTime: row.birth_time || undefined,
-    birthWeight: row.birth_weight_kg ? String(row.birth_weight_kg) : undefined,
-    birthHeight: row.birth_height_cm ? String(row.birth_height_cm) : undefined,
-    birthHeadCircumference: row.birth_head_circumference ? String(row.birth_head_circumference) : undefined,
-    deliveryType: row.delivery_type || undefined,
-    gestationalWeeks: row.gestational_weeks ? String(row.gestational_weeks) : undefined,
-    apgar1Min: row.apgar_1min ? String(row.apgar_1min) : undefined,
-    apgar5Min: row.apgar_5min ? String(row.apgar_5min) : undefined,
-    birthPlace: row.birth_place || undefined,
-    birthAttendant: row.birth_attendant || undefined,
-    multipleBirth: row.multiple_birth || false,
-    birthOrder: row.birth_order ? String(row.birth_order) : undefined,
-    feedingPlan: row.feeding_plan || undefined,
-    emergencyContact: row.emergency_contact || undefined,
-    pediatrician: row.pediatrician || undefined,
-    notificationsEnabled: row.notifications_enabled !== false,
-    streak: row.streak || 0,
-    milestones: row.milestones_count || 0,
-    photos: row.photos_count || 0,
-    createdAt: row.created_at,
-    lastUpdated: row.updated_at,
-  };
-}, [calculateAge]);
+  const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
+    return {
+      id: row.id,
+      name: row.name,
+      birthDate: row.date_of_birth,
+      age: calculateAge(row.date_of_birth),
+      gender: row.gender === 'male' ? 'boy' : row.gender === 'female' ? 'girl' : 'other',
+      skinTone: row.skin_tone ?? 0,
+      avatar: row.avatar || row.avatar_url || '👶',
+      avatar_url: row.avatar_url || row.avatar || '',
+      parent1Id: row.parent1_id || '',
+      parent2Id: row.parent2_id || undefined,
+      bloodType: row.blood_type || undefined,
+      medicalNotes: row.medical_notes || undefined,
+      allergies: row.allergies || undefined,
+      weight: row.current_weight_kg ? String(row.current_weight_kg) : undefined,
+      height: row.current_height_cm ? String(row.current_height_cm) : undefined,
+      birthTime: row.birth_time || undefined,
+      birthWeight: row.birth_weight_kg ? String(row.birth_weight_kg) : undefined,
+      birthHeight: row.birth_height_cm ? String(row.birth_height_cm) : undefined,
+      birthHeadCircumference: row.birth_head_circumference ? String(row.birth_head_circumference) : undefined,
+      deliveryType: row.delivery_type || undefined,
+      gestationalWeeks: row.gestational_weeks ? String(row.gestational_weeks) : undefined,
+      apgar1Min: row.apgar_1min ? String(row.apgar_1min) : undefined,
+      apgar5Min: row.apgar_5min ? String(row.apgar_5min) : undefined,
+      birthPlace: row.birth_place || undefined,
+      birthAttendant: row.birth_attendant || undefined,
+      multipleBirth: row.multiple_birth || false,
+      birthOrder: row.birth_order ? String(row.birth_order) : undefined,
+      feedingPlan: row.feeding_plan || undefined,
+      emergencyContact: row.emergency_contact || undefined,
+      pediatrician: row.pediatrician || undefined,
+      notificationsEnabled: row.notifications_enabled !== false,
+      streak: row.streak || 0,
+      milestones: row.milestones_count || 0,
+      photos: row.photos_count || 0,
+      createdAt: row.created_at,
+      lastUpdated: row.updated_at,
+    };
+  }, [calculateAge]);
 
   /* ─── Helper: parse tracker entry data ─────────────────────────────── */
   const parseEntryData = (raw: unknown): Record<string, any> => {
@@ -857,7 +855,6 @@ const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
       }
 
-      // ✅ FIX: Find the baby that matches currentId, or use the first one
       const babyToSet = babies.find(b => b.id === currentId) || babies[0] || null;
 
       let hasSkippedBaby = false;
@@ -878,19 +875,17 @@ const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
         return;
       }
 
-      // ✅ FIX: Update state with proper currentBaby
       setState(prev => ({
         ...prev,
         isLoading: false,
         babies,
         currentBabyId: currentId,
-        currentBaby: babyToSet,  // ← Properly set currentBaby
+        currentBaby: babyToSet,
         hasSkippedBaby,
         lastSyncTime: Date.now(),
         isInitialized: true,
       }));
 
-      // THEN broadcast baby change (after state is committed)
       setTimeout(() => {
         broadcastBabyChange(currentId);
       }, 50);
@@ -958,16 +953,13 @@ const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
     };
   }, [loadBabies]);
 
-  /* ─── CRITICAL FIX: Watch for auth changes ────────────────────────── */
+  /* ─── Watch for auth changes ────────────────────────────────────────── */
   useEffect(() => {
-    // When authProfile changes (user signs in), reload babies
     if (authProfile?.id) {
       console.log('[BabyContext] Auth user detected, loading babies...');
-      // Clear any existing timer
       if (authLoadTimerRef.current) {
         clearTimeout(authLoadTimerRef.current);
       }
-      // Small delay to let auth session fully establish
       authLoadTimerRef.current = setTimeout(() => {
         loadBabies(true);
         authLoadTimerRef.current = null;
@@ -981,7 +973,7 @@ const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
     }
   }, [authProfile?.id, loadBabies]);
 
-  /* ---- Auto-refresh on app focus (via AppState) ---- */
+  /* ---- Auto-refresh on app focus ---- */
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
@@ -1003,7 +995,7 @@ const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
     };
   }, [loadBabies]);
 
-  /* ---- Auto-refresh every 5 minutes when authenticated ---- */
+  /* ---- Auto-refresh every 5 minutes ---- */
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
     
@@ -1165,6 +1157,7 @@ const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
 
       console.log('[BabyContext] Creating baby with parent1_id:', userId);
 
+      // ─── CHECK FOR DUPLICATE ──────────────────────────────────────────
       const { data: existingBabies, error: duplicateError } = await supabase
         .from('babies')
         .select('id')
@@ -1177,10 +1170,12 @@ const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
         console.warn('[BabyContext] Duplicate check error:', duplicateError);
       }
 
+      // ─── FIX: Return existing baby ID if duplicate found ─────────────
       if (existingBabies && existingBabies.length > 0) {
-        console.log('[BabyContext] Duplicate baby found');
+        console.log('[BabyContext] Duplicate baby found, returning existing ID:', existingBabies[0].id);
         isCreatingRef.current = false;
-        return null;
+        // Return the existing baby ID so the UI can use it
+        return existingBabies[0].id;
       }
 
       const babyData = {
@@ -1322,109 +1317,105 @@ const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
   }, [calculateAge, loadAllBabyData, state.currentBabyId, authProfile, broadcastBabyChange]);
 
   /* ---- Update baby ---- */
-// FIND in BabyContext.tsx - updateBaby function
-// Around line 600-650, replace the updateBaby function with:
+  const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
+    try {
+      const remoteUpdates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      
+      if (updates.name !== undefined) remoteUpdates.name = updates.name;
+      if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
+      if (updates.avatar_url !== undefined) remoteUpdates.avatar_url = updates.avatar_url;
+      if (updates.birthDate !== undefined) remoteUpdates.date_of_birth = updates.birthDate;
+      if (updates.gender !== undefined) {
+        remoteUpdates.gender = updates.gender === 'boy' ? 'male' : updates.gender === 'girl' ? 'female' : 'other';
+      }
+      if (updates.bloodType !== undefined) remoteUpdates.blood_type = updates.bloodType;
+      if (updates.medicalNotes !== undefined) remoteUpdates.medical_notes = updates.medicalNotes;
+      if (updates.allergies !== undefined) remoteUpdates.allergies = updates.allergies;
+      if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
+      
+      if (updates.weight !== undefined) {
+        remoteUpdates.current_weight_kg = updates.weight ? parseFloat(updates.weight) : null;
+      }
+      if (updates.height !== undefined) {
+        remoteUpdates.current_height_cm = updates.height ? parseFloat(updates.height) : null;
+      }
+      
+      if (updates.birthTime !== undefined) remoteUpdates.birth_time = updates.birthTime;
+      if (updates.birthWeight !== undefined) {
+        remoteUpdates.birth_weight_kg = updates.birthWeight ? parseFloat(updates.birthWeight) : null;
+      }
+      if (updates.birthHeight !== undefined) {
+        remoteUpdates.birth_height_cm = updates.birthHeight ? parseFloat(updates.birthHeight) : null;
+      }
+      if (updates.birthHeadCircumference !== undefined) {
+        remoteUpdates.birth_head_circumference = updates.birthHeadCircumference ? parseFloat(updates.birthHeadCircumference) : null;
+      }
+      if (updates.deliveryType !== undefined) {
+        remoteUpdates.delivery_type = updates.deliveryType ? updates.deliveryType.toLowerCase().replace(/ /g, '_') : null;
+      }
+      if (updates.gestationalWeeks !== undefined) {
+        remoteUpdates.gestational_weeks = updates.gestationalWeeks ? parseInt(updates.gestationalWeeks) : null;
+      }
+      if (updates.apgar1Min !== undefined) {
+        remoteUpdates.apgar_1min = updates.apgar1Min ? parseInt(updates.apgar1Min) : null;
+      }
+      if (updates.apgar5Min !== undefined) {
+        remoteUpdates.apgar_5min = updates.apgar5Min ? parseInt(updates.apgar5Min) : null;
+      }
+      if (updates.birthPlace !== undefined) remoteUpdates.birth_place = updates.birthPlace;
+      if (updates.birthAttendant !== undefined) {
+        remoteUpdates.birth_attendant = updates.birthAttendant ? updates.birthAttendant.toLowerCase().replace(/ /g, '_') : null;
+      }
+      if (updates.multipleBirth !== undefined) remoteUpdates.multiple_birth = updates.multipleBirth;
+      if (updates.birthOrder !== undefined) {
+        remoteUpdates.birth_order = updates.birthOrder ? parseInt(updates.birthOrder) : null;
+      }
+      if (updates.feedingPlan !== undefined) {
+        remoteUpdates.feeding_plan = updates.feedingPlan ? updates.feedingPlan.toLowerCase() : null;
+      }
+      
+      if (updates.emergencyContact !== undefined) remoteUpdates.emergency_contact = updates.emergencyContact;
+      if (updates.pediatrician !== undefined) remoteUpdates.pediatrician = updates.pediatrician;
+      if (updates.notificationsEnabled !== undefined) remoteUpdates.notifications_enabled = updates.notificationsEnabled;
+      if (updates.skinTone !== undefined) remoteUpdates.skin_tone = updates.skinTone;
+      if (updates.streak !== undefined) remoteUpdates.streak = updates.streak;
+      if (updates.milestones !== undefined) remoteUpdates.milestones_count = updates.milestones;
+      if (updates.photos !== undefined) remoteUpdates.photos_count = updates.photos;
+      
+      if (updates.avatar !== undefined || updates.avatar_url !== undefined) {
+        remoteUpdates.avatar_updated_at = new Date().toISOString();
+      }
 
-const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
-  try {
-    const remoteUpdates: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
-    
-    if (updates.name !== undefined) remoteUpdates.name = updates.name;
-    if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
-    if (updates.avatar_url !== undefined) remoteUpdates.avatar_url = updates.avatar_url;
-    if (updates.birthDate !== undefined) remoteUpdates.date_of_birth = updates.birthDate;
-    if (updates.gender !== undefined) {
-      remoteUpdates.gender = updates.gender === 'boy' ? 'male' : updates.gender === 'girl' ? 'female' : 'other';
-    }
-    if (updates.bloodType !== undefined) remoteUpdates.blood_type = updates.bloodType;
-    if (updates.medicalNotes !== undefined) remoteUpdates.medical_notes = updates.medicalNotes;
-    if (updates.allergies !== undefined) remoteUpdates.allergies = updates.allergies;
-    if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
-    
-    if (updates.weight !== undefined) {
-      remoteUpdates.current_weight_kg = updates.weight ? parseFloat(updates.weight) : null;
-    }
-    if (updates.height !== undefined) {
-      remoteUpdates.current_height_cm = updates.height ? parseFloat(updates.height) : null;
-    }
-    
-    if (updates.birthTime !== undefined) remoteUpdates.birth_time = updates.birthTime;
-    if (updates.birthWeight !== undefined) {
-      remoteUpdates.birth_weight_kg = updates.birthWeight ? parseFloat(updates.birthWeight) : null;
-    }
-    if (updates.birthHeight !== undefined) {
-      remoteUpdates.birth_height_cm = updates.birthHeight ? parseFloat(updates.birthHeight) : null;
-    }
-    if (updates.birthHeadCircumference !== undefined) {
-      remoteUpdates.birth_head_circumference = updates.birthHeadCircumference ? parseFloat(updates.birthHeadCircumference) : null;
-    }
-    if (updates.deliveryType !== undefined) {
-      remoteUpdates.delivery_type = updates.deliveryType ? updates.deliveryType.toLowerCase().replace(/ /g, '_') : null;
-    }
-    if (updates.gestationalWeeks !== undefined) {
-      remoteUpdates.gestational_weeks = updates.gestationalWeeks ? parseInt(updates.gestationalWeeks) : null;
-    }
-    if (updates.apgar1Min !== undefined) {
-      remoteUpdates.apgar_1min = updates.apgar1Min ? parseInt(updates.apgar1Min) : null;
-    }
-    if (updates.apgar5Min !== undefined) {
-      remoteUpdates.apgar_5min = updates.apgar5Min ? parseInt(updates.apgar5Min) : null;
-    }
-    if (updates.birthPlace !== undefined) remoteUpdates.birth_place = updates.birthPlace;
-    if (updates.birthAttendant !== undefined) {
-      remoteUpdates.birth_attendant = updates.birthAttendant ? updates.birthAttendant.toLowerCase().replace(/ /g, '_') : null;
-    }
-    if (updates.multipleBirth !== undefined) remoteUpdates.multiple_birth = updates.multipleBirth;
-    if (updates.birthOrder !== undefined) {
-      remoteUpdates.birth_order = updates.birthOrder ? parseInt(updates.birthOrder) : null;
-    }
-    if (updates.feedingPlan !== undefined) {
-      remoteUpdates.feeding_plan = updates.feedingPlan ? updates.feedingPlan.toLowerCase() : null;
-    }
-    
-    if (updates.emergencyContact !== undefined) remoteUpdates.emergency_contact = updates.emergencyContact;
-    if (updates.pediatrician !== undefined) remoteUpdates.pediatrician = updates.pediatrician;
-    if (updates.notificationsEnabled !== undefined) remoteUpdates.notifications_enabled = updates.notificationsEnabled;
-    if (updates.skinTone !== undefined) remoteUpdates.skin_tone = updates.skinTone;
-    if (updates.streak !== undefined) remoteUpdates.streak = updates.streak;
-    if (updates.milestones !== undefined) remoteUpdates.milestones_count = updates.milestones;
-    if (updates.photos !== undefined) remoteUpdates.photos_count = updates.photos;
-    
-    // Add avatar_updated_at if avatar is being updated
-    if (updates.avatar !== undefined || updates.avatar_url !== undefined) {
-      remoteUpdates.avatar_updated_at = new Date().toISOString();
-    }
+      const { data: result, error } = await supabase
+        .from('babies')
+        .update(remoteUpdates)
+        .eq('id', id)
+        .eq('is_active', true)
+        .select()
+        .single();
 
-    const { data: result, error } = await supabase
-      .from('babies')
-      .update(remoteUpdates)
-      .eq('id', id)
-      .eq('is_active', true)
-      .select()
-      .single();
+      if (error) {
+        console.error('Update baby error:', error);
+        Alert.alert('Error', 'Failed to update baby profile');
+        return;
+      }
 
-    if (error) {
+      if (result && isMounted.current) {
+        const updatedBaby = mapBabyRowToProfile(result);
+        setState(prev => ({
+          ...prev,
+          babies: prev.babies.map(b => b.id === id ? updatedBaby : b),
+          currentBaby: prev.currentBaby?.id === id ? updatedBaby : prev.currentBaby,
+        }));
+        await AsyncStorage.removeItem(BABIES_CACHE_KEY);
+      }
+    } catch (error) {
       console.error('Update baby error:', error);
       Alert.alert('Error', 'Failed to update baby profile');
-      return;
     }
-
-    if (result && isMounted.current) {
-      const updatedBaby = mapBabyRowToProfile(result);
-      setState(prev => ({
-        ...prev,
-        babies: prev.babies.map(b => b.id === id ? updatedBaby : b),
-        currentBaby: prev.currentBaby?.id === id ? updatedBaby : prev.currentBaby,
-      }));
-      await AsyncStorage.removeItem(BABIES_CACHE_KEY);
-    }
-  } catch (error) {
-    console.error('Update baby error:', error);
-    Alert.alert('Error', 'Failed to update baby profile');
-  }
-}, [mapBabyRowToProfile]);
+  }, [mapBabyRowToProfile]);
 
   /* ---- Delete baby ---- */
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
@@ -1491,7 +1482,6 @@ const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>)
           medicationLogs: newCurrentId ? prev.medicationLogs : [],
           activities: newCurrentId ? prev.activities : [],
         }));
-        // Clear cache
         await AsyncStorage.removeItem(BABIES_CACHE_KEY);
       }
 
@@ -1499,7 +1489,6 @@ const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>)
         await loadAllBabyData(newCurrentId);
       }
 
-      // Broadcast after state is updated (even if null)
       setTimeout(() => {
         broadcastBabyChange(newCurrentId);
       }, 50);
@@ -1551,11 +1540,10 @@ const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>)
         setState(prev => ({
           ...prev,
           currentBabyId: id,
-          currentBaby: babyProfile, // ← Make sure this is set
+          currentBaby: babyProfile,
         }));
       }
 
-      // Broadcast after state is updated
       setTimeout(() => {
         broadcastBabyChange(id);
       }, 50);

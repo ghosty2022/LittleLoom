@@ -1,4 +1,5 @@
-// src/screens/baby/BabyOnboardingScreen.tsx
+// src/screens/baby/BabyOnboardingScreen.tsx - COMPLETE FIXED VERSION
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,7 +36,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     loadBabies,
     isLoading: babyLoading
   } = useBaby();
-  const { userProfile, skipSetup, completeSetup, wasSetupCompleted } = useAuth();
+  const { userProfile, skipSetup, completeSetup, wasSetupCompleted, setupComplete } = useAuth();
   const insets = useSafeAreaInsets();
 
   const {
@@ -99,18 +100,18 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     if (!isMountedRef.current) return false;
     
     try {
+      // First check if setup is already complete
+      const { setupComplete: isSetupComplete } = await wasSetupCompleted();
+      if (isSetupComplete) {
+        navigationAttemptedRef.current = true;
+        console.log('[BabyOnboarding] Setup already complete, navigating to Main');
+        navigation.replace('Main');
+        return true;
+      }
+
       if (babies && babies.length > 0) {
         console.log('[BabyOnboarding] Found babies in context, checking setup');
         setHasBabies(true);
-        
-        const { setupComplete } = await wasSetupCompleted();
-        
-        if (setupComplete) {
-          navigationAttemptedRef.current = true;
-          console.log('[BabyOnboarding] Setup complete, navigating to Main');
-          navigation.replace('Main');
-          return true;
-        }
         
         await completeSetup('baby');
         const { setupComplete: newSetupComplete } = await wasSetupCompleted();
@@ -129,6 +130,12 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         console.log('[BabyOnboarding] Found babies in local DB');
         setHasBabies(true);
         setRemoteBabies(localBabies);
+        
+        // Auto-select first baby if none selected
+        if (!currentBabyId && localBabies[0]) {
+          await switchBaby(localBabies[0].id);
+          await completeSetup('baby');
+        }
         return true;
       }
       
@@ -137,7 +144,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       console.warn('[BabyOnboarding] Check navigate error:', error);
       return false;
     }
-  }, [navigation, wasSetupCompleted, completeSetup, babies]);
+  }, [navigation, wasSetupCompleted, completeSetup, babies, switchBaby, currentBabyId]);
 
   // ─── SYNC BABIES FROM SUPABASE ──────────────────────────────────────
   const syncBabiesFromSupabase = useCallback(async (userId: string): Promise<boolean> => {
@@ -748,7 +755,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
                   <View style={styles.babyCardContent}>
                     <SafeBabyAvatar
                       avatar={baby.avatar}
-                      avatarUrl={baby.avatar_url}  // ADD THIS for Supabase stored avatars
+                      avatarUrl={baby.avatar_url}
                       gender={baby.gender === 'male' ? 'boy' : baby.gender === 'female' ? 'girl' : 'other'}
                       size={64}
                       animated={!shouldReduceMotion}
@@ -797,7 +804,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
                   <View style={styles.babyCardContent}>
                     <SafeBabyAvatar
                       avatar={baby.avatar}
-                      avatarUrl={baby.avatar_url}  // ADD THIS for Supabase stored avatars
+                      avatarUrl={baby.avatar_url}
                       gender={baby.gender}
                       size={64}
                       animated={!shouldReduceMotion}
