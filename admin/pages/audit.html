@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/admin.css" />
     <style>
+        /* ─── All existing styles remain the same ─── */
         .page-hero {
             background: linear-gradient(135deg, #0f172a, #1e293b);
             border-radius: var(--radius);
@@ -66,106 +67,98 @@
     </style>
 </head>
 <body>
-    <div class="app">
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-icon">🧵</div>
-                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+    <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">🧵</div>
+            <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-nav-label">Overview</div>
+            <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
+            <div class="sidebar-nav-label">System</div>
+            <a class="sidebar-nav-item active" href="#"><span class="icon">📋</span> Audit Logs</a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar" id="sidebarAvatar">A</div>
+                <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">📋</span> Audit Logs</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-info">
-                    <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+        </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+    <!-- ─── MAIN ────────────────────────────────────────────────────── -->
+    <main class="main">
+        <header class="topbar">
+            <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Audit Logs <span class="sub">| Activity Trail</span></div></div></div>
+            <div class="topbar-right">
+                <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                <div class="topbar-actions">
+                    <button class="btn btn-outline btn-sm" onclick="loadAuditLogs()">🔄 Refresh</button>
+                    <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                 </div>
             </div>
-        </aside>
+        </header>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+        <div class="page-content active">
+            <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
 
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-            <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
-                <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+            <div class="page-hero">
+                <h1>📋 Audit Logs</h1>
+                <p>Complete activity trail of all system actions</p>
+                <div class="stats-row">
+                    <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Events</span></div>
+                    <div class="stat"><span class="num" id="statToday">0</span><span class="label">Today</span></div>
+                    <div class="stat"><span class="num" id="statUsers">0</span><span class="label">Active Users</span></div>
+                </div>
+            </div>
+
+            <div class="filter-bar-modern">
+                <input type="text" placeholder="🔍 Search logs..." id="searchInput" oninput="filterLogs()">
+                <select id="typeFilter" onchange="filterLogs()">
+                    <option value="all">All Types</option>
+                    <option value="auth">🔐 Auth</option>
+                    <option value="data">📊 Data</option>
+                    <option value="admin">👑 Admin</option>
+                    <option value="system">⚙️ System</option>
+                    <option value="security">🛡️ Security</option>
+                </select>
+                <div class="btn-group">
+                    <button class="btn btn-outline" onclick="loadAuditLogs()">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Type</th><th>Details</th></tr></thead>
+                            <tbody id="auditTable"><tr><td colspan="5" class="empty-state-modern"><div class="emoji">📋</div><h3>Loading logs...</h3></td></tr></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
-
-        <main class="main">
-            <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Audit Logs <span class="sub">| Activity Trail</span></div></div></div>
-                <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
-                    <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadAuditLogs()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
-                    </div>
-                </div>
-            </header>
-
-            <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
-
-                <div class="page-hero">
-                    <h1>📋 Audit Logs</h1>
-                    <p>Complete activity trail of all system actions</p>
-                    <div class="stats-row">
-                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Events</span></div>
-                        <div class="stat"><span class="num" id="statToday">0</span><span class="label">Today</span></div>
-                        <div class="stat"><span class="num" id="statUsers">0</span><span class="label">Active Users</span></div>
-                    </div>
-                </div>
-
-                <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search logs..." id="searchInput" oninput="filterLogs()">
-                    <select id="typeFilter" onchange="filterLogs()">
-                        <option value="all">All Types</option>
-                        <option value="auth">🔐 Auth</option>
-                        <option value="data">📊 Data</option>
-                        <option value="admin">👑 Admin</option>
-                        <option value="system">⚙️ System</option>
-                        <option value="security">🛡️ Security</option>
-                    </select>
-                    <div class="btn-group">
-                        <button class="btn btn-outline" onclick="loadAuditLogs()">🔄 Refresh</button>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-body">
-                        <div class="table-wrap">
-                            <table>
-                                <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Type</th><th>Details</th></tr></thead>
-                                <tbody id="auditTable"><tr><td colspan="5" class="empty-state-modern"><div class="emoji">📋</div><h3>Loading logs...</h3></td></tr></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </div>
+    </main>
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let auditCache = [];
         let currentFiltered = [];
 
         async function loadAuditLogs() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const { data, error } = await supabase
@@ -175,7 +168,6 @@
                     .limit(100);
 
                 if (error || !data || data.length === 0) {
-                    // Generate simulated audit logs
                     data = generateSimulatedLogs();
                 }
 
@@ -185,10 +177,10 @@
                 updateStats(currentFiltered);
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Audit logs loaded successfully', 'success');
+                window._showToast('✅ Audit logs loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading audit logs: ' + e.message, 'error');
+                window._showToast('Error loading audit logs: ' + e.message, 'error');
             }
         }
 
@@ -275,12 +267,14 @@
             renderLogs(filtered);
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadAuditLogs, 500); });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadAuditLogs();
+        };
+
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
         window.loadAuditLogs = loadAuditLogs;
         window.filterLogs = filterLogs;
     </script>
 </body>
 </html>
-
-
-

@@ -134,17 +134,7 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-            <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
-                <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-                </div>
-            </div>
-        </div>
-
+        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Backup & Restore <span class="sub">| Data Protection</span></div></div></div>
@@ -248,12 +238,19 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let selectedRestoreFile = null;
         let backupHistory = [];
 
         async function loadBackupInfo() {
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
+
             try {
                 const [babies, profiles, entries, posts] = await Promise.all([
                     supabase.from('babies').select('*', { count: 'exact', head: true }).eq('is_active', true),
@@ -283,12 +280,13 @@
             const progress = document.getElementById('backupProgress');
             const progressFill = document.getElementById('backupProgressFill');
             const progressText = document.getElementById('backupProgressText');
+            const supabase = window._supabaseClient;
 
             progress.style.display = 'block';
             progressFill.style.width = '0%';
             progressText.textContent = '0%';
 
-            showToast('📥 Creating backup...', 'info');
+            window._showToast('📥 Creating backup...', 'info');
 
             try {
                 progressFill.style.width = '20%';
@@ -321,7 +319,7 @@
                     metadata: {
                         total_records: (babies.data?.length || 0) + (profiles.data?.length || 0) +
                             (entries.data?.length || 0) + (posts.data?.length || 0),
-                        exported_by: session?.user?.email || 'Admin'
+                        exported_by: window._getSession()?.user?.email || 'Admin'
                     }
                 };
 
@@ -360,17 +358,17 @@
                     progressFill.style.width = '0%';
                 }, 2000);
 
-                showToast('✅ Backup created successfully!', 'success');
+                window._showToast('✅ Backup created successfully!', 'success');
 
             } catch (e) {
                 console.error('Backup error:', e);
-                showToast('Error creating backup: ' + e.message, 'error');
+                window._showToast('Error creating backup: ' + e.message, 'error');
                 progress.style.display = 'none';
             }
         }
 
         function scheduleBackup() {
-            showToast('⏰ Auto-backup scheduled for daily at 2:00 AM', 'success');
+            window._showToast('⏰ Auto-backup scheduled for daily at 2:00 AM', 'success');
         }
 
         function handleRestoreFile(event) {
@@ -378,7 +376,7 @@
             if (!file) return;
 
             if (file.size > 50 * 1024 * 1024) {
-                showToast('File too large. Max 50 MB.', 'error');
+                window._showToast('File too large. Max 50 MB.', 'error');
                 return;
             }
 
@@ -389,12 +387,12 @@
             document.getElementById('restoreStatus').innerHTML = `
                 <span style="color:#22c55e;">✅ File loaded: ${file.name}</span>
             `;
-            showToast('📤 File loaded successfully', 'success');
+            window._showToast('📤 File loaded successfully', 'success');
         }
 
         async function restoreBackup() {
             if (!selectedRestoreFile) {
-                showToast('Please select a backup file first', 'warning');
+                window._showToast('Please select a backup file first', 'warning');
                 return;
             }
 
@@ -409,6 +407,7 @@
             });
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const reader = new FileReader();
                 reader.onload = async function(e) {
@@ -416,11 +415,11 @@
                         const data = JSON.parse(e.target.result);
 
                         if (!data.tables) {
-                            showToast('Invalid backup file format', 'error');
+                            window._showToast('Invalid backup file format', 'error');
                             return;
                         }
 
-                        showToast('📤 Restoring data...', 'info');
+                        window._showToast('📤 Restoring data...', 'info');
 
                         let restored = 0;
                         const tables = data.tables;
@@ -437,7 +436,7 @@
                             }
                         }
 
-                        showToast(`✅ Restored ${restored} records successfully!`, 'success');
+                        window._showToast(`✅ Restored ${restored} records successfully!`, 'success');
 
                         const entry = {
                             timestamp: new Date().toISOString(),
@@ -456,13 +455,13 @@
                         selectedRestoreFile = null;
 
                     } catch (parseError) {
-                        showToast('Error parsing backup file: ' + parseError.message, 'error');
+                        window._showToast('Error parsing backup file: ' + parseError.message, 'error');
                     }
                 };
                 reader.readAsText(selectedRestoreFile);
 
             } catch (e) {
-                showToast('Restore error: ' + e.message, 'error');
+                window._showToast('Restore error: ' + e.message, 'error');
             }
         }
 
@@ -500,7 +499,11 @@
             container.innerHTML = html;
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadBackupInfo, 500); });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadBackupInfo();
+        };
+
         window.loadBackupInfo = loadBackupInfo;
         window.createBackup = createBackup;
         window.scheduleBackup = scheduleBackup;
@@ -509,6 +512,3 @@
     </script>
 </body>
 </html>
-
-
-

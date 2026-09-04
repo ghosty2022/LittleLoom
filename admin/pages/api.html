@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/admin.css" />
     <style>
+        /* ─── All existing styles remain the same ─── */
         .page-hero {
             background: linear-gradient(135deg, #0f172a, #1e293b);
             border-radius: var(--radius);
@@ -99,97 +100,144 @@
     </style>
 </head>
 <body>
-    <div class="app">
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-icon">🧵</div>
-                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
-            </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">🔑</span> API Management</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-info">
-                    <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
-                </div>
-            </div>
-        </aside>
-
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-            <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
-                <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-                </div>
+    <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">🧵</div>
+            <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-nav-label">Overview</div>
+            <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
+            <div class="sidebar-nav-label">System</div>
+            <a class="sidebar-nav-item active" href="#"><span class="icon">🔑</span> API Management</a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar" id="sidebarAvatar">A</div>
+                <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
             </div>
         </div>
+    </aside>
 
-        <main class="main">
-            <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">API Management <span class="sub">| API Keys & Rate Limiting</span></div></div></div>
-                <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
-                    <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadApiKeys()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
-                    </div>
-                </div>
-            </header>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-            <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal">
+            <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+            </div>
+        </div>
+    </div>
 
-                <div class="page-hero">
-                    <h1>🔑 API Management</h1>
-                    <p>Manage API keys and rate limiting for external integrations</p>
-                    <div class="stats-row">
-                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Keys</span></div>
-                        <div class="stat"><span class="num" id="statActive">0</span><span class="label">Active</span></div>
-                        <div class="stat"><span class="num" id="statExpired">0</span><span class="label">Expired</span></div>
-                    </div>
-                </div>
-
-                <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search API keys..." id="searchInput" oninput="filterApiKeys()">
-                    <select id="statusFilter" onchange="filterApiKeys()">
-                        <option value="all">All Status</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                        <option value="expired">Expired</option>
-                    </select>
-                    <div class="btn-group">
-                        <button class="btn btn-primary" onclick="openAddApiKeyModal()">➕ Generate Key</button>
-                        <button class="btn btn-outline" onclick="loadApiKeys()">🔄 Refresh</button>
-                    </div>
-                </div>
-
-                <div id="apiKeysContainer">
-                    <div class="empty-state-modern"><div class="emoji">🔑</div><h3>Loading API keys...</h3><p>Please wait while we fetch the data</p></div>
+    <!-- ─── MAIN ────────────────────────────────────────────────────── -->
+    <main class="main">
+        <header class="topbar">
+            <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">API Management <span class="sub">| API Keys & Rate Limiting</span></div></div></div>
+            <div class="topbar-right">
+                <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                <div class="topbar-actions">
+                    <button class="btn btn-outline btn-sm" onclick="loadApiKeys()">🔄 Refresh</button>
+                    <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                 </div>
             </div>
-        </main>
-    </div>
+        </header>
+
+        <div class="page-content active">
+            <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
+            <div class="page-hero">
+                <h1>🔑 API Management</h1>
+                <p>Manage API keys and rate limiting for external integrations</p>
+                <div class="stats-row">
+                    <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Keys</span></div>
+                    <div class="stat"><span class="num" id="statActive">0</span><span class="label">Active</span></div>
+                    <div class="stat"><span class="num" id="statExpired">0</span><span class="label">Expired</span></div>
+                </div>
+            </div>
+
+            <div class="filter-bar-modern">
+                <input type="text" placeholder="🔍 Search API keys..." id="searchInput" oninput="filterApiKeys()">
+                <select id="statusFilter" onchange="filterApiKeys()">
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="expired">Expired</option>
+                </select>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="openAddApiKeyModal()">➕ Generate Key</button>
+                    <button class="btn btn-outline" onclick="loadApiKeys()">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <div id="apiKeysContainer">
+                <div class="empty-state-modern"><div class="emoji">🔑</div><h3>Loading API keys...</h3><p>Please wait while we fetch the data</p></div>
+            </div>
+        </div>
+    </main>
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let apiKeysCache = [];
         let currentFiltered = [];
+        let modalResolve = null;
+        let modalData = null;
+
+        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('modalOverlay');
+                if (!overlay) return;
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalBody').innerHTML = bodyHTML;
+                document.getElementById('modalConfirmBtn').textContent = confirmText;
+                document.getElementById('modalCancelBtn').textContent = cancelText;
+                overlay.classList.add('active');
+                modalResolve = resolve;
+                modalData = { confirmAction };
+            });
+        }
+
+        function closeModal(result) {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (modalResolve) {
+                modalResolve(result !== undefined ? result : null);
+                modalResolve = null;
+            }
+        }
+
+        function modalConfirm() {
+            if (modalData && modalData.confirmAction) {
+                modalData.confirmAction();
+            }
+            closeModal(true);
+        }
+
+        function modalCancel() {
+            closeModal(false);
+        }
+
+        function generateKey(length) {
+            const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
 
         async function loadApiKeys() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const { data, error } = await supabase
@@ -212,20 +260,11 @@
                 updateStats(currentFiltered);
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ API keys loaded successfully', 'success');
+                window._showToast('✅ API keys loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading API keys: ' + e.message, 'error');
+                window._showToast('Error loading API keys: ' + e.message, 'error');
             }
-        }
-
-        function generateKey(length) {
-            const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let result = '';
-            for (let i = 0; i < length; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
         }
 
         function renderApiKeys(keys) {
@@ -311,9 +350,9 @@
 
         function copyApiKey(key) {
             navigator.clipboard.writeText(key).then(() => {
-                showToast('📋 API key copied to clipboard', 'success');
+                window._showToast('📋 API key copied to clipboard', 'success');
             }).catch(() => {
-                showToast('Failed to copy key', 'error');
+                window._showToast('Failed to copy key', 'error');
             });
         }
 
@@ -354,7 +393,7 @@
                 const permissions = document.getElementById('apiKeyPermissions')?.value || 'read';
                 const expiration = document.getElementById('apiKeyExpiration')?.value || 'never';
 
-                if (!name) { showToast('Please enter a key name', 'warning'); return; }
+                if (!name) { window._showToast('Please enter a key name', 'warning'); return; }
 
                 const key = 'pk_' + generateKey(32);
                 const now = new Date();
@@ -370,6 +409,7 @@
                     'admin': { read: true, write: true, admin: true }
                 };
 
+                const supabase = window._supabaseClient;
                 try {
                     const { error } = await supabase.from('api_keys').insert({
                         id: 'key_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
@@ -383,20 +423,21 @@
 
                     if (error) throw error;
 
-                    showToast('✅ API key generated successfully!', 'success');
-                    showToast('🔑 Key: ' + key, 'info', 6000);
+                    window._showToast('✅ API key generated successfully!', 'success');
+                    window._showToast('🔑 Key: ' + key, 'info', 6000);
                     closeModal(true);
                     loadApiKeys();
                 } catch (e) {
-                    showToast('Error generating key: ' + e.message, 'error');
+                    window._showToast('Error generating key: ' + e.message, 'error');
                 }
             });
         }
 
         async function toggleApiKey(id) {
             const key = apiKeysCache.find(k => k.id === id);
-            if (!key) { showToast('Key not found', 'error'); return; }
+            if (!key) { window._showToast('Key not found', 'error'); return; }
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('api_keys')
@@ -404,16 +445,16 @@
                     .eq('id', id);
 
                 if (error) throw error;
-                showToast(`✅ Key ${key.is_active ? 'disabled' : 'enabled'} successfully`, 'success');
+                window._showToast(`✅ Key ${key.is_active ? 'disabled' : 'enabled'} successfully`, 'success');
                 loadApiKeys();
             } catch (e) {
-                showToast('Error toggling key: ' + e.message, 'error');
+                window._showToast('Error toggling key: ' + e.message, 'error');
             }
         }
 
         async function deleteApiKey(id) {
             const key = apiKeysCache.find(k => k.id === id);
-            if (!key) { showToast('Key not found', 'error'); return; }
+            if (!key) { window._showToast('Key not found', 'error'); return; }
 
             const confirmed = await new Promise((resolve) => {
                 openModal('🗑️ Delete API Key', `
@@ -426,26 +467,33 @@
             });
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase.from('api_keys').delete().eq('id', id);
                 if (error) throw error;
-                showToast('✅ API key deleted successfully', 'success');
+                window._showToast('✅ API key deleted successfully', 'success');
                 loadApiKeys();
             } catch (e) {
-                showToast('Error deleting key: ' + e.message, 'error');
+                window._showToast('Error deleting key: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadApiKeys, 500); });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadApiKeys();
+        };
+
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
         window.loadApiKeys = loadApiKeys;
         window.filterApiKeys = filterApiKeys;
         window.copyApiKey = copyApiKey;
         window.openAddApiKeyModal = openAddApiKeyModal;
         window.toggleApiKey = toggleApiKey;
         window.deleteApiKey = deleteApiKey;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.modalConfirm = modalConfirm;
+        window.modalCancel = modalCancel;
     </script>
 </body>
 </html>
-
-
-

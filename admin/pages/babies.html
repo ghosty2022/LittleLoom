@@ -266,13 +266,6 @@
             color: var(--text-primary);
             transition: var(--transition);
         }
-        .modal-baby-form .form-group input:focus,
-        .modal-baby-form .form-group select:focus,
-        .modal-baby-form .form-group textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
-        }
         .modal-baby-form .form-group textarea {
             min-height: 60px;
             resize: vertical;
@@ -476,25 +469,61 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let babiesCache = [];
         let currentFiltered = [];
+        let modalResolve = null;
+        let modalData = null;
+
+        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('modalOverlay');
+                if (!overlay) return;
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalBody').innerHTML = bodyHTML;
+                document.getElementById('modalConfirmBtn').textContent = confirmText;
+                document.getElementById('modalCancelBtn').textContent = cancelText;
+                overlay.classList.add('active');
+                modalResolve = resolve;
+                modalData = { confirmAction };
+            });
+        }
+
+        function closeModal(result) {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (modalResolve) {
+                modalResolve(result !== undefined ? result : null);
+                modalResolve = null;
+            }
+        }
+
+        function modalConfirm() {
+            if (modalData && modalData.confirmAction) {
+                modalData.confirmAction();
+            }
+            closeModal(true);
+        }
+
+        function modalCancel() {
+            closeModal(false);
+        }
 
         // ─── LOAD BABIES ──────────────────────────────────────────────────
         async function loadBabies() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
-                // Try to fetch with parent info
                 let { data, error } = await supabase
                     .from('babies')
                     .select('*, profiles!babies_parent_id_fkey(full_name, email, avatar)')
                     .order('created_at', { ascending: false });
 
-                // If relationship doesn't exist, try without
                 if (error && error.message.includes('relation')) {
                     const { data: fallback, error: fallbackError } = await supabase
                         .from('babies')
@@ -507,7 +536,6 @@
                     throw error;
                 }
 
-                // Enrich with parent info if needed
                 if (data && data.length > 0) {
                     for (let baby of data) {
                         if (baby.parent_id && !baby.profiles) {
@@ -520,9 +548,7 @@
                                 if (parentData) {
                                     baby.profiles = parentData;
                                 }
-                            } catch (e) {
-                                // Ignore
-                            }
+                            } catch (e) {}
                         }
                     }
                 }
@@ -534,10 +560,10 @@
                 updateBadges();
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Babies loaded successfully', 'success');
+                window._showToast('✅ Babies loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading babies: ' + e.message, 'error');
+                window._showToast('Error loading babies: ' + e.message, 'error');
                 document.getElementById('babiesContainer').innerHTML = `
                     <div class="empty-state-modern">
                         <div class="emoji">❌</div>
@@ -549,7 +575,6 @@
             }
         }
 
-        // ─── RENDER BABIES ─────────────────────────────────────────────────
         function renderBabies(babies) {
             const container = document.getElementById('babiesContainer');
 
@@ -569,7 +594,6 @@
             babies.forEach(baby => {
                 const isActive = baby.is_active !== false;
                 const parentName = baby.profiles?.full_name || baby.parent_name || 'Unknown';
-                const parentAvatar = baby.profiles?.avatar || '👤';
                 const initials = (baby.name || 'B').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
                 const streak = baby.streak || 0;
                 const dob = baby.date_of_birth ? new Date(baby.date_of_birth).toLocaleDateString() : 'Not set';
@@ -617,7 +641,6 @@
             document.getElementById('footerActive').textContent = babies.filter(b => b.is_active !== false).length + ' active';
         }
 
-        // ─── UPDATE STATS ─────────────────────────────────────────────────
         function updateStats(babies) {
             const total = babies.length;
             const active = babies.filter(b => b.is_active !== false).length;
@@ -636,13 +659,11 @@
             document.getElementById('statAvgStreak').innerHTML = avgStreak + '<span style="font-size:16px;opacity:0.7;">d</span>';
         }
 
-        // ─── UPDATE BADGES ─────────────────────────────────────────────────
         function updateBadges() {
             const total = babiesCache.length;
             document.getElementById('babyBadge').textContent = total;
         }
 
-        // ─── FILTER BABIES ──────────────────────────────────────────────────
         function filterBabies() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
             const filter = document.getElementById('filterSelect')?.value || 'all';
@@ -666,7 +687,6 @@
             renderBabies(filtered);
         }
 
-        // ─── ADD BABY ──────────────────────────────────────────────────────
         function openAddBabyModal() {
             const body = `
                 <div class="modal-baby-form">
@@ -710,9 +730,10 @@
                 const gender = document.getElementById('addBabyGender')?.value;
                 const notes = document.getElementById('addBabyNotes')?.value?.trim();
 
-                if (!name) { showToast('Please enter a baby name', 'warning'); return; }
-                if (!parentId) { showToast('Please enter a parent ID', 'warning'); return; }
+                if (!name) { window._showToast('Please enter a baby name', 'warning'); return; }
+                if (!parentId) { window._showToast('Please enter a parent ID', 'warning'); return; }
 
+                const supabase = window._supabaseClient;
                 try {
                     const { error } = await supabase.from('babies').insert({
                         name: name,
@@ -728,19 +749,18 @@
 
                     if (error) throw error;
 
-                    showToast('✅ Baby added successfully', 'success');
+                    window._showToast('✅ Baby added successfully', 'success');
                     closeModal(true);
                     loadBabies();
                 } catch (e) {
-                    showToast('Error adding baby: ' + e.message, 'error');
+                    window._showToast('Error adding baby: ' + e.message, 'error');
                 }
             });
         }
 
-        // ─── EDIT BABY ──────────────────────────────────────────────────────
         function openEditBabyModal(babyId) {
             const baby = babiesCache.find(b => b.id === babyId);
-            if (!baby) { showToast('Baby not found', 'error'); return; }
+            if (!baby) { window._showToast('Baby not found', 'error'); return; }
 
             const body = `
                 <div class="modal-baby-form">
@@ -789,8 +809,9 @@
                 const isActive = document.getElementById('editBabyStatus')?.value === 'true';
                 const notes = document.getElementById('editBabyNotes')?.value?.trim();
 
-                if (!name) { showToast('Please enter a baby name', 'warning'); return; }
+                if (!name) { window._showToast('Please enter a baby name', 'warning'); return; }
 
+                const supabase = window._supabaseClient;
                 try {
                     const { error } = await supabase
                         .from('babies')
@@ -807,19 +828,18 @@
 
                     if (error) throw error;
 
-                    showToast('✅ Baby updated successfully', 'success');
+                    window._showToast('✅ Baby updated successfully', 'success');
                     closeModal(true);
                     loadBabies();
                 } catch (e) {
-                    showToast('Error updating baby: ' + e.message, 'error');
+                    window._showToast('Error updating baby: ' + e.message, 'error');
                 }
             });
         }
 
-        // ─── VIEW BABY ─────────────────────────────────────────────────────
         function viewBaby(babyId) {
             const baby = babiesCache.find(b => b.id === babyId);
-            if (!baby) { showToast('Baby not found', 'error'); return; }
+            if (!baby) { window._showToast('Baby not found', 'error'); return; }
 
             const fields = [
                 { label: 'ID', value: baby.id },
@@ -849,10 +869,9 @@
             openModal('👶 Baby Details', details, 'Close', closeModal);
         }
 
-        // ─── DELETE BABY ──────────────────────────────────────────────────
         async function deleteBaby(babyId) {
             const baby = babiesCache.find(b => b.id === babyId);
-            if (!baby) { showToast('Baby not found', 'error'); return; }
+            if (!baby) { window._showToast('Baby not found', 'error'); return; }
 
             const confirmed = await new Promise((resolve) => {
                 openModal(
@@ -872,21 +891,22 @@
 
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase.from('babies').delete().eq('id', babyId);
                 if (error) throw error;
 
-                showToast('✅ Baby deleted successfully', 'success');
+                window._showToast('✅ Baby deleted successfully', 'success');
                 loadBabies();
             } catch (e) {
-                showToast('Error deleting baby: ' + e.message, 'error');
+                window._showToast('Error deleting baby: ' + e.message, 'error');
             }
         }
 
-        // ─── INIT ─────────────────────────────────────────────────────────
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(loadBabies, 500);
-        });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadBabies();
+        };
 
         window.loadBabies = loadBabies;
         window.filterBabies = filterBabies;
@@ -894,9 +914,10 @@
         window.openEditBabyModal = openEditBabyModal;
         window.viewBaby = viewBaby;
         window.deleteBaby = deleteBaby;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.modalConfirm = modalConfirm;
+        window.modalCancel = modalCancel;
     </script>
 </body>
 </html>
-
-
-

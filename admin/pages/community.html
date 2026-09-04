@@ -298,185 +298,218 @@
     </style>
 </head>
 <body>
-    <div class="app">
-        <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-icon">🧵</div>
+    <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">🧵</div>
+            <div>
+                <div class="logo-title">LittleLoom</div>
+                <div class="logo-sub">Enterprise Console</div>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-nav-label">Overview</div>
+            <a class="sidebar-nav-item" href="/admin/dashboard.html">
+                <span class="icon">📊</span> Dashboard
+                <span class="badge success">Live</span>
+            </a>
+            <div class="sidebar-nav-label">Management</div>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
+                <span class="icon">👶</span> Babies
+                <span class="badge" id="babyBadge">0</span>
+            </a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
+                <span class="icon">👤</span> Users
+                <span class="badge" id="userBadge">0</span>
+            </a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
+                <span class="icon">🛡️</span> Moderation
+                <span class="badge danger" id="modBadge">0</span>
+            </a>
+            <div class="sidebar-nav-label">Community</div>
+            <a class="sidebar-nav-item active" href="#">
+                <span class="icon">💬</span> Community
+                <span class="badge" id="postBadge">0</span>
+            </a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
+                <span class="icon">📌</span> Topics
+            </a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')">
+                <span class="icon">📢</span> Announcements
+                <span class="badge" id="announceBadge">0</span>
+            </a>
+            <div class="sidebar-nav-label">Trackers</div>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
+                <span class="icon">📈</span> Tracker Entries
+                <span class="badge" id="entryBadge">0</span>
+            </a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
+                <span class="icon">🏆</span> Milestones
+                <span class="badge" id="milestoneBadge">0</span>
+            </a>
+            <div class="sidebar-nav-label">Analytics</div>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
+                <span class="icon">📈</span> Analytics
+            </a>
+            <div class="sidebar-nav-label">System</div>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
+                <span class="icon">⚙️</span> Settings
+            </a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
+                <span class="icon">💾</span> Backup & Restore
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar" id="sidebarAvatar">A</div>
                 <div>
-                    <div class="logo-title">LittleLoom</div>
-                    <div class="logo-sub">Enterprise Console</div>
-                </div>
-            </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
-                    <span class="icon">👶</span> Babies
-                    <span class="badge" id="babyBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                    <span class="badge" id="userBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
-                    <span class="icon">🛡️</span> Moderation
-                    <span class="badge danger" id="modBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item active" href="#">
-                    <span class="icon">💬</span> Community
-                    <span class="badge" id="postBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
-                    <span class="icon">📌</span> Topics
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')">
-                    <span class="icon">📢</span> Announcements
-                    <span class="badge" id="announceBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
-                    <span class="icon">📈</span> Tracker Entries
-                    <span class="badge" id="entryBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
-                    <span class="icon">🏆</span> Milestones
-                    <span class="badge" id="milestoneBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
-                    <span class="icon">📈</span> Analytics
-                </a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
-                    <span class="icon">💾</span> Backup & Restore
-                </a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-info">
-                    <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div>
-                        <div class="user-name" id="sidebarName">Admin</div>
-                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                    </div>
-                </div>
-            </div>
-        </aside>
-
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <!-- ─── MODAL ────────────────────────────────────────────────────── -->
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-            <div class="modal">
-                <div class="modal-header">
-                    <h2 id="modalTitle">Modal</h2>
-                    <button class="modal-close" onclick="modalCancel()">✕</button>
-                </div>
-                <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <div class="user-name" id="sidebarName">Admin</div>
+                    <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
                 </div>
             </div>
         </div>
+    </aside>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
-        <main class="main">
-            <header class="topbar">
-                <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                    <div>
-                        <div class="topbar-title">Community <span class="sub">| Posts & Engagement</span></div>
-                    </div>
-                </div>
-                <div class="topbar-right">
-                    <div class="topbar-status">
-                        <span class="dot"></span>
-                        <span id="connectionStatus">Connected</span>
-                    </div>
-                    <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadCommunity()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
-                    </div>
-                </div>
-            </header>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-            <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                </div>
+    <!-- ─── MODAL ────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modalTitle">Modal</h2>
+                <button class="modal-close" onclick="modalCancel()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+            </div>
+        </div>
+    </div>
 
-                <div class="page-hero">
-                    <h1>💬 Community</h1>
-                    <p>Monitor and manage community posts and engagement</p>
-                    <div class="stats-row">
-                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Posts</span></div>
-                        <div class="stat"><span class="num" id="statToday">0</span><span class="label">Today</span></div>
-                        <div class="stat"><span class="num" id="statComments">0</span><span class="label">Comments</span></div>
-                        <div class="stat"><span class="num" id="statLikes">0</span><span class="label">Likes</span></div>
-                    </div>
-                </div>
-
-                <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search posts..." id="searchInput" oninput="filterPosts()">
-                    <select id="statusFilter" onchange="filterPosts()">
-                        <option value="all">All Status</option>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
-                        <option value="flagged">Flagged</option>
-                    </select>
-                    <select id="topicFilter" onchange="filterPosts()">
-                        <option value="all">All Topics</option>
-                    </select>
-                    <div class="btn-group">
-                        <button class="btn btn-outline" onclick="loadCommunity()">🔄 Refresh</button>
-                    </div>
-                </div>
-
-                <div id="postsContainer">
-                    <div class="empty-state-modern">
-                        <div class="emoji">💬</div>
-                        <h3>Loading posts...</h3>
-                        <p>Please wait while we fetch the data</p>
-                    </div>
+    <!-- ─── MAIN ────────────────────────────────────────────────────── -->
+    <main class="main">
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
+                <div>
+                    <div class="topbar-title">Community <span class="sub">| Posts & Engagement</span></div>
                 </div>
             </div>
-        </main>
-    </div>
+            <div class="topbar-right">
+                <div class="topbar-status">
+                    <span class="dot"></span>
+                    <span id="connectionStatus">Connected</span>
+                </div>
+                <div class="topbar-actions">
+                    <button class="btn btn-outline btn-sm" onclick="loadCommunity()">🔄 Refresh</button>
+                    <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="page-content active">
+            <div class="status-bar" id="statusBar">
+                <span>✅ Ready</span>
+                <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+            </div>
+
+            <div class="page-hero">
+                <h1>💬 Community</h1>
+                <p>Monitor and manage community posts and engagement</p>
+                <div class="stats-row">
+                    <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Posts</span></div>
+                    <div class="stat"><span class="num" id="statToday">0</span><span class="label">Today</span></div>
+                    <div class="stat"><span class="num" id="statComments">0</span><span class="label">Comments</span></div>
+                    <div class="stat"><span class="num" id="statLikes">0</span><span class="label">Likes</span></div>
+                </div>
+            </div>
+
+            <div class="filter-bar-modern">
+                <input type="text" placeholder="🔍 Search posts..." id="searchInput" oninput="filterPosts()">
+                <select id="statusFilter" onchange="filterPosts()">
+                    <option value="all">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="flagged">Flagged</option>
+                </select>
+                <select id="topicFilter" onchange="filterPosts()">
+                    <option value="all">All Topics</option>
+                </select>
+                <div class="btn-group">
+                    <button class="btn btn-outline" onclick="loadCommunity()">🔄 Refresh</button>
+                </div>
+            </div>
+
+            <div id="postsContainer">
+                <div class="empty-state-modern">
+                    <div class="emoji">💬</div>
+                    <h3>Loading posts...</h3>
+                    <p>Please wait while we fetch the data</p>
+                </div>
+            </div>
+        </div>
+    </main>
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let postsCache = [];
         let topicsCache = [];
         let currentFiltered = [];
+        let modalResolve = null;
+        let modalData = null;
 
-        // ─── LOAD COMMUNITY ──────────────────────────────────────────────
+        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('modalOverlay');
+                if (!overlay) return;
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalBody').innerHTML = bodyHTML;
+                document.getElementById('modalConfirmBtn').textContent = confirmText;
+                document.getElementById('modalCancelBtn').textContent = cancelText;
+                overlay.classList.add('active');
+                modalResolve = resolve;
+                modalData = { confirmAction };
+            });
+        }
+
+        function closeModal(result) {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (modalResolve) {
+                modalResolve(result !== undefined ? result : null);
+                modalResolve = null;
+            }
+        }
+
+        function modalConfirm() {
+            if (modalData && modalData.confirmAction) {
+                modalData.confirmAction();
+            }
+            closeModal(true);
+        }
+
+        function modalCancel() {
+            closeModal(false);
+        }
+
         async function loadCommunity() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
-                // Use the view we created for better data
                 let { data: posts, error: postsError } = await supabase
                     .from('v_community_posts')
                     .select('*')
                     .order('created_at', { ascending: false })
                     .limit(50);
 
-                // If view fails, fallback to direct query
                 if (postsError) {
                     console.warn('View query failed, falling back:', postsError);
                     const { data: fallback, error: fallbackError } = await supabase
@@ -490,7 +523,6 @@
                     posts = fallback;
                 }
 
-                // Load topics
                 const { data: topics, error: topicsError } = await supabase
                     .from('community_topics')
                     .select('*')
@@ -502,7 +534,6 @@
                 topicsCache = topics || [];
                 currentFiltered = [...postsCache];
 
-                // Populate topic filter
                 const filter = document.getElementById('topicFilter');
                 filter.innerHTML = '<option value="all">All Topics</option>';
                 topicsCache.forEach(t => {
@@ -513,10 +544,10 @@
                 updateStats(currentFiltered);
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Community loaded successfully', 'success');
+                window._showToast('✅ Community loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading community: ' + e.message, 'error');
+                window._showToast('Error loading community: ' + e.message, 'error');
                 document.getElementById('postsContainer').innerHTML = `
                     <div class="empty-state-modern">
                         <div class="emoji">❌</div>
@@ -528,7 +559,6 @@
             }
         }
 
-        // ─── RENDER POSTS ─────────────────────────────────────────────────
         function renderPosts(posts) {
             const container = document.getElementById('postsContainer');
             if (!posts || posts.length === 0) {
@@ -561,7 +591,6 @@
                 const status = p.status || 'pending';
                 const statusClass = status === 'approved' ? 'approved' : status === 'pending' ? 'pending' : status === 'rejected' ? 'rejected' : 'flagged';
 
-                // Parse images
                 let images = [];
                 if (p.images) {
                     if (Array.isArray(p.images)) images = p.images;
@@ -622,7 +651,6 @@
             container.innerHTML = html;
         }
 
-        // ─── UPDATE STATS ──────────────────────────────────────────────────
         function updateStats(posts) {
             const total = posts.length;
             const today = posts.filter(p => {
@@ -639,7 +667,6 @@
             document.getElementById('postBadge').textContent = total;
         }
 
-        // ─── FILTER POSTS ──────────────────────────────────────────────────
         function filterPosts() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
             const status = document.getElementById('statusFilter')?.value || 'all';
@@ -662,10 +689,9 @@
             renderPosts(filtered);
         }
 
-        // ─── VIEW POST ─────────────────────────────────────────────────────
         async function viewPost(id) {
             const post = postsCache.find(p => p.id === id);
-            if (!post) { showToast('Post not found', 'error'); return; }
+            if (!post) { window._showToast('Post not found', 'error'); return; }
 
             const authorName = post.author_name || post.profiles?.full_name || 'Unknown';
             const content = post.content || '—';
@@ -713,8 +739,8 @@
             openModal('💬 Post Details', details, 'Close', () => {});
         }
 
-        // ─── APPROVE POST ─────────────────────────────────────────────────
         async function approvePost(id) {
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('community_posts')
@@ -725,14 +751,13 @@
                     .eq('id', id);
 
                 if (error) throw error;
-                showToast('✅ Post approved successfully', 'success');
+                window._showToast('✅ Post approved successfully', 'success');
                 loadCommunity();
             } catch (e) {
-                showToast('Error approving post: ' + e.message, 'error');
+                window._showToast('Error approving post: ' + e.message, 'error');
             }
         }
 
-        // ─── REJECT POST ──────────────────────────────────────────────────
         async function rejectPost(id) {
             const confirmed = await new Promise((resolve) => {
                 openModal(
@@ -749,9 +774,9 @@
                     'Cancel'
                 );
             });
-
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('community_posts')
@@ -762,15 +787,15 @@
                     .eq('id', id);
 
                 if (error) throw error;
-                showToast('✅ Post rejected successfully', 'success');
+                window._showToast('✅ Post rejected successfully', 'success');
                 loadCommunity();
             } catch (e) {
-                showToast('Error rejecting post: ' + e.message, 'error');
+                window._showToast('Error rejecting post: ' + e.message, 'error');
             }
         }
 
-        // ─── FLAG POST ────────────────────────────────────────────────────
         async function flagPost(id) {
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('community_posts')
@@ -781,14 +806,13 @@
                     .eq('id', id);
 
                 if (error) throw error;
-                showToast('🚩 Post flagged successfully', 'warning');
+                window._showToast('🚩 Post flagged successfully', 'warning');
                 loadCommunity();
             } catch (e) {
-                showToast('Error flagging post: ' + e.message, 'error');
+                window._showToast('Error flagging post: ' + e.message, 'error');
             }
         }
 
-        // ─── DELETE POST ──────────────────────────────────────────────────
         async function deletePost(id) {
             const confirmed = await new Promise((resolve) => {
                 openModal(
@@ -805,9 +829,9 @@
                     'Cancel'
                 );
             });
-
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('community_posts')
@@ -819,17 +843,17 @@
                     .eq('id', id);
 
                 if (error) throw error;
-                showToast('✅ Post deleted successfully', 'success');
+                window._showToast('✅ Post deleted successfully', 'success');
                 loadCommunity();
             } catch (e) {
-                showToast('Error deleting post: ' + e.message, 'error');
+                window._showToast('Error deleting post: ' + e.message, 'error');
             }
         }
 
-        // ─── INIT ─────────────────────────────────────────────────────────
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(loadCommunity, 500);
-        });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadCommunity();
+        };
 
         window.loadCommunity = loadCommunity;
         window.filterPosts = filterPosts;
@@ -838,9 +862,10 @@
         window.rejectPost = rejectPost;
         window.flagPost = flagPost;
         window.deletePost = deletePost;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.modalConfirm = modalConfirm;
+        window.modalCancel = modalCancel;
     </script>
 </body>
 </html>
-
-
-
