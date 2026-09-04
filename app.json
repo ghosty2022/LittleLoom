@@ -151,7 +151,8 @@
       "expo-localization",
       "expo-asset",
       "expo-audio",
-      "expo-video"
+      "expo-video",
+      "@stripe/stripe-react-native"
     ],
     "extra": {
       "eas": {
