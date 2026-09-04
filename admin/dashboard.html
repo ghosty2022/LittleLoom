@@ -38,6 +38,8 @@
             --header-height: 64px;
             --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             --glass-bg: rgba(255, 255, 255, 0.8);
+            --admin-role-color: #6366f1;
+            --admin-role-bg: rgba(99, 102, 241, 0.1);
         }
 
         * {
@@ -70,6 +72,73 @@
             display: flex;
             min-height: 100vh;
             background: var(--bg-primary);
+        }
+
+        /* ─── SESSION TIMEOUT BANNER ────────────────────────────────────── */
+        .session-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10000;
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 12px 24px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+            animation: slideDownBanner 0.3s ease;
+        }
+        .session-banner.show {
+            display: flex;
+        }
+        .session-banner .countdown {
+            background: #dc2626;
+            color: #fff;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            min-width: 40px;
+            text-align: center;
+        }
+        .session-banner .btn {
+            padding: 4px 16px;
+            font-size: 12px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .session-banner .btn-primary {
+            background: #dc2626;
+            color: #fff;
+        }
+        .session-banner .btn-primary:hover {
+            background: #b91c1c;
+        }
+        .session-banner .btn-outline {
+            background: transparent;
+            color: #dc2626;
+            border: 1.5px solid #dc2626;
+        }
+        .session-banner .btn-outline:hover {
+            background: #fee2e2;
+        }
+
+        @keyframes slideDownBanner {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* ─── SIDEBAR ────────────────────────────────────────────────────── */
@@ -206,6 +275,22 @@
         .sidebar-nav-item .badge.warning {
             background: #f59e0b;
         }
+        .sidebar-nav-item .badge.info {
+            background: #3b82f6;
+        }
+        .sidebar-nav-item.restricted {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .sidebar-nav-item.restricted:hover {
+            transform: none;
+            background: none;
+        }
+        .sidebar-nav-item .lock-icon {
+            font-size: 12px;
+            margin-left: auto;
+            opacity: 0.5;
+        }
 
         .sidebar-footer {
             padding: 12px 16px;
@@ -239,6 +324,14 @@
         .sidebar-footer .user-email {
             font-size: 11px;
             color: rgba(255, 255, 255, 0.4);
+        }
+        .sidebar-footer .user-role {
+            font-size: 10px;
+            color: var(--primary-light);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
         }
 
         .sidebar-overlay {
@@ -343,6 +436,15 @@
             background: #22c55e;
             animation: pulse-dot 2s ease-in-out infinite;
         }
+        .topbar-status .dot.warning {
+            background: #f59e0b;
+            animation: pulse-dot 1s ease-in-out infinite;
+        }
+        .topbar-status .dot.danger {
+            background: #ef4444;
+            animation: none;
+        }
+
         @keyframes pulse-dot {
             0%,
             100% {
@@ -430,6 +532,11 @@
         .btn-xs {
             padding: 2px 8px;
             font-size: 10px;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
         }
 
         /* ─── STATUS BAR ────────────────────────────────────────────────── */
@@ -525,6 +632,11 @@
             }
             .topbar-title .sub {
                 display: none;
+            }
+            .session-banner {
+                flex-wrap: wrap;
+                padding: 10px 16px;
+                font-size: 12px;
             }
         }
 
@@ -880,6 +992,16 @@
             opacity: 0.7;
             margin-top: 8px;
         }
+        .welcome-banner .role-badge {
+            display: inline-flex;
+            padding: 2px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            margin-top: 8px;
+        }
 
         /* ─── QUICK ACTIONS ─────────────────────────────────────────────── */
         .quick-actions {
@@ -892,6 +1014,10 @@
             padding: 8px 18px;
             font-size: 12px;
             border-radius: var(--radius-sm);
+        }
+        .quick-actions .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
         }
 
         /* ─── STATUS INDICATOR ──────────────────────────────────────────── */
@@ -1021,9 +1147,72 @@
                 background-position: -200% 0;
             }
         }
+
+        /* ─── ADMIN ROLE INDICATOR ──────────────────────────────────────── */
+        .admin-role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .admin-role-badge.super-admin {
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+        .admin-role-badge.content-manager {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+        .admin-role-badge.user-manager {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .admin-role-badge.moderation-manager {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .admin-role-badge.analytics-viewer {
+            background: #fce7f3;
+            color: #db2777;
+        }
+        .admin-role-badge.guest {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+
+        /* ─── PERMISSION DENIED OVERLAY ───────────────────────────────── */
+        .permission-denied {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .permission-denied .emoji {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+        .permission-denied h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        .permission-denied p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
+    <!-- ─── SESSION TIMEOUT BANNER ────────────────────────────────────── -->
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
@@ -1034,134 +1223,133 @@
                     <div class="logo-sub">Enterprise Console</div>
                 </div>
             </div>
-           <nav class="sidebar-nav" id="sidebarNav">
-    <!-- Overview -->
-    <div class="sidebar-nav-label">📊 Overview</div>
-    <a class="sidebar-nav-item active" href="#" onclick="navigateTo('dashboard')">
-        <span class="icon">📊</span> Dashboard
-        <span class="badge success">Live</span>
-    </a>
+            <nav class="sidebar-nav" id="sidebarNav">
+                <!-- Overview -->
+                <div class="sidebar-nav-label">📊 Overview</div>
+                <a class="sidebar-nav-item active" href="#" onclick="navigateTo('dashboard')">
+                    <span class="icon">📊</span> Dashboard
+                    <span class="badge success">Live</span>
+                </a>
 
-    <!-- Management -->
-    <div class="sidebar-nav-label">👑 Management</div>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
-        <span class="icon">👶</span> Babies
-        <span class="badge" id="babyBadge">0</span>
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
-        <span class="icon">👤</span> Users
-        <span class="badge" id="userBadge">0</span>
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
-        <span class="icon">🛡️</span> Moderation
-        <span class="badge danger" id="modBadge">0</span>
-    </a>
+                <!-- Management - Restricted by role -->
+                <div class="sidebar-nav-label">👑 Management</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')" data-required-role="content_manager">
+                    <span class="icon">👶</span> Babies
+                    <span class="badge" id="babyBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')" data-required-role="user_manager">
+                    <span class="icon">👤</span> Users
+                    <span class="badge" id="userBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')" data-required-role="moderation_manager">
+                    <span class="icon">🛡️</span> Moderation
+                    <span class="badge danger" id="modBadge">0</span>
+                </a>
 
-    <!-- Community -->
-    <div class="sidebar-nav-label">💬 Community</div>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
-        <span class="icon">💬</span> Community Posts
-        <span class="badge" id="postBadge">0</span>
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
-        <span class="icon">📌</span> Topics
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')">
-        <span class="icon">📢</span> Announcements
-        <span class="badge" id="announceBadge">0</span>
-    </a>
+                <!-- Community -->
+                <div class="sidebar-nav-label">💬 Community</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')" data-required-role="content_manager">
+                    <span class="icon">💬</span> Community Posts
+                    <span class="badge" id="postBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')" data-required-role="content_manager">
+                    <span class="icon">📌</span> Topics
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')" data-required-role="content_manager">
+                    <span class="icon">📢</span> Announcements
+                    <span class="badge" id="announceBadge">0</span>
+                </a>
 
-    <!-- Trackers -->
-    <div class="sidebar-nav-label">📊 Trackers</div>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
-        <span class="icon">📈</span> Tracker Entries
-        <span class="badge" id="entryBadge">0</span>
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
-        <span class="icon">🏆</span> Milestones
-        <span class="badge" id="milestoneBadge">0</span>
-    </a>
+                <!-- Trackers -->
+                <div class="sidebar-nav-label">📊 Trackers</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')" data-required-role="content_manager">
+                    <span class="icon">📈</span> Tracker Entries
+                    <span class="badge" id="entryBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')" data-required-role="content_manager">
+                    <span class="icon">🏆</span> Milestones
+                    <span class="badge" id="milestoneBadge">0</span>
+                </a>
 
-    <!-- Analytics -->
-    <div class="sidebar-nav-label">📈 Analytics</div>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
-        <span class="icon">📈</span> Analytics Dashboard
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')">
-        <span class="icon">📊</span> Growth Analytics
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')">
-        <span class="icon">📈</span> Activity Heatmap
-    </a>
+                <!-- Analytics -->
+                <div class="sidebar-nav-label">📈 Analytics</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')" data-required-role="analytics_viewer">
+                    <span class="icon">📈</span> Analytics Dashboard
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')" data-required-role="analytics_viewer">
+                    <span class="icon">📊</span> Growth Analytics
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')" data-required-role="analytics_viewer">
+                    <span class="icon">📈</span> Activity Heatmap
+                </a>
 
-    <!-- System -->
-    <div class="sidebar-nav-label">⚙️ System</div>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
-        <span class="icon">⚙️</span> Settings
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
-        <span class="icon">💾</span> Backup & Restore
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')">
-        <span class="icon">📋</span> Audit Logs
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('support')">
-        <span class="icon">🎫</span> Support Tickets
-        <span class="badge danger" id="supportBadge">0</span>
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('api')">
-        <span class="icon">🔑</span> API Management
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('features')">
-        <span class="icon">🚩</span> Feature Flags
-    </a>
+                <!-- System - Super Admin only -->
+                <div class="sidebar-nav-label">⚙️ System</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')" data-required-role="super_admin">
+                    <span class="icon">⚙️</span> Settings
+                    <span class="lock-icon">🔒</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')" data-required-role="super_admin">
+                    <span class="icon">💾</span> Backup & Restore
+                    <span class="lock-icon">🔒</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')" data-required-role="super_admin">
+                    <span class="icon">📋</span> Audit Logs
+                    <span class="lock-icon">🔒</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('admin_roles')" data-required-role="super_admin">
+                    <span class="icon">👥</span> Admin Roles
+                    <span class="badge danger" id="adminBadge">0</span>
+                    <span class="lock-icon">🔒</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('support')" data-required-role="super_admin">
+                    <span class="icon">🎫</span> Support Tickets
+                    <span class="badge danger" id="supportBadge">0</span>
+                    <span class="lock-icon">🔒</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('api')" data-required-role="super_admin">
+                    <span class="icon">🔑</span> API Management
+                    <span class="lock-icon">🔒</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('features')" data-required-role="super_admin">
+                    <span class="icon">🚩</span> Feature Flags
+                    <span class="lock-icon">🔒</span>
+                </a>
 
-    <!-- Health & Performance -->
-    <div class="sidebar-nav-label">❤️ Health</div>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('health')">
-        <span class="icon">❤️</span> System Health
-        <span class="badge success" id="healthBadge">OK</span>
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('performance')">
-        <span class="icon">⚡</span> Performance
-    </a>
+                <!-- Health & Performance -->
+                <div class="sidebar-nav-label">❤️ Health</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('health')">
+                    <span class="icon">❤️</span> System Health
+                    <span class="badge success" id="healthBadge">OK</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('performance')">
+                    <span class="icon">⚡</span> Performance
+                </a>
 
-    <!-- Additional Tools -->
-    <div class="sidebar-nav-label">🛠️ Tools</div>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('qrcode')">
-        <span class="icon">📱</span> QR Codes
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('realtime')">
-        <span class="icon">🔄</span> Realtime Monitor
-        <span class="badge success">Live</span>
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('export')">
-        <span class="icon">📤</span> Data Export
-    </a>
-    <a class="sidebar-nav-item" href="#" onclick="navigateTo('notifications')">
-        <span class="icon">🔔</span> Notifications
-        <span class="badge" id="notifBadge">0</span>
-    </a>
-
-    <!-- Other Pages (Hidden in sidebar but accessible via URL) -->
-    <!-- 
-    These pages exist but are not shown in sidebar:
-    - qrcode.html
-    - realtime.html
-    - notifications.html
-    - export.html
-    - health.html
-    - performance.html
-    - api.html
-    - features.html
-    -->
-</nav>
+                <!-- Additional Tools -->
+                <div class="sidebar-nav-label">🛠️ Tools</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('qrcode')">
+                    <span class="icon">📱</span> QR Codes
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('realtime')">
+                    <span class="icon">🔄</span> Realtime Monitor
+                    <span class="badge success">Live</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('export')" data-required-role="analytics_viewer">
+                    <span class="icon">📤</span> Data Export
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('notifications')">
+                    <span class="icon">🔔</span> Notifications
+                    <span class="badge" id="notifBadge">0</span>
+                </a>
+            </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
                     <div>
                         <div class="user-name" id="sidebarName">Admin</div>
                         <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
                     </div>
                 </div>
             </div>
@@ -1195,7 +1383,7 @@
                 </div>
                 <div class="topbar-right">
                     <div class="topbar-status">
-                        <span class="dot"></span>
+                        <span class="dot" id="statusDot"></span>
                         <span id="connectionStatus">Connected</span>
                     </div>
                     <div class="topbar-actions">
@@ -1212,6 +1400,7 @@
                         <span class="dot"></span> Online
                     </span>
                     <span style="margin-left:auto;font-size:12px;color:var(--text-muted);" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;" id="sessionTimer">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
                 </div>
 
                 <!-- Welcome Banner -->
@@ -1219,16 +1408,18 @@
                     <h2 id="welcomeMessage">👋 Welcome back, Admin!</h2>
                     <p>Here's what's happening with your LittleLoom community today.</p>
                     <div class="session-info">⏰ Session expires after 30 minutes of inactivity</div>
+                    <div class="role-badge" id="welcomeRoleBadge">👑 Super Admin</div>
                 </div>
 
-                <!-- Quick Actions -->
-                <div class="quick-actions">
-                    <button class="btn btn-primary" onclick="navigateTo('babies')">👶 View Babies</button>
-                    <button class="btn btn-success" onclick="navigateTo('trackers')">📊 Trackers</button>
-                    <button class="btn btn-outline" onclick="navigateTo('community')">💬 Community</button>
-                    <button class="btn btn-warning" onclick="navigateTo('moderation')">🛡️ Moderation</button>
-                    <button class="btn btn-outline" onclick="navigateTo('announcements')">📢 Announcements</button>
-                    <button class="btn btn-outline" onclick="navigateTo('analytics')">📈 Analytics</button>
+                <!-- Quick Actions - Filtered by role -->
+                <div class="quick-actions" id="quickActions">
+                    <button class="btn btn-primary" onclick="navigateTo('babies')" data-required-role="content_manager">👶 View Babies</button>
+                    <button class="btn btn-success" onclick="navigateTo('trackers')" data-required-role="content_manager">📊 Trackers</button>
+                    <button class="btn btn-outline" onclick="navigateTo('community')" data-required-role="content_manager">💬 Community</button>
+                    <button class="btn btn-warning" onclick="navigateTo('moderation')" data-required-role="moderation_manager">🛡️ Moderation</button>
+                    <button class="btn btn-outline" onclick="navigateTo('announcements')" data-required-role="content_manager">📢 Announcements</button>
+                    <button class="btn btn-outline" onclick="navigateTo('analytics')" data-required-role="analytics_viewer">📈 Analytics</button>
+                    <button class="btn btn-outline" onclick="navigateTo('admin_roles')" data-required-role="super_admin" style="border-color:#7c3aed;color:#7c3aed;">👥 Admin Roles</button>
                 </div>
 
                 <!-- Stats -->
@@ -1305,11 +1496,12 @@
                     </div>
                 </div>
 
-                <!-- New: Quick Stats Footer -->
+                <!-- Footer -->
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid var(--border);margin-top:12px;font-size:12px;color:var(--text-muted);flex-wrap:wrap;gap:8px;">
                     <span>📊 Data refreshed in real-time</span>
                     <span>🔐 Secure admin access</span>
                     <span>🧵 LittleLoom v2.0</span>
+                    <span id="userRoleFooter">👑 Super Admin</span>
                 </div>
             </div>
         </main>
@@ -1327,6 +1519,100 @@
         let session = null;
         let refreshTimer = null;
         let realtimeChannel = null;
+
+        // ─── SESSION MANAGEMENT ──────────────────────────────────────────
+        const SESSION_TIMEOUT_MINUTES = 30;
+        let sessionTimer = null;
+        let sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+        let sessionWarningShown = false;
+        let sessionCountdownInterval = null;
+
+        // ─── ADMIN ROLE PERMISSIONS ──────────────────────────────────────
+        const ADMIN_ROLES = {
+            'super_admin': {
+                label: 'Super Admin',
+                badge: 'super-admin',
+                permissions: {
+                    canManageAdmins: true,
+                    canManageUsers: true,
+                    canManageContent: true,
+                    canModerate: true,
+                    canViewAnalytics: true,
+                    canManageSystem: true,
+                    canManageBackup: true,
+                    canViewAudit: true,
+                    canManageAPI: true,
+                    canManageFeatures: true
+                }
+            },
+            'content_manager': {
+                label: 'Content Manager',
+                badge: 'content-manager',
+                permissions: {
+                    canManageAdmins: false,
+                    canManageUsers: false,
+                    canManageContent: true,
+                    canModerate: true,
+                    canViewAnalytics: true,
+                    canManageSystem: false,
+                    canManageBackup: false,
+                    canViewAudit: false,
+                    canManageAPI: false,
+                    canManageFeatures: false
+                }
+            },
+            'user_manager': {
+                label: 'User Manager',
+                badge: 'user-manager',
+                permissions: {
+                    canManageAdmins: false,
+                    canManageUsers: true,
+                    canManageContent: false,
+                    canModerate: false,
+                    canViewAnalytics: true,
+                    canManageSystem: false,
+                    canManageBackup: false,
+                    canViewAudit: false,
+                    canManageAPI: false,
+                    canManageFeatures: false
+                }
+            },
+            'moderation_manager': {
+                label: 'Moderation Manager',
+                badge: 'moderation-manager',
+                permissions: {
+                    canManageAdmins: false,
+                    canManageUsers: false,
+                    canManageContent: false,
+                    canModerate: true,
+                    canViewAnalytics: true,
+                    canManageSystem: false,
+                    canManageBackup: false,
+                    canViewAudit: false,
+                    canManageAPI: false,
+                    canManageFeatures: false
+                }
+            },
+            'analytics_viewer': {
+                label: 'Analytics Viewer',
+                badge: 'analytics-viewer',
+                permissions: {
+                    canManageAdmins: false,
+                    canManageUsers: false,
+                    canManageContent: false,
+                    canModerate: false,
+                    canViewAnalytics: true,
+                    canManageSystem: false,
+                    canManageBackup: false,
+                    canViewAudit: false,
+                    canManageAPI: false,
+                    canManageFeatures: false
+                }
+            }
+        };
+
+        let currentUserRole = 'super_admin';
+        let userPermissions = ADMIN_ROLES['super_admin'].permissions;
 
         // ─── INIT ─────────────────────────────────────────────────────────
         function initSupabase() {
@@ -1423,6 +1709,7 @@
 
                 session = data.session;
                 updateUIForAuth(session);
+                startSessionTimer();
                 return true;
             } catch (e) {
                 console.error('Auth check error:', e);
@@ -1445,6 +1732,221 @@
                 nameEl.textContent = name;
                 if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
             }
+
+            // Load user role from metadata or profiles
+            loadUserRole(session.user.id);
+        }
+
+        async function loadUserRole(userId) {
+            try {
+                // Try to get role from profiles table
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('admin_role')
+                    .eq('id', userId)
+                    .single();
+
+                if (data && data.admin_role && ADMIN_ROLES[data.admin_role]) {
+                    currentUserRole = data.admin_role;
+                    userPermissions = ADMIN_ROLES[currentUserRole].permissions;
+                    updateUIForRole(currentUserRole);
+                } else {
+                    // Default to super_admin for now
+                    currentUserRole = 'super_admin';
+                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
+                    updateUIForRole('super_admin');
+                }
+            } catch (e) {
+                console.warn('Could not load user role, using default:', e);
+                currentUserRole = 'super_admin';
+                userPermissions = ADMIN_ROLES['super_admin'].permissions;
+                updateUIForRole('super_admin');
+            }
+        }
+
+        function updateUIForRole(role) {
+            const roleInfo = ADMIN_ROLES[role];
+            if (!roleInfo) return;
+
+            // Update sidebar role display
+            const roleEl = document.getElementById('sidebarRole');
+            if (roleEl) roleEl.textContent = roleInfo.label;
+
+            // Update welcome badge
+            const badgeEl = document.getElementById('welcomeRoleBadge');
+            if (badgeEl) badgeEl.textContent = `👑 ${roleInfo.label}`;
+
+            // Update footer
+            const footerEl = document.getElementById('userRoleFooter');
+            if (footerEl) footerEl.textContent = `👑 ${roleInfo.label}`;
+
+            // Apply role-based restrictions to sidebar
+            document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+                const requiredRole = item.dataset.requiredRole;
+                if (requiredRole) {
+                    const hasPermission = checkRolePermission(requiredRole);
+                    if (!hasPermission) {
+                        item.classList.add('restricted');
+                        // Add lock icon if not present
+                        if (!item.querySelector('.lock-icon')) {
+                            const lock = document.createElement('span');
+                            lock.className = 'lock-icon';
+                            lock.textContent = '🔒';
+                            item.appendChild(lock);
+                        }
+                    } else {
+                        item.classList.remove('restricted');
+                        const lock = item.querySelector('.lock-icon');
+                        if (lock) lock.remove();
+                    }
+                }
+            });
+
+            // Apply role-based restrictions to quick actions
+            document.querySelectorAll('.quick-actions .btn').forEach(btn => {
+                const requiredRole = btn.dataset.requiredRole;
+                if (requiredRole) {
+                    btn.disabled = !checkRolePermission(requiredRole);
+                }
+            });
+        }
+
+        function checkRolePermission(requiredRole) {
+            // Map required roles to permission checks
+            const roleMap = {
+                'super_admin': userPermissions.canManageAdmins,
+                'content_manager': userPermissions.canManageContent,
+                'user_manager': userPermissions.canManageUsers,
+                'moderation_manager': userPermissions.canModerate,
+                'analytics_viewer': userPermissions.canViewAnalytics
+            };
+
+            // If direct permission check
+            if (roleMap[requiredRole] !== undefined) {
+                return roleMap[requiredRole];
+            }
+
+            // Check by role hierarchy
+            const roleHierarchy = ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer'];
+            const userIndex = roleHierarchy.indexOf(currentUserRole);
+            const requiredIndex = roleHierarchy.indexOf(requiredRole);
+
+            // If required role is not in hierarchy, check permissions
+            if (requiredIndex === -1) {
+                return false;
+            }
+
+            // Super admin has access to everything
+            if (currentUserRole === 'super_admin') return true;
+
+            // Check if user has required role or higher
+            return userIndex <= requiredIndex;
+        }
+
+        // ─── SESSION TIMER ───────────────────────────────────────────────
+        function startSessionTimer() {
+            if (sessionTimer) clearInterval(sessionTimer);
+            sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+            sessionWarningShown = false;
+
+            // Update display every second
+            sessionTimer = setInterval(() => {
+                sessionTimeRemaining--;
+                updateSessionDisplay();
+
+                // Show warning at 30 seconds
+                if (sessionTimeRemaining <= 30 && !sessionWarningShown) {
+                    sessionWarningShown = true;
+                    showSessionBanner();
+                }
+
+                // Auto-logout at 0
+                if (sessionTimeRemaining <= 0) {
+                    clearInterval(sessionTimer);
+                    handleLogout();
+                }
+            }, 1000);
+
+            // Reset timer on user activity
+            const resetTimer = () => {
+                sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+                sessionWarningShown = false;
+                hideSessionBanner();
+                updateSessionDisplay();
+                localStorage.setItem('lastActivity', Date.now().toString());
+            };
+
+            const activityEvents = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
+            activityEvents.forEach(event => {
+                document.addEventListener(event, resetTimer);
+            });
+
+            // Store cleanup reference
+            window._sessionCleanup = () => {
+                activityEvents.forEach(event => {
+                    document.removeEventListener(event, resetTimer);
+                });
+            };
+        }
+
+        function updateSessionDisplay() {
+            const minutes = Math.floor(sessionTimeRemaining / 60);
+            const seconds = sessionTimeRemaining % 60;
+            const display = document.getElementById('sessionTimeDisplay');
+            if (display) {
+                display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
+
+            // Update status dot color
+            const dot = document.getElementById('statusDot');
+            if (dot) {
+                if (sessionTimeRemaining < 60) {
+                    dot.className = 'dot danger';
+                } else if (sessionTimeRemaining < 300) {
+                    dot.className = 'dot warning';
+                } else {
+                    dot.className = 'dot';
+                }
+            }
+        }
+
+        function showSessionBanner() {
+            const banner = document.getElementById('sessionBanner');
+            if (banner) {
+                banner.classList.add('show');
+                // Start countdown
+                let countdown = 30;
+                const countdownEl = document.getElementById('sessionCountdown');
+                if (sessionCountdownInterval) clearInterval(sessionCountdownInterval);
+                sessionCountdownInterval = setInterval(() => {
+                    countdown--;
+                    if (countdownEl) countdownEl.textContent = countdown;
+                    if (countdown <= 0) {
+                        clearInterval(sessionCountdownInterval);
+                        handleLogout();
+                    }
+                }, 1000);
+            }
+        }
+
+        function hideSessionBanner() {
+            const banner = document.getElementById('sessionBanner');
+            if (banner) {
+                banner.classList.remove('show');
+                if (sessionCountdownInterval) {
+                    clearInterval(sessionCountdownInterval);
+                    sessionCountdownInterval = null;
+                }
+            }
+        }
+
+        function extendSession() {
+            sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+            sessionWarningShown = false;
+            hideSessionBanner();
+            updateSessionDisplay();
+            localStorage.setItem('lastActivity', Date.now().toString());
+            showToast('⏳ Session extended', 'success');
         }
 
         // ─── LOGOUT ────────────────────────────────────────────────────────
@@ -1474,6 +1976,12 @@
                     refreshTimer = null; }
                 if (realtimeChannel) { realtimeChannel.unsubscribe();
                     realtimeChannel = null; }
+                if (sessionTimer) { clearInterval(sessionTimer);
+                    sessionTimer = null; }
+                if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval);
+                    sessionCountdownInterval = null; }
+                if (window._sessionCleanup) { window._sessionCleanup(); }
+                hideSessionBanner();
                 localStorage.removeItem('lastActivity');
                 showToast('✅ Logged out successfully', 'success');
                 window.location.href = '/login';
@@ -1486,10 +1994,17 @@
         function navigateTo(page) {
             // Close sidebar on mobile
             if (window.innerWidth <= 1024) toggleSidebar(false);
-            
+
             // Update activity
             localStorage.setItem('lastActivity', Date.now().toString());
-            
+
+            // Check if user has permission to access this page
+            const navItem = document.querySelector(`.sidebar-nav-item[onclick*="${page}"]`);
+            if (navItem && navItem.classList.contains('restricted')) {
+                showToast('🔒 You do not have permission to access this page', 'warning');
+                return;
+            }
+
             // Navigate to the page using clean URL format
             window.location.href = `/admin/${page}`;
         }
@@ -1622,6 +2137,14 @@
                 safeSetText('entryBadge', entryCount);
                 safeSetText('milestoneBadge', milestoneCount);
 
+                // Count admin users
+                const { data: adminData } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .not('admin_role', 'is', null);
+                const adminCount = adminData?.length || 0;
+                safeSetText('adminBadge', adminCount);
+
                 // Calculate average streak
                 const { data: streakData } = await supabase
                     .from('babies')
@@ -1698,7 +2221,10 @@
                         <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">
                             Last updated: ${new Date().toLocaleString()}
                         </span>
+                        <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">${formatSessionTime()}</span></span>
                     `;
+                    // Re-attach session display
+                    updateSessionDisplay();
                 }
                 safeSetText('lastUpdated', new Date().toLocaleString());
 
@@ -1706,7 +2232,8 @@
                     babies: babyCount,
                     users: userCount,
                     entries: entryCount,
-                    posts: postCount
+                    posts: postCount,
+                    admins: adminCount
                 });
 
             } catch (err) {
@@ -1722,6 +2249,12 @@
                 }
                 showToast('Error loading dashboard data: ' + err.message, 'error');
             }
+        }
+
+        function formatSessionTime() {
+            const minutes = Math.floor(sessionTimeRemaining / 60);
+            const seconds = sessionTimeRemaining % 60;
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
 
         // ─── REFRESH ──────────────────────────────────────────────────────
@@ -1752,6 +2285,25 @@
                         setTimeout(setupRealtime, 5000);
                     }
                 });
+        }
+
+        // ─── ADMIN ROLES PAGE ────────────────────────────────────────────
+        // This function will be called from admin_roles.html if it exists
+        function loadAdminRolesPage() {
+            // If the page is loaded, check if user has permission
+            if (currentUserRole !== 'super_admin') {
+                document.getElementById('page-content').innerHTML = `
+                    <div class="permission-denied">
+                        <div class="emoji">🔒</div>
+                        <h3>Access Denied</h3>
+                        <p>You do not have permission to manage admin roles. This feature is restricted to Super Admins only.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Load admin roles management UI
+            // This would be implemented in a separate page or dynamically loaded
         }
 
         // ─── INIT ──────────────────────────────────────────────────────────
@@ -1793,8 +2345,14 @@
                 }
             });
 
+            // Update role UI after loading
+            setTimeout(() => {
+                updateUIForRole(currentUserRole);
+            }, 500);
+
             console.log('🧵 Enterprise Admin Console ready');
             console.log('👤 Logged in as: ' + session?.user?.email);
+            console.log('👑 Role: ' + ADMIN_ROLES[currentUserRole]?.label);
         }
 
         // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────
@@ -1813,10 +2371,12 @@
         window.formatDate = formatDate;
         window.timeAgo = timeAgo;
         window.formatNumber = formatNumber;
+        window.extendSession = extendSession;
         window.session = session;
+        window.currentUserRole = currentUserRole;
+        window.ADMIN_ROLES = ADMIN_ROLES;
 
         document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
-
