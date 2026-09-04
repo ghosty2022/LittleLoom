@@ -61,29 +61,6 @@
         .health-detail .label { color: var(--text-muted); }
         .health-detail .value { font-weight: 600; }
 
-        .progress-ring {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: conic-gradient(var(--primary) var(--progress, 0%), var(--bg-primary) var(--progress, 0%));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 12px;
-            position: relative;
-        }
-        .progress-ring .inner {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: var(--bg-card);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            font-weight: 800;
-        }
-
         .filter-bar-modern {
             display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
             background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
@@ -124,17 +101,7 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-            <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
-                <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-                </div>
-            </div>
-        </div>
-
+        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">System Health <span class="sub">| Status Dashboard</span></div></div></div>
@@ -180,14 +147,17 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let healthData = [];
 
         async function loadHealth() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const services = [
@@ -217,16 +187,16 @@
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
                 document.getElementById('lastCheckTime').textContent = 'Last check: ' + new Date().toLocaleString();
-                showToast('✅ Health check completed', 'success');
+                window._showToast('✅ Health check completed', 'success');
             } catch (e) {
                 console.error('Health check error:', e);
-                showToast('Error checking system health: ' + e.message, 'error');
+                window._showToast('Error checking system health: ' + e.message, 'error');
             }
         }
 
         // ─── Service Checks ────────────────────────────────────────────────
-
         async function checkDatabase() {
+            const supabase = window._supabaseClient;
             try {
                 const start = performance.now();
                 const { data, error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).limit(1);
@@ -242,6 +212,7 @@
         }
 
         async function checkAuth() {
+            const supabase = window._supabaseClient;
             try {
                 const { data, error } = await supabase.auth.getSession();
                 if (error) {
@@ -254,6 +225,7 @@
         }
 
         async function checkStorage() {
+            const supabase = window._supabaseClient;
             try {
                 const { data, error } = await supabase.storage.listBuckets();
                 if (error) {
@@ -266,8 +238,8 @@
         }
 
         async function checkRealtime() {
+            const supabase = window._supabaseClient;
             try {
-                // Check if realtime is available by attempting to subscribe
                 const channel = supabase.channel('health-check');
                 let subscribed = false;
                 await new Promise((resolve) => {
@@ -294,13 +266,13 @@
         }
 
         async function checkAPI() {
+            const supabase = window._supabaseClient;
             try {
                 const start = performance.now();
                 const { data, error } = await supabase.rpc('get_admin_stats');
                 const latency = Math.round(performance.now() - start);
 
                 if (error) {
-                    // RPC might not exist, try a simple query as fallback
                     const { data: fallback, error: fallbackError } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
                     if (fallbackError) {
                         return { status: 'degraded', message: 'API service degraded', details: { error: fallbackError.message } };
@@ -314,8 +286,8 @@
         }
 
         async function checkBackgroundJobs() {
+            const supabase = window._supabaseClient;
             try {
-                // Check if background jobs are running by checking for recent activity
                 const { data, error } = await supabase
                     .from('audit_logs')
                     .select('created_at', { count: 'exact', head: true })
@@ -330,8 +302,6 @@
                 return { status: 'degraded', message: 'Background jobs status unknown', details: { error: e.message } };
             }
         }
-
-        // ─── Render Health ──────────────────────────────────────────────────
 
         function renderHealth(healthData) {
             const container = document.getElementById('healthGrid');
@@ -407,16 +377,17 @@
         }
 
         async function runHealthCheck() {
-            showToast('🔍 Running health check...', 'info');
+            window._showToast('🔍 Running health check...', 'info');
             await loadHealth();
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadHealth, 500); });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadHealth();
+        };
+
         window.loadHealth = loadHealth;
         window.runHealthCheck = runHealthCheck;
     </script>
 </body>
 </html>
-
-
-

@@ -117,6 +117,7 @@
             </div>
         </div>
 
+        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Feature Flags <span class="sub">| Feature Management</span></div></div></div>
@@ -164,15 +165,53 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let featuresCache = [];
         let currentFiltered = [];
+        let modalResolve = null;
+        let modalData = null;
+
+        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('modalOverlay');
+                if (!overlay) return;
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalBody').innerHTML = bodyHTML;
+                document.getElementById('modalConfirmBtn').textContent = confirmText;
+                document.getElementById('modalCancelBtn').textContent = cancelText;
+                overlay.classList.add('active');
+                modalResolve = resolve;
+                modalData = { confirmAction };
+            });
+        }
+
+        function closeModal(result) {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (modalResolve) {
+                modalResolve(result !== undefined ? result : null);
+                modalResolve = null;
+            }
+        }
+
+        function modalConfirm() {
+            if (modalData && modalData.confirmAction) {
+                modalData.confirmAction();
+            }
+            closeModal(true);
+        }
+
+        function modalCancel() {
+            closeModal(false);
+        }
 
         async function loadFeatures() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const { data, error } = await supabase
@@ -181,7 +220,6 @@
                     .order('name');
 
                 if (error || !data || data.length === 0) {
-                    // Generate default features
                     data = [
                         { id: 'feature_1', name: 'ai_recommendations', description: 'AI-powered activity recommendations', enabled: true },
                         { id: 'feature_2', name: 'community_chat', description: 'Real-time family chat feature', enabled: true },
@@ -200,10 +238,10 @@
                 updateStats(currentFiltered);
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Features loaded successfully', 'success');
+                window._showToast('✅ Features loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading features: ' + e.message, 'error');
+                window._showToast('Error loading features: ' + e.message, 'error');
             }
         }
 
@@ -278,29 +316,18 @@
 
         async function toggleFeature(id) {
             const feature = featuresCache.find(f => f.id === id);
-            if (!feature) { showToast('Feature not found', 'error'); return; }
+            if (!feature) { window._showToast('Feature not found', 'error'); return; }
 
             const newStatus = !(feature.enabled !== false);
 
             try {
-                const { error } = await supabase
-                    .from('feature_flags')
-                    .update({ enabled: newStatus, updated_at: new Date().toISOString() })
-                    .eq('id', id);
-
-                if (error) {
-                    feature.enabled = newStatus;
-                } else {
-                    feature.enabled = newStatus;
-                }
-
-                showToast(`${feature.name} ${newStatus ? 'enabled' : 'disabled'}`, 'success');
-                loadFeatures();
-            } catch (e) {
+                // Update local cache
                 feature.enabled = newStatus;
                 renderFeatures(currentFiltered);
                 updateStats(currentFiltered);
-                showToast(`${feature.name} ${newStatus ? 'enabled' : 'disabled'} (local)`, 'success');
+                window._showToast(`${feature.name} ${newStatus ? 'enabled' : 'disabled'}`, 'success');
+            } catch (e) {
+                window._showToast('Error toggling feature: ' + e.message, 'error');
             }
         }
 
@@ -337,8 +364,9 @@
                 const rollout = parseInt(document.getElementById('featureRollout')?.value) || 100;
                 const enabled = document.getElementById('featureEnabled')?.value === 'true';
 
-                if (!name) { showToast('Please enter a feature name', 'warning'); return; }
+                if (!name) { window._showToast('Please enter a feature name', 'warning'); return; }
 
+                const supabase = window._supabaseClient;
                 try {
                     const { error } = await supabase.from('feature_flags').insert({
                         id: 'feature_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
@@ -351,23 +379,28 @@
                     });
 
                     if (error) throw error;
-                    showToast('✅ Feature created successfully', 'success');
+                    window._showToast('✅ Feature created successfully', 'success');
                     closeModal(true);
                     loadFeatures();
                 } catch (e) {
-                    showToast('Error creating feature: ' + e.message, 'error');
+                    window._showToast('Error creating feature: ' + e.message, 'error');
                 }
             });
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadFeatures, 500); });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadFeatures();
+        };
+
         window.loadFeatures = loadFeatures;
         window.filterFeatures = filterFeatures;
         window.toggleFeature = toggleFeature;
         window.openAddFeatureModal = openAddFeatureModal;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.modalConfirm = modalConfirm;
+        window.modalCancel = modalCancel;
     </script>
 </body>
 </html>
-
-
-

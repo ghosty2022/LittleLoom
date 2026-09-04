@@ -134,17 +134,7 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-            <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
-                <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-                </div>
-            </div>
-        </div>
-
+        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Data Export <span class="sub">| Export App Data</span></div></div></div>
@@ -278,20 +268,29 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let exportHistory = [];
         let selectedFormat = 'json';
         let exportDataCache = {};
 
+        function selectFormat(el) {
+            const parent = el.closest('.format-selector');
+            parent.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            selectedFormat = el.dataset.format;
+        }
+
         async function loadExportData() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const period = document.getElementById('exportPeriod')?.value || 'all';
-                const dateFilter = period !== 'all' ? new Date(Date.now() - parseInt(period) * 24 * 60 * 60 * 1000).toISOString() : null;
 
                 const [users, babies, entries, posts] = await Promise.all([
                     supabase.from('profiles').select('*', { count: 'exact', head: true }),
@@ -308,7 +307,6 @@
                 const total = (users.count || 0) + (babies.count || 0) + (entries.count || 0) + (posts.count || 0);
                 document.getElementById('recordCount').textContent = total;
 
-                // Load history
                 const history = localStorage.getItem('exportHistory');
                 if (history) {
                     try {
@@ -318,24 +316,18 @@
                 }
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Export data loaded', 'success');
+                window._showToast('✅ Export data loaded', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading export data: ' + e.message, 'error');
+                window._showToast('Error loading export data: ' + e.message, 'error');
             }
-        }
-
-        function selectFormat(el) {
-            const parent = el.closest('.format-selector');
-            parent.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
-            el.classList.add('active');
-            selectedFormat = el.dataset.format;
         }
 
         async function exportData(type) {
             const progress = document.getElementById('exportProgress');
             const progressFill = document.getElementById('exportProgressFill');
             const progressText = document.getElementById('exportProgressText');
+            const supabase = window._supabaseClient;
 
             if (progress) {
                 progress.style.display = 'block';
@@ -343,7 +335,7 @@
                 progressText.textContent = '0%';
             }
 
-            showToast('📤 Preparing export...', 'info');
+            window._showToast('📤 Preparing export...', 'info');
 
             try {
                 let data = {};
@@ -374,7 +366,7 @@
                 }
 
                 if (Object.keys(data).length === 0) {
-                    showToast('No data to export', 'warning');
+                    window._showToast('No data to export', 'warning');
                     return;
                 }
 
@@ -386,7 +378,6 @@
                     blob = new Blob([jsonData], { type: 'application/json' });
                     extension = 'json';
                 } else if (selectedFormat === 'csv') {
-                    // Simple CSV conversion for first table
                     const firstTable = Object.keys(data)[0];
                     const rows = data[firstTable] || [];
                     if (rows.length > 0) {
@@ -405,15 +396,14 @@
                         blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
                         extension = 'csv';
                     } else {
-                        showToast('No data to export in CSV format', 'warning');
+                        window._showToast('No data to export in CSV format', 'warning');
                         return;
                     }
                 } else if (selectedFormat === 'xlsx') {
-                    showToast('Excel export coming soon. Use CSV or JSON for now.', 'info');
+                    window._showToast('Excel export coming soon. Use CSV or JSON for now.', 'info');
                     return;
                 }
 
-                // Download file
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -423,7 +413,6 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
 
-                // Save to history
                 const entry = {
                     timestamp: new Date().toISOString(),
                     type: type,
@@ -441,11 +430,11 @@
                     setTimeout(() => { progress.style.display = 'none'; }, 1500);
                 }
 
-                showToast(`✅ Exported ${records} records successfully!`, 'success');
+                window._showToast(`✅ Exported ${records} records successfully!`, 'success');
 
             } catch (e) {
                 console.error('Export error:', e);
-                showToast('Error exporting data: ' + e.message, 'error');
+                window._showToast('Error exporting data: ' + e.message, 'error');
                 if (progress) { progress.style.display = 'none'; }
             }
         }
@@ -494,10 +483,14 @@
             exportHistory = [];
             localStorage.removeItem('exportHistory');
             renderExportHistory();
-            showToast('✅ Export history cleared', 'success');
+            window._showToast('✅ Export history cleared', 'success');
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadExportData, 500); });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadExportData();
+        };
+
         window.loadExportData = loadExportData;
         window.selectFormat = selectFormat;
         window.exportData = exportData;
@@ -506,6 +499,3 @@
     </script>
 </body>
 </html>
-
-
-

@@ -151,14 +151,7 @@
       "expo-localization",
       "expo-asset",
       "expo-audio",
-      "expo-video",
-      [
-        "@stripe/stripe-react-native",
-        {
-          "merchantIdentifier": "merchant.com.tpm.littleloom",
-          "enableGooglePay": true
-        }
-      ]
+      "expo-video"
     ],
     "extra": {
       "eas": {

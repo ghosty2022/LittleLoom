@@ -122,17 +122,7 @@
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-            <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
-                <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-                </div>
-            </div>
-        </div>
-
+        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Growth Analytics <span class="sub">| Baby Development Insights</span></div></div></div>
@@ -201,12 +191,15 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         async function loadGrowth() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             const months = parseInt(document.getElementById('growthPeriod')?.value || '12');
 
@@ -242,7 +235,6 @@
                 const avgAge = ageCount > 0 ? Math.round((totalAge / ageCount) * 10) / 10 : 0;
                 document.getElementById('avgAge').textContent = avgAge;
 
-                // Monthly counts
                 const monthCounts = {};
                 babies.forEach(b => {
                     if (b.created_at) {
@@ -275,13 +267,11 @@
                     }
                 });
 
-                // Update month labels
                 const monthLabels = document.getElementById('monthLabels');
                 if (monthLabels) {
                     monthLabels.innerHTML = monthNames.map(m => `<span>${m}</span>`).join('');
                 }
 
-                // Calculate growth rate
                 const older = counts.slice(0, Math.floor(counts.length / 2)).reduce((a, b) => a + b, 0);
                 const newer = counts.slice(Math.floor(counts.length / 2)).reduce((a, b) => a + b, 0);
                 const rate = older > 0 ? Math.round(((newer - older) / older) * 100) : 0;
@@ -292,17 +282,18 @@
                 trendEl.className = 'trend ' + (rate > 0 ? 'up' : rate < 0 ? 'down' : 'neutral');
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Growth data loaded', 'success');
+                window._showToast('✅ Growth data loaded', 'success');
             } catch (e) {
-                showToast('Error loading growth data: ' + e.message, 'error');
+                window._showToast('Error loading growth data: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadGrowth, 500); });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadGrowth();
+        };
+
         window.loadGrowth = loadGrowth;
     </script>
 </body>
 </html>
-
-
-
