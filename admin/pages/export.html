@@ -103,6 +103,20 @@
             transition: width 0.6s ease;
         }
 
+        .backup-history-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .backup-history-item:last-child { border-bottom: none; }
+
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
             .export-grid { grid-template-columns: 1fr; }
@@ -110,45 +124,69 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">📤</span> Data Export</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Data Export <span class="sub">| Export App Data</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Data Export <span class="sub">| Export App Data</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadExportData()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadExportData && window.loadExportData()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>📤 Data Export</h1>
@@ -162,7 +200,7 @@
                 </div>
 
                 <div class="filter-bar-modern">
-                    <select id="exportPeriod" onchange="updateExportStats()">
+                    <select id="exportPeriod" onchange="window.updateExportStats && window.updateExportStats()">
                         <option value="all">All Time</option>
                         <option value="30">Last 30 Days</option>
                         <option value="90">Last 90 Days</option>
@@ -172,69 +210,64 @@
                 </div>
 
                 <div class="export-grid">
-                    <!-- Users Export -->
                     <div class="export-card">
                         <div class="icon">👤</div>
                         <h3>Users</h3>
                         <p>Export user profiles and account data</p>
                         <div class="format-selector">
-                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
-                            <button class="format-btn" data-format="csv" onclick="selectFormat(this)">CSV</button>
-                            <button class="format-btn" data-format="xlsx" onclick="selectFormat(this)">Excel</button>
+                            <button class="format-btn active" data-format="json" onclick="window.selectFormat && window.selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="csv" onclick="window.selectFormat && window.selectFormat(this)">CSV</button>
+                            <button class="format-btn" data-format="xlsx" onclick="window.selectFormat && window.selectFormat(this)">Excel</button>
                         </div>
-                        <button class="btn btn-primary" onclick="exportData('users')">📥 Export Users</button>
+                        <button class="btn btn-primary" onclick="window.exportData && window.exportData('users')">📥 Export Users</button>
                     </div>
 
-                    <!-- Babies Export -->
                     <div class="export-card">
                         <div class="icon">👶</div>
                         <h3>Babies</h3>
                         <p>Export baby profiles and health data</p>
                         <div class="format-selector">
-                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
-                            <button class="format-btn" data-format="csv" onclick="selectFormat(this)">CSV</button>
-                            <button class="format-btn" data-format="xlsx" onclick="selectFormat(this)">Excel</button>
+                            <button class="format-btn active" data-format="json" onclick="window.selectFormat && window.selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="csv" onclick="window.selectFormat && window.selectFormat(this)">CSV</button>
+                            <button class="format-btn" data-format="xlsx" onclick="window.selectFormat && window.selectFormat(this)">Excel</button>
                         </div>
-                        <button class="btn btn-primary" onclick="exportData('babies')">📥 Export Babies</button>
+                        <button class="btn btn-primary" onclick="window.exportData && window.exportData('babies')">📥 Export Babies</button>
                     </div>
 
-                    <!-- Tracker Entries Export -->
                     <div class="export-card">
                         <div class="icon">📊</div>
                         <h3>Tracker Entries</h3>
                         <p>Export all tracker entries and logs</p>
                         <div class="format-selector">
-                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
-                            <button class="format-btn" data-format="csv" onclick="selectFormat(this)">CSV</button>
-                            <button class="format-btn" data-format="xlsx" onclick="selectFormat(this)">Excel</button>
+                            <button class="format-btn active" data-format="json" onclick="window.selectFormat && window.selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="csv" onclick="window.selectFormat && window.selectFormat(this)">CSV</button>
+                            <button class="format-btn" data-format="xlsx" onclick="window.selectFormat && window.selectFormat(this)">Excel</button>
                         </div>
-                        <button class="btn btn-primary" onclick="exportData('tracker_entries')">📥 Export Entries</button>
+                        <button class="btn btn-primary" onclick="window.exportData && window.exportData('tracker_entries')">📥 Export Entries</button>
                     </div>
 
-                    <!-- Community Export -->
                     <div class="export-card">
                         <div class="icon">💬</div>
                         <h3>Community</h3>
                         <p>Export posts, comments, and interactions</p>
                         <div class="format-selector">
-                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
-                            <button class="format-btn" data-format="csv" onclick="selectFormat(this)">CSV</button>
-                            <button class="format-btn" data-format="xlsx" onclick="selectFormat(this)">Excel</button>
+                            <button class="format-btn active" data-format="json" onclick="window.selectFormat && window.selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="csv" onclick="window.selectFormat && window.selectFormat(this)">CSV</button>
+                            <button class="format-btn" data-format="xlsx" onclick="window.selectFormat && window.selectFormat(this)">Excel</button>
                         </div>
-                        <button class="btn btn-primary" onclick="exportData('community_posts')">📥 Export Community</button>
+                        <button class="btn btn-primary" onclick="window.exportData && window.exportData('community_posts')">📥 Export Community</button>
                     </div>
 
-                    <!-- Full Export -->
                     <div class="export-card" style="grid-column: span 2; border-color: var(--primary);">
                         <div class="icon">📦</div>
                         <h3>Complete Export</h3>
                         <p>Export all data in a single package</p>
                         <div class="meta">Includes: Users, Babies, Tracker Entries, Community Posts, Topics, Announcements</div>
                         <div class="format-selector">
-                            <button class="format-btn active" data-format="json" onclick="selectFormat(this)">JSON</button>
-                            <button class="format-btn" data-format="zip" onclick="selectFormat(this)">ZIP</button>
+                            <button class="format-btn active" data-format="json" onclick="window.selectFormat && window.selectFormat(this)">JSON</button>
+                            <button class="format-btn" data-format="zip" onclick="window.selectFormat && window.selectFormat(this)">ZIP</button>
                         </div>
-                        <button class="btn btn-success" onclick="exportData('all')">📦 Export All</button>
+                        <button class="btn btn-success" onclick="window.exportData && window.exportData('all')">📦 Export All</button>
                         <div class="progress-bar-container" id="exportProgress" style="display:none;margin-top:12px;">
                             <div class="progress-label">
                                 <span>Exporting...</span>
@@ -247,11 +280,10 @@
                     </div>
                 </div>
 
-                <!-- Export History -->
                 <div class="card" style="margin-top:20px;">
                     <div class="card-header">
                         <div class="card-title"><span class="emoji">📋</span> Export History</div>
-                        <button class="btn btn-outline btn-sm" onclick="clearExportHistory()">🗑️ Clear</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.clearExportHistory && window.clearExportHistory()">🗑️ Clear</button>
                     </div>
                     <div class="card-body">
                         <div id="exportHistory">
@@ -268,15 +300,12 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
     <script src="/js/admin-base.js"></script>
     <script src="/js/page-init.js"></script>
 
-    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let exportHistory = [];
         let selectedFormat = 'json';
-        let exportDataCache = {};
 
         function selectFormat(el) {
             const parent = el.closest('.format-selector');
@@ -431,7 +460,6 @@
                 }
 
                 window._showToast(`✅ Exported ${records} records successfully!`, 'success');
-
             } catch (e) {
                 console.error('Export error:', e);
                 window._showToast('Error exporting data: ' + e.message, 'error');
@@ -458,7 +486,7 @@
                 const typeLabel = item.type === 'all' ? 'Complete' : item.type.replace('_', ' ');
 
                 html += `
-                    <div class="backup-history-item" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+                    <div class="backup-history-item">
                         <div>
                             <span>${icon}</span>
                             <span style="font-weight:600;">${typeLabel}</span>
@@ -486,7 +514,6 @@
             window._showToast('✅ Export history cleared', 'success');
         }
 
-        // ─── AUTH INTEGRATION ──────────────────────────────────────────
         window._loadPageData = async function() {
             await loadExportData();
         };

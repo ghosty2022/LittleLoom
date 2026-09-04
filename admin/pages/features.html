@@ -75,6 +75,36 @@
         }
         .modal-feature-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: var(--bg-primary);
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+            transition: var(--transition);
+            border: 1.5px solid var(--border);
+            flex-shrink: 0;
+        }
+        .toggle-switch.active { background: var(--primary); border-color: var(--primary); }
+        .toggle-switch .slider {
+            width: 18px;
+            height: 18px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: var(--transition);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .toggle-switch.active .slider { left: 22px; }
+
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
             .feature-item { flex-direction: column; align-items: stretch; gap: 10px; }
@@ -83,55 +113,69 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">🚩</span> Feature Flags</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Feature Flags <span class="sub">| Feature Management</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Feature Flags <span class="sub">| Feature Management</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadFeatures()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadFeatures && window.loadFeatures()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>🚩 Feature Flags</h1>
@@ -144,15 +188,15 @@
                 </div>
 
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search features..." id="searchInput" oninput="filterFeatures()">
-                    <select id="statusFilter" onchange="filterFeatures()">
+                    <input type="text" placeholder="🔍 Search features..." id="searchInput" oninput="window.filterFeatures && window.filterFeatures()">
+                    <select id="statusFilter" onchange="window.filterFeatures && window.filterFeatures()">
                         <option value="all">All Status</option>
                         <option value="enabled">Enabled</option>
                         <option value="disabled">Disabled</option>
                     </select>
                     <div class="btn-group">
-                        <button class="btn btn-primary" onclick="openAddFeatureModal()">➕ Add Feature</button>
-                        <button class="btn btn-outline" onclick="loadFeatures()">🔄 Refresh</button>
+                        <button class="btn btn-primary" onclick="window.openAddFeatureModal && window.openAddFeatureModal()">➕ Add Feature</button>
+                        <button class="btn btn-outline" onclick="window.loadFeatures && window.loadFeatures()">🔄 Refresh</button>
                     </div>
                 </div>
 
@@ -165,49 +209,12 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
     <script src="/js/admin-base.js"></script>
     <script src="/js/page-init.js"></script>
 
-    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let featuresCache = [];
         let currentFiltered = [];
-        let modalResolve = null;
-        let modalData = null;
-
-        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
-            return new Promise((resolve) => {
-                const overlay = document.getElementById('modalOverlay');
-                if (!overlay) return;
-                document.getElementById('modalTitle').textContent = title;
-                document.getElementById('modalBody').innerHTML = bodyHTML;
-                document.getElementById('modalConfirmBtn').textContent = confirmText;
-                document.getElementById('modalCancelBtn').textContent = cancelText;
-                overlay.classList.add('active');
-                modalResolve = resolve;
-                modalData = { confirmAction };
-            });
-        }
-
-        function closeModal(result) {
-            document.getElementById('modalOverlay').classList.remove('active');
-            if (modalResolve) {
-                modalResolve(result !== undefined ? result : null);
-                modalResolve = null;
-            }
-        }
-
-        function modalConfirm() {
-            if (modalData && modalData.confirmAction) {
-                modalData.confirmAction();
-            }
-            closeModal(true);
-        }
-
-        function modalCancel() {
-            closeModal(false);
-        }
 
         async function loadFeatures() {
             const supabase = window._supabaseClient;
@@ -219,8 +226,9 @@
                     .select('*')
                     .order('name');
 
-                if (error || !data || data.length === 0) {
-                    data = [
+                let features = data || [];
+                if (error || features.length === 0) {
+                    features = [
                         { id: 'feature_1', name: 'ai_recommendations', description: 'AI-powered activity recommendations', enabled: true },
                         { id: 'feature_2', name: 'community_chat', description: 'Real-time family chat feature', enabled: true },
                         { id: 'feature_3', name: 'advanced_analytics', description: 'Detailed growth insights with charts', enabled: false },
@@ -232,7 +240,7 @@
                     ];
                 }
 
-                featuresCache = data || [];
+                featuresCache = features;
                 currentFiltered = [...featuresCache];
                 renderFeatures(currentFiltered);
                 updateStats(currentFiltered);
@@ -253,7 +261,7 @@
                         <div class="emoji">🚩</div>
                         <h3>No features found</h3>
                         <p>Create your first feature flag</p>
-                        <button class="btn btn-primary" onclick="openAddFeatureModal()" style="margin-top:12px;">➕ Add Feature</button>
+                        <button class="btn btn-primary" onclick="window.openAddFeatureModal && window.openAddFeatureModal()" style="margin-top:12px;">➕ Add Feature</button>
                     </div>
                 `;
                 return;
@@ -274,7 +282,7 @@
                         </div>
                         <div class="toggle-wrap">
                             <span class="status-badge ${statusClass}">${statusLabel}</span>
-                            <div class="toggle-switch ${isEnabled ? 'active' : ''}" onclick="toggleFeature('${f.id}')">
+                            <div class="toggle-switch ${isEnabled ? 'active' : ''}" onclick="window.toggleFeature && window.toggleFeature('${f.id}')">
                                 <div class="slider"></div>
                             </div>
                         </div>
@@ -321,7 +329,6 @@
             const newStatus = !(feature.enabled !== false);
 
             try {
-                // Update local cache
                 feature.enabled = newStatus;
                 renderFeatures(currentFiltered);
                 updateStats(currentFiltered);
@@ -358,7 +365,7 @@
                 </div>
             `;
 
-            openModal('🚩 Add Feature', body, 'Create', async function() {
+            window._openModal('🚩 Add Feature', body, 'Create', async function() {
                 const name = document.getElementById('featureName')?.value?.trim();
                 const desc = document.getElementById('featureDesc')?.value?.trim();
                 const rollout = parseInt(document.getElementById('featureRollout')?.value) || 100;
@@ -380,7 +387,7 @@
 
                     if (error) throw error;
                     window._showToast('✅ Feature created successfully', 'success');
-                    closeModal(true);
+                    window._closeModal(true);
                     loadFeatures();
                 } catch (e) {
                     window._showToast('Error creating feature: ' + e.message, 'error');
@@ -388,7 +395,6 @@
             });
         }
 
-        // ─── AUTH INTEGRATION ──────────────────────────────────────────
         window._loadPageData = async function() {
             await loadFeatures();
         };
@@ -397,10 +403,6 @@
         window.filterFeatures = filterFeatures;
         window.toggleFeature = toggleFeature;
         window.openAddFeatureModal = openAddFeatureModal;
-        window.openModal = openModal;
-        window.closeModal = closeModal;
-        window.modalConfirm = modalConfirm;
-        window.modalCancel = modalCancel;
     </script>
 </body>
 </html>
