@@ -268,7 +268,7 @@ interface BabyState {
 }
 
 interface BabyContextType extends BabyState {
-  loadBabies: () => Promise<void>;
+  loadBabies: (force?: boolean) => Promise<void>;
   forceRefresh: () => Promise<void>;
   createBaby: (data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>) => Promise<string | null>;
   updateBaby: (id: string, updates: Partial<BabyProfile>) => Promise<void>;
@@ -395,6 +395,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const authLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forceRefreshRef = useRef(false);
+  const appStateListenerRef = useRef<any>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isAuthTriggeredRef = useRef(false);
 
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     babyChangeSubscribers.forEach(callback => {
@@ -742,7 +745,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [mapTrackerEntryToDomain]);
 
   // ─── Load babies from Supabase ────────────────────────────────────────
- // ─── Load babies from Supabase ────────────────────────────────────────
   const loadBabies = useCallback(async (force = false) => {
     // ─── PREVENT INFINITE LOOPS ─────────────────────────────────────────
     if (loadInProgressRef.current && !force) {
@@ -965,6 +967,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loadInProgressRef.current = false;
     }
   }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange, state.currentBabyId]);
+
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
     await loadBabies(true);
@@ -988,10 +991,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (authLoadTimerRef.current) {
         clearTimeout(authLoadTimerRef.current);
       }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [loadBabies]);
 
-   // ─── Watch for auth changes ──────────────────────────────────────────
+  // ─── FIXED: Watch for auth changes ──────────────────────────────────
   useEffect(() => {
     if (authProfile?.id) {
       console.log('[BabyContext] Auth user detected, loading babies...');
@@ -999,7 +1006,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearTimeout(authLoadTimerRef.current);
       }
       authLoadTimerRef.current = setTimeout(() => {
-        loadBabies(true);
+        if (isMounted.current) {
+          loadBabies(true);
+        }
         authLoadTimerRef.current = null;
       }, 500);
       return () => {
@@ -1009,10 +1018,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       };
     }
-  }, [authProfile?.id]); // REMOVED loadBabies from dependencies to prevent infinite loop
+  }, [authProfile?.id]); // ONLY depend on authProfile.id
 
-  // ─── Auto-refresh on app focus ──────────────────────────────────────
+  // ─── FIXED: Auto-refresh on app focus ─────────────────────────────────
   useEffect(() => {
+    // Clean up previous listener
+    if (appStateListenerRef.current) {
+      appStateListenerRef.current.remove();
+      appStateListenerRef.current = null;
+    }
+
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
         if (syncTimeoutRef.current) {
@@ -1020,34 +1035,46 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         syncTimeoutRef.current = setTimeout(() => {
           console.log('[BabyContext] Auto-refresh on app focus');
-          loadBabies(true);
+          if (isMounted.current) {
+            loadBabies(true);
+          }
         }, 500);
       }
     });
 
+    appStateListenerRef.current = subscription;
+
     return () => {
-      subscription.remove();
+      if (appStateListenerRef.current) {
+        appStateListenerRef.current.remove();
+        appStateListenerRef.current = null;
+      }
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
     };
   }, [loadBabies]);
 
-  // ─── Auto-refresh every 5 minutes ────────────────────────────────────
+  // ─── FIXED: Auto-refresh every 5 minutes ──────────────────────────────
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
     
     if (authProfile?.id) {
-      intervalId = setInterval(() => {
+      intervalRef.current = setInterval(() => {
         console.log('[BabyContext] Auto-refresh interval');
-        loadBabies(true);
+        if (isMounted.current) {
+          loadBabies(true);
+        }
       }, 300000);
     }
     
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
   }, [authProfile?.id, loadBabies]);
@@ -1069,6 +1096,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     updateAges();
+    if (ageIntervalRef.current) {
+      clearInterval(ageIntervalRef.current);
+    }
     ageIntervalRef.current = setInterval(updateAges, 60 * 60 * 1000);
 
     return () => {
