@@ -46,6 +46,14 @@ app.get('/dashboard', (req, res) => {
 });
 
 // ─── PAGE ROUTES ──────────────────────────────────────────────
+const PAGE_ROUTES = [
+    'babies', 'users', 'moderation', 'community', 'topics', 
+    'announcements', 'trackers', 'milestones', 'analytics', 
+    'growth', 'activity', 'settings', 'backup', 'audit', 
+    'admin_roles', 'support', 'api', 'features', 'export', 
+    'health', 'performance', 'qrcode', 'realtime', 'notifications'
+];
+
 app.get('/admin/:page', (req, res) => {
     const page = req.params.page;
     
@@ -58,9 +66,20 @@ app.get('/admin/:page', (req, res) => {
         return res.redirect('/admin/dashboard');
     }
     
-    const filePath = path.join(__dirname, 'pages', page + '.html');
-    console.log(`📄 Serving page: ${page} from ${filePath}`);
+    // Check if page exists in our list
+    if (PAGE_ROUTES.includes(page)) {
+        const filePath = path.join(__dirname, 'pages', page + '.html');
+        console.log(`📄 Serving page: ${page} from ${filePath}`);
+        return res.sendFile(filePath, (err) => {
+            if (err) {
+                console.log(`❌ Page not found: ${page}`);
+                res.redirect('/login');
+            }
+        });
+    }
     
+    // Try to serve any HTML file in pages directory
+    const filePath = path.join(__dirname, 'pages', page + '.html');
     res.sendFile(filePath, (err) => {
         if (err) {
             console.log(`❌ Page not found: ${page}`);

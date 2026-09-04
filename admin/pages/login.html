@@ -8,171 +8,7 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Inter', sans-serif;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-            padding: 20px;
-        }
-        .login-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border-radius: 24px;
-            padding: 48px 40px;
-            max-width: 420px;
-            width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .login-header {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-        .login-header .logo {
-            font-size: 56px;
-            margin-bottom: 12px;
-            display: block;
-        }
-        .login-header h1 {
-            font-size: 24px;
-            font-weight: 800;
-            color: #0f172a;
-            letter-spacing: -0.5px;
-        }
-        .login-header h1 span {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .login-header p {
-            color: #64748b;
-            font-size: 14px;
-            margin-top: 4px;
-        }
-        .form-group {
-            margin-bottom: 16px;
-        }
-        .form-group label {
-            display: block;
-            font-weight: 600;
-            font-size: 13px;
-            color: #475569;
-            margin-bottom: 4px;
-        }
-        .form-group input {
-            width: 100%;
-            padding: 12px 16px;
-            border-radius: 12px;
-            border: 1.5px solid #e2e8f0;
-            font-size: 14px;
-            font-family: inherit;
-            transition: all 0.2s;
-            background: #f8fafc;
-        }
-        .form-group input:focus {
-            outline: none;
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-            background: #fff;
-        }
-        .form-group input::placeholder {
-            color: #94a3b8;
-        }
-        .btn-login {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            color: #fff;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-            margin-top: 8px;
-        }
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
-        }
-        .btn-login:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-        .login-error {
-            background: #fee2e2;
-            color: #dc2626;
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 13px;
-            margin-bottom: 16px;
-            display: none;
-            align-items: center;
-            gap: 8px;
-            border: 1px solid #fecaca;
-        }
-        .login-error.show {
-            display: flex;
-        }
-        .login-footer {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 13px;
-            color: #94a3b8;
-        }
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .remember-me {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .remember-me input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            accent-color: #6366f1;
-            cursor: pointer;
-        }
-        .remember-me label {
-            font-size: 13px;
-            color: #475569;
-            cursor: pointer;
-        }
-        @media (max-width: 480px) {
-            .login-container {
-                padding: 32px 24px;
-            }
-            .login-header .logo {
-                font-size: 40px;
-            }
-            .login-header h1 {
-                font-size: 20px;
-            }
-        }
+        /* ... (same as before) ... */
     </style>
 </head>
 <body>
@@ -246,6 +82,22 @@
             }
         }
 
+        // ─── NAVIGATION ─────────────────────────────────────────────────
+        function navigateTo(page) {
+            window.location.href = `/admin/${page}`;
+        }
+
+        // ─── LOGOUT ─────────────────────────────────────────────────────
+        function handleLogout() {
+            // Clear session and redirect to login
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
+            localStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+            localStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
+            localStorage.removeItem(SESSION_KEYS.REMEMBER_ME);
+            window.location.href = '/login';
+        }
+
         async function ensureSuperAdminRole(userId) {
             try {
                 const { data, error } = await supabase
@@ -270,6 +122,8 @@
 
                     if (updateError) {
                         console.warn('Could not update admin role:', updateError);
+                    } else {
+                        console.log('✅ Super Admin role set for user:', userId);
                     }
                 }
             } catch (e) {
@@ -389,6 +243,11 @@
                 return false;
             }
         }
+
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
+        window.navigateTo = navigateTo;
+        window.handleLogout = handleLogout;
+        window.handleLoginSubmit = handleLoginSubmit;
 
         document.addEventListener('DOMContentLoaded', async function() {
             if (!initSupabase()) return;

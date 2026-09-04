@@ -184,6 +184,7 @@
         try {
             supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
             window._supabaseClient = supabase;
+            console.log('✅ Supabase initialized');
             return true;
         } catch (e) {
             console.error('Supabase init error:', e);
@@ -219,6 +220,8 @@
         localStorage.removeItem(CONFIG.SESSION_KEYS.SESSION_DATA);
         localStorage.removeItem(CONFIG.SESSION_KEYS.SESSION_EXPIRY);
         localStorage.removeItem(CONFIG.SESSION_KEYS.REMEMBER_ME);
+        localStorage.removeItem(CONFIG.SESSION_KEYS.USER_ROLE);
+        localStorage.removeItem(CONFIG.SESSION_KEYS.USER_PERMISSIONS);
     }
 
     function saveSessionData(data) {
@@ -234,6 +237,10 @@
         } catch (e) {
             console.warn('Could not save session data:', e);
         }
+    }
+
+    function setRememberMe(value) {
+        localStorage.setItem(CONFIG.SESSION_KEYS.REMEMBER_ME, value ? 'true' : 'false');
     }
 
     // ─── AUTH CHECK ─────────────────────────────────────────────────────
@@ -259,6 +266,7 @@
                     window._userPermissions = userPermissions;
                     startSessionTimer();
                     updateUIForAuth(session);
+                    updateUIForRole(currentUserRole);
                     return true;
                 }
                 clearSessionData();
@@ -284,6 +292,7 @@
             window._userPermissions = userPermissions;
             startSessionTimer();
             updateUIForAuth(session);
+            updateUIForRole(currentUserRole);
 
             // Check page access
             const allowedRoles = CONFIG.PAGE_ROLES[pageName] || [];
@@ -361,6 +370,8 @@
 
                 if (updateError) {
                     console.warn('Could not update admin role:', updateError);
+                } else {
+                    console.log('✅ Super Admin role set for user:', userId);
                 }
             }
         } catch (e) {
@@ -387,6 +398,53 @@
         if (roleEl && CONFIG.ROLES[currentUserRole]) {
             roleEl.textContent = CONFIG.ROLES[currentUserRole].label;
         }
+    }
+
+    function updateUIForRole(role) {
+        const roleInfo = CONFIG.ROLES[role];
+        if (!roleInfo) return;
+
+        const roleEl = document.getElementById('sidebarRole');
+        if (roleEl) roleEl.textContent = roleInfo.label;
+
+        // Update restricted items in sidebar
+        document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+            const requiredRole = item.dataset.requiredRole;
+            if (requiredRole) {
+                const hasPermission = checkRolePermission(requiredRole);
+                if (!hasPermission) {
+                    item.classList.add('restricted');
+                    if (!item.querySelector('.lock-icon')) {
+                        const lock = document.createElement('span');
+                        lock.className = 'lock-icon';
+                        lock.textContent = '🔒';
+                        item.appendChild(lock);
+                    }
+                } else {
+                    item.classList.remove('restricted');
+                    const lock = item.querySelector('.lock-icon');
+                    if (lock) lock.remove();
+                }
+            }
+        });
+    }
+
+    function checkRolePermission(requiredRole) {
+        if (currentUserRole === 'super_admin') return true;
+        
+        const roleMap = {
+            'super_admin': userPermissions.canManageAdmins,
+            'content_manager': userPermissions.canManageContent,
+            'user_manager': userPermissions.canManageUsers,
+            'moderation_manager': userPermissions.canModerate,
+            'analytics_viewer': userPermissions.canViewAnalytics
+        };
+        
+        if (roleMap[requiredRole] !== undefined) {
+            return roleMap[requiredRole] || false;
+        }
+        
+        return false;
     }
 
     // ─── SESSION TIMER ─────────────────────────────────────────────────
@@ -426,6 +484,13 @@
         activityEvents.forEach(event => {
             document.addEventListener(event, resetTimer);
         });
+
+        // Store cleanup function
+        window._sessionCleanup = () => {
+            activityEvents.forEach(event => {
+                document.removeEventListener(event, resetTimer);
+            });
+        };
     }
 
     function updateSessionDisplay() {
@@ -434,6 +499,17 @@
             const minutes = Math.floor(sessionTimeRemaining / 60);
             const seconds = sessionTimeRemaining % 60;
             display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        const dot = document.getElementById('statusDot');
+        if (dot) {
+            if (sessionTimeRemaining < 60) {
+                dot.className = 'dot danger';
+            } else if (sessionTimeRemaining < 300) {
+                dot.className = 'dot warning';
+            } else {
+                dot.className = 'dot';
+            }
         }
     }
 
@@ -504,9 +580,10 @@
             session = null;
             if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null; }
             if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval); sessionCountdownInterval = null; }
+            if (window._sessionCleanup) { window._sessionCleanup(); }
             hideSessionBanner();
             clearSessionData();
-            localStorage.setItem(CONFIG.SESSION_KEYS.REMEMBER_ME, 'false');
+            setRememberMe(false);
             showToast('✅ Logged out successfully', 'success');
             window.location.href = '/login';
         } catch (e) {
@@ -546,12 +623,22 @@
     function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
         return new Promise((resolve) => {
             const overlay = document.getElementById('modalOverlay');
-            if (!overlay) return;
+            if (!overlay) {
+                console.error('Modal overlay not found');
+                resolve(false);
+                return;
+            }
 
-            document.getElementById('modalTitle').textContent = title;
-            document.getElementById('modalBody').innerHTML = bodyHTML;
-            document.getElementById('modalConfirmBtn').textContent = confirmText;
-            document.getElementById('modalCancelBtn').textContent = cancelText;
+            const titleEl = document.getElementById('modalTitle');
+            const bodyEl = document.getElementById('modalBody');
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            const cancelBtn = document.getElementById('modalCancelBtn');
+
+            if (titleEl) titleEl.textContent = title;
+            if (bodyEl) bodyEl.innerHTML = bodyHTML;
+            if (confirmBtn) confirmBtn.textContent = confirmText;
+            if (cancelBtn) cancelBtn.textContent = cancelText;
+
             overlay.classList.add('active');
 
             modalResolve = resolve;
@@ -560,7 +647,8 @@
     }
 
     function closeModal(result) {
-        document.getElementById('modalOverlay').classList.remove('active');
+        const overlay = document.getElementById('modalOverlay');
+        if (overlay) overlay.classList.remove('active');
         if (modalResolve) {
             modalResolve(result !== undefined ? result : null);
             modalResolve = null;
@@ -593,7 +681,7 @@
             return;
         }
 
-        window.location.href = `/admin/${page}.html`;
+        window.location.href = `/admin/${page}`;
     }
 
     function toggleSidebar(open) {
@@ -669,6 +757,7 @@
 
     // ─── EXPOSE GLOBALLY ────────────────────────────────────────────────
     window._CONFIG = CONFIG;
+    window._supabaseClient = null;
     window._initSupabase = initSupabase;
     window._checkAuth = checkAuth;
     window._getSession = () => session;
@@ -687,6 +776,8 @@
     window._saveSessionData = saveSessionData;
     window._clearSessionData = clearSessionData;
     window._getSessionData = getSessionData;
+    window._setRememberMe = setRememberMe;
+    window._checkRolePermission = checkRolePermission;
 
     console.log('🧵 Admin Base loaded');
 

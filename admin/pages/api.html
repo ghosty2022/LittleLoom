@@ -235,37 +235,40 @@
             return result;
         }
 
-        async function loadApiKeys() {
-            const supabase = window._supabaseClient;
-            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
+       async function loadApiKeys() {
+    const supabase = window._supabaseClient;
+    if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
-            try {
-                const { data, error } = await supabase
-                    .from('api_keys')
-                    .select('*')
-                    .order('created_at', { ascending: false });
+    try {
+        const { data, error } = await supabase
+            .from('api_keys')
+            .select('*')
+            .order('created_at', { ascending: false });
 
-                if (error || !data || data.length === 0) {
-                    // Generate demo API keys
-                    data = [
-                        { id: 'key_1', name: 'Production API Key', key: 'pk_live_' + generateKey(24), is_active: true, permissions: { read: true, write: true }, last_used_at: new Date().toISOString(), created_at: new Date().toISOString() },
-                        { id: 'key_2', name: 'Development API Key', key: 'pk_test_' + generateKey(24), is_active: true, permissions: { read: true, write: false }, created_at: new Date().toISOString() },
-                        { id: 'key_3', name: 'Mobile App Key', key: 'pk_mobile_' + generateKey(24), is_active: false, permissions: { read: true, write: false }, created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() }
-                    ];
-                }
-
-                apiKeysCache = data || [];
-                currentFiltered = [...apiKeysCache];
-                renderApiKeys(currentFiltered);
-                updateStats(currentFiltered);
-
-                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                window._showToast('✅ API keys loaded successfully', 'success');
-            } catch (e) {
-                console.error('Load error:', e);
-                window._showToast('Error loading API keys: ' + e.message, 'error');
-            }
+        // FIX: Use a different variable name or check if data exists
+        let apiKeys = data || [];
+        
+        if (error || apiKeys.length === 0) {
+            // Generate demo API keys
+            apiKeys = [
+                { id: 'key_1', name: 'Production API Key', key: 'pk_live_' + generateKey(24), is_active: true, permissions: { read: true, write: true }, last_used_at: new Date().toISOString(), created_at: new Date().toISOString() },
+                { id: 'key_2', name: 'Development API Key', key: 'pk_test_' + generateKey(24), is_active: true, permissions: { read: true, write: false }, created_at: new Date().toISOString() },
+                { id: 'key_3', name: 'Mobile App Key', key: 'pk_mobile_' + generateKey(24), is_active: false, permissions: { read: true, write: false }, created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() }
+            ];
         }
+
+        apiKeysCache = apiKeys;
+        currentFiltered = [...apiKeysCache];
+        renderApiKeys(currentFiltered);
+        updateStats(currentFiltered);
+
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+        window._showToast('✅ API keys loaded successfully', 'success');
+    } catch (e) {
+        console.error('Load error:', e);
+        window._showToast('Error loading API keys: ' + e.message, 'error');
+    }
+}
 
         function renderApiKeys(keys) {
             const container = document.getElementById('apiKeysContainer');
