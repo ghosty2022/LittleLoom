@@ -12,179 +12,23 @@
         SESSION_KEYS: {
             SESSION_DATA: 'littleloom_session_data',
             SESSION_EXPIRY: 'littleloom_session_expiry',
-            REMEMBER_ME: 'littleloom_remember_me',
-            USER_ROLE: 'littleloom_user_role',
-            USER_PERMISSIONS: 'littleloom_user_permissions'
-        },
-        ROLES: {
-            'super_admin': {
-                label: 'Super Admin',
-                badge: 'super-admin',
-                permissions: {
-                    canManageAdmins: true,
-                    canManageUsers: true,
-                    canManageContent: true,
-                    canModerate: true,
-                    canViewAnalytics: true,
-                    canManageSystem: true,
-                    canManageBackup: true,
-                    canViewAudit: true,
-                    canManageAPI: true,
-                    canManageFeatures: true,
-                    canDelete: true,
-                    canEdit: true,
-                    canCreate: true
-                }
-            },
-            'content_manager': {
-                label: 'Content Manager',
-                badge: 'content-manager',
-                permissions: {
-                    canManageAdmins: false,
-                    canManageUsers: false,
-                    canManageContent: true,
-                    canModerate: true,
-                    canViewAnalytics: true,
-                    canManageSystem: false,
-                    canManageBackup: false,
-                    canViewAudit: false,
-                    canManageAPI: false,
-                    canManageFeatures: false,
-                    canDelete: true,
-                    canEdit: true,
-                    canCreate: true
-                }
-            },
-            'user_manager': {
-                label: 'User Manager',
-                badge: 'user-manager',
-                permissions: {
-                    canManageAdmins: false,
-                    canManageUsers: true,
-                    canManageContent: false,
-                    canModerate: false,
-                    canViewAnalytics: true,
-                    canManageSystem: false,
-                    canManageBackup: false,
-                    canViewAudit: false,
-                    canManageAPI: false,
-                    canManageFeatures: false,
-                    canDelete: false,
-                    canEdit: true,
-                    canCreate: true
-                }
-            },
-            'moderation_manager': {
-                label: 'Moderation Manager',
-                badge: 'moderation-manager',
-                permissions: {
-                    canManageAdmins: false,
-                    canManageUsers: false,
-                    canManageContent: false,
-                    canModerate: true,
-                    canViewAnalytics: true,
-                    canManageSystem: false,
-                    canManageBackup: false,
-                    canViewAudit: false,
-                    canManageAPI: false,
-                    canManageFeatures: false,
-                    canDelete: true,
-                    canEdit: false,
-                    canCreate: false
-                }
-            },
-            'analytics_viewer': {
-                label: 'Analytics Viewer',
-                badge: 'analytics-viewer',
-                permissions: {
-                    canManageAdmins: false,
-                    canManageUsers: false,
-                    canManageContent: false,
-                    canModerate: false,
-                    canViewAnalytics: true,
-                    canManageSystem: false,
-                    canManageBackup: false,
-                    canViewAudit: false,
-                    canManageAPI: false,
-                    canManageFeatures: false,
-                    canDelete: false,
-                    canEdit: false,
-                    canCreate: false
-                }
-            }
-        },
-        PAGE_ROLES: {
-            'dashboard': ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer'],
-            'babies': ['super_admin', 'content_manager'],
-            'users': ['super_admin', 'user_manager'],
-            'moderation': ['super_admin', 'moderation_manager'],
-            'community': ['super_admin', 'content_manager'],
-            'topics': ['super_admin', 'content_manager'],
-            'announcements': ['super_admin', 'content_manager'],
-            'trackers': ['super_admin', 'content_manager'],
-            'milestones': ['super_admin', 'content_manager'],
-            'analytics': ['super_admin', 'analytics_viewer'],
-            'growth': ['super_admin', 'analytics_viewer'],
-            'activity': ['super_admin', 'analytics_viewer'],
-            'settings': ['super_admin'],
-            'backup': ['super_admin'],
-            'audit': ['super_admin'],
-            'admin_roles': ['super_admin'],
-            'support': ['super_admin'],
-            'api': ['super_admin'],
-            'features': ['super_admin'],
-            'export': ['super_admin', 'analytics_viewer'],
-            'notifications': ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer'],
-            'health': ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer'],
-            'performance': ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer'],
-            'qrcode': ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer'],
-            'realtime': ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer']
-        },
-        NAV_ITEMS: [
-            { id: 'dashboard', icon: '📊', label: 'Dashboard', section: 'overview' },
-            { id: 'babies', icon: '👶', label: 'Babies', section: 'management', role: 'content_manager' },
-            { id: 'users', icon: '👤', label: 'Users', section: 'management', role: 'user_manager' },
-            { id: 'moderation', icon: '🛡️', label: 'Moderation', section: 'management', role: 'moderation_manager' },
-            { id: 'community', icon: '💬', label: 'Community Posts', section: 'community', role: 'content_manager' },
-            { id: 'topics', icon: '📌', label: 'Topics', section: 'community', role: 'content_manager' },
-            { id: 'announcements', icon: '📢', label: 'Announcements', section: 'community', role: 'content_manager' },
-            { id: 'trackers', icon: '📈', label: 'Tracker Entries', section: 'trackers', role: 'content_manager' },
-            { id: 'milestones', icon: '🏆', label: 'Milestones', section: 'trackers', role: 'content_manager' },
-            { id: 'analytics', icon: '📈', label: 'Analytics Dashboard', section: 'analytics', role: 'analytics_viewer' },
-            { id: 'growth', icon: '📊', label: 'Growth Analytics', section: 'analytics', role: 'analytics_viewer' },
-            { id: 'activity', icon: '📈', label: 'Activity Heatmap', section: 'analytics', role: 'analytics_viewer' },
-            { id: 'settings', icon: '⚙️', label: 'Settings', section: 'system', role: 'super_admin' },
-            { id: 'backup', icon: '💾', label: 'Backup & Restore', section: 'system', role: 'super_admin' },
-            { id: 'audit', icon: '📋', label: 'Audit Logs', section: 'system', role: 'super_admin' },
-            { id: 'admin_roles', icon: '👥', label: 'Admin Roles', section: 'system', role: 'super_admin' },
-            { id: 'support', icon: '🎫', label: 'Support Tickets', section: 'system', role: 'super_admin' },
-            { id: 'api', icon: '🔑', label: 'API Management', section: 'system', role: 'super_admin' },
-            { id: 'features', icon: '🚩', label: 'Feature Flags', section: 'system', role: 'super_admin' },
-            { id: 'export', icon: '📤', label: 'Data Export', section: 'tools', role: 'analytics_viewer' },
-            { id: 'health', icon: '❤️', label: 'System Health', section: 'health' },
-            { id: 'performance', icon: '⚡', label: 'Performance', section: 'health' },
-            { id: 'qrcode', icon: '📱', label: 'QR Codes', section: 'tools' },
-            { id: 'realtime', icon: '🔄', label: 'Realtime Monitor', section: 'tools' },
-            { id: 'notifications', icon: '🔔', label: 'Notifications', section: 'tools' }
-        ]
+            REMEMBER_ME: 'littleloom_remember_me'
+        }
     };
 
     // ─── STATE ──────────────────────────────────────────────────────────
     let supabase = null;
     let session = null;
     let currentUserRole = 'guest';
-    let userPermissions = {};
     let sessionTimer = null;
     let sessionTimeRemaining = 30 * 60;
-    let sessionWarningShown = false;
-    let sessionCountdownInterval = null;
+    let isSessionActive = true;
 
     // ─── INIT SUPABASE ──────────────────────────────────────────────────
     function initSupabase() {
         try {
             supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
             window._supabaseClient = supabase;
-            console.log('✅ Supabase initialized');
             return true;
         } catch (e) {
             console.error('Supabase init error:', e);
@@ -220,8 +64,6 @@
         localStorage.removeItem(CONFIG.SESSION_KEYS.SESSION_DATA);
         localStorage.removeItem(CONFIG.SESSION_KEYS.SESSION_EXPIRY);
         localStorage.removeItem(CONFIG.SESSION_KEYS.REMEMBER_ME);
-        localStorage.removeItem(CONFIG.SESSION_KEYS.USER_ROLE);
-        localStorage.removeItem(CONFIG.SESSION_KEYS.USER_PERMISSIONS);
     }
 
     function saveSessionData(data) {
@@ -239,18 +81,12 @@
         }
     }
 
-    function setRememberMe(value) {
-        localStorage.setItem(CONFIG.SESSION_KEYS.REMEMBER_ME, value ? 'true' : 'false');
-    }
-
     // ─── AUTH CHECK ─────────────────────────────────────────────────────
     async function checkAuth() {
         // Check if we're on login page
         if (window.location.pathname.includes('login.html') || window.location.pathname.endsWith('/login')) {
             return true;
         }
-
-        const pageName = window.location.pathname.split('/').pop().replace('.html', '') || 'dashboard';
 
         try {
             // First check stored session
@@ -260,13 +96,10 @@
                 if (!error && data.session) {
                     session = data.session;
                     currentUserRole = storedSession.role || 'super_admin';
-                    userPermissions = storedSession.permissions || CONFIG.ROLES[currentUserRole]?.permissions || {};
                     window._session = session;
                     window._userRole = currentUserRole;
-                    window._userPermissions = userPermissions;
                     startSessionTimer();
                     updateUIForAuth(session);
-                    updateUIForRole(currentUserRole);
                     return true;
                 }
                 clearSessionData();
@@ -284,23 +117,12 @@
             saveSessionData({
                 user: session.user,
                 role: currentUserRole,
-                permissions: userPermissions,
                 timestamp: Date.now()
             });
             window._session = session;
             window._userRole = currentUserRole;
-            window._userPermissions = userPermissions;
             startSessionTimer();
             updateUIForAuth(session);
-            updateUIForRole(currentUserRole);
-
-            // Check page access
-            const allowedRoles = CONFIG.PAGE_ROLES[pageName] || [];
-            if (allowedRoles.length > 0 && !allowedRoles.includes(currentUserRole) && currentUserRole !== 'super_admin') {
-                window.location.href = '/admin/dashboard.html?error=access_denied';
-                return false;
-            }
-
             return true;
 
         } catch (e) {
@@ -312,7 +134,7 @@
 
     function redirectToLogin() {
         const currentPath = window.location.pathname;
-        if (!currentPath.includes('login.html')) {
+        if (!currentPath.includes('login.html') && !currentPath.endsWith('/login')) {
             window.location.href = '/login?redirect=' + encodeURIComponent(currentPath);
         }
     }
@@ -321,7 +143,6 @@
         try {
             if (userId === CONFIG.SUPER_ADMIN_USER_ID) {
                 currentUserRole = 'super_admin';
-                userPermissions = CONFIG.ROLES['super_admin'].permissions;
                 await ensureSuperAdminRole(userId);
                 return;
             }
@@ -332,17 +153,14 @@
                 .eq('id', userId)
                 .single();
 
-            if (data && data.admin_role && CONFIG.ROLES[data.admin_role]) {
+            if (data && data.admin_role) {
                 currentUserRole = data.admin_role;
-                userPermissions = CONFIG.ROLES[currentUserRole].permissions;
             } else {
                 currentUserRole = 'guest';
-                userPermissions = CONFIG.ROLES['guest']?.permissions || {};
             }
         } catch (e) {
             console.warn('Could not load user role, using default:', e);
             currentUserRole = 'guest';
-            userPermissions = {};
         }
     }
 
@@ -384,7 +202,6 @@
         const emailEl = document.getElementById('sidebarEmail');
         const nameEl = document.getElementById('sidebarName');
         const avatarEl = document.getElementById('sidebarAvatar');
-        const roleEl = document.getElementById('sidebarRole');
         const statusEl = document.getElementById('connectionStatus');
 
         if (emailEl) emailEl.textContent = session?.user?.email || 'admin@littleloom.com';
@@ -393,74 +210,19 @@
             nameEl.textContent = name;
             if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
         }
-        if (statusEl) statusEl.textContent = `👤 ${session?.user?.email || 'Connected'}`;
-
-        if (roleEl && CONFIG.ROLES[currentUserRole]) {
-            roleEl.textContent = CONFIG.ROLES[currentUserRole].label;
-        }
-    }
-
-    function updateUIForRole(role) {
-        const roleInfo = CONFIG.ROLES[role];
-        if (!roleInfo) return;
-
-        const roleEl = document.getElementById('sidebarRole');
-        if (roleEl) roleEl.textContent = roleInfo.label;
-
-        // Update restricted items in sidebar
-        document.querySelectorAll('.sidebar-nav-item').forEach(item => {
-            const requiredRole = item.dataset.requiredRole;
-            if (requiredRole) {
-                const hasPermission = checkRolePermission(requiredRole);
-                if (!hasPermission) {
-                    item.classList.add('restricted');
-                    if (!item.querySelector('.lock-icon')) {
-                        const lock = document.createElement('span');
-                        lock.className = 'lock-icon';
-                        lock.textContent = '🔒';
-                        item.appendChild(lock);
-                    }
-                } else {
-                    item.classList.remove('restricted');
-                    const lock = item.querySelector('.lock-icon');
-                    if (lock) lock.remove();
-                }
-            }
-        });
-    }
-
-    function checkRolePermission(requiredRole) {
-        if (currentUserRole === 'super_admin') return true;
-        
-        const roleMap = {
-            'super_admin': userPermissions.canManageAdmins,
-            'content_manager': userPermissions.canManageContent,
-            'user_manager': userPermissions.canManageUsers,
-            'moderation_manager': userPermissions.canModerate,
-            'analytics_viewer': userPermissions.canViewAnalytics
-        };
-        
-        if (roleMap[requiredRole] !== undefined) {
-            return roleMap[requiredRole] || false;
-        }
-        
-        return false;
+        if (statusEl) statusEl.textContent = 'Connected';
     }
 
     // ─── SESSION TIMER ─────────────────────────────────────────────────
     function startSessionTimer() {
         if (sessionTimer) clearInterval(sessionTimer);
         sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
-        sessionWarningShown = false;
+        isSessionActive = true;
 
         sessionTimer = setInterval(() => {
+            if (!isSessionActive) return;
             sessionTimeRemaining--;
             updateSessionDisplay();
-
-            if (sessionTimeRemaining <= 30 && !sessionWarningShown) {
-                sessionWarningShown = true;
-                showSessionBanner();
-            }
 
             if (sessionTimeRemaining <= 0) {
                 clearInterval(sessionTimer);
@@ -468,10 +230,10 @@
             }
         }, 1000);
 
+        // Reset timer on user activity
         const resetTimer = () => {
+            if (!isSessionActive) return;
             sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
-            sessionWarningShown = false;
-            hideSessionBanner();
             updateSessionDisplay();
             const expiryTime = Date.now() + (CONFIG.SESSION_TIMEOUT_MINUTES * 60 * 1000);
             sessionStorage.setItem(CONFIG.SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
@@ -485,7 +247,6 @@
             document.addEventListener(event, resetTimer);
         });
 
-        // Store cleanup function
         window._sessionCleanup = () => {
             activityEvents.forEach(event => {
                 document.removeEventListener(event, resetTimer);
@@ -500,59 +261,6 @@
             const seconds = sessionTimeRemaining % 60;
             display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
-
-        const dot = document.getElementById('statusDot');
-        if (dot) {
-            if (sessionTimeRemaining < 60) {
-                dot.className = 'dot danger';
-            } else if (sessionTimeRemaining < 300) {
-                dot.className = 'dot warning';
-            } else {
-                dot.className = 'dot';
-            }
-        }
-    }
-
-    function showSessionBanner() {
-        const banner = document.getElementById('sessionBanner');
-        if (banner) {
-            banner.classList.add('show');
-            let countdown = 30;
-            const countdownEl = document.getElementById('sessionCountdown');
-            if (sessionCountdownInterval) clearInterval(sessionCountdownInterval);
-            sessionCountdownInterval = setInterval(() => {
-                countdown--;
-                if (countdownEl) countdownEl.textContent = countdown;
-                if (countdown <= 0) {
-                    clearInterval(sessionCountdownInterval);
-                    handleLogout();
-                }
-            }, 1000);
-        }
-    }
-
-    function hideSessionBanner() {
-        const banner = document.getElementById('sessionBanner');
-        if (banner) {
-            banner.classList.remove('show');
-            if (sessionCountdownInterval) {
-                clearInterval(sessionCountdownInterval);
-                sessionCountdownInterval = null;
-            }
-        }
-    }
-
-    function extendSession() {
-        sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
-        sessionWarningShown = false;
-        hideSessionBanner();
-        updateSessionDisplay();
-        const expiryTime = Date.now() + (CONFIG.SESSION_TIMEOUT_MINUTES * 60 * 1000);
-        sessionStorage.setItem(CONFIG.SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
-        if (localStorage.getItem(CONFIG.SESSION_KEYS.REMEMBER_ME) === 'true') {
-            localStorage.setItem(CONFIG.SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
-        }
-        showToast('⏳ Session extended', 'success');
     }
 
     // ─── LOGOUT ─────────────────────────────────────────────────────────
@@ -576,14 +284,12 @@
         if (!confirmed) return;
 
         try {
+            isSessionActive = false;
             await supabase.auth.signOut();
             session = null;
             if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null; }
-            if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval); sessionCountdownInterval = null; }
             if (window._sessionCleanup) { window._sessionCleanup(); }
-            hideSessionBanner();
             clearSessionData();
-            setRememberMe(false);
             showToast('✅ Logged out successfully', 'success');
             window.location.href = '/login';
         } catch (e) {
@@ -674,13 +380,6 @@
             if (sidebar) sidebar.classList.remove('open');
             if (overlay) overlay.classList.remove('active');
         }
-
-        const allowedRoles = CONFIG.PAGE_ROLES[page] || [];
-        if (allowedRoles.length > 0 && !allowedRoles.includes(currentUserRole) && currentUserRole !== 'super_admin') {
-            showToast('🔒 You do not have permission to access this page', 'warning');
-            return;
-        }
-
         window.location.href = `/admin/${page}`;
     }
 
@@ -705,7 +404,25 @@
         if (!sidebar) return;
 
         const currentPage = window.location.pathname.split('/').pop().replace('.html', '') || 'dashboard';
-        const navItems = CONFIG.NAV_ITEMS;
+
+        const navItems = [
+            { id: 'dashboard', icon: '📊', label: 'Dashboard', section: 'overview' },
+            { id: 'babies', icon: '👶', label: 'Babies', section: 'management' },
+            { id: 'users', icon: '👤', label: 'Users', section: 'management' },
+            { id: 'moderation', icon: '🛡️', label: 'Moderation', section: 'management' },
+            { id: 'community', icon: '💬', label: 'Community Posts', section: 'community' },
+            { id: 'announcements', icon: '📢', label: 'Announcements', section: 'community' },
+            { id: 'trackers', icon: '📈', label: 'Tracker Entries', section: 'trackers' },
+            { id: 'milestones', icon: '🏆', label: 'Milestones', section: 'trackers' },
+            { id: 'analytics', icon: '📈', label: 'Analytics', section: 'analytics' },
+            { id: 'growth', icon: '📊', label: 'Growth', section: 'analytics' },
+            { id: 'admin_roles', icon: '👥', label: 'Admin Roles', section: 'system' },
+            { id: 'audit', icon: '📋', label: 'Audit Logs', section: 'system' },
+            { id: 'backup', icon: '💾', label: 'Backup', section: 'system' },
+            { id: 'settings', icon: '⚙️', label: 'Settings', section: 'system' },
+            { id: 'health', icon: '❤️', label: 'Health', section: 'health' },
+            { id: 'performance', icon: '⚡', label: 'Performance', section: 'health' }
+        ];
 
         const sections = {};
         navItems.forEach(item => {
@@ -721,9 +438,7 @@
             'trackers': '📊 Trackers',
             'analytics': '📈 Analytics',
             'system': '⚙️ System',
-            'health': '❤️ Health',
-            'tools': '🛠️ Tools',
-            'other': '📋 Other'
+            'health': '❤️ Health'
         };
 
         let html = '';
@@ -735,18 +450,13 @@
 
             items.forEach(item => {
                 const isActive = currentPage === item.id;
-                const isRestricted = item.role && currentUserRole !== 'super_admin' && currentUserRole !== item.role;
-                const lockIcon = isRestricted ? '<span class="lock-icon">🔒</span>' : '';
-
                 html += `
-                    <a class="sidebar-nav-item ${isActive ? 'active' : ''} ${isRestricted ? 'restricted' : ''}"
+                    <a class="sidebar-nav-item ${isActive ? 'active' : ''}"
                        href="#"
                        onclick="window._navigateTo('${item.id}')"
-                       data-page="${item.id}"
-                       data-required-role="${item.role || ''}">
+                       data-page="${item.id}">
                         <span class="icon">${item.icon}</span>
                         ${item.label}
-                        ${lockIcon}
                     </a>
                 `;
             });
@@ -762,13 +472,11 @@
     window._checkAuth = checkAuth;
     window._getSession = () => session;
     window._getUserRole = () => currentUserRole;
-    window._getPermissions = () => userPermissions;
     window._navigateTo = navigateTo;
     window._toggleSidebar = toggleSidebar;
     window._buildSidebar = buildSidebar;
     window._showToast = showToast;
     window._handleLogout = handleLogout;
-    window._extendSession = extendSession;
     window._openModal = openModal;
     window._closeModal = closeModal;
     window._modalConfirm = modalConfirm;
@@ -776,8 +484,6 @@
     window._saveSessionData = saveSessionData;
     window._clearSessionData = clearSessionData;
     window._getSessionData = getSessionData;
-    window._setRememberMe = setRememberMe;
-    window._checkRolePermission = checkRolePermission;
 
     console.log('🧵 Admin Base loaded');
 

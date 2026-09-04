@@ -8,7 +8,205 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
-        /* ... (same as before) ... */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .login-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 48px 40px;
+            max-width: 420px;
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 36px;
+        }
+
+        .login-header .logo {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .login-header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+
+        .login-header h1 span {
+            color: #818cf8;
+        }
+
+        .login-header p {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .login-error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #fca5a5;
+            margin-bottom: 20px;
+        }
+
+        .login-error.show {
+            display: flex;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1.5px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .form-group input::placeholder {
+            color: rgba(255, 255, 255, 0.25);
+        }
+
+        .form-group input:focus {
+            border-color: #818cf8;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+        }
+
+        .form-group input:-webkit-autofill {
+            -webkit-box-shadow: 0 0 0 1000px #1e293b inset !important;
+            -webkit-text-fill-color: #fff !important;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 16px 0 24px;
+        }
+
+        .remember-me input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #6366f1;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .remember-me label {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+            position: relative;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+        }
+
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-login .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 28px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.25);
+            letter-spacing: 0.3px;
+        }
+
+        /* ─── RESPONSIVE ────────────────────────────────────────────── */
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 32px 24px;
+            }
+
+            .login-header h1 {
+                font-size: 24px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -80,22 +278,6 @@
                 errorEl.classList.add('show');
                 setTimeout(() => errorEl.classList.remove('show'), 5000);
             }
-        }
-
-        // ─── NAVIGATION ─────────────────────────────────────────────────
-        function navigateTo(page) {
-            window.location.href = `/admin/${page}`;
-        }
-
-        // ─── LOGOUT ─────────────────────────────────────────────────────
-        function handleLogout() {
-            // Clear session and redirect to login
-            sessionStorage.removeItem(SESSION_KEYS.SESSION_DATA);
-            sessionStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
-            localStorage.removeItem(SESSION_KEYS.SESSION_DATA);
-            localStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
-            localStorage.removeItem(SESSION_KEYS.REMEMBER_ME);
-            window.location.href = '/login';
         }
 
         async function ensureSuperAdminRole(userId) {
@@ -206,7 +388,7 @@
                         localStorage.removeItem(SESSION_KEYS.REMEMBER_ME);
                     }
 
-                    const redirect = new URLSearchParams(window.location.search).get('redirect') || '/admin/dashboard.html';
+                    const redirect = new URLSearchParams(window.location.search).get('redirect') || '/admin/dashboard';
                     window.location.href = redirect;
                 }
 
@@ -233,7 +415,7 @@
                         if (!supabase) initSupabase();
                         const { data: sessionCheck, error } = await supabase.auth.getSession();
                         if (!error && sessionCheck?.session) {
-                            window.location.href = '/admin/dashboard.html';
+                            window.location.href = '/admin/dashboard';
                             return true;
                         }
                     }
@@ -243,11 +425,6 @@
                 return false;
             }
         }
-
-        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
-        window.navigateTo = navigateTo;
-        window.handleLogout = handleLogout;
-        window.handleLoginSubmit = handleLoginSubmit;
 
         document.addEventListener('DOMContentLoaded', async function() {
             if (!initSupabase()) return;
