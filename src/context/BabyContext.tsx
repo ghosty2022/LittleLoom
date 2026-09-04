@@ -1085,237 +1085,246 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [getCurrentUserId]);
 
   /* ---- Create baby ---- */
-  const createBaby = useCallback(async (
-    data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
-  ): Promise<string | null> => {
-    if (isCreatingRef.current) {
-      console.log('[BabyContext] Creation already in progress');
-      return null;
-    }
-    isCreatingRef.current = true;
+const createBaby = useCallback(async (
+  data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>
+): Promise<string | null> => {
+  if (isCreatingRef.current) {
+    console.log('[BabyContext] Creation already in progress');
+    return null;
+  }
+  isCreatingRef.current = true;
 
-    const birthDate = new Date(data.birthDate);
-    const now = new Date();
-    if (birthDate > now) {
+  const birthDate = new Date(data.birthDate);
+  const now = new Date();
+  if (birthDate > now) {
+    isCreatingRef.current = false;
+    return null;
+  }
+  if (isNaN(birthDate.getTime())) {
+    isCreatingRef.current = false;
+    return null;
+  }
+
+  try {
+    const newId = generateId();
+    
+    let userId: string | null = null;
+    
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (!userError && user?.id) {
+        userId = user.id;
+        console.log('[BabyContext] Got user ID from getUser:', userId);
+      }
+    } catch (e) {
+      console.warn('[BabyContext] getUser failed:', e);
+    }
+    
+    if (!userId) {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (!sessionError && session?.user?.id) {
+          userId = session.user.id;
+          console.log('[BabyContext] Got user ID from session:', userId);
+        }
+      } catch (e) {
+        console.warn('[BabyContext] getSession failed:', e);
+      }
+    }
+    
+    if (!userId && authProfile?.id) {
+      userId = authProfile.id;
+      console.log('[BabyContext] Got user ID from authProfile:', userId);
+    }
+    
+    if (!userId) {
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshData?.session?.user?.id) {
+          userId = refreshData.session.user.id;
+          console.log('[BabyContext] Got user ID from refreshSession:', userId);
+        }
+      } catch (e) {
+        console.warn('[BabyContext] refreshSession failed:', e);
+      }
+    }
+    
+    if (!userId) {
+      console.error('[BabyContext] No authenticated user for createBaby');
       isCreatingRef.current = false;
       return null;
     }
-    if (isNaN(birthDate.getTime())) {
+
+    console.log('[BabyContext] Creating baby with parent1_id:', userId);
+
+    // ─── CHECK FOR DUPLICATE ──────────────────────────────────────────
+    const { data: existingBabies, error: duplicateError } = await supabase
+      .from('babies')
+      .select('id')
+      .eq('name', data.name)
+      .eq('date_of_birth', data.birthDate)
+      .eq('parent1_id', userId)
+      .eq('is_active', true);
+
+    if (duplicateError) {
+      console.warn('[BabyContext] Duplicate check error:', duplicateError);
+    }
+
+    // ─── FIX: Return existing baby ID if duplicate found ─────────────
+    if (existingBabies && existingBabies.length > 0) {
+      console.log('[BabyContext] Duplicate baby found, returning existing ID:', existingBabies[0].id);
+      isCreatingRef.current = false;
+      // Return the existing baby ID so the UI can use it
+      return existingBabies[0].id;
+    }
+
+    const babyData = {
+      id: newId,
+      name: data.name,
+      avatar: data.avatar || null,
+      date_of_birth: data.birthDate,
+      gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
+      blood_type: data.bloodType || null,
+      medical_notes: data.medicalNotes || null,
+      allergies: data.allergies || null,
+      parent1_id: userId,
+      parent2_id: data.parent2Id || null,
+      current_weight_kg: data.weight ? parseFloat(data.weight) : null,
+      current_height_cm: data.height ? parseFloat(data.height) : null,
+      birth_time: data.birthTime || null,
+      birth_weight_kg: data.birthWeight ? parseFloat(data.birthWeight) : null,
+      birth_height_cm: data.birthHeight ? parseFloat(data.birthHeight) : null,
+      birth_head_circumference: data.birthHeadCircumference ? parseFloat(data.birthHeadCircumference) : null,
+      delivery_type: data.deliveryType ? data.deliveryType.toLowerCase().replace(/-/g, '_') : null,
+      gestational_weeks: data.gestationalWeeks ? parseInt(data.gestationalWeeks) : null,
+      apgar_1min: data.apgar1Min ? parseInt(data.apgar1Min) : null,
+      apgar_5min: data.apgar5Min ? parseInt(data.apgar5Min) : null,
+      birth_place: data.birthPlace || null,
+      birth_attendant: data.birthAttendant ? data.birthAttendant.toLowerCase().replace(/ /g, '_') : null,
+      multiple_birth: data.multipleBirth || false,
+      birth_order: data.birthOrder ? parseInt(data.birthOrder) : null,
+      feeding_plan: data.feedingPlan ? data.feedingPlan.toLowerCase() : null,
+      emergency_contact: data.emergencyContact || null,
+      pediatrician: data.pediatrician || null,
+      notifications_enabled: data.notificationsEnabled !== false,
+      skin_tone: data.skinTone || 0,
+      is_active: true,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    };
+
+    console.log('[BabyContext] Inserting baby with data:', JSON.stringify(babyData, null, 2));
+
+    const { data: result, error } = await supabase
+      .from('babies')
+      .insert(babyData)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[BabyContext] Create baby error:', error);
       isCreatingRef.current = false;
       return null;
     }
+
+    if (!result) {
+      console.error('[BabyContext] No result from insert');
+      isCreatingRef.current = false;
+      return null;
+    }
+
+    console.log('[BabyContext] Baby created successfully:', result.id);
+
+    const newBaby: BabyProfile = {
+      ...data,
+      id: result.id,
+      parent1Id: userId,
+      streak: 0,
+      milestones: 0,
+      photos: 0,
+      createdAt: now.toISOString(),
+      lastUpdated: now.toISOString(),
+      age: calculateAge(data.birthDate),
+    };
+
+    const { count } = await supabase
+      .from('babies')
+      .select('*', { count: 'exact', head: true })
+      .eq('parent1_id', userId)
+      .eq('is_active', true);
+
+    const isFirstBaby = (count || 0) <= 1;
+    const newCurrentId = isFirstBaby ? result.id : (state.currentBabyId || result.id);
 
     try {
-      const newId = generateId();
-      
-      let userId: string | null = null;
-      
-      try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (!userError && user?.id) {
-          userId = user.id;
-          console.log('[BabyContext] Got user ID from getUser:', userId);
-        }
-      } catch (e) {
-        console.warn('[BabyContext] getUser failed:', e);
-      }
-      
-      if (!userId) {
-        try {
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          if (!sessionError && session?.user?.id) {
-            userId = session.user.id;
-            console.log('[BabyContext] Got user ID from session:', userId);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] getSession failed:', e);
-        }
-      }
-      
-      if (!userId && authProfile?.id) {
-        userId = authProfile.id;
-        console.log('[BabyContext] Got user ID from authProfile:', userId);
-      }
-      
-      if (!userId) {
-        try {
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-          if (!refreshError && refreshData?.session?.user?.id) {
-            userId = refreshData.session.user.id;
-            console.log('[BabyContext] Got user ID from refreshSession:', userId);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] refreshSession failed:', e);
-        }
-      }
-      
-      if (!userId) {
-        console.error('[BabyContext] No authenticated user for createBaby');
-        isCreatingRef.current = false;
-        return null;
-      }
-
-      console.log('[BabyContext] Creating baby with parent1_id:', userId);
-
-      // ─── CHECK FOR DUPLICATE ──────────────────────────────────────────
-      const { data: existingBabies, error: duplicateError } = await supabase
-        .from('babies')
-        .select('id')
-        .eq('name', data.name)
-        .eq('date_of_birth', data.birthDate)
-        .eq('parent1_id', userId)
-        .eq('is_active', true);
-
-      if (duplicateError) {
-        console.warn('[BabyContext] Duplicate check error:', duplicateError);
-      }
-
-      // ─── FIX: Return existing baby ID if duplicate found ─────────────
-      if (existingBabies && existingBabies.length > 0) {
-        console.log('[BabyContext] Duplicate baby found, returning existing ID:', existingBabies[0].id);
-        isCreatingRef.current = false;
-        // Return the existing baby ID so the UI can use it
-        return existingBabies[0].id;
-      }
-
-      const babyData = {
-        id: newId,
-        name: data.name,
-        avatar: data.avatar || null,
-        date_of_birth: data.birthDate,
-        gender: data.gender === 'boy' ? 'male' : data.gender === 'girl' ? 'female' : 'other',
-        blood_type: data.bloodType || null,
-        medical_notes: data.medicalNotes || null,
-        allergies: data.allergies || null,
-        parent1_id: userId,
-        parent2_id: data.parent2Id || null,
-        current_weight_kg: data.weight ? parseFloat(data.weight) : null,
-        current_height_cm: data.height ? parseFloat(data.height) : null,
-        birth_time: data.birthTime || null,
-        birth_weight_kg: data.birthWeight ? parseFloat(data.birthWeight) : null,
-        birth_height_cm: data.birthHeight ? parseFloat(data.birthHeight) : null,
-        birth_head_circumference: data.birthHeadCircumference ? parseFloat(data.birthHeadCircumference) : null,
-        delivery_type: data.deliveryType ? data.deliveryType.toLowerCase().replace(/-/g, '_') : null,
-        gestational_weeks: data.gestationalWeeks ? parseInt(data.gestationalWeeks) : null,
-        apgar_1min: data.apgar1Min ? parseInt(data.apgar1Min) : null,
-        apgar_5min: data.apgar5Min ? parseInt(data.apgar5Min) : null,
-        birth_place: data.birthPlace || null,
-        birth_attendant: data.birthAttendant ? data.birthAttendant.toLowerCase().replace(/ /g, '_') : null,
-        multiple_birth: data.multipleBirth || false,
-        birth_order: data.birthOrder ? parseInt(data.birthOrder) : null,
-        feeding_plan: data.feedingPlan ? data.feedingPlan.toLowerCase() : null,
-        emergency_contact: data.emergencyContact || null,
-        pediatrician: data.pediatrician || null,
-        notifications_enabled: data.notificationsEnabled !== false,
-        skin_tone: data.skinTone || 0,
-        is_active: true,
-        created_at: now.toISOString(),
-        updated_at: now.toISOString(),
-      };
-
-      console.log('[BabyContext] Inserting baby with data:', JSON.stringify(babyData, null, 2));
-
-      const { data: result, error } = await supabase
-        .from('babies')
-        .insert(babyData)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('[BabyContext] Create baby error:', error);
-        isCreatingRef.current = false;
-        return null;
-      }
-
-      if (!result) {
-        console.error('[BabyContext] No result from insert');
-        isCreatingRef.current = false;
-        return null;
-      }
-
-      console.log('[BabyContext] Baby created successfully:', result.id);
-
-      const newBaby: BabyProfile = {
-        ...data,
-        id: result.id,
-        parent1Id: userId,
-        streak: 0,
-        milestones: 0,
-        photos: 0,
-        createdAt: now.toISOString(),
-        lastUpdated: now.toISOString(),
-        age: calculateAge(data.birthDate),
-      };
-
-      const { count } = await supabase
-        .from('babies')
-        .select('*', { count: 'exact', head: true })
-        .eq('parent1_id', userId)
-        .eq('is_active', true);
-
-      const isFirstBaby = (count || 0) <= 1;
-      const newCurrentId = isFirstBaby ? result.id : (state.currentBabyId || result.id);
-
-      try {
-        await supabase
-          .from('app_settings')
-          .upsert({
-            key: 'current_baby_id',
-            value: newCurrentId,
-            user_id: userId,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'key, user_id' });
-      } catch (e) {
-        console.warn('[BabyContext] Failed to set current_baby_id:', e);
-      }
-
-      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
-      broadcastBabyChange(newCurrentId);
-
-      try {
-        await supabase
-          .from('app_settings')
-          .delete()
-          .eq('key', 'has_skipped_baby')
-          .eq('user_id', userId);
-      } catch (e) {
-        console.warn('[BabyContext] Failed to clear skip baby:', e);
-      }
-
-      // Update local state
-      if (isMounted.current) {
-        setState(prev => ({
-          ...prev,
-          babies: [...prev.babies, newBaby],
-          currentBabyId: newCurrentId,
-          currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
-          hasSkippedBaby: false,
-        }));
-      }
-
-      // Clear cache
-      await AsyncStorage.removeItem(BABIES_CACHE_KEY);
-
-      // Load tracker data for new baby
-      await loadAllBabyData(newCurrentId);
-
-      // Broadcast after state is updated
-      setTimeout(() => {
-        broadcastBabyChange(newCurrentId);
-      }, 50);
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-
-      isCreatingRef.current = false;
-      return result.id;
-      
-    } catch (error) {
-      isCreatingRef.current = false;
-      console.error('[BabyContext] Create baby error:', error);
-      return null;
+      await supabase
+        .from('app_settings')
+        .upsert({
+          key: 'current_baby_id',
+          value: newCurrentId,
+          user_id: userId,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'key, user_id' });
+    } catch (e) {
+      console.warn('[BabyContext] Failed to set current_baby_id:', e);
     }
-  }, [calculateAge, loadAllBabyData, state.currentBabyId, authProfile, broadcastBabyChange]);
 
+    await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
+    broadcastBabyChange(newCurrentId);
+
+    try {
+      await supabase
+        .from('app_settings')
+        .delete()
+        .eq('key', 'has_skipped_baby')
+        .eq('user_id', userId);
+    } catch (e) {
+      console.warn('[BabyContext] Failed to clear skip baby:', e);
+    }
+
+    // ─── FIX: Update local state BEFORE broadcasting ──────────────────
+    // Update local state with the new baby
+    if (isMounted.current) {
+      // Get fresh list of babies from DB to ensure consistency
+      const { data: freshBabies } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent1_id', userId)
+        .eq('is_active', true);
+      
+      const updatedBabies = freshBabies ? freshBabies.map(mapBabyRowToProfile) : [...state.babies, newBaby];
+      
+      setState(prev => ({
+        ...prev,
+        babies: updatedBabies,
+        currentBabyId: newCurrentId,
+        currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
+        hasSkippedBaby: false,
+      }));
+    }
+
+    // Clear cache
+    await AsyncStorage.removeItem(BABIES_CACHE_KEY);
+
+    // Load tracker data for new baby
+    await loadAllBabyData(newCurrentId);
+
+    // Broadcast after state is updated
+    setTimeout(() => {
+      broadcastBabyChange(newCurrentId);
+    }, 100);
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+
+    isCreatingRef.current = false;
+    return result.id;
+    
+  } catch (error) {
+    isCreatingRef.current = false;
+    console.error('[BabyContext] Create baby error:', error);
+    return null;
+  }
+}, [calculateAge, loadAllBabyData, state.currentBabyId, authProfile, broadcastBabyChange, mapBabyRowToProfile]);
   /* ---- Update baby ---- */
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
     try {

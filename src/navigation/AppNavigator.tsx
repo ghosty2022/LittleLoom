@@ -218,6 +218,7 @@ function getNavState(
   seenOnboarding: boolean,
   firstOpen: boolean,
 ): NavigationState {
+  // ─── FIX: Check auth state first ──────────────────────────────────
   if (authLoading) return 'LOADING';
   
   if (!isAuth || !isValidSession) {
@@ -225,24 +226,30 @@ function getNavState(
     return 'LOGIN';
   }
 
-  // ✅ FIXED: Check if security lock should be shown
+  // ─── FIX: Security lock check ─────────────────────────────────────
   // Only show security lock if there's actual security enabled
   if (isLocked && securityOn) {
     return 'SECURITY_LOCK';
   }
 
+  // ─── FIX: Check if baby is addressed ─────────────────────────────
   const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0;
   const p2Addressed = hasP2 === true || hasP2 === 'skipped';
+  
+  // ─── FIX: Setup is complete if both steps are addressed ─────────
   const isActuallySetupComplete = setupDone || (babyAddressed && p2Addressed);
 
-  if (!isActuallySetupComplete) {
-    if (!babyAddressed) return 'SETUP_BABY';
-    if (!p2Addressed) return 'SETUP_PARENT2';
+  // ─── FIX: If setup is complete, go to MAIN ──────────────────────
+  if (isActuallySetupComplete) {
+    return 'MAIN';
   }
+
+  // ─── FIX: Otherwise navigate to setup screens ────────────────────
+  if (!babyAddressed) return 'SETUP_BABY';
+  if (!p2Addressed) return 'SETUP_PARENT2';
 
   return 'MAIN';
 }
-
 /* ═══════════════════════════════════════════════════════════════════════════
    LOADING SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */

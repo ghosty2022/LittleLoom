@@ -294,12 +294,25 @@ const handleSkip = useCallback(async () => {
   setIsLoading(true);
   try {
     await skipSetup('parent2');
-    // After skipping, navigate to Main
     showToast('Skipped for now - you can add later in Family settings', 'info');
-    navigation.replace('Main');
+    // ─── FIX: Navigate to Main with reset to ensure clean state ──────
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' as never }],
+    });
   } catch (error) {
     console.error('handleSkip error:', error);
     showToast('Could not skip', 'error');
+    // ─── FIX: Even on error, try to navigate to Main ─────────────────
+    try {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Main' as never }],
+      });
+    } catch (e) {
+      console.error('Fallback navigation failed:', e);
+      navigation.replace('Main' as never);
+    }
   } finally {
     setIsLoading(false);
   }
@@ -311,15 +324,29 @@ const handleContinue = useCallback(async () => {
   try {
     await completeSetup('parent2');
     showToast('Setup complete! Welcome to the family', 'success');
-    // Navigate to Main after setup is complete
-    navigation.replace('Main');
+    // ─── FIX: Navigate to Main with reset to ensure clean state ──────
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main' as never }],
+    });
   } catch (error) {
     console.error('handleContinue error:', error);
     showToast('Could not save progress', 'error');
+    // ─── FIX: Even on error, try to navigate to Main ─────────────────
+    try {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Main' as never }],
+      });
+    } catch (e) {
+      console.error('Fallback navigation failed:', e);
+      navigation.replace('Main' as never);
+    }
   } finally {
     setIsLoading(false);
   }
 }, [completeSetup, triggerHaptic, showToast, navigation]);
+
   const handleBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.navigate('Main' as never);

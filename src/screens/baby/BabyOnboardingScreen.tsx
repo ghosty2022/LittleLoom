@@ -516,66 +516,88 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     }
   }, [loadBabies, switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
 
-  const handleSkip = useCallback(async () => {
-    triggerHaptic('light');
-    setIsProcessing(true);
-    try {
-      await skipSetup('baby');
-      
-      const { hasParent2 } = await wasSetupCompleted();
-      
-      if (hasParent2 === false) {
-        toast("Let's set up family sharing", 'info');
-        navigation.replace('CoParentInviteScreen');
-      } else {
-        toast('You can add a baby later from settings', 'info');
-        const { setupComplete } = await wasSetupCompleted();
-        if (setupComplete) {
-          navigation.replace('Main');
-        } else {
-          navigation.replace('BabyOptional');
-        }
-      }
-    } catch (error) {
-      console.error('handleSkip error:', error);
-      toast('Could not skip baby setup', 'error');
-    } finally {
-      setIsProcessing(false);
+const handleSkip = useCallback(async () => {
+  triggerHaptic('light');
+  setIsProcessing(true);
+  try {
+    await skipSetup('baby');
+    
+    const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
+    
+    console.log('[BabyOnboarding] Skip - setup status:', { hasParent2, isSetupComplete });
+    
+    if (isSetupComplete) {
+      navigation.replace('Main');
+    } else if (hasParent2 === false) {
+      toast("Let's set up family sharing", 'info');
+      navigation.replace('CoParentInviteScreen');
+    } else if (hasParent2 === 'skipped') {
+      await completeSetup('parent2');
+      toast('You can add a baby later from settings', 'info');
+      navigation.replace('Main');
+    } else {
+      toast('You can add a baby later from settings', 'info');
+      navigation.replace('Main');
     }
-  }, [skipSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
+  } catch (error) {
+    console.error('handleSkip error:', error);
+    toast('Could not skip baby setup', 'error');
+    // ─── FIX: Fallback navigation ─────────────────────────────────────
+    try {
+      navigation.replace('Main');
+    } catch (e) {
+      console.error('Fallback navigation failed:', e);
+    }
+  } finally {
+    setIsProcessing(false);
+  }
+}, [skipSetup, wasSetupCompleted, completeSetup, toast, triggerHaptic, navigation]);
 
   const handleCreateBaby = useCallback(() => {
     triggerHaptic('medium');
     navigation.navigate('CreateBabyProfile');
   }, [navigation, triggerHaptic]);
 
-  const handleSelectBaby = useCallback(async (babyId: string) => {
-    triggerHaptic('medium');
-    setIsProcessing(true);
-    try {
-      await switchBaby(babyId);
-      await completeSetup('baby');
-      
-      const { hasParent2 } = await wasSetupCompleted();
-      
-      if (hasParent2 === false) {
-        toast('Invite a co-parent to join the family', 'info');
-        navigation.replace('CoParentInviteScreen');
-      } else if (hasParent2 === 'skipped' || hasParent2 === true) {
-        await completeSetup('parent2');
-        toast('Baby profile selected', 'success');
-        navigation.replace('Main');
-      } else {
-        toast('Baby profile selected', 'success');
-        navigation.replace('Main');
-      }
-    } catch (error) {
-      console.error('handleSelectBaby error:', error);
-      toast('Could not switch baby', 'error');
-    } finally {
-      setIsProcessing(false);
+const handleSelectBaby = useCallback(async (babyId: string) => {
+  triggerHaptic('medium');
+  setIsProcessing(true);
+  try {
+    await switchBaby(babyId);
+    await completeSetup('baby');
+    
+    const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
+    
+    console.log('[BabyOnboarding] Setup status:', { hasParent2, isSetupComplete });
+    
+    if (isSetupComplete) {
+      // Setup is fully complete, go to Main
+      console.log('[BabyOnboarding] Setup complete, navigating to Main');
+      navigation.replace('Main');
+    } else if (hasParent2 === false) {
+      toast('Invite a co-parent to join the family', 'info');
+      navigation.replace('CoParentInviteScreen');
+    } else if (hasParent2 === 'skipped') {
+      await completeSetup('parent2');
+      toast('Baby profile selected', 'success');
+      navigation.replace('Main');
+    } else {
+      // Default: go to Main
+      toast('Baby profile selected', 'success');
+      navigation.replace('Main');
     }
-  }, [switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
+  } catch (error) {
+    console.error('handleSelectBaby error:', error);
+    toast('Could not switch baby', 'error');
+    // ─── FIX: Fallback navigation ─────────────────────────────────────
+    try {
+      navigation.replace('Main');
+    } catch (e) {
+      console.error('Fallback navigation failed:', e);
+    }
+  } finally {
+    setIsProcessing(false);
+  }
+}, [switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
 
   const handleRetry = useCallback(async () => {
     setLoadError(null);
