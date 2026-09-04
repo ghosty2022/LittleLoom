@@ -77,6 +77,27 @@
         .admin-card .permissions .perm .check { color: #22c55e; }
         .admin-card .permissions .perm .cross { color: #ef4444; }
 
+        /* ─── SUPER ADMIN PROTECTION ────────────────────────────────────── */
+        .admin-card.protected {
+            border-left: 4px solid #7c3aed;
+            background: rgba(124, 58, 237, 0.05);
+        }
+        .admin-card.protected .protected-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+        .admin-card.protected .role-selector select {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .filter-bar-modern {
             display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
             background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
@@ -105,16 +126,137 @@
         .admin-role-badge.analytics-viewer { background: #fce7f3; color: #db2777; }
         .admin-role-badge.guest { background: #f3f4f6; color: #6b7280; }
 
+        /* ─── SESSION TIMEOUT BANNER ────────────────────────────────────── */
+        .session-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10000;
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 12px 24px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+            animation: slideDownBanner 0.3s ease;
+        }
+        .session-banner.show { display: flex; }
+        .session-banner .countdown {
+            background: #dc2626;
+            color: #fff;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            min-width: 40px;
+            text-align: center;
+        }
+        .session-banner .btn {
+            padding: 4px 16px;
+            font-size: 12px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .session-banner .btn-primary { background: #dc2626; color: #fff; }
+        .session-banner .btn-primary:hover { background: #b91c1c; }
+        .session-banner .btn-outline {
+            background: transparent;
+            color: #dc2626;
+            border: 1.5px solid #dc2626;
+        }
+        .session-banner .btn-outline:hover { background: #fee2e2; }
+
+        @keyframes slideDownBanner {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ─── SESSION CHECK OVERLAY ────────────────────────────────────── */
+        .session-check-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: var(--bg-primary);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+            animation: fadeIn 0.3s ease;
+        }
+        .session-check-overlay.show { display: flex; }
+        .session-check-overlay .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .session-check-overlay .message {
+            font-size: 16px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ─── PERMISSION DENIED ─────────────────────────────────────────── */
+        .permission-denied {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .permission-denied .emoji {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+        .permission-denied h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        .permission-denied p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
             .admin-card .header { flex-direction: column; align-items: stretch; }
             .admin-card .role-selector { justify-content: stretch; }
             .admin-card .role-selector select { flex: 1; }
             .admin-card .permissions { grid-template-columns: 1fr; }
+            .session-banner { flex-wrap: wrap; padding: 10px 16px; font-size: 12px; }
         }
     </style>
 </head>
 <body>
+    <!-- ─── SESSION CHECK OVERLAY ────────────────────────────────────── -->
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+
+    <!-- ─── SESSION TIMEOUT BANNER ────────────────────────────────────── -->
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand" onclick="navigateTo('dashboard')">
@@ -198,7 +340,10 @@
             <header class="topbar">
                 <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Admin Roles <span class="sub">| Role Management</span></div></div></div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status">
+                        <span class="dot" id="statusDot"></span>
+                        <span id="connectionStatus">Connected</span>
+                    </div>
                     <div class="topbar-actions">
                         <button class="btn btn-outline btn-sm" onclick="loadAdminUsers()">🔄 Refresh</button>
                         <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
@@ -207,7 +352,11 @@
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;color:var(--text-muted);" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;" id="sessionTimer">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>👥 Admin Roles</h1>
@@ -242,10 +391,124 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
     <script>
+        // ─── SUPABASE CONFIG ──────────────────────────────────────────────
+        const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
+
+        let supabase = null;
+        let session = null;
+        let refreshTimer = null;
+        let realtimeChannel = null;
+
+        // ─── SESSION MANAGEMENT ──────────────────────────────────────────
+        const SESSION_TIMEOUT_MINUTES = 30;
+        let sessionTimer = null;
+        let sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+        let sessionWarningShown = false;
+        let sessionCountdownInterval = null;
+
+        // ─── SUPER ADMIN USER ID ─────────────────────────────────────────
+        const SUPER_ADMIN_USER_ID = 'a3f834ef-7fa5-4732-9a03-af154806ac16';
+
+        // ─── SESSION STORAGE KEYS ──────────────────────────────────────
+        const SESSION_KEYS = {
+            SESSION_DATA: 'littleloom_session_data',
+            SESSION_EXPIRY: 'littleloom_session_expiry',
+            REMEMBER_ME: 'littleloom_remember_me',
+            USER_ROLE: 'littleloom_user_role',
+        };
+
+        // ─── ADMIN ROLE PERMISSIONS ──────────────────────────────────────
+        const ADMIN_ROLES = {
+            'super_admin': {
+                label: 'Super Admin',
+                badge: 'super-admin',
+                permissions: {
+                    canManageAdmins: true,
+                    canManageUsers: true,
+                    canManageContent: true,
+                    canModerate: true,
+                    canViewAnalytics: true,
+                    canManageSystem: true,
+                    canManageBackup: true,
+                    canViewAudit: true,
+                    canManageAPI: true,
+                    canManageFeatures: true
+                }
+            },
+            'content_manager': {
+                label: 'Content Manager',
+                badge: 'content-manager',
+                permissions: {
+                    canManageAdmins: false,
+                    canManageUsers: false,
+                    canManageContent: true,
+                    canModerate: true,
+                    canViewAnalytics: true,
+                    canManageSystem: false,
+                    canManageBackup: false,
+                    canViewAudit: false,
+                    canManageAPI: false,
+                    canManageFeatures: false
+                }
+            },
+            'user_manager': {
+                label: 'User Manager',
+                badge: 'user-manager',
+                permissions: {
+                    canManageAdmins: false,
+                    canManageUsers: true,
+                    canManageContent: false,
+                    canModerate: false,
+                    canViewAnalytics: true,
+                    canManageSystem: false,
+                    canManageBackup: false,
+                    canViewAudit: false,
+                    canManageAPI: false,
+                    canManageFeatures: false
+                }
+            },
+            'moderation_manager': {
+                label: 'Moderation Manager',
+                badge: 'moderation-manager',
+                permissions: {
+                    canManageAdmins: false,
+                    canManageUsers: false,
+                    canManageContent: false,
+                    canModerate: true,
+                    canViewAnalytics: true,
+                    canManageSystem: false,
+                    canManageBackup: false,
+                    canViewAudit: false,
+                    canManageAPI: false,
+                    canManageFeatures: false
+                }
+            },
+            'analytics_viewer': {
+                label: 'Analytics Viewer',
+                badge: 'analytics-viewer',
+                permissions: {
+                    canManageAdmins: false,
+                    canManageUsers: false,
+                    canManageContent: false,
+                    canModerate: false,
+                    canViewAnalytics: true,
+                    canManageSystem: false,
+                    canManageBackup: false,
+                    canViewAudit: false,
+                    canManageAPI: false,
+                    canManageFeatures: false
+                }
+            }
+        };
+
+        let currentUserRole = 'super_admin';
+        let userPermissions = ADMIN_ROLES['super_admin'].permissions;
+        let sessionDataLoaded = false;
         let adminUsers = [];
         let currentFiltered = [];
+
         const ROLE_LABELS = {
             super_admin: 'Super Admin',
             content_manager: 'Content Manager',
@@ -275,13 +538,416 @@
             canManageFeatures: 'Manage Features'
         };
 
+        // ─── SESSION PERSISTENCE ──────────────────────────────────────────
+        function saveSessionData(data) {
+            try {
+                sessionStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
+                const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
+                sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                const rememberMe = localStorage.getItem(SESSION_KEYS.REMEMBER_ME);
+                if (rememberMe === 'true') {
+                    localStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
+                    localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                }
+            } catch (e) { console.warn('Could not save session data:', e); }
+        }
+
+        function getSessionData() {
+            try {
+                let data = sessionStorage.getItem(SESSION_KEYS.SESSION_DATA);
+                let expiry = sessionStorage.getItem(SESSION_KEYS.SESSION_EXPIRY);
+                if (!data) {
+                    data = localStorage.getItem(SESSION_KEYS.SESSION_DATA);
+                    expiry = localStorage.getItem(SESSION_KEYS.SESSION_EXPIRY);
+                }
+                if (data && expiry) {
+                    const expiryTime = parseInt(expiry, 10);
+                    if (Date.now() < expiryTime) {
+                        return JSON.parse(data);
+                    }
+                }
+                return null;
+            } catch (e) { return null; }
+        }
+
+        function clearSessionData() {
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
+            localStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+            localStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
+            localStorage.removeItem(SESSION_KEYS.REMEMBER_ME);
+        }
+
+        function setRememberMe(value) {
+            localStorage.setItem(SESSION_KEYS.REMEMBER_ME, value ? 'true' : 'false');
+        }
+
+        // ─── INIT ─────────────────────────────────────────────────────────
+        function initSupabase() {
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                return true;
+            } catch (e) {
+                console.error('Supabase init error:', e);
+                return false;
+            }
+        }
+
+        // ─── TOAST ────────────────────────────────────────────────────────
+        function showToast(message, type = 'info', duration = 4000) {
+            let container = document.getElementById('toastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'toast-container';
+                container.id = 'toastContainer';
+                document.body.appendChild(container);
+            }
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span> ${message}`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-10px)';
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, duration);
+        }
+
+        // ─── MODAL ────────────────────────────────────────────────────────
+        let modalResolve = null;
+        let modalData = null;
+
+        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('modalOverlay');
+                if (!overlay) return;
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalBody').innerHTML = bodyHTML;
+                document.getElementById('modalConfirmBtn').textContent = confirmText;
+                document.getElementById('modalCancelBtn').textContent = cancelText;
+                overlay.classList.add('active');
+                modalResolve = resolve;
+                modalData = { confirmAction };
+            });
+        }
+
+        function closeModal(result) {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (modalResolve) {
+                modalResolve(result !== undefined ? result : null);
+                modalResolve = null;
+            }
+        }
+
+        function modalConfirm() {
+            if (modalData && modalData.confirmAction) {
+                modalData.confirmAction();
+            }
+            closeModal(true);
+        }
+
+        function modalCancel() {
+            closeModal(false);
+        }
+
+        // ─── AUTH ─────────────────────────────────────────────────────────
+        async function checkAuth() {
+            const overlay = document.getElementById('sessionCheckOverlay');
+            if (overlay) overlay.classList.add('show');
+
+            try {
+                const storedSession = getSessionData();
+                
+                if (storedSession && storedSession.user) {
+                    console.log('📦 Found stored session, validating...');
+                    const { data, error } = await supabase.auth.getSession();
+                    if (!error && data.session) {
+                        session = data.session;
+                        await loadUserRole(session.user.id);
+                        updateUIForAuth(session);
+                        updateUIForRole(currentUserRole);
+                        startSessionTimer();
+                        sessionDataLoaded = true;
+                        if (overlay) overlay.classList.remove('show');
+                        return true;
+                    }
+                    console.log('⚠️ Stored session invalid, clearing...');
+                    clearSessionData();
+                }
+
+                const { data, error } = await supabase.auth.getSession();
+                if (error || !data.session) {
+                    const statusBar = document.getElementById('statusBar');
+                    if (statusBar) {
+                        statusBar.innerHTML = `
+                            <span>🔒</span>
+                            <span>Please log in to continue</span>
+                            <button class="btn btn-primary btn-sm" onclick="window.location.href='/login'" style="margin-left:auto;">
+                                Login
+                            </button>
+                        `;
+                    }
+                    if (overlay) overlay.classList.remove('show');
+                    return false;
+                }
+
+                session = data.session;
+                await loadUserRole(session.user.id);
+                
+                saveSessionData({
+                    user: session.user,
+                    role: currentUserRole,
+                    timestamp: Date.now()
+                });
+                
+                updateUIForAuth(session);
+                updateUIForRole(currentUserRole);
+                startSessionTimer();
+                sessionDataLoaded = true;
+                
+                if (overlay) overlay.classList.remove('show');
+                return true;
+            } catch (e) {
+                console.error('Auth check error:', e);
+                if (overlay) overlay.classList.remove('show');
+                return false;
+            }
+        }
+
+        function updateUIForAuth(session) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) statusEl.textContent = `👤 ${session.user.email}`;
+            const emailEl = document.getElementById('sidebarEmail');
+            if (emailEl) emailEl.textContent = session.user.email;
+            const nameEl = document.getElementById('sidebarName');
+            const avatarEl = document.getElementById('sidebarAvatar');
+            if (nameEl) {
+                const name = session.user.user_metadata?.full_name || session.user.email.split('@')[0];
+                nameEl.textContent = name;
+                if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
+            }
+        }
+
+        async function loadUserRole(userId) {
+            try {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('admin_role')
+                    .eq('id', userId)
+                    .single();
+
+                if (userId === SUPER_ADMIN_USER_ID) {
+                    currentUserRole = 'super_admin';
+                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
+                    return;
+                }
+
+                if (data && data.admin_role && ADMIN_ROLES[data.admin_role]) {
+                    currentUserRole = data.admin_role;
+                    userPermissions = ADMIN_ROLES[currentUserRole].permissions;
+                } else {
+                    currentUserRole = 'super_admin';
+                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
+                }
+            } catch (e) {
+                console.warn('Could not load user role, using default:', e);
+                currentUserRole = 'super_admin';
+                userPermissions = ADMIN_ROLES['super_admin'].permissions;
+            }
+        }
+
+        function updateUIForRole(role) {
+            const roleInfo = ADMIN_ROLES[role];
+            if (!roleInfo) return;
+            const roleEl = document.getElementById('sidebarRole');
+            if (roleEl) roleEl.textContent = roleInfo.label;
+        }
+
+        function checkRolePermission(requiredRole) {
+            if (currentUserRole === 'super_admin') return true;
+            const roleMap = {
+                'super_admin': userPermissions.canManageAdmins,
+                'content_manager': userPermissions.canManageContent,
+                'user_manager': userPermissions.canManageUsers,
+                'moderation_manager': userPermissions.canModerate,
+                'analytics_viewer': userPermissions.canViewAnalytics
+            };
+            return roleMap[requiredRole] || false;
+        }
+
+        // ─── SESSION TIMER ───────────────────────────────────────────────
+        function startSessionTimer() {
+            if (sessionTimer) clearInterval(sessionTimer);
+            sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+            sessionWarningShown = false;
+
+            sessionTimer = setInterval(() => {
+                sessionTimeRemaining--;
+                updateSessionDisplay();
+                if (sessionTimeRemaining <= 30 && !sessionWarningShown) {
+                    sessionWarningShown = true;
+                    showSessionBanner();
+                }
+                if (sessionTimeRemaining <= 0) {
+                    clearInterval(sessionTimer);
+                    handleLogout();
+                }
+            }, 1000);
+
+            const resetTimer = () => {
+                sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+                sessionWarningShown = false;
+                hideSessionBanner();
+                updateSessionDisplay();
+                const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
+                sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                if (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true') {
+                    localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                }
+            };
+
+            const activityEvents = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
+            activityEvents.forEach(event => {
+                document.addEventListener(event, resetTimer);
+            });
+
+            window._sessionCleanup = () => {
+                activityEvents.forEach(event => {
+                    document.removeEventListener(event, resetTimer);
+                });
+            };
+        }
+
+        function updateSessionDisplay() {
+            const minutes = Math.floor(sessionTimeRemaining / 60);
+            const seconds = sessionTimeRemaining % 60;
+            const display = document.getElementById('sessionTimeDisplay');
+            if (display) {
+                display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
+            const dot = document.getElementById('statusDot');
+            if (dot) {
+                if (sessionTimeRemaining < 60) {
+                    dot.className = 'dot danger';
+                } else if (sessionTimeRemaining < 300) {
+                    dot.className = 'dot warning';
+                } else {
+                    dot.className = 'dot';
+                }
+            }
+        }
+
+        function showSessionBanner() {
+            const banner = document.getElementById('sessionBanner');
+            if (banner) {
+                banner.classList.add('show');
+                let countdown = 30;
+                const countdownEl = document.getElementById('sessionCountdown');
+                if (sessionCountdownInterval) clearInterval(sessionCountdownInterval);
+                sessionCountdownInterval = setInterval(() => {
+                    countdown--;
+                    if (countdownEl) countdownEl.textContent = countdown;
+                    if (countdown <= 0) {
+                        clearInterval(sessionCountdownInterval);
+                        handleLogout();
+                    }
+                }, 1000);
+            }
+        }
+
+        function hideSessionBanner() {
+            const banner = document.getElementById('sessionBanner');
+            if (banner) {
+                banner.classList.remove('show');
+                if (sessionCountdownInterval) {
+                    clearInterval(sessionCountdownInterval);
+                    sessionCountdownInterval = null;
+                }
+            }
+        }
+
+        function extendSession() {
+            sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+            sessionWarningShown = false;
+            hideSessionBanner();
+            updateSessionDisplay();
+            const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
+            sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+            if (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true') {
+                localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+            }
+            showToast('⏳ Session extended', 'success');
+        }
+
+        // ─── LOGOUT ────────────────────────────────────────────────────────
+        async function handleLogout() {
+            const confirmed = await new Promise((resolve) => {
+                openModal(
+                    '🚪 Confirm Logout',
+                    `
+                        <div style="text-align:center;padding:12px 0;">
+                            <div style="font-size:48px;margin-bottom:12px;">👋</div>
+                            <p style="font-size:16px;font-weight:500;margin-bottom:8px;">Are you sure you want to logout?</p>
+                            <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
+                        </div>
+                    `,
+                    'Yes, Logout',
+                    () => resolve(true),
+                    'Cancel'
+                );
+            });
+            if (!confirmed) return;
+
+            try {
+                await supabase.auth.signOut();
+                session = null;
+                if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+                if (realtimeChannel) { realtimeChannel.unsubscribe(); realtimeChannel = null; }
+                if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null; }
+                if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval); sessionCountdownInterval = null; }
+                if (window._sessionCleanup) { window._sessionCleanup(); }
+                hideSessionBanner();
+                clearSessionData();
+                setRememberMe(false);
+                showToast('✅ Logged out successfully', 'success');
+                window.location.href = '/login';
+            } catch (e) {
+                showToast('❌ Logout failed: ' + e.message, 'error');
+            }
+        }
+
+        // ─── NAVIGATION ────────────────────────────────────────────────────
+        function navigateTo(page) {
+            if (window.innerWidth <= 1024) toggleSidebar(false);
+            window.location.href = `/admin/${page}`;
+        }
+
+        function toggleSidebar(open) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (open === undefined) {
+                sidebar.classList.toggle('open');
+                overlay.classList.toggle('active');
+            } else if (open) {
+                sidebar.classList.add('open');
+                overlay.classList.add('active');
+            } else {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+            }
+        }
+
+        // ─── ADMIN ROLES FUNCTIONS ──────────────────────────────────────
         async function loadAdminUsers() {
             if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
             const authed = await checkAuth();
             if (!authed) { showToast('Please log in', 'warning'); return; }
 
-            // Check if user has permission
-            if (window.currentUserRole !== 'super_admin') {
+            // Check if user has permission - only Super Admin can manage roles
+            if (currentUserRole !== 'super_admin') {
                 document.getElementById('adminsContainer').innerHTML = `
                     <div class="permission-denied">
                         <div class="emoji">🔒</div>
@@ -333,9 +999,10 @@
                 const role = admin.admin_role || 'guest';
                 const roleLabel = ROLE_LABELS[role] || role;
                 const badgeClass = ROLE_BADGE_CLASSES[role] || 'guest';
-                const permissions = window.ADMIN_ROLES?.[role]?.permissions || {};
+                const permissions = ADMIN_ROLES[role]?.permissions || {};
+                const isSuperAdmin = admin.id === SUPER_ADMIN_USER_ID;
+                const isProtected = isSuperAdmin || (role === 'super_admin');
 
-                // Build permissions list
                 let permsHtml = '';
                 const permEntries = Object.entries(permissions);
                 if (permEntries.length > 0) {
@@ -350,16 +1017,24 @@
                     });
                 }
 
+                const protectedClass = isProtected ? 'protected' : '';
+                const protectedBadge = isProtected ? `
+                    <span class="protected-badge">🛡️ Protected</span>
+                ` : '';
+
                 html += `
-                    <div class="admin-card" data-id="${admin.id}">
+                    <div class="admin-card ${protectedClass}" data-id="${admin.id}">
                         <div class="header">
                             <div>
-                                <div class="name">${admin.full_name || 'Unnamed Admin'}</div>
+                                <div class="name">
+                                    ${admin.full_name || 'Unnamed Admin'}
+                                    ${protectedBadge}
+                                </div>
                                 <div class="email">${admin.email || 'No email'}</div>
                             </div>
                             <div class="role-selector">
                                 <span class="admin-role-badge ${badgeClass}">${roleLabel}</span>
-                                <select onchange="updateAdminRole('${admin.id}', this.value)">
+                                <select onchange="updateAdminRole('${admin.id}', this.value)" ${isProtected ? 'disabled' : ''}>
                                     <option value="super_admin" ${role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
                                     <option value="content_manager" ${role === 'content_manager' ? 'selected' : ''}>Content Manager</option>
                                     <option value="user_manager" ${role === 'user_manager' ? 'selected' : ''}>User Manager</option>
@@ -413,6 +1088,12 @@
         }
 
         async function updateAdminRole(userId, newRole) {
+            // Prevent changing the super admin user's role
+            if (userId === SUPER_ADMIN_USER_ID) {
+                showToast('🔒 Cannot change the Super Admin user\'s role', 'warning');
+                return;
+            }
+
             try {
                 const { error } = await supabase
                     .from('profiles')
@@ -462,7 +1143,6 @@
                 if (!email) { showToast('Please enter an email address', 'warning'); return; }
 
                 try {
-                    // Find user by email
                     const { data: users, error: findError } = await supabase
                         .from('profiles')
                         .select('id, full_name, email')
@@ -474,7 +1154,12 @@
                         return;
                     }
 
-                    // Update user role
+                    // Prevent adding the super admin user again
+                    if (users.id === SUPER_ADMIN_USER_ID) {
+                        showToast('This user is already the Super Admin', 'warning');
+                        return;
+                    }
+
                     const { error: updateError } = await supabase
                         .from('profiles')
                         .update({
@@ -495,11 +1180,88 @@
             });
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadAdminUsers, 500); });
+        // ─── INIT ──────────────────────────────────────────────────────────
+        async function init() {
+            if (!initSupabase()) {
+                showToast('Failed to initialize Supabase', 'error');
+                return;
+            }
+
+            const authed = await checkAuth();
+            if (!authed) {
+                showToast('Please log in to continue', 'warning');
+                return;
+            }
+
+            await loadAdminUsers();
+
+            if (refreshTimer) clearInterval(refreshTimer);
+            refreshTimer = setInterval(loadAdminUsers, 30000);
+
+            setupRealtime();
+
+            window.addEventListener('resize', function() {
+                if (window.innerWidth > 1024) {
+                    document.getElementById('sidebar').classList.remove('open');
+                    document.getElementById('sidebarOverlay').classList.remove('active');
+                }
+            });
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') {
+                    const storedSession = getSessionData();
+                    if (!storedSession && session) {
+                        checkAuth();
+                    }
+                }
+            });
+
+            console.log('👥 Admin Roles Management ready');
+            console.log('🛡️ Super Admin ID: ' + SUPER_ADMIN_USER_ID);
+        }
+
+        // ─── REALTIME ──────────────────────────────────────────────────────
+        function setupRealtime() {
+            if (!supabase || !session) return;
+            if (realtimeChannel) {
+                realtimeChannel.unsubscribe();
+                realtimeChannel = null;
+            }
+
+            realtimeChannel = supabase.channel('admin-realtime-roles')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+                    loadAdminUsers();
+                })
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('✅ Realtime connected for roles');
+                    } else if (status === 'CHANNEL_ERROR') {
+                        console.warn('⚠️ Realtime error, reconnecting...');
+                        setTimeout(setupRealtime, 5000);
+                    }
+                });
+        }
+
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────
+        window.navigateTo = navigateTo;
+        window.toggleSidebar = toggleSidebar;
+        window.showToast = showToast;
+        window.handleLogout = handleLogout;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.modalConfirm = modalConfirm;
+        window.modalCancel = modalCancel;
+        window.extendSession = extendSession;
+        window.setRememberMe = setRememberMe;
         window.loadAdminUsers = loadAdminUsers;
         window.filterAdmins = filterAdmins;
         window.updateAdminRole = updateAdminRole;
         window.openAddAdminModal = openAddAdminModal;
+        window.currentUserRole = currentUserRole;
+        window.ADMIN_ROLES = ADMIN_ROLES;
+        window.SUPER_ADMIN_USER_ID = SUPER_ADMIN_USER_ID;
+
+        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>

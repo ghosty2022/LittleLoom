@@ -38,8 +38,6 @@
             --header-height: 64px;
             --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             --glass-bg: rgba(255, 255, 255, 0.8);
-            --admin-role-color: #6366f1;
-            --admin-role-bg: rgba(99, 102, 241, 0.1);
         }
 
         * {
@@ -56,17 +54,9 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        ::-webkit-scrollbar {
-            width: 4px;
-            height: 4px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: var(--primary-light);
-            border-radius: 10px;
-        }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 10px; }
 
         .app {
             display: flex;
@@ -93,9 +83,7 @@
             box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
             animation: slideDownBanner 0.3s ease;
         }
-        .session-banner.show {
-            display: flex;
-        }
+        .session-banner.show { display: flex; }
         .session-banner .countdown {
             background: #dc2626;
             color: #fff;
@@ -114,31 +102,52 @@
             cursor: pointer;
             transition: var(--transition);
         }
-        .session-banner .btn-primary {
-            background: #dc2626;
-            color: #fff;
-        }
-        .session-banner .btn-primary:hover {
-            background: #b91c1c;
-        }
+        .session-banner .btn-primary { background: #dc2626; color: #fff; }
+        .session-banner .btn-primary:hover { background: #b91c1c; }
         .session-banner .btn-outline {
             background: transparent;
             color: #dc2626;
             border: 1.5px solid #dc2626;
         }
-        .session-banner .btn-outline:hover {
-            background: #fee2e2;
-        }
+        .session-banner .btn-outline:hover { background: #fee2e2; }
 
         @keyframes slideDownBanner {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ─── SESSION CHECK OVERLAY ────────────────────────────────────── */
+        .session-check-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: var(--bg-primary);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+            animation: fadeIn 0.3s ease;
+        }
+        .session-check-overlay.show { display: flex; }
+        .session-check-overlay .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .session-check-overlay .message {
+            font-size: 16px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         /* ─── SIDEBAR ────────────────────────────────────────────────────── */
@@ -169,7 +178,6 @@
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
             cursor: pointer;
         }
-
         .sidebar-brand:hover {
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.1));
         }
@@ -266,18 +274,10 @@
             background: var(--primary);
             color: #fff;
         }
-        .sidebar-nav-item .badge.danger {
-            background: #ef4444;
-        }
-        .sidebar-nav-item .badge.success {
-            background: #22c55e;
-        }
-        .sidebar-nav-item .badge.warning {
-            background: #f59e0b;
-        }
-        .sidebar-nav-item .badge.info {
-            background: #3b82f6;
-        }
+        .sidebar-nav-item .badge.danger { background: #ef4444; }
+        .sidebar-nav-item .badge.success { background: #22c55e; }
+        .sidebar-nav-item .badge.warning { background: #f59e0b; }
+        .sidebar-nav-item .badge.info { background: #3b82f6; }
         .sidebar-nav-item.restricted {
             opacity: 0.5;
             cursor: not-allowed;
@@ -343,18 +343,7 @@
             backdrop-filter: blur(4px);
             animation: fadeIn 0.3s ease;
         }
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
-        }
+        .sidebar-overlay.active { display: block; }
 
         /* ─── MAIN ──────────────────────────────────────────────────────── */
         .main {
@@ -398,9 +387,7 @@
             border-radius: var(--radius-sm);
             transition: var(--transition);
         }
-        .topbar-menu-btn:hover {
-            background: var(--bg-primary);
-        }
+        .topbar-menu-btn:hover { background: var(--bg-primary); }
 
         .topbar-title {
             font-size: 18px;
@@ -446,15 +433,8 @@
         }
 
         @keyframes pulse-dot {
-            0%,
-            100% {
-                opacity: 1;
-                transform: scale(1);
-            }
-            50% {
-                opacity: 0.5;
-                transform: scale(0.85);
-            }
+            0%,100% { opacity:1; transform:scale(1); }
+            50% { opacity:0.5; transform:scale(0.85); }
         }
 
         .topbar-actions {
@@ -525,14 +505,8 @@
             transform: translateY(-1px);
             box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
         }
-        .btn-sm {
-            padding: 4px 12px;
-            font-size: 11px;
-        }
-        .btn-xs {
-            padding: 2px 8px;
-            font-size: 10px;
-        }
+        .btn-sm { padding: 4px 12px; font-size: 11px; }
+        .btn-xs { padding: 2px 8px; font-size: 10px; }
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -583,61 +557,29 @@
             min-width: 200px;
             max-width: 90vw;
         }
-        .toast.error {
-            border-left-color: #ef4444;
-        }
-        .toast.success {
-            border-left-color: #22c55e;
-        }
-        .toast.warning {
-            border-left-color: #f59e0b;
-        }
+        .toast.error { border-left-color: #ef4444; }
+        .toast.success { border-left-color: #22c55e; }
+        .toast.warning { border-left-color: #f59e0b; }
 
         @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px) scale(0.95);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
+            from { opacity:0; transform:translateY(20px) scale(0.95); }
+            to { opacity:1; transform:translateY(0) scale(1); }
         }
 
         /* ─── RESPONSIVE ────────────────────────────────────────────────── */
         @media (max-width: 1024px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
-            .sidebar.open {
-                transform: translateX(0);
-            }
-            .main {
-                margin-left: 0;
-            }
-            .topbar-menu-btn {
-                display: block;
-            }
-            .topbar {
-                padding: 0 16px;
-            }
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; }
+            .topbar-menu-btn { display: block; }
+            .topbar { padding: 0 16px; }
         }
 
         @media (max-width: 768px) {
-            .topbar-status {
-                display: none;
-            }
-            .topbar-title {
-                font-size: 16px;
-            }
-            .topbar-title .sub {
-                display: none;
-            }
-            .session-banner {
-                flex-wrap: wrap;
-                padding: 10px 16px;
-                font-size: 12px;
-            }
+            .topbar-status { display: none; }
+            .topbar-title { font-size: 16px; }
+            .topbar-title .sub { display: none; }
+            .session-banner { flex-wrap: wrap; padding: 10px 16px; font-size: 12px; }
         }
 
         /* ─── BADGES ────────────────────────────────────────────────────── */
@@ -650,30 +592,12 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .badge-success {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        .badge-warning {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .badge-danger {
-            background: #fee2e2;
-            color: #dc2626;
-        }
-        .badge-info {
-            background: #dbeafe;
-            color: #2563eb;
-        }
-        .badge-purple {
-            background: #ede9fe;
-            color: #7c3aed;
-        }
-        .badge-gray {
-            background: #f3f4f6;
-            color: #6b7280;
-        }
+        .badge-success { background: #dcfce7; color: #16a34a; }
+        .badge-warning { background: #fef3c7; color: #d97706; }
+        .badge-danger { background: #fee2e2; color: #dc2626; }
+        .badge-info { background: #dbeafe; color: #2563eb; }
+        .badge-purple { background: #ede9fe; color: #7c3aed; }
+        .badge-gray { background: #f3f4f6; color: #6b7280; }
 
         /* ─── CARDS ─────────────────────────────────────────────────────── */
         .card {
@@ -685,9 +609,7 @@
             margin-bottom: 20px;
             transition: all var(--transition);
         }
-        .card:hover {
-            box-shadow: var(--shadow-md);
-        }
+        .card:hover { box-shadow: var(--shadow-md); }
 
         .card-header {
             display: flex;
@@ -706,12 +628,8 @@
             gap: 8px;
             color: var(--text-primary);
         }
-        .card-title .emoji {
-            font-size: 18px;
-        }
-        .card-body {
-            padding: 16px 20px;
-        }
+        .card-title .emoji { font-size: 18px; }
+        .card-body { padding: 16px 20px; }
 
         /* ─── GRIDS ─────────────────────────────────────────────────────── */
         .grid-2 {
@@ -731,23 +649,13 @@
         }
 
         @media (max-width: 1024px) {
-            .grid-2 {
-                grid-template-columns: 1fr;
-            }
-            .grid-3 {
-                grid-template-columns: 1fr 1fr;
-            }
-            .grid-4 {
-                grid-template-columns: 1fr 1fr;
-            }
+            .grid-2 { grid-template-columns: 1fr; }
+            .grid-3 { grid-template-columns: 1fr 1fr; }
+            .grid-4 { grid-template-columns: 1fr 1fr; }
         }
         @media (max-width: 600px) {
-            .grid-3 {
-                grid-template-columns: 1fr;
-            }
-            .grid-4 {
-                grid-template-columns: 1fr;
-            }
+            .grid-3 { grid-template-columns: 1fr; }
+            .grid-4 { grid-template-columns: 1fr; }
         }
 
         /* ─── STAT CARDS ────────────────────────────────────────────────── */
@@ -791,15 +699,9 @@
             align-items: center;
             gap: 4px;
         }
-        .stat-change.positive {
-            color: #22c55e;
-        }
-        .stat-change.negative {
-            color: #ef4444;
-        }
-        .stat-change.neutral {
-            color: var(--text-muted);
-        }
+        .stat-change.positive { color: #22c55e; }
+        .stat-change.negative { color: #ef4444; }
+        .stat-change.neutral { color: var(--text-muted); }
 
         /* ─── PAGE ───────────────────────────────────────────────────────── */
         .page-content {
@@ -807,22 +709,12 @@
             animation: fadeInPage 0.3s ease-out;
             flex: 1;
         }
-        .page-content.active {
-            display: block;
-        }
-        .page-content {
-            display: block;
-        }
+        .page-content.active { display: block; }
+        .page-content { display: block; }
 
         @keyframes fadeInPage {
-            from {
-                opacity: 0;
-                transform: translateY(8px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity:0; transform:translateY(8px); }
+            to { opacity:1; transform:translateY(0); }
         }
 
         /* ─── EMPTY STATE ───────────────────────────────────────────────── */
@@ -831,22 +723,11 @@
             padding: 40px 20px;
             color: var(--text-muted);
         }
-        .empty-state .emoji {
-            font-size: 48px;
-            margin-bottom: 12px;
-        }
-        .empty-state h3 {
-            color: var(--text-primary);
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
+        .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
+        .empty-state h3 { color: var(--text-primary); font-weight: 700; margin-bottom: 6px; }
 
         /* ─── ACTIVITY FEED ────────────────────────────────────────────── */
-        .activity-feed {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
+        .activity-feed { display: flex; flex-direction: column; gap: 2px; }
         .activity-item {
             display: flex;
             align-items: center;
@@ -854,9 +735,7 @@
             padding: 10px 0;
             border-bottom: 1px solid var(--border);
         }
-        .activity-item:last-child {
-            border-bottom: none;
-        }
+        .activity-item:last-child { border-bottom: none; }
         .activity-icon {
             width: 36px;
             height: 36px;
@@ -868,23 +747,10 @@
             flex-shrink: 0;
             background: var(--bg-primary);
         }
-        .activity-content {
-            flex: 1;
-            min-width: 0;
-        }
-        .activity-title {
-            font-weight: 600;
-            font-size: 13px;
-        }
-        .activity-meta {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-        .activity-time {
-            font-size: 11px;
-            color: var(--text-muted);
-            white-space: nowrap;
-        }
+        .activity-content { flex: 1; min-width: 0; }
+        .activity-title { font-weight: 600; font-size: 13px; }
+        .activity-meta { font-size: 12px; color: var(--text-muted); }
+        .activity-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
         /* ─── CHART ─────────────────────────────────────────────────────── */
         .chart-bars {
@@ -949,15 +815,9 @@
             font-weight: 600;
             margin-top: 4px;
         }
-        .quick-stat .change.up {
-            color: #22c55e;
-        }
-        .quick-stat .change.down {
-            color: #ef4444;
-        }
-        .quick-stat .change.neutral {
-            color: var(--text-muted);
-        }
+        .quick-stat .change.up { color: #22c55e; }
+        .quick-stat .change.down { color: #ef4444; }
+        .quick-stat .change.neutral { color: var(--text-muted); }
 
         /* ─── WELCOME BANNER ───────────────────────────────────────────── */
         .welcome-banner {
@@ -1044,12 +904,8 @@
             border-radius: 50%;
             display: inline-block;
         }
-        .status-indicator.online .dot {
-            background: #22c55e;
-        }
-        .status-indicator.offline .dot {
-            background: #ef4444;
-        }
+        .status-indicator.online .dot { background: #22c55e; }
+        .status-indicator.offline .dot { background: #ef4444; }
 
         /* ─── MODAL ─────────────────────────────────────────────────────── */
         .modal-overlay {
@@ -1063,17 +919,11 @@
             backdrop-filter: blur(4px);
             animation: modalFade 0.3s ease;
         }
-        .modal-overlay.active {
-            display: flex;
-        }
+        .modal-overlay.active { display: flex; }
 
         @keyframes modalFade {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .modal {
@@ -1087,14 +937,8 @@
             animation: modalSlide 0.3s ease;
         }
         @keyframes modalSlide {
-            from {
-                transform: translateY(20px) scale(0.95);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0) scale(1);
-                opacity: 1;
-            }
+            from { transform: translateY(20px) scale(0.95); opacity:0; }
+            to { transform: translateY(0) scale(1); opacity:1; }
         }
 
         .modal-header {
@@ -1118,12 +962,8 @@
             border-radius: var(--radius-sm);
             transition: var(--transition);
         }
-        .modal-close:hover {
-            background: var(--bg-primary);
-        }
-        .modal-body {
-            padding: 20px 24px;
-        }
+        .modal-close:hover { background: var(--bg-primary); }
+        .modal-body { padding: 20px 24px; }
         .modal-footer {
             padding: 14px 24px;
             border-top: 1px solid var(--border);
@@ -1140,12 +980,8 @@
             border-radius: 4px;
         }
         @keyframes shimmer {
-            0% {
-                background-position: 200% 0;
-            }
-            100% {
-                background-position: -200% 0;
-            }
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
 
         /* ─── ADMIN ROLE INDICATOR ──────────────────────────────────────── */
@@ -1158,30 +994,12 @@
             font-size: 11px;
             font-weight: 600;
         }
-        .admin-role-badge.super-admin {
-            background: #ede9fe;
-            color: #7c3aed;
-        }
-        .admin-role-badge.content-manager {
-            background: #dbeafe;
-            color: #2563eb;
-        }
-        .admin-role-badge.user-manager {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        .admin-role-badge.moderation-manager {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .admin-role-badge.analytics-viewer {
-            background: #fce7f3;
-            color: #db2777;
-        }
-        .admin-role-badge.guest {
-            background: #f3f4f6;
-            color: #6b7280;
-        }
+        .admin-role-badge.super-admin { background: #ede9fe; color: #7c3aed; }
+        .admin-role-badge.content-manager { background: #dbeafe; color: #2563eb; }
+        .admin-role-badge.user-manager { background: #dcfce7; color: #16a34a; }
+        .admin-role-badge.moderation-manager { background: #fef3c7; color: #d97706; }
+        .admin-role-badge.analytics-viewer { background: #fce7f3; color: #db2777; }
+        .admin-role-badge.guest { background: #f3f4f6; color: #6b7280; }
 
         /* ─── PERMISSION DENIED OVERLAY ───────────────────────────────── */
         .permission-denied {
@@ -1201,39 +1019,6 @@
         .permission-denied p {
             color: var(--text-muted);
             font-size: 14px;
-        }
-
-        /* ─── SESSION CHECK OVERLAY ────────────────────────────────────── */
-        .session-check-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 99999;
-            background: var(--bg-primary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            gap: 16px;
-            animation: fadeIn 0.3s ease;
-        }
-        .session-check-overlay .spinner {
-            width: 48px;
-            height: 48px;
-            border: 4px solid var(--border);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        .session-check-overlay .message {
-            font-size: 16px;
-            color: var(--text-secondary);
-            font-weight: 500;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
         }
     </style>
 </head>
@@ -1263,14 +1048,12 @@
                 </div>
             </div>
             <nav class="sidebar-nav" id="sidebarNav">
-                <!-- Overview -->
                 <div class="sidebar-nav-label">📊 Overview</div>
                 <a class="sidebar-nav-item active" href="#" onclick="navigateTo('dashboard')">
                     <span class="icon">📊</span> Dashboard
                     <span class="badge success">Live</span>
                 </a>
 
-                <!-- Management - Restricted by role -->
                 <div class="sidebar-nav-label">👑 Management</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')" data-required-role="content_manager">
                     <span class="icon">👶</span> Babies
@@ -1285,7 +1068,6 @@
                     <span class="badge danger" id="modBadge">0</span>
                 </a>
 
-                <!-- Community -->
                 <div class="sidebar-nav-label">💬 Community</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')" data-required-role="content_manager">
                     <span class="icon">💬</span> Community Posts
@@ -1299,7 +1081,6 @@
                     <span class="badge" id="announceBadge">0</span>
                 </a>
 
-                <!-- Trackers -->
                 <div class="sidebar-nav-label">📊 Trackers</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')" data-required-role="content_manager">
                     <span class="icon">📈</span> Tracker Entries
@@ -1310,7 +1091,6 @@
                     <span class="badge" id="milestoneBadge">0</span>
                 </a>
 
-                <!-- Analytics -->
                 <div class="sidebar-nav-label">📈 Analytics</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')" data-required-role="analytics_viewer">
                     <span class="icon">📈</span> Analytics Dashboard
@@ -1322,7 +1102,6 @@
                     <span class="icon">📈</span> Activity Heatmap
                 </a>
 
-                <!-- System - Super Admin only -->
                 <div class="sidebar-nav-label">⚙️ System</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')" data-required-role="super_admin">
                     <span class="icon">⚙️</span> Settings
@@ -1355,7 +1134,6 @@
                     <span class="lock-icon">🔒</span>
                 </a>
 
-                <!-- Health & Performance -->
                 <div class="sidebar-nav-label">❤️ Health</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('health')">
                     <span class="icon">❤️</span> System Health
@@ -1365,7 +1143,6 @@
                     <span class="icon">⚡</span> Performance
                 </a>
 
-                <!-- Additional Tools -->
                 <div class="sidebar-nav-label">🛠️ Tools</div>
                 <a class="sidebar-nav-item" href="#" onclick="navigateTo('qrcode')">
                     <span class="icon">📱</span> QR Codes
@@ -1450,7 +1227,7 @@
                     <div class="role-badge" id="welcomeRoleBadge">👑 Super Admin</div>
                 </div>
 
-                <!-- Quick Actions - Filtered by role -->
+                <!-- Quick Actions -->
                 <div class="quick-actions" id="quickActions">
                     <button class="btn btn-primary" onclick="navigateTo('babies')" data-required-role="content_manager">👶 View Babies</button>
                     <button class="btn btn-success" onclick="navigateTo('trackers')" data-required-role="content_manager">📊 Trackers</button>
@@ -1497,7 +1274,6 @@
 
                 <!-- Dashboard Grid -->
                 <div class="grid-2">
-                    <!-- Recent Activity -->
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><span class="emoji">🕒</span> Recent Activity</div>
@@ -1513,7 +1289,6 @@
                         </div>
                     </div>
 
-                    <!-- Weekly Activity Chart -->
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><span class="emoji">📊</span> Weekly Activity</div>
@@ -1535,7 +1310,6 @@
                     </div>
                 </div>
 
-                <!-- Footer -->
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid var(--border);margin-top:12px;font-size:12px;color:var(--text-muted);flex-wrap:wrap;gap:8px;">
                     <span>📊 Data refreshed in real-time</span>
                     <span>🔐 Secure admin access</span>
@@ -1565,9 +1339,11 @@
         let sessionWarningShown = false;
         let sessionCountdownInterval = null;
 
+        // ─── SUPER ADMIN USER ID ─────────────────────────────────────────
+        const SUPER_ADMIN_USER_ID = 'a3f834ef-7fa5-4732-9a03-af154806ac16';
+
         // ─── SESSION STORAGE KEYS ──────────────────────────────────────
         const SESSION_KEYS = {
-            // Use sessionStorage for session data (clears on browser close)
             SESSION_DATA: 'littleloom_session_data',
             SESSION_EXPIRY: 'littleloom_session_expiry',
             REMEMBER_ME: 'littleloom_remember_me',
@@ -1668,14 +1444,11 @@
                 // Store in sessionStorage (clears when browser is closed)
                 sessionStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
                 
-                // Store expiry timestamp
                 const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
                 sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
                 
-                // Check if remember me was set from login
                 const rememberMe = localStorage.getItem(SESSION_KEYS.REMEMBER_ME);
                 if (rememberMe === 'true') {
-                    // Also store in localStorage for cross-tab persistence
                     localStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
                     localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
                 }
@@ -1686,11 +1459,9 @@
 
         function getSessionData() {
             try {
-                // First check sessionStorage
                 let data = sessionStorage.getItem(SESSION_KEYS.SESSION_DATA);
                 let expiry = sessionStorage.getItem(SESSION_KEYS.SESSION_EXPIRY);
                 
-                // If not in sessionStorage, check localStorage (for remember me)
                 if (!data) {
                     data = localStorage.getItem(SESSION_KEYS.SESSION_DATA);
                     expiry = localStorage.getItem(SESSION_KEYS.SESSION_EXPIRY);
@@ -1698,7 +1469,6 @@
                 
                 if (data && expiry) {
                     const expiryTime = parseInt(expiry, 10);
-                    // Check if session is still valid
                     if (Date.now() < expiryTime) {
                         return JSON.parse(data);
                     }
@@ -1796,41 +1566,78 @@
             closeModal(false);
         }
 
+        // ─── SET SUPER ADMIN ROLE ─────────────────────────────────────────
+        async function ensureSuperAdminRole(userId) {
+            try {
+                // Check if user already has admin_role set
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('admin_role')
+                    .eq('id', userId)
+                    .single();
+
+                if (error) {
+                    console.warn('Error checking admin role:', error);
+                    return;
+                }
+
+                // If user is the Super Admin ID and doesn't have the role set, set it
+                if (userId === SUPER_ADMIN_USER_ID && (!data || data.admin_role !== 'super_admin')) {
+                    console.log('🛡️ Setting Super Admin role for user:', userId);
+                    const { error: updateError } = await supabase
+                        .from('profiles')
+                        .update({ 
+                            admin_role: 'super_admin',
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', userId);
+
+                    if (updateError) {
+                        console.warn('Could not update admin role:', updateError);
+                    } else {
+                        console.log('✅ Super Admin role set successfully');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error ensuring super admin role:', e);
+            }
+        }
+
         // ─── AUTH ─────────────────────────────────────────────────────────
         async function checkAuth() {
             const overlay = document.getElementById('sessionCheckOverlay');
-            if (overlay) overlay.style.display = 'flex';
+            if (overlay) overlay.classList.add('show');
 
             try {
-                // First check if we have a stored session
                 const storedSession = getSessionData();
                 
                 if (storedSession && storedSession.user) {
                     console.log('📦 Found stored session, validating...');
                     
-                    // Try to refresh the session with Supabase
                     const { data, error } = await supabase.auth.getSession();
                     
                     if (!error && data.session) {
                         session = data.session;
-                        currentUserRole = storedSession.role || 'super_admin';
-                        userPermissions = ADMIN_ROLES[currentUserRole]?.permissions || ADMIN_ROLES['super_admin'].permissions;
+                        
+                        // Ensure Super Admin role
+                        await ensureSuperAdminRole(session.user.id);
+                        
+                        // Load role from profile
+                        await loadUserRole(session.user.id);
                         
                         updateUIForAuth(session);
                         updateUIForRole(currentUserRole);
                         startSessionTimer();
                         sessionDataLoaded = true;
                         
-                        if (overlay) overlay.style.display = 'none';
+                        if (overlay) overlay.classList.remove('show');
                         return true;
                     }
                     
-                    // Session expired or invalid - clear stored data
                     console.log('⚠️ Stored session invalid, clearing...');
                     clearSessionData();
                 }
 
-                // No valid stored session, check Supabase directly
                 const { data, error } = await supabase.auth.getSession();
                 
                 if (error || !data.session) {
@@ -1844,16 +1651,17 @@
                             </button>
                         `;
                     }
-                    if (overlay) overlay.style.display = 'none';
+                    if (overlay) overlay.classList.remove('show');
                     return false;
                 }
 
                 session = data.session;
                 
-                // Load user role
+                // Ensure Super Admin role
+                await ensureSuperAdminRole(session.user.id);
+                
                 await loadUserRole(session.user.id);
                 
-                // Save session data
                 saveSessionData({
                     user: session.user,
                     role: currentUserRole,
@@ -1865,11 +1673,11 @@
                 startSessionTimer();
                 sessionDataLoaded = true;
                 
-                if (overlay) overlay.style.display = 'none';
+                if (overlay) overlay.classList.remove('show');
                 return true;
             } catch (e) {
                 console.error('Auth check error:', e);
-                if (overlay) overlay.style.display = 'none';
+                if (overlay) overlay.classList.remove('show');
                 return false;
             }
         }
@@ -1899,6 +1707,13 @@
                     .eq('id', userId)
                     .single();
 
+                // If this is the super admin ID, force super_admin role
+                if (userId === SUPER_ADMIN_USER_ID) {
+                    currentUserRole = 'super_admin';
+                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
+                    return;
+                }
+
                 if (data && data.admin_role && ADMIN_ROLES[data.admin_role]) {
                     currentUserRole = data.admin_role;
                     userPermissions = ADMIN_ROLES[currentUserRole].permissions;
@@ -1908,8 +1723,14 @@
                 }
             } catch (e) {
                 console.warn('Could not load user role, using default:', e);
-                currentUserRole = 'super_admin';
-                userPermissions = ADMIN_ROLES['super_admin'].permissions;
+                // If it's the super admin ID, always use super_admin
+                if (userId === SUPER_ADMIN_USER_ID) {
+                    currentUserRole = 'super_admin';
+                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
+                } else {
+                    currentUserRole = 'super_admin';
+                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
+                }
             }
         }
 
@@ -2003,7 +1824,6 @@
                 hideSessionBanner();
                 updateSessionDisplay();
                 
-                // Update session expiry in storage
                 const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
                 sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
                 if (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true') {
@@ -2445,23 +2265,18 @@
                 }
             });
 
-            // Handle page visibility - check session when tab becomes visible
             document.addEventListener('visibilitychange', function() {
                 if (document.visibilityState === 'visible') {
-                    // Refresh session data when tab becomes visible
                     const storedSession = getSessionData();
                     if (!storedSession && session) {
-                        // Session data missing, re-check auth
                         checkAuth();
                     }
                 }
             });
 
-            // Handle beforeunload - clear session if not remember me
             window.addEventListener('beforeunload', function() {
                 const rememberMe = localStorage.getItem(SESSION_KEYS.REMEMBER_ME);
                 if (rememberMe !== 'true') {
-                    // Don't clear completely, but mark as needing re-validation
                     sessionStorage.removeItem(SESSION_KEYS.SESSION_DATA);
                 }
             });
@@ -2473,6 +2288,7 @@
             console.log('🧵 Enterprise Admin Console ready');
             console.log('👤 Logged in as: ' + session?.user?.email);
             console.log('👑 Role: ' + ADMIN_ROLES[currentUserRole]?.label);
+            console.log('🛡️ Super Admin ID: ' + SUPER_ADMIN_USER_ID);
             console.log('🔐 Session persistence: ' + (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true' ? 'Remember Me' : 'Session only'));
         }
 
@@ -2497,8 +2313,8 @@
         window.session = session;
         window.currentUserRole = currentUserRole;
         window.ADMIN_ROLES = ADMIN_ROLES;
+        window.SUPER_ADMIN_USER_ID = SUPER_ADMIN_USER_ID;
 
-        // Check if "Remember Me" was set from login page
         const rememberMeParam = new URLSearchParams(window.location.search).get('remember');
         if (rememberMeParam === 'true') {
             setRememberMe(true);
