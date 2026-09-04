@@ -9,21 +9,15 @@
 
     // Initialize the page
     async function initPage() {
-        // Show loading overlay
-        const overlay = document.getElementById('sessionCheckOverlay');
-        if (overlay) overlay.classList.add('show');
-
         // Initialize Supabase
         if (!window._initSupabase()) {
             window._showToast('Failed to initialize Supabase', 'error');
-            if (overlay) overlay.classList.remove('show');
             return;
         }
 
-        // Check authentication
+        // Check authentication (silent, no overlay)
         const authed = await window._checkAuth();
         if (!authed) {
-            if (overlay) overlay.classList.remove('show');
             // Will redirect to login
             return;
         }
@@ -57,16 +51,11 @@
         const allowedRoles = config?.PAGE_ROLES?.[pageName] || [];
         if (allowedRoles.length > 0 && !allowedRoles.includes(userRole) && userRole !== 'super_admin') {
             window._showToast('🔒 You do not have permission to access this page', 'warning');
-            if (overlay) overlay.classList.remove('show');
-            // Redirect after delay
             setTimeout(() => {
                 window.location.href = '/admin/dashboard.html';
             }, 2000);
             return;
         }
-
-        // Hide overlay
-        if (overlay) overlay.classList.remove('show');
 
         // Trigger page-specific load function if exists
         if (typeof window._loadPageData === 'function') {

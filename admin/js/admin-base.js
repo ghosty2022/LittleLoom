@@ -177,7 +177,6 @@
     let sessionTimer = null;
     let sessionTimeRemaining = 30 * 60;
     let sessionWarningShown = false;
-    let sessionCountdownInterval = null;
 
     // ─── INIT SUPABASE ──────────────────────────────────────────────────
     function initSupabase() {
@@ -253,7 +252,6 @@
         const pageName = window.location.pathname.split('/').pop().replace('.html', '') || 'dashboard';
 
         try {
-            // First check stored session
             const storedSession = getSessionData();
             if (storedSession && storedSession.user) {
                 const { data, error } = await supabase.auth.getSession();
@@ -272,7 +270,6 @@
                 clearSessionData();
             }
 
-            // Try to get fresh session
             const { data, error } = await supabase.auth.getSession();
             if (error || !data.session) {
                 redirectToLogin();
@@ -294,7 +291,6 @@
             updateUIForAuth(session);
             updateUIForRole(currentUserRole);
 
-            // Check page access
             const allowedRoles = CONFIG.PAGE_ROLES[pageName] || [];
             if (allowedRoles.length > 0 && !allowedRoles.includes(currentUserRole) && currentUserRole !== 'super_admin') {
                 window.location.href = '/admin/dashboard.html?error=access_denied';
@@ -407,7 +403,6 @@
         const roleEl = document.getElementById('sidebarRole');
         if (roleEl) roleEl.textContent = roleInfo.label;
 
-        // Update restricted items in sidebar
         document.querySelectorAll('.sidebar-nav-item').forEach(item => {
             const requiredRole = item.dataset.requiredRole;
             if (requiredRole) {
@@ -457,9 +452,14 @@
             sessionTimeRemaining--;
             updateSessionDisplay();
 
+            // Show warning when 30 seconds left - subtle status change
             if (sessionTimeRemaining <= 30 && !sessionWarningShown) {
                 sessionWarningShown = true;
-                showSessionBanner();
+                const sessionEl = document.getElementById('statusBarSession');
+                if (sessionEl) {
+                    sessionEl.classList.add('danger');
+                }
+                showToast('⏰ Session expiring in ' + sessionTimeRemaining + ' seconds', 'warning', 5000);
             }
 
             if (sessionTimeRemaining <= 0) {
@@ -471,7 +471,10 @@
         const resetTimer = () => {
             sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
             sessionWarningShown = false;
-            hideSessionBanner();
+            const sessionEl = document.getElementById('statusBarSession');
+            if (sessionEl) {
+                sessionEl.classList.remove('danger', 'warning');
+            }
             updateSessionDisplay();
             const expiryTime = Date.now() + (CONFIG.SESSION_TIMEOUT_MINUTES * 60 * 1000);
             sessionStorage.setItem(CONFIG.SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
@@ -485,7 +488,6 @@
             document.addEventListener(event, resetTimer);
         });
 
-        // Store cleanup function
         window._sessionCleanup = () => {
             activityEvents.forEach(event => {
                 document.removeEventListener(event, resetTimer);
@@ -494,14 +496,18 @@
     }
 
     function updateSessionDisplay() {
-        const display = document.getElementById('sessionTimeDisplay');
-        if (display) {
-            const minutes = Math.floor(sessionTimeRemaining / 60);
-            const seconds = sessionTimeRemaining % 60;
-            display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        }
+        const minutes = Math.floor(sessionTimeRemaining / 60);
+        const seconds = sessionTimeRemaining % 60;
+        const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+        const displayEl = document.getElementById('sessionTimeDisplay');
+        if (displayEl) displayEl.textContent = timeStr;
+
+        const topbarEl = document.getElementById('topbarSessionTime');
+        if (topbarEl) topbarEl.textContent = timeStr;
 
         const dot = document.getElementById('statusDot');
+        const statusBarDot = document.getElementById('statusBarDot');
         if (dot) {
             if (sessionTimeRemaining < 60) {
                 dot.className = 'dot danger';
@@ -511,48 +517,15 @@
                 dot.className = 'dot';
             }
         }
-    }
-
-    function showSessionBanner() {
-        const banner = document.getElementById('sessionBanner');
-        if (banner) {
-            banner.classList.add('show');
-            let countdown = 30;
-            const countdownEl = document.getElementById('sessionCountdown');
-            if (sessionCountdownInterval) clearInterval(sessionCountdownInterval);
-            sessionCountdownInterval = setInterval(() => {
-                countdown--;
-                if (countdownEl) countdownEl.textContent = countdown;
-                if (countdown <= 0) {
-                    clearInterval(sessionCountdownInterval);
-                    handleLogout();
-                }
-            }, 1000);
-        }
-    }
-
-    function hideSessionBanner() {
-        const banner = document.getElementById('sessionBanner');
-        if (banner) {
-            banner.classList.remove('show');
-            if (sessionCountdownInterval) {
-                clearInterval(sessionCountdownInterval);
-                sessionCountdownInterval = null;
+        if (statusBarDot) {
+            if (sessionTimeRemaining < 60) {
+                statusBarDot.className = 'status-dot danger';
+            } else if (sessionTimeRemaining < 300) {
+                statusBarDot.className = 'status-dot warning';
+            } else {
+                statusBarDot.className = 'status-dot';
             }
         }
-    }
-
-    function extendSession() {
-        sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
-        sessionWarningShown = false;
-        hideSessionBanner();
-        updateSessionDisplay();
-        const expiryTime = Date.now() + (CONFIG.SESSION_TIMEOUT_MINUTES * 60 * 1000);
-        sessionStorage.setItem(CONFIG.SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
-        if (localStorage.getItem(CONFIG.SESSION_KEYS.REMEMBER_ME) === 'true') {
-            localStorage.setItem(CONFIG.SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
-        }
-        showToast('⏳ Session extended', 'success');
     }
 
     // ─── LOGOUT ─────────────────────────────────────────────────────────
@@ -563,7 +536,7 @@
                 `
                     <div style="text-align:center;padding:12px 0;">
                         <div style="font-size:48px;margin-bottom:12px;">👋</div>
-                        <p style="font-size:16px;font-weight:500;margin-bottom:8px;">Are you sure you want to logout?</p>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Are you sure you want to logout?</p>
                         <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
                     </div>
                 `,
@@ -579,9 +552,7 @@
             await supabase.auth.signOut();
             session = null;
             if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null; }
-            if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval); sessionCountdownInterval = null; }
             if (window._sessionCleanup) { window._sessionCleanup(); }
-            hideSessionBanner();
             clearSessionData();
             setRememberMe(false);
             showToast('✅ Logged out successfully', 'success');
@@ -768,7 +739,6 @@
     window._buildSidebar = buildSidebar;
     window._showToast = showToast;
     window._handleLogout = handleLogout;
-    window._extendSession = extendSession;
     window._openModal = openModal;
     window._closeModal = closeModal;
     window._modalConfirm = modalConfirm;
