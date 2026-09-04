@@ -127,6 +127,35 @@ const ADMIN_ROLES = {
     }
 };
 
+// ─── PAGE ROUTES ──────────────────────────────────────────────────────────
+const ADMIN_PAGES = {
+    'dashboard': 'dashboard.html',
+    'babies': 'pages/babies.html',
+    'users': 'pages/users.html',
+    'moderation': 'pages/moderation.html',
+    'community': 'pages/community.html',
+    'topics': 'pages/topics.html',
+    'announcements': 'pages/announcements.html',
+    'trackers': 'pages/trackers.html',
+    'milestones': 'pages/milestones.html',
+    'analytics': 'pages/analytics.html',
+    'growth': 'pages/growth.html',
+    'activity': 'pages/activity.html',
+    'settings': 'pages/settings.html',
+    'backup': 'pages/backup.html',
+    'audit': 'pages/audit.html',
+    'admin_roles': 'pages/admin_roles.html',
+    'support': 'pages/support.html',
+    'api': 'pages/api.html',
+    'features': 'pages/features.html',
+    'health': 'pages/health.html',
+    'performance': 'pages/performance.html',
+    'qrcode': 'pages/qrcode.html',
+    'realtime': 'pages/realtime.html',
+    'export': 'pages/export.html',
+    'notifications': 'pages/notifications.html'
+};
+
 // ─── INIT ──────────────────────────────────────────────────────────────────
 function initSupabase() {
     try {
@@ -287,11 +316,13 @@ async function checkAuth() {
     if (overlay) overlay.classList.add('show');
 
     try {
+        // First check stored session
         const storedSession = getSessionData();
         
         if (storedSession && storedSession.user) {
             console.log('📦 Found stored session, validating...');
             
+            // Verify with Supabase
             const { data, error } = await supabase.auth.getSession();
             
             if (!error && data.session) {
@@ -308,20 +339,13 @@ async function checkAuth() {
             clearSessionData();
         }
 
+        // Check Supabase session
         const { data, error } = await supabase.auth.getSession();
         
         if (error || !data.session) {
-            const statusBar = document.getElementById('statusBar');
-            if (statusBar) {
-                statusBar.innerHTML = `
-                    <span>🔒</span>
-                    <span>Please log in to continue</span>
-                    <button class="btn btn-primary btn-sm" onclick="window.location.href='/login'" style="margin-left:auto;">
-                        Login
-                    </button>
-                `;
-            }
+            console.log('🔒 No valid session found');
             if (overlay) overlay.classList.remove('show');
+            redirectToLogin();
             return false;
         }
 
@@ -343,8 +367,19 @@ async function checkAuth() {
     } catch (e) {
         console.error('Auth check error:', e);
         if (overlay) overlay.classList.remove('show');
+        redirectToLogin();
         return false;
     }
+}
+
+function redirectToLogin() {
+    // Don't redirect if already on login page
+    if (window.location.pathname.includes('login.html')) return;
+    
+    const currentPage = window.location.pathname;
+    const loginUrl = '/admin/pages/login.html';
+    const returnUrl = encodeURIComponent(currentPage);
+    window.location.href = `${loginUrl}?return=${returnUrl}`;
 }
 
 async function loadUserRole(userId) {
@@ -367,7 +402,7 @@ async function loadUserRole(userId) {
             userPermissions = ADMIN_ROLES[currentUserRole].permissions;
         } else {
             currentUserRole = 'guest';
-            userPermissions = ADMIN_ROLES['guest']?.permissions || {};
+            userPermissions = {};
         }
     } catch (e) {
         console.warn('Could not load user role, using default:', e);
@@ -596,58 +631,48 @@ function extendSession() {
     showToast('⏳ Session extended', 'success');
 }
 
-// ─── LOGOUT ────────────────────────────────────────────────────────────────
-async function handleLogout() {
-    const confirmed = await new Promise((resolve) => {
-        openModal(
-            '🚪 Confirm Logout',
-            `
-                <div style="text-align:center;padding:12px 0;">
-                    <div style="font-size:48px;margin-bottom:12px;">👋</div>
-                    <p style="font-size:16px;font-weight:500;margin-bottom:8px;">Are you sure you want to logout?</p>
-                    <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
-                </div>
-            `,
-            'Yes, Logout',
-            () => resolve(true),
-            'Cancel'
-        );
-    });
-
-    if (!confirmed) return;
-
-    try {
-        await supabase.auth.signOut();
-        session = null;
-        
-        if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null; }
-        if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval); sessionCountdownInterval = null; }
-        if (window._sessionCleanup) { window._sessionCleanup(); }
-        
-        hideSessionBanner();
-        clearSessionData();
-        setRememberMe(false);
-        
-        showToast('✅ Logged out successfully', 'success');
-        window.location.href = '/login';
-    } catch (e) {
-        showToast('❌ Logout failed: ' + e.message, 'error');
-    }
-}
-
 // ─── NAVIGATION ────────────────────────────────────────────────────────────
 function navigateTo(page) {
+    // Close mobile sidebar
     if (window.innerWidth <= 1024) toggleSidebar(false);
     
     // Check if the user has access to this page
-    const navItem = document.querySelector(`.sidebar-nav-item[onclick*="${page}"]`);
+    const navItem = document.querySelector(`.sidebar-nav-item[data-page="${page}"]`);
     if (navItem && navItem.classList.contains('restricted')) {
         showToast('🔒 You do not have permission to access this page', 'warning');
         return;
     }
 
-    // Navigate to the page
-    window.location.href = `/admin/${page}`;
+    // Get the page URL
+    const pageUrl = ADMIN_PAGES[page];
+    if (!pageUrl) {
+        showToast('❌ Page not found: ' + page, 'error');
+        return;
+    }
+
+    // Navigate to the page with session preservation
+    const currentPath = window.location.pathname;
+    let targetUrl;
+    
+    // Determine if we need to include the full path
+    if (currentPath.includes('/admin/')) {
+        // We're in the admin directory
+        if (page === 'dashboard') {
+            targetUrl = '/admin/dashboard.html';
+        } else {
+            targetUrl = `/admin/${pageUrl}`;
+        }
+    } else {
+        // We're at the root or somewhere else
+        targetUrl = `/admin/${pageUrl}`;
+    }
+
+    // Add a query parameter to preserve session
+    const separator = targetUrl.includes('?') ? '&' : '?';
+    targetUrl += `${separator}session=${Date.now()}`;
+    
+    console.log('🔗 Navigating to:', targetUrl);
+    window.location.href = targetUrl;
 }
 
 function toggleSidebar(open) {
@@ -836,6 +861,45 @@ async function supabaseSelect(table, query = {}) {
     } catch (e) {
         console.error(`Select exception (${table}):`, e);
         return { success: false, error: e.message };
+    }
+}
+
+// ─── LOGOUT ────────────────────────────────────────────────────────────────
+async function handleLogout() {
+    const confirmed = await new Promise((resolve) => {
+        openModal(
+            '🚪 Confirm Logout',
+            `
+                <div style="text-align:center;padding:12px 0;">
+                    <div style="font-size:48px;margin-bottom:12px;">👋</div>
+                    <p style="font-size:16px;font-weight:500;margin-bottom:8px;">Are you sure you want to logout?</p>
+                    <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
+                </div>
+            `,
+            'Yes, Logout',
+            () => resolve(true),
+            'Cancel'
+        );
+    });
+
+    if (!confirmed) return;
+
+    try {
+        await supabase.auth.signOut();
+        session = null;
+        
+        if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null; }
+        if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval); sessionCountdownInterval = null; }
+        if (window._sessionCleanup) { window._sessionCleanup(); }
+        
+        hideSessionBanner();
+        clearSessionData();
+        setRememberMe(false);
+        
+        showToast('✅ Logged out successfully', 'success');
+        window.location.href = '/admin/pages/login.html';
+    } catch (e) {
+        showToast('❌ Logout failed: ' + e.message, 'error');
     }
 }
 
@@ -1110,6 +1174,7 @@ window.session = session;
 window.currentUserRole = currentUserRole;
 window.ADMIN_ROLES = ADMIN_ROLES;
 window.SUPER_ADMIN_USER_ID = SUPER_ADMIN_USER_ID;
+window.ADMIN_PAGES = ADMIN_PAGES;
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async function() {
@@ -1120,7 +1185,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const authed = await checkAuth();
     if (!authed) {
-        showToast('Please log in to continue', 'warning');
+        // checkAuth handles redirect
         return;
     }
 

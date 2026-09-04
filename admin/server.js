@@ -3,7 +3,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware to log requests
+// Middleware
 app.use((req, res, next) => {
     console.log(`📝 ${req.method} ${req.url}`);
     next();
@@ -16,11 +16,11 @@ app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 // ─── LOGIN ROUTE ──────────────────────────────────────────────
 app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages/login.html'));
+    res.sendFile(path.join(__dirname, 'pages', 'login.html'));
 });
 
 app.get('/login.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages/login.html'));
+    res.sendFile(path.join(__dirname, 'pages', 'login.html'));
 });
 
 // ─── MAIN ROUTES ──────────────────────────────────────────────
@@ -49,18 +49,18 @@ app.get('/dashboard', (req, res) => {
 app.get('/admin/:page', (req, res) => {
     const page = req.params.page;
     
-    // Skip if it's a static file
+    // Skip static files
     if (page.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
         return res.status(404).send('File not found');
     }
     
-    // If it's dashboard, redirect
     if (page === 'dashboard') {
         return res.redirect('/admin/dashboard');
     }
     
-    // Special handling for admin_roles - check authentication in frontend
     const filePath = path.join(__dirname, 'pages', page + '.html');
+    console.log(`📄 Serving page: ${page} from ${filePath}`);
+    
     res.sendFile(filePath, (err) => {
         if (err) {
             console.log(`❌ Page not found: ${page}`);
