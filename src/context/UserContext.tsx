@@ -120,6 +120,7 @@ interface UserContextType extends UserState {
   getCommunityHandle: () => string;
   syncWithAuthProfile: () => Promise<void>;
   getAuthProfile: () => UserProfile | null;
+  pickAndUploadAvatar: () => Promise<string | null>;
 }
 
 const UserContext = createContext<UserContextType | null>(null);
@@ -158,24 +159,31 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isReady, setIsReady] = useState(false);
   const initRef = useRef(false);
   const usernameLockRef = useRef(false);
+  const loadingRef = useRef(false);
 
   // ─── Load User from Supabase ───────────────────────────────────────────
 
   const loadUser = useCallback(async () => {
+    // FIXED: Prevent concurrent loads
+    if (loadingRef.current) {
+      console.log('[UserContext] Load already in progress');
+      return;
+    }
+
     setState(prev => ({ ...prev, isLoading: true }));
+    loadingRef.current = true;
+
     try {
       let profile: UserProfile | null = null;
       let communityProfile: CommunityProfile | null = null;
       let usernameRegistry: UsernameRegistry = {};
 
-      // Load username registry from AsyncStorage
       const registryStr = await AsyncStorage.getItem(ASYNC_KEYS.USERNAME_REGISTRY);
       if (registryStr) {
         try { usernameRegistry = JSON.parse(registryStr); } catch (e) { /* ignore */ }
       }
 
       if (authProfile) {
-        // Fetch full profile from Supabase
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -199,7 +207,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             lastLoginAt: new Date().toISOString(),
           };
 
-          // Build community profile from profiles table
           communityProfile = {
             userId: profile.id,
             displayName: profileData.community_display_name || profile.fullName,
@@ -218,10 +225,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             },
           };
 
-          // Save community profile to AsyncStorage for quick access
           await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(communityProfile));
         } else {
-          // Fallback to auth profile
           profile = {
             id: authProfile.id,
             fullName: authProfile.fullName,
@@ -238,7 +243,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             lastLoginAt: new Date().toISOString(),
           };
 
-          // Check if profile exists in Supabase
           const { data: existingProfile } = await supabase
             .from('profiles')
             .select('id')
@@ -246,7 +250,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .single();
 
           if (!existingProfile) {
-            // Create profile in Supabase
             await supabase
               .from('profiles')
               .insert({
@@ -262,7 +265,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             communityProfile = createDefaultCommunityProfile(profile);
             await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(communityProfile));
           } else {
-            // Load community profile from AsyncStorage
             const communityStr = await AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_PROFILE);
             if (communityStr) {
               try { communityProfile = JSON.parse(communityStr); } catch (e) { /* ignore */ }
@@ -293,10 +295,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error loading user:', error);
       setState(prev => ({ ...prev, isLoading: false }));
+    } finally {
+      loadingRef.current = false;
     }
   }, [authProfile]);
 
-  // ─── INIT ──────────────────────────────────────────────────────────────
+  // ─── FIXED: INIT with proper dependency management ──────────────────────
 
   useEffect(() => {
     if (initRef.current) return;
@@ -310,18 +314,22 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initialize();
   }, [authLoading, loadUser]);
 
+  // ─── FIXED: Update when auth changes ──────────────────────────────────
   useEffect(() => {
     if (!isReady) return;
     if (authLoading) return;
 
     if (isAuthenticated && authProfile) {
-      loadUser();
+      // Only reload if profile ID changed or state is empty
+      if (state.profile?.id !== authProfile.id || !state.profile) {
+        loadUser();
+      }
     } else if (!isAuthenticated) {
       setState(DEFAULT_USER_STATE);
       setIsReady(false);
       initRef.current = false;
     }
-  }, [isAuthenticated, authLoading, isReady, authProfile, loadUser]);
+  }, [isAuthenticated, authLoading, isReady, authProfile, loadUser, state.profile?.id]);
 
   // ─── Check Username Available ─────────────────────────────────────────
 
@@ -353,7 +361,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { available: false, message: 'This username is reserved' };
     }
 
-    // Check Supabase profiles table
     const { data: existing, error } = await supabase
       .from('profiles')
       .select('id')
@@ -364,7 +371,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { available: false, message: 'This username is already taken' };
     }
 
-    // Check local registry as fallback
     const registry = state.usernameRegistry;
     const existingUserId = registry[trimmed];
 
@@ -392,7 +398,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      // Update Supabase profile
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -460,7 +465,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const oldTrimmed = oldUsername.trim().toLowerCase().replace(/^@/, '');
       const newTrimmed = newUsername.trim().toLowerCase().replace(/^@/, '');
 
-      // Update Supabase profile
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -499,7 +503,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const newProfile = { ...state.profile, ...updates };
 
-      // Update Supabase profiles table
       const dbUpdates: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
@@ -574,7 +577,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const fileInfo = await FileSystem.getInfoAsync(processedUri);
       if (!fileInfo.exists) return null;
 
-      // Also upload to Supabase Storage
       const fileData = await FileSystem.readAsStringAsync(processedUri, { encoding: FileSystem.EncodingType.Base64 });
       const storagePath = `avatars/${userId}_${Date.now()}.${safeExt}`;
       
@@ -727,7 +729,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const newProfile = { ...state.communityProfile, ...updates };
 
-      // Update handle if changed
       if (updates.handle && updates.handle !== state.communityProfile.handle) {
         const oldHandle = state.communityProfile.handle.replace(/^@/, '');
         const newHandle = updates.handle.replace(/^@/, '');
@@ -738,7 +739,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Update Supabase profiles table
       const dbUpdates: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
@@ -769,9 +769,161 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.communityProfile, updateUsername]);
 
-  // ─── All other functions ─────────────────────────────────────────────
+  // ─── Toggle Privacy ───────────────────────────────────────────────────
 
-  // [Keep all other functions from the original UserContext, but ensure they use AsyncStorage directly]
+  const toggleCommunityPrivacy = useCallback(async () => {
+    if (!state.communityProfile) return;
+    await updateCommunityProfile({
+      preferences: {
+        ...state.communityProfile.preferences,
+        isPublic: !state.communityProfile.preferences.isPublic,
+      },
+    });
+  }, [state.communityProfile, updateCommunityProfile]);
+
+  // ─── Get Community Stats ─────────────────────────────────────────────
+
+  const getCommunityStats = useCallback(async (): Promise<CommunityProfile['stats']> => {
+    return state.communityProfile?.stats || { posts: 0, followers: 0, following: 0, helpful: 0 };
+  }, [state.communityProfile]);
+
+  // ─── Is Community Profile Complete ──────────────────────────────────
+
+  const isCommunityProfileComplete = useCallback(() => {
+    if (!state.communityProfile) return false;
+    return !!(state.communityProfile.bio && state.communityProfile.displayName && state.communityProfile.handle);
+  }, [state.communityProfile]);
+
+  // ─── Update Selected Topics ──────────────────────────────────────────
+
+  const updateSelectedTopics = useCallback(async (topics: string[]) => {
+    if (!state.communityProfile) return;
+    const trimmedTopics = topics.slice(0, 5);
+    const newProfile = {
+      ...state.communityProfile,
+      preferences: { ...state.communityProfile.preferences, selectedTopics: trimmedTopics },
+    };
+    await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(newProfile));
+    await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmedTopics));
+    setState(prev => ({ ...prev, communityProfile: newProfile }));
+  }, [state.communityProfile]);
+
+  // ─── Get Selected Topics ─────────────────────────────────────────────
+
+  const getSelectedTopics = useCallback(() => {
+    return state.communityProfile?.preferences?.selectedTopics || [];
+  }, [state.communityProfile]);
+
+  // ─── Sync Profile To Posts ───────────────────────────────────────────
+
+  const syncProfileToPosts = useCallback(async () => {
+    console.log('[UserContext] syncProfileToPosts called');
+  }, []);
+
+  // ─── Get Display Name ────────────────────────────────────────────────
+
+  const getDisplayName = useCallback(() => {
+    return state.communityProfile?.displayName || state.profile?.fullName || 'Anonymous';
+  }, [state.communityProfile, state.profile]);
+
+  // ─── Get User Type ────────────────────────────────────────────────────
+
+  const getUserType = useCallback((): 'parent' | 'guardian' | 'community' => {
+    if (!state.profile) return 'community';
+    if (state.profile.role === UserRole.GUARDIAN || state.profile.role === 'guardian') return 'guardian';
+    return 'parent';
+  }, [state.profile]);
+
+  // ─── Clear User Data ──────────────────────────────────────────────────
+
+  const clearUserData = useCallback(async () => {
+    if (state.communityProfile?.handle) {
+      await unregisterUsername(state.communityProfile.handle);
+    }
+    await Promise.all([
+      AsyncStorage.removeItem(ASYNC_KEYS.COMMUNITY_PROFILE),
+      AsyncStorage.removeItem(ASYNC_KEYS.USERNAME_REGISTRY),
+      AsyncStorage.removeItem(ASYNC_KEYS.PROFILE_SYNC_QUEUE),
+    ]);
+    setState(DEFAULT_USER_STATE);
+    setIsReady(false);
+    initRef.current = false;
+  }, [state.communityProfile, unregisterUsername]);
+
+  // ─── Update Community Display Name ──────────────────────────────────
+
+  const updateCommunityDisplayName = useCallback(async (name: string) => {
+    if (!state.communityProfile) return;
+    await updateCommunityProfile({ displayName: name.trim() });
+  }, [state.communityProfile, updateCommunityProfile]);
+
+  // ─── Update Community Bio ────────────────────────────────────────────
+
+  const updateCommunityBio = useCallback(async (bio: string) => {
+    if (!state.communityProfile) return;
+    await updateCommunityProfile({ bio: bio.trim() });
+  }, [state.communityProfile, updateCommunityProfile]);
+
+  // ─── Update Community Avatar ─────────────────────────────────────────
+
+  const updateCommunityAvatar = useCallback(async (uri: string) => {
+    if (!state.communityProfile) return;
+    await updateCommunityProfile({ avatar: uri });
+    await updateProfile({ avatar: uri });
+  }, [state.communityProfile, updateCommunityProfile, updateProfile]);
+
+  // ─── Update Community Handle ─────────────────────────────────────────
+
+  const updateCommunityHandle = useCallback(async (handle: string): Promise<{ success: boolean; message: string }> => {
+    if (!state.communityProfile) {
+      return { success: false, message: 'No community profile found' };
+    }
+    const cleanHandle = handle.trim().toLowerCase().replace(/^@/, '');
+    const currentHandle = state.communityProfile.handle.replace(/^@/, '');
+    if (cleanHandle === currentHandle) {
+      return { success: true, message: 'No changes needed' };
+    }
+    const result = await updateUsername(currentHandle, cleanHandle, state.communityProfile.userId);
+    if (result.success) {
+      await updateCommunityProfile({ handle: `@${cleanHandle}` });
+    }
+    return result;
+  }, [state.communityProfile, updateCommunityProfile, updateUsername]);
+
+  // ─── Get Community Handle ────────────────────────────────────────────
+
+  const getCommunityHandle = useCallback(() => {
+    return state.communityProfile?.handle || state.profile?.fullName || 'Anonymous';
+  }, [state.communityProfile, state.profile]);
+
+  // ─── Sync With Auth Profile ──────────────────────────────────────────
+
+  const syncWithAuthProfile = useCallback(async () => {
+    if (!authProfile) return;
+    try {
+      const updates: Partial<UserProfile> = {
+        id: authProfile.id,
+        fullName: authProfile.fullName,
+        email: authProfile.email,
+        avatar: authProfile.avatar,
+      };
+      await updateProfile(updates);
+      if (authProfile.communityDisplayName || authProfile.communityBio || authProfile.communityAvatar) {
+        const commUpdates: Partial<CommunityProfile> = {};
+        if (authProfile.communityDisplayName) commUpdates.displayName = authProfile.communityDisplayName;
+        if (authProfile.communityBio) commUpdates.bio = authProfile.communityBio;
+        if (authProfile.communityAvatar) commUpdates.avatar = authProfile.communityAvatar;
+        if (authProfile.communityHandle) commUpdates.handle = authProfile.communityHandle;
+        await updateCommunityProfile(commUpdates);
+      }
+    } catch (error) {
+      console.error('syncWithAuthProfile error:', error);
+    }
+  }, [authProfile, updateProfile, updateCommunityProfile]);
+
+  // ─── Get Auth Profile ─────────────────────────────────────────────────
+
+  const getAuthProfile = useCallback(() => state.profile, [state.profile]);
 
   // ─── Context Value ────────────────────────────────────────────────────
 
@@ -786,114 +938,26 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     canAccessFeature,
     loadCommunityProfile,
     updateCommunityProfile,
-    toggleCommunityPrivacy: async () => {
-      if (!state.communityProfile) return;
-      await updateCommunityProfile({
-        preferences: {
-          ...state.communityProfile.preferences,
-          isPublic: !state.communityProfile.preferences.isPublic,
-        },
-      });
-    },
-    getCommunityStats: async (): Promise<CommunityProfile['stats']> => {
-      return state.communityProfile?.stats || { posts: 0, followers: 0, following: 0, helpful: 0 };
-    },
-    isCommunityProfileComplete: () => {
-      if (!state.communityProfile) return false;
-      return !!(state.communityProfile.bio && state.communityProfile.displayName && state.communityProfile.handle);
-    },
+    toggleCommunityPrivacy,
+    getCommunityStats,
+    isCommunityProfileComplete,
     checkUsernameAvailable,
     registerUsername,
     unregisterUsername,
     updateUsername,
-    updateSelectedTopics: async (topics: string[]) => {
-      if (!state.communityProfile) return;
-      const trimmedTopics = topics.slice(0, 5);
-      const newProfile = {
-        ...state.communityProfile,
-        preferences: { ...state.communityProfile.preferences, selectedTopics: trimmedTopics },
-      };
-      await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(newProfile));
-      await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmedTopics));
-      setState(prev => ({ ...prev, communityProfile: newProfile }));
-    },
-    getSelectedTopics: () => state.communityProfile?.preferences?.selectedTopics || [],
-    syncProfileToPosts: async () => {
-      // This would sync with community posts - keeping for compatibility
-      console.log('[UserContext] syncProfileToPosts called');
-    },
-    getDisplayName: () => state.communityProfile?.displayName || state.profile?.fullName || 'Anonymous',
-    getUserType: (): 'parent' | 'guardian' | 'community' => {
-      if (!state.profile) return 'community';
-      if (state.profile.role === UserRole.GUARDIAN || state.profile.role === 'guardian') return 'guardian';
-      return 'parent';
-    },
-    clearUserData: async () => {
-      if (state.communityProfile?.handle) {
-        await unregisterUsername(state.communityProfile.handle);
-      }
-      await Promise.all([
-        AsyncStorage.removeItem(ASYNC_KEYS.COMMUNITY_PROFILE),
-        AsyncStorage.removeItem(ASYNC_KEYS.USERNAME_REGISTRY),
-        AsyncStorage.removeItem(ASYNC_KEYS.PROFILE_SYNC_QUEUE),
-      ]);
-      setState(DEFAULT_USER_STATE);
-      setIsReady(false);
-      initRef.current = false;
-    },
-    updateCommunityDisplayName: async (name: string) => {
-      if (!state.communityProfile) return;
-      await updateCommunityProfile({ displayName: name.trim() });
-    },
-    updateCommunityBio: async (bio: string) => {
-      if (!state.communityProfile) return;
-      await updateCommunityProfile({ bio: bio.trim() });
-    },
-    updateCommunityAvatar: async (uri: string) => {
-      if (!state.communityProfile) return;
-      await updateCommunityProfile({ avatar: uri });
-      await updateProfile({ avatar: uri });
-    },
-    updateCommunityHandle: async (handle: string): Promise<{ success: boolean; message: string }> => {
-      if (!state.communityProfile) {
-        return { success: false, message: 'No community profile found' };
-      }
-      const cleanHandle = handle.trim().toLowerCase().replace(/^@/, '');
-      const currentHandle = state.communityProfile.handle.replace(/^@/, '');
-      if (cleanHandle === currentHandle) {
-        return { success: true, message: 'No changes needed' };
-      }
-      const result = await updateUsername(currentHandle, cleanHandle, state.communityProfile.userId);
-      if (result.success) {
-        await updateCommunityProfile({ handle: `@${cleanHandle}` });
-      }
-      return result;
-    },
-    getCommunityHandle: () => state.communityProfile?.handle || state.profile?.fullName || 'Anonymous',
-    syncWithAuthProfile: async () => {
-      if (!authProfile) return;
-      try {
-        const updates: Partial<UserProfile> = {
-          id: authProfile.id,
-          fullName: authProfile.fullName,
-          email: authProfile.email,
-          avatar: authProfile.avatar,
-        };
-        await updateProfile(updates);
-        if (authProfile.communityDisplayName || authProfile.communityBio || authProfile.communityAvatar) {
-          const commUpdates: Partial<CommunityProfile> = {};
-          if (authProfile.communityDisplayName) commUpdates.displayName = authProfile.communityDisplayName;
-          if (authProfile.communityBio) commUpdates.bio = authProfile.communityBio;
-          if (authProfile.communityAvatar) commUpdates.avatar = authProfile.communityAvatar;
-          if (authProfile.communityHandle) commUpdates.handle = authProfile.communityHandle;
-          await updateCommunityProfile(commUpdates);
-        }
-      } catch (error) {
-        console.error('syncWithAuthProfile error:', error);
-      }
-    },
-    getAuthProfile: () => state.profile,
-    // ─── Pick avatar ─────────────────────────────────────────────────────
+    updateSelectedTopics,
+    getSelectedTopics,
+    syncProfileToPosts,
+    getDisplayName,
+    getUserType,
+    clearUserData,
+    updateCommunityDisplayName,
+    updateCommunityBio,
+    updateCommunityAvatar,
+    updateCommunityHandle,
+    getCommunityHandle,
+    syncWithAuthProfile,
+    getAuthProfile,
     pickAndUploadAvatar,
   }), [
     state,
@@ -906,14 +970,27 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     canAccessFeature,
     loadCommunityProfile,
     updateCommunityProfile,
+    toggleCommunityPrivacy,
+    getCommunityStats,
+    isCommunityProfileComplete,
     checkUsernameAvailable,
     registerUsername,
     unregisterUsername,
     updateUsername,
-    updateProfile,
-    updateCommunityProfile,
+    updateSelectedTopics,
+    getSelectedTopics,
+    syncProfileToPosts,
+    getDisplayName,
+    getUserType,
+    clearUserData,
+    updateCommunityDisplayName,
+    updateCommunityBio,
+    updateCommunityAvatar,
+    updateCommunityHandle,
+    getCommunityHandle,
+    syncWithAuthProfile,
+    getAuthProfile,
     pickAndUploadAvatar,
-    authProfile,
   ]);
 
   return (

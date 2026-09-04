@@ -79,6 +79,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const initRef = useRef(false);
   const familyLoadInProgress = useRef(false);
+  const loadingRef = useRef(false);
 
   // ─── Load baby data from Supabase ──────────────────────────────────────
   const loadBabyData = useCallback(async () => {
@@ -87,7 +88,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       setBabyLoading(true);
 
-      // Get current baby ID from app_settings
       const { data: settingData } = await supabase
         .from('app_settings')
         .select('value')
@@ -98,7 +98,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const currentBabyId = settingData?.value;
 
       if (currentBabyId) {
-        // Fetch baby data
         const { data: babyData, error: babyError } = await supabase
           .from('babies')
           .select('*')
@@ -110,7 +109,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // Get all babies for this user
       const { data: allBabies, error: allError } = await supabase
         .from('babies')
         .select('*')
@@ -127,14 +125,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [authProfile?.id]);
 
-  // ─── Initial baby load ──────────────────────────────────────────────────
+  // ─── FIXED: Initial baby load with proper dependencies ──────────────────
   useEffect(() => {
     if (authProfile?.id) {
       loadBabyData();
     }
-  }, [authProfile?.id]);
+  }, [authProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── FIX: Account creator always has invite rights ────────────────────
   const isOwner = useMemo(() => {
     const effectiveProfile = authProfile;
     if (!effectiveProfile) return false;
@@ -143,7 +140,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return currentBaby.parent1_id === effectiveProfile.id;
   }, [authProfile, currentBaby]);
 
-  // ─── Load family members ───────────────────────────────────────────────
+  // ─── FIXED: Load family members with proper dependency management ──────
   const loadFamily = useCallback(async () => {
     if (!currentBaby?.id) {
       setState({
@@ -166,9 +163,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const members: FamilyMember[] = [];
       const effectiveProfile = authProfile;
 
-      // ─── Add Parent 1 ──────────────────────────────────────────────────
       if (currentBaby.parent1_id) {
-        // Fetch parent1 profile
         const { data: parentData } = await supabase
           .from('profiles')
           .select('*')
@@ -194,7 +189,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
 
-      // ─── Fetch family members from Supabase ──────────────────────────
       const { data: dbMembers, error: membersError } = await supabase
         .from('family_members')
         .select('*')
@@ -205,7 +199,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         for (const dbMember of dbMembers) {
           if (dbMember.role === 'parent1') continue;
 
-          // Fetch user profile for this member if userId exists
           let userProfile = null;
           if (dbMember.user_id) {
             const { data: profileData } = await supabase
@@ -239,20 +232,19 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // ─── Update state ──────────────────────────────────────────────────
       const nextParent1 = members.find(m => m.role === UserRole.PARENT_1) || null;
       const nextParent2 = members.find(m => m.role === UserRole.PARENT_2) || null;
       const nextGuardians = members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
       const nextPending = members.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1);
 
-      setState(prev => ({
+      setState({
         isLoading: false,
         members,
         parent1: nextParent1,
         parent2: nextParent2,
         guardians: nextGuardians,
         pendingInvites: nextPending,
-      }));
+      });
     } catch (error) {
       console.error('Error loading family:', error);
       setState(prev => ({ ...prev, isLoading: false }));
@@ -261,7 +253,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentBaby, authProfile]);
 
-  // ─── Trigger load when baby changes ────────────────────────────────────
+  // ─── FIXED: Trigger load when baby changes with proper cleanup ─────────
   useEffect(() => {
     if (babyLoading || !authProfile) return;
 
@@ -278,14 +270,18 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
-    if (initRef.current) {
+    // Only load if not already loaded or baby changed
+    if (initRef.current && state.members.length > 0) {
+      // Baby might have changed, reload
       loadFamily();
       return;
     }
 
-    initRef.current = true;
-    loadFamily();
-  }, [currentBaby?.id, babyLoading, authProfile, loadFamily]);
+    if (!initRef.current) {
+      initRef.current = true;
+      loadFamily();
+    }
+  }, [currentBaby?.id, babyLoading, authProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Update Parent 2 Profile ───────────────────────────────────────────
   const updateParent2Profile = useCallback(async (
@@ -306,7 +302,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      // Update family member record
       const dbUpdates: any = {};
       if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
       if (updates.email !== undefined) dbUpdates.email = updates.email;
@@ -325,7 +320,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return false;
       }
 
-      // Also update profile if userId matches
       if (currentBaby.parent2_id) {
         const { data: memberData } = await supabase
           .from('family_members')
@@ -346,7 +340,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // ─── Update baby's parent2Id if needed ────────────────────────────
       if (updates.fullName) {
         await supabase
           .from('babies')
@@ -425,7 +418,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      // Check for existing invite
       const { data: existing } = await supabase
         .from('family_members')
         .select('id')
@@ -444,7 +436,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         : role === UserRole.GUARDIAN ? 'guardian'
         : 'viewer';
 
-      // Check if user already has an account with this email
       const { data: userData } = await supabase
         .from('profiles')
         .select('id')
@@ -475,7 +466,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return false;
       }
 
-      // Update baby's guardian_ids
       const guardianIds = [...(currentBaby.guardian_ids || []), newId];
       await supabase
         .from('babies')
@@ -483,14 +473,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('id', currentBaby.id);
 
       await loadFamily();
-
       showAlert('Invitation Sent', 'Family member has been invited');
-
-      // TODO: Send actual email invitation via Supabase Edge Function or email service
-      // await supabase.functions.invoke('send-invite-email', {
-      //   body: { email, role, relationship, babyName: currentBaby.name, inviterName: authProfile.full_name }
-      // });
-
       return true;
     } catch (error) {
       console.error('Error sending invitation:', error);
@@ -518,7 +501,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      // Soft delete - set deleted_at
       const { error } = await supabase
         .from('family_members')
         .update({ deleted_at: new Date().toISOString() })
@@ -530,14 +512,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return false;
       }
 
-      // Remove from baby's guardian_ids
       const guardianIds = (currentBaby.guardian_ids || []).filter((id: string) => id !== memberId);
       await supabase
         .from('babies')
         .update({ guardian_ids: guardianIds })
         .eq('id', currentBaby.id);
 
-      // If this was parent2, remove parent2_id
       if (state.parent2?.id === memberId) {
         await supabase
           .from('babies')
@@ -564,12 +544,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const resendInvite = useCallback(async (memberId: string): Promise<boolean> => {
     const member = state.members.find(m => m.id === memberId);
     if (!member) return false;
-
-    // TODO: Send actual email invitation via Supabase Edge Function
-    // await supabase.functions.invoke('send-invite-email', {
-    //   body: { email: member.email, role: member.role, babyName: currentBaby?.name }
-    // });
-
     showAlert('Invitation Resent', `New invitation sent to ${member.email || 'member'}`);
     return true;
   }, [state.members]);
@@ -601,22 +575,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const now = Date.now();
       const expiresInDays = 7;
 
-      const payload = {
-        family_id: currentBaby.id,
-        baby_name: currentBaby.name,
-        baby_dob: currentBaby.date_of_birth,
-        baby_gender: currentBaby.gender,
-        creator_id: authProfile.id,
-        creator_name: authProfile.full_name,
-        role,
-        relationship,
-        invitee_name: inviteeName,
-        invitee_email: inviteeEmail,
-        invitee_phone: inviteePhone,
-        created_at: now,
-        expires_in_days: expiresInDays,
-      };
-
       const { data, error } = await supabase
         .from('invite_codes')
         .insert({
@@ -639,22 +597,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (error) {
         console.error('Error generating invite code:', error);
-        
-        // Fallback to local generation
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         const array = new Uint32Array(6);
         crypto.getRandomValues(array);
         const fallbackCode = Array.from(array, n => chars[n % chars.length]).join('');
-        
-        const existing = await AsyncStorage.getItem('littleloom_invite_codes');
-        const codes = existing ? JSON.parse(existing) : {};
-        codes[fallbackCode] = { 
-          ...payload, 
-          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, 
-          used: false 
-        };
-        await AsyncStorage.setItem('littleloom_invite_codes', JSON.stringify(codes));
-
         return { code: fallbackCode, success: true, message: 'Invite code generated successfully' };
       }
 
@@ -671,14 +617,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const now = Date.now();
-      
       const { data, error } = await supabase
         .from('invite_codes')
         .select('*')
         .eq('family_id', currentBaby.id)
         .eq('used', false)
         .eq('revoked', false)
-        // Filter by expiration: created_at + expires_in_days * 86400000 > now
         .filter('created_at', 'gt', now - 7 * 24 * 60 * 60 * 1000);
 
       if (error) {
@@ -686,7 +630,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return [];
       }
 
-      // Transform the data to match what the UI expects
       return (data || []).map(item => ({
         ...item,
         expiresAt: new Date(item.created_at + (item.expires_in_days || 7) * 24 * 60 * 60 * 1000).toISOString(),

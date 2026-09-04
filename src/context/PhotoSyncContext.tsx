@@ -94,6 +94,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
   const scannerRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   const isMounted = useRef(true);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     isMounted.current = true;
@@ -102,7 +103,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => { isMounted.current = false; };
   }, []);
 
-  // Update queue stats whenever queue changes
+  // ─── Update queue stats whenever queue changes ──────────────────────
   useEffect(() => {
     const stats = {
       pending: state.queue.filter(item => item.status === 'pending').length,
@@ -113,8 +114,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setState(prev => ({ ...prev, queueStats: stats }));
   }, [state.queue]);
 
-  /* ─── Load/Save Queue ────────────────────────────────────────────────── */
-
+  // ─── Load/Save Queue ──────────────────────────────────────────────────
   const loadQueue = useCallback(async () => {
     try {
       const data = await FileSystem.readAsStringAsync(
@@ -169,8 +169,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  /* ─── Scan History ───────────────────────────────────────────────────── */
-
+  // ─── Scan History ─────────────────────────────────────────────────────
   const getScanHistory = useCallback(async (): Promise<ScanHistoryEntry[]> => {
     try {
       const data = await FileSystem.readAsStringAsync(
@@ -187,7 +186,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const history = await getScanHistory();
       history.unshift(entry);
-      if (history.length > 50) history.pop(); // Keep last 50
+      if (history.length > 50) history.pop();
       await FileSystem.writeAsStringAsync(
         FileSystem.documentDirectory + SCAN_HISTORY_KEY,
         JSON.stringify(history),
@@ -209,8 +208,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  /* ─── Scan Photos ────────────────────────────────────────────────────── */
-
+  // ─── Scan Photos ──────────────────────────────────────────────────────
   const scanPhotos = useCallback(async (days: number = 7): Promise<ScannedPhoto[]> => {
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
@@ -254,7 +252,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       endCursor = nextCursor;
       hasNextPage = hasNext || false;
       
-      // Update progress
       setState(prev => ({
         ...prev,
         scanProgress: prev.scanProgress ? {
@@ -269,15 +266,13 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return photos;
   }, []);
 
-  /* ─── Upload to Supabase Storage ───────────────────────────────────── */
-
+  // ─── Upload to Supabase Storage ─────────────────────────────────────
   const uploadToStorage = useCallback(async (
     photo: ScannedPhoto,
     babyId: string
   ): Promise<string> => {
     const fileName = `${babyId}/${Date.now()}_${photo.fileName || 'photo.jpg'}`;
     
-    // Read file as base64
     const fileData = await FileSystem.readAsStringAsync(photo.uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
@@ -301,14 +296,12 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return urlData.publicUrl;
   }, []);
 
-  /* ─── Import Photos ──────────────────────────────────────────────────── */
-
+  // ─── Process Queue Item ──────────────────────────────────────────────
   const processQueueItem = useCallback(async (item: ImportQueueItem) => {
     if (!item.babyId) {
       throw new Error('No baby ID specified');
     }
 
-    // Update status to processing
     const updatedQueue = state.queue.map(q =>
       q.id === item.id ? { ...q, status: 'processing' as const } : q
     );
@@ -316,10 +309,8 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await saveQueue(updatedQueue);
 
     try {
-      // Upload to Supabase storage
       const url = await uploadToStorage(item.photo, item.babyId);
 
-      // Save to tracker entries
       const { error: entryError } = await supabase
         .from('tracker_entries')
         .insert({
@@ -344,7 +335,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         throw new Error(entryError.message);
       }
 
-      // Mark as completed
       const completedQueue = updatedQueue.map(q =>
         q.id === item.id ? { ...q, status: 'completed' as const, uploadedUrl: url } : q
       );
@@ -352,9 +342,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       await saveQueue(completedQueue);
 
       return { success: true, url };
-
     } catch (error) {
-      // Mark as failed
       const failedQueue = updatedQueue.map(q =>
         q.id === item.id ? {
           ...q,
@@ -364,13 +352,11 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
       setState(prev => ({ ...prev, queue: failedQueue }));
       await saveQueue(failedQueue);
-
       return { success: false, error };
     }
   }, [state.queue, saveQueue, uploadToStorage]);
 
-  /* ─── Start Scan ────────────────────────────────────────────────────── */
-
+  // ─── Start Scan ──────────────────────────────────────────────────────
   const startScan = useCallback(async (options: { quick?: boolean; days?: number } = {}) => {
     if (state.isScanning) {
       sweetAlert.alert('Scan in Progress', 'A scan is already running', 'info');
@@ -400,7 +386,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
 
     try {
-      // Scan photos
       setState(prev => ({
         ...prev,
         scanProgress: prev.scanProgress ? {
@@ -441,7 +426,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
 
-      // Add to queue
       setState(prev => ({
         ...prev,
         scanProgress: prev.scanProgress ? {
@@ -462,7 +446,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setState(prev => ({ ...prev, queue: updatedQueue }));
       await saveQueue(updatedQueue);
 
-      // Auto-import if not too many
       if (photos.length <= 20) {
         await importQueuedPhotos();
       } else {
@@ -496,7 +479,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           photosImported: 0,
         } : null,
       }));
-
     } catch (error) {
       console.error('[PhotoSync] Scan error:', error);
       setState(prev => ({
@@ -514,9 +496,14 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [state.isScanning, state.queue, currentBaby, scanPhotos, saveQueue, saveScanHistory, saveLastScanTime, sweetAlert]);
 
-  /* ─── Import Queued Photos ──────────────────────────────────────────── */
-
+  // ─── Import Queued Photos ────────────────────────────────────────────
   const importQueuedPhotos = useCallback(async () => {
+    // FIXED: Prevent concurrent imports
+    if (processingRef.current) {
+      sweetAlert.alert('Import in Progress', 'Please wait for the current import to finish', 'info');
+      return;
+    }
+
     const pendingItems = state.queue.filter(item => item.status === 'pending');
     
     if (pendingItems.length === 0) {
@@ -524,6 +511,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
+    processingRef.current = true;
     let importedCount = 0;
     let failedCount = 0;
 
@@ -543,52 +531,57 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       },
     }));
 
-    for (let i = 0; i < pendingItems.length; i++) {
-      if (scannerRef.current.cancelled) break;
+    try {
+      for (let i = 0; i < pendingItems.length; i++) {
+        if (scannerRef.current.cancelled) break;
 
-      const item = pendingItems[i];
-      const result = await processQueueItem(item);
+        const item = pendingItems[i];
+        const result = await processQueueItem(item);
 
-      if (result.success) {
-        importedCount++;
-      } else {
-        failedCount++;
+        if (result.success) {
+          importedCount++;
+        } else {
+          failedCount++;
+        }
+
+        setState(prev => ({
+          ...prev,
+          scanProgress: prev.scanProgress ? {
+            ...prev.scanProgress,
+            current: i + 1,
+            photosImported: importedCount,
+            message: `Imported ${importedCount}/${pendingItems.length} photos...`,
+          } : null,
+        }));
       }
+
+      const totalImported = state.queue.filter(q => q.status === 'completed').length;
 
       setState(prev => ({
         ...prev,
         scanProgress: prev.scanProgress ? {
           ...prev.scanProgress,
-          current: i + 1,
-          photosImported: importedCount,
-          message: `Imported ${importedCount}/${pendingItems.length} photos...`,
+          phase: 'completed',
+          message: `Import complete! Imported ${importedCount} photos.`,
+          photosImported: totalImported,
         } : null,
       }));
-    }
 
-    const totalImported = state.queue.filter(q => q.status === 'completed').length;
-
-    setState(prev => ({
-      ...prev,
-      scanProgress: prev.scanProgress ? {
-        ...prev.scanProgress,
-        phase: 'completed',
-        message: `Import complete! Imported ${importedCount} photos.`,
-        photosImported: totalImported,
-      } : null,
-    }));
-
-    if (failedCount > 0) {
-      sweetAlert.alert(
-        'Import Complete with Errors',
-        `Imported ${importedCount} photos, ${failedCount} failed. You can retry failed imports.`,
-        'warning'
-      );
-    } else {
-      sweetAlert.alert('Import Complete', `Successfully imported ${importedCount} photos! 🎉`, 'success');
+      if (failedCount > 0) {
+        sweetAlert.alert(
+          'Import Complete with Errors',
+          `Imported ${importedCount} photos, ${failedCount} failed. You can retry failed imports.`,
+          'warning'
+        );
+      } else {
+        sweetAlert.alert('Import Complete', `Successfully imported ${importedCount} photos! 🎉`, 'success');
+      }
+    } finally {
+      processingRef.current = false;
     }
   }, [state.queue, processQueueItem, sweetAlert]);
 
+  // ─── Retry Failed ─────────────────────────────────────────────────────
   const retryFailed = useCallback(async () => {
     const failedItems = state.queue.filter(item => item.status === 'failed');
     
@@ -597,7 +590,6 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
-    // Reset failed items to pending
     const resetQueue = state.queue.map(item =>
       item.status === 'failed' ? { ...item, status: 'pending' as const, error: undefined } : item
     );
@@ -607,6 +599,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await importQueuedPhotos();
   }, [state.queue, saveQueue, importQueuedPhotos, sweetAlert]);
 
+  // ─── Clear Completed ──────────────────────────────────────────────────
   const clearCompleted = useCallback(async () => {
     const clearedQueue = state.queue.filter(item => 
       item.status !== 'completed' && item.status !== 'failed'
@@ -616,8 +609,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     sweetAlert.alert('Cleared', 'Completed imports have been cleared', 'success');
   }, [state.queue, saveQueue, sweetAlert]);
 
-  /* ─── Cancel Scan ────────────────────────────────────────────────────── */
-
+  // ─── Cancel Scan ──────────────────────────────────────────────────────
   const cancelScan = useCallback(() => {
     scannerRef.current.cancelled = true;
     setState(prev => ({
@@ -631,8 +623,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   }, []);
 
-  /* ─── Value ──────────────────────────────────────────────────────────── */
-
+  // ─── Value ────────────────────────────────────────────────────────────
   const value = React.useMemo(() => ({
     ...state,
     startScan,

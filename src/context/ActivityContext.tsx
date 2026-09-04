@@ -139,7 +139,6 @@ interface ActivityContextType {
   pushToSupabase: (entry: ActivityEntry) => Promise<void>;
   pullFromSupabase: (babyId: string) => Promise<void>;
   
-  // NEW: Get current baby ID
   getCurrentBabyId: () => string | null;
 }
 
@@ -245,40 +244,72 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
   const initRef = useRef(false);
   const currentBabyIdRef = useRef<string | null>(null);
+  const subscriptionRef = useRef<(() => void) | null>(null);
+  const isRefreshingRef = useRef(false);
 
   // ─── Subscribe to baby changes from BabyContext ─────────────────────
+  // FIXED: Proper cleanup and loop prevention
   useEffect(() => {
+    // Clean up previous subscription
+    if (subscriptionRef.current) {
+      subscriptionRef.current();
+      subscriptionRef.current = null;
+    }
+
+    // Create new subscription
     const unsubscribe = subscribeToBabyChanges((babyId) => {
       console.log('[ActivityContext] Baby changed to:', babyId);
-      currentBabyIdRef.current = babyId;
-      if (babyId) {
-        loadEntries();
-      } else {
-        setEntries([]);
+      
+      // Only update if baby actually changed and we're not already refreshing
+      if (babyId !== currentBabyIdRef.current && !isRefreshingRef.current) {
+        currentBabyIdRef.current = babyId;
+        // Use setTimeout to break the render cycle
+        setTimeout(() => {
+          if (babyId) {
+            loadEntriesInternal();
+          } else {
+            setEntries([]);
+          }
+        }, 0);
       }
     });
 
-    // Initial sync
+    subscriptionRef.current = unsubscribe;
+
+    // Initial sync - get the current baby once
     const initialBabyId = getBabyIdFromContext();
-    if (initialBabyId) {
+    if (initialBabyId && !currentBabyIdRef.current) {
       currentBabyIdRef.current = initialBabyId;
     }
 
-    return unsubscribe;
-  }, [subscribeToBabyChanges, getBabyIdFromContext]);
+    // Cleanup on unmount
+    return () => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+    };
+  }, []); // Empty deps - only run once on mount
 
   // ─── Get current baby ID ─────────────────────────────────────────────
   const getCurrentBabyId = useCallback((): string | null => {
     return currentBabyIdRef.current;
   }, []);
 
-  const loadEntries = useCallback(async () => {
+  // ─── Internal load function ──────────────────────────────────────────
+  const loadEntriesInternal = useCallback(async () => {
     const babyId = getCurrentBabyId();
     if (!babyId) {
       setEntries([]);
       return;
     }
 
+    if (isRefreshingRef.current) {
+      console.log('[ActivityContext] Load already in progress, skipping');
+      return;
+    }
+
+    isRefreshingRef.current = true;
     setIsLoading(true);
     setError(null);
 
@@ -313,20 +344,28 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {
       setIsLoading(false);
+      isRefreshingRef.current = false;
     }
   }, [getCurrentBabyId]);
+
+  // ─── Public load function ────────────────────────────────────────────
+  const loadEntries = useCallback(async () => {
+    await loadEntriesInternal();
+  }, [loadEntriesInternal]);
 
   // ─── Initial load ─────────────────────────────────────────────────────
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-    loadEntries();
-  }, [loadEntries]);
+    loadEntriesInternal();
+  }, [loadEntriesInternal]);
 
+  // ─── Public refresh ──────────────────────────────────────────────────
   const refreshEntries = useCallback(async () => {
-    await loadEntries();
-  }, [loadEntries]);
+    await loadEntriesInternal();
+  }, [loadEntriesInternal]);
 
+  // ─── Add Entry ────────────────────────────────────────────────────────
   const addEntry = useCallback(async (entry: Omit<ActivityEntry, 'id'>) => {
     try {
       const newId = `activity_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -372,6 +411,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, []);
 
+  // ─── Update Entry ─────────────────────────────────────────────────────
   const updateEntry = useCallback(async (id: string, updates: Partial<ActivityEntry>) => {
     try {
       const entryData: Record<string, unknown> = {};
@@ -416,6 +456,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [entries]);
 
+  // ─── Delete Entry ─────────────────────────────────────────────────────
   const deleteEntry = useCallback(async (id: string) => {
     try {
       const entry = entries.find(e => e.id === id);
@@ -453,13 +494,11 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [entries]);
 
+  // ─── Restore Entry ────────────────────────────────────────────────────
   const restoreEntry = useCallback(async (id: string) => {
     try {
       await updateEntryInDb(id, { deleted_at: null });
-      
-      // Re-fetch entries to get restored entry back
-      await loadEntries();
-
+      await loadEntriesInternal();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to restore entry';
@@ -467,8 +506,9 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       throw err;
     }
-  }, [loadEntries]);
+  }, [loadEntriesInternal]);
 
+  // ─── Push to Supabase ────────────────────────────────────────────────
   const pushToSupabase = useCallback(async (entry: ActivityEntry) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -480,7 +520,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
           id: entry.id,
           baby_id: entry.babyId,
           tracker_id: entry.type,
-          tracker_type: entry.type, // Add this for the tracker_type column
+          tracker_type: entry.type,
           timestamp: new Date(entry.timestamp).toISOString(),
           title: entry.title,
           data: entry,
@@ -505,6 +545,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, []);
 
+  // ─── Pull from Supabase ──────────────────────────────────────────────
   const pullFromSupabase = useCallback(async (babyId: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -548,12 +589,10 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         const updatedEntries = parsedEntries.filter(e => existingIds.has(e.id));
         
         setEntries(prev => {
-          // Update existing entries with Supabase data
           const updated = prev.map(entry => {
             const supabaseEntry = updatedEntries.find(e => e.id === entry.id);
             return supabaseEntry || entry;
           });
-          // Add new entries
           return [...newEntries, ...updated];
         });
       }
@@ -563,6 +602,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [entries]);
 
+  // ─── Sync with Supabase ──────────────────────────────────────────────
   const syncWithSupabase = useCallback(async () => {
     if (isSyncing) return;
     
@@ -571,10 +611,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       const babyId = getCurrentBabyId();
       if (!babyId) return;
 
-      // Pull latest from Supabase
       await pullFromSupabase(babyId);
 
-      // Push local entries that haven't been synced
       const unsyncedEntries = entries.filter(e => !e.syncedAt);
       for (const entry of unsyncedEntries) {
         try {
@@ -592,6 +630,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [entries, isSyncing, pullFromSupabase, pushToSupabase, getCurrentBabyId]);
 
+  // ─── Query Functions ─────────────────────────────────────────────────
   const getEntriesByType = useCallback((type: ActivityType, babyId?: string) => {
     return entries.filter(entry => {
       const typeMatch = entry.type === type;
@@ -690,8 +729,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   }, [entries]);
 
   const syncEntries = useCallback(async () => {
-    await loadEntries();
-  }, [loadEntries]);
+    await loadEntriesInternal();
+  }, [loadEntriesInternal]);
 
   const clearEntries = useCallback(async () => {
     try {
@@ -704,6 +743,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, []);
 
+  // ─── Reminder Functions ──────────────────────────────────────────────
   const scheduleActivityReminder = useCallback(async (entry: ActivityEntry, minutes: number): Promise<string | null> => {
     try {
       const service = await getNotificationService();
@@ -747,6 +787,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [entries, updateEntry]);
 
+  // ─── Sync with BabyContext ───────────────────────────────────────────
   const syncWithBabyContext = useCallback(async (babyId: string) => {
     try {
       // First try to pull from Supabase
@@ -792,6 +833,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [entries, pullFromSupabase]);
 
+  // ─── Get Entries for Notification ────────────────────────────────────
   const getEntriesForNotification = useCallback(() => {
     const now = Date.now();
     const oneHourAgo = now - (60 * 60 * 1000);
@@ -802,6 +844,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       .slice(0, 5);
   }, [entries]);
 
+  // ─── Memoized Value ──────────────────────────────────────────────────
   const value = useMemo<ActivityContextType>(() => ({
     entries,
     isLoading,

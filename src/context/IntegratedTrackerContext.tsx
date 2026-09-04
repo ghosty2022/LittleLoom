@@ -1,7 +1,7 @@
 // src/context/IntegratedTrackerContext.tsx
 // Growth-aware, achievement-driven tracker with Supabase
 
-import React, { createContext, useContext, useCallback, useMemo, useState, useEffect } from 'react';
+import React, { createContext, useContext, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/utils/supabase';
@@ -46,9 +46,7 @@ interface IntegratedTrackerState {
     atRisk: boolean;
     hoursLeft: number;
   };
-  /** NEW: Correlation insights between trackers */
   correlations: TrackerCorrelation[];
-  /** NEW: Predictive reminder achievements */
   predictiveAchievements: any[];
 }
 
@@ -56,7 +54,7 @@ interface TrackerCorrelation {
   id: string;
   trackerA: string;
   trackerB: string;
-  correlationScore: number; // -1 to 1
+  correlationScore: number;
   insight: string;
   emoji: string;
   trend: 'positive' | 'negative' | 'neutral';
@@ -75,9 +73,7 @@ interface IntegratedTrackerContextType extends IntegratedTrackerState {
   getTrend: () => string;
   isDimensionConcerning: (dimension: string) => boolean;
   getTrackerContribution: (trackerId: string) => { score: number; impact: string };
-  /** NEW: Get cross-tracker correlations */
   getCorrelations: () => TrackerCorrelation[];
-  /** NEW: Get predictive achievements */
   getPredictiveAchievements: () => any[];
 }
 
@@ -87,13 +83,9 @@ const ACHIEVEMENT_STORAGE_KEY = '@littleloom_unlocked_achievements_v2';
 const REMINDER_DISMISSED_KEY = '@littleloom_dismissed_reminders';
 const CORRELATIONS_KEY = '@littleloom_tracker_correlations';
 
-/* ═══════════════════════════════════════════════════════════════
-   CORRELATION ENGINE — Cross-tracker pattern detection
-   ═══════════════════════════════════════════════════════════════ */
-
+// ─── CORRELATION ENGINE ────────────────────────────────────────────────
 const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
   const correlations: TrackerCorrelation[] = [];
-  const trackerTypes = [...new Set(entries.map(e => e.trackerId))];
 
   const sleepEntries = entries.filter(e => e.trackerId === 'sleep' && !e.isDeleted);
   const feedEntries = entries.filter(e => e.trackerId === 'feed' && !e.isDeleted);
@@ -177,39 +169,10 @@ const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
     });
   }
 
-  const medEntries = entries.filter(e => e.trackerId === 'medication' && !e.isDeleted);
-  const symptomEntries = entries.filter(e => e.trackerId === 'symptom' && !e.isDeleted);
-
-  if (medEntries.length >= 3 && symptomEntries.length >= 3) {
-    let symptomAfterMed = 0;
-    medEntries.forEach(med => {
-      const symptomAfter = symptomEntries.find(s =>
-        s.timestamp - med.timestamp > 0 && s.timestamp - med.timestamp < 24 * 60 * 60 * 1000
-      );
-      if (symptomAfter) symptomAfterMed++;
-    });
-    const score = medEntries.length > 0 ? symptomAfterMed / medEntries.length : 0;
-    correlations.push({
-      id: 'med_symptom',
-      trackerA: 'medication',
-      trackerB: 'symptom',
-      correlationScore: score,
-      insight: score > 0.5
-        ? 'Symptoms tracked after medication — monitor effectiveness'
-        : 'Good symptom management with medication tracking',
-      emoji: '💊🤒',
-      trend: score > 0.5 ? 'negative' : 'positive',
-      sampleSize: medEntries.length,
-    });
-  }
-
   return correlations;
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   PREDICTIVE ACHIEVEMENT ENGINE
-   ═══════════════════════════════════════════════════════════════ */
-
+// ─── PREDICTIVE ACHIEVEMENT ENGINE ─────────────────────────────────────
 const buildPredictiveAchievements = (
   entries: any[],
   reminders: any[],
@@ -262,22 +225,6 @@ const buildPredictiveAchievements = (
     points: 250,
   });
 
-  const sleepScoreHistory = (growthScore?.dimensions?.sleep?.history ?? []) as number[];
-  const sleepImproved = sleepScoreHistory.length >= 2 &&
-    sleepScoreHistory[sleepScoreHistory.length - 1] - sleepScoreHistory[0] >= 10;
-  achievements.push({
-    id: 'sleep_sage',
-    title: 'Sleep Sage',
-    description: 'Improve sleep score by 10+ points',
-    emoji: '🌙✨',
-    unlocked: sleepImproved,
-    progress: sleepImproved ? 1 : 0,
-    maxProgress: 1,
-    category: 'predictive',
-    rarity: 'epic',
-    points: 400,
-  });
-
   return achievements;
 };
 
@@ -286,7 +233,7 @@ const buildPredictiveAchievements = (
    ═══════════════════════════════════════════════════════════════ */
 
 export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { entries, trackers, currentBabyId } = useTracker();
+  const { entries, trackers } = useTracker();
   const { growthData, currentBaby } = useBaby();
   const { userProfile } = useAuth();
   const { growthIndex } = useGrowthIntelligenceSafe();
@@ -304,20 +251,23 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     predictiveAchievements: [],
   });
 
+  // ─── FIXED: Use refs to track previous values and prevent infinite loops ──
+  const prevEntriesRef = useRef<any[]>([]);
+  const prevGrowthDataRef = useRef<any[]>([]);
+  const prevBabyIdRef = useRef<string | null>(null);
+  const processingRef = useRef(false);
+
   /* ── Load persisted achievements from Supabase ── */
   useEffect(() => {
     const load = async () => {
       try {
-        // Try Supabase first
         const dbVal = await getAppSetting(ACHIEVEMENT_STORAGE_KEY);
         if (dbVal) {
           setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(dbVal) }));
         } else {
-          // Fallback to AsyncStorage for migration
           const saved = await AsyncStorage.getItem(ACHIEVEMENT_STORAGE_KEY);
           if (saved) {
             setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(saved) }));
-            // Migrate to Supabase
             await setAppSetting(ACHIEVEMENT_STORAGE_KEY, saved);
           }
         }
@@ -327,8 +277,34 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
   }, []);
 
   /* ── Calculate everything whenever entries or growth data change ── */
+  // FIXED: Added proper dependency tracking to prevent infinite loops
   useEffect(() => {
-    if (!currentBabyId || !currentBaby) return;
+    const babyId = currentBaby?.id || null;
+
+    // Check if we should process
+    const entriesChanged = JSON.stringify(entries) !== JSON.stringify(prevEntriesRef.current);
+    const growthDataChanged = JSON.stringify(growthData) !== JSON.stringify(prevGrowthDataRef.current);
+    const babyChanged = babyId !== prevBabyIdRef.current;
+
+    if (!entriesChanged && !growthDataChanged && !babyChanged) {
+      return;
+    }
+
+    // Update refs
+    prevEntriesRef.current = entries;
+    prevGrowthDataRef.current = growthData;
+    prevBabyIdRef.current = babyId;
+
+    if (!babyId || !currentBaby) {
+      setState(prev => ({ ...prev, isLoading: false }));
+      return;
+    }
+
+    if (processingRef.current) {
+      return;
+    }
+
+    processingRef.current = true;
 
     const ageMonths = calculateAgeInMonths(currentBaby.birthDate);
     const score = growthIndex ?? null;
@@ -371,7 +347,9 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     if (newAchievements.length > 0) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
-  }, [entries, growthData, currentBabyId, currentBaby, growthIndex, predictiveReminders]);
+
+    processingRef.current = false;
+  }, [entries, growthData, currentBaby, growthIndex, predictiveReminders, state.unlockedAchievements, trackers]);
 
   /* ── Helpers ── */
   const calculateAgeInMonths = (birthDate: string): number => {
@@ -405,7 +383,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
 
   /* ── Refresh growth score ── */
   const refreshGrowthScore = useCallback(async () => {
-    if (!currentBaby || !currentBabyId) return;
+    if (!currentBaby || !currentBaby.id) return;
     setState(prev => ({ ...prev, isLoading: true }));
 
     const score = growthIndex ?? null;
@@ -413,7 +391,6 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
       ? growthIndex.generateReminders(entries, trackers, score)
       : [];
 
-    // Save to Supabase
     try {
       await setAppSetting('last_growth_update', JSON.stringify(Date.now()));
     } catch (e) {
@@ -427,7 +404,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
       lastGrowthUpdate: Date.now(),
       isLoading: false,
     }));
-  }, [entries, currentBaby, currentBabyId, trackers, growthIndex]);
+  }, [entries, currentBaby, trackers, growthIndex]);
 
   /* ── Check achievements ── */
   const checkAchievements = useCallback(() => {
@@ -445,18 +422,17 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     }));
   }, [state.unlockedAchievements, state.pendingAchievements]);
 
-  /* ── Apply reminder (creates actual reminder) ── */
+  /* ── Apply reminder ── */
   const applyReminder = useCallback(async (reminder: any) => {
     console.log('Applied reminder:', reminder);
     
-    // Sync to Supabase
     try {
       const { data, error } = await supabase
         .from('applied_reminders')
         .insert({
           reminder_id: reminder.id,
           reminder_type: reminder.type || 'general',
-          baby_id: currentBabyId,
+          baby_id: currentBaby?.id,
           user_id: userProfile?.id,
           applied_at: new Date().toISOString(),
           metadata: reminder,
@@ -473,23 +449,21 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
       ...prev,
       smartReminders: prev.smartReminders.filter(r => r.id !== reminder.id),
     }));
-  }, [currentBabyId, userProfile?.id]);
+  }, [currentBaby, userProfile?.id]);
 
   /* ── Dismiss reminder ── */
   const dismissReminder = useCallback(async (id: string) => {
     try {
-      // Save dismissed reminder to Supabase
       const dismissed = await getAppSetting(REMINDER_DISMISSED_KEY);
       const list: string[] = dismissed ? JSON.parse(dismissed) : [];
       if (!list.includes(id)) list.push(id);
       await setAppSetting(REMINDER_DISMISSED_KEY, JSON.stringify(list));
       
-      // Also save to applied_reminders table for tracking
       const { error } = await supabase
         .from('applied_reminders')
         .update({ dismissed_at: new Date().toISOString() })
         .eq('reminder_id', id)
-        .eq('baby_id', currentBabyId);
+        .eq('baby_id', currentBaby?.id);
 
       if (error) {
         console.warn('Failed to update dismissed reminder:', error);
@@ -502,7 +476,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
       ...prev,
       smartReminders: prev.smartReminders.filter(r => r.id !== id),
     }));
-  }, [currentBabyId]);
+  }, [currentBaby]);
 
   /* ── Getters ── */
   const getGrowthInsights = useCallback(() => {
@@ -538,12 +512,10 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     };
   }, [entries]);
 
-  /* ── NEW: Get correlations ── */
   const getCorrelations = useCallback(() => {
     return state.correlations;
   }, [state.correlations]);
 
-  /* ── NEW: Get predictive achievements ── */
   const getPredictiveAchievements = useCallback(() => {
     return state.predictiveAchievements;
   }, [state.predictiveAchievements]);

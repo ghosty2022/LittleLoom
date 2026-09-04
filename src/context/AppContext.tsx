@@ -261,16 +261,13 @@ async function performBackgroundNotificationSync(): Promise<{ hasUpdates: boolea
 
 async function loadNotificationSettings(): Promise<NotificationSettings> {
   try {
-    // Try Supabase first
     const stored = await getAppSetting(NOTIFICATION_SETTINGS_KEY);
     if (stored) {
       return { ...DEFAULT_NOTIFICATION_SETTINGS, ...JSON.parse(stored) };
     }
-    // Fallback to AsyncStorage
     const asyncStored = await AsyncStorage.getItem(NOTIFICATION_SETTINGS_KEY);
     if (asyncStored) {
       const parsed = { ...DEFAULT_NOTIFICATION_SETTINGS, ...JSON.parse(asyncStored) };
-      // Migrate to Supabase
       await setAppSetting(NOTIFICATION_SETTINGS_KEY, JSON.stringify(parsed));
       return parsed;
     }
@@ -281,24 +278,19 @@ async function loadNotificationSettings(): Promise<NotificationSettings> {
 }
 
 async function saveNotificationSettings(settings: NotificationSettings): Promise<void> {
-  // Save to Supabase
   await setAppSetting(NOTIFICATION_SETTINGS_KEY, JSON.stringify(settings));
-  // Also save to AsyncStorage for backward compatibility
   await AsyncStorage.setItem(NOTIFICATION_SETTINGS_KEY, JSON.stringify(settings));
 }
 
 async function loadPendingNotifications(): Promise<ScheduledNotification[]> {
   try {
-    // Try Supabase first
     const stored = await getAppSetting(PENDING_NOTIFICATIONS_KEY);
     if (stored) {
       return JSON.parse(stored);
     }
-    // Fallback to AsyncStorage
     const asyncStored = await AsyncStorage.getItem(PENDING_NOTIFICATIONS_KEY);
     if (asyncStored) {
       const parsed = JSON.parse(asyncStored);
-      // Migrate to Supabase
       await setAppSetting(PENDING_NOTIFICATIONS_KEY, JSON.stringify(parsed));
       return parsed;
     }
@@ -309,25 +301,20 @@ async function loadPendingNotifications(): Promise<ScheduledNotification[]> {
 }
 
 async function savePendingNotifications(notifications: ScheduledNotification[]): Promise<void> {
-  // Save to Supabase
   await setAppSetting(PENDING_NOTIFICATIONS_KEY, JSON.stringify(notifications));
-  // Also save to AsyncStorage for backward compatibility
   await AsyncStorage.setItem(PENDING_NOTIFICATIONS_KEY, JSON.stringify(notifications));
 }
 
 async function getDeviceId(): Promise<string> {
   try {
-    // Try Supabase first
     let id = await getAppSetting(DEVICE_ID_KEY);
     if (id) return id;
     
-    // Try AsyncStorage
     id = await AsyncStorage.getItem(DEVICE_ID_KEY);
     if (!id) {
       id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       await AsyncStorage.setItem(DEVICE_ID_KEY, id);
     }
-    // Migrate to Supabase
     await setAppSetting(DEVICE_ID_KEY, id);
     return id;
   } catch {
@@ -390,6 +377,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const appStateListener = useRef<any>(null);
   const isInitialized = useRef(false);
   const initStarted = useRef(false);
+  const isMounted = useRef(true);
+
+  // ─── FIXED: Cleanup on unmount ──────────────────────────────────
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      if (notificationListener.current) {
+        notificationListener.current.remove();
+        notificationListener.current = null;
+      }
+      if (responseListener.current) {
+        responseListener.current.remove();
+        responseListener.current = null;
+      }
+      if (appStateListener.current) {
+        appStateListener.current.remove();
+        appStateListener.current = null;
+      }
+      if (keepAwakeRef) {
+        keepAwakeRef.release().catch(() => {});
+        setKeepAwakeRef(null);
+      }
+    };
+  }, [keepAwakeRef]);
 
   // ─── Load Theme ──────────────────────────────────────────────────
 
@@ -399,13 +411,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let mounted = true;
     const load = async () => {
       try {
-        // Try Supabase first
         let [savedTheme, savedAppearance] = await Promise.all([
           getAppSetting(THEME_STORAGE_KEY),
           getAppSetting(APPEARANCE_STORAGE_KEY),
         ]);
 
-        // Fallback to AsyncStorage
         if (!savedTheme) {
           savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
           if (savedTheme) await setAppSetting(THEME_STORAGE_KEY, savedTheme);
@@ -415,7 +425,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (savedAppearance) await setAppSetting(APPEARANCE_STORAGE_KEY, savedAppearance);
         }
 
-        if (!mounted) return;
+        if (!mounted || !isMounted.current) return;
 
         const finalAppearance = (savedAppearance && ['system', 'light', 'dark', 'trueBlack', 'pureWhite'].includes(savedAppearance))
           ? savedAppearance as AppearanceMode
@@ -437,13 +447,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {
         console.warn('Theme load failed:', e);
         _themeLoaded = true;
-        if (mounted) setThemeReady(true);
+        if (mounted && isMounted.current) setThemeReady(true);
       }
     };
 
     load();
     return () => { mounted = false; };
-  }, []);
+  }, [customization.settings.appearance]);
 
   // ─── Sync with customization ─────────────────────────────────────
 
@@ -468,7 +478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [customization.isLoaded, customization.settings.appearance]);
 
-  // ─── Initialize Notifications (Lazy) ────────────────────────────
+  // ─── FIXED: Initialize Notifications ────────────────────────────
 
   const ensureNotificationsInitialized = useCallback(async () => {
     if (isInitialized.current) return true;
@@ -522,7 +532,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // Setup Android channels
       if (Platform.OS === 'android') {
         const channelConfigs = [
           { id: 'default', name: 'Default', importance: Notifications.AndroidImportance.MAX },
@@ -558,6 +567,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }),
       });
 
+      // Clean up old listeners
+      if (notificationListener.current) {
+        notificationListener.current.remove();
+        notificationListener.current = null;
+      }
+      if (responseListener.current) {
+        responseListener.current.remove();
+        responseListener.current = null;
+      }
+      if (appStateListener.current) {
+        appStateListener.current.remove();
+        appStateListener.current = null;
+      }
+
       notificationListener.current = Notifications.addNotificationReceivedListener(
         handleNotificationReceived
       );
@@ -566,7 +589,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleNotificationResponse
       );
 
-      // Setup background sync
       if (settings.allowBackgroundSync) {
         try {
           const status = await BackgroundFetch.getStatusAsync();
@@ -603,12 +625,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ─── Notification Handlers ──────────────────────────────────────
 
-  const handleNotificationReceived = (notification: Notifications.Notification) => {
+  const handleNotificationReceived = useCallback((notification: Notifications.Notification) => {
     console.log('[AppContext] Notification received:', notification.request.identifier);
     storeNotification(notification);
-  };
+  }, []);
 
-  const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
+  const handleNotificationResponse = useCallback((response: Notifications.NotificationResponse) => {
     console.log('[AppContext] Notification response:', response.notification.request.identifier);
 
     const data = response.notification.request.content.data;
@@ -617,9 +639,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (_navigationRef) {
       handleNavigation(data, _navigationRef);
     }
-  };
+  }, []);
 
-  const handleAppStateChange = (nextAppState: AppStateStatus) => {
+  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
     if (nextAppState === 'background') {
       if (keepAwakeRef) {
         keepAwakeRef.release().catch(() => {});
@@ -629,9 +651,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         performBackgroundNotificationSync().catch(() => {});
       }
     }
-  };
+  }, [keepAwakeRef, notificationSettings.allowBackgroundSync]);
 
-  const handleNavigation = (data: Record<string, unknown>, navigation: any) => {
+  const handleNavigation = useCallback((data: Record<string, unknown>, navigation: any) => {
     const type = data.type as string;
     const screen = data.screen as string;
     const params = data.params as Record<string, unknown> || {};
@@ -666,19 +688,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         break;
     }
-  };
+  }, []);
 
   // ─── Notification Storage ───────────────────────────────────────
 
-  const storeNotification = async (notification: Notifications.Notification) => {
+  const storeNotification = useCallback(async (notification: Notifications.Notification) => {
     try {
-      // Try Supabase first
       let history = [];
       const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
       if (stored) {
         history = JSON.parse(stored);
       } else {
-        // Fallback to AsyncStorage
         const asyncStored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
         if (asyncStored) {
           history = JSON.parse(asyncStored);
@@ -696,14 +716,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         history.shift();
       }
 
-      // Save to Supabase
       await setAppSetting(NOTIFICATION_HISTORY_KEY, JSON.stringify(history));
-      // Also save to AsyncStorage for backward compatibility
       await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(history));
     } catch (error) {
       console.warn('[AppContext] Failed to store notification:', error);
     }
-  };
+  }, []);
 
   // ─── Theme Functions ─────────────────────────────────────────────
 
@@ -903,12 +921,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getNotificationHistory = useCallback(async () => {
     try {
-      // Try Supabase first
       const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
       if (stored) {
         return JSON.parse(stored);
       }
-      // Fallback to AsyncStorage
       const asyncStored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
       return asyncStored ? JSON.parse(asyncStored) : [];
     } catch {
@@ -918,7 +934,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markNotificationRead = useCallback(async (id: string) => {
     try {
-      // Get current history
       let history = [];
       const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
       if (stored) {
@@ -934,9 +949,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         n.id === id ? { ...n, read: true } : n
       );
 
-      // Save to Supabase
       await setAppSetting(NOTIFICATION_HISTORY_KEY, JSON.stringify(updated));
-      // Also save to AsyncStorage for backward compatibility
       await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(updated));
     } catch (error) {
       console.warn('[AppContext] Mark read error:', error);
@@ -1007,29 +1020,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setCommunityScreen = useCallback((isComm: boolean) => {
     setIsCommunityScreen(isComm);
   }, []);
-
-  // ─── Cleanup ─────────────────────────────────────────────────────
-
-  useEffect(() => {
-    return () => {
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-        notificationListener.current = null;
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-        responseListener.current = null;
-      }
-      if (appStateListener.current) {
-        appStateListener.current.remove();
-        appStateListener.current = null;
-      }
-      if (keepAwakeRef) {
-        keepAwakeRef.release().catch(() => {});
-        setKeepAwakeRef(null);
-      }
-    };
-  }, [keepAwakeRef]);
 
   // ─── Context Value ──────────────────────────────────────────────
 
