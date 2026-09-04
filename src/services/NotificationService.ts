@@ -31,7 +31,7 @@ export interface NotificationPayload {
   body: string;
   data?: Record<string, unknown>;
   channelId?: NotificationChannels;
-  sound?: 'default' | boolean;
+  sound?: boolean;  // ✅ Changed from 'default' | boolean to boolean
   priority?: 'high' | 'normal' | 'low';
   badge?: number;
 }
@@ -80,11 +80,11 @@ class NotificationService {
         await this.setupAndroidChannels();
       }
 
-      // Set notification handler
+      // Set notification handler - ✅ FIXED: removed sound: 'default'
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
           shouldShowAlert: true,
-          shouldPlaySound: true,
+          shouldPlaySound: true,  // ✅ This enables sound without "default"
           shouldSetBadge: true,
         }),
       });
@@ -99,6 +99,7 @@ class NotificationService {
 
   /**
    * Setup Android notification channels
+   * ✅ FIXED: Removed sound: 'default' from all channels
    */
   private async setupAndroidChannels(): Promise<void> {
     try {
@@ -106,7 +107,7 @@ class NotificationService {
         id: string;
         name: string;
         importance: Notifications.AndroidImportance;
-        sound?: string;
+        sound?: boolean;  // ✅ Changed to boolean
       }[] = [
         {
           id: NOTIFICATION_CHANNELS.DEFAULT,
@@ -179,7 +180,8 @@ class NotificationService {
         await Notifications.setNotificationChannelAsync(channel.id, {
           name: channel.name,
           importance: channel.importance,
-          sound: channel.sound || 'default',
+          // ✅ FIXED: Removed sound: 'default', using null for system default
+          sound: null,  // Use null for default system sound
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#667eea',
         });
@@ -211,6 +213,7 @@ class NotificationService {
           title: options.title,
           body: options.body,
           data: options.data || {},
+          // ✅ FIXED: sound is now boolean
           sound: options.sound !== false && settings.soundEnabled,
           badge: options.badge || 1,
           ...(Platform.OS === 'android' && {
@@ -300,6 +303,7 @@ class NotificationService {
       title: titles[type] || titles.default,
       body: details || `Tap to open LittleLoom and track this activity.`,
       channelId: channelMap[type] || channelMap.default,
+      sound: true,  // ✅ Explicitly set sound to true
       data: {
         type: 'activity_reminder',
         screen: 'Timeline',
@@ -317,6 +321,7 @@ class NotificationService {
       title: `🏆 Achievement Unlocked!`,
       body: `${achievement}: ${description}`,
       channelId: NOTIFICATION_CHANNELS.ACHIEVEMENTS,
+      sound: true,  // ✅ Explicitly set sound to true
       data: { type: 'achievement_unlocked', screen: 'Achievements' },
     });
   }
@@ -329,6 +334,7 @@ class NotificationService {
       title: `💬 ${senderName}`,
       body: message.length > 60 ? message.substring(0, 60) + '...' : message,
       channelId: NOTIFICATION_CHANNELS.CHAT,
+      sound: true,  // ✅ Explicitly set sound to true
       data: { type: 'chat_message', screen: 'FamilyChat', chatId },
     });
   }
@@ -342,6 +348,7 @@ class NotificationService {
       body,
       channelId: NOTIFICATION_CHANNELS.SAFETY,
       priority: 'high',
+      sound: true,  // ✅ Explicitly set sound to true
       data: { type: 'safety_alert', screen: 'Safety' },
     });
   }
@@ -363,6 +370,7 @@ class NotificationService {
       title: `✅ Activity Logged`,
       body: messages[activityType] || messages.default,
       channelId: NOTIFICATION_CHANNELS.ACTIVITIES,
+      sound: true,  // ✅ Explicitly set sound to true
       data: { type: 'activity_complete', screen: 'Timeline' },
     });
   }
@@ -376,6 +384,7 @@ class NotificationService {
       body: `Your ${streakDays}-day streak ends in ${hoursLeft} hours! Log an activity now.`,
       channelId: NOTIFICATION_CHANNELS.STREAKS,
       priority: 'high',
+      sound: true,  // ✅ Explicitly set sound to true
       data: { type: 'streak_reminder', screen: 'Timeline' },
     });
   }
@@ -389,6 +398,7 @@ class NotificationService {
       body: `Only ${hoursLeft} hours left for your ${streakDays}-day streak! Tap to log now!`,
       channelId: NOTIFICATION_CHANNELS.STREAKS,
       priority: 'high',
+      sound: true,  // ✅ Explicitly set sound to true
       data: { type: 'streak_urgent', screen: 'Timeline' },
     });
   }
@@ -401,6 +411,7 @@ class NotificationService {
       title: `📊 Daily Summary for ${babyName}`,
       body: summary,
       channelId: NOTIFICATION_CHANNELS.DEFAULT,
+      sound: true,  // ✅ Explicitly set sound to true
       data: { type: 'daily_summary', screen: 'Timeline' },
     });
   }

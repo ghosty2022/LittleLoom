@@ -405,6 +405,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const [isNavigating, setIsNavigating] = useState(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [isCheckingSeen, setIsCheckingSeen] = useState(true);
+  const [isReady, setIsReady] = useState(false);
 
   const scrollX = useSharedValue(0);
   const globalTime = useSharedValue(0);
@@ -445,14 +446,24 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         ]);
         if (!cancelled) {
           if (complete === 'true' || seen === 'true') {
-            navigation.replace('Login');
+            // ✅ FIXED: Use setTimeout to ensure navigation is ready
+            setTimeout(() => {
+              if (navigation && navigation.replace) {
+                navigation.replace('Login');
+              }
+            }, 100);
             return;
           }
           setIsCheckingSeen(false);
+          // ✅ Mark as ready after check completes
+          setTimeout(() => setIsReady(true), 100);
         }
       } catch (e) {
         console.warn('Failed to check onboarding status:', e);
-        if (!cancelled) setIsCheckingSeen(false);
+        if (!cancelled) {
+          setIsCheckingSeen(false);
+          setTimeout(() => setIsReady(true), 100);
+        }
       }
     };
     checkOnboardingStatus();
@@ -479,7 +490,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
 
   // ─── AUTO-PLAY ───────────────────────────────────────────────
   useEffect(() => {
-    if (!isAutoPlaying || isNavigating || isCheckingSeen) {
+    if (!isAutoPlaying || isNavigating || isCheckingSeen || !isReady) {
       if (autoPlayTimerRef.current) {
         clearTimeout(autoPlayTimerRef.current);
         autoPlayTimerRef.current = null;
@@ -506,7 +517,7 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
         autoPlayTimerRef.current = null;
       }
     };
-  }, [currentIndex, isAutoPlaying, isNavigating, isCheckingSeen]);
+  }, [currentIndex, isAutoPlaying, isNavigating, isCheckingSeen, isReady]);
 
   // ─── SCROLL HANDLER ──────────────────────────────────────────
   const scrollHandler = useAnimatedScrollHandler({
@@ -554,7 +565,13 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
     } catch (e) {
       console.warn('Failed to persist onboarding state:', e);
     }
-    navigation.replace('Login');
+    
+    // ✅ FIXED: Use setTimeout to ensure navigation is ready
+    setTimeout(() => {
+      if (navigation && navigation.replace) {
+        navigation.replace('Login');
+      }
+    }, 100);
   }, [isNavigating, navigation]);
 
   const handleSkip = useCallback(() => {
@@ -634,7 +651,8 @@ export default function OnboardingScreen({ navigation }: { navigation: any }) {
   const currentColors = currentSlide?.colors || ['#667eea', '#764ba2'];
   const isFirstSlide = currentIndex === 0;
 
-  if (isCheckingSeen) {
+  // ✅ FIXED: Show loading until ready
+  if (isCheckingSeen || !isReady) {
     return (
       <SafeAreaView style={[styles.container, styles.loadingContainer]}>
         <LinearGradient

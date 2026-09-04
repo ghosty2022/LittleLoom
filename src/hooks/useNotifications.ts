@@ -70,7 +70,7 @@ export async function initNotifications() {
             importance: config.importance,
             vibrationPattern: config.vibrationPattern,
             lightColor: config.lightColor,
-            sound: 'default',
+            sound: 'true',
           })
         )
       );

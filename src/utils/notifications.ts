@@ -1,22 +1,47 @@
-import * as Notifications from 'expo-notifications';
+// src/services/NotificationService.ts
+// Add this to the initialize method
 
-export async function initNotifications() {
+async initialize(): Promise<void> {
+  if (this.isInitialized) return;
+
   try {
-    const { status } = await Notifications.requestPermissionsAsync();
+    // Request permissions
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,  // ✅ This enables sound
+        allowAnnouncements: true,
+      },
+    });
+
     if (status !== 'granted') {
-      console.log('Notification permissions not granted');
+      console.warn('[NotificationService] Permission not granted');
     }
-    
+
+    // Set notification handler - NO 'sound: default'
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
+        shouldPlaySound: true,  // ✅ This is correct
+        shouldSetBadge: true,
       }),
     });
+
+    // Android channels - NO 'sound: default'
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'General Notifications',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: null,  // ✅ Use null, not 'default'
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#667eea',
+      });
+    }
+
+    this.isInitialized = true;
+    console.log('[NotificationService] Initialized successfully');
   } catch (error) {
-    console.warn('Error initializing notifications:', error);
+    console.warn('[NotificationService] Initialization error:', error);
   }
 }
