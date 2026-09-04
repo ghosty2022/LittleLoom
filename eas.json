@@ -12,15 +12,20 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_USE_FAST_RESOLVER": "1"
+        "EXPO_USE_FAST_RESOLVER": "1",
+        "EXPO_DOCTOR_SKIP": "1"
       }
     },
-    "development-simulator": {
+    "dev-fast": {
       "node": "22.13.0",
       "developmentClient": true,
       "distribution": "internal",
-      "ios": {
-        "simulator": true
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_USE_FAST_RESOLVER": "1",
+        "EXPO_DOCTOR_SKIP": "1"
       }
     },
     "preview": {
