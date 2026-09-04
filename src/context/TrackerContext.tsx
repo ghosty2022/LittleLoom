@@ -67,7 +67,6 @@ interface TrackerState {
   entries: TrackerEntry[];
   entriesByTracker: Record<string, TrackerEntry[]>;
   lastTrackerId: string | null;
-  // REMOVED: currentBabyId - now read from BabyContext
   progressive: ProgressiveTrackerState;
 }
 
@@ -151,7 +150,6 @@ interface TrackerContextType extends Omit<TrackerState, 'currentBabyId'> {
   refreshTrackers: () => Promise<void>;
   refreshEntries: () => Promise<void>;
   
-  // NEW: Get the current baby ID from BabyContext
   getCurrentBabyId: () => string | null;
 }
 
@@ -416,36 +414,97 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const initRef = useRef(false);
   const dismissedInsightIdsRef = useRef<Set<string>>(new Set());
   const currentBabyIdRef = useRef<string | null>(null);
+  const isRefreshingRef = useRef(false);
+  const subscriptionRef = useRef<(() => void) | null>(null);
 
   // ─── Subscribe to baby changes from BabyContext ─────────────────────
+  // FIXED: Proper cleanup and loop prevention
   useEffect(() => {
+    // Clean up previous subscription
+    if (subscriptionRef.current) {
+      subscriptionRef.current();
+      subscriptionRef.current = null;
+    }
+
+    // Create new subscription
     const unsubscribe = subscribeToBabyChanges((babyId) => {
       console.log('[TrackerContext] Baby changed to:', babyId);
-      currentBabyIdRef.current = babyId;
-      // Auto-refresh entries when baby changes
-      if (babyId) {
-        refreshEntries();
-      } else {
-        setState(prev => ({
-          ...prev,
-          entries: [],
-          entriesByTracker: {},
-        }));
+      
+      // Only update if baby actually changed and we're not already refreshing
+      if (babyId !== currentBabyIdRef.current && !isRefreshingRef.current) {
+        currentBabyIdRef.current = babyId;
+        // Use setTimeout to break the render cycle and prevent infinite loops
+        setTimeout(() => {
+          if (babyId) {
+            refreshEntriesInternal();
+          } else {
+            setState(prev => ({
+              ...prev,
+              entries: [],
+              entriesByTracker: {},
+            }));
+          }
+        }, 0);
       }
     });
 
-    // Initial sync
+    subscriptionRef.current = unsubscribe;
+
+    // Initial sync - get the current baby once
     const initialBabyId = getBabyIdFromContext();
-    if (initialBabyId) {
+    if (initialBabyId && !currentBabyIdRef.current) {
       currentBabyIdRef.current = initialBabyId;
     }
 
-    return unsubscribe;
-  }, [subscribeToBabyChanges, getBabyIdFromContext]);
+    // Cleanup on unmount
+    return () => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+    };
+  }, []); // Empty deps - only run once on mount
 
   // ─── Detect initial baby ────────────────────────────────────────────
   const getCurrentBabyId = useCallback((): string | null => {
     return currentBabyIdRef.current;
+  }, []);
+
+  // ─── Internal refresh function ──────────────────────────────────────
+  const refreshEntriesInternal = useCallback(async () => {
+    const babyId = currentBabyIdRef.current;
+    if (!babyId) {
+      setState(prev => ({
+        ...prev,
+        entries: [],
+        entriesByTracker: {},
+      }));
+      return;
+    }
+
+    if (isRefreshingRef.current) {
+      console.log('[TrackerContext] Refresh already in progress, skipping');
+      return;
+    }
+
+    isRefreshingRef.current = true;
+
+    try {
+      const entries = await loadEntries(babyId);
+      const safeEntries = Array.isArray(entries) ? entries : [];
+      const entriesByTracker: Record<string, TrackerEntry[]> = {};
+      safeEntries.forEach(entry => {
+        if (!entriesByTracker[entry.trackerId]) {
+          entriesByTracker[entry.trackerId] = [];
+        }
+        entriesByTracker[entry.trackerId].push(entry);
+      });
+      setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
+    } catch (err) {
+      console.error('[TrackerContext] refreshEntriesInternal failed:', err);
+    } finally {
+      isRefreshingRef.current = false;
+    }
   }, []);
 
   /* ─── Permission helpers ──────────────────────────────────────────── */
@@ -1421,30 +1480,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [loadCustomTrackers]);
 
   const refreshEntries = useCallback(async () => {
-    const babyId = getCurrentBabyId();
-    if (!babyId) {
-      setState(prev => ({
-        ...prev,
-        entries: [],
-        entriesByTracker: {},
-      }));
-      return;
-    }
-    try {
-      const entries = await loadEntries(babyId);
-      const safeEntries = Array.isArray(entries) ? entries : [];
-      const entriesByTracker: Record<string, TrackerEntry[]> = {};
-      safeEntries.forEach(entry => {
-        if (!entriesByTracker[entry.trackerId]) {
-          entriesByTracker[entry.trackerId] = [];
-        }
-        entriesByTracker[entry.trackerId].push(entry);
-      });
-      setState(prev => ({ ...prev, entries: safeEntries, entriesByTracker }));
-    } catch (err) {
-      console.error('[TrackerContext] refreshEntries failed:', err);
-    }
-  }, [getCurrentBabyId, loadEntries]);
+    await refreshEntriesInternal();
+  }, [refreshEntriesInternal]);
 
   /* ─── Memoized value ────────────────────────────────────────────── */
 
@@ -1493,7 +1530,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     syncFromBabyContext,
     refreshTrackers,
     refreshEntries,
-    // NEW: Pass through the baby ID getter
     getCurrentBabyId,
   }), [
     state,
