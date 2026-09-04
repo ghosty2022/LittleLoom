@@ -2,30 +2,712 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Community - LittleLoom Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5" />
+    <title>💬 Community - LittleLoom Admin</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/admin.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <style>
+        /* ─── ROOT VARIABLES ────────────────────────────────────────────── */
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --primary-gradient: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
+            --secondary: #8b5cf6;
+            --accent: #14b8a6;
+            --bg-primary: #f0f4ff;
+            --bg-card: #ffffff;
+            --bg-sidebar: #0f172a;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --text-white: #ffffff;
+            --border: rgba(0, 0, 0, 0.06);
+            --border-dark: rgba(255, 255, 255, 0.06);
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.07);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+            --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12);
+            --radius: 14px;
+            --radius-sm: 10px;
+            --radius-lg: 20px;
+            --radius-xl: 28px;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            --sidebar-width: 260px;
+            --header-height: 60px;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --blur: blur(16px);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary-light);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+
+        .app {
+            display: flex;
+            min-height: 100vh;
+            background: var(--bg-primary);
+        }
+
+        /* ─── SIDEBAR ────────────────────────────────────────────────────── */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-sidebar);
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-y: auto;
+            overflow-x: hidden;
+            border-right: 1px solid var(--border-dark);
+        }
+
+        .sidebar-brand {
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-dark);
+            min-height: var(--header-height);
+            flex-shrink: 0;
+            cursor: pointer;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.04));
+            transition: var(--transition);
+        }
+        .sidebar-brand:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.08));
+        }
+
+        .brand-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+            transition: var(--transition);
+        }
+        .sidebar-brand:hover .brand-icon {
+            transform: scale(1.05) rotate(-3deg);
+        }
+
+        .logo-title {
+            font-weight: 800;
+            font-size: 17px;
+            color: var(--text-white);
+            letter-spacing: -0.3px;
+        }
+        .logo-sub {
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.35);
+            font-size: 10px;
+            display: block;
+            letter-spacing: 0.3px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 8px 12px 20px;
+            overflow-y: auto;
+        }
+
+        .sidebar-nav-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: rgba(255, 255, 255, 0.2);
+            padding: 16px 12px 6px;
+            margin-top: 4px;
+        }
+
+        .sidebar-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            color: rgba(255, 255, 255, 0.55);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all var(--transition);
+            font-size: 13px;
+            font-weight: 500;
+            position: relative;
+            margin-bottom: 1px;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+
+        .sidebar-nav-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-white);
+            transform: translateX(4px);
+        }
+        .sidebar-nav-item.active {
+            background: rgba(99, 102, 241, 0.15);
+            color: #a5b4fc;
+        }
+        .sidebar-nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 20px;
+            background: var(--primary);
+            border-radius: 0 4px 4px 0;
+        }
+        .sidebar-nav-item .icon {
+            font-size: 16px;
+            width: 24px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .sidebar-nav-item .badge {
+            margin-left: auto;
+            padding: 1px 10px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 700;
+            background: var(--primary);
+            color: #fff;
+        }
+        .sidebar-nav-item .badge.danger {
+            background: #ef4444;
+        }
+        .sidebar-nav-item .badge.success {
+            background: #22c55e;
+        }
+        .sidebar-nav-item .badge.warning {
+            background: #f59e0b;
+        }
+        .sidebar-nav-item .badge.info {
+            background: #3b82f6;
+        }
+        .sidebar-nav-item .badge.purple {
+            background: #8b5cf6;
+        }
+
+        .sidebar-footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-dark);
+            flex-shrink: 0;
+        }
+        .sidebar-footer .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .sidebar-footer .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            color: #fff;
+            flex-shrink: 0;
+            position: relative;
+        }
+        .sidebar-footer .user-avatar .online-dot {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #22c55e;
+            border: 2px solid var(--bg-sidebar);
+        }
+        .sidebar-footer .user-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-white);
+        }
+        .sidebar-footer .user-email {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+        .sidebar-footer .user-role {
+            font-size: 10px;
+            color: var(--primary-light);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 1px;
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 999;
+            backdrop-filter: blur(4px);
+        }
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* ─── MAIN ──────────────────────────────────────────────────────── */
+        .main {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ─── TOPBAR ────────────────────────────────────────────────────── */
+        .topbar {
+            height: var(--header-height);
+            background: var(--glass-bg);
+            backdrop-filter: var(--blur);
+            -webkit-backdrop-filter: var(--blur);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .topbar-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 4px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .topbar-menu-btn:hover {
+            background: var(--bg-primary);
+        }
+
+        .topbar-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .topbar-title .sub {
+            font-weight: 400;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        .topbar-title .page-icon {
+            font-size: 20px;
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .topbar-status-unified {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 4px 16px;
+            background: var(--bg-primary);
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            transition: var(--transition);
+        }
+        .topbar-status-unified:hover {
+            border-color: var(--primary-light);
+        }
+        .topbar-status-unified .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            flex-shrink: 0;
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        .topbar-status-unified .dot.warning {
+            background: #f59e0b;
+        }
+        .topbar-status-unified .dot.danger {
+            background: #ef4444;
+            animation: pulse-dot 0.5s infinite;
+        }
+        .topbar-status-unified .sep {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+        }
+        .topbar-status-unified .session-time {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+        }
+        .topbar-status-unified .user-email-display {
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .topbar-actions .btn-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: none;
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            position: relative;
+        }
+        .topbar-actions .btn-icon:hover {
+            background: var(--primary);
+            color: #fff;
+            transform: scale(1.05);
+        }
+        .topbar-actions .btn-icon .notif-dot {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+            border: 2px solid var(--bg-card);
+        }
+
+        /* ─── BUTTONS ────────────────────────────────────────────────────── */
+        .btn {
+            padding: 8px 18px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background: var(--primary-gradient);
+            color: #fff;
+            box-shadow: 0 2px 12px rgba(99, 102, 241, 0.3);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4);
+        }
+        .btn-secondary {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border);
+        }
+        .btn-secondary:hover {
+            background: var(--bg-card);
+            border-color: var(--primary);
+            color: var(--primary);
+            transform: translateY(-1px);
+        }
+        .btn-danger {
+            background: #ef4444;
+            color: #fff;
+            box-shadow: 0 2px 12px rgba(239, 68, 68, 0.25);
+        }
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(239, 68, 68, 0.35);
+        }
+        .btn-success {
+            background: #22c55e;
+            color: #fff;
+            box-shadow: 0 2px 12px rgba(34, 197, 94, 0.25);
+        }
+        .btn-success:hover {
+            background: #16a34a;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(34, 197, 94, 0.35);
+        }
+        .btn-warning {
+            background: #f59e0b;
+            color: #fff;
+            box-shadow: 0 2px 12px rgba(245, 158, 11, 0.25);
+        }
+        .btn-warning:hover {
+            background: #d97706;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(245, 158, 11, 0.35);
+        }
+        .btn-outline {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border);
+        }
+        .btn-outline:hover {
+            background: var(--bg-primary);
+            border-color: var(--primary);
+            color: var(--primary);
+            transform: translateY(-1px);
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+        }
+        .btn-ghost:hover {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        .btn-sm {
+            padding: 5px 14px;
+            font-size: 11px;
+            border-radius: 8px;
+        }
+        .btn-xs {
+            padding: 3px 10px;
+            font-size: 10px;
+            border-radius: 6px;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+        .btn .btn-icon-inner {
+            font-size: 14px;
+        }
+
+        /* ─── PAGE CONTENT ───────────────────────────────────────────────── */
+        .page-content {
+            padding: 24px 28px;
+            animation: fadeInPage 0.4s ease-out;
+            flex: 1;
+        }
+
+        @keyframes fadeInPage {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ─── PAGE HERO ────────────────────────────────────────────────── */
         .page-hero {
-            background: linear-gradient(135deg, #0f172a, #1e293b);
-            border-radius: var(--radius);
+            background: var(--primary-gradient);
+            border-radius: var(--radius-lg);
             padding: 28px 32px;
             color: #fff;
             margin-bottom: 24px;
             position: relative;
             overflow: hidden;
+            box-shadow: 0 4px 24px rgba(99, 102, 241, 0.25);
         }
-        .page-hero::after { content: '💬'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
-        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
-        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
-        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
-        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
-        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
-        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
+        .page-hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 400px;
+            height: 400px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        .page-hero::after {
+            content: '💬';
+            position: absolute;
+            right: 28px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 72px;
+            opacity: 0.08;
+            pointer-events: none;
+        }
+        .page-hero h1 {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            position: relative;
+            z-index: 1;
+        }
+        .page-hero p {
+            opacity: 0.85;
+            font-size: 14px;
+            margin-top: 4px;
+            position: relative;
+            z-index: 1;
+        }
+        .page-hero .stats-row {
+            display: flex;
+            gap: 32px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
+        }
+        .page-hero .stats-row .stat {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 10px;
+            transition: var(--transition);
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(4px);
+        }
+        .page-hero .stats-row .stat:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: scale(1.02);
+        }
+        .page-hero .stats-row .stat .num {
+            font-size: 28px;
+            font-weight: 800;
+        }
+        .page-hero .stats-row .stat .label {
+            font-size: 13px;
+            opacity: 0.75;
+        }
 
+        /* ─── FILTER BAR ────────────────────────────────────────────────── */
+        .filter-bar-modern {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+            transition: var(--transition);
+        }
+        .filter-bar-modern:hover {
+            box-shadow: var(--shadow-md);
+        }
+        .filter-bar-modern input,
+        .filter-bar-modern select {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: var(--transition);
+            flex: 1;
+            min-width: 120px;
+            outline: none;
+        }
+        .filter-bar-modern input:focus,
+        .filter-bar-modern select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+        }
+        .filter-bar-modern .filter-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filter-bar-modern .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ─── POST CARDS ────────────────────────────────────────────────── */
         .post-card {
             background: var(--bg-card);
             border-radius: var(--radius);
@@ -35,92 +717,555 @@
             transition: all var(--transition);
             box-shadow: var(--shadow);
         }
-        .post-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
-        .post-card .header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
-        .post-card .author { display: flex; align-items: center; gap: 10px; }
+        .post-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .post-card .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .post-card .author {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
         .post-card .author .avatar {
-            width: 36px; height: 36px; border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 700; color: #fff; font-size: 14px; flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #fff;
+            font-size: 14px;
+            flex-shrink: 0;
+            overflow: hidden;
         }
-        .post-card .author .avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-        .post-card .author .name { font-weight: 600; font-size: 14px; }
-        .post-card .author .handle { font-size: 12px; color: var(--text-muted); }
-        .post-card .author .verified { color: #3b82f6; font-size: 14px; }
-        .post-card .content { margin-top: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-        .post-card .content .images { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 8px; }
-        .post-card .content .images img { width: 100%; height: 80px; object-fit: cover; border-radius: var(--radius-sm); }
-        .post-card .meta { display: flex; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
-        .post-card .meta span { display: flex; align-items: center; gap: 4px; }
-        .post-card .actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
-        .post-card .actions .btn-sm { padding: 4px 14px; font-size: 11px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
-        .post-card .actions .btn-view { background: var(--bg-primary); color: var(--text-secondary); }
-        .post-card .actions .btn-view:hover { background: var(--primary); color: #fff; }
-        .post-card .actions .btn-delete { background: #fee2e2; color: #dc2626; }
-        .post-card .actions .btn-delete:hover { background: #fecaca; }
-        .post-card .actions .btn-moderate { background: #fef3c7; color: #d97706; }
-        .post-card .actions .btn-moderate:hover { background: #fde68a; }
-        .post-card .actions .btn-approve { background: #dcfce7; color: #16a34a; }
-        .post-card .actions .btn-approve:hover { background: #bbf7d0; }
-        .post-card .topic-tag { display: inline-flex; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--bg-primary); color: var(--text-secondary); }
-        .post-card .status-badge { display: inline-flex; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-        .post-card .status-badge.pending { background: #fef3c7; color: #d97706; }
-        .post-card .status-badge.approved { background: #dcfce7; color: #16a34a; }
-        .post-card .status-badge.rejected { background: #fee2e2; color: #dc2626; }
-        .post-card .status-badge.flagged { background: #fecaca; color: #b91c1c; }
+        .post-card .author .avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .post-card .author .name {
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .post-card .author .name .verified {
+            color: #3b82f6;
+            font-size: 14px;
+        }
+        .post-card .author .handle {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
 
-        .filter-bar-modern {
-            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
-            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
-            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+        .post-card .topic-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            background: var(--bg-primary);
+            color: var(--text-secondary);
         }
-        .filter-bar-modern select, .filter-bar-modern input {
-            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
-            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
-            color: var(--text-primary); transition: var(--transition);
+        .post-card .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
         }
-        .filter-bar-modern select:focus, .filter-bar-modern input:focus {
-            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        .post-card .status-badge.pending {
+            background: #fef3c7;
+            color: #d97706;
         }
-        .filter-bar-modern .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .post-card .status-badge.approved {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .post-card .status-badge.rejected {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .post-card .status-badge.flagged {
+            background: #fecaca;
+            color: #b91c1c;
+        }
+        .post-card .status-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .post-card .status-badge.pending .dot {
+            background: #f59e0b;
+        }
+        .post-card .status-badge.approved .dot {
+            background: #22c55e;
+        }
+        .post-card .status-badge.rejected .dot {
+            background: #ef4444;
+        }
+        .post-card .status-badge.flagged .dot {
+            background: #dc2626;
+        }
 
-        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
-        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-        .empty-state-modern p { font-size: 14px; }
+        .post-card .content {
+            margin-top: 10px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .post-card .content .images {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .post-card .content .images img {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            border-radius: var(--radius-sm);
+        }
+
+        .post-card .meta {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+        }
+        .post-card .meta span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .post-card .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+        .post-card .actions .btn-sm {
+            padding: 4px 14px;
+            font-size: 11px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .post-card .actions .btn-view {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+        }
+        .post-card .actions .btn-view:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+        .post-card .actions .btn-approve {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .post-card .actions .btn-approve:hover {
+            background: #bbf7d0;
+        }
+        .post-card .actions .btn-reject {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .post-card .actions .btn-reject:hover {
+            background: #fecaca;
+        }
+        .post-card .actions .btn-flag {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .post-card .actions .btn-flag:hover {
+            background: #fde68a;
+        }
+        .post-card .actions .btn-delete {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .post-card .actions .btn-delete:hover {
+            background: #fecaca;
+        }
+
+        /* ─── EMPTY STATE ───────────────────────────────────────────────── */
+        .empty-state-modern {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-modern .emoji {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        .empty-state-modern h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        .empty-state-modern p {
+            font-size: 14px;
+        }
+
+        /* ─── MODAL ─────────────────────────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(8px);
+            animation: modalFade 0.3s ease;
+            padding: 20px;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        @keyframes modalFade {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            max-width: 520px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-xl);
+            animation: modalSlide 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        @keyframes modalSlide {
+            from {
+                transform: translateY(30px) scale(0.95);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-card);
+            z-index: 2;
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        }
+        .modal-header h2 {
+            font-size: 18px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .modal-close:hover {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        .modal-body {
+            padding: 24px;
+            max-height: calc(90vh - 140px);
+            overflow-y: auto;
+        }
+        .modal-footer {
+            padding: 14px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            position: sticky;
+            bottom: 0;
+            background: var(--bg-card);
+            border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+        }
+
+        /* ─── TOAST ─────────────────────────────────────────────────────── */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+            max-width: 90vw;
+        }
+        .toast {
+            pointer-events: auto;
+            background: var(--bg-card);
+            padding: 12px 24px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-xl);
+            font-weight: 600;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-left: 4px solid var(--primary);
+            animation: slideUp 0.3s ease-out;
+            min-width: 200px;
+            max-width: 100%;
+        }
+        .toast.error {
+            border-left-color: #ef4444;
+        }
+        .toast.success {
+            border-left-color: #22c55e;
+        }
+        .toast.warning {
+            border-left-color: #f59e0b;
+        }
+        .toast.info {
+            border-left-color: #3b82f6;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* ─── SESSION BANNER ───────────────────────────────────────────── */
+        .session-banner {
+            display: none;
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9998;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 16px 24px;
+            box-shadow: var(--shadow-xl);
+            border: 1px solid #f59e0b;
+            max-width: 420px;
+            width: 90%;
+            text-align: center;
+            animation: slideUp 0.3s ease-out;
+        }
+        .session-banner.show {
+            display: block;
+        }
+        .session-banner .title {
+            font-weight: 700;
+            font-size: 15px;
+            color: #d97706;
+        }
+        .session-banner .message {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin: 4px 0 12px;
+        }
+        .session-banner .actions {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        /* ─── RESPONSIVE ────────────────────────────────────────────────── */
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main {
+                margin-left: 0;
+            }
+            .topbar-menu-btn {
+                display: block;
+            }
+            .topbar {
+                padding: 0 16px;
+            }
+            .topbar-status-unified .user-email-display {
+                display: none;
+            }
+        }
 
         @media (max-width: 768px) {
-            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
-            .post-card .header { flex-direction: column; }
-            .filter-bar-modern { flex-direction: column; }
-            .filter-bar-modern .btn-group { width: 100%; }
-            .filter-bar-modern .btn-group button { flex: 1; }
+            .page-content {
+                padding: 16px;
+            }
+            .page-hero {
+                padding: 20px;
+                border-radius: var(--radius);
+            }
+            .page-hero::after {
+                font-size: 48px;
+                right: 16px;
+            }
+            .page-hero h1 {
+                font-size: 20px;
+            }
+            .page-hero .stats-row {
+                gap: 12px;
+            }
+            .page-hero .stats-row .stat .num {
+                font-size: 22px;
+            }
+            .topbar-title {
+                font-size: 15px;
+            }
+            .topbar-title .sub {
+                display: none;
+            }
+            .topbar-status-unified .session-time {
+                display: none;
+            }
+            .topbar-status-unified {
+                padding: 4px 10px;
+                gap: 8px;
+            }
+            .filter-bar-modern {
+                flex-direction: column;
+                padding: 14px;
+            }
+            .filter-bar-modern .filter-group {
+                width: 100%;
+            }
+            .filter-bar-modern .btn-group {
+                width: 100%;
+            }
+            .filter-bar-modern .btn-group button {
+                flex: 1;
+            }
+            .post-card .header {
+                flex-direction: column;
+            }
+            .post-card .actions .btn-sm {
+                flex: 1;
+                justify-content: center;
+            }
+            .modal {
+                max-width: 100%;
+                margin: 10px;
+                border-radius: var(--radius);
+            }
+            .topbar-actions .btn-icon {
+                width: 30px;
+                height: 30px;
+                font-size: 13px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .page-hero .stats-row .stat {
+                padding: 4px 8px;
+            }
+            .page-hero .stats-row .stat .num {
+                font-size: 18px;
+            }
+            .page-hero .stats-row .stat .label {
+                font-size: 11px;
+            }
+            .post-card {
+                padding: 16px;
+            }
+            .post-card .content .images {
+                grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+            }
+            .post-card .content .images img {
+                height: 60px;
+            }
+            .modal-header h2 {
+                font-size: 16px;
+            }
+            .modal-body {
+                padding: 16px;
+            }
+            .modal-footer {
+                padding: 12px 16px;
+                flex-wrap: wrap;
+            }
+            .modal-footer .btn {
+                flex: 1;
+                justify-content: center;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="session-check-overlay" id="sessionCheckOverlay">
-        <div class="spinner"></div>
-        <div class="message">🔄 Validating session...</div>
-    </div>
-    <div class="session-banner" id="sessionBanner">
-        <span>⏰</span>
-        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
-        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
-        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
-    </div>
-
     <div class="app">
+        <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
+            <div class="sidebar-brand" onclick="window.navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
-                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+                <div>
+                    <div class="logo-title">LittleLoom</div>
+                    <div class="logo-sub">Enterprise Console</div>
+                </div>
             </div>
             <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
-                    <div class="user-avatar" id="sidebarAvatar">A</div>
+                    <div class="user-avatar" id="sidebarAvatar">
+                        A
+                        <span class="online-dot"></span>
+                    </div>
                     <div>
                         <div class="user-name" id="sidebarName">Admin</div>
                         <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
@@ -129,69 +1274,115 @@
                 </div>
             </div>
         </aside>
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window.toggleSidebar(false)"></div>
+
+        <!-- ─── SESSION BANNER ──────────────────────────────────────────── -->
+        <div class="session-banner" id="sessionBanner">
+            <div class="title">⏰ Session Expiring</div>
+            <div class="message">Your session will expire in <strong id="sessionCountdown">30</strong> seconds. Click extend to stay logged in.</div>
+            <div class="actions">
+                <button class="btn btn-primary btn-sm" onclick="window.extendSession()">🔄 Extend Session</button>
+                <button class="btn btn-danger btn-sm" onclick="window.handleLogout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <!-- ─── MODAL ────────────────────────────────────────────────── -->
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window.modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
+                <div class="modal-header">
+                    <h2 id="modalTitle">Modal</h2>
+                    <button class="modal-close" onclick="window.modalCancel()">✕</button>
+                </div>
                 <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
+                <div class="modal-footer" id="modalFooter">
+                    <button class="btn btn-secondary" id="modalCancelBtn" onclick="window.modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window.modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
+        <!-- ─── MAIN ────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
-                    <div><div class="topbar-title" id="pageTitle">Community <span class="sub">| Posts & Engagement</span></div></div>
+                    <button class="topbar-menu-btn" onclick="window.toggleSidebar()">☰</button>
+                    <div class="topbar-title">
+                        <span class="page-icon">💬</span>
+                        Community
+                        <span class="sub">| Posts & Engagement</span>
+                    </div>
                 </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status-unified">
+                        <span class="dot" id="statusDot"></span>
+                        <span id="connectionStatus">Connected</span>
+                        <span class="sep"></span>
+                        <span class="user-email-display" id="topbarUserEmail">admin@littleloom.com</span>
+                        <span class="sep"></span>
+                        <span class="session-time" id="topbarSessionTime">⏱️ 30:00</span>
+                    </div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="window.loadCommunity && window.loadCommunity()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
+                        <button class="btn-icon" onclick="window.loadCommunity()" title="Refresh">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn-icon" onclick="window.handleLogout()" title="Logout">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
                     </div>
                 </div>
             </header>
 
-            <div class="page-content active">
-                <div class="status-bar" id="statusBar">
-                    <span>✅ Ready</span>
-                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
-                </div>
-
+            <div class="page-content">
+                <!-- ─── PAGE HERO ────────────────────────────────────────── -->
                 <div class="page-hero">
                     <h1>💬 Community</h1>
                     <p>Monitor and manage community posts and engagement</p>
                     <div class="stats-row">
-                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Posts</span></div>
-                        <div class="stat"><span class="num" id="statToday">0</span><span class="label">Today</span></div>
-                        <div class="stat"><span class="num" id="statComments">0</span><span class="label">Comments</span></div>
-                        <div class="stat"><span class="num" id="statLikes">0</span><span class="label">Likes</span></div>
+                        <div class="stat" onclick="window.filterByStatus('all')">
+                            <span class="num" id="statTotal">0</span>
+                            <span class="label">Total Posts</span>
+                        </div>
+                        <div class="stat">
+                            <span class="num" id="statToday">0</span>
+                            <span class="label">Today</span>
+                        </div>
+                        <div class="stat">
+                            <span class="num" id="statComments">0</span>
+                            <span class="label">Comments</span>
+                        </div>
+                        <div class="stat">
+                            <span class="num" id="statLikes">0</span>
+                            <span class="label">Likes</span>
+                        </div>
+                        <div class="stat" onclick="window.filterByStatus('pending')">
+                            <span class="num" id="statPending">0</span>
+                            <span class="label">Pending Review</span>
+                        </div>
                     </div>
                 </div>
 
+                <!-- ─── FILTER BAR ────────────────────────────────────────── -->
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search posts..." id="searchInput" oninput="window.filterPosts && window.filterPosts()">
-                    <select id="statusFilter" onchange="window.filterPosts && window.filterPosts()">
-                        <option value="all">All Status</option>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
-                        <option value="flagged">Flagged</option>
-                    </select>
-                    <select id="topicFilter" onchange="window.filterPosts && window.filterPosts()">
-                        <option value="all">All Topics</option>
-                    </select>
+                    <div class="filter-group">
+                        <input type="text" placeholder="🔍 Search posts..." id="searchInput" oninput="window.filterPosts()">
+                        <select id="statusFilter" onchange="window.filterPosts()">
+                            <option value="all">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="flagged">Flagged</option>
+                        </select>
+                        <select id="topicFilter" onchange="window.filterPosts()">
+                            <option value="all">All Topics</option>
+                        </select>
+                    </div>
                     <div class="btn-group">
-                        <button class="btn btn-outline" onclick="window.loadCommunity && window.loadCommunity()">🔄 Refresh</button>
+                        <button class="btn btn-secondary" onclick="window.loadCommunity()"><i class="fas fa-sync-alt"></i> Refresh</button>
                     </div>
                 </div>
 
+                <!-- ─── POSTS CONTAINER ───────────────────────────────────── -->
                 <div id="postsContainer">
                     <div class="empty-state-modern">
                         <div class="emoji">💬</div>
@@ -205,39 +1396,416 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin-base.js"></script>
-    <script src="/js/page-init.js"></script>
-
     <script>
+        // ─── STATE ──────────────────────────────────────────────────────────
         let postsCache = [];
         let topicsCache = [];
         let currentFiltered = [];
+        let supabase = null;
+        let session = null;
+        let currentUserRole = 'guest';
+        let sessionTimer = null;
+        let sessionTimeRemaining = 30 * 60;
+        let sessionWarningShown = false;
 
+        // ─── CONFIG ──────────────────────────────────────────────────────────
+        const CONFIG = {
+            SUPABASE_URL: 'https://qoozrrljpgsyhxfqxnzf.supabase.co',
+            SUPABASE_ANON_KEY: 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm',
+            SUPER_ADMIN_USER_ID: 'a3f834ef-7fa5-4732-9a03-af154806ac16',
+            SESSION_TIMEOUT_MINUTES: 30
+        };
+
+        // ─── INIT SUPABASE ──────────────────────────────────────────────────
+        function initSupabase() {
+            try {
+                supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+                window._supabaseClient = supabase;
+                console.log('✅ Supabase initialized');
+                return true;
+            } catch (e) {
+                console.error('Supabase init error:', e);
+                showToast('Failed to initialize Supabase', 'error');
+                return false;
+            }
+        }
+
+        // ─── SESSION FUNCTIONS ─────────────────────────────────────────────
+        function getSessionData() {
+            try {
+                const data = sessionStorage.getItem('littleloom_session_data');
+                const expiry = sessionStorage.getItem('littleloom_session_expiry');
+                if (data && expiry && Date.now() < parseInt(expiry)) {
+                    return JSON.parse(data);
+                }
+                return null;
+            } catch { return null; }
+        }
+
+        function saveSessionData(data) {
+            try {
+                const expiry = Date.now() + (CONFIG.SESSION_TIMEOUT_MINUTES * 60 * 1000);
+                sessionStorage.setItem('littleloom_session_data', JSON.stringify(data));
+                sessionStorage.setItem('littleloom_session_expiry', expiry.toString());
+            } catch (e) { console.warn('Session save error:', e); }
+        }
+
+        function clearSessionData() {
+            sessionStorage.removeItem('littleloom_session_data');
+            sessionStorage.removeItem('littleloom_session_expiry');
+        }
+
+        // ─── TOAST ──────────────────────────────────────────────────────────
+        function showToast(message, type = 'info', duration = 4000) {
+            let container = document.getElementById('toastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'toast-container';
+                container.id = 'toastContainer';
+                document.body.appendChild(container);
+            }
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span> ${message}`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-10px)';
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, duration);
+        }
+
+        // ─── MODAL ──────────────────────────────────────────────────────────
+        let modalResolve = null;
+        let modalData = null;
+
+        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('modalOverlay');
+                const titleEl = document.getElementById('modalTitle');
+                const bodyEl = document.getElementById('modalBody');
+                const confirmBtn = document.getElementById('modalConfirmBtn');
+                const cancelBtn = document.getElementById('modalCancelBtn');
+
+                if (titleEl) titleEl.textContent = title;
+                if (bodyEl) bodyEl.innerHTML = bodyHTML;
+                if (confirmBtn) confirmBtn.textContent = confirmText;
+                if (cancelBtn) cancelBtn.textContent = cancelText;
+
+                overlay.classList.add('active');
+                modalResolve = resolve;
+                modalData = { confirmAction };
+            });
+        }
+
+        function closeModal(result) {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (modalResolve) {
+                modalResolve(result !== undefined ? result : null);
+                modalResolve = null;
+            }
+        }
+
+        function modalConfirm() {
+            if (modalData && modalData.confirmAction) {
+                modalData.confirmAction();
+            }
+            closeModal(true);
+        }
+
+        function modalCancel() {
+            closeModal(false);
+        }
+
+        // ─── AUTH ──────────────────────────────────────────────────────────
+        async function checkAuth() {
+            if (!initSupabase()) return false;
+
+            const storedSession = getSessionData();
+            if (storedSession && storedSession.user) {
+                const { data, error } = await supabase.auth.getSession();
+                if (!error && data.session) {
+                    session = data.session;
+                    currentUserRole = storedSession.role || 'super_admin';
+                    updateUIForAuth(session);
+                    updateUIForRole(currentUserRole);
+                    startSessionTimer();
+                    return true;
+                }
+                clearSessionData();
+            }
+
+            const { data, error } = await supabase.auth.getSession();
+            if (error || !data.session) {
+                redirectToLogin();
+                return false;
+            }
+
+            session = data.session;
+            await loadUserRole(session.user.id);
+            saveSessionData({
+                user: session.user,
+                role: currentUserRole,
+                timestamp: Date.now()
+            });
+            updateUIForAuth(session);
+            updateUIForRole(currentUserRole);
+            startSessionTimer();
+            return true;
+        }
+
+        function redirectToLogin() {
+            if (!window.location.pathname.includes('login')) {
+                window.location.href = '/login';
+            }
+        }
+
+        async function loadUserRole(userId) {
+            try {
+                if (userId === CONFIG.SUPER_ADMIN_USER_ID) {
+                    currentUserRole = 'super_admin';
+                    return;
+                }
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('admin_role')
+                    .eq('id', userId)
+                    .single();
+                if (data && data.admin_role) {
+                    currentUserRole = data.admin_role;
+                } else {
+                    currentUserRole = 'guest';
+                }
+            } catch (e) {
+                console.warn('Role load error:', e);
+                currentUserRole = 'guest';
+            }
+        }
+
+        function updateUIForAuth(session) {
+            const user = session?.user;
+            const email = user?.email || 'admin@littleloom.com';
+            const name = user?.user_metadata?.full_name || email.split('@')[0] || 'Admin';
+
+            document.getElementById('sidebarEmail').textContent = email;
+            document.getElementById('sidebarName').textContent = name;
+            document.getElementById('sidebarAvatar').textContent = name[0].toUpperCase();
+            document.getElementById('topbarUserEmail').textContent = email;
+            document.getElementById('connectionStatus').textContent = `👤 ${email}`;
+        }
+
+        function updateUIForRole(role) {
+            const roleLabels = {
+                'super_admin': 'Super Admin',
+                'admin': 'Admin',
+                'content_manager': 'Content Manager',
+                'user_manager': 'User Manager',
+                'moderation_manager': 'Moderation Manager',
+                'analytics_viewer': 'Analytics Viewer',
+                'guest': 'Guest'
+            };
+            document.getElementById('sidebarRole').textContent = roleLabels[role] || 'Super Admin';
+        }
+
+        // ─── SESSION TIMER ──────────────────────────────────────────────────
+        function startSessionTimer() {
+            if (sessionTimer) clearInterval(sessionTimer);
+            sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
+            sessionWarningShown = false;
+
+            sessionTimer = setInterval(() => {
+                sessionTimeRemaining--;
+                updateSessionDisplay();
+
+                if (sessionTimeRemaining <= 30 && !sessionWarningShown) {
+                    sessionWarningShown = true;
+                    document.getElementById('sessionBanner').classList.add('show');
+                    let countdown = 30;
+                    const countdownEl = document.getElementById('sessionCountdown');
+                    const interval = setInterval(() => {
+                        countdown--;
+                        if (countdownEl) countdownEl.textContent = countdown;
+                        if (countdown <= 0) {
+                            clearInterval(interval);
+                            handleLogout();
+                        }
+                    }, 1000);
+                }
+
+                if (sessionTimeRemaining <= 0) {
+                    clearInterval(sessionTimer);
+                    handleLogout();
+                }
+            }, 1000);
+
+            const resetTimer = () => {
+                sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
+                sessionWarningShown = false;
+                document.getElementById('sessionBanner').classList.remove('show');
+                updateSessionDisplay();
+            };
+
+            ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach(event => {
+                document.addEventListener(event, resetTimer);
+            });
+        }
+
+        function updateSessionDisplay() {
+            const mins = Math.floor(sessionTimeRemaining / 60);
+            const secs = sessionTimeRemaining % 60;
+            const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            document.getElementById('topbarSessionTime').textContent = `⏱️ ${timeStr}`;
+            const dot = document.getElementById('statusDot');
+            if (sessionTimeRemaining < 60) {
+                dot.className = 'dot danger';
+            } else if (sessionTimeRemaining < 300) {
+                dot.className = 'dot warning';
+            } else {
+                dot.className = 'dot';
+            }
+        }
+
+        function extendSession() {
+            sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
+            sessionWarningShown = false;
+            document.getElementById('sessionBanner').classList.remove('show');
+            updateSessionDisplay();
+            showToast('⏳ Session extended', 'success');
+        }
+
+        // ─── LOGOUT ──────────────────────────────────────────────────────────
+        async function handleLogout() {
+            const confirmed = await new Promise((resolve) => {
+                openModal(
+                    '🚪 Confirm Logout',
+                    `
+                    <div style="text-align:center;padding:12px 0;">
+                        <div style="font-size:48px;margin-bottom:12px;">👋</div>
+                        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Are you sure you want to logout?</p>
+                        <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
+                    </div>
+                `, 'Yes, Logout', () => resolve(true), 'Cancel'
+                );
+            });
+            if (!confirmed) return;
+            try {
+                await supabase.auth.signOut();
+                session = null;
+                if (sessionTimer) clearInterval(sessionTimer);
+                clearSessionData();
+                showToast('✅ Logged out successfully', 'success');
+                window.location.href = '/login';
+            } catch (e) {
+                showToast('❌ Logout failed: ' + e.message, 'error');
+            }
+        }
+
+        // ─── NAVIGATION ──────────────────────────────────────────────────────
+        function navigateTo(page) {
+            if (window.innerWidth <= 1024) toggleSidebar(false);
+            window.location.href = `/admin/${page}`;
+        }
+
+        function toggleSidebar(open) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (open === undefined) {
+                sidebar.classList.toggle('open');
+                overlay.classList.toggle('active');
+            } else if (open) {
+                sidebar.classList.add('open');
+                overlay.classList.add('active');
+            } else {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+            }
+        }
+
+        // ─── BUILD SIDEBAR ──────────────────────────────────────────────────
+        function buildSidebar() {
+            const sidebar = document.getElementById('sidebarNav');
+            const currentPage = 'community';
+            const navItems = [
+                { id: 'dashboard', icon: '📊', label: 'Dashboard', section: 'overview' },
+                { id: 'babies', icon: '👶', label: 'Babies', section: 'management' },
+                { id: 'users', icon: '👤', label: 'Users', section: 'management' },
+                { id: 'moderation', icon: '🛡️', label: 'Moderation', section: 'management' },
+                { id: 'community', icon: '💬', label: 'Community Posts', section: 'community' },
+                { id: 'topics', icon: '📌', label: 'Topics', section: 'community' },
+                { id: 'announcements', icon: '📢', label: 'Announcements', section: 'community' },
+                { id: 'analytics', icon: '📈', label: 'Analytics', section: 'analytics' },
+                { id: 'settings', icon: '⚙️', label: 'Settings', section: 'system' },
+                { id: 'backup', icon: '💾', label: 'Backup', section: 'system' },
+                { id: 'audit', icon: '📋', label: 'Audit Logs', section: 'system' },
+                { id: 'health', icon: '❤️', label: 'System Health', section: 'health' },
+            ];
+
+            const sections = {};
+            navItems.forEach(item => {
+                if (!sections[item.section]) sections[item.section] = [];
+                sections[item.section].push(item);
+            });
+
+            const sectionLabels = {
+                'overview': '📊 Overview',
+                'management': '👑 Management',
+                'community': '💬 Community',
+                'analytics': '📈 Analytics',
+                'system': '⚙️ System',
+                'health': '❤️ Health'
+            };
+
+            let html = '';
+            Object.keys(sections).forEach(section => {
+                const items = sections[section];
+                html += `<div class="sidebar-nav-label">${sectionLabels[section] || section}</div>`;
+                items.forEach(item => {
+                    const isActive = currentPage === item.id;
+                    const badge = item.id === 'community' ? `<span class="badge" id="postBadge">0</span>` : '';
+                    html += `
+                        <button class="sidebar-nav-item ${isActive ? 'active' : ''}" onclick="window.navigateTo('${item.id}')">
+                            <span class="icon">${item.icon}</span>
+                            ${item.label}
+                            ${badge}
+                        </button>
+                    `;
+                });
+            });
+            sidebar.innerHTML = html;
+        }
+
+        // ─── LOAD COMMUNITY ──────────────────────────────────────────────────
         async function loadCommunity() {
-            const supabase = window._supabaseClient;
-            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
+            if (!supabase) {
+                showToast('Supabase not initialized', 'error');
+                return;
+            }
 
             try {
-                let { data: posts, error: postsError } = await supabase
+                const [postsResult, topicsResult] = await Promise.all([
+                    supabase
                     .from('community_posts')
                     .select('*, profiles!community_posts_author_id_fkey(full_name, avatar, email, community_handle, is_verified)')
                     .eq('is_deleted', false)
                     .order('created_at', { ascending: false })
-                    .limit(50);
-
-                if (postsError) throw postsError;
-
-                const { data: topics, error: topicsError } = await supabase
+                    .limit(50),
+                    supabase
                     .from('community_topics')
                     .select('*')
-                    .order('name');
+                    .order('name')
+                ]);
 
-                if (topicsError) throw topicsError;
+                if (postsResult.error) throw postsResult.error;
+                if (topicsResult.error) throw topicsResult.error;
 
-                postsCache = posts || [];
-                topicsCache = topics || [];
+                postsCache = postsResult.data || [];
+                topicsCache = topicsResult.data || [];
                 currentFiltered = [...postsCache];
 
+                // Populate topic filter
                 const filter = document.getElementById('topicFilter');
                 filter.innerHTML = '<option value="all">All Topics</option>';
                 topicsCache.forEach(t => {
@@ -247,30 +1815,62 @@
                 renderPosts(currentFiltered);
                 updateStats(currentFiltered);
 
-                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                window._showToast('✅ Community loaded successfully', 'success');
+                showToast('✅ Loaded ' + postsCache.length + ' posts', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                window._showToast('Error loading community: ' + e.message, 'error');
+                showToast('Error loading community: ' + e.message, 'error');
                 document.getElementById('postsContainer').innerHTML = `
                     <div class="empty-state-modern">
                         <div class="emoji">❌</div>
                         <h3>Error loading data</h3>
                         <p>${e.message}</p>
-                        <button class="btn btn-primary" onclick="window.loadCommunity && window.loadCommunity()" style="margin-top:12px;">Retry</button>
+                        <button class="btn btn-primary" onclick="window.loadCommunity()" style="margin-top:12px;">Retry</button>
                     </div>
                 `;
             }
         }
 
+        // ─── FILTERS ──────────────────────────────────────────────────────
+        function filterPosts() {
+            const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+            const status = document.getElementById('statusFilter')?.value || 'all';
+            const topicId = document.getElementById('topicFilter')?.value || 'all';
+
+            let filtered = postsCache;
+
+            if (search) {
+                filtered = filtered.filter(p =>
+                    (p.content || '').toLowerCase().includes(search) ||
+                    (p.profiles?.full_name || '').toLowerCase().includes(search)
+                );
+            }
+            if (status !== 'all') {
+                filtered = filtered.filter(p => (p.status || 'pending') === status);
+            }
+            if (topicId !== 'all') {
+                filtered = filtered.filter(p => p.topic_id === topicId);
+            }
+
+            currentFiltered = filtered;
+            renderPosts(filtered);
+        }
+
+        function filterByStatus(status) {
+            document.getElementById('statusFilter').value = status;
+            filterPosts();
+        }
+
+        // ─── RENDER ──────────────────────────────────────────────────────
         function renderPosts(posts) {
             const container = document.getElementById('postsContainer');
+
             if (!posts || posts.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state-modern">
                         <div class="emoji">📭</div>
                         <h3>No posts yet</h3>
-                        <p>Be the first to start a conversation</p>
+                        <p>Be the first to start a conversation in the community</p>
+                        <button class="btn btn-primary" onclick="window.loadCommunity()" style="margin-top:12px;"><i class="fas fa-sync-alt"></i> Refresh</button>
                     </div>
                 `;
                 return;
@@ -282,7 +1882,9 @@
                 const authorAvatar = p.profiles?.avatar || '👤';
                 const authorHandle = p.profiles?.community_handle || '';
                 const isVerified = p.profiles?.is_verified || false;
-                const initial = typeof authorAvatar === 'string' && authorAvatar.startsWith('http') ? '👤' : (authorName[0] || 'A').toUpperCase();
+                const initial = typeof authorAvatar === 'string' && authorAvatar.startsWith('http') ?
+                    `<img src="${authorAvatar}" alt="${authorName}" />` :
+                    (authorName[0] || 'A').toUpperCase();
 
                 const topic = topicsCache.find(t => t.id === p.topic_id);
                 const topicName = topic?.name || p.topic || 'General';
@@ -303,15 +1905,11 @@
                     }
                 }
 
-                const avatarHtml = typeof authorAvatar === 'string' && authorAvatar.startsWith('http')
-                    ? `<img src="${authorAvatar}" alt="${authorName}" />`
-                    : initial;
-
                 html += `
                     <div class="post-card" data-id="${p.id}">
                         <div class="header">
                             <div class="author">
-                                <div class="avatar">${avatarHtml}</div>
+                                <div class="avatar">${initial}</div>
                                 <div>
                                     <div class="name">
                                         ${authorName}
@@ -322,7 +1920,7 @@
                             </div>
                             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                                 <span class="topic-tag">${topicEmoji} ${topicName}</span>
-                                <span class="status-badge ${statusClass}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+                                <span class="status-badge ${statusClass}"><span class="dot"></span> ${status.charAt(0).toUpperCase() + status.slice(1)}</span>
                             </div>
                         </div>
                         <div class="content">
@@ -339,15 +1937,15 @@
                             <span>📅 ${time}</span>
                         </div>
                         <div class="actions">
-                            <button class="btn-sm btn-view" onclick="window.viewPost && window.viewPost('${p.id}')">👁️ View</button>
+                            <button class="btn-sm btn-view" onclick="window.viewPost('${p.id}')"><i class="fas fa-eye"></i> View</button>
                             ${status === 'pending' ? `
-                                <button class="btn-sm btn-approve" onclick="window.approvePost && window.approvePost('${p.id}')">✅ Approve</button>
-                                <button class="btn-sm btn-moderate" onclick="window.rejectPost && window.rejectPost('${p.id}')">❌ Reject</button>
+                                <button class="btn-sm btn-approve" onclick="window.approvePost('${p.id}')"><i class="fas fa-check"></i> Approve</button>
+                                <button class="btn-sm btn-reject" onclick="window.rejectPost('${p.id}')"><i class="fas fa-times"></i> Reject</button>
                             ` : ''}
                             ${status !== 'flagged' ? `
-                                <button class="btn-sm btn-moderate" onclick="window.flagPost && window.flagPost('${p.id}')">🚩 Flag</button>
+                                <button class="btn-sm btn-flag" onclick="window.flagPost('${p.id}')"><i class="fas fa-flag"></i> Flag</button>
                             ` : ''}
-                            <button class="btn-sm btn-delete" onclick="window.deletePost && window.deletePost('${p.id}')">🗑️ Delete</button>
+                            <button class="btn-sm btn-delete" onclick="window.deletePost('${p.id}')"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
                 `;
@@ -355,6 +1953,7 @@
             container.innerHTML = html;
         }
 
+        // ─── STATS ──────────────────────────────────────────────────────
         function updateStats(posts) {
             const total = posts.length;
             const today = posts.filter(p => {
@@ -363,40 +1962,22 @@
             }).length;
             const comments = posts.reduce((sum, p) => sum + (p.comments_count || p.comments || 0), 0);
             const likes = posts.reduce((sum, p) => sum + (p.likes_count || p.likes || 0), 0);
+            const pending = posts.filter(p => (p.status || 'pending') === 'pending').length;
 
             document.getElementById('statTotal').textContent = total;
             document.getElementById('statToday').textContent = today;
             document.getElementById('statComments').textContent = comments;
             document.getElementById('statLikes').textContent = likes;
+            document.getElementById('statPending').textContent = pending;
+
             const badge = document.getElementById('postBadge');
             if (badge) badge.textContent = total;
         }
 
-        function filterPosts() {
-            const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
-            const status = document.getElementById('statusFilter')?.value || 'all';
-            const topicId = document.getElementById('topicFilter')?.value || 'all';
-
-            let filtered = postsCache;
-            if (search) {
-                filtered = filtered.filter(p =>
-                    (p.content || '').toLowerCase().includes(search) ||
-                    (p.profiles?.full_name || '').toLowerCase().includes(search)
-                );
-            }
-            if (status !== 'all') {
-                filtered = filtered.filter(p => (p.status || 'pending') === status);
-            }
-            if (topicId !== 'all') {
-                filtered = filtered.filter(p => p.topic_id === topicId);
-            }
-            currentFiltered = filtered;
-            renderPosts(filtered);
-        }
-
+        // ─── CRUD OPERATIONS ──────────────────────────────────────────────
         async function viewPost(id) {
             const post = postsCache.find(p => p.id === id);
-            if (!post) { window._showToast('Post not found', 'error'); return; }
+            if (!post) { showToast('Post not found', 'error'); return; }
 
             const authorName = post.profiles?.full_name || 'Unknown';
             const content = post.content || '—';
@@ -410,17 +1991,15 @@
             }
 
             const fields = [
-                { label: 'ID', value: post.id },
                 { label: 'Author', value: authorName },
                 { label: 'Topic', value: post.topic || 'General' },
                 { label: 'Status', value: (post.status || 'pending').charAt(0).toUpperCase() + (post.status || 'pending').slice(1) },
-                { label: 'Content', value: content },
                 { label: 'Likes', value: post.likes_count || post.likes || 0 },
                 { label: 'Comments', value: post.comments_count || post.comments || 0 },
                 { label: 'Created', value: post.created_at ? new Date(post.created_at).toLocaleString() : '—' }
             ];
 
-            let details = '<div style="display:grid;gap:6px;max-height:400px;overflow-y:auto;padding:4px 0;">';
+            let details = '<div style="display:grid;gap:6px;padding:4px 0;">';
             fields.forEach(({ label, value }) => {
                 details += `
                     <div style="display:flex;padding:6px 0;border-bottom:1px solid var(--border);">
@@ -429,6 +2008,12 @@
                     </div>
                 `;
             });
+
+            details += `
+                <div style="background:var(--bg-primary);padding:12px;border-radius:var(--radius-sm);margin-top:8px;word-break:break-word;">
+                    ${content}
+                </div>
+            `;
 
             if (images.length > 0) {
                 details += `
@@ -439,27 +2024,26 @@
             }
             details += '</div>';
 
-            window._openModal('💬 Post Details', details, 'Close', window._closeModal);
+            openModal('💬 Post Details', details, 'Close', closeModal);
         }
 
         async function approvePost(id) {
-            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('community_posts')
                     .update({ status: 'approved', updated_at: new Date().toISOString() })
                     .eq('id', id);
                 if (error) throw error;
-                window._showToast('✅ Post approved successfully', 'success');
+                showToast('✅ Post approved', 'success');
                 loadCommunity();
             } catch (e) {
-                window._showToast('Error approving post: ' + e.message, 'error');
+                showToast('Error approving post: ' + e.message, 'error');
             }
         }
 
         async function rejectPost(id) {
             const confirmed = await new Promise((resolve) => {
-                window._openModal(
+                openModal(
                     '❌ Reject Post',
                     `
                         <div style="text-align:center;padding:12px 0;">
@@ -467,86 +2051,113 @@
                             <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Reject this post?</p>
                             <p style="font-size:13px;color:var(--text-muted);">The post will be marked as rejected and hidden from the community feed.</p>
                         </div>
-                    `,
-                    'Yes, Reject',
-                    () => resolve(true),
-                    'Cancel'
+                    `, 'Yes, Reject', () => resolve(true), 'Cancel'
                 );
             });
             if (!confirmed) return;
 
-            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('community_posts')
                     .update({ status: 'rejected', updated_at: new Date().toISOString() })
                     .eq('id', id);
                 if (error) throw error;
-                window._showToast('✅ Post rejected successfully', 'success');
+                showToast('✅ Post rejected', 'success');
                 loadCommunity();
             } catch (e) {
-                window._showToast('Error rejecting post: ' + e.message, 'error');
+                showToast('Error rejecting post: ' + e.message, 'error');
             }
         }
 
         async function flagPost(id) {
-            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('community_posts')
                     .update({ status: 'flagged', updated_at: new Date().toISOString() })
                     .eq('id', id);
                 if (error) throw error;
-                window._showToast('🚩 Post flagged successfully', 'warning');
+                showToast('🚩 Post flagged', 'warning');
                 loadCommunity();
             } catch (e) {
-                window._showToast('Error flagging post: ' + e.message, 'error');
+                showToast('Error flagging post: ' + e.message, 'error');
             }
         }
 
         async function deletePost(id) {
             const confirmed = await new Promise((resolve) => {
-                window._openModal(
+                openModal(
                     '🗑️ Delete Post',
                     `
                         <div style="text-align:center;padding:12px 0;">
                             <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
                             <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this post?</p>
-                            <p style="font-size:13px;color:var(--text-muted);">This action cannot be undone. The post will be permanently removed.</p>
+                            <p style="font-size:13px;color:var(--text-muted);">This action cannot be undone.</p>
                         </div>
-                    `,
-                    'Yes, Delete',
-                    () => resolve(true),
-                    'Cancel'
+                    `, 'Yes, Delete', () => resolve(true), 'Cancel'
                 );
             });
             if (!confirmed) return;
 
-            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('community_posts')
                     .update({ is_deleted: true, deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
                     .eq('id', id);
                 if (error) throw error;
-                window._showToast('✅ Post deleted successfully', 'success');
+                showToast('🗑️ Post deleted', 'success');
                 loadCommunity();
             } catch (e) {
-                window._showToast('Error deleting post: ' + e.message, 'error');
+                showToast('Error deleting post: ' + e.message, 'error');
             }
         }
 
-        window._loadPageData = async function() {
-            await loadCommunity();
-        };
-
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────
+        window.initSupabase = initSupabase;
+        window.checkAuth = checkAuth;
         window.loadCommunity = loadCommunity;
         window.filterPosts = filterPosts;
+        window.filterByStatus = filterByStatus;
         window.viewPost = viewPost;
         window.approvePost = approvePost;
         window.rejectPost = rejectPost;
         window.flagPost = flagPost;
         window.deletePost = deletePost;
+        window.navigateTo = navigateTo;
+        window.toggleSidebar = toggleSidebar;
+        window.buildSidebar = buildSidebar;
+        window.showToast = showToast;
+        window.handleLogout = handleLogout;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.modalConfirm = modalConfirm;
+        window.modalCancel = modalCancel;
+        window.extendSession = extendSession;
+
+        // ─── INIT ──────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', async function() {
+            buildSidebar();
+
+            const authed = await checkAuth();
+            if (!authed) return;
+
+            await loadCommunity();
+
+            window.addEventListener('resize', function() {
+                if (window.innerWidth > 1024) {
+                    document.getElementById('sidebar').classList.remove('open');
+                    document.getElementById('sidebarOverlay').classList.remove('active');
+                }
+            });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') closeModal();
+                if (e.ctrlKey && e.key === 'r') { e.preventDefault();
+                    loadCommunity(); }
+            });
+
+            console.log('💬 Community page loaded');
+            console.log('👤 Role:', currentUserRole);
+        });
     </script>
 </body>
 </html>
