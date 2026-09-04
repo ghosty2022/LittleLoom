@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/admin.css" />
     <style>
+        /* ─── All existing styles remain the same ─── */
         .page-hero {
             background: linear-gradient(135deg, #0f172a, #1e293b);
             border-radius: var(--radius);
@@ -134,124 +135,119 @@
     </style>
 </head>
 <body>
-    <div class="app">
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-icon">🧵</div>
-                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
-            </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')"><span class="icon">👶</span> Babies <span class="badge" id="babyBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')"><span class="icon">👤</span> Users <span class="badge" id="userBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')"><span class="icon">🛡️</span> Moderation <span class="badge danger" id="modBadge">0</span></a>
-                <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')"><span class="icon">💬</span> Community <span class="badge" id="postBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')"><span class="icon">📌</span> Topics</a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')"><span class="icon">📈</span> Tracker Entries <span class="badge" id="entryBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')"><span class="icon">🏆</span> Milestones <span class="badge" id="milestoneBadge">0</span></a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">📈</span> Analytics</a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-info">
-                    <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
-                </div>
-            </div>
-        </aside>
-
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-            <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
-                <div class="modal-body" id="modalBody"></div>
-                <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-                </div>
+    <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">🧵</div>
+            <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-nav-label">Overview</div>
+            <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
+            <div class="sidebar-nav-label">Management</div>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')"><span class="icon">👶</span> Babies <span class="badge" id="babyBadge">0</span></a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')"><span class="icon">👤</span> Users <span class="badge" id="userBadge">0</span></a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')"><span class="icon">🛡️</span> Moderation <span class="badge danger" id="modBadge">0</span></a>
+            <div class="sidebar-nav-label">Community</div>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')"><span class="icon">💬</span> Community <span class="badge" id="postBadge">0</span></a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')"><span class="icon">📌</span> Topics</a>
+            <div class="sidebar-nav-label">Trackers</div>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')"><span class="icon">📈</span> Tracker Entries <span class="badge" id="entryBadge">0</span></a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')"><span class="icon">🏆</span> Milestones <span class="badge" id="milestoneBadge">0</span></a>
+            <div class="sidebar-nav-label">Analytics</div>
+            <a class="sidebar-nav-item active" href="#"><span class="icon">📈</span> Analytics</a>
+            <div class="sidebar-nav-label">System</div>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
+            <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar" id="sidebarAvatar">A</div>
+                <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
             </div>
         </div>
+    </aside>
 
-        <main class="main">
-            <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Analytics <span class="sub">| Growth & Engagement</span></div></div></div>
-                <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
-                    <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadAnalytics()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
-                    </div>
-                </div>
-            </header>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
 
-            <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
-
-                <div class="page-hero">
-                    <h1>📈 Analytics Dashboard</h1>
-                    <p>Track user engagement, growth trends, and platform health metrics</p>
-                    <div class="stats-row">
-                        <div class="stat"><span class="num" id="statTotalUsers">0</span><span class="label">Total Users</span></div>
-                        <div class="stat"><span class="num" id="statActiveUsers">0</span><span class="label">Active (30d)</span></div>
-                        <div class="stat"><span class="num" id="statEngagement">0<span style="font-size:16px;opacity:0.7;">%</span></span><span class="label">Engagement Rate</span></div>
-                        <div class="stat"><span class="num" id="statGrowth">+0<span style="font-size:16px;opacity:0.7;">%</span></span><span class="label">Growth Rate</span></div>
-                    </div>
-                </div>
-
-                <div class="filter-bar-modern">
-                    <select id="periodSelect" onchange="loadAnalytics()">
-                        <option value="7">Last 7 Days</option>
-                        <option value="30" selected>Last 30 Days</option>
-                        <option value="90">Last 90 Days</option>
-                        <option value="365">Last Year</option>
-                    </select>
-                    <button class="btn btn-primary btn-sm" onclick="loadAnalytics()">📊 Update</button>
-                </div>
-
-                <div class="analytics-grid" id="analyticsGrid">
-                    <div class="analytics-card"><div class="value" id="metricDAU">—</div><div class="label">📱 Daily Active Users</div><div class="change up" id="metricDAUChange">↑ 0%</div></div>
-                    <div class="analytics-card"><div class="value" id="metricMAU">—</div><div class="label">📊 Monthly Active Users</div><div class="change up" id="metricMAUChange">↑ 0%</div></div>
-                    <div class="analytics-card"><div class="value" id="metricSessions">—</div><div class="label">🔄 Total Sessions</div><div class="change up" id="metricSessionsChange">↑ 0%</div></div>
-                    <div class="analytics-card"><div class="value" id="metricAvgSession">—<span style="font-size:16px;color:var(--text-muted);">m</span></div><div class="label">⏱️ Avg Session Duration</div><div class="change neutral" id="metricAvgSessionChange">→ 0%</div></div>
-                    <div class="analytics-card"><div class="value" id="metricNewBabies">—</div><div class="label">👶 New Babies</div><div class="change up" id="metricNewBabiesChange">↑ 0%</div></div>
-                    <div class="analytics-card"><div class="value" id="metricPosts">—</div><div class="label">💬 Community Posts</div><div class="change up" id="metricPostsChange">↑ 0%</div></div>
-                </div>
-
-                <div class="chart-container">
-                    <div class="chart-header"><h3>📊 User Growth Trend</h3><span style="font-size:12px;color:var(--text-muted);" id="chartPeriod">Last 30 days</span></div>
-                    <div class="chart-body"><div class="chart-bars" id="growthChart"></div></div>
-                </div>
-
-                <div class="chart-container">
-                    <div class="chart-header"><h3>📈 Engagement Overview</h3><span style="font-size:12px;color:var(--text-muted);" id="engagementPeriod">Last 30 days</span></div>
-                    <div class="chart-body"><div class="chart-bars" id="engagementChart"></div></div>
+    <!-- ─── MAIN ────────────────────────────────────────────────────── -->
+    <main class="main">
+        <header class="topbar">
+            <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Analytics <span class="sub">| Growth & Engagement</span></div></div></div>
+            <div class="topbar-right">
+                <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                <div class="topbar-actions">
+                    <button class="btn btn-outline btn-sm" onclick="loadAnalytics()">🔄 Refresh</button>
+                    <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
                 </div>
             </div>
-        </main>
-    </div>
+        </header>
+
+        <div class="page-content active">
+            <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
+            <div class="page-hero">
+                <h1>📈 Analytics Dashboard</h1>
+                <p>Track user engagement, growth trends, and platform health metrics</p>
+                <div class="stats-row">
+                    <div class="stat"><span class="num" id="statTotalUsers">0</span><span class="label">Total Users</span></div>
+                    <div class="stat"><span class="num" id="statActiveUsers">0</span><span class="label">Active (30d)</span></div>
+                    <div class="stat"><span class="num" id="statEngagement">0<span style="font-size:16px;opacity:0.7;">%</span></span><span class="label">Engagement Rate</span></div>
+                    <div class="stat"><span class="num" id="statGrowth">+0<span style="font-size:16px;opacity:0.7;">%</span></span><span class="label">Growth Rate</span></div>
+                </div>
+            </div>
+
+            <div class="filter-bar-modern">
+                <select id="periodSelect" onchange="loadAnalytics()">
+                    <option value="7">Last 7 Days</option>
+                    <option value="30" selected>Last 30 Days</option>
+                    <option value="90">Last 90 Days</option>
+                    <option value="365">Last Year</option>
+                </select>
+                <button class="btn btn-primary btn-sm" onclick="loadAnalytics()">📊 Update</button>
+            </div>
+
+            <div class="analytics-grid" id="analyticsGrid">
+                <div class="analytics-card"><div class="value" id="metricDAU">—</div><div class="label">📱 Daily Active Users</div><div class="change up" id="metricDAUChange">↑ 0%</div></div>
+                <div class="analytics-card"><div class="value" id="metricMAU">—</div><div class="label">📊 Monthly Active Users</div><div class="change up" id="metricMAUChange">↑ 0%</div></div>
+                <div class="analytics-card"><div class="value" id="metricSessions">—</div><div class="label">🔄 Total Sessions</div><div class="change up" id="metricSessionsChange">↑ 0%</div></div>
+                <div class="analytics-card"><div class="value" id="metricAvgSession">—<span style="font-size:16px;color:var(--text-muted);">m</span></div><div class="label">⏱️ Avg Session Duration</div><div class="change neutral" id="metricAvgSessionChange">→ 0%</div></div>
+                <div class="analytics-card"><div class="value" id="metricNewBabies">—</div><div class="label">👶 New Babies</div><div class="change up" id="metricNewBabiesChange">↑ 0%</div></div>
+                <div class="analytics-card"><div class="value" id="metricPosts">—</div><div class="label">💬 Community Posts</div><div class="change up" id="metricPostsChange">↑ 0%</div></div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header"><h3>📊 User Growth Trend</h3><span style="font-size:12px;color:var(--text-muted);" id="chartPeriod">Last 30 days</span></div>
+                <div class="chart-body"><div class="chart-bars" id="growthChart"></div></div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header"><h3>📈 Engagement Overview</h3><span style="font-size:12px;color:var(--text-muted);" id="engagementPeriod">Last 30 days</span></div>
+                <div class="chart-body"><div class="chart-bars" id="engagementChart"></div></div>
+            </div>
+        </div>
+    </main>
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let analyticsData = {};
 
         async function loadAnalytics() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            if (!window._supabaseClient) { 
+                window._showToast('Supabase not initialized', 'error');
+                return; 
+            }
+            const supabase = window._supabaseClient;
 
             const period = parseInt(document.getElementById('periodSelect')?.value || 30);
 
-            showToast('📊 Loading analytics...', 'info');
+            window._showToast('📊 Loading analytics...', 'info');
 
             try {
                 const startDate = new Date();
@@ -276,7 +272,6 @@
                 const dau = Math.round(activeUsers / Math.min(period, 30));
                 const mau = activeUsers;
 
-                // Get growth stats from RPC or calculate
                 let growthRate = 12;
                 if (statsResult.data) {
                     growthRate = Math.round(((statsResult.data.new_users_today || 0) / Math.max(1, statsResult.data.total_users || 1)) * 100);
@@ -294,7 +289,6 @@
                 document.getElementById('metricNewBabies').textContent = Math.round(totalBabies / 30);
                 document.getElementById('metricPosts').textContent = totalPosts;
 
-                // Generate chart data
                 const days = Math.min(period, 30);
                 const labels = [];
                 const values = [];
@@ -310,11 +304,11 @@
                 renderChart('engagementChart', labels, engagementValues, '#8b5cf6');
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Analytics loaded successfully', 'success');
+                window._showToast('✅ Analytics loaded successfully', 'success');
 
             } catch (e) {
                 console.error('Analytics error:', e);
-                showToast('Error loading analytics: ' + e.message, 'error');
+                window._showToast('Error loading analytics: ' + e.message, 'error');
             }
         }
 
@@ -340,11 +334,14 @@
             container.innerHTML = html;
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadAnalytics, 500); });
+        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        window._loadPageData = async function() {
+            await loadAnalytics();
+        };
+
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
         window.loadAnalytics = loadAnalytics;
+        window.renderChart = renderChart;
     </script>
 </body>
 </html>
-
-
-

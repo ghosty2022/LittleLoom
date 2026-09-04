@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{PAGE_TITLE}} - LittleLoom Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/admin.css" />
+
+    <style>
+        /* ─── PAGE SPECIFIC STYLES ────────────────────────────────────── */
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --secondary: #8b5cf6;
+            --accent: #14b8a6;
+            --bg-primary: #f0f4ff;
+            --bg-card: #ffffff;
+            --bg-sidebar: #0f172a;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --text-white: #ffffff;
+            --border: rgba(0, 0, 0, 0.06);
+            --border-dark: rgba(255, 255, 255, 0.06);
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.08);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            --sidebar-width: 260px;
+            --header-height: 64px;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --glass-bg: rgba(255, 255, 255, 0.8);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 10px; }
+
+        .app {
+            display: flex;
+            min-height: 100vh;
+            background: var(--bg-primary);
+        }
+
+        /* ─── SESSION TIMEOUT BANNER ────────────────────────────────────── */
+        .session-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10000;
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 12px 24px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+            animation: slideDownBanner 0.3s ease;
+        }
+        .session-banner.show { display: flex; }
+        .session-banner .countdown {
+            background: #dc2626;
+            color: #fff;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            min-width: 40px;
+            text-align: center;
+        }
+        .session-banner .btn {
+            padding: 4px 16px;
+            font-size: 12px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .session-banner .btn-primary { background: #dc2626; color: #fff; }
+        .session-banner .btn-primary:hover { background: #b91c1c; }
+        .session-banner .btn-outline {
+            background: transparent;
+            color: #dc2626;
+            border: 1.5px solid #dc2626;
+        }
+        .session-banner .btn-outline:hover { background: #fee2e2; }
+
+        @keyframes slideDownBanner {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ─── SIDEBAR ────────────────────────────────────────────────────── */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-sidebar);
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-y: auto;
+            overflow-x: hidden;
+            border-right: 1px solid var(--border-dark);
+        }
+
+        .sidebar-brand {
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-dark);
+            min-height: var(--header-height);
+            flex-shrink: 0;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
+            cursor: pointer;
+        }
+        .sidebar-brand:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.1));
+        }
+
+        .brand-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .logo-title {
+            font-weight: 800;
+            font-size: 18px;
+            color: var(--text-white);
+            letter-spacing: -0.5px;
+        }
+        .logo-sub {
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 11px;
+            display: block;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 8px 12px 20px;
+            overflow-y: auto;
+        }
+        .sidebar-nav-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: rgba(255, 255, 255, 0.25);
+            padding: 16px 12px 6px;
+            margin-top: 4px;
+        }
+
+        .sidebar-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all var(--transition);
+            font-size: 13px;
+            font-weight: 500;
+            position: relative;
+            margin-bottom: 1px;
+        }
+
+        .sidebar-nav-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-white);
+            transform: translateX(4px);
+        }
+        .sidebar-nav-item.active {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+        }
+        .sidebar-nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 20px;
+            background: var(--primary);
+            border-radius: 0 4px 4px 0;
+        }
+        .sidebar-nav-item .icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
+        .sidebar-nav-item .badge {
+            margin-left: auto;
+            padding: 1px 10px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 700;
+            background: var(--primary);
+            color: #fff;
+        }
+        .sidebar-nav-item .badge.danger { background: #ef4444; }
+        .sidebar-nav-item .badge.success { background: #22c55e; }
+        .sidebar-nav-item .badge.warning { background: #f59e0b; }
+        .sidebar-nav-item .badge.info { background: #3b82f6; }
+        .sidebar-nav-item.restricted { opacity: 0.5; cursor: not-allowed; }
+        .sidebar-nav-item.restricted:hover { transform: none; background: none; }
+        .sidebar-nav-item .lock-icon { font-size: 12px; margin-left: auto; opacity: 0.5; }
+
+        .sidebar-footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-dark);
+            flex-shrink: 0;
+        }
+        .sidebar-footer .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .sidebar-footer .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            color: #fff;
+            flex-shrink: 0;
+        }
+        .sidebar-footer .user-name { font-size: 13px; font-weight: 600; color: var(--text-white); }
+        .sidebar-footer .user-email { font-size: 11px; color: rgba(255, 255, 255, 0.4); }
+        .sidebar-footer .user-role {
+            font-size: 10px;
+            color: var(--primary-light);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            backdrop-filter: blur(4px);
+            animation: fadeIn 0.3s ease;
+        }
+        .sidebar-overlay.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ─── MAIN ──────────────────────────────────────────────────────── */
+        .main {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ─── TOPBAR ────────────────────────────────────────────────────── */
+        .topbar {
+            height: var(--header-height);
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .topbar-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 4px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .topbar-menu-btn:hover { background: var(--bg-primary); }
+
+        .topbar-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            color: var(--text-primary);
+        }
+        .topbar-title .sub { font-weight: 400; color: var(--text-muted); font-size: 13px; }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .topbar-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            background: var(--bg-primary);
+            border-radius: 20px;
+        }
+        .topbar-status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        .topbar-status .dot.warning { background: #f59e0b; animation: pulse-dot 1s ease-in-out infinite; }
+        .topbar-status .dot.danger { background: #ef4444; animation: none; }
+
+        @keyframes pulse-dot {
+            0%,100% { opacity:1; transform:scale(1); }
+            50% { opacity:0.5; transform:scale(0.85); }
+        }
+
+        /* ─── BUTTONS ───────────────────────────────────────────────────── */
+        .btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4); }
+        .btn-outline {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border);
+        }
+        .btn-outline:hover { background: var(--bg-primary); border-color: var(--primary); color: var(--primary); }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-danger:hover { background: #dc2626; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3); }
+        .btn-success { background: #22c55e; color: #fff; }
+        .btn-success:hover { background: #16a34a; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3); }
+        .btn-warning { background: #f59e0b; color: #fff; }
+        .btn-warning:hover { background: #d97706; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3); }
+        .btn-sm { padding: 4px 12px; font-size: 11px; }
+        .btn-xs { padding: 2px 8px; font-size: 10px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+        /* ─── STATUS BAR ────────────────────────────────────────────────── */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        /* ─── TOAST ─────────────────────────────────────────────────────── */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+        .toast {
+            pointer-events: auto;
+            background: var(--bg-card);
+            padding: 12px 24px;
+            border-radius: var(--radius);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            font-weight: 600;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-left: 4px solid var(--primary);
+            animation: slideUp 0.3s ease-out;
+            min-width: 200px;
+            max-width: 90vw;
+        }
+        .toast.error { border-left-color: #ef4444; }
+        .toast.success { border-left-color: #22c55e; }
+        .toast.warning { border-left-color: #f59e0b; }
+
+        @keyframes slideUp {
+            from { opacity:0; transform:translateY(20px) scale(0.95); }
+            to { opacity:1; transform:translateY(0) scale(1); }
+        }
+
+        /* ─── RESPONSIVE ────────────────────────────────────────────────── */
+        @media (max-width: 1024px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; }
+            .topbar-menu-btn { display: block; }
+            .topbar { padding: 0 16px; }
+        }
+
+        @media (max-width: 768px) {
+            .topbar-status { display: none; }
+            .topbar-title { font-size: 16px; }
+            .topbar-title .sub { display: none; }
+            .session-banner { flex-wrap: wrap; padding: 10px 16px; font-size: 12px; }
+        }
+
+        /* ─── PAGE CONTENT ───────────────────────────────────────────────── */
+        .page-content {
+            padding: 24px 28px;
+            animation: fadeInPage 0.3s ease-out;
+            flex: 1;
+        }
+
+        @keyframes fadeInPage {
+            from { opacity:0; transform:translateY(8px); }
+            to { opacity:1; transform:translateY(0); }
+        }
+
+        /* ─── CARD ──────────────────────────────────────────────────────── */
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            margin-bottom: 20px;
+            transition: all var(--transition);
+        }
+        .card:hover { box-shadow: var(--shadow-md); }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-primary);
+        }
+        .card-title .emoji { font-size: 18px; }
+        .card-body { padding: 16px 20px; }
+
+        /* ─── MODAL ─────────────────────────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+            animation: modalFade 0.3s ease;
+        }
+        .modal-overlay.active { display: flex; }
+
+        @keyframes modalFade {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            max-width: 520px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
+            animation: modalSlide 0.3s ease;
+        }
+        @keyframes modalSlide {
+            from { transform: translateY(20px) scale(0.95); opacity:0; }
+            to { transform: translateY(0) scale(1); opacity:1; }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-header h2 { font-size: 18px; font-weight: 700; }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .modal-close:hover { background: var(--bg-primary); }
+        .modal-body { padding: 20px 24px; }
+        .modal-footer {
+            padding: 14px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        /* ─── EMPTY STATE ───────────────────────────────────────────────── */
+        .empty-state-modern {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-modern .emoji {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        .empty-state-modern h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        .empty-state-modern p {
+            font-size: 14px;
+        }
+
+        /* ─── PERMISSION DENIED ─────────────────────────────────────────── */
+        .permission-denied {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .permission-denied .emoji {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+        .permission-denied h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        .permission-denied p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <!-- ─── SESSION TIMEOUT BANNER ────────────────────────────────────── -->
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
+    <div class="app">
+        <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand" onclick="window._navigateTo('dashboard')">
+                <div class="brand-icon">🧵</div>
+                <div>
+                    <div class="logo-title">LittleLoom</div>
+                    <div class="logo-sub">Enterprise Console</div>
+                </div>
+            </div>
+            <nav class="sidebar-nav" id="sidebarNav">
+                <!-- Built by admin-base.js -->
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="sidebarAvatar">A</div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar(false)"></div>
+
+        <!-- ─── MODAL ────────────────────────────────────────────────── -->
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel()">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2 id="modalTitle">Modal</h2>
+                    <button class="modal-close" onclick="window._modalCancel()">✕</button>
+                </div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── MAIN ────────────────────────────────────────────────── -->
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar()">☰</button>
+                    <div>
+                        <div class="topbar-title" id="pageTitle">{{PAGE_TITLE}} <span class="sub">| {{PAGE_SUBTITLE}}</span></div>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <div class="topbar-status">
+                        <span class="dot" id="statusDot"></span>
+                        <span id="connectionStatus">Connected</span>
+                    </div>
+                    <div class="topbar-actions">
+                        <button class="btn btn-outline btn-sm" onclick="window.location.reload()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout()">🚪 Logout</button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="page-content active">
+                <!-- ─── STATUS BAR ────────────────────────────────────────── -->
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;color:var(--text-muted);" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
+
+                <!-- ─── PAGE CONTENT ────────────────────────────────────── -->
+                {{PAGE_CONTENT}}
+            </div>
+        </main>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ─── ADMIN BASE ────────────────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
+    <script>
+        // ─── PAGE SPECIFIC FUNCTIONS ──────────────────────────────────────
+        // Override this function to load page-specific data
+        window._loadPageData = async function() {
+            // Page-specific data loading logic goes here
+            console.log('📊 Loading {{PAGE_TITLE}} data...');
+        };
+
+        // ─── ADDITIONAL PAGE FUNCTIONS ──────────────────────────────────
+        {{PAGE_SCRIPT}}
+    </script>
+</body>
+</html>
