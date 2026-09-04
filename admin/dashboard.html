@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LittleLoom Admin - Enterprise Console</title>
+    <title>Dashboard - LittleLoom Admin</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -40,11 +40,7 @@
             --glass-bg: rgba(255, 255, 255, 0.8);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: var(--font);
             background: var(--bg-primary);
@@ -259,12 +255,7 @@
             background: var(--primary);
             border-radius: 0 4px 4px 0;
         }
-        .sidebar-nav-item .icon {
-            font-size: 16px;
-            width: 24px;
-            text-align: center;
-            flex-shrink: 0;
-        }
+        .sidebar-nav-item .icon { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
         .sidebar-nav-item .badge {
             margin-left: auto;
             padding: 1px 10px;
@@ -278,19 +269,9 @@
         .sidebar-nav-item .badge.success { background: #22c55e; }
         .sidebar-nav-item .badge.warning { background: #f59e0b; }
         .sidebar-nav-item .badge.info { background: #3b82f6; }
-        .sidebar-nav-item.restricted {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .sidebar-nav-item.restricted:hover {
-            transform: none;
-            background: none;
-        }
-        .sidebar-nav-item .lock-icon {
-            font-size: 12px;
-            margin-left: auto;
-            opacity: 0.5;
-        }
+        .sidebar-nav-item.restricted { opacity: 0.5; cursor: not-allowed; }
+        .sidebar-nav-item.restricted:hover { transform: none; background: none; }
+        .sidebar-nav-item .lock-icon { font-size: 12px; margin-left: auto; opacity: 0.5; }
 
         .sidebar-footer {
             padding: 12px 16px;
@@ -316,15 +297,8 @@
             color: #fff;
             flex-shrink: 0;
         }
-        .sidebar-footer .user-name {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-white);
-        }
-        .sidebar-footer .user-email {
-            font-size: 11px;
-            color: rgba(255, 255, 255, 0.4);
-        }
+        .sidebar-footer .user-name { font-size: 13px; font-weight: 600; color: var(--text-white); }
+        .sidebar-footer .user-email { font-size: 11px; color: rgba(255, 255, 255, 0.4); }
         .sidebar-footer .user-role {
             font-size: 10px;
             color: var(--primary-light);
@@ -395,11 +369,7 @@
             letter-spacing: -0.3px;
             color: var(--text-primary);
         }
-        .topbar-title .sub {
-            font-weight: 400;
-            color: var(--text-muted);
-            font-size: 13px;
-        }
+        .topbar-title .sub { font-weight: 400; color: var(--text-muted); font-size: 13px; }
 
         .topbar-right {
             display: flex;
@@ -423,14 +393,8 @@
             background: #22c55e;
             animation: pulse-dot 2s ease-in-out infinite;
         }
-        .topbar-status .dot.warning {
-            background: #f59e0b;
-            animation: pulse-dot 1s ease-in-out infinite;
-        }
-        .topbar-status .dot.danger {
-            background: #ef4444;
-            animation: none;
-        }
+        .topbar-status .dot.warning { background: #f59e0b; animation: pulse-dot 1s ease-in-out infinite; }
+        .topbar-status .dot.danger { background: #ef4444; animation: none; }
 
         @keyframes pulse-dot {
             0%,100% { opacity:1; transform:scale(1); }
@@ -464,54 +428,22 @@
             color: #fff;
             box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
         }
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
-        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4); }
         .btn-outline {
             background: transparent;
             color: var(--text-secondary);
             border: 1.5px solid var(--border);
         }
-        .btn-outline:hover {
-            background: var(--bg-primary);
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-        .btn-danger {
-            background: #ef4444;
-            color: #fff;
-        }
-        .btn-danger:hover {
-            background: #dc2626;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
-        }
-        .btn-success {
-            background: #22c55e;
-            color: #fff;
-        }
-        .btn-success:hover {
-            background: #16a34a;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
-        }
-        .btn-warning {
-            background: #f59e0b;
-            color: #fff;
-        }
-        .btn-warning:hover {
-            background: #d97706;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
-        }
+        .btn-outline:hover { background: var(--bg-primary); border-color: var(--primary); color: var(--primary); }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-danger:hover { background: #dc2626; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3); }
+        .btn-success { background: #22c55e; color: #fff; }
+        .btn-success:hover { background: #16a34a; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3); }
+        .btn-warning { background: #f59e0b; color: #fff; }
+        .btn-warning:hover { background: #d97706; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3); }
         .btn-sm { padding: 4px 12px; font-size: 11px; }
         .btn-xs { padding: 2px 8px; font-size: 10px; }
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
         /* ─── STATUS BAR ────────────────────────────────────────────────── */
         .status-bar {
@@ -527,6 +459,25 @@
             border: 1px solid var(--border);
             box-shadow: var(--shadow);
         }
+        .status-bar .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .status-bar .status-indicator.online { background: #dcfce7; color: #16a34a; }
+        .status-bar .status-indicator.offline { background: #fee2e2; color: #dc2626; }
+        .status-bar .status-indicator .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-bar .status-indicator.online .dot { background: #22c55e; }
+        .status-bar .status-indicator.offline .dot { background: #ef4444; }
 
         /* ─── TOAST ─────────────────────────────────────────────────────── */
         .toast-container {
@@ -632,21 +583,9 @@
         .card-body { padding: 16px 20px; }
 
         /* ─── GRIDS ─────────────────────────────────────────────────────── */
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        .grid-3 {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-        }
-        .grid-4 {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-        }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 
         @media (max-width: 1024px) {
             .grid-2 { grid-template-columns: 1fr; }
@@ -703,14 +642,12 @@
         .stat-change.negative { color: #ef4444; }
         .stat-change.neutral { color: var(--text-muted); }
 
-        /* ─── PAGE ───────────────────────────────────────────────────────── */
+        /* ─── PAGE CONTENT ───────────────────────────────────────────────── */
         .page-content {
             padding: 24px 28px;
             animation: fadeInPage 0.3s ease-out;
             flex: 1;
         }
-        .page-content.active { display: block; }
-        .page-content { display: block; }
 
         @keyframes fadeInPage {
             from { opacity:0; transform:translateY(8px); }
@@ -880,33 +817,6 @@
             cursor: not-allowed;
         }
 
-        /* ─── STATUS INDICATOR ──────────────────────────────────────────── */
-        .status-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .status-indicator.online {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        .status-indicator.offline {
-            background: #fee2e2;
-            color: #dc2626;
-        }
-        .status-indicator .dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        .status-indicator.online .dot { background: #22c55e; }
-        .status-indicator.offline .dot { background: #ef4444; }
-
         /* ─── MODAL ─────────────────────────────────────────────────────── */
         .modal-overlay {
             display: none;
@@ -948,10 +858,7 @@
             padding: 16px 24px;
             border-bottom: 1px solid var(--border);
         }
-        .modal-header h2 {
-            font-size: 18px;
-            font-weight: 700;
-        }
+        .modal-header h2 { font-size: 18px; font-weight: 700; }
         .modal-close {
             background: none;
             border: none;
@@ -972,36 +879,7 @@
             justify-content: flex-end;
         }
 
-        /* ─── LOADING SHIMMER ───────────────────────────────────────────── */
-        .shimmer {
-            background: linear-gradient(90deg, var(--bg-primary) 25%, var(--border) 50%, var(--bg-primary) 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s ease-in-out infinite;
-            border-radius: 4px;
-        }
-        @keyframes shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-
-        /* ─── ADMIN ROLE INDICATOR ──────────────────────────────────────── */
-        .admin-role-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 2px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .admin-role-badge.super-admin { background: #ede9fe; color: #7c3aed; }
-        .admin-role-badge.content-manager { background: #dbeafe; color: #2563eb; }
-        .admin-role-badge.user-manager { background: #dcfce7; color: #16a34a; }
-        .admin-role-badge.moderation-manager { background: #fef3c7; color: #d97706; }
-        .admin-role-badge.analytics-viewer { background: #fce7f3; color: #db2777; }
-        .admin-role-badge.guest { background: #f3f4f6; color: #6b7280; }
-
-        /* ─── PERMISSION DENIED OVERLAY ───────────────────────────────── */
+        /* ─── PERMISSION DENIED ─────────────────────────────────────────── */
         .permission-denied {
             text-align: center;
             padding: 60px 20px;
@@ -1020,6 +898,99 @@
             color: var(--text-muted);
             font-size: 14px;
         }
+
+        /* ─── PAGE HERO ────────────────────────────────────────────────── */
+        .page-hero {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-hero::after {
+            content: '📊';
+            position: absolute;
+            right: 28px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 64px;
+            opacity: 0.1;
+        }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
+        .page-hero .stats-row {
+            display: flex;
+            gap: 32px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+        .page-hero .stats-row .stat {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+        .page-hero .stats-row .stat .num {
+            font-size: 28px;
+            font-weight: 800;
+        }
+        .page-hero .stats-row .stat .label {
+            font-size: 13px;
+            opacity: 0.75;
+        }
+
+        /* ─── FILTER BAR ────────────────────────────────────────────────── */
+        .filter-bar-modern {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+        }
+        .filter-bar-modern input,
+        .filter-bar-modern select {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: var(--transition);
+        }
+        .filter-bar-modern input:focus,
+        .filter-bar-modern select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        /* ─── EMPTY STATE MODERN ────────────────────────────────────────── */
+        .empty-state-modern {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-modern .emoji {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        .empty-state-modern h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+        .empty-state-modern p {
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -1033,14 +1004,14 @@
     <div class="session-banner" id="sessionBanner">
         <span>⏰</span>
         <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
-        <button class="btn btn-outline" onclick="extendSession()">⏳ Stay Logged In</button>
-        <button class="btn btn-primary" onclick="handleLogout()">🚪 Logout Now</button>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
     </div>
 
     <div class="app">
         <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand" onclick="navigateTo('dashboard')">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div>
                     <div class="logo-title">LittleLoom</div>
@@ -1048,116 +1019,7 @@
                 </div>
             </div>
             <nav class="sidebar-nav" id="sidebarNav">
-                <div class="sidebar-nav-label">📊 Overview</div>
-                <a class="sidebar-nav-item active" href="#" onclick="navigateTo('dashboard')">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-
-                <div class="sidebar-nav-label">👑 Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')" data-required-role="content_manager">
-                    <span class="icon">👶</span> Babies
-                    <span class="badge" id="babyBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')" data-required-role="user_manager">
-                    <span class="icon">👤</span> Users
-                    <span class="badge" id="userBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')" data-required-role="moderation_manager">
-                    <span class="icon">🛡️</span> Moderation
-                    <span class="badge danger" id="modBadge">0</span>
-                </a>
-
-                <div class="sidebar-nav-label">💬 Community</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')" data-required-role="content_manager">
-                    <span class="icon">💬</span> Community Posts
-                    <span class="badge" id="postBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')" data-required-role="content_manager">
-                    <span class="icon">📌</span> Topics
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')" data-required-role="content_manager">
-                    <span class="icon">📢</span> Announcements
-                    <span class="badge" id="announceBadge">0</span>
-                </a>
-
-                <div class="sidebar-nav-label">📊 Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')" data-required-role="content_manager">
-                    <span class="icon">📈</span> Tracker Entries
-                    <span class="badge" id="entryBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')" data-required-role="content_manager">
-                    <span class="icon">🏆</span> Milestones
-                    <span class="badge" id="milestoneBadge">0</span>
-                </a>
-
-                <div class="sidebar-nav-label">📈 Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')" data-required-role="analytics_viewer">
-                    <span class="icon">📈</span> Analytics Dashboard
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')" data-required-role="analytics_viewer">
-                    <span class="icon">📊</span> Growth Analytics
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')" data-required-role="analytics_viewer">
-                    <span class="icon">📈</span> Activity Heatmap
-                </a>
-
-                <div class="sidebar-nav-label">⚙️ System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')" data-required-role="super_admin">
-                    <span class="icon">⚙️</span> Settings
-                    <span class="lock-icon">🔒</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')" data-required-role="super_admin">
-                    <span class="icon">💾</span> Backup & Restore
-                    <span class="lock-icon">🔒</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')" data-required-role="super_admin">
-                    <span class="icon">📋</span> Audit Logs
-                    <span class="lock-icon">🔒</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('admin_roles')" data-required-role="super_admin">
-                    <span class="icon">👥</span> Admin Roles
-                    <span class="badge danger" id="adminBadge">0</span>
-                    <span class="lock-icon">🔒</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('support')" data-required-role="super_admin">
-                    <span class="icon">🎫</span> Support Tickets
-                    <span class="badge danger" id="supportBadge">0</span>
-                    <span class="lock-icon">🔒</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('api')" data-required-role="super_admin">
-                    <span class="icon">🔑</span> API Management
-                    <span class="lock-icon">🔒</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('features')" data-required-role="super_admin">
-                    <span class="icon">🚩</span> Feature Flags
-                    <span class="lock-icon">🔒</span>
-                </a>
-
-                <div class="sidebar-nav-label">❤️ Health</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('health')">
-                    <span class="icon">❤️</span> System Health
-                    <span class="badge success" id="healthBadge">OK</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('performance')">
-                    <span class="icon">⚡</span> Performance
-                </a>
-
-                <div class="sidebar-nav-label">🛠️ Tools</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('qrcode')">
-                    <span class="icon">📱</span> QR Codes
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('realtime')">
-                    <span class="icon">🔄</span> Realtime Monitor
-                    <span class="badge success">Live</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('export')" data-required-role="analytics_viewer">
-                    <span class="icon">📤</span> Data Export
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('notifications')">
-                    <span class="icon">🔔</span> Notifications
-                    <span class="badge" id="notifBadge">0</span>
-                </a>
+                <!-- Built by admin-base.js -->
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
@@ -1171,19 +1033,19 @@
             </div>
         </aside>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
         <!-- ─── MODAL ────────────────────────────────────────────────── -->
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
                 <div class="modal-header">
                     <h2 id="modalTitle">Modal</h2>
-                    <button class="modal-close" onclick="modalCancel()">✕</button>
+                    <button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button>
                 </div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
@@ -1192,7 +1054,7 @@
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
                     <div>
                         <div class="topbar-title" id="pageTitle">Dashboard <span class="sub">| Enterprise Overview</span></div>
                     </div>
@@ -1203,8 +1065,8 @@
                         <span id="connectionStatus">Connected</span>
                     </div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="refreshAll()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.refreshAll && window.refreshAll()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
@@ -1229,13 +1091,13 @@
 
                 <!-- Quick Actions -->
                 <div class="quick-actions" id="quickActions">
-                    <button class="btn btn-primary" onclick="navigateTo('babies')" data-required-role="content_manager">👶 View Babies</button>
-                    <button class="btn btn-success" onclick="navigateTo('trackers')" data-required-role="content_manager">📊 Trackers</button>
-                    <button class="btn btn-outline" onclick="navigateTo('community')" data-required-role="content_manager">💬 Community</button>
-                    <button class="btn btn-warning" onclick="navigateTo('moderation')" data-required-role="moderation_manager">🛡️ Moderation</button>
-                    <button class="btn btn-outline" onclick="navigateTo('announcements')" data-required-role="content_manager">📢 Announcements</button>
-                    <button class="btn btn-outline" onclick="navigateTo('analytics')" data-required-role="analytics_viewer">📈 Analytics</button>
-                    <button class="btn btn-outline" onclick="navigateTo('admin_roles')" data-required-role="super_admin" style="border-color:#7c3aed;color:#7c3aed;">👥 Admin Roles</button>
+                    <button class="btn btn-primary" onclick="window._navigateTo && window._navigateTo('babies')" data-required-role="content_manager">👶 View Babies</button>
+                    <button class="btn btn-success" onclick="window._navigateTo && window._navigateTo('trackers')" data-required-role="content_manager">📊 Trackers</button>
+                    <button class="btn btn-outline" onclick="window._navigateTo && window._navigateTo('community')" data-required-role="content_manager">💬 Community</button>
+                    <button class="btn btn-warning" onclick="window._navigateTo && window._navigateTo('moderation')" data-required-role="moderation_manager">🛡️ Moderation</button>
+                    <button class="btn btn-outline" onclick="window._navigateTo && window._navigateTo('announcements')" data-required-role="content_manager">📢 Announcements</button>
+                    <button class="btn btn-outline" onclick="window._navigateTo && window._navigateTo('analytics')" data-required-role="analytics_viewer">📈 Analytics</button>
+                    <button class="btn btn-outline" onclick="window._navigateTo && window._navigateTo('admin_roles')" data-required-role="super_admin" style="border-color:#7c3aed;color:#7c3aed;">👥 Admin Roles</button>
                 </div>
 
                 <!-- Stats -->
@@ -1322,570 +1184,26 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
+    <!-- ─── ADMIN BASE ────────────────────────────────────────────────── -->
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
+    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
-        // ─── SUPABASE CONFIG ──────────────────────────────────────────────
-        const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
-        const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
-
-        let supabase = null;
-        let session = null;
+        // ─── PAGE SPECIFIC FUNCTIONS ──────────────────────────────────────
         let refreshTimer = null;
-        let realtimeChannel = null;
 
-        // ─── SESSION MANAGEMENT ──────────────────────────────────────────
-        const SESSION_TIMEOUT_MINUTES = 30;
-        let sessionTimer = null;
-        let sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
-        let sessionWarningShown = false;
-        let sessionCountdownInterval = null;
-
-        // ─── SUPER ADMIN USER ID ─────────────────────────────────────────
-        const SUPER_ADMIN_USER_ID = 'a3f834ef-7fa5-4732-9a03-af154806ac16';
-
-        // ─── SESSION STORAGE KEYS ──────────────────────────────────────
-        const SESSION_KEYS = {
-            SESSION_DATA: 'littleloom_session_data',
-            SESSION_EXPIRY: 'littleloom_session_expiry',
-            REMEMBER_ME: 'littleloom_remember_me',
-            USER_ROLE: 'littleloom_user_role',
-        };
-
-        // ─── ADMIN ROLE PERMISSIONS ──────────────────────────────────────
-        const ADMIN_ROLES = {
-            'super_admin': {
-                label: 'Super Admin',
-                badge: 'super-admin',
-                permissions: {
-                    canManageAdmins: true,
-                    canManageUsers: true,
-                    canManageContent: true,
-                    canModerate: true,
-                    canViewAnalytics: true,
-                    canManageSystem: true,
-                    canManageBackup: true,
-                    canViewAudit: true,
-                    canManageAPI: true,
-                    canManageFeatures: true
-                }
-            },
-            'content_manager': {
-                label: 'Content Manager',
-                badge: 'content-manager',
-                permissions: {
-                    canManageAdmins: false,
-                    canManageUsers: false,
-                    canManageContent: true,
-                    canModerate: true,
-                    canViewAnalytics: true,
-                    canManageSystem: false,
-                    canManageBackup: false,
-                    canViewAudit: false,
-                    canManageAPI: false,
-                    canManageFeatures: false
-                }
-            },
-            'user_manager': {
-                label: 'User Manager',
-                badge: 'user-manager',
-                permissions: {
-                    canManageAdmins: false,
-                    canManageUsers: true,
-                    canManageContent: false,
-                    canModerate: false,
-                    canViewAnalytics: true,
-                    canManageSystem: false,
-                    canManageBackup: false,
-                    canViewAudit: false,
-                    canManageAPI: false,
-                    canManageFeatures: false
-                }
-            },
-            'moderation_manager': {
-                label: 'Moderation Manager',
-                badge: 'moderation-manager',
-                permissions: {
-                    canManageAdmins: false,
-                    canManageUsers: false,
-                    canManageContent: false,
-                    canModerate: true,
-                    canViewAnalytics: true,
-                    canManageSystem: false,
-                    canManageBackup: false,
-                    canViewAudit: false,
-                    canManageAPI: false,
-                    canManageFeatures: false
-                }
-            },
-            'analytics_viewer': {
-                label: 'Analytics Viewer',
-                badge: 'analytics-viewer',
-                permissions: {
-                    canManageAdmins: false,
-                    canManageUsers: false,
-                    canManageContent: false,
-                    canModerate: false,
-                    canViewAnalytics: true,
-                    canManageSystem: false,
-                    canManageBackup: false,
-                    canViewAudit: false,
-                    canManageAPI: false,
-                    canManageFeatures: false
-                }
-            }
-        };
-
-        let currentUserRole = 'super_admin';
-        let userPermissions = ADMIN_ROLES['super_admin'].permissions;
-        let sessionDataLoaded = false;
-
-        
-
-        // ─── INIT ─────────────────────────────────────────────────────────
-        function initSupabase() {
-            try {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                return true;
-            } catch (e) {
-                console.error('Supabase init error:', e);
-                return false;
-            }
+        function formatSessionTime() {
+            const session = window._getSession();
+            if (!session) return '30:00';
+            // Session time is managed by admin-base.js
+            return document.getElementById('sessionTimeDisplay')?.textContent || '30:00';
         }
 
-        // ─── TOAST ────────────────────────────────────────────────────────
-        function showToast(message, type = 'info', duration = 4000) {
-            let container = document.getElementById('toastContainer');
-            if (!container) {
-                container = document.createElement('div');
-                container.className = 'toast-container';
-                container.id = 'toastContainer';
-                document.body.appendChild(container);
-            }
-
-            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span> ${message}`;
-            container.appendChild(toast);
-
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.style.opacity = '0';
-                    toast.style.transform = 'translateY(-10px)';
-                    setTimeout(() => toast.remove(), 300);
-                }
-            }, duration);
+        function safeSetText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value ?? '—';
         }
-
-        // ─── MODAL ────────────────────────────────────────────────────────
-        let modalResolve = null;
-        let modalData = null;
-
-        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
-            return new Promise((resolve) => {
-                const overlay = document.getElementById('modalOverlay');
-                if (!overlay) return;
-
-                document.getElementById('modalTitle').textContent = title;
-                document.getElementById('modalBody').innerHTML = bodyHTML;
-                document.getElementById('modalConfirmBtn').textContent = confirmText;
-                document.getElementById('modalCancelBtn').textContent = cancelText;
-                overlay.classList.add('active');
-
-                modalResolve = resolve;
-                modalData = { confirmAction };
-            });
-        }
-
-        function closeModal(result) {
-            document.getElementById('modalOverlay').classList.remove('active');
-            if (modalResolve) {
-                modalResolve(result !== undefined ? result : null);
-                modalResolve = null;
-            }
-        }
-
-        function modalConfirm() {
-            if (modalData && modalData.confirmAction) {
-                modalData.confirmAction();
-            }
-            closeModal(true);
-        }
-
-        function modalCancel() {
-            closeModal(false);
-        }
-
-        // ─── SET SUPER ADMIN ROLE ─────────────────────────────────────────
-        async function ensureSuperAdminRole(userId) {
-            try {
-                // Check if user already has admin_role set
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('admin_role')
-                    .eq('id', userId)
-                    .single();
-
-                if (error) {
-                    console.warn('Error checking admin role:', error);
-                    return;
-                }
-
-                // If user is the Super Admin ID and doesn't have the role set, set it
-                if (userId === SUPER_ADMIN_USER_ID && (!data || data.admin_role !== 'super_admin')) {
-                    console.log('🛡️ Setting Super Admin role for user:', userId);
-                    const { error: updateError } = await supabase
-                        .from('profiles')
-                        .update({ 
-                            admin_role: 'super_admin',
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', userId);
-
-                    if (updateError) {
-                        console.warn('Could not update admin role:', updateError);
-                    } else {
-                        console.log('✅ Super Admin role set successfully');
-                    }
-                }
-            } catch (e) {
-                console.warn('Error ensuring super admin role:', e);
-            }
-        }
-
-         = await supabase.auth.getSession();
-                    
-                    if (!error && data.session) {
-                        session = data.session;
-                        
-                        // Ensure Super Admin role
-                        await ensureSuperAdminRole(session.user.id);
-                        
-                        // Load role from profile
-                        await loadUserRole(session.user.id);
-                        
-                        updateUIForAuth(session);
-                        updateUIForRole(currentUserRole);
-                        startSessionTimer();
-                        sessionDataLoaded = true;
-                        
-                        if (overlay) overlay.classList.remove('show');
-                        return true;
-                    }
-                    
-                    console.log('⚠️ Stored session invalid, clearing...');
-                    clearSessionData();
-                }
-
-                const { data, error } = await supabase.auth.getSession();
-                
-                if (error || !data.session) {
-                    const statusBar = document.getElementById('statusBar');
-                    if (statusBar) {
-                        statusBar.innerHTML = `
-                            <span>🔒</span>
-                            <span>Please log in to continue</span>
-                            <button class="btn btn-primary btn-sm" onclick="window.location.href='/login'" style="margin-left:auto;">
-                                Login
-                            </button>
-                        `;
-                    }
-                    if (overlay) overlay.classList.remove('show');
-                    return false;
-                }
-
-                session = data.session;
-                
-                // Ensure Super Admin role
-                await ensureSuperAdminRole(session.user.id);
-                
-                await loadUserRole(session.user.id);
-                
-                saveSessionData({
-                    user: session.user,
-                    role: currentUserRole,
-                    timestamp: Date.now()
-                });
-                
-                updateUIForAuth(session);
-                updateUIForRole(currentUserRole);
-                startSessionTimer();
-                sessionDataLoaded = true;
-                
-                if (overlay) overlay.classList.remove('show');
-                return true;
-            } catch (e) {
-                console.error('Auth check error:', e);
-                if (overlay) overlay.classList.remove('show');
-                return false;
-            }
-        }
-
-        function updateUIForAuth(session) {
-            const statusEl = document.getElementById('connectionStatus');
-            if (statusEl) statusEl.textContent = `👤 ${session.user.email}`;
-
-            const emailEl = document.getElementById('sidebarEmail');
-            if (emailEl) emailEl.textContent = session.user.email;
-
-            const nameEl = document.getElementById('sidebarName');
-            const avatarEl = document.getElementById('sidebarAvatar');
-            if (nameEl) {
-                const name = session.user.user_metadata?.full_name ||
-                    session.user.email.split('@')[0];
-                nameEl.textContent = name;
-                if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
-            }
-        }
-
-        async function loadUserRole(userId) {
-            try {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('admin_role')
-                    .eq('id', userId)
-                    .single();
-
-                // If this is the super admin ID, force super_admin role
-                if (userId === SUPER_ADMIN_USER_ID) {
-                    currentUserRole = 'super_admin';
-                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
-                    return;
-                }
-
-                if (data && data.admin_role && ADMIN_ROLES[data.admin_role]) {
-                    currentUserRole = data.admin_role;
-                    userPermissions = ADMIN_ROLES[currentUserRole].permissions;
-                } else {
-                    currentUserRole = 'super_admin';
-                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
-                }
-            } catch (e) {
-                console.warn('Could not load user role, using default:', e);
-                // If it's the super admin ID, always use super_admin
-                if (userId === SUPER_ADMIN_USER_ID) {
-                    currentUserRole = 'super_admin';
-                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
-                } else {
-                    currentUserRole = 'super_admin';
-                    userPermissions = ADMIN_ROLES['super_admin'].permissions;
-                }
-            }
-        }
-
-        function updateUIForRole(role) {
-            const roleInfo = ADMIN_ROLES[role];
-            if (!roleInfo) return;
-
-            const roleEl = document.getElementById('sidebarRole');
-            if (roleEl) roleEl.textContent = roleInfo.label;
-
-            const badgeEl = document.getElementById('welcomeRoleBadge');
-            if (badgeEl) badgeEl.textContent = `👑 ${roleInfo.label}`;
-
-            const footerEl = document.getElementById('userRoleFooter');
-            if (footerEl) footerEl.textContent = `👑 ${roleInfo.label}`;
-
-            document.querySelectorAll('.sidebar-nav-item').forEach(item => {
-                const requiredRole = item.dataset.requiredRole;
-                if (requiredRole) {
-                    const hasPermission = checkRolePermission(requiredRole);
-                    if (!hasPermission) {
-                        item.classList.add('restricted');
-                        if (!item.querySelector('.lock-icon')) {
-                            const lock = document.createElement('span');
-                            lock.className = 'lock-icon';
-                            lock.textContent = '🔒';
-                            item.appendChild(lock);
-                        }
-                    } else {
-                        item.classList.remove('restricted');
-                        const lock = item.querySelector('.lock-icon');
-                        if (lock) lock.remove();
-                    }
-                }
-            });
-
-            document.querySelectorAll('.quick-actions .btn').forEach(btn => {
-                const requiredRole = btn.dataset.requiredRole;
-                if (requiredRole) {
-                    btn.disabled = !checkRolePermission(requiredRole);
-                }
-            });
-        }
-
-        function checkRolePermission(requiredRole) {
-            const roleMap = {
-                'super_admin': userPermissions.canManageAdmins,
-                'content_manager': userPermissions.canManageContent,
-                'user_manager': userPermissions.canManageUsers,
-                'moderation_manager': userPermissions.canModerate,
-                'analytics_viewer': userPermissions.canViewAnalytics
-            };
-
-            if (roleMap[requiredRole] !== undefined) {
-                return roleMap[requiredRole];
-            }
-
-            const roleHierarchy = ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer'];
-            const userIndex = roleHierarchy.indexOf(currentUserRole);
-            const requiredIndex = roleHierarchy.indexOf(requiredRole);
-
-            if (requiredIndex === -1) return false;
-            if (currentUserRole === 'super_admin') return true;
-            return userIndex <= requiredIndex;
-        }
-
-        
-
-                if (sessionTimeRemaining <= 0) {
-                    clearInterval(sessionTimer);
-                    handleLogout();
-                }
-            }, 1000);
-
-            const resetTimer = () => {
-                sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
-                sessionWarningShown = false;
-                hideSessionBanner();
-                updateSessionDisplay();
-                
-                const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
-                sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
-                if (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true') {
-                    localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
-                }
-            };
-
-            const activityEvents = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
-            activityEvents.forEach(event => {
-                document.addEventListener(event, resetTimer);
-            });
-
-            window._sessionCleanup = () => {
-                activityEvents.forEach(event => {
-                    document.removeEventListener(event, resetTimer);
-                });
-            };
-        }
-
-        function updateSessionDisplay() {
-            const minutes = Math.floor(sessionTimeRemaining / 60);
-            const seconds = sessionTimeRemaining % 60;
-            const display = document.getElementById('sessionTimeDisplay');
-            if (display) {
-                display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            }
-
-            const dot = document.getElementById('statusDot');
-            if (dot) {
-                if (sessionTimeRemaining < 60) {
-                    dot.className = 'dot danger';
-                } else if (sessionTimeRemaining < 300) {
-                    dot.className = 'dot warning';
-                } else {
-                    dot.className = 'dot';
-                }
-            }
-        }
-
-        function showSessionBanner() {
-            const banner = document.getElementById('sessionBanner');
-            if (banner) {
-                banner.classList.add('show');
-                let countdown = 30;
-                const countdownEl = document.getElementById('sessionCountdown');
-                if (sessionCountdownInterval) clearInterval(sessionCountdownInterval);
-                sessionCountdownInterval = setInterval(() => {
-                    countdown--;
-                    if (countdownEl) countdownEl.textContent = countdown;
-                    if (countdown <= 0) {
-                        clearInterval(sessionCountdownInterval);
-                        handleLogout();
-                    }
-                }, 1000);
-            }
-        }
-
-        function hideSessionBanner() {
-            const banner = document.getElementById('sessionBanner');
-            if (banner) {
-                banner.classList.remove('show');
-                if (sessionCountdownInterval) {
-                    clearInterval(sessionCountdownInterval);
-                    sessionCountdownInterval = null;
-                }
-            }
-        }
-
-        function extendSession() {
-            sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
-            sessionWarningShown = false;
-            hideSessionBanner();
-            updateSessionDisplay();
-            
-            const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
-            sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
-            if (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true') {
-                localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
-            }
-            
-            showToast('⏳ Session extended', 'success');
-        }
-
-        );
-
-            if (!confirmed) return;
-
-            try {
-                await supabase.auth.signOut();
-                session = null;
-                
-                if (refreshTimer) { clearInterval(refreshTimer);
-                    refreshTimer = null; }
-                if (realtimeChannel) { realtimeChannel.unsubscribe();
-                    realtimeChannel = null; }
-                if (sessionTimer) { clearInterval(sessionTimer);
-                    sessionTimer = null; }
-                if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval);
-                    sessionCountdownInterval = null; }
-                if (window._sessionCleanup) { window._sessionCleanup(); }
-                
-                hideSessionBanner();
-                clearSessionData();
-                setRememberMe(false);
-                
-                showToast('✅ Logged out successfully', 'success');
-                window.location.href = '/login';
-            } catch (e) {
-                showToast('❌ Logout failed: ' + e.message, 'error');
-            }
-        }
-
-        "]`);
-            if (navItem && navItem.classList.contains('restricted')) {
-                showToast('🔒 You do not have permission to access this page', 'warning');
-                return;
-            }
-
-            window.location.href = `/admin/${page}`;
-        }
-
-        function toggleSidebar(open) {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            if (open === undefined) {
-                sidebar.classList.toggle('open');
-                overlay.classList.toggle('active');
-            } else if (open) {
-                sidebar.classList.add('open');
-                overlay.classList.add('active');
-            } else {
-                sidebar.classList.remove('open');
-                overlay.classList.remove('active');
-            }
-        }
-
-        
 
         function safeSetHTML(id, value) {
             const el = document.getElementById(id);
@@ -1927,29 +1245,10 @@
             }
         }
 
-        function formatNumber(num) {
-            if (num === null || num === undefined) return '—';
-            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-            return num.toString();
-        }
-
-        // ─── ONLINE/OFFLINE ──────────────────────────────────────────────
-        window.addEventListener('online', () => {
-            showToast('🔄 Back online', 'success');
-            if (typeof fetchDashboardData === 'function') {
-                fetchDashboardData();
-            }
-        });
-
-        window.addEventListener('offline', () => {
-            showToast('📡 You are offline', 'warning');
-        });
-
-        // ─── DASHBOARD DATA ──────────────────────────────────────────────
         async function fetchDashboardData() {
-            if (!supabase || !session) {
-                console.warn('Supabase or session not ready');
+            const supabase = window._supabaseClient;
+            if (!supabase) {
+                console.warn('Supabase not initialized');
                 return;
             }
 
@@ -1968,9 +1267,9 @@
                     supabase.from('community_posts').select('*', { count: 'exact', head: true }),
                     supabase.from('tracker_entries').select('*', { count: 'exact', head: true }).eq('tracker_type', 'milestone'),
                     supabase.from('tracker_entries')
-                    .select('tracker_id, title, logged_by_name, timestamp, created_at')
-                    .order('timestamp', { ascending: false })
-                    .limit(8)
+                        .select('tracker_id, title, logged_by_name, timestamp, created_at')
+                        .order('timestamp', { ascending: false })
+                        .limit(8)
                 ]);
 
                 const babyCount = babiesResult.count || 0;
@@ -1984,19 +1283,6 @@
                 safeSetText('statEntries', entryCount);
                 safeSetText('statPosts', postCount);
                 safeSetText('statMilestones', milestoneCount);
-
-                safeSetText('babyBadge', babyCount);
-                safeSetText('userBadge', userCount);
-                safeSetText('postBadge', postCount);
-                safeSetText('entryBadge', entryCount);
-                safeSetText('milestoneBadge', milestoneCount);
-
-                const { data: adminData } = await supabase
-                    .from('profiles')
-                    .select('id')
-                    .not('admin_role', 'is', null);
-                const adminCount = adminData?.length || 0;
-                safeSetText('adminBadge', adminCount);
 
                 const { data: streakData } = await supabase
                     .from('babies')
@@ -2056,9 +1342,12 @@
                 let greeting = 'Good morning';
                 if (hour >= 12 && hour < 17) greeting = 'Good afternoon';
                 else if (hour >= 17) greeting = 'Good evening';
+                
+                const session = window._getSession();
                 const userName = session?.user?.user_metadata?.full_name ||
                     session?.user?.email?.split('@')[0] || 'Admin';
-                document.getElementById('welcomeMessage').textContent = `👋 ${greeting}, ${userName}!`;
+                const welcomeEl = document.getElementById('welcomeMessage');
+                if (welcomeEl) welcomeEl.textContent = `👋 ${greeting}, ${userName}!`;
 
                 const statusBarEl = document.getElementById('statusBar');
                 if (statusBarEl) {
@@ -2072,7 +1361,6 @@
                         </span>
                         <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">${formatSessionTime()}</span></span>
                     `;
-                    updateSessionDisplay();
                 }
                 safeSetText('lastUpdated', new Date().toLocaleString());
 
@@ -2084,144 +1372,37 @@
                 if (statusBarEl) {
                     statusBarEl.innerHTML = `
                         <span>❌ Error loading data</span>
-                        <button class="btn btn-outline btn-sm" onclick="refreshAll()" style="margin-left:auto;">
+                        <button class="btn btn-outline btn-sm" onclick="window.refreshAll && window.refreshAll()" style="margin-left:auto;">
                             🔄 Retry
                         </button>
                     `;
                 }
-                showToast('Error loading dashboard data: ' + err.message, 'error');
+                window._showToast && window._showToast('Error loading dashboard data: ' + err.message, 'error');
             }
         }
 
-        function formatSessionTime() {
-            const minutes = Math.floor(sessionTimeRemaining / 60);
-            const seconds = sessionTimeRemaining % 60;
-            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        }
-
-        // ─── REFRESH ──────────────────────────────────────────────────────
         async function refreshAll() {
-            showToast('🔄 Refreshing...', 'info');
+            window._showToast && window._showToast('🔄 Refreshing...', 'info');
             await fetchDashboardData();
-            showToast('✅ All data refreshed', 'success');
+            window._showToast && window._showToast('✅ All data refreshed', 'success');
         }
 
-        // ─── REALTIME ──────────────────────────────────────────────────────
-        function setupRealtime() {
-            if (!supabase || !session) return;
-            if (realtimeChannel) {
-                realtimeChannel.unsubscribe();
-                realtimeChannel = null;
-            }
-
-            realtimeChannel = supabase.channel('admin-realtime')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'babies' }, () => fetchDashboardData())
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'tracker_entries' }, () => fetchDashboardData())
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, () => fetchDashboardData())
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchDashboardData())
-                .subscribe((status) => {
-                    if (status === 'SUBSCRIBED') {
-                        console.log('✅ Realtime connected');
-                    } else if (status === 'CHANNEL_ERROR') {
-                        console.warn('⚠️ Realtime error, reconnecting...');
-                        setTimeout(setupRealtime, 5000);
-                    }
-                });
-        }
-
-        // ─── INIT ──────────────────────────────────────────────────────────
-        async function init() {
-            if (!initSupabase()) {
-                showToast('Failed to initialize Supabase', 'error');
-                return;
-            }
-
-            const authed = await checkAuth();
-            if (!authed) {
-                showToast('Please log in to continue', 'warning');
-                return;
-            }
-
+        // ─── LOAD PAGE DATA ─────────────────────────────────────────────
+        window._loadPageData = async function() {
             await fetchDashboardData();
-
+            
+            // Set up auto-refresh
             if (refreshTimer) clearInterval(refreshTimer);
             refreshTimer = setInterval(fetchDashboardData, 30000);
+        };
 
-            setupRealtime();
-
-            window.addEventListener('resize', function() {
-                if (window.innerWidth > 1024) {
-                    document.getElementById('sidebar').classList.remove('open');
-                    document.getElementById('sidebarOverlay').classList.remove('active');
-                }
-            });
-
-            document.addEventListener('keydown', function(e) {
-                if (e.ctrlKey && e.key === 'r') {
-                    e.preventDefault();
-                    refreshAll();
-                }
-                if (e.key === 'Escape') {
-                    closeModal();
-                }
-            });
-
-            document.addEventListener('visibilitychange', function() {
-                if (document.visibilityState === 'visible') {
-                    const storedSession = getSessionData();
-                    if (!storedSession && session) {
-                        checkAuth();
-                    }
-                }
-            });
-
-            window.addEventListener('beforeunload', function() {
-                const rememberMe = localStorage.getItem(SESSION_KEYS.REMEMBER_ME);
-                if (rememberMe !== 'true') {
-                    sessionStorage.removeItem(SESSION_KEYS.SESSION_DATA);
-                }
-            });
-
-            setTimeout(() => {
-                updateUIForRole(currentUserRole);
-            }, 500);
-
-            console.log('🧵 Enterprise Admin Console ready');
-            console.log('👤 Logged in as: ' + session?.user?.email);
-            console.log('👑 Role: ' + ADMIN_ROLES[currentUserRole]?.label);
-            console.log('🛡️ Super Admin ID: ' + SUPER_ADMIN_USER_ID);
-            console.log('🔐 Session persistence: ' + (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true' ? 'Remember Me' : 'Session only'));
-        }
-
-        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────
-        window.navigateTo = navigateTo;
-        window.toggleSidebar = toggleSidebar;
-        window.refreshAll = refreshAll;
-        window.showToast = showToast;
-        window.handleLogout = handleLogout;
-        window.openModal = openModal;
-        window.closeModal = closeModal;
-        window.modalConfirm = modalConfirm;
-        window.modalCancel = modalCancel;
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
         window.fetchDashboardData = fetchDashboardData;
+        window.refreshAll = refreshAll;
         window.safeSetText = safeSetText;
         window.safeSetHTML = safeSetHTML;
         window.formatDate = formatDate;
         window.timeAgo = timeAgo;
-        window.formatNumber = formatNumber;
-        window.extendSession = extendSession;
-        window.setRememberMe = setRememberMe;
-        window.session = session;
-        window.currentUserRole = currentUserRole;
-        window.ADMIN_ROLES = ADMIN_ROLES;
-        window.SUPER_ADMIN_USER_ID = SUPER_ADMIN_USER_ID;
-
-        const rememberMeParam = new URLSearchParams(window.location.search).get('remember');
-        if (rememberMeParam === 'true') {
-            setRememberMe(true);
-        }
-
-        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>

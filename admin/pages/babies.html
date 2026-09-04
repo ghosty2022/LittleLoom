@@ -315,63 +315,32 @@
     </style>
 </head>
 <body>
+    <!-- ─── SESSION CHECK OVERLAY ────────────────────────────────────── -->
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+
+    <!-- ─── SESSION TIMEOUT BANNER ────────────────────────────────────── -->
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div>
                     <div class="logo-title">LittleLoom</div>
                     <div class="logo-sub">Enterprise Console</div>
                 </div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html">
-                    <span class="icon">📊</span> Dashboard
-                    <span class="badge success">Live</span>
-                </a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item active" href="#">
-                    <span class="icon">👶</span> Babies
-                    <span class="badge" id="babyBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
-                    <span class="icon">👤</span> Users
-                    <span class="badge" id="userBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
-                    <span class="icon">🛡️</span> Moderation
-                    <span class="badge danger" id="modBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
-                    <span class="icon">💬</span> Community
-                    <span class="badge" id="postBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
-                    <span class="icon">📌</span> Topics
-                </a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
-                    <span class="icon">📈</span> Tracker Entries
-                    <span class="badge" id="entryBadge">0</span>
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
-                    <span class="icon">🏆</span> Milestones
-                    <span class="badge" id="milestoneBadge">0</span>
-                </a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
-                    <span class="icon">📈</span> Analytics
-                </a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
-                    <span class="icon">⚙️</span> Settings
-                </a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
-                    <span class="icon">💾</span> Backup & Restore
-                </a>
+            <nav class="sidebar-nav" id="sidebarNav">
+                <!-- Built by admin-base.js -->
             </nav>
             <div class="sidebar-footer">
                 <div class="user-info">
@@ -379,45 +348,46 @@
                     <div>
                         <div class="user-name" id="sidebarName">Admin</div>
                         <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
                     </div>
                 </div>
             </div>
         </aside>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <!-- ─── MODAL ────────────────────────────────────────────────────── -->
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <!-- ─── MODAL ────────────────────────────────────────────────── -->
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
                 <div class="modal-header">
                     <h2 id="modalTitle">Modal</h2>
-                    <button class="modal-close" onclick="modalCancel()">✕</button>
+                    <button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button>
                 </div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
+        <!-- ─── MAIN ────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left">
-                    <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
                     <div>
-                        <div class="topbar-title">Babies <span class="sub">| All Baby Profiles</span></div>
+                        <div class="topbar-title" id="pageTitle">Babies <span class="sub">| All Baby Profiles</span></div>
                     </div>
                 </div>
                 <div class="topbar-right">
                     <div class="topbar-status">
-                        <span class="dot"></span>
+                        <span class="dot" id="statusDot"></span>
                         <span id="connectionStatus">Connected</span>
                     </div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadBabies()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadBabies && window.loadBabies()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
@@ -426,6 +396,7 @@
                 <div class="status-bar" id="statusBar">
                     <span>✅ Ready</span>
                     <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
                 </div>
 
                 <div class="page-hero">
@@ -440,15 +411,15 @@
                 </div>
 
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search babies..." id="searchInput" oninput="filterBabies()">
-                    <select id="filterSelect" onchange="filterBabies()">
+                    <input type="text" placeholder="🔍 Search babies..." id="searchInput" oninput="window.filterBabies && window.filterBabies()">
+                    <select id="filterSelect" onchange="window.filterBabies && window.filterBabies()">
                         <option value="all">All Status</option>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
                     <div class="btn-group">
-                        <button class="btn btn-primary" onclick="openAddBabyModal()">➕ Add Baby</button>
-                        <button class="btn btn-outline" onclick="loadBabies()">🔄 Refresh</button>
+                        <button class="btn btn-primary" onclick="window.openAddBabyModal && window.openAddBabyModal()">➕ Add Baby</button>
+                        <button class="btn btn-outline" onclick="window.loadBabies && window.loadBabies()">🔄 Refresh</button>
                     </div>
                 </div>
 
@@ -469,7 +440,7 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
+    <!-- ─── ADMIN BASE ────────────────────────────────────────────────── -->
     <script src="/js/admin-base.js"></script>
     <script src="/js/page-init.js"></script>
 
@@ -477,41 +448,6 @@
     <script>
         let babiesCache = [];
         let currentFiltered = [];
-        let modalResolve = null;
-        let modalData = null;
-
-        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
-            return new Promise((resolve) => {
-                const overlay = document.getElementById('modalOverlay');
-                if (!overlay) return;
-                document.getElementById('modalTitle').textContent = title;
-                document.getElementById('modalBody').innerHTML = bodyHTML;
-                document.getElementById('modalConfirmBtn').textContent = confirmText;
-                document.getElementById('modalCancelBtn').textContent = cancelText;
-                overlay.classList.add('active');
-                modalResolve = resolve;
-                modalData = { confirmAction };
-            });
-        }
-
-        function closeModal(result) {
-            document.getElementById('modalOverlay').classList.remove('active');
-            if (modalResolve) {
-                modalResolve(result !== undefined ? result : null);
-                modalResolve = null;
-            }
-        }
-
-        function modalConfirm() {
-            if (modalData && modalData.confirmAction) {
-                modalData.confirmAction();
-            }
-            closeModal(true);
-        }
-
-        function modalCancel() {
-            closeModal(false);
-        }
 
         // ─── LOAD BABIES ──────────────────────────────────────────────────
         async function loadBabies() {
@@ -569,7 +505,7 @@
                         <div class="emoji">❌</div>
                         <h3>Error loading data</h3>
                         <p>${e.message}</p>
-                        <button class="btn btn-primary" onclick="loadBabies()" style="margin-top:12px;">Retry</button>
+                        <button class="btn btn-primary" onclick="window.loadBabies && window.loadBabies()" style="margin-top:12px;">Retry</button>
                     </div>
                 `;
             }
@@ -584,7 +520,7 @@
                         <div class="emoji">📭</div>
                         <h3>No babies found</h3>
                         <p>Start by adding your first baby profile</p>
-                        <button class="btn btn-primary" onclick="openAddBabyModal()" style="margin-top:12px;">➕ Add Baby</button>
+                        <button class="btn btn-primary" onclick="window.openAddBabyModal && window.openAddBabyModal()" style="margin-top:12px;">➕ Add Baby</button>
                     </div>
                 `;
                 return;
@@ -627,9 +563,9 @@
                         </div>
 
                         <div class="actions">
-                            <button class="btn-sm btn-view" onclick="viewBaby('${baby.id}')">👁️ View</button>
-                            <button class="btn-sm btn-edit" onclick="openEditBabyModal('${baby.id}')">✏️ Edit</button>
-                            <button class="btn-sm btn-delete" onclick="deleteBaby('${baby.id}')">🗑️</button>
+                            <button class="btn-sm btn-view" onclick="window.viewBaby && window.viewBaby('${baby.id}')">👁️ View</button>
+                            <button class="btn-sm btn-edit" onclick="window.openEditBabyModal && window.openEditBabyModal('${baby.id}')">✏️ Edit</button>
+                            <button class="btn-sm btn-delete" onclick="window.deleteBaby && window.deleteBaby('${baby.id}')">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -661,7 +597,8 @@
 
         function updateBadges() {
             const total = babiesCache.length;
-            document.getElementById('babyBadge').textContent = total;
+            const badge = document.getElementById('babyBadge');
+            if (badge) badge.textContent = total;
         }
 
         function filterBabies() {
@@ -723,7 +660,7 @@
                 </div>
             `;
 
-            openModal('👶 Add Baby', body, 'Add Baby', async function() {
+            window._openModal('👶 Add Baby', body, 'Add Baby', async function() {
                 const name = document.getElementById('addBabyName')?.value?.trim();
                 const parentId = document.getElementById('addBabyParentId')?.value?.trim();
                 const dob = document.getElementById('addBabyDob')?.value;
@@ -750,7 +687,7 @@
                     if (error) throw error;
 
                     window._showToast('✅ Baby added successfully', 'success');
-                    closeModal(true);
+                    window._closeModal(true);
                     loadBabies();
                 } catch (e) {
                     window._showToast('Error adding baby: ' + e.message, 'error');
@@ -801,7 +738,7 @@
                 </div>
             `;
 
-            openModal('✏️ Edit Baby', body, 'Save Changes', async function() {
+            window._openModal('✏️ Edit Baby', body, 'Save Changes', async function() {
                 const name = document.getElementById('editBabyName')?.value?.trim();
                 const dob = document.getElementById('editBabyDob')?.value;
                 const gender = document.getElementById('editBabyGender')?.value;
@@ -829,7 +766,7 @@
                     if (error) throw error;
 
                     window._showToast('✅ Baby updated successfully', 'success');
-                    closeModal(true);
+                    window._closeModal(true);
                     loadBabies();
                 } catch (e) {
                     window._showToast('Error updating baby: ' + e.message, 'error');
@@ -866,7 +803,7 @@
             });
             details += '</div>';
 
-            openModal('👶 Baby Details', details, 'Close', closeModal);
+            window._openModal('👶 Baby Details', details, 'Close', window._closeModal);
         }
 
         async function deleteBaby(babyId) {
@@ -874,7 +811,7 @@
             if (!baby) { window._showToast('Baby not found', 'error'); return; }
 
             const confirmed = await new Promise((resolve) => {
-                openModal(
+                window._openModal(
                     '🗑️ Confirm Delete',
                     `
                         <div style="text-align:center;padding:12px 0;">
@@ -903,21 +840,18 @@
             }
         }
 
-        // ─── AUTH INTEGRATION ──────────────────────────────────────────
+        // ─── LOAD PAGE DATA ─────────────────────────────────────────────
         window._loadPageData = async function() {
             await loadBabies();
         };
 
+        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
         window.loadBabies = loadBabies;
         window.filterBabies = filterBabies;
         window.openAddBabyModal = openAddBabyModal;
         window.openEditBabyModal = openEditBabyModal;
         window.viewBaby = viewBaby;
         window.deleteBaby = deleteBaby;
-        window.openModal = openModal;
-        window.closeModal = closeModal;
-        window.modalConfirm = modalConfirm;
-        window.modalCancel = modalCancel;
     </script>
 </body>
 </html>

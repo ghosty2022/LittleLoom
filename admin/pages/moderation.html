@@ -41,61 +41,18 @@
             box-shadow: var(--shadow);
         }
         .moderation-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
-        .moderation-card .header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
+        .moderation-card .header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
         .moderation-card .avatar {
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
+            width: 44px; height: 44px; border-radius: 50%;
             background: linear-gradient(135deg, var(--primary), var(--secondary));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            color: #fff;
-            font-weight: 700;
-            overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; color: #fff; font-weight: 700; overflow: hidden;
         }
-        .moderation-card .avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .moderation-card .content {
-            font-size: 14px;
-            color: var(--text-secondary);
-            margin-bottom: 12px;
-            line-height: 1.6;
-            word-break: break-word;
-        }
-        .moderation-card .meta {
-            display: flex;
-            gap: 12px;
-            font-size: 12px;
-            color: var(--text-muted);
-            flex-wrap: wrap;
-        }
-        .moderation-card .actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid var(--border);
-            flex-wrap: wrap;
-        }
-        .moderation-card .actions .btn-sm {
-            padding: 6px 16px;
-            font-size: 12px;
-            border-radius: var(--radius-sm);
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-        }
+        .moderation-card .avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .moderation-card .content { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.6; word-break: break-word; }
+        .moderation-card .meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+        .moderation-card .actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+        .moderation-card .actions .btn-sm { padding: 6px 16px; font-size: 12px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
         .btn-approve { background: #dcfce7; color: #16a34a; }
         .btn-approve:hover { background: #bbf7d0; }
         .btn-reject { background: #fee2e2; color: #dc2626; }
@@ -106,11 +63,7 @@
         .btn-view:hover { background: var(--primary); color: #fff; }
 
         .status-badge {
-            display: inline-flex;
-            padding: 2px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
+            display: inline-flex; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
         }
         .status-badge.pending { background: #fef3c7; color: #d97706; }
         .status-badge.approved { background: #dcfce7; color: #16a34a; }
@@ -118,31 +71,17 @@
         .status-badge.flagged { background: #fecaca; color: #b91c1c; }
 
         .filter-bar-modern {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            align-items: center;
-            background: var(--bg-card);
-            border-radius: var(--radius);
-            padding: 14px 20px;
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
-            margin-bottom: 20px;
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 14px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
         }
         .filter-bar-modern select, .filter-bar-modern input {
-            padding: 8px 16px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-            font-size: 13px;
-            font-family: var(--font);
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            flex: 1;
-            min-width: 140px;
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); flex: 1; min-width: 140px;
         }
         .filter-bar-modern input:focus, .filter-bar-modern select:focus {
-            outline: none;
-            border-color: var(--primary);
+            outline: none; border-color: var(--primary);
         }
 
         @media (max-width: 768px) {
@@ -153,59 +92,69 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')"><span class="icon">👶</span> Babies <span class="badge" id="babyBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')"><span class="icon">👤</span> Users <span class="badge" id="userBadge">0</span></a>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">🛡️</span> Moderation <span class="badge danger" id="modBadge">0</span></a>
-                <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')"><span class="icon">💬</span> Community <span class="badge" id="postBadge">0</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Moderation <span class="sub">| Content Review</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Moderation <span class="sub">| Content Review</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadModeration()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadModeration && window.loadModeration()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>🛡️ Content Moderation</h1>
@@ -219,15 +168,15 @@
                 </div>
 
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search content..." id="searchInput" oninput="filterModeration()">
-                    <select id="statusFilter" onchange="filterModeration()">
+                    <input type="text" placeholder="🔍 Search content..." id="searchInput" oninput="window.filterModeration && window.filterModeration()">
+                    <select id="statusFilter" onchange="window.filterModeration && window.filterModeration()">
                         <option value="all">All Status</option>
                         <option value="pending">Pending</option>
                         <option value="approved">Approved</option>
                         <option value="rejected">Rejected</option>
                         <option value="flagged">Flagged</option>
                     </select>
-                    <button class="btn btn-primary" onclick="loadModeration()">🔄 Refresh</button>
+                    <button class="btn btn-primary" onclick="window.loadModeration && window.loadModeration()">🔄 Refresh</button>
                 </div>
 
                 <div id="moderationContainer">
@@ -239,14 +188,15 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
     <script>
         let moderationCache = [];
 
         async function loadModeration() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const { data, error } = await supabase
@@ -257,33 +207,21 @@
                     .limit(50);
 
                 if (error) throw error;
-
                 moderationCache = data || [];
                 renderModeration(moderationCache);
                 updateStats(moderationCache);
-
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Content loaded', 'success');
+                window._showToast('✅ Content loaded', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading moderation data: ' + e.message, 'error');
-                document.getElementById('moderationContainer').innerHTML = `
-                    <div class="empty-state-modern"><div class="emoji">❌</div><h3>Error loading data</h3><p>${e.message}</p></div>
-                `;
+                window._showToast('Error loading moderation data: ' + e.message, 'error');
             }
         }
 
         function renderModeration(items) {
             const container = document.getElementById('moderationContainer');
-
             if (!items || items.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state-modern">
-                        <div class="emoji">📭</div>
-                        <h3>No content to moderate</h3>
-                        <p>All content has been reviewed</p>
-                    </div>
-                `;
+                container.innerHTML = `<div class="empty-state-modern"><div class="emoji">📭</div><h3>No content to moderate</h3><p>All content has been reviewed</p></div>`;
                 return;
             }
 
@@ -294,19 +232,14 @@
                 const authorName = item.profiles?.full_name || 'Unknown User';
                 const authorAvatar = item.profiles?.avatar || '👤';
                 const isVerified = item.profiles?.is_verified || false;
-                const initial = typeof authorAvatar === 'string' && authorAvatar.startsWith('http') 
-                    ? `<img src="${authorAvatar}" alt="${authorName}" />` 
-                    : (authorName[0] || 'A').toUpperCase();
+                const initial = typeof authorAvatar === 'string' && authorAvatar.startsWith('http') ? `<img src="${authorAvatar}" alt="${authorName}" />` : (authorName[0] || 'A').toUpperCase();
                 const date = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
 
                 html += `
                     <div class="moderation-card">
                         <div class="header">
                             <div class="avatar">${initial}</div>
-                            <div style="flex:1;">
-                                <div style="font-weight:600;">${authorName} ${isVerified ? '✓' : ''}</div>
-                                <div style="font-size:12px;color:var(--text-muted);">${date}</div>
-                            </div>
+                            <div style="flex:1;"><div style="font-weight:600;">${authorName} ${isVerified ? '✓' : ''}</div><div style="font-size:12px;color:var(--text-muted);">${date}</div></div>
                             <span class="status-badge ${status}">${statusLabel}</span>
                         </div>
                         <div class="content">${item.content || 'No content'}</div>
@@ -316,18 +249,17 @@
                             <span>📤 ${item.reposts_count || item.reposts || 0} reposts</span>
                         </div>
                         <div class="actions">
-                            <button class="btn-sm btn-view" onclick="viewContent('${item.id}')">👁️ View</button>
+                            <button class="btn-sm btn-view" onclick="window.viewContent && window.viewContent('${item.id}')">👁️ View</button>
                             ${status === 'pending' ? `
-                                <button class="btn-sm btn-approve" onclick="approveContent('${item.id}')">✅ Approve</button>
-                                <button class="btn-sm btn-reject" onclick="rejectContent('${item.id}')">❌ Reject</button>
+                                <button class="btn-sm btn-approve" onclick="window.approveContent && window.approveContent('${item.id}')">✅ Approve</button>
+                                <button class="btn-sm btn-reject" onclick="window.rejectContent && window.rejectContent('${item.id}')">❌ Reject</button>
                             ` : ''}
-                            ${status !== 'flagged' ? `<button class="btn-sm btn-flag" onclick="flagContent('${item.id}')">🚩 Flag</button>` : ''}
+                            ${status !== 'flagged' ? `<button class="btn-sm btn-flag" onclick="window.flagContent && window.flagContent('${item.id}')">🚩 Flag</button>` : ''}
                         </div>
                     </div>
                 `;
             });
             html += '</div>';
-
             container.innerHTML = html;
         }
 
@@ -336,75 +268,53 @@
             const approved = items.filter(i => i.status === 'approved').length;
             const rejected = items.filter(i => i.status === 'rejected').length;
             const flagged = items.filter(i => i.status === 'flagged').length;
-
             document.getElementById('statPending').textContent = pending;
             document.getElementById('statApproved').textContent = approved;
             document.getElementById('statRejected').textContent = rejected;
             document.getElementById('statFlagged').textContent = flagged;
-            document.getElementById('modBadge').textContent = pending + flagged;
+            const badge = document.getElementById('modBadge');
+            if (badge) badge.textContent = pending + flagged;
         }
 
         function filterModeration() {
             const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
             const status = document.getElementById('statusFilter')?.value || 'all';
-
             let filtered = moderationCache;
-
-            if (search) {
-                filtered = filtered.filter(i =>
-                    (i.content || '').toLowerCase().includes(search) ||
-                    (i.profiles?.full_name || '').toLowerCase().includes(search)
-                );
-            }
-
-            if (status !== 'all') {
-                filtered = filtered.filter(i => i.status === status);
-            }
-
+            if (search) filtered = filtered.filter(i => (i.content || '').toLowerCase().includes(search) || (i.profiles?.full_name || '').toLowerCase().includes(search));
+            if (status !== 'all') filtered = filtered.filter(i => i.status === status);
             renderModeration(filtered);
         }
 
         function viewContent(id) {
             const item = moderationCache.find(i => i.id === id);
-            if (!item) { showToast('Item not found', 'error'); return; }
-
-            const authorName = item.profiles?.full_name || 'Unknown';
-            const content = item.content || 'No content';
-
-            openModal('📄 Content Details', `
+            if (!item) { window._showToast('Item not found', 'error'); return; }
+            window._openModal('📄 Content Details', `
                 <div style="padding:8px 0;">
-                    <p style="font-weight:600;margin-bottom:4px;">${authorName}</p>
+                    <p style="font-weight:600;margin-bottom:4px;">${item.profiles?.full_name || 'Unknown'}</p>
                     <p style="color:var(--text-secondary);margin-bottom:12px;">${item.created_at ? new Date(item.created_at).toLocaleString() : '—'}</p>
-                    <div style="background:var(--bg-primary);padding:12px;border-radius:var(--radius-sm);margin-bottom:12px;word-break:break-word;">
-                        ${content}
-                    </div>
+                    <div style="background:var(--bg-primary);padding:12px;border-radius:var(--radius-sm);margin-bottom:12px;word-break:break-word;">${item.content || 'No content'}</div>
                     <div style="display:flex;gap:12px;font-size:13px;color:var(--text-muted);">
                         <span>❤️ ${item.likes_count || item.likes || 0} likes</span>
                         <span>💬 ${item.comments_count || item.comments || 0} comments</span>
-                        <span>📤 ${item.reposts_count || item.reposts || 0} reposts</span>
-                        <span>📊 ${item.popularity_score || 0} popularity</span>
                     </div>
                 </div>
-            `, 'Close', closeModal);
+            `, 'Close', window._closeModal);
         }
 
         async function approveContent(id) {
             try {
-                const { error } = await supabase
-                    .from('community_posts')
-                    .update({ status: 'approved', updated_at: new Date().toISOString() })
-                    .eq('id', id);
+                const { error } = await supabase.from('community_posts').update({ status: 'approved', updated_at: new Date().toISOString() }).eq('id', id);
                 if (error) throw error;
-                showToast('✅ Content approved', 'success');
+                window._showToast('✅ Content approved', 'success');
                 loadModeration();
             } catch (e) {
-                showToast('Error approving content: ' + e.message, 'error');
+                window._showToast('Error approving content: ' + e.message, 'error');
             }
         }
 
         async function rejectContent(id) {
             const confirmed = await new Promise((resolve) => {
-                openModal('❌ Reject Content', `
+                window._openModal('❌ Reject Content', `
                     <div style="text-align:center;padding:12px 0;">
                         <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
                         <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Reject this content?</p>
@@ -413,35 +323,28 @@
                 `, 'Yes, Reject', () => resolve(true), 'Cancel');
             });
             if (!confirmed) return;
-
             try {
-                const { error } = await supabase
-                    .from('community_posts')
-                    .update({ status: 'rejected', updated_at: new Date().toISOString() })
-                    .eq('id', id);
+                const { error } = await supabase.from('community_posts').update({ status: 'rejected', updated_at: new Date().toISOString() }).eq('id', id);
                 if (error) throw error;
-                showToast('✅ Content rejected', 'success');
+                window._showToast('✅ Content rejected', 'success');
                 loadModeration();
             } catch (e) {
-                showToast('Error rejecting content: ' + e.message, 'error');
+                window._showToast('Error rejecting content: ' + e.message, 'error');
             }
         }
 
         async function flagContent(id) {
             try {
-                const { error } = await supabase
-                    .from('community_posts')
-                    .update({ status: 'flagged', updated_at: new Date().toISOString() })
-                    .eq('id', id);
+                const { error } = await supabase.from('community_posts').update({ status: 'flagged', updated_at: new Date().toISOString() }).eq('id', id);
                 if (error) throw error;
-                showToast('🚩 Content flagged', 'warning');
+                window._showToast('🚩 Content flagged', 'warning');
                 loadModeration();
             } catch (e) {
-                showToast('Error flagging content: ' + e.message, 'error');
+                window._showToast('Error flagging content: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => setTimeout(loadModeration, 500));
+        window._loadPageData = async function() { await loadModeration(); };
         window.loadModeration = loadModeration;
         window.filterModeration = filterModeration;
         window.viewContent = viewContent;
@@ -451,6 +354,3 @@
     </script>
 </body>
 </html>
-
-
-
