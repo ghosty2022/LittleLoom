@@ -20,6 +20,7 @@ import * as Font from 'expo-font';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAppSetting } from '@/database/dbHelpers';
 import { DatabaseProvider } from '@/context/DatabaseContext';
+import { StripeProvider } from '@/utils/StripeWrapper';
 
 import { AppProvider, useTheme } from '@/context/AppContext';
 import ContextProvider from '@/providers/ContextProvider';
@@ -175,6 +176,7 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
 
 export default function App(): JSX.Element | null {
   const systemScheme = useColorScheme();
+  const stripePublishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
 
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [initialTheme, setInitialTheme] = useState({
@@ -468,22 +470,25 @@ export default function App(): JSX.Element | null {
     );
   }
 
+  // ─── WRAP WITH STRIPE PROVIDER ────────────────────────────────────────
   return (
     <DatabaseProvider>
-      <ErrorBoundary>
-        <GestureHandlerRootView style={styles.root}>
-          <SafeAreaProvider>
-            <AppProvider>
-              <ContextProvider>
-                <InnerApp
-                  initialState={initialState}
-                  onStateChange={onStateChange}
-                />
-              </ContextProvider>
-            </AppProvider>
-          </SafeAreaProvider>
-        </GestureHandlerRootView>
-      </ErrorBoundary>
+      <StripeProvider publishableKey={stripePublishableKey}>
+        <ErrorBoundary>
+          <GestureHandlerRootView style={styles.root}>
+            <SafeAreaProvider>
+              <AppProvider>
+                <ContextProvider>
+                  <InnerApp
+                    initialState={initialState}
+                    onStateChange={onStateChange}
+                  />
+                </ContextProvider>
+              </AppProvider>
+            </SafeAreaProvider>
+          </GestureHandlerRootView>
+        </ErrorBoundary>
+      </StripeProvider>
     </DatabaseProvider>
   );
 }
