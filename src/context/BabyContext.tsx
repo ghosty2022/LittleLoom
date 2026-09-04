@@ -13,7 +13,6 @@ export const STORAGE_KEYS = {
   CURRENT_BABY_ID: '@littleloom_current_baby_id',
   BABIES_CACHE_KEY: '@littleloom_babies_cache',
   LAST_SYNC_KEY: '@littleloom_last_baby_sync',
-  BABY_SYNC_VERSION: '@littleloom_baby_sync_version',
 } as const;
 
 const ACTIVITY_CONTEXT_KEY = '@littleloom_activities_v3';
@@ -34,17 +33,11 @@ export interface BabyProfile {
   parent1Id: string;
   parent2Id?: string;
   guardianIds?: string[];
-  
-  // Current measurements
   weight?: string;
   height?: string;
-  
-  // Medical info
   bloodType?: string;
   allergies?: string[];
   medicalNotes?: string;
-  
-  // Birth details
   birthTime?: string;
   birthWeight?: string;
   birthHeight?: string;
@@ -58,13 +51,9 @@ export interface BabyProfile {
   multipleBirth?: boolean;
   birthOrder?: string;
   feedingPlan?: string;
-  
-  // Additional
   emergencyContact?: string;
   pediatrician?: string;
   notificationsEnabled?: boolean;
-  
-  // Stats
   streak: number;
   milestones: number;
   photos: number;
@@ -268,7 +257,7 @@ interface BabyState {
 }
 
 interface BabyContextType extends BabyState {
-  loadBabies: () => Promise<void>;
+  loadBabies: (force?: boolean) => Promise<void>;
   forceRefresh: () => Promise<void>;
   createBaby: (data: Omit<BabyProfile, 'id' | 'streak' | 'milestones' | 'photos' | 'createdAt' | 'age' | 'lastUpdated' | 'parent1Id'>) => Promise<string | null>;
   updateBaby: (id: string, updates: Partial<BabyProfile>) => Promise<void>;
@@ -279,41 +268,33 @@ interface BabyContextType extends BabyState {
   clearSkipBaby: () => Promise<void>;
   calculateAge: (birthDate: string) => string;
   getBabyAge: (babyId?: string) => string;
-
   addGrowthMeasurement: (measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>) => Promise<boolean>;
   getGrowthData: (type?: GrowthMeasurement['type']) => GrowthMeasurement[];
   getLatestMeasurements: () => Record<GrowthMeasurement['type'], GrowthMeasurement | null>;
   deleteGrowthMeasurement: (id: string) => Promise<boolean>;
-
   addMilestone: (milestone: Omit<Milestone, 'id'>) => Promise<boolean>;
   getMilestones: (category?: Milestone['category']) => Milestone[];
   deleteMilestone: (id: string) => Promise<boolean>;
-
   addSleepLog: (log: Omit<SleepLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getSleepLogs: (days?: number) => SleepLog[];
   endSleepSession: (logId: string, endTime: string) => Promise<boolean>;
   getTodaySleepCount: () => number;
-
   addFeedingLog: (log: Omit<FeedingLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getFeedingLogs: (days?: number) => FeedingLog[];
   getTodayFeedCount: () => number;
-
   addPottyLog: (log: Omit<PottyLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getPottyLogs: (days?: number) => PottyLog[];
   getPottyStreak: () => number;
   getTodayPottyCount: () => number;
   getPottySuccessRate: () => number;
-
   addMedicationLog: (log: Omit<MedicationLog, 'id' | 'createdAt'>) => Promise<boolean>;
   getMedicationLogs: (days?: number) => MedicationLog[];
-
   addActivity: (entry: Omit<ActivityEntry, 'id'>) => Promise<boolean>;
   getRecentActivities: (limit?: number) => ActivityEntry[];
   getActivitiesByType: (type: ActivityType) => ActivityEntry[];
   deleteActivity: (id: string) => Promise<boolean>;
   getBabyStats: () => { streak: number; milestones: number; photos: number; entries: number };
   updateBabyStats: (updates: Partial<BabyProfile>) => Promise<void>;
-
   entries: ActivityEntry[];
   isLoadingEntries: boolean;
   loadEntries: () => Promise<void>;
@@ -322,11 +303,9 @@ interface BabyContextType extends BabyState {
   updateEntry: (id: string, entry: Partial<ActivityEntry>) => Promise<boolean>;
   getEntryById: (id: string) => ActivityEntry | undefined;
   getDateTitle: (timestamp: number | string) => string;
-
   syncWithActivityContext: () => Promise<void>;
   scheduleActivityReminder: (entry: ActivityEntry, minutes: number) => Promise<string | null>;
   cancelActivityReminder: (notificationId: string) => Promise<void>;
-  
   getCurrentBabyId: () => string | null;
   subscribeToBabyChanges: (callback: (babyId: string | null) => void) => () => void;
 }
@@ -394,7 +373,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadInProgressRef = useRef(false);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const authLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const forceRefreshRef = useRef(false);
 
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     babyChangeSubscribers.forEach(callback => {
@@ -461,11 +439,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
       async () => {
         if (authProfile?.id) return authProfile.id;
-        return null;
-      },
-      async () => {
-        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-        if (!refreshError && refreshData?.session?.user?.id) return refreshData.session.user.id;
         return null;
       },
     ];
@@ -743,6 +716,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ─── Load babies from Supabase ────────────────────────────────────────
   const loadBabies = useCallback(async (force = false) => {
+    // Prevent concurrent loads
     if (loadInProgressRef.current && !force) {
       console.log('[BabyContext] Load already in progress, skipping');
       return;
@@ -769,6 +743,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let allBabies: any[] = [];
 
+      // ─── TRY PARENT1 QUERY ──────────────────────────────────────────
       try {
         const { data: parent1Babies, error: error1 } = await supabase
           .from('babies')
@@ -779,7 +754,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error1) {
           console.error('[BabyContext] parent1 query error:', error1.message);
           
-          // Try without is_active filter if RLS error
           if (error1.message?.includes('infinite recursion') || error1.message?.includes('policy')) {
             console.log('[BabyContext] Trying without is_active filter due to RLS');
             const { data: fallbackBabies, error: fallbackError } = await supabase
@@ -798,7 +772,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] parent1 query failed:', e);
       }
 
-      // If no babies found as parent1, try parent2
+      // ─── IF NO BABIES, TRY PARENT2 ──────────────────────────────────
       if (allBabies.length === 0) {
         try {
           const { data: parent2Babies, error: error2 } = await supabase
@@ -830,10 +804,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log(`[BabyContext] Found ${allBabies.length} babies in Supabase`);
 
-      // Map to profiles
+      // ─── MAP TO PROFILES ─────────────────────────────────────────────
       const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
 
-      // Cache babies
+      // ─── CACHE BABIES ─────────────────────────────────────────────────
       try {
         await AsyncStorage.setItem(STORAGE_KEYS.BABIES_CACHE_KEY, JSON.stringify(babies));
         await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC_KEY, Date.now().toString());
@@ -841,10 +815,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to cache babies:', cacheError);
       }
 
-      // Determine current baby ID
+      // ─── DETERMINE CURRENT BABY ID ───────────────────────────────────
       let currentId: string | null = null;
       
-      // First try to get from app_settings
       try {
         const { data: settingsData } = await supabase
           .from('app_settings')
@@ -857,7 +830,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to get current_baby_id:', e);
       }
       
-      // If no current ID and we have babies, use first baby
       if (!currentId && babies.length > 0) {
         currentId = babies[0].id;
         try {
@@ -874,15 +846,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Store in AsyncStorage
       if (currentId) {
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
       }
 
-      // Find the baby object
       const babyToSet = babies.find(b => b.id === currentId) || babies[0] || null;
 
-      // Check if baby was skipped
       let hasSkippedBaby = false;
       try {
         const { data: skipData } = await supabase
@@ -901,7 +870,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Update state
+      // ─── UPDATE STATE ─────────────────────────────────────────────────
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -913,12 +882,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isInitialized: true,
       }));
 
-      // Broadcast change
+      // ─── BROADCAST CHANGE ────────────────────────────────────────────
       setTimeout(() => {
         broadcastBabyChange(currentId);
       }, 50);
 
-      // Load tracker data for current baby
+      // ─── LOAD TRACKER DATA ───────────────────────────────────────────
       if (currentId) {
         console.log('[BabyContext] Loading tracker data for current baby...');
         await loadAllBabyData(currentId);
@@ -930,18 +899,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
       
-      // Try to load from cache
       try {
         const cached = await AsyncStorage.getItem(STORAGE_KEYS.BABIES_CACHE_KEY);
         if (cached) {
-          const babies = JSON.parse(cached);
-          console.log(`[BabyContext] Loaded ${babies.length} babies from cache`);
+          const cachedBabies = JSON.parse(cached);
+          console.log(`[BabyContext] Loaded ${cachedBabies.length} babies from cache`);
           if (isMounted.current) {
-            const cachedBaby = babies.find((b: any) => b.id === state.currentBabyId) || babies[0] || null;
+            const cachedBaby = cachedBabies.find((b: any) => b.id === state.currentBabyId) || cachedBabies[0] || null;
             setState(prev => ({
               ...prev,
               isLoading: false,
-              babies,
+              babies: cachedBabies,
               currentBaby: cachedBaby,
               isInitialized: true,
             }));
@@ -970,8 +938,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initRef.current = true;
 
     isMounted.current = true;
-    
-    // Load babies immediately
     loadBabies();
 
     return () => {
@@ -1142,12 +1108,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       let userId: string | null = null;
       
-      // Try multiple methods to get user ID
       try {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (!userError && user?.id) {
           userId = user.id;
-          console.log('[BabyContext] Got user ID from getUser:', userId);
         }
       } catch (e) {
         console.warn('[BabyContext] getUser failed:', e);
@@ -1158,7 +1122,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           if (!sessionError && session?.user?.id) {
             userId = session.user.id;
-            console.log('[BabyContext] Got user ID from session:', userId);
           }
         } catch (e) {
           console.warn('[BabyContext] getSession failed:', e);
@@ -1167,19 +1130,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (!userId && authProfile?.id) {
         userId = authProfile.id;
-        console.log('[BabyContext] Got user ID from authProfile:', userId);
-      }
-      
-      if (!userId) {
-        try {
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-          if (!refreshError && refreshData?.session?.user?.id) {
-            userId = refreshData.session.user.id;
-            console.log('[BabyContext] Got user ID from refreshSession:', userId);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] refreshSession failed:', e);
-        }
       }
       
       if (!userId) {
@@ -1187,8 +1137,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isCreatingRef.current = false;
         return null;
       }
-
-      console.log('[BabyContext] Creating baby with parent1_id:', userId);
 
       // ─── CHECK FOR DUPLICATE ──────────────────────────────────────────
       const { data: existingBabies, error: duplicateError } = await supabase
@@ -1203,7 +1151,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Duplicate check error:', duplicateError);
       }
 
-      // ─── RETURN EXISTING BABY ID IF DUPLICATE ─────────────────────────
       if (existingBabies && existingBabies.length > 0) {
         console.log('[BabyContext] Duplicate baby found, returning existing ID:', existingBabies[0].id);
         isCreatingRef.current = false;
@@ -1248,7 +1195,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('[BabyContext] Inserting baby with data:', JSON.stringify(babyData, null, 2));
 
-      // ─── INSERT INTO SUPABASE ──────────────────────────────────────────
       const { data: result, error } = await supabase
         .from('babies')
         .insert(babyData)
@@ -1309,7 +1255,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
       broadcastBabyChange(newCurrentId);
 
-      // ─── CLEAR SKIP BABY ──────────────────────────────────────────────
       try {
         await supabase
           .from('app_settings')
@@ -1320,7 +1265,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to clear skip baby:', e);
       }
 
-      // ─── UPDATE LOCAL STATE ───────────────────────────────────────────
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1331,13 +1275,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
-      // ─── CLEAR CACHE ──────────────────────────────────────────────────
       await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
-
-      // ─── LOAD TRACKER DATA ────────────────────────────────────────────
       await loadAllBabyData(newCurrentId);
 
-      // ─── BROADCAST CHANGE ─────────────────────────────────────────────
       setTimeout(() => {
         broadcastBabyChange(newCurrentId);
       }, 50);
@@ -1570,7 +1510,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }, { onConflict: 'key, user_id' });
 
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, id);
-
       await loadAllBabyData(id);
 
       if (isMounted.current) {
