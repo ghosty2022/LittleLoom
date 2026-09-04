@@ -1202,9 +1202,48 @@
             color: var(--text-muted);
             font-size: 14px;
         }
+
+        /* ─── SESSION CHECK OVERLAY ────────────────────────────────────── */
+        .session-check-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: var(--bg-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+            animation: fadeIn 0.3s ease;
+        }
+        .session-check-overlay .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .session-check-overlay .message {
+            font-size: 16px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- ─── SESSION CHECK OVERLAY ────────────────────────────────────── -->
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+
     <!-- ─── SESSION TIMEOUT BANNER ────────────────────────────────────── -->
     <div class="session-banner" id="sessionBanner">
         <span>⏰</span>
@@ -1509,7 +1548,6 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
     <script>
         // ─── SUPABASE CONFIG ──────────────────────────────────────────────
         const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
@@ -1526,6 +1564,15 @@
         let sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
         let sessionWarningShown = false;
         let sessionCountdownInterval = null;
+
+        // ─── SESSION STORAGE KEYS ──────────────────────────────────────
+        const SESSION_KEYS = {
+            // Use sessionStorage for session data (clears on browser close)
+            SESSION_DATA: 'littleloom_session_data',
+            SESSION_EXPIRY: 'littleloom_session_expiry',
+            REMEMBER_ME: 'littleloom_remember_me',
+            USER_ROLE: 'littleloom_user_role',
+        };
 
         // ─── ADMIN ROLE PERMISSIONS ──────────────────────────────────────
         const ADMIN_ROLES = {
@@ -1613,6 +1660,66 @@
 
         let currentUserRole = 'super_admin';
         let userPermissions = ADMIN_ROLES['super_admin'].permissions;
+        let sessionDataLoaded = false;
+
+        // ─── SESSION PERSISTENCE ──────────────────────────────────────────
+        function saveSessionData(data) {
+            try {
+                // Store in sessionStorage (clears when browser is closed)
+                sessionStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
+                
+                // Store expiry timestamp
+                const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
+                sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                
+                // Check if remember me was set from login
+                const rememberMe = localStorage.getItem(SESSION_KEYS.REMEMBER_ME);
+                if (rememberMe === 'true') {
+                    // Also store in localStorage for cross-tab persistence
+                    localStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
+                    localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                }
+            } catch (e) {
+                console.warn('Could not save session data:', e);
+            }
+        }
+
+        function getSessionData() {
+            try {
+                // First check sessionStorage
+                let data = sessionStorage.getItem(SESSION_KEYS.SESSION_DATA);
+                let expiry = sessionStorage.getItem(SESSION_KEYS.SESSION_EXPIRY);
+                
+                // If not in sessionStorage, check localStorage (for remember me)
+                if (!data) {
+                    data = localStorage.getItem(SESSION_KEYS.SESSION_DATA);
+                    expiry = localStorage.getItem(SESSION_KEYS.SESSION_EXPIRY);
+                }
+                
+                if (data && expiry) {
+                    const expiryTime = parseInt(expiry, 10);
+                    // Check if session is still valid
+                    if (Date.now() < expiryTime) {
+                        return JSON.parse(data);
+                    }
+                }
+                return null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearSessionData() {
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
+            localStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+            localStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
+            localStorage.removeItem(SESSION_KEYS.REMEMBER_ME);
+        }
+
+        function setRememberMe(value) {
+            localStorage.setItem(SESSION_KEYS.REMEMBER_ME, value ? 'true' : 'false');
+        }
 
         // ─── INIT ─────────────────────────────────────────────────────────
         function initSupabase() {
@@ -1691,8 +1798,41 @@
 
         // ─── AUTH ─────────────────────────────────────────────────────────
         async function checkAuth() {
+            const overlay = document.getElementById('sessionCheckOverlay');
+            if (overlay) overlay.style.display = 'flex';
+
             try {
+                // First check if we have a stored session
+                const storedSession = getSessionData();
+                
+                if (storedSession && storedSession.user) {
+                    console.log('📦 Found stored session, validating...');
+                    
+                    // Try to refresh the session with Supabase
+                    const { data, error } = await supabase.auth.getSession();
+                    
+                    if (!error && data.session) {
+                        session = data.session;
+                        currentUserRole = storedSession.role || 'super_admin';
+                        userPermissions = ADMIN_ROLES[currentUserRole]?.permissions || ADMIN_ROLES['super_admin'].permissions;
+                        
+                        updateUIForAuth(session);
+                        updateUIForRole(currentUserRole);
+                        startSessionTimer();
+                        sessionDataLoaded = true;
+                        
+                        if (overlay) overlay.style.display = 'none';
+                        return true;
+                    }
+                    
+                    // Session expired or invalid - clear stored data
+                    console.log('⚠️ Stored session invalid, clearing...');
+                    clearSessionData();
+                }
+
+                // No valid stored session, check Supabase directly
                 const { data, error } = await supabase.auth.getSession();
+                
                 if (error || !data.session) {
                     const statusBar = document.getElementById('statusBar');
                     if (statusBar) {
@@ -1704,15 +1844,32 @@
                             </button>
                         `;
                     }
+                    if (overlay) overlay.style.display = 'none';
                     return false;
                 }
 
                 session = data.session;
+                
+                // Load user role
+                await loadUserRole(session.user.id);
+                
+                // Save session data
+                saveSessionData({
+                    user: session.user,
+                    role: currentUserRole,
+                    timestamp: Date.now()
+                });
+                
                 updateUIForAuth(session);
+                updateUIForRole(currentUserRole);
                 startSessionTimer();
+                sessionDataLoaded = true;
+                
+                if (overlay) overlay.style.display = 'none';
                 return true;
             } catch (e) {
                 console.error('Auth check error:', e);
+                if (overlay) overlay.style.display = 'none';
                 return false;
             }
         }
@@ -1732,14 +1889,10 @@
                 nameEl.textContent = name;
                 if (avatarEl) avatarEl.textContent = name[0].toUpperCase();
             }
-
-            // Load user role from metadata or profiles
-            loadUserRole(session.user.id);
         }
 
         async function loadUserRole(userId) {
             try {
-                // Try to get role from profiles table
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('admin_role')
@@ -1749,18 +1902,14 @@
                 if (data && data.admin_role && ADMIN_ROLES[data.admin_role]) {
                     currentUserRole = data.admin_role;
                     userPermissions = ADMIN_ROLES[currentUserRole].permissions;
-                    updateUIForRole(currentUserRole);
                 } else {
-                    // Default to super_admin for now
                     currentUserRole = 'super_admin';
                     userPermissions = ADMIN_ROLES['super_admin'].permissions;
-                    updateUIForRole('super_admin');
                 }
             } catch (e) {
                 console.warn('Could not load user role, using default:', e);
                 currentUserRole = 'super_admin';
                 userPermissions = ADMIN_ROLES['super_admin'].permissions;
-                updateUIForRole('super_admin');
             }
         }
 
@@ -1768,26 +1917,21 @@
             const roleInfo = ADMIN_ROLES[role];
             if (!roleInfo) return;
 
-            // Update sidebar role display
             const roleEl = document.getElementById('sidebarRole');
             if (roleEl) roleEl.textContent = roleInfo.label;
 
-            // Update welcome badge
             const badgeEl = document.getElementById('welcomeRoleBadge');
             if (badgeEl) badgeEl.textContent = `👑 ${roleInfo.label}`;
 
-            // Update footer
             const footerEl = document.getElementById('userRoleFooter');
             if (footerEl) footerEl.textContent = `👑 ${roleInfo.label}`;
 
-            // Apply role-based restrictions to sidebar
             document.querySelectorAll('.sidebar-nav-item').forEach(item => {
                 const requiredRole = item.dataset.requiredRole;
                 if (requiredRole) {
                     const hasPermission = checkRolePermission(requiredRole);
                     if (!hasPermission) {
                         item.classList.add('restricted');
-                        // Add lock icon if not present
                         if (!item.querySelector('.lock-icon')) {
                             const lock = document.createElement('span');
                             lock.className = 'lock-icon';
@@ -1802,7 +1946,6 @@
                 }
             });
 
-            // Apply role-based restrictions to quick actions
             document.querySelectorAll('.quick-actions .btn').forEach(btn => {
                 const requiredRole = btn.dataset.requiredRole;
                 if (requiredRole) {
@@ -1812,7 +1955,6 @@
         }
 
         function checkRolePermission(requiredRole) {
-            // Map required roles to permission checks
             const roleMap = {
                 'super_admin': userPermissions.canManageAdmins,
                 'content_manager': userPermissions.canManageContent,
@@ -1821,25 +1963,16 @@
                 'analytics_viewer': userPermissions.canViewAnalytics
             };
 
-            // If direct permission check
             if (roleMap[requiredRole] !== undefined) {
                 return roleMap[requiredRole];
             }
 
-            // Check by role hierarchy
             const roleHierarchy = ['super_admin', 'content_manager', 'user_manager', 'moderation_manager', 'analytics_viewer'];
             const userIndex = roleHierarchy.indexOf(currentUserRole);
             const requiredIndex = roleHierarchy.indexOf(requiredRole);
 
-            // If required role is not in hierarchy, check permissions
-            if (requiredIndex === -1) {
-                return false;
-            }
-
-            // Super admin has access to everything
+            if (requiredIndex === -1) return false;
             if (currentUserRole === 'super_admin') return true;
-
-            // Check if user has required role or higher
             return userIndex <= requiredIndex;
         }
 
@@ -1849,31 +1982,33 @@
             sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
             sessionWarningShown = false;
 
-            // Update display every second
             sessionTimer = setInterval(() => {
                 sessionTimeRemaining--;
                 updateSessionDisplay();
 
-                // Show warning at 30 seconds
                 if (sessionTimeRemaining <= 30 && !sessionWarningShown) {
                     sessionWarningShown = true;
                     showSessionBanner();
                 }
 
-                // Auto-logout at 0
                 if (sessionTimeRemaining <= 0) {
                     clearInterval(sessionTimer);
                     handleLogout();
                 }
             }, 1000);
 
-            // Reset timer on user activity
             const resetTimer = () => {
                 sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
                 sessionWarningShown = false;
                 hideSessionBanner();
                 updateSessionDisplay();
-                localStorage.setItem('lastActivity', Date.now().toString());
+                
+                // Update session expiry in storage
+                const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
+                sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                if (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true') {
+                    localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                }
             };
 
             const activityEvents = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
@@ -1881,7 +2016,6 @@
                 document.addEventListener(event, resetTimer);
             });
 
-            // Store cleanup reference
             window._sessionCleanup = () => {
                 activityEvents.forEach(event => {
                     document.removeEventListener(event, resetTimer);
@@ -1897,7 +2031,6 @@
                 display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
             }
 
-            // Update status dot color
             const dot = document.getElementById('statusDot');
             if (dot) {
                 if (sessionTimeRemaining < 60) {
@@ -1914,7 +2047,6 @@
             const banner = document.getElementById('sessionBanner');
             if (banner) {
                 banner.classList.add('show');
-                // Start countdown
                 let countdown = 30;
                 const countdownEl = document.getElementById('sessionCountdown');
                 if (sessionCountdownInterval) clearInterval(sessionCountdownInterval);
@@ -1945,7 +2077,13 @@
             sessionWarningShown = false;
             hideSessionBanner();
             updateSessionDisplay();
-            localStorage.setItem('lastActivity', Date.now().toString());
+            
+            const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
+            sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+            if (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true') {
+                localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+            }
+            
             showToast('⏳ Session extended', 'success');
         }
 
@@ -1972,6 +2110,7 @@
             try {
                 await supabase.auth.signOut();
                 session = null;
+                
                 if (refreshTimer) { clearInterval(refreshTimer);
                     refreshTimer = null; }
                 if (realtimeChannel) { realtimeChannel.unsubscribe();
@@ -1981,8 +2120,11 @@
                 if (sessionCountdownInterval) { clearInterval(sessionCountdownInterval);
                     sessionCountdownInterval = null; }
                 if (window._sessionCleanup) { window._sessionCleanup(); }
+                
                 hideSessionBanner();
-                localStorage.removeItem('lastActivity');
+                clearSessionData();
+                setRememberMe(false);
+                
                 showToast('✅ Logged out successfully', 'success');
                 window.location.href = '/login';
             } catch (e) {
@@ -1992,20 +2134,14 @@
 
         // ─── NAVIGATION ────────────────────────────────────────────────────
         function navigateTo(page) {
-            // Close sidebar on mobile
             if (window.innerWidth <= 1024) toggleSidebar(false);
-
-            // Update activity
-            localStorage.setItem('lastActivity', Date.now().toString());
-
-            // Check if user has permission to access this page
+            
             const navItem = document.querySelector(`.sidebar-nav-item[onclick*="${page}"]`);
             if (navItem && navItem.classList.contains('restricted')) {
                 showToast('🔒 You do not have permission to access this page', 'warning');
                 return;
             }
 
-            // Navigate to the page using clean URL format
             window.location.href = `/admin/${page}`;
         }
 
@@ -2104,7 +2240,6 @@
             try {
                 console.log('📊 Fetching dashboard data...');
 
-                // Fetch counts from each table
                 const [babiesResult, profilesResult, entriesResult, postsResult, milestonesResult, recentResult] = await Promise.all([
                     supabase.from('babies').select('*', { count: 'exact', head: true }),
                     supabase.from('profiles').select('*', { count: 'exact', head: true }),
@@ -2123,21 +2258,18 @@
                 const postCount = postsResult.count || 0;
                 const milestoneCount = milestonesResult.count || 0;
 
-                // Update stats
                 safeSetText('statBabies', babyCount);
                 safeSetText('statUsers', userCount);
                 safeSetText('statEntries', entryCount);
                 safeSetText('statPosts', postCount);
                 safeSetText('statMilestones', milestoneCount);
 
-                // Update badges
                 safeSetText('babyBadge', babyCount);
                 safeSetText('userBadge', userCount);
                 safeSetText('postBadge', postCount);
                 safeSetText('entryBadge', entryCount);
                 safeSetText('milestoneBadge', milestoneCount);
 
-                // Count admin users
                 const { data: adminData } = await supabase
                     .from('profiles')
                     .select('id')
@@ -2145,7 +2277,6 @@
                 const adminCount = adminData?.length || 0;
                 safeSetText('adminBadge', adminCount);
 
-                // Calculate average streak
                 const { data: streakData } = await supabase
                     .from('babies')
                     .select('streak')
@@ -2159,7 +2290,6 @@
                 }
                 safeSetText('statStreak', avgStreak + 'd');
 
-                // Activity feed
                 const feed = document.getElementById('activityFeed');
                 const recent = recentResult.data || [];
 
@@ -2201,7 +2331,6 @@
                     }
                 }
 
-                // Update welcome message
                 const hour = new Date().getHours();
                 let greeting = 'Good morning';
                 if (hour >= 12 && hour < 17) greeting = 'Good afternoon';
@@ -2210,7 +2339,6 @@
                     session?.user?.email?.split('@')[0] || 'Admin';
                 document.getElementById('welcomeMessage').textContent = `👋 ${greeting}, ${userName}!`;
 
-                // Update status
                 const statusBarEl = document.getElementById('statusBar');
                 if (statusBarEl) {
                     statusBarEl.innerHTML = `
@@ -2223,18 +2351,11 @@
                         </span>
                         <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">${formatSessionTime()}</span></span>
                     `;
-                    // Re-attach session display
                     updateSessionDisplay();
                 }
                 safeSetText('lastUpdated', new Date().toLocaleString());
 
-                console.log('✅ Dashboard data loaded:', {
-                    babies: babyCount,
-                    users: userCount,
-                    entries: entryCount,
-                    posts: postCount,
-                    admins: adminCount
-                });
+                console.log('✅ Dashboard data loaded');
 
             } catch (err) {
                 console.error('Fetch error:', err);
@@ -2287,25 +2408,6 @@
                 });
         }
 
-        // ─── ADMIN ROLES PAGE ────────────────────────────────────────────
-        // This function will be called from admin_roles.html if it exists
-        function loadAdminRolesPage() {
-            // If the page is loaded, check if user has permission
-            if (currentUserRole !== 'super_admin') {
-                document.getElementById('page-content').innerHTML = `
-                    <div class="permission-denied">
-                        <div class="emoji">🔒</div>
-                        <h3>Access Denied</h3>
-                        <p>You do not have permission to manage admin roles. This feature is restricted to Super Admins only.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            // Load admin roles management UI
-            // This would be implemented in a separate page or dynamically loaded
-        }
-
         // ─── INIT ──────────────────────────────────────────────────────────
         async function init() {
             if (!initSupabase()) {
@@ -2326,7 +2428,6 @@
 
             setupRealtime();
 
-            // Handle resize for sidebar
             window.addEventListener('resize', function() {
                 if (window.innerWidth > 1024) {
                     document.getElementById('sidebar').classList.remove('open');
@@ -2334,7 +2435,6 @@
                 }
             });
 
-            // Keyboard shortcuts
             document.addEventListener('keydown', function(e) {
                 if (e.ctrlKey && e.key === 'r') {
                     e.preventDefault();
@@ -2345,7 +2445,27 @@
                 }
             });
 
-            // Update role UI after loading
+            // Handle page visibility - check session when tab becomes visible
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') {
+                    // Refresh session data when tab becomes visible
+                    const storedSession = getSessionData();
+                    if (!storedSession && session) {
+                        // Session data missing, re-check auth
+                        checkAuth();
+                    }
+                }
+            });
+
+            // Handle beforeunload - clear session if not remember me
+            window.addEventListener('beforeunload', function() {
+                const rememberMe = localStorage.getItem(SESSION_KEYS.REMEMBER_ME);
+                if (rememberMe !== 'true') {
+                    // Don't clear completely, but mark as needing re-validation
+                    sessionStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+                }
+            });
+
             setTimeout(() => {
                 updateUIForRole(currentUserRole);
             }, 500);
@@ -2353,6 +2473,7 @@
             console.log('🧵 Enterprise Admin Console ready');
             console.log('👤 Logged in as: ' + session?.user?.email);
             console.log('👑 Role: ' + ADMIN_ROLES[currentUserRole]?.label);
+            console.log('🔐 Session persistence: ' + (localStorage.getItem(SESSION_KEYS.REMEMBER_ME) === 'true' ? 'Remember Me' : 'Session only'));
         }
 
         // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────
@@ -2372,9 +2493,16 @@
         window.timeAgo = timeAgo;
         window.formatNumber = formatNumber;
         window.extendSession = extendSession;
+        window.setRememberMe = setRememberMe;
         window.session = session;
         window.currentUserRole = currentUserRole;
         window.ADMIN_ROLES = ADMIN_ROLES;
+
+        // Check if "Remember Me" was set from login page
+        const rememberMeParam = new URLSearchParams(window.location.search).get('remember');
+        if (rememberMeParam === 'true') {
+            setRememberMe(true);
+        }
 
         document.addEventListener('DOMContentLoaded', init);
     </script>

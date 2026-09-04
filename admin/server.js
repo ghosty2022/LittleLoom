@@ -10,7 +10,6 @@ app.use((req, res, next) => {
 });
 
 // ─── STATIC FILES ──────────────────────────────────────────────
-// Serve static files directly from the admin folder
 app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
@@ -47,7 +46,6 @@ app.get('/dashboard', (req, res) => {
 });
 
 // ─── PAGE ROUTES ──────────────────────────────────────────────
-// Handle /admin/:page (direct access)
 app.get('/admin/:page', (req, res) => {
     const page = req.params.page;
     
@@ -61,7 +59,7 @@ app.get('/admin/:page', (req, res) => {
         return res.redirect('/admin/dashboard');
     }
     
-    // Otherwise serve the page from /pages
+    // Special handling for admin_roles - check authentication in frontend
     const filePath = path.join(__dirname, 'pages', page + '.html');
     res.sendFile(filePath, (err) => {
         if (err) {
@@ -78,11 +76,9 @@ app.get('/api/health', (req, res) => {
 
 // ─── 404 HANDLER ────────────────────────────────────────────────
 app.use((req, res) => {
-    // Don't redirect if it's a static asset
     if (req.path.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
         return res.status(404).send('File not found');
     }
-    // Redirect to login for unknown routes
     res.redirect('/login');
 });
 
@@ -92,7 +88,8 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('🚀 LittleLoom Admin Dashboard');
     console.log('🔐 Login:  http://localhost:' + PORT + '/login');
     console.log('📊 Dashboard: http://localhost:' + PORT + '/admin/dashboard');
-    console.log('📁 Pages: http://localhost:' + PORT + '/admin/:page (e.g., /admin/babies)');
+    console.log('👥 Admin Roles: http://localhost:' + PORT + '/admin/admin_roles');
+    console.log('📁 Pages: http://localhost:' + PORT + '/admin/:page');
     console.log('');
     console.log('⚡ Press Ctrl+C to stop');
     console.log('');

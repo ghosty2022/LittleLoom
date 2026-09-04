@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Roles - LittleLoom Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/admin.css" />
+    <style>
+        .page-hero {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            color: #fff;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .page-hero::after { content: '👥'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
+        .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+        .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
+        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
+        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
+        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
+
+        .admin-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 20px 24px;
+            margin-bottom: 16px;
+            transition: all var(--transition);
+            box-shadow: var(--shadow);
+        }
+        .admin-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+        .admin-card .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .admin-card .name { font-size: 17px; font-weight: 700; }
+        .admin-card .email { font-size: 13px; color: var(--text-muted); }
+        .admin-card .role-selector { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .admin-card .role-selector select {
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        .admin-card .role-selector select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .admin-card .permissions {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 6px;
+        }
+        .admin-card .permissions .perm {
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .admin-card .permissions .perm .check { color: #22c55e; }
+        .admin-card .permissions .perm .cross { color: #ef4444; }
+
+        .filter-bar-modern {
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
+        }
+        .filter-bar-modern input, .filter-bar-modern select {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
+        }
+        .filter-bar-modern input:focus, .filter-bar-modern select:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .admin-role-badge {
+            display: inline-flex;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .admin-role-badge.super-admin { background: #ede9fe; color: #7c3aed; }
+        .admin-role-badge.content-manager { background: #dbeafe; color: #2563eb; }
+        .admin-role-badge.user-manager { background: #dcfce7; color: #16a34a; }
+        .admin-role-badge.moderation-manager { background: #fef3c7; color: #d97706; }
+        .admin-role-badge.analytics-viewer { background: #fce7f3; color: #db2777; }
+        .admin-role-badge.guest { background: #f3f4f6; color: #6b7280; }
+
+        @media (max-width: 768px) {
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .admin-card .header { flex-direction: column; align-items: stretch; }
+            .admin-card .role-selector { justify-content: stretch; }
+            .admin-card .role-selector select { flex: 1; }
+            .admin-card .permissions { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand" onclick="navigateTo('dashboard')">
+                <div class="brand-icon">🧵</div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="sidebar-nav-label">📊 Overview</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('dashboard')">
+                    <span class="icon">📊</span> Dashboard
+                    <span class="badge success">Live</span>
+                </a>
+                <div class="sidebar-nav-label">👑 Management</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
+                    <span class="icon">👶</span> Babies
+                    <span class="badge" id="babyBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
+                    <span class="icon">👤</span> Users
+                    <span class="badge" id="userBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
+                    <span class="icon">🛡️</span> Moderation
+                    <span class="badge danger" id="modBadge">0</span>
+                </a>
+                <div class="sidebar-nav-label">💬 Community</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('community')">
+                    <span class="icon">💬</span> Community Posts
+                    <span class="badge" id="postBadge">0</span>
+                </a>
+                <div class="sidebar-nav-label">⚙️ System</div>
+                <a class="sidebar-nav-item active" href="#">
+                    <span class="icon">👥</span> Admin Roles
+                    <span class="badge danger" id="adminBadge">0</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
+                    <span class="icon">⚙️</span> Settings
+                    <span class="lock-icon">🔒</span>
+                </a>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')">
+                    <span class="icon">📋</span> Audit Logs
+                    <span class="lock-icon">🔒</span>
+                </a>
+                <div class="sidebar-nav-label">❤️ Health</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('health')">
+                    <span class="icon">❤️</span> System Health
+                    <span class="badge success" id="healthBadge">OK</span>
+                </a>
+                <div class="sidebar-nav-label">🛠️ Tools</div>
+                <a class="sidebar-nav-item" href="#" onclick="navigateTo('notifications')">
+                    <span class="icon">🔔</span> Notifications
+                    <span class="badge" id="notifBadge">0</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="sidebarAvatar">A</div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Admin Roles <span class="sub">| Role Management</span></div></div></div>
+                <div class="topbar-right">
+                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-actions">
+                        <button class="btn btn-outline btn-sm" onclick="loadAdminUsers()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="page-content active">
+                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+
+                <div class="page-hero">
+                    <h1>👥 Admin Roles</h1>
+                    <p>Manage admin user roles and permissions</p>
+                    <div class="stats-row">
+                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Admins</span></div>
+                        <div class="stat"><span class="num" id="statSuper">0</span><span class="label">Super Admins</span></div>
+                        <div class="stat"><span class="num" id="statContent">0</span><span class="label">Content Managers</span></div>
+                        <div class="stat"><span class="num" id="statModeration">0</span><span class="label">Moderation Managers</span></div>
+                    </div>
+                </div>
+
+                <div class="filter-bar-modern">
+                    <input type="text" placeholder="🔍 Search admins..." id="searchInput" oninput="filterAdmins()">
+                    <select id="roleFilter" onchange="filterAdmins()">
+                        <option value="all">All Roles</option>
+                        <option value="super_admin">Super Admin</option>
+                        <option value="content_manager">Content Manager</option>
+                        <option value="user_manager">User Manager</option>
+                        <option value="moderation_manager">Moderation Manager</option>
+                        <option value="analytics_viewer">Analytics Viewer</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="openAddAdminModal()">➕ Add Admin</button>
+                </div>
+
+                <div id="adminsContainer">
+                    <div class="empty-state-modern"><div class="emoji">👥</div><h3>Loading admins...</h3><p>Please wait while we fetch the data</p></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="/js/admin.js"></script>
+    <script>
+        let adminUsers = [];
+        let currentFiltered = [];
+        const ROLE_LABELS = {
+            super_admin: 'Super Admin',
+            content_manager: 'Content Manager',
+            user_manager: 'User Manager',
+            moderation_manager: 'Moderation Manager',
+            analytics_viewer: 'Analytics Viewer',
+            guest: 'Guest'
+        };
+        const ROLE_BADGE_CLASSES = {
+            super_admin: 'super-admin',
+            content_manager: 'content-manager',
+            user_manager: 'user-manager',
+            moderation_manager: 'moderation-manager',
+            analytics_viewer: 'analytics-viewer',
+            guest: 'guest'
+        };
+        const PERMISSION_LABELS = {
+            canManageAdmins: 'Manage Admins',
+            canManageUsers: 'Manage Users',
+            canManageContent: 'Manage Content',
+            canModerate: 'Moderate Content',
+            canViewAnalytics: 'View Analytics',
+            canManageSystem: 'Manage System',
+            canManageBackup: 'Manage Backup',
+            canViewAudit: 'View Audit Logs',
+            canManageAPI: 'Manage API',
+            canManageFeatures: 'Manage Features'
+        };
+
+        async function loadAdminUsers() {
+            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
+            const authed = await checkAuth();
+            if (!authed) { showToast('Please log in', 'warning'); return; }
+
+            // Check if user has permission
+            if (window.currentUserRole !== 'super_admin') {
+                document.getElementById('adminsContainer').innerHTML = `
+                    <div class="permission-denied">
+                        <div class="emoji">🔒</div>
+                        <h3>Access Denied</h3>
+                        <p>You do not have permission to manage admin roles. This feature is restricted to Super Admins only.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .not('admin_role', 'is', null)
+                    .order('full_name');
+
+                if (error) throw error;
+
+                adminUsers = data || [];
+                currentFiltered = [...adminUsers];
+                renderAdmins(currentFiltered);
+                updateStats(currentFiltered);
+
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                showToast('✅ Admin users loaded successfully', 'success');
+            } catch (e) {
+                console.error('Load error:', e);
+                showToast('Error loading admin users: ' + e.message, 'error');
+            }
+        }
+
+        function renderAdmins(admins) {
+            const container = document.getElementById('adminsContainer');
+            if (!admins || admins.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state-modern">
+                        <div class="emoji">👥</div>
+                        <h3>No admin users found</h3>
+                        <p>Add admin users to manage the platform</p>
+                        <button class="btn btn-primary" onclick="openAddAdminModal()" style="margin-top:12px;">➕ Add Admin</button>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            admins.forEach(admin => {
+                const role = admin.admin_role || 'guest';
+                const roleLabel = ROLE_LABELS[role] || role;
+                const badgeClass = ROLE_BADGE_CLASSES[role] || 'guest';
+                const permissions = window.ADMIN_ROLES?.[role]?.permissions || {};
+
+                // Build permissions list
+                let permsHtml = '';
+                const permEntries = Object.entries(permissions);
+                if (permEntries.length > 0) {
+                    permEntries.forEach(([key, value]) => {
+                        const label = PERMISSION_LABELS[key] || key;
+                        permsHtml += `
+                            <div class="perm">
+                                ${value ? '<span class="check">✅</span>' : '<span class="cross">❌</span>'}
+                                ${label}
+                            </div>
+                        `;
+                    });
+                }
+
+                html += `
+                    <div class="admin-card" data-id="${admin.id}">
+                        <div class="header">
+                            <div>
+                                <div class="name">${admin.full_name || 'Unnamed Admin'}</div>
+                                <div class="email">${admin.email || 'No email'}</div>
+                            </div>
+                            <div class="role-selector">
+                                <span class="admin-role-badge ${badgeClass}">${roleLabel}</span>
+                                <select onchange="updateAdminRole('${admin.id}', this.value)">
+                                    <option value="super_admin" ${role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
+                                    <option value="content_manager" ${role === 'content_manager' ? 'selected' : ''}>Content Manager</option>
+                                    <option value="user_manager" ${role === 'user_manager' ? 'selected' : ''}>User Manager</option>
+                                    <option value="moderation_manager" ${role === 'moderation_manager' ? 'selected' : ''}>Moderation Manager</option>
+                                    <option value="analytics_viewer" ${role === 'analytics_viewer' ? 'selected' : ''}>Analytics Viewer</option>
+                                    <option value="guest" ${role === 'guest' ? 'selected' : ''}>Remove Admin</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="permissions">
+                            ${permsHtml || '<div style="color:var(--text-muted);font-size:12px;">No permissions defined</div>'}
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+            document.getElementById('adminBadge').textContent = admins.length;
+        }
+
+        function updateStats(admins) {
+            const total = admins.length;
+            const superAdmins = admins.filter(a => a.admin_role === 'super_admin').length;
+            const contentManagers = admins.filter(a => a.admin_role === 'content_manager').length;
+            const moderationManagers = admins.filter(a => a.admin_role === 'moderation_manager').length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statSuper').textContent = superAdmins;
+            document.getElementById('statContent').textContent = contentManagers;
+            document.getElementById('statModeration').textContent = moderationManagers;
+            document.getElementById('adminBadge').textContent = total;
+        }
+
+        function filterAdmins() {
+            const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+            const role = document.getElementById('roleFilter')?.value || 'all';
+
+            let filtered = adminUsers;
+            if (search) {
+                filtered = filtered.filter(a =>
+                    (a.full_name || '').toLowerCase().includes(search) ||
+                    (a.email || '').toLowerCase().includes(search)
+                );
+            }
+            if (role !== 'all') {
+                filtered = filtered.filter(a => a.admin_role === role);
+            }
+
+            currentFiltered = filtered;
+            renderAdmins(filtered);
+        }
+
+        async function updateAdminRole(userId, newRole) {
+            try {
+                const { error } = await supabase
+                    .from('profiles')
+                    .update({
+                        admin_role: newRole === 'guest' ? null : newRole,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', userId);
+
+                if (error) throw error;
+
+                const roleLabel = ROLE_LABELS[newRole] || 'Guest';
+                showToast(`✅ Admin role updated to ${roleLabel}`, 'success');
+                loadAdminUsers();
+            } catch (e) {
+                showToast('Error updating admin role: ' + e.message, 'error');
+            }
+        }
+
+        function openAddAdminModal() {
+            const body = `
+                <div class="modal-user-form">
+                    <div class="form-group">
+                        <label>User Email *</label>
+                        <input type="email" id="adminEmail" placeholder="Enter user email address">
+                    </div>
+                    <div class="form-group">
+                        <label>Admin Role</label>
+                        <select id="adminRole">
+                            <option value="content_manager">Content Manager</option>
+                            <option value="user_manager">User Manager</option>
+                            <option value="moderation_manager">Moderation Manager</option>
+                            <option value="analytics_viewer">Analytics Viewer</option>
+                            <option value="super_admin">Super Admin</option>
+                        </select>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:8px;padding:12px;background:var(--bg-primary);border-radius:var(--radius-sm);">
+                        ⚠️ The user must already have an account in the system. They will be granted admin access with the selected role.
+                    </div>
+                </div>
+            `;
+
+            openModal('👥 Add Admin User', body, 'Add Admin', async function() {
+                const email = document.getElementById('adminEmail')?.value?.trim();
+                const role = document.getElementById('adminRole')?.value || 'content_manager';
+
+                if (!email) { showToast('Please enter an email address', 'warning'); return; }
+
+                try {
+                    // Find user by email
+                    const { data: users, error: findError } = await supabase
+                        .from('profiles')
+                        .select('id, full_name, email')
+                        .eq('email', email)
+                        .maybeSingle();
+
+                    if (findError || !users) {
+                        showToast('User not found. Please make sure the user has an account.', 'error');
+                        return;
+                    }
+
+                    // Update user role
+                    const { error: updateError } = await supabase
+                        .from('profiles')
+                        .update({
+                            admin_role: role,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', users.id);
+
+                    if (updateError) throw updateError;
+
+                    const roleLabel = ROLE_LABELS[role] || role;
+                    showToast(`✅ ${users.full_name || 'User'} added as ${roleLabel}`, 'success');
+                    closeModal(true);
+                    loadAdminUsers();
+                } catch (e) {
+                    showToast('Error adding admin: ' + e.message, 'error');
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadAdminUsers, 500); });
+        window.loadAdminUsers = loadAdminUsers;
+        window.filterAdmins = filterAdmins;
+        window.updateAdminRole = updateAdminRole;
+        window.openAddAdminModal = openAddAdminModal;
+    </script>
+</body>
+</html>
