@@ -87,6 +87,11 @@
             outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
 
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .growth-grid { grid-template-columns: 1fr 1fr; }
         }
@@ -96,61 +101,83 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">📊</span> Growth Analytics</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')"><span class="icon">📈</span> Analytics</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('activity')"><span class="icon">📈</span> Activity Heatmap</a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Growth Analytics <span class="sub">| Baby Development Insights</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Growth Analytics <span class="sub">| Baby Development Insights</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline" onclick="loadGrowth()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline" onclick="window.loadGrowth && window.loadGrowth()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
-                <div class="page-header">
-                    <span class="icon">📊</span>
-                    <h1>Growth Analytics</h1>
+                <div class="page-header" style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                    <span class="icon" style="font-size:28px;">📊</span>
+                    <h1 style="font-size:24px;font-weight:800;">Growth Analytics</h1>
                 </div>
 
                 <div class="filter-bar-modern">
-                    <select id="growthPeriod" onchange="loadGrowth()">
+                    <select id="growthPeriod" onchange="window.loadGrowth && window.loadGrowth()">
                         <option value="6">Last 6 Months</option>
                         <option value="12" selected>Last 12 Months</option>
                         <option value="24">Last 24 Months</option>
                         <option value="all">All Time</option>
                     </select>
-                    <button class="btn btn-primary btn-sm" onclick="loadGrowth()">📊 Update</button>
+                    <button class="btn btn-primary btn-sm" onclick="window.loadGrowth && window.loadGrowth()">📊 Update</button>
                 </div>
 
                 <div class="growth-grid">
@@ -191,11 +218,9 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
     <script src="/js/admin-base.js"></script>
     <script src="/js/page-init.js"></script>
 
-    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         async function loadGrowth() {
             const supabase = window._supabaseClient;
@@ -288,7 +313,6 @@
             }
         }
 
-        // ─── AUTH INTEGRATION ──────────────────────────────────────────
         window._loadPageData = async function() {
             await loadGrowth();
         };

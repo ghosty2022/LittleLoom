@@ -84,6 +84,36 @@
             border-top: 1px solid var(--border);
         }
 
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: var(--bg-primary);
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+            transition: var(--transition);
+            border: 1.5px solid var(--border);
+            flex-shrink: 0;
+        }
+        .toggle-switch.active { background: var(--primary); border-color: var(--primary); }
+        .toggle-switch .slider {
+            width: 18px;
+            height: 18px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: var(--transition);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .toggle-switch.active .slider { left: 22px; }
+
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .settings-grid { grid-template-columns: 1fr; }
             .setting-item { flex-wrap: wrap; gap: 8px; }
@@ -91,55 +121,69 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">⚙️</span> Settings</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')"><span class="icon">📋</span> Audit Logs</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Settings <span class="sub">| System Configuration</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Settings <span class="sub">| System Configuration</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadSettings()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadSettings && window.loadSettings()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>⚙️ System Settings</h1>
@@ -147,7 +191,6 @@
                 </div>
 
                 <div class="settings-grid">
-                    <!-- General Settings -->
                     <div class="settings-card">
                         <div class="header">
                             <span class="icon">⚙️</span>
@@ -156,7 +199,7 @@
 
                         <div class="setting-item">
                             <div class="info"><div class="label">🌙 Dark Mode</div><div class="desc">Toggle dark/light theme</div></div>
-                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                            <div class="toggle-switch active" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
@@ -175,20 +218,19 @@
 
                         <div class="setting-item">
                             <div class="info"><div class="label">🔔 Notifications</div><div class="desc">Show desktop notifications</div></div>
-                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                            <div class="toggle-switch active" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
                             <div class="info"><div class="label">📊 Analytics</div><div class="desc">Enable usage analytics</div></div>
-                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                            <div class="toggle-switch" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Security Settings -->
                     <div class="settings-card">
                         <div class="header">
                             <span class="icon">🔐</span>
@@ -209,27 +251,26 @@
 
                         <div class="setting-item">
                             <div class="info"><div class="label">🔒 2FA Required</div><div class="desc">Require two-factor authentication</div></div>
-                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                            <div class="toggle-switch" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
                             <div class="info"><div class="label">📧 Email Verification</div><div class="desc">Require email verification</div></div>
-                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                            <div class="toggle-switch active" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
                             <div class="info"><div class="label">🛡️ IP Whitelist</div><div class="desc">Restrict access to specific IPs</div></div>
-                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                            <div class="toggle-switch" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Appearance Settings -->
                     <div class="settings-card">
                         <div class="header">
                             <span class="icon">🎨</span>
@@ -238,7 +279,7 @@
 
                         <div class="setting-item">
                             <div class="info"><div class="label">🎨 Primary Color</div><div class="desc">Choose your accent color</div></div>
-                            <select class="settings-select" id="primaryColor" onchange="applyPrimaryColor(this.value)">
+                            <select class="settings-select" id="primaryColor" onchange="window.applyPrimaryColor && window.applyPrimaryColor(this.value)">
                                 <option value="#6366f1" selected>Indigo</option>
                                 <option value="#8b5cf6">Purple</option>
                                 <option value="#ec4899">Pink</option>
@@ -267,7 +308,6 @@
                         </div>
                     </div>
 
-                    <!-- System Settings -->
                     <div class="settings-card">
                         <div class="header">
                             <span class="icon">🖥️</span>
@@ -276,29 +316,29 @@
 
                         <div class="setting-item">
                             <div class="info"><div class="label">📊 Debug Mode</div><div class="desc">Enable debug logging</div></div>
-                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                            <div class="toggle-switch" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
                             <div class="info"><div class="label">📈 Performance Mode</div><div class="desc">Optimize for performance</div></div>
-                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                            <div class="toggle-switch active" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="setting-item">
                             <div class="info"><div class="label">🗑️ Auto-Cleanup</div><div class="desc">Auto-delete old logs (30 days)</div></div>
-                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                            <div class="toggle-switch active" onclick="window.toggleSetting && window.toggleSetting(this)">
                                 <div class="slider"></div>
                             </div>
                         </div>
 
                         <div class="settings-actions">
-                            <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
-                            <button class="btn btn-outline" onclick="resetSettings()">🔄 Reset Defaults</button>
-                            <button class="btn btn-danger" onclick="clearCache()">🗑️ Clear Cache</button>
+                            <button class="btn btn-primary" onclick="window.saveSettings && window.saveSettings()">💾 Save Settings</button>
+                            <button class="btn btn-outline" onclick="window.resetSettings && window.resetSettings()">🔄 Reset Defaults</button>
+                            <button class="btn btn-danger" onclick="window.clearCache && window.clearCache()">🗑️ Clear Cache</button>
                         </div>
                     </div>
                 </div>
@@ -308,13 +348,14 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
     <script>
         function loadSettings() {
             try {
                 const settings = JSON.parse(localStorage.getItem('adminSettings') || '{}');
 
-                // Apply dark mode
                 if (settings.darkMode) {
                     document.documentElement.style.setProperty('--bg-primary', '#0f172a');
                     document.documentElement.style.setProperty('--bg-card', '#1e293b');
@@ -342,7 +383,7 @@
                 }
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('⚙️ Settings loaded', 'info');
+                window._showToast('⚙️ Settings loaded', 'info');
             } catch (e) {
                 console.error('Load settings error:', e);
             }
@@ -351,13 +392,12 @@
         function toggleSetting(el) {
             el.classList.toggle('active');
             const isActive = el.classList.contains('active');
-            showToast(`Setting ${isActive ? 'enabled' : 'disabled'}`, 'info');
+            window._showToast(`Setting ${isActive ? 'enabled' : 'disabled'}`, 'info');
         }
 
         function applyPrimaryColor(color) {
             document.documentElement.style.setProperty('--primary', color);
             document.documentElement.style.setProperty('--primary-dark', color);
-            // Update gradient
             document.querySelectorAll('.btn-primary, .brand-icon').forEach(el => {
                 if (el.tagName === 'BUTTON') {
                     el.style.background = `linear-gradient(135deg, ${color}, ${adjustColor(color, 20)})`;
@@ -394,14 +434,14 @@
                 document.documentElement.style.setProperty('--text-secondary', '#94a3b8');
                 document.documentElement.style.setProperty('--border', 'rgba(255,255,255,0.06)');
             } else {
-                document.documentElement.style.setProperty('--bg-primary', '#f1f5f9');
+                document.documentElement.style.setProperty('--bg-primary', '#f0f4ff');
                 document.documentElement.style.setProperty('--bg-card', '#ffffff');
                 document.documentElement.style.setProperty('--text-primary', '#0f172a');
                 document.documentElement.style.setProperty('--text-secondary', '#475569');
                 document.documentElement.style.setProperty('--border', 'rgba(0,0,0,0.06)');
             }
 
-            showToast('✅ Settings saved successfully!', 'success');
+            window._showToast('✅ Settings saved successfully!', 'success');
         }
 
         function resetSettings() {
@@ -421,13 +461,13 @@
             }
 
             document.documentElement.style.setProperty('--primary', '#6366f1');
-            document.documentElement.style.setProperty('--bg-primary', '#f1f5f9');
+            document.documentElement.style.setProperty('--bg-primary', '#f0f4ff');
             document.documentElement.style.setProperty('--bg-card', '#ffffff');
             document.documentElement.style.setProperty('--text-primary', '#0f172a');
             document.documentElement.style.setProperty('--text-secondary', '#475569');
             document.documentElement.style.setProperty('--border', 'rgba(0,0,0,0.06)');
 
-            showToast('🔄 Settings reset to defaults', 'success');
+            window._showToast('🔄 Settings reset to defaults', 'success');
         }
 
         function clearCache() {
@@ -438,11 +478,14 @@
             localStorage.removeItem('backupHistory');
             sessionStorage.clear();
 
-            showToast('🗑️ Cache cleared successfully', 'success');
+            window._showToast('🗑️ Cache cleared successfully', 'success');
             setTimeout(() => location.reload(), 1000);
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadSettings, 500); });
+        window._loadPageData = async function() {
+            await loadSettings();
+        };
+
         window.loadSettings = loadSettings;
         window.toggleSetting = toggleSetting;
         window.saveSettings = saveSettings;
@@ -452,6 +495,3 @@
     </script>
 </body>
 </html>
-
-
-

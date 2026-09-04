@@ -77,78 +77,95 @@
             outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
 
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .heatmap-grid { max-width: 100%; }
         }
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Analytics</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">📈</span> Activity Heatmap</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')"><span class="icon">📈</span> Analytics</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('growth')"><span class="icon">📊</span> Growth Analytics</a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Activity Heatmap <span class="sub">| User Engagement Patterns</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Activity Heatmap <span class="sub">| User Engagement Patterns</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline" onclick="loadHeatmap()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline" onclick="window.loadHeatmap && window.loadHeatmap()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
-                <div class="page-header">
-                    <span class="icon">📈</span>
-                    <h1>Activity Heatmap</h1>
+                <div class="page-header" style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                    <span class="icon" style="font-size:28px;">📈</span>
+                    <h1 style="font-size:24px;font-weight:800;">Activity Heatmap</h1>
                 </div>
 
                 <div class="filter-bar-modern">
-                    <select id="heatmapPeriod" onchange="loadHeatmap()">
+                    <select id="heatmapPeriod" onchange="window.loadHeatmap && window.loadHeatmap()">
                         <option value="7">Last 7 Days</option>
                         <option value="14">Last 14 Days</option>
                         <option value="30" selected>Last 30 Days</option>
                         <option value="60">Last 60 Days</option>
                         <option value="90">Last 90 Days</option>
                     </select>
-                    <select id="heatmapType" onchange="loadHeatmap()">
+                    <select id="heatmapType" onchange="window.loadHeatmap && window.loadHeatmap()">
                         <option value="all">All Activities</option>
                         <option value="feed">Feeding</option>
                         <option value="sleep">Sleep</option>
@@ -156,7 +173,7 @@
                         <option value="growth">Growth</option>
                         <option value="milestone">Milestones</option>
                     </select>
-                    <button class="btn btn-primary btn-sm" onclick="loadHeatmap()">📊 Update</button>
+                    <button class="btn btn-primary btn-sm" onclick="window.loadHeatmap && window.loadHeatmap()">📊 Update</button>
                 </div>
 
                 <div class="heatmap-stats" id="heatmapStats">
@@ -166,9 +183,7 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-header">
-                        <div class="card-title"><span class="emoji">📊</span> Weekly Activity Distribution</div>
-                    </div>
+                    <div class="card-header"><div class="card-title"><span class="emoji">📊</span> Weekly Activity Distribution</div></div>
                     <div class="card-body">
                         <div class="heatmap-grid" id="heatmapGrid"></div>
                         <div class="heatmap-legend">
@@ -189,12 +204,13 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
     <script>
         async function loadHeatmap() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             const days = parseInt(document.getElementById('heatmapPeriod')?.value || '30');
             const type = document.getElementById('heatmapType')?.value || 'all';
@@ -220,7 +236,6 @@
                 const entries = data || [];
                 const total = entries.length;
 
-                // Count by day of week
                 const dayCounts = {};
                 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                 entries.forEach(function(e) {
@@ -228,7 +243,6 @@
                     dayCounts[day] = (dayCounts[day] || 0) + 1;
                 });
 
-                // Count by date
                 const dateCounts = {};
                 entries.forEach(function(e) {
                     const date = new Date(e.timestamp).toISOString().split('T')[0];
@@ -245,18 +259,15 @@
                 document.getElementById('mostActiveDay').textContent = maxCount > 0 ? dayNames[maxDay] : '—';
                 document.getElementById('avgDaily').textContent = avg;
 
-                // Build heatmap grid
                 const grid = document.getElementById('heatmapGrid');
                 const maxCountVal = Math.max(...Object.values(dayCounts), 1);
                 const colors = ['#dbeafe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8'];
 
                 let html = '';
-                // Day labels
                 for (let i = 0; i < 7; i++) {
                     html += '<div class="heatmap-day-label">' + dayNames[i] + '</div>';
                 }
 
-                // 5 weeks of data
                 for (let week = 0; week < 5; week++) {
                     for (let day = 0; day < 7; day++) {
                         const count = dayCounts[day] || 0;
@@ -269,17 +280,17 @@
 
                 grid.innerHTML = html;
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Heatmap loaded successfully', 'success');
+                window._showToast('✅ Heatmap loaded successfully', 'success');
             } catch (e) {
-                showToast('Error loading heatmap: ' + e.message, 'error');
+                window._showToast('Error loading heatmap: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadHeatmap, 500); });
+        window._loadPageData = async function() {
+            await loadHeatmap();
+        };
+
         window.loadHeatmap = loadHeatmap;
     </script>
 </body>
 </html>
-
-
-

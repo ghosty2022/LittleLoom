@@ -58,6 +58,11 @@
         .action-btn:hover { background: var(--bg-primary); }
         .action-btn.danger:hover { background: #fee2e2; }
 
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
             table { font-size: 12px; }
@@ -66,59 +71,69 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Management</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')"><span class="icon">👶</span> Babies <span class="badge" id="babyBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')"><span class="icon">👤</span> Users <span class="badge" id="userBadge">0</span></a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">📈</span> Tracker Entries <span class="badge" id="entryBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')"><span class="icon">🏆</span> Milestones <span class="badge" id="milestoneBadge">0</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Tracker Entries <span class="sub">| All Activity Logs</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Tracker Entries <span class="sub">| All Activity Logs</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadTrackers()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadTrackers && window.loadTrackers()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>📈 Tracker Entries</h1>
@@ -131,8 +146,8 @@
                 </div>
 
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search entries..." id="searchInput" oninput="filterEntries()">
-                    <select id="typeFilter" onchange="filterEntries()">
+                    <input type="text" placeholder="🔍 Search entries..." id="searchInput" oninput="window.filterEntries && window.filterEntries()">
+                    <select id="typeFilter" onchange="window.filterEntries && window.filterEntries()">
                         <option value="all">All Types</option>
                         <option value="feed">🍼 Feeding</option>
                         <option value="sleep">🌙 Sleep</option>
@@ -143,7 +158,7 @@
                         <option value="custom">📋 Custom</option>
                     </select>
                     <div class="btn-group">
-                        <button class="btn btn-outline" onclick="loadTrackers()">🔄 Refresh</button>
+                        <button class="btn btn-outline" onclick="window.loadTrackers && window.loadTrackers()">🔄 Refresh</button>
                     </div>
                 </div>
 
@@ -163,7 +178,9 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
     <script>
         let entriesCache = [];
         let currentFiltered = [];
@@ -171,9 +188,8 @@
         const typeEmojis = { feed: '🍼', sleep: '🌙', potty: '💧', growth: '📏', medication: '💊', milestone: '🏆', custom: '📋' };
 
         async function loadTrackers() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const { data, error } = await supabase
@@ -191,10 +207,10 @@
                 updateStats(currentFiltered);
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Entries loaded successfully', 'success');
+                window._showToast('✅ Entries loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading entries: ' + e.message, 'error');
+                window._showToast('Error loading entries: ' + e.message, 'error');
             }
         }
 
@@ -222,8 +238,8 @@
                     <td>${loggedBy}</td>
                     <td style="font-size:12px;color:var(--text-muted);">${time}</td>
                     <td>
-                        <button class="action-btn" onclick="viewEntry('${e.id}')">👁️</button>
-                        <button class="action-btn danger" onclick="deleteEntry('${e.id}')">🗑️</button>
+                        <button class="action-btn" onclick="window.viewEntry && window.viewEntry('${e.id}')">👁️</button>
+                        <button class="action-btn danger" onclick="window.deleteEntry && window.deleteEntry('${e.id}')">🗑️</button>
                     </td>
                 </tr>`;
             });
@@ -241,7 +257,8 @@
             document.getElementById('statTotal').textContent = total;
             document.getElementById('statToday').textContent = today;
             document.getElementById('statTypes').textContent = types;
-            document.getElementById('entryBadge').textContent = total;
+            const badge = document.getElementById('entryBadge');
+            if (badge) badge.textContent = total;
         }
 
         function filterEntries() {
@@ -266,7 +283,7 @@
 
         async function viewEntry(id) {
             const entry = entriesCache.find(e => e.id === id);
-            if (!entry) { showToast('Entry not found', 'error'); return; }
+            if (!entry) { window._showToast('Entry not found', 'error'); return; }
 
             const fields = [
                 { label: 'ID', value: entry.id },
@@ -288,12 +305,12 @@
             });
             details += '</div>';
 
-            openModal('📋 Entry Details', details, 'Close', closeModal);
+            window._openModal('📋 Entry Details', details, 'Close', window._closeModal);
         }
 
         async function deleteEntry(id) {
             const confirmed = await new Promise((resolve) => {
-                openModal('🗑️ Delete Entry', `
+                window._openModal('🗑️ Delete Entry', `
                     <div style="text-align:center;padding:12px 0;">
                         <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
                         <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this entry?</p>
@@ -303,17 +320,21 @@
             });
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase.from('tracker_entries').update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', id);
                 if (error) throw error;
-                showToast('✅ Entry deleted successfully', 'success');
+                window._showToast('✅ Entry deleted successfully', 'success');
                 loadTrackers();
             } catch (e) {
-                showToast('Error deleting entry: ' + e.message, 'error');
+                window._showToast('Error deleting entry: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadTrackers, 500); });
+        window._loadPageData = async function() {
+            await loadTrackers();
+        };
+
         window.loadTrackers = loadTrackers;
         window.filterEntries = filterEntries;
         window.viewEntry = viewEntry;
@@ -321,6 +342,3 @@
     </script>
 </body>
 </html>
-
-
-

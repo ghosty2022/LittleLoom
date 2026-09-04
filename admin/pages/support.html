@@ -76,6 +76,11 @@
             outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
 
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
             .ticket-card .header { flex-direction: column; }
@@ -83,55 +88,69 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">🎫</span> Support Tickets <span class="badge danger" id="supportBadge">0</span></a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')"><span class="icon">💾</span> Backup & Restore</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Support Tickets <span class="sub">| Customer Support</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Support Tickets <span class="sub">| Customer Support</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadTickets()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadTickets && window.loadTickets()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>🎫 Support Tickets</h1>
@@ -144,15 +163,15 @@
                 </div>
 
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search tickets..." id="searchInput" oninput="filterTickets()">
-                    <select id="statusFilter" onchange="filterTickets()">
+                    <input type="text" placeholder="🔍 Search tickets..." id="searchInput" oninput="window.filterTickets && window.filterTickets()">
+                    <select id="statusFilter" onchange="window.filterTickets && window.filterTickets()">
                         <option value="all">All Status</option>
                         <option value="open">Open</option>
                         <option value="in_progress">In Progress</option>
                         <option value="resolved">Resolved</option>
                         <option value="closed">Closed</option>
                     </select>
-                    <select id="priorityFilter" onchange="filterTickets()">
+                    <select id="priorityFilter" onchange="window.filterTickets && window.filterTickets()">
                         <option value="all">All Priorities</option>
                         <option value="low">Low</option>
                         <option value="medium">Medium</option>
@@ -160,7 +179,7 @@
                         <option value="urgent">Urgent</option>
                     </select>
                     <div class="btn-group">
-                        <button class="btn btn-outline" onclick="loadTickets()">🔄 Refresh</button>
+                        <button class="btn btn-outline" onclick="window.loadTickets && window.loadTickets()">🔄 Refresh</button>
                     </div>
                 </div>
 
@@ -173,15 +192,16 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
     <script>
         let ticketsCache = [];
         let currentFiltered = [];
 
         async function loadTickets() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const { data, error } = await supabase
@@ -199,10 +219,10 @@
                 updateStats(currentFiltered);
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Support tickets loaded successfully', 'success');
+                window._showToast('✅ Support tickets loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading tickets: ' + e.message, 'error');
+                window._showToast('Error loading tickets: ' + e.message, 'error');
                 document.getElementById('ticketsContainer').innerHTML = `
                     <div class="empty-state-modern"><div class="emoji">❌</div><h3>Error loading tickets</h3><p>${e.message}</p></div>
                 `;
@@ -241,9 +261,9 @@
                             <span>🔄 ${t.updated_at ? new Date(t.updated_at).toLocaleString() : '—'}</span>
                         </div>
                         <div class="actions">
-                            <button class="btn-sm btn-status" onclick="updateTicketStatus('${t.id}')">📌 Update Status</button>
-                            ${t.status !== 'resolved' ? `<button class="btn-sm btn-resolve" onclick="resolveTicket('${t.id}')">✅ Resolve</button>` : ''}
-                            <button class="btn-sm btn-delete" onclick="deleteTicket('${t.id}')">🗑️ Delete</button>
+                            <button class="btn-sm btn-status" onclick="window.updateTicketStatus && window.updateTicketStatus('${t.id}')">📌 Update Status</button>
+                            ${t.status !== 'resolved' ? `<button class="btn-sm btn-resolve" onclick="window.resolveTicket && window.resolveTicket('${t.id}')">✅ Resolve</button>` : ''}
+                            <button class="btn-sm btn-delete" onclick="window.deleteTicket && window.deleteTicket('${t.id}')">🗑️ Delete</button>
                         </div>
                     </div>
                 `;
@@ -259,7 +279,8 @@
             document.getElementById('statTotal').textContent = total;
             document.getElementById('statOpen').textContent = open;
             document.getElementById('statResolved').textContent = resolved;
-            document.getElementById('supportBadge').textContent = open;
+            const badge = document.getElementById('supportBadge');
+            if (badge) badge.textContent = open;
         }
 
         function filterTickets() {
@@ -286,42 +307,44 @@
 
         async function updateTicketStatus(id) {
             const ticket = ticketsCache.find(t => t.id === id);
-            if (!ticket) { showToast('Ticket not found', 'error'); return; }
+            if (!ticket) { window._showToast('Ticket not found', 'error'); return; }
 
             const statuses = ['open', 'in_progress', 'resolved', 'closed'];
             const currentIdx = statuses.indexOf(ticket.status);
             const nextIdx = (currentIdx + 1) % statuses.length;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('support_tickets')
                     .update({ status: statuses[nextIdx], updated_at: new Date().toISOString() })
                     .eq('id', id);
                 if (error) throw error;
-                showToast(`✅ Status updated to ${statuses[nextIdx]}`, 'success');
+                window._showToast(`✅ Status updated to ${statuses[nextIdx]}`, 'success');
                 loadTickets();
             } catch (e) {
-                showToast('Error updating status: ' + e.message, 'error');
+                window._showToast('Error updating status: ' + e.message, 'error');
             }
         }
 
         async function resolveTicket(id) {
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase
                     .from('support_tickets')
                     .update({ status: 'resolved', resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() })
                     .eq('id', id);
                 if (error) throw error;
-                showToast('✅ Ticket resolved successfully', 'success');
+                window._showToast('✅ Ticket resolved successfully', 'success');
                 loadTickets();
             } catch (e) {
-                showToast('Error resolving ticket: ' + e.message, 'error');
+                window._showToast('Error resolving ticket: ' + e.message, 'error');
             }
         }
 
         async function deleteTicket(id) {
             const confirmed = await new Promise((resolve) => {
-                openModal('🗑️ Delete Ticket', `
+                window._openModal('🗑️ Delete Ticket', `
                     <div style="text-align:center;padding:12px 0;">
                         <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
                         <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this ticket?</p>
@@ -331,17 +354,21 @@
             });
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase.from('support_tickets').update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', id);
                 if (error) throw error;
-                showToast('✅ Ticket deleted successfully', 'success');
+                window._showToast('✅ Ticket deleted successfully', 'success');
                 loadTickets();
             } catch (e) {
-                showToast('Error deleting ticket: ' + e.message, 'error');
+                window._showToast('Error deleting ticket: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadTickets, 500); });
+        window._loadPageData = async function() {
+            await loadTickets();
+        };
+
         window.loadTickets = loadTickets;
         window.filterTickets = filterTickets;
         window.updateTicketStatus = updateTicketStatus;
@@ -350,6 +377,3 @@
     </script>
 </body>
 </html>
-
-
-

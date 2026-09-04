@@ -9,7 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/admin.css" />
     <style>
-        /* ─── All existing styles remain the same ─── */
         .page-hero {
             background: linear-gradient(135deg, #0f172a, #1e293b);
             border-radius: var(--radius);
@@ -51,13 +50,8 @@
         .announcement-card .actions .btn-delete:hover { background: #fecaca; }
 
         .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 2px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
         }
         .status-badge.published { background: #dcfce7; color: #16a34a; }
         .status-badge.draft { background: #f3f4f6; color: #6b7280; }
@@ -91,6 +85,11 @@
         }
         .modal-announcement-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
             .announcement-card .header { flex-direction: column; }
@@ -99,134 +98,111 @@
     </style>
 </head>
 <body>
-    <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-            <div class="brand-icon">🧵</div>
-            <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
-        </div>
-        <nav class="sidebar-nav">
-            <div class="sidebar-nav-label">Overview</div>
-            <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-            <div class="sidebar-nav-label">Community</div>
-            <a class="sidebar-nav-item active" href="#"><span class="icon">📢</span> Announcements <span class="badge" id="announceBadge">0</span></a>
-            <div class="sidebar-nav-label">System</div>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-        </nav>
-        <div class="sidebar-footer">
-            <div class="user-info">
-                <div class="user-avatar" id="sidebarAvatar">A</div>
-                <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
-            </div>
-        </div>
-    </aside>
-
-    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-        <div class="modal">
-            <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
-            <div class="modal-body" id="modalBody"></div>
-            <div class="modal-footer">
-                <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-            </div>
-        </div>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
     </div>
 
-    <!-- ─── MAIN ────────────────────────────────────────────────────── -->
-    <main class="main">
-        <header class="topbar">
-            <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Announcements <span class="sub">| App-wide Messages</span></div></div></div>
-            <div class="topbar-right">
-                <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
-                <div class="topbar-actions">
-                    <button class="btn btn-outline btn-sm" onclick="loadAnnouncements()">🔄 Refresh</button>
-                    <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+    <div class="app">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
+                <div class="brand-icon">🧵</div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+            </div>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="sidebarAvatar">A</div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
-        </header>
+        </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="page-content active">
-            <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
-
-            <div class="page-hero">
-                <h1>📢 Announcements</h1>
-                <p>Create and manage app-wide announcements for your community</p>
-                <div class="stats-row">
-                    <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total</span></div>
-                    <div class="stat"><span class="num" id="statPublished">0</span><span class="label">Published</span></div>
-                    <div class="stat"><span class="num" id="statDraft">0</span><span class="label">Drafts</span></div>
-                    <div class="stat"><span class="num" id="statScheduled">0</span><span class="label">Scheduled</span></div>
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
-            </div>
-
-            <div class="filter-bar-modern">
-                <input type="text" placeholder="🔍 Search announcements..." id="searchInput" oninput="filterAnnouncements()">
-                <select id="statusFilter" onchange="filterAnnouncements()">
-                    <option value="all">All Status</option>
-                    <option value="published">Published</option>
-                    <option value="draft">Draft</option>
-                    <option value="scheduled">Scheduled</option>
-                    <option value="archived">Archived</option>
-                </select>
-                <div class="btn-group">
-                    <button class="btn btn-primary" onclick="openAddAnnouncementModal()">📝 New Announcement</button>
-                    <button class="btn btn-outline" onclick="loadAnnouncements()">🔄 Refresh</button>
-                </div>
-            </div>
-
-            <div id="announcementsContainer">
-                <div class="empty-state-modern"><div class="emoji">📢</div><h3>Loading announcements...</h3><p>Please wait while we fetch the data</p></div>
             </div>
         </div>
-    </main>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Announcements <span class="sub">| App-wide Messages</span></div></div>
+                </div>
+                <div class="topbar-right">
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-actions">
+                        <button class="btn btn-outline btn-sm" onclick="window.loadAnnouncements && window.loadAnnouncements()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="page-content active">
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
+
+                <div class="page-hero">
+                    <h1>📢 Announcements</h1>
+                    <p>Create and manage app-wide announcements for your community</p>
+                    <div class="stats-row">
+                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total</span></div>
+                        <div class="stat"><span class="num" id="statPublished">0</span><span class="label">Published</span></div>
+                        <div class="stat"><span class="num" id="statDraft">0</span><span class="label">Drafts</span></div>
+                        <div class="stat"><span class="num" id="statScheduled">0</span><span class="label">Scheduled</span></div>
+                    </div>
+                </div>
+
+                <div class="filter-bar-modern">
+                    <input type="text" placeholder="🔍 Search announcements..." id="searchInput" oninput="window.filterAnnouncements && window.filterAnnouncements()">
+                    <select id="statusFilter" onchange="window.filterAnnouncements && window.filterAnnouncements()">
+                        <option value="all">All Status</option>
+                        <option value="published">Published</option>
+                        <option value="draft">Draft</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="window.openAddAnnouncementModal && window.openAddAnnouncementModal()">📝 New Announcement</button>
+                        <button class="btn btn-outline" onclick="window.loadAnnouncements && window.loadAnnouncements()">🔄 Refresh</button>
+                    </div>
+                </div>
+
+                <div id="announcementsContainer">
+                    <div class="empty-state-modern"><div class="emoji">📢</div><h3>Loading announcements...</h3><p>Please wait while we fetch the data</p></div>
+                </div>
+            </div>
+        </main>
+    </div>
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
     <script src="/js/admin-base.js"></script>
     <script src="/js/page-init.js"></script>
 
-    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let announcementsCache = [];
         let currentFiltered = [];
-        let modalResolve = null;
-        let modalData = null;
-
-        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
-            return new Promise((resolve) => {
-                const overlay = document.getElementById('modalOverlay');
-                if (!overlay) return;
-                document.getElementById('modalTitle').textContent = title;
-                document.getElementById('modalBody').innerHTML = bodyHTML;
-                document.getElementById('modalConfirmBtn').textContent = confirmText;
-                document.getElementById('modalCancelBtn').textContent = cancelText;
-                overlay.classList.add('active');
-                modalResolve = resolve;
-                modalData = { confirmAction };
-            });
-        }
-
-        function closeModal(result) {
-            document.getElementById('modalOverlay').classList.remove('active');
-            if (modalResolve) {
-                modalResolve(result !== undefined ? result : null);
-                modalResolve = null;
-            }
-        }
-
-        function modalConfirm() {
-            if (modalData && modalData.confirmAction) {
-                modalData.confirmAction();
-            }
-            closeModal(true);
-        }
-
-        function modalCancel() {
-            closeModal(false);
-        }
 
         async function loadAnnouncements() {
             const supabase = window._supabaseClient;
@@ -256,14 +232,13 @@
 
         function renderAnnouncements(announcements) {
             const container = document.getElementById('announcementsContainer');
-
             if (!announcements || announcements.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state-modern">
                         <div class="emoji">📭</div>
                         <h3>No announcements</h3>
                         <p>Create your first announcement to communicate with your community</p>
-                        <button class="btn btn-primary" onclick="openAddAnnouncementModal()" style="margin-top:12px;">📝 New Announcement</button>
+                        <button class="btn btn-primary" onclick="window.openAddAnnouncementModal && window.openAddAnnouncementModal()" style="margin-top:12px;">📝 New Announcement</button>
                     </div>
                 `;
                 return;
@@ -293,14 +268,13 @@
                         </div>
                         <div class="content">${a.content || ''}</div>
                         <div class="actions">
-                            <button class="btn-sm btn-edit" onclick="editAnnouncement('${a.id}')">✏️ Edit</button>
-                            ${a.status !== 'published' ? `<button class="btn-sm btn-publish" onclick="publishAnnouncement('${a.id}')">📢 Publish</button>` : ''}
-                            <button class="btn-sm btn-delete" onclick="deleteAnnouncement('${a.id}')">🗑️ Delete</button>
+                            <button class="btn-sm btn-edit" onclick="window.editAnnouncement && window.editAnnouncement('${a.id}')">✏️ Edit</button>
+                            ${a.status !== 'published' ? `<button class="btn-sm btn-publish" onclick="window.publishAnnouncement && window.publishAnnouncement('${a.id}')">📢 Publish</button>` : ''}
+                            <button class="btn-sm btn-delete" onclick="window.deleteAnnouncement && window.deleteAnnouncement('${a.id}')">🗑️ Delete</button>
                         </div>
                     </div>
                 `;
             });
-
             container.innerHTML = html;
         }
 
@@ -314,7 +288,8 @@
             document.getElementById('statPublished').textContent = published;
             document.getElementById('statDraft').textContent = draft;
             document.getElementById('statScheduled').textContent = scheduled;
-            document.getElementById('announceBadge').textContent = published;
+            const badge = document.getElementById('announceBadge');
+            if (badge) badge.textContent = published;
         }
 
         function filterAnnouncements() {
@@ -331,7 +306,6 @@
             if (status !== 'all') {
                 filtered = filtered.filter(a => a.status === status);
             }
-
             currentFiltered = filtered;
             renderAnnouncements(filtered);
         }
@@ -373,15 +347,18 @@
                 </div>
             `;
 
-            const statusSelect = document.getElementById('announcementStatus');
-            if (statusSelect) {
-                statusSelect.onchange = function() {
-                    const group = document.getElementById('scheduledDateGroup');
-                    if (group) group.style.display = this.value === 'scheduled' ? 'block' : 'none';
-                };
-            }
+            // Show/hide scheduled date based on status
+            setTimeout(() => {
+                const statusSelect = document.getElementById('announcementStatus');
+                if (statusSelect) {
+                    statusSelect.onchange = function() {
+                        const group = document.getElementById('scheduledDateGroup');
+                        if (group) group.style.display = this.value === 'scheduled' ? 'block' : 'none';
+                    };
+                }
+            }, 100);
 
-            openModal('📝 New Announcement', body, 'Create', async function() {
+            window._openModal('📝 New Announcement', body, 'Create', async function() {
                 const title = document.getElementById('announcementTitle')?.value?.trim();
                 const content = document.getElementById('announcementContent')?.value?.trim();
                 const status = document.getElementById('announcementStatus')?.value || 'draft';
@@ -404,11 +381,9 @@
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     });
-
                     if (error) throw error;
-
                     window._showToast('✅ Announcement created successfully', 'success');
-                    closeModal(true);
+                    window._closeModal(true);
                     loadAnnouncements();
                 } catch (e) {
                     window._showToast('Error creating announcement: ' + e.message, 'error');
@@ -453,7 +428,7 @@
                 </div>
             `;
 
-            openModal('✏️ Edit Announcement', body, 'Save', async function() {
+            window._openModal('✏️ Edit Announcement', body, 'Save', async function() {
                 const title = document.getElementById('editAnnouncementTitle')?.value?.trim();
                 const content = document.getElementById('editAnnouncementContent')?.value?.trim();
                 const status = document.getElementById('editAnnouncementStatus')?.value || 'draft';
@@ -471,20 +446,13 @@
                         target_audience: target,
                         updated_at: new Date().toISOString()
                     };
-
                     if (status === 'published' && announcement.status !== 'published') {
                         updates.published_at = new Date().toISOString();
                     }
-
-                    const { error } = await supabase
-                        .from('announcements')
-                        .update(updates)
-                        .eq('id', id);
-
+                    const { error } = await supabase.from('announcements').update(updates).eq('id', id);
                     if (error) throw error;
-
                     window._showToast('✅ Announcement updated successfully', 'success');
-                    closeModal(true);
+                    window._closeModal(true);
                     loadAnnouncements();
                 } catch (e) {
                     window._showToast('Error updating announcement: ' + e.message, 'error');
@@ -497,15 +465,9 @@
             try {
                 const { error } = await supabase
                     .from('announcements')
-                    .update({
-                        status: 'published',
-                        published_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    })
+                    .update({ status: 'published', published_at: new Date().toISOString(), updated_at: new Date().toISOString() })
                     .eq('id', id);
-
                 if (error) throw error;
-
                 window._showToast('✅ Announcement published successfully', 'success');
                 loadAnnouncements();
             } catch (e) {
@@ -515,7 +477,7 @@
 
         async function deleteAnnouncement(id) {
             const confirmed = await new Promise((resolve) => {
-                openModal('🗑️ Delete Announcement', `
+                window._openModal('🗑️ Delete Announcement', `
                     <div style="text-align:center;padding:12px 0;">
                         <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
                         <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this announcement?</p>
@@ -531,9 +493,7 @@
                     .from('announcements')
                     .update({ is_deleted: true, updated_at: new Date().toISOString() })
                     .eq('id', id);
-
                 if (error) throw error;
-
                 window._showToast('✅ Announcement deleted successfully', 'success');
                 loadAnnouncements();
             } catch (e) {
@@ -541,22 +501,16 @@
             }
         }
 
-        // ─── AUTH INTEGRATION ──────────────────────────────────────────
         window._loadPageData = async function() {
             await loadAnnouncements();
         };
 
-        // ─── EXPOSE GLOBALLY ──────────────────────────────────────────
         window.loadAnnouncements = loadAnnouncements;
         window.filterAnnouncements = filterAnnouncements;
         window.openAddAnnouncementModal = openAddAnnouncementModal;
         window.editAnnouncement = editAnnouncement;
         window.publishAnnouncement = publishAnnouncement;
         window.deleteAnnouncement = deleteAnnouncement;
-        window.openModal = openModal;
-        window.closeModal = closeModal;
-        window.modalConfirm = modalConfirm;
-        window.modalCancel = modalCancel;
     </script>
 </body>
 </html>

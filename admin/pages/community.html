@@ -9,7 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/admin.css" />
     <style>
-        /* ─── Page Hero ────────────────────────────────────────────────── */
         .page-hero {
             background: linear-gradient(135deg, #0f172a, #1e293b);
             border-radius: var(--radius);
@@ -19,38 +18,14 @@
             position: relative;
             overflow: hidden;
         }
-        .page-hero::after {
-            content: '💬';
-            position: absolute;
-            right: 28px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 64px;
-            opacity: 0.1;
-        }
+        .page-hero::after { content: '💬'; position: absolute; right: 28px; top: 50%; transform: translateY(-50%); font-size: 64px; opacity: 0.1; }
         .page-hero h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
         .page-hero p { opacity: 0.85; font-size: 14px; margin-top: 4px; }
-        .page-hero .stats-row {
-            display: flex;
-            gap: 32px;
-            margin-top: 16px;
-            flex-wrap: wrap;
-        }
-        .page-hero .stats-row .stat {
-            display: flex;
-            align-items: baseline;
-            gap: 6px;
-        }
-        .page-hero .stats-row .stat .num {
-            font-size: 28px;
-            font-weight: 800;
-        }
-        .page-hero .stats-row .stat .label {
-            font-size: 13px;
-            opacity: 0.75;
-        }
+        .page-hero .stats-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+        .page-hero .stats-row .stat { display: flex; align-items: baseline; gap: 6px; }
+        .page-hero .stats-row .stat .num { font-size: 28px; font-weight: 800; }
+        .page-hero .stats-row .stat .label { font-size: 13px; opacity: 0.75; }
 
-        /* ─── Post Card ────────────────────────────────────────────────── */
         .post-card {
             background: var(--bg-card);
             border-radius: var(--radius);
@@ -60,444 +35,183 @@
             transition: all var(--transition);
             box-shadow: var(--shadow);
         }
-        .post-card:hover {
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-2px);
-        }
-        .post-card .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .post-card .author {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+        .post-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+        .post-card .header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+        .post-card .author { display: flex; align-items: center; gap: 10px; }
         .post-card .author .avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
+            width: 36px; height: 36px; border-radius: 50%;
             background: linear-gradient(135deg, var(--primary), var(--secondary));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            color: #fff;
-            font-size: 14px;
-            flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; color: #fff; font-size: 14px; flex-shrink: 0;
         }
-        .post-card .author .avatar img {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            object-fit: cover;
-        }
-        .post-card .author .name {
-            font-weight: 600;
-            font-size: 14px;
-        }
-        .post-card .author .handle {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-        .post-card .author .verified {
-            color: #3b82f6;
-            font-size: 14px;
-        }
-        .post-card .content {
-            margin-top: 10px;
-            font-size: 14px;
-            color: var(--text-secondary);
-            line-height: 1.6;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .post-card .content .images {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .post-card .content .images img {
-            width: 100%;
-            height: 80px;
-            object-fit: cover;
-            border-radius: var(--radius-sm);
-        }
-        .post-card .meta {
-            display: flex;
-            gap: 16px;
-            margin-top: 12px;
-            font-size: 12px;
-            color: var(--text-muted);
-            flex-wrap: wrap;
-        }
-        .post-card .meta span {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .post-card .actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid var(--border);
-            flex-wrap: wrap;
-        }
-        .post-card .actions .btn-sm {
-            padding: 4px 14px;
-            font-size: 11px;
-            border-radius: var(--radius-sm);
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-        .post-card .actions .btn-view {
-            background: var(--bg-primary);
-            color: var(--text-secondary);
-        }
-        .post-card .actions .btn-view:hover {
-            background: var(--primary);
-            color: #fff;
-        }
-        .post-card .actions .btn-delete {
-            background: #fee2e2;
-            color: #dc2626;
-        }
-        .post-card .actions .btn-delete:hover {
-            background: #fecaca;
-        }
-        .post-card .actions .btn-moderate {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .post-card .actions .btn-moderate:hover {
-            background: #fde68a;
-        }
-        .post-card .actions .btn-approve {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        .post-card .actions .btn-approve:hover {
-            background: #bbf7d0;
-        }
-        .post-card .topic-tag {
-            display: inline-flex;
-            padding: 2px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            background: var(--bg-primary);
-            color: var(--text-secondary);
-        }
-        .post-card .status-badge {
-            display: inline-flex;
-            padding: 2px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .post-card .status-badge.pending {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .post-card .status-badge.approved {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        .post-card .status-badge.rejected {
-            background: #fee2e2;
-            color: #dc2626;
-        }
-        .post-card .status-badge.flagged {
-            background: #fecaca;
-            color: #b91c1c;
-        }
+        .post-card .author .avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+        .post-card .author .name { font-weight: 600; font-size: 14px; }
+        .post-card .author .handle { font-size: 12px; color: var(--text-muted); }
+        .post-card .author .verified { color: #3b82f6; font-size: 14px; }
+        .post-card .content { margin-top: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+        .post-card .content .images { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 8px; }
+        .post-card .content .images img { width: 100%; height: 80px; object-fit: cover; border-radius: var(--radius-sm); }
+        .post-card .meta { display: flex; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+        .post-card .meta span { display: flex; align-items: center; gap: 4px; }
+        .post-card .actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+        .post-card .actions .btn-sm { padding: 4px 14px; font-size: 11px; border-radius: var(--radius-sm); border: none; font-weight: 600; cursor: pointer; transition: var(--transition); }
+        .post-card .actions .btn-view { background: var(--bg-primary); color: var(--text-secondary); }
+        .post-card .actions .btn-view:hover { background: var(--primary); color: #fff; }
+        .post-card .actions .btn-delete { background: #fee2e2; color: #dc2626; }
+        .post-card .actions .btn-delete:hover { background: #fecaca; }
+        .post-card .actions .btn-moderate { background: #fef3c7; color: #d97706; }
+        .post-card .actions .btn-moderate:hover { background: #fde68a; }
+        .post-card .actions .btn-approve { background: #dcfce7; color: #16a34a; }
+        .post-card .actions .btn-approve:hover { background: #bbf7d0; }
+        .post-card .topic-tag { display: inline-flex; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--bg-primary); color: var(--text-secondary); }
+        .post-card .status-badge { display: inline-flex; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .post-card .status-badge.pending { background: #fef3c7; color: #d97706; }
+        .post-card .status-badge.approved { background: #dcfce7; color: #16a34a; }
+        .post-card .status-badge.rejected { background: #fee2e2; color: #dc2626; }
+        .post-card .status-badge.flagged { background: #fecaca; color: #b91c1c; }
 
-        /* ─── Filter Bar ────────────────────────────────────────────────── */
         .filter-bar-modern {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            align-items: center;
-            background: var(--bg-card);
-            border-radius: var(--radius);
-            padding: 12px 20px;
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
-            margin-bottom: 20px;
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            background: var(--bg-card); border-radius: var(--radius); padding: 12px 20px;
+            border: 1px solid var(--border); box-shadow: var(--shadow); margin-bottom: 20px;
         }
-        .filter-bar-modern select,
-        .filter-bar-modern input {
-            padding: 8px 16px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-            font-size: 13px;
-            font-family: var(--font);
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            transition: var(--transition);
+        .filter-bar-modern select, .filter-bar-modern input {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            font-size: 13px; font-family: var(--font); background: var(--bg-primary);
+            color: var(--text-primary); transition: var(--transition);
         }
-        .filter-bar-modern select:focus,
-        .filter-bar-modern input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        .filter-bar-modern select:focus, .filter-bar-modern input:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
-        .filter-bar-modern .btn-group {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
+        .filter-bar-modern .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
 
-        /* ─── Empty State ────────────────────────────────────────────────── */
-        .empty-state-modern {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-muted);
-        }
-        .empty-state-modern .emoji {
-            font-size: 64px;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-        .empty-state-modern h3 {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 6px;
-        }
-        .empty-state-modern p {
-            font-size: 14px;
-        }
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
 
-        /* ─── Responsive ────────────────────────────────────────────────── */
         @media (max-width: 768px) {
-            .page-hero .stats-row {
-                flex-wrap: wrap;
-                gap: 16px;
-            }
-            .post-card .header {
-                flex-direction: column;
-            }
-            .filter-bar-modern {
-                flex-direction: column;
-            }
-            .filter-bar-modern .btn-group {
-                width: 100%;
-            }
-            .filter-bar-modern .btn-group button {
-                flex: 1;
-            }
+            .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
+            .post-card .header { flex-direction: column; }
+            .filter-bar-modern { flex-direction: column; }
+            .filter-bar-modern .btn-group { width: 100%; }
+            .filter-bar-modern .btn-group button { flex: 1; }
         }
     </style>
 </head>
 <body>
-    <!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-            <div class="brand-icon">🧵</div>
-            <div>
-                <div class="logo-title">LittleLoom</div>
-                <div class="logo-sub">Enterprise Console</div>
-            </div>
-        </div>
-        <nav class="sidebar-nav">
-            <div class="sidebar-nav-label">Overview</div>
-            <a class="sidebar-nav-item" href="/admin/dashboard.html">
-                <span class="icon">📊</span> Dashboard
-                <span class="badge success">Live</span>
-            </a>
-            <div class="sidebar-nav-label">Management</div>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('babies')">
-                <span class="icon">👶</span> Babies
-                <span class="badge" id="babyBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('users')">
-                <span class="icon">👤</span> Users
-                <span class="badge" id="userBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('moderation')">
-                <span class="icon">🛡️</span> Moderation
-                <span class="badge danger" id="modBadge">0</span>
-            </a>
-            <div class="sidebar-nav-label">Community</div>
-            <a class="sidebar-nav-item active" href="#">
-                <span class="icon">💬</span> Community
-                <span class="badge" id="postBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('topics')">
-                <span class="icon">📌</span> Topics
-            </a>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('announcements')">
-                <span class="icon">📢</span> Announcements
-                <span class="badge" id="announceBadge">0</span>
-            </a>
-            <div class="sidebar-nav-label">Trackers</div>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')">
-                <span class="icon">📈</span> Tracker Entries
-                <span class="badge" id="entryBadge">0</span>
-            </a>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('milestones')">
-                <span class="icon">🏆</span> Milestones
-                <span class="badge" id="milestoneBadge">0</span>
-            </a>
-            <div class="sidebar-nav-label">Analytics</div>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('analytics')">
-                <span class="icon">📈</span> Analytics
-            </a>
-            <div class="sidebar-nav-label">System</div>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')">
-                <span class="icon">⚙️</span> Settings
-            </a>
-            <a class="sidebar-nav-item" href="#" onclick="navigateTo('backup')">
-                <span class="icon">💾</span> Backup & Restore
-            </a>
-        </nav>
-        <div class="sidebar-footer">
-            <div class="user-info">
-                <div class="user-avatar" id="sidebarAvatar">A</div>
-                <div>
-                    <div class="user-name" id="sidebarName">Admin</div>
-                    <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
-                </div>
-            </div>
-        </div>
-    </aside>
-
-    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-    <!-- ─── MODAL ────────────────────────────────────────────────────── -->
-    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
-        <div class="modal">
-            <div class="modal-header">
-                <h2 id="modalTitle">Modal</h2>
-                <button class="modal-close" onclick="modalCancel()">✕</button>
-            </div>
-            <div class="modal-body" id="modalBody"></div>
-            <div class="modal-footer">
-                <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
-            </div>
-        </div>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
     </div>
 
-    <!-- ─── MAIN ────────────────────────────────────────────────────── -->
-    <main class="main">
-        <header class="topbar">
-            <div class="topbar-left">
-                <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
-                <div>
-                    <div class="topbar-title">Community <span class="sub">| Posts & Engagement</span></div>
+    <div class="app">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
+                <div class="brand-icon">🧵</div>
+                <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
+            </div>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="sidebarAvatar">A</div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
-            <div class="topbar-right">
-                <div class="topbar-status">
-                    <span class="dot"></span>
-                    <span id="connectionStatus">Connected</span>
-                </div>
-                <div class="topbar-actions">
-                    <button class="btn btn-outline btn-sm" onclick="loadCommunity()">🔄 Refresh</button>
-                    <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
-                </div>
-            </div>
-        </header>
+        </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="page-content active">
-            <div class="status-bar" id="statusBar">
-                <span>✅ Ready</span>
-                <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
-            </div>
-
-            <div class="page-hero">
-                <h1>💬 Community</h1>
-                <p>Monitor and manage community posts and engagement</p>
-                <div class="stats-row">
-                    <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Posts</span></div>
-                    <div class="stat"><span class="num" id="statToday">0</span><span class="label">Today</span></div>
-                    <div class="stat"><span class="num" id="statComments">0</span><span class="label">Comments</span></div>
-                    <div class="stat"><span class="num" id="statLikes">0</span><span class="label">Likes</span></div>
-                </div>
-            </div>
-
-            <div class="filter-bar-modern">
-                <input type="text" placeholder="🔍 Search posts..." id="searchInput" oninput="filterPosts()">
-                <select id="statusFilter" onchange="filterPosts()">
-                    <option value="all">All Status</option>
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="flagged">Flagged</option>
-                </select>
-                <select id="topicFilter" onchange="filterPosts()">
-                    <option value="all">All Topics</option>
-                </select>
-                <div class="btn-group">
-                    <button class="btn btn-outline" onclick="loadCommunity()">🔄 Refresh</button>
-                </div>
-            </div>
-
-            <div id="postsContainer">
-                <div class="empty-state-modern">
-                    <div class="emoji">💬</div>
-                    <h3>Loading posts...</h3>
-                    <p>Please wait while we fetch the data</p>
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
-    </main>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Community <span class="sub">| Posts & Engagement</span></div></div>
+                </div>
+                <div class="topbar-right">
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-actions">
+                        <button class="btn btn-outline btn-sm" onclick="window.loadCommunity && window.loadCommunity()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="page-content active">
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
+
+                <div class="page-hero">
+                    <h1>💬 Community</h1>
+                    <p>Monitor and manage community posts and engagement</p>
+                    <div class="stats-row">
+                        <div class="stat"><span class="num" id="statTotal">0</span><span class="label">Total Posts</span></div>
+                        <div class="stat"><span class="num" id="statToday">0</span><span class="label">Today</span></div>
+                        <div class="stat"><span class="num" id="statComments">0</span><span class="label">Comments</span></div>
+                        <div class="stat"><span class="num" id="statLikes">0</span><span class="label">Likes</span></div>
+                    </div>
+                </div>
+
+                <div class="filter-bar-modern">
+                    <input type="text" placeholder="🔍 Search posts..." id="searchInput" oninput="window.filterPosts && window.filterPosts()">
+                    <select id="statusFilter" onchange="window.filterPosts && window.filterPosts()">
+                        <option value="all">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="flagged">Flagged</option>
+                    </select>
+                    <select id="topicFilter" onchange="window.filterPosts && window.filterPosts()">
+                        <option value="all">All Topics</option>
+                    </select>
+                    <div class="btn-group">
+                        <button class="btn btn-outline" onclick="window.loadCommunity && window.loadCommunity()">🔄 Refresh</button>
+                    </div>
+                </div>
+
+                <div id="postsContainer">
+                    <div class="empty-state-modern">
+                        <div class="emoji">💬</div>
+                        <h3>Loading posts...</h3>
+                        <p>Please wait while we fetch the data</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
     <script src="/js/admin-base.js"></script>
     <script src="/js/page-init.js"></script>
 
-    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let postsCache = [];
         let topicsCache = [];
         let currentFiltered = [];
-        let modalResolve = null;
-        let modalData = null;
-
-        function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = null, cancelText = 'Cancel') {
-            return new Promise((resolve) => {
-                const overlay = document.getElementById('modalOverlay');
-                if (!overlay) return;
-                document.getElementById('modalTitle').textContent = title;
-                document.getElementById('modalBody').innerHTML = bodyHTML;
-                document.getElementById('modalConfirmBtn').textContent = confirmText;
-                document.getElementById('modalCancelBtn').textContent = cancelText;
-                overlay.classList.add('active');
-                modalResolve = resolve;
-                modalData = { confirmAction };
-            });
-        }
-
-        function closeModal(result) {
-            document.getElementById('modalOverlay').classList.remove('active');
-            if (modalResolve) {
-                modalResolve(result !== undefined ? result : null);
-                modalResolve = null;
-            }
-        }
-
-        function modalConfirm() {
-            if (modalData && modalData.confirmAction) {
-                modalData.confirmAction();
-            }
-            closeModal(true);
-        }
-
-        function modalCancel() {
-            closeModal(false);
-        }
 
         async function loadCommunity() {
             const supabase = window._supabaseClient;
@@ -505,23 +219,13 @@
 
             try {
                 let { data: posts, error: postsError } = await supabase
-                    .from('v_community_posts')
-                    .select('*')
+                    .from('community_posts')
+                    .select('*, profiles!community_posts_author_id_fkey(full_name, avatar, email, community_handle, is_verified)')
+                    .eq('is_deleted', false)
                     .order('created_at', { ascending: false })
                     .limit(50);
 
-                if (postsError) {
-                    console.warn('View query failed, falling back:', postsError);
-                    const { data: fallback, error: fallbackError } = await supabase
-                        .from('community_posts')
-                        .select('*, profiles!community_posts_author_id_fkey(full_name, avatar, email, community_handle, is_verified)')
-                        .eq('is_deleted', false)
-                        .order('created_at', { ascending: false })
-                        .limit(50);
-
-                    if (fallbackError) throw fallbackError;
-                    posts = fallback;
-                }
+                if (postsError) throw postsError;
 
                 const { data: topics, error: topicsError } = await supabase
                     .from('community_topics')
@@ -553,7 +257,7 @@
                         <div class="emoji">❌</div>
                         <h3>Error loading data</h3>
                         <p>${e.message}</p>
-                        <button class="btn btn-primary" onclick="loadCommunity()" style="margin-top:12px;">Retry</button>
+                        <button class="btn btn-primary" onclick="window.loadCommunity && window.loadCommunity()" style="margin-top:12px;">Retry</button>
                     </div>
                 `;
             }
@@ -574,10 +278,10 @@
 
             let html = '';
             posts.forEach(p => {
-                const authorName = p.author_name || p.profiles?.full_name || p.author_id?.substring(0, 8) || 'Anonymous';
-                const authorAvatar = p.author_avatar || p.profiles?.avatar || '👤';
-                const authorHandle = p.author_handle || p.profiles?.community_handle || '';
-                const isVerified = p.author_is_verified || p.profiles?.is_verified || false;
+                const authorName = p.profiles?.full_name || p.author_id?.substring(0, 8) || 'Anonymous';
+                const authorAvatar = p.profiles?.avatar || '👤';
+                const authorHandle = p.profiles?.community_handle || '';
+                const isVerified = p.profiles?.is_verified || false;
                 const initial = typeof authorAvatar === 'string' && authorAvatar.startsWith('http') ? '👤' : (authorName[0] || 'A').toUpperCase();
 
                 const topic = topicsCache.find(t => t.id === p.topic_id);
@@ -635,15 +339,15 @@
                             <span>📅 ${time}</span>
                         </div>
                         <div class="actions">
-                            <button class="btn-sm btn-view" onclick="viewPost('${p.id}')">👁️ View</button>
+                            <button class="btn-sm btn-view" onclick="window.viewPost && window.viewPost('${p.id}')">👁️ View</button>
                             ${status === 'pending' ? `
-                                <button class="btn-sm btn-approve" onclick="approvePost('${p.id}')">✅ Approve</button>
-                                <button class="btn-sm btn-moderate" onclick="rejectPost('${p.id}')">❌ Reject</button>
+                                <button class="btn-sm btn-approve" onclick="window.approvePost && window.approvePost('${p.id}')">✅ Approve</button>
+                                <button class="btn-sm btn-moderate" onclick="window.rejectPost && window.rejectPost('${p.id}')">❌ Reject</button>
                             ` : ''}
                             ${status !== 'flagged' ? `
-                                <button class="btn-sm btn-moderate" onclick="flagPost('${p.id}')">🚩 Flag</button>
+                                <button class="btn-sm btn-moderate" onclick="window.flagPost && window.flagPost('${p.id}')">🚩 Flag</button>
                             ` : ''}
-                            <button class="btn-sm btn-delete" onclick="deletePost('${p.id}')">🗑️ Delete</button>
+                            <button class="btn-sm btn-delete" onclick="window.deletePost && window.deletePost('${p.id}')">🗑️ Delete</button>
                         </div>
                     </div>
                 `;
@@ -664,7 +368,8 @@
             document.getElementById('statToday').textContent = today;
             document.getElementById('statComments').textContent = comments;
             document.getElementById('statLikes').textContent = likes;
-            document.getElementById('postBadge').textContent = total;
+            const badge = document.getElementById('postBadge');
+            if (badge) badge.textContent = total;
         }
 
         function filterPosts() {
@@ -676,7 +381,7 @@
             if (search) {
                 filtered = filtered.filter(p =>
                     (p.content || '').toLowerCase().includes(search) ||
-                    (p.author_name || '').toLowerCase().includes(search)
+                    (p.profiles?.full_name || '').toLowerCase().includes(search)
                 );
             }
             if (status !== 'all') {
@@ -693,7 +398,7 @@
             const post = postsCache.find(p => p.id === id);
             if (!post) { window._showToast('Post not found', 'error'); return; }
 
-            const authorName = post.author_name || post.profiles?.full_name || 'Unknown';
+            const authorName = post.profiles?.full_name || 'Unknown';
             const content = post.content || '—';
 
             let images = [];
@@ -712,7 +417,6 @@
                 { label: 'Content', value: content },
                 { label: 'Likes', value: post.likes_count || post.likes || 0 },
                 { label: 'Comments', value: post.comments_count || post.comments || 0 },
-                { label: 'Reposts', value: post.reposts_count || post.reposts || 0 },
                 { label: 'Created', value: post.created_at ? new Date(post.created_at).toLocaleString() : '—' }
             ];
 
@@ -733,10 +437,9 @@
                     </div>
                 `;
             }
-
             details += '</div>';
 
-            openModal('💬 Post Details', details, 'Close', () => {});
+            window._openModal('💬 Post Details', details, 'Close', window._closeModal);
         }
 
         async function approvePost(id) {
@@ -744,12 +447,8 @@
             try {
                 const { error } = await supabase
                     .from('community_posts')
-                    .update({
-                        status: 'approved',
-                        updated_at: new Date().toISOString()
-                    })
+                    .update({ status: 'approved', updated_at: new Date().toISOString() })
                     .eq('id', id);
-
                 if (error) throw error;
                 window._showToast('✅ Post approved successfully', 'success');
                 loadCommunity();
@@ -760,7 +459,7 @@
 
         async function rejectPost(id) {
             const confirmed = await new Promise((resolve) => {
-                openModal(
+                window._openModal(
                     '❌ Reject Post',
                     `
                         <div style="text-align:center;padding:12px 0;">
@@ -780,12 +479,8 @@
             try {
                 const { error } = await supabase
                     .from('community_posts')
-                    .update({
-                        status: 'rejected',
-                        updated_at: new Date().toISOString()
-                    })
+                    .update({ status: 'rejected', updated_at: new Date().toISOString() })
                     .eq('id', id);
-
                 if (error) throw error;
                 window._showToast('✅ Post rejected successfully', 'success');
                 loadCommunity();
@@ -799,12 +494,8 @@
             try {
                 const { error } = await supabase
                     .from('community_posts')
-                    .update({
-                        status: 'flagged',
-                        updated_at: new Date().toISOString()
-                    })
+                    .update({ status: 'flagged', updated_at: new Date().toISOString() })
                     .eq('id', id);
-
                 if (error) throw error;
                 window._showToast('🚩 Post flagged successfully', 'warning');
                 loadCommunity();
@@ -815,7 +506,7 @@
 
         async function deletePost(id) {
             const confirmed = await new Promise((resolve) => {
-                openModal(
+                window._openModal(
                     '🗑️ Delete Post',
                     `
                         <div style="text-align:center;padding:12px 0;">
@@ -835,13 +526,8 @@
             try {
                 const { error } = await supabase
                     .from('community_posts')
-                    .update({
-                        is_deleted: true,
-                        deleted_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    })
+                    .update({ is_deleted: true, deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
                     .eq('id', id);
-
                 if (error) throw error;
                 window._showToast('✅ Post deleted successfully', 'success');
                 loadCommunity();
@@ -850,7 +536,6 @@
             }
         }
 
-        // ─── AUTH INTEGRATION ──────────────────────────────────────────
         window._loadPageData = async function() {
             await loadCommunity();
         };
@@ -862,10 +547,6 @@
         window.rejectPost = rejectPost;
         window.flagPost = flagPost;
         window.deletePost = deletePost;
-        window.openModal = openModal;
-        window.closeModal = closeModal;
-        window.modalConfirm = modalConfirm;
-        window.modalCancel = modalCancel;
     </script>
 </body>
 </html>

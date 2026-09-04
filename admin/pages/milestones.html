@@ -68,6 +68,11 @@
             outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
         }
 
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
             .milestone-grid { grid-template-columns: 1fr; }
@@ -75,56 +80,69 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Trackers</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('trackers')"><span class="icon">📈</span> Tracker Entries <span class="badge" id="entryBadge">0</span></a>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">🏆</span> Milestones <span class="badge" id="milestoneBadge">0</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Milestones <span class="sub">| Developmental Achievements</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Milestones <span class="sub">| Developmental Achievements</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadMilestones()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadMilestones && window.loadMilestones()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>🏆 Milestones</h1>
@@ -137,8 +155,8 @@
                 </div>
 
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search milestones..." id="searchInput" oninput="filterMilestones()">
-                    <select id="categoryFilter" onchange="filterMilestones()">
+                    <input type="text" placeholder="🔍 Search milestones..." id="searchInput" oninput="window.filterMilestones && window.filterMilestones()">
+                    <select id="categoryFilter" onchange="window.filterMilestones && window.filterMilestones()">
                         <option value="all">All Categories</option>
                         <option value="physical">💪 Physical</option>
                         <option value="cognitive">🧠 Cognitive</option>
@@ -147,7 +165,7 @@
                         <option value="emotional">❤️ Emotional</option>
                     </select>
                     <div class="btn-group">
-                        <button class="btn btn-outline" onclick="loadMilestones()">🔄 Refresh</button>
+                        <button class="btn btn-outline" onclick="window.loadMilestones && window.loadMilestones()">🔄 Refresh</button>
                     </div>
                 </div>
 
@@ -160,16 +178,17 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
     <script>
         let milestonesCache = [];
         let currentFiltered = [];
         const categoryEmojis = { physical: '💪', cognitive: '🧠', social: '👥', language: '🗣️', emotional: '❤️' };
 
         async function loadMilestones() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const { data, error } = await supabase
@@ -188,10 +207,10 @@
                 updateStats(currentFiltered);
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Milestones loaded successfully', 'success');
+                window._showToast('✅ Milestones loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading milestones: ' + e.message, 'error');
+                window._showToast('Error loading milestones: ' + e.message, 'error');
             }
         }
 
@@ -230,8 +249,8 @@
                             ${data.firstTime ? '<span>🌟 First Time!</span>' : ''}
                         </div>
                         <div class="actions">
-                            <button class="btn-sm btn-view" onclick="viewMilestone('${m.id}')">👁️ View</button>
-                            <button class="btn-sm btn-delete" onclick="deleteMilestone('${m.id}')">🗑️ Delete</button>
+                            <button class="btn-sm btn-view" onclick="window.viewMilestone && window.viewMilestone('${m.id}')">👁️ View</button>
+                            <button class="btn-sm btn-delete" onclick="window.deleteMilestone && window.deleteMilestone('${m.id}')">🗑️ Delete</button>
                         </div>
                     </div>
                 `;
@@ -251,7 +270,8 @@
             document.getElementById('statTotal').textContent = total;
             document.getElementById('statToday').textContent = today;
             document.getElementById('statBabies').textContent = babies;
-            document.getElementById('milestoneBadge').textContent = total;
+            const badge = document.getElementById('milestoneBadge');
+            if (badge) badge.textContent = total;
         }
 
         function filterMilestones() {
@@ -277,7 +297,7 @@
 
         async function viewMilestone(id) {
             const milestone = milestonesCache.find(m => m.id === id);
-            if (!milestone) { showToast('Milestone not found', 'error'); return; }
+            if (!milestone) { window._showToast('Milestone not found', 'error'); return; }
 
             const data = typeof milestone.data === 'string' ? JSON.parse(milestone.data) : milestone.data || {};
             const fields = [
@@ -300,12 +320,12 @@
             });
             details += '</div>';
 
-            openModal('🏆 Milestone Details', details, 'Close', closeModal);
+            window._openModal('🏆 Milestone Details', details, 'Close', window._closeModal);
         }
 
         async function deleteMilestone(id) {
             const confirmed = await new Promise((resolve) => {
-                openModal('🗑️ Delete Milestone', `
+                window._openModal('🗑️ Delete Milestone', `
                     <div style="text-align:center;padding:12px 0;">
                         <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
                         <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this milestone?</p>
@@ -315,17 +335,21 @@
             });
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase.from('tracker_entries').update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', id);
                 if (error) throw error;
-                showToast('✅ Milestone deleted successfully', 'success');
+                window._showToast('✅ Milestone deleted successfully', 'success');
                 loadMilestones();
             } catch (e) {
-                showToast('Error deleting milestone: ' + e.message, 'error');
+                window._showToast('Error deleting milestone: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadMilestones, 500); });
+        window._loadPageData = async function() {
+            await loadMilestones();
+        };
+
         window.loadMilestones = loadMilestones;
         window.filterMilestones = filterMilestones;
         window.viewMilestone = viewMilestone;
@@ -333,6 +357,3 @@
     </script>
 </body>
 </html>
-
-
-

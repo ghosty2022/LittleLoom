@@ -104,51 +104,80 @@
         .file-upload-area .icon { font-size: 32px; margin-bottom: 8px; }
         .file-upload-area .label { font-size: 13px; color: var(--text-muted); }
 
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .backup-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">💾</span> Backup & Restore</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('audit')"><span class="icon">📋</span> Audit Logs</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
+            <div class="modal">
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
+                </div>
+            </div>
+        </div>
 
-        <!-- ─── MAIN ────────────────────────────────────────────────────── -->
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Backup & Restore <span class="sub">| Data Protection</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Backup & Restore <span class="sub">| Data Protection</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadBackupInfo()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadBackupInfo && window.loadBackupInfo()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>💾 Backup & Restore</h1>
@@ -156,7 +185,6 @@
                 </div>
 
                 <div class="backup-grid">
-                    <!-- Export Card -->
                     <div class="backup-card">
                         <div class="icon">📤</div>
                         <h3>Export Data</h3>
@@ -176,8 +204,8 @@
                         </div>
 
                         <div class="backup-actions">
-                            <button class="btn btn-primary" onclick="createBackup()">📥 Download Backup</button>
-                            <button class="btn btn-outline" onclick="scheduleBackup()">⏰ Schedule</button>
+                            <button class="btn btn-primary" onclick="window.createBackup && window.createBackup()">📥 Download Backup</button>
+                            <button class="btn btn-outline" onclick="window.scheduleBackup && window.scheduleBackup()">⏰ Schedule</button>
                         </div>
 
                         <div class="progress-bar-container" id="backupProgress" style="display:none;">
@@ -191,7 +219,6 @@
                         </div>
                     </div>
 
-                    <!-- Import Card -->
                     <div class="backup-card">
                         <div class="icon">📥</div>
                         <h3>Import Data</h3>
@@ -211,17 +238,16 @@
                             <div class="label">Click to select a backup file</div>
                             <div style="font-size:11px;color:var(--text-muted);margin-top:4px;" id="selectedFile">No file selected</div>
                         </div>
-                        <input type="file" id="restoreFileInput" accept=".json" style="display:none;" onchange="handleRestoreFile(event)">
+                        <input type="file" id="restoreFileInput" accept=".json" style="display:none;" onchange="window.handleRestoreFile && window.handleRestoreFile(event)">
 
                         <div class="backup-actions">
-                            <button class="btn btn-success" id="restoreBtn" onclick="restoreBackup()" disabled>📤 Restore</button>
+                            <button class="btn btn-success" id="restoreBtn" onclick="window.restoreBackup && window.restoreBackup()" disabled>📤 Restore</button>
                         </div>
 
                         <div id="restoreStatus" style="margin-top:12px;font-size:13px;color:var(--text-muted);display:none;"></div>
                     </div>
                 </div>
 
-                <!-- Backup History -->
                 <div class="backup-card" style="margin-top:20px;">
                     <h3>📋 Backup History</h3>
                     <p style="font-size:13px;color:var(--text-muted);">Recent backup operations</p>
@@ -238,11 +264,9 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ─── ADMIN AUTH SYSTEM ──────────────────────────────────────── -->
     <script src="/js/admin-base.js"></script>
     <script src="/js/page-init.js"></script>
 
-    <!-- ─── PAGE SPECIFIC SCRIPT ────────────────────────────────────── -->
     <script>
         let selectedRestoreFile = null;
         let backupHistory = [];
@@ -359,7 +383,6 @@
                 }, 2000);
 
                 window._showToast('✅ Backup created successfully!', 'success');
-
             } catch (e) {
                 console.error('Backup error:', e);
                 window._showToast('Error creating backup: ' + e.message, 'error');
@@ -384,9 +407,7 @@
             document.getElementById('restoreBtn').disabled = false;
             document.getElementById('selectedFile').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
             document.getElementById('restoreStatus').style.display = 'block';
-            document.getElementById('restoreStatus').innerHTML = `
-                <span style="color:#22c55e;">✅ File loaded: ${file.name}</span>
-            `;
+            document.getElementById('restoreStatus').innerHTML = `<span style="color:#22c55e;">✅ File loaded: ${file.name}</span>`;
             window._showToast('📤 File loaded successfully', 'success');
         }
 
@@ -397,7 +418,7 @@
             }
 
             const confirmed = await new Promise((resolve) => {
-                openModal('⚠️ Restore Data', `
+                window._openModal('⚠️ Restore Data', `
                     <div style="text-align:center;padding:12px 0;">
                         <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
                         <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Restore from backup?</p>
@@ -448,18 +469,14 @@
                         localStorage.setItem('backupHistory', JSON.stringify(backupHistory.slice(0, 20)));
                         renderBackupHistory();
 
-                        document.getElementById('restoreStatus').innerHTML = `
-                            <span style="color:#22c55e;">✅ Restored ${restored} records successfully!</span>
-                        `;
+                        document.getElementById('restoreStatus').innerHTML = `<span style="color:#22c55e;">✅ Restored ${restored} records successfully!</span>`;
                         document.getElementById('restoreBtn').disabled = true;
                         selectedRestoreFile = null;
-
                     } catch (parseError) {
                         window._showToast('Error parsing backup file: ' + parseError.message, 'error');
                     }
                 };
                 reader.readAsText(selectedRestoreFile);
-
             } catch (e) {
                 window._showToast('Restore error: ' + e.message, 'error');
             }
@@ -467,7 +484,6 @@
 
         function renderBackupHistory() {
             const container = document.getElementById('backupHistory');
-
             if (!backupHistory || backupHistory.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state-modern" style="padding:20px;">
@@ -499,7 +515,6 @@
             container.innerHTML = html;
         }
 
-        // ─── AUTH INTEGRATION ──────────────────────────────────────────
         window._loadPageData = async function() {
             await loadBackupInfo();
         };

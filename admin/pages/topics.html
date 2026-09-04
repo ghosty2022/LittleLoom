@@ -78,6 +78,11 @@
         }
         .modal-topic-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
+        .empty-state-modern { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state-modern .emoji { font-size: 64px; margin-bottom: 16px; opacity: 0.5; }
+        .empty-state-modern h3 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .empty-state-modern p { font-size: 14px; }
+
         @media (max-width: 768px) {
             .page-hero .stats-row { flex-wrap: wrap; gap: 16px; }
             .topic-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
@@ -85,55 +90,69 @@
     </style>
 </head>
 <body>
+    <div class="session-check-overlay" id="sessionCheckOverlay">
+        <div class="spinner"></div>
+        <div class="message">🔄 Validating session...</div>
+    </div>
+    <div class="session-banner" id="sessionBanner">
+        <span>⏰</span>
+        <span>Your session will expire in <span class="countdown" id="sessionCountdown">30</span> seconds</span>
+        <button class="btn btn-outline" onclick="window._extendSession && window._extendSession()">⏳ Stay Logged In</button>
+        <button class="btn btn-primary" onclick="window._handleLogout && window._handleLogout()">🚪 Logout Now</button>
+    </div>
+
     <div class="app">
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
+            <div class="sidebar-brand" onclick="window._navigateTo && window._navigateTo('dashboard')">
                 <div class="brand-icon">🧵</div>
                 <div><div class="logo-title">LittleLoom</div><div class="logo-sub">Enterprise Console</div></div>
             </div>
-            <nav class="sidebar-nav">
-                <div class="sidebar-nav-label">Overview</div>
-                <a class="sidebar-nav-item" href="/admin/dashboard.html"><span class="icon">📊</span> Dashboard <span class="badge success">Live</span></a>
-                <div class="sidebar-nav-label">Community</div>
-                <a class="sidebar-nav-item active" href="#"><span class="icon">📌</span> Topics <span class="badge" id="topicBadge">0</span></a>
-                <div class="sidebar-nav-label">System</div>
-                <a class="sidebar-nav-item" href="#" onclick="navigateTo('settings')"><span class="icon">⚙️</span> Settings</a>
-            </nav>
+            <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="sidebarAvatar">A</div>
-                    <div><div class="user-name" id="sidebarName">Admin</div><div class="user-email" id="sidebarEmail">admin@littleloom.com</div></div>
+                    <div>
+                        <div class="user-name" id="sidebarName">Admin</div>
+                        <div class="user-email" id="sidebarEmail">admin@littleloom.com</div>
+                        <div class="user-role" id="sidebarRole">Super Admin</div>
+                    </div>
                 </div>
             </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="window._toggleSidebar && window._toggleSidebar(false)"></div>
 
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
-
-        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
+        <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)window._modalCancel && window._modalCancel()">
             <div class="modal">
-                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="modalCancel()">✕</button></div>
+                <div class="modal-header"><h2 id="modalTitle">Modal</h2><button class="modal-close" onclick="window._modalCancel && window._modalCancel()">✕</button></div>
                 <div class="modal-body" id="modalBody"></div>
                 <div class="modal-footer">
-                    <button class="btn btn-outline" id="modalCancelBtn" onclick="modalCancel()">Cancel</button>
-                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="modalConfirm()">Confirm</button>
+                    <button class="btn btn-outline" id="modalCancelBtn" onclick="window._modalCancel && window._modalCancel()">Cancel</button>
+                    <button class="btn btn-primary" id="modalConfirmBtn" onclick="window._modalConfirm && window._modalConfirm()">Confirm</button>
                 </div>
             </div>
         </div>
 
         <main class="main">
             <header class="topbar">
-                <div class="topbar-left"><button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button><div><div class="topbar-title">Topics <span class="sub">| Community Topics</span></div></div></div>
+                <div class="topbar-left">
+                    <button class="topbar-menu-btn" onclick="window._toggleSidebar && window._toggleSidebar()">☰</button>
+                    <div><div class="topbar-title" id="pageTitle">Topics <span class="sub">| Community Topics</span></div></div>
+                </div>
                 <div class="topbar-right">
-                    <div class="topbar-status"><span class="dot"></span><span id="connectionStatus">Connected</span></div>
+                    <div class="topbar-status"><span class="dot" id="statusDot"></span><span id="connectionStatus">Connected</span></div>
                     <div class="topbar-actions">
-                        <button class="btn btn-outline btn-sm" onclick="loadTopics()">🔄 Refresh</button>
-                        <button class="btn btn-danger btn-sm" onclick="handleLogout()">🚪 Logout</button>
+                        <button class="btn btn-outline btn-sm" onclick="window.loadTopics && window.loadTopics()">🔄 Refresh</button>
+                        <button class="btn btn-danger btn-sm" onclick="window._handleLogout && window._handleLogout()">🚪 Logout</button>
                     </div>
                 </div>
             </header>
 
             <div class="page-content active">
-                <div class="status-bar" id="statusBar"><span>✅ Ready</span><span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span></div>
+                <div class="status-bar" id="statusBar">
+                    <span>✅ Ready</span>
+                    <span style="margin-left:auto;font-size:12px;" id="lastUpdated">Last updated: —</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">30:00</span></span>
+                </div>
 
                 <div class="page-hero">
                     <h1>📌 Topics</h1>
@@ -145,10 +164,10 @@
                 </div>
 
                 <div class="filter-bar-modern">
-                    <input type="text" placeholder="🔍 Search topics..." id="searchInput" oninput="filterTopics()">
+                    <input type="text" placeholder="🔍 Search topics..." id="searchInput" oninput="window.filterTopics && window.filterTopics()">
                     <div class="btn-group">
-                        <button class="btn btn-primary" onclick="openAddTopicModal()">➕ Add Topic</button>
-                        <button class="btn btn-outline" onclick="loadTopics()">🔄 Refresh</button>
+                        <button class="btn btn-primary" onclick="window.openAddTopicModal && window.openAddTopicModal()">➕ Add Topic</button>
+                        <button class="btn btn-outline" onclick="window.loadTopics && window.loadTopics()">🔄 Refresh</button>
                     </div>
                 </div>
 
@@ -161,15 +180,16 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="/js/admin.js"></script>
+    <script src="/js/admin-base.js"></script>
+    <script src="/js/page-init.js"></script>
+
     <script>
         let topicsCache = [];
         let currentFiltered = [];
 
         async function loadTopics() {
-            if (!initSupabase()) { showToast('Failed to init Supabase', 'error'); return; }
-            const authed = await checkAuth();
-            if (!authed) { showToast('Please log in', 'warning'); return; }
+            const supabase = window._supabaseClient;
+            if (!supabase) { window._showToast('Supabase not initialized', 'error'); return; }
 
             try {
                 const { data, error } = await supabase
@@ -185,10 +205,10 @@
                 updateStats(currentFiltered);
 
                 document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
-                showToast('✅ Topics loaded successfully', 'success');
+                window._showToast('✅ Topics loaded successfully', 'success');
             } catch (e) {
                 console.error('Load error:', e);
-                showToast('Error loading topics: ' + e.message, 'error');
+                window._showToast('Error loading topics: ' + e.message, 'error');
             }
         }
 
@@ -200,7 +220,7 @@
                         <div class="emoji">📭</div>
                         <h3>No topics yet</h3>
                         <p>Create your first community topic</p>
-                        <button class="btn btn-primary" onclick="openAddTopicModal()" style="margin-top:12px;">➕ Add Topic</button>
+                        <button class="btn btn-primary" onclick="window.openAddTopicModal && window.openAddTopicModal()" style="margin-top:12px;">➕ Add Topic</button>
                     </div>
                 `;
                 return;
@@ -215,8 +235,8 @@
                         <div class="desc">${t.description || 'No description'}</div>
                         <div class="meta">${t.category || 'General'} · ${t.members || 0} members</div>
                         <div class="actions">
-                            <button class="btn-sm btn-edit" onclick="editTopic('${t.id}')">✏️</button>
-                            <button class="btn-sm btn-delete" onclick="deleteTopic('${t.id}')">🗑️</button>
+                            <button class="btn-sm btn-edit" onclick="window.editTopic && window.editTopic('${t.id}')">✏️</button>
+                            <button class="btn-sm btn-delete" onclick="window.deleteTopic && window.deleteTopic('${t.id}')">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -230,7 +250,8 @@
             const categories = new Set(topics.map(t => t.category).filter(Boolean)).size;
             document.getElementById('statTotal').textContent = total;
             document.getElementById('statCategories').textContent = categories || 0;
-            document.getElementById('topicBadge').textContent = total;
+            const badge = document.getElementById('topicBadge');
+            if (badge) badge.textContent = total;
         }
 
         function filterTopics() {
@@ -274,15 +295,16 @@
                 </div>
             `;
 
-            openModal('📌 Add Topic', body, 'Create', async function() {
+            window._openModal('📌 Add Topic', body, 'Create', async function() {
                 const name = document.getElementById('topicName')?.value?.trim();
                 const emoji = document.getElementById('topicEmoji')?.value?.trim() || '📌';
                 const desc = document.getElementById('topicDesc')?.value?.trim();
                 const category = document.getElementById('topicCategory')?.value?.trim() || 'General';
                 const color = document.getElementById('topicColor')?.value || '#6366f1';
 
-                if (!name) { showToast('Please enter a topic name', 'warning'); return; }
+                if (!name) { window._showToast('Please enter a topic name', 'warning'); return; }
 
+                const supabase = window._supabaseClient;
                 try {
                     const { error } = await supabase.from('community_topics').insert({
                         id: 'topic_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
@@ -296,18 +318,18 @@
                         updated_at: new Date().toISOString()
                     });
                     if (error) throw error;
-                    showToast('✅ Topic created successfully', 'success');
-                    closeModal(true);
+                    window._showToast('✅ Topic created successfully', 'success');
+                    window._closeModal(true);
                     loadTopics();
                 } catch (e) {
-                    showToast('Error creating topic: ' + e.message, 'error');
+                    window._showToast('Error creating topic: ' + e.message, 'error');
                 }
             });
         }
 
         async function editTopic(id) {
             const topic = topicsCache.find(t => t.id === id);
-            if (!topic) { showToast('Topic not found', 'error'); return; }
+            if (!topic) { window._showToast('Topic not found', 'error'); return; }
 
             const body = `
                 <div class="modal-topic-form">
@@ -336,15 +358,16 @@
                 </div>
             `;
 
-            openModal('✏️ Edit Topic', body, 'Save', async function() {
+            window._openModal('✏️ Edit Topic', body, 'Save', async function() {
                 const name = document.getElementById('editTopicName')?.value?.trim();
                 const emoji = document.getElementById('editTopicEmoji')?.value?.trim() || '📌';
                 const desc = document.getElementById('editTopicDesc')?.value?.trim();
                 const category = document.getElementById('editTopicCategory')?.value?.trim() || 'General';
                 const color = document.getElementById('editTopicColor')?.value || '#6366f1';
 
-                if (!name) { showToast('Please enter a topic name', 'warning'); return; }
+                if (!name) { window._showToast('Please enter a topic name', 'warning'); return; }
 
+                const supabase = window._supabaseClient;
                 try {
                     const { error } = await supabase.from('community_topics').update({
                         name: name,
@@ -355,18 +378,18 @@
                         updated_at: new Date().toISOString()
                     }).eq('id', id);
                     if (error) throw error;
-                    showToast('✅ Topic updated successfully', 'success');
-                    closeModal(true);
+                    window._showToast('✅ Topic updated successfully', 'success');
+                    window._closeModal(true);
                     loadTopics();
                 } catch (e) {
-                    showToast('Error updating topic: ' + e.message, 'error');
+                    window._showToast('Error updating topic: ' + e.message, 'error');
                 }
             });
         }
 
         async function deleteTopic(id) {
             const confirmed = await new Promise((resolve) => {
-                openModal('🗑️ Delete Topic', `
+                window._openModal('🗑️ Delete Topic', `
                     <div style="text-align:center;padding:12px 0;">
                         <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
                         <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Delete this topic?</p>
@@ -376,17 +399,21 @@
             });
             if (!confirmed) return;
 
+            const supabase = window._supabaseClient;
             try {
                 const { error } = await supabase.from('community_topics').delete().eq('id', id);
                 if (error) throw error;
-                showToast('✅ Topic deleted successfully', 'success');
+                window._showToast('✅ Topic deleted successfully', 'success');
                 loadTopics();
             } catch (e) {
-                showToast('Error deleting topic: ' + e.message, 'error');
+                window._showToast('Error deleting topic: ' + e.message, 'error');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() { setTimeout(loadTopics, 500); });
+        window._loadPageData = async function() {
+            await loadTopics();
+        };
+
         window.loadTopics = loadTopics;
         window.filterTopics = filterTopics;
         window.openAddTopicModal = openAddTopicModal;
@@ -395,6 +422,3 @@
     </script>
 </body>
 </html>
-
-
-
