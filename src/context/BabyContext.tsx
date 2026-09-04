@@ -741,9 +741,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [mapTrackerEntryToDomain]);
 
- // ─── Load babies from Supabase ────────────────────────────────────────
+  // ─── Load babies from Supabase ────────────────────────────────────────
   const loadBabies = useCallback(async (force = false) => {
-    // Prevent concurrent loads
     if (loadInProgressRef.current && !force) {
       console.log('[BabyContext] Load already in progress, skipping');
       return;
@@ -770,7 +769,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let allBabies: any[] = [];
 
-      // ─── TRY PARENT1 QUERY ──────────────────────────────────────────
       try {
         const { data: parent1Babies, error: error1 } = await supabase
           .from('babies')
@@ -800,7 +798,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] parent1 query failed:', e);
       }
 
-      // ─── IF NO BABIES, TRY PARENT2 ──────────────────────────────────
+      // If no babies found as parent1, try parent2
       if (allBabies.length === 0) {
         try {
           const { data: parent2Babies, error: error2 } = await supabase
@@ -832,10 +830,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log(`[BabyContext] Found ${allBabies.length} babies in Supabase`);
 
-      // ─── MAP TO PROFILES ─────────────────────────────────────────────
+      // Map to profiles
       const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
 
-      // ─── CACHE BABIES ─────────────────────────────────────────────────
+      // Cache babies
       try {
         await AsyncStorage.setItem(STORAGE_KEYS.BABIES_CACHE_KEY, JSON.stringify(babies));
         await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC_KEY, Date.now().toString());
@@ -843,7 +841,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to cache babies:', cacheError);
       }
 
-      // ─── DETERMINE CURRENT BABY ID ───────────────────────────────────
+      // Determine current baby ID
       let currentId: string | null = null;
       
       // First try to get from app_settings
@@ -884,7 +882,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Find the baby object
       const babyToSet = babies.find(b => b.id === currentId) || babies[0] || null;
 
-      // ─── CHECK IF BABY WAS SKIPPED ──────────────────────────────────
+      // Check if baby was skipped
       let hasSkippedBaby = false;
       try {
         const { data: skipData } = await supabase
@@ -903,7 +901,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // ─── UPDATE STATE ─────────────────────────────────────────────────
+      // Update state
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -915,12 +913,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isInitialized: true,
       }));
 
-      // ─── BROADCAST CHANGE ────────────────────────────────────────────
+      // Broadcast change
       setTimeout(() => {
         broadcastBabyChange(currentId);
       }, 50);
 
-      // ─── LOAD TRACKER DATA FOR CURRENT BABY ─────────────────────────
+      // Load tracker data for current baby
       if (currentId) {
         console.log('[BabyContext] Loading tracker data for current baby...');
         await loadAllBabyData(currentId);
@@ -932,18 +930,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
       
-      // ─── TRY TO LOAD FROM CACHE ──────────────────────────────────────
+      // Try to load from cache
       try {
         const cached = await AsyncStorage.getItem(STORAGE_KEYS.BABIES_CACHE_KEY);
         if (cached) {
-          const cachedBabies = JSON.parse(cached);
-          console.log(`[BabyContext] Loaded ${cachedBabies.length} babies from cache`);
+          const babies = JSON.parse(cached);
+          console.log(`[BabyContext] Loaded ${babies.length} babies from cache`);
           if (isMounted.current) {
-            const cachedBaby = cachedBabies.find((b: any) => b.id === state.currentBabyId) || cachedBabies[0] || null;
+            const cachedBaby = babies.find((b: any) => b.id === state.currentBabyId) || babies[0] || null;
             setState(prev => ({
               ...prev,
               isLoading: false,
-              babies: cachedBabies,
+              babies,
               currentBaby: cachedBaby,
               isInitialized: true,
             }));
@@ -960,8 +958,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loadInProgressRef.current = false;
     }
   }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange, state.currentBabyId]);
-
-
 
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
