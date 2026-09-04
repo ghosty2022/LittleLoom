@@ -431,13 +431,12 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           await supabase
-            .from('activity_entries')
+            .from('tracker_entries')
             .update({ 
               deleted_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             })
-            .eq('id', id)
-            .eq('user_id', user.id);
+            .eq('id', id);
         }
       } catch (syncError) {
         console.log('Failed to sync deletion with Supabase:', syncError);
@@ -476,18 +475,20 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       if (!user) throw new Error('No authenticated user');
 
       const { error } = await supabase
-        .from('activity_entries')
+        .from('tracker_entries')
         .upsert({
           id: entry.id,
-          user_id: user.id,
           baby_id: entry.babyId,
           tracker_id: entry.type,
-          timestamp: entry.timestamp,
+          tracker_type: entry.type, // Add this for the tracker_type column
+          timestamp: new Date(entry.timestamp).toISOString(),
           title: entry.title,
           data: entry,
           notes: entry.notes || entry.details,
           photo_uris: entry.photo ? [entry.photo] : [],
           tags: entry.tags || [],
+          created_by: entry.loggedBy,
+          created_by_name: entry.loggedByName,
           logged_by: entry.loggedBy,
           logged_by_name: entry.loggedByName,
           notification_id: entry.notificationId,
@@ -510,10 +511,9 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
       if (!user) throw new Error('No authenticated user');
 
       const { data, error } = await supabase
-        .from('activity_entries')
+        .from('tracker_entries')
         .select('*')
         .eq('baby_id', babyId)
-        .eq('user_id', user.id)
         .is('deleted_at', null)
         .order('timestamp', { ascending: false });
 
@@ -526,12 +526,12 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
             id: row.id,
             type: row.tracker_id as ActivityType,
             babyId: row.baby_id,
-            timestamp: row.timestamp,
+            timestamp: new Date(row.timestamp).getTime(),
             title: row.title,
             details: row.notes || undefined,
             icon: undefined,
-            loggedBy: row.logged_by || '',
-            loggedByName: row.logged_by_name || '',
+            loggedBy: row.logged_by || row.created_by || '',
+            loggedByName: row.logged_by_name || row.created_by_name || '',
             ...entryData,
             notes: row.notes || undefined,
             photo: entryData.photo || (row.photo_uris ? row.photo_uris[0] : undefined),
