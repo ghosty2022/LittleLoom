@@ -1,5 +1,4 @@
 // ─── admin.js - Centralized Session & CRUD Management ──────────────────
-// This file is loaded by ALL admin pages - DO NOT duplicate session logic!
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
@@ -9,6 +8,7 @@ let supabase = null;
 let session = null;
 let currentUserRole = 'guest';
 let userPermissions = {};
+let realtimeChannel = null;
 
 // ─── SESSION STORAGE KEYS ──────────────────────────────────────────────
 const SESSION_KEYS = {
@@ -202,8 +202,8 @@ function showToast(message, type = 'info', duration = 4000) {
 
     const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
     const toast = document.createElement('div');
-    toast.className = 	oast \;
-    toast.innerHTML = <span>\</span> \;
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span> ${message}`;
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -223,7 +223,7 @@ function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = nul
     return new Promise((resolve) => {
         let overlay = document.getElementById('modalOverlay');
         if (!overlay) {
-            const modalHTML = 
+            const modalHTML = `
                 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)modalCancel()">
                     <div class="modal">
                         <div class="modal-header">
@@ -237,7 +237,7 @@ function openModal(title, bodyHTML, confirmText = 'Confirm', confirmAction = nul
                         </div>
                     </div>
                 </div>
-            ;
+            `;
             document.body.insertAdjacentHTML('beforeend', modalHTML);
             overlay = document.getElementById('modalOverlay');
         }
@@ -283,12 +283,10 @@ function modalCancel() {
 
 // ─── AUTH ──────────────────────────────────────────────────────────────────
 async function checkAuth() {
-    // Check for session check overlay
     const overlay = document.getElementById('sessionCheckOverlay');
     if (overlay) overlay.classList.add('show');
 
     try {
-        // First check stored session
         const storedSession = getSessionData();
         
         if (storedSession && storedSession.user) {
@@ -310,19 +308,18 @@ async function checkAuth() {
             clearSessionData();
         }
 
-        // Check Supabase directly
         const { data, error } = await supabase.auth.getSession();
         
         if (error || !data.session) {
             const statusBar = document.getElementById('statusBar');
             if (statusBar) {
-                statusBar.innerHTML = 
+                statusBar.innerHTML = `
                     <span>🔒</span>
                     <span>Please log in to continue</span>
                     <button class="btn btn-primary btn-sm" onclick="window.location.href='/login'" style="margin-left:auto;">
                         Login
                     </button>
-                ;
+                `;
             }
             if (overlay) overlay.classList.remove('show');
             return false;
@@ -352,11 +349,9 @@ async function checkAuth() {
 
 async function loadUserRole(userId) {
     try {
-        // First check if this is the super admin
         if (userId === SUPER_ADMIN_USER_ID) {
             currentUserRole = 'super_admin';
             userPermissions = ADMIN_ROLES['super_admin'].permissions;
-            // Ensure admin_role is set in database
             await ensureSuperAdminRole(userId);
             return;
         }
@@ -417,7 +412,7 @@ async function ensureSuperAdminRole(userId) {
 
 function updateUIForAuth(session) {
     const statusEl = document.getElementById('connectionStatus');
-    if (statusEl) statusEl.textContent = 👤 \;
+    if (statusEl) statusEl.textContent = `👤 ${session.user.email}`;
 
     const emailEl = document.getElementById('sidebarEmail');
     if (emailEl) emailEl.textContent = session.user.email;
@@ -440,12 +435,11 @@ function updateUIForRole(role) {
     if (roleEl) roleEl.textContent = roleInfo.label;
 
     const badgeEl = document.getElementById('welcomeRoleBadge');
-    if (badgeEl) badgeEl.textContent = 👑 \;
+    if (badgeEl) badgeEl.textContent = `👑 ${roleInfo.label}`;
 
     const footerEl = document.getElementById('userRoleFooter');
-    if (footerEl) footerEl.textContent = 👑 \;
+    if (footerEl) footerEl.textContent = `👑 ${roleInfo.label}`;
 
-    // Update sidebar restrictions
     document.querySelectorAll('.sidebar-nav-item').forEach(item => {
         const requiredRole = item.dataset.requiredRole;
         if (requiredRole) {
@@ -466,7 +460,6 @@ function updateUIForRole(role) {
         }
     });
 
-    // Update quick actions
     document.querySelectorAll('.quick-actions .btn').forEach(btn => {
         const requiredRole = btn.dataset.requiredRole;
         if (requiredRole) {
@@ -544,7 +537,7 @@ function updateSessionDisplay() {
     const seconds = sessionTimeRemaining % 60;
     const display = document.getElementById('sessionTimeDisplay');
     if (display) {
-        display.textContent = \:\;
+        display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
 
     const dot = document.getElementById('statusDot');
@@ -608,13 +601,13 @@ async function handleLogout() {
     const confirmed = await new Promise((resolve) => {
         openModal(
             '🚪 Confirm Logout',
-            
+            `
                 <div style="text-align:center;padding:12px 0;">
                     <div style="font-size:48px;margin-bottom:12px;">👋</div>
                     <p style="font-size:16px;font-weight:500;margin-bottom:8px;">Are you sure you want to logout?</p>
                     <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
                 </div>
-            ,
+            `,
             'Yes, Logout',
             () => resolve(true),
             'Cancel'
@@ -646,13 +639,15 @@ async function handleLogout() {
 function navigateTo(page) {
     if (window.innerWidth <= 1024) toggleSidebar(false);
     
-    const navItem = document.querySelector(.sidebar-nav-item[onclick*="\"]);
+    // Check if the user has access to this page
+    const navItem = document.querySelector(`.sidebar-nav-item[onclick*="${page}"]`);
     if (navItem && navItem.classList.contains('restricted')) {
         showToast('🔒 You do not have permission to access this page', 'warning');
         return;
     }
 
-    window.location.href = /admin/\;
+    // Navigate to the page
+    window.location.href = `/admin/${page}`;
 }
 
 function toggleSidebar(open) {
@@ -717,14 +712,14 @@ function timeAgo(dateStr) {
         const seconds = Math.floor(diff / 1000);
         if (seconds < 60) return 'Just now';
         const minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return \m ago;
+        if (minutes < 60) return `${minutes}m ago`;
         const hours = Math.floor(minutes / 60);
-        if (hours < 24) return \h ago;
+        if (hours < 24) return `${hours}h ago`;
         const days = Math.floor(hours / 24);
-        if (days < 7) return \d ago;
-        if (days < 30) return \w ago;
-        if (days < 365) return \mo ago;
-        return \y ago;
+        if (days < 7) return `${days}d ago`;
+        if (days < 30) return `${Math.floor(days / 7)}w ago`;
+        if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+        return `${Math.floor(days / 365)}y ago`;
     } catch {
         return dateStr;
     }
@@ -738,8 +733,6 @@ function formatNumber(num) {
 }
 
 // ─── CRUD OPERATIONS ──────────────────────────────────────────────────────
-// These functions properly sync with Supabase database
-
 async function supabaseInsert(table, data) {
     if (!supabase || !session) {
         showToast('Not authenticated', 'error');
@@ -753,12 +746,12 @@ async function supabaseInsert(table, data) {
             .select();
             
         if (error) {
-            console.error(Insert error ():, error);
+            console.error(`Insert error (${table}):`, error);
             return { success: false, error: error.message };
         }
         return { success: true, data: result };
     } catch (e) {
-        console.error(Insert exception ():, e);
+        console.error(`Insert exception (${table}):`, e);
         return { success: false, error: e.message };
     }
 }
@@ -777,12 +770,12 @@ async function supabaseUpdate(table, id, data) {
             .select();
             
         if (error) {
-            console.error(Update error ():, error);
+            console.error(`Update error (${table}):`, error);
             return { success: false, error: error.message };
         }
         return { success: true, data: result };
     } catch (e) {
-        console.error(Update exception ():, e);
+        console.error(`Update exception (${table}):`, e);
         return { success: false, error: e.message };
     }
 }
@@ -800,12 +793,12 @@ async function supabaseDelete(table, id) {
             .eq('id', id);
             
         if (error) {
-            console.error(Delete error ():, error);
+            console.error(`Delete error (${table}):`, error);
             return { success: false, error: error.message };
         }
         return { success: true };
     } catch (e) {
-        console.error(Delete exception ():, e);
+        console.error(`Delete exception (${table}):`, e);
         return { success: false, error: e.message };
     }
 }
@@ -836,12 +829,12 @@ async function supabaseSelect(table, query = {}) {
         const { data, error } = await request;
             
         if (error) {
-            console.error(Select error ():, error);
+            console.error(`Select error (${table}):`, error);
             return { success: false, error: error.message };
         }
         return { success: true, data };
     } catch (e) {
-        console.error(Select exception ():, e);
+        console.error(`Select exception (${table}):`, e);
         return { success: false, error: e.message };
     }
 }
@@ -949,12 +942,12 @@ async function fetchDashboardData() {
 
         if (feed) {
             if (recent.length === 0) {
-                feed.innerHTML = 
+                feed.innerHTML = `
                     <div class="empty-state">
                         <div class="emoji">📭</div>
                         <h3>No recent activity</h3>
                     </div>
-                ;
+                `;
                 safeSetText('activityCount', '0');
             } else {
                 safeSetText('activityCount', recent.length);
@@ -970,16 +963,16 @@ async function fetchDashboardData() {
                 let html = '';
                 recent.forEach(function(a) {
                     const type = a.tracker_id || 'custom';
-                    html += 
+                    html += `
                         <div class="activity-item">
-                            <div class="activity-icon">\</div>
+                            <div class="activity-icon">${iconMap[type] || '📌'}</div>
                             <div class="activity-content">
-                                <div class="activity-title">\</div>
-                                <div class="activity-meta">by \ • \</div>
+                                <div class="activity-title">${a.title || type || 'Activity'}</div>
+                                <div class="activity-meta">by ${a.logged_by_name || 'Someone'} • ${timeAgo(a.timestamp)}</div>
                             </div>
-                            <div class="activity-time">\</div>
+                            <div class="activity-time">${formatDate(a.timestamp)}</div>
                         </div>
-                    ;
+                    `;
                 });
                 feed.innerHTML = html;
             }
@@ -992,20 +985,20 @@ async function fetchDashboardData() {
         const userName = session?.user?.user_metadata?.full_name ||
             session?.user?.email?.split('@')[0] || 'Admin';
         const welcomeEl = document.getElementById('welcomeMessage');
-        if (welcomeEl) welcomeEl.textContent = 👋 \, \!;
+        if (welcomeEl) welcomeEl.textContent = `👋 ${greeting}, ${userName}!`;
 
         const statusBarEl = document.getElementById('statusBar');
         if (statusBarEl) {
-            statusBarEl.innerHTML = 
+            statusBarEl.innerHTML = `
                 <span>✅ All systems operational</span>
-                <span class="status-indicator \">
-                    <span class="dot"></span> \
+                <span class="status-indicator ${navigator.onLine ? 'online' : 'offline'}">
+                    <span class="dot"></span> ${navigator.onLine ? 'Online' : 'Offline'}
                 </span>
                 <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">
-                    Last updated: \
+                    Last updated: ${new Date().toLocaleString()}
                 </span>
-                <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">\</span></span>
-            ;
+                <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">⏱️ Session: <span id="sessionTimeDisplay">${formatSessionTime()}</span></span>
+            `;
             updateSessionDisplay();
         }
         safeSetText('lastUpdated', new Date().toLocaleString());
@@ -1016,12 +1009,12 @@ async function fetchDashboardData() {
         console.error('Fetch error:', err);
         const statusBarEl = document.getElementById('statusBar');
         if (statusBarEl) {
-            statusBarEl.innerHTML = 
+            statusBarEl.innerHTML = `
                 <span>❌ Error loading data</span>
                 <button class="btn btn-outline btn-sm" onclick="refreshAll()" style="margin-left:auto;">
                     🔄 Retry
                 </button>
-            ;
+            `;
         }
         showToast('Error loading dashboard data: ' + err.message, 'error');
     }
@@ -1030,7 +1023,7 @@ async function fetchDashboardData() {
 function formatSessionTime() {
     const minutes = Math.floor(sessionTimeRemaining / 60);
     const seconds = sessionTimeRemaining % 60;
-    return \:\;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 // ─── REFRESH ──────────────────────────────────────────────────────────────
@@ -1088,7 +1081,6 @@ window.addEventListener('offline', () => {
 });
 
 // ─── EXPOSE GLOBALLY ──────────────────────────────────────────────────────
-// These are available to ALL admin pages
 window.showToast = showToast;
 window.handleLogout = handleLogout;
 window.navigateTo = navigateTo;
@@ -1134,13 +1126,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     await updateAllBadges();
 
-    // Only run dashboard-specific code if dashboard elements exist
     if (document.getElementById('welcomeMessage') || document.getElementById('statBabies')) {
         await fetchDashboardData();
         setupRealtime();
     }
 
-    // Handle resize for sidebar
     window.addEventListener('resize', function() {
         if (window.innerWidth > 1024) {
             document.getElementById('sidebar').classList.remove('open');
@@ -1148,7 +1138,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 
-    // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {
         if (e.ctrlKey && e.key === 'r') {
             e.preventDefault();
@@ -1159,7 +1148,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 
-    // Handle visibility change - check session when tab becomes visible
     document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'visible') {
             const storedSession = getSessionData();
@@ -1169,7 +1157,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 
-    // Handle beforeunload - clear session if not remember me
     window.addEventListener('beforeunload', function() {
         const rememberMe = localStorage.getItem(SESSION_KEYS.REMEMBER_ME);
         if (rememberMe !== 'true') {
