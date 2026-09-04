@@ -50,9 +50,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
 import { UniversalSpinner, InlineSpinner } from '../../components/UniversalSpinner';
 import { useCustomization } from '../../hooks/useCustomization';
+import { supabase } from '@/utils/supabase';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-
+// ─── UPLOAD IMAGE TO SUPABASE ────────────────────────────────────────────
 const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
   try {
     // Read the file as base64
@@ -78,7 +78,7 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
       });
     
     if (error) {
-      console.error('Upload error:', error);
+      console.error('[BabyProfile] Upload error:', error);
       return null;
     }
     
@@ -89,10 +89,12 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
     
     return urlData.publicUrl;
   } catch (error) {
-    console.error('Upload to Supabase error:', error);
+    console.error('[BabyProfile] Upload to Supabase error:', error);
     return null;
   }
 };
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -1179,55 +1181,65 @@ const handleSave = async () => {
     if (!currentBabyData) return;
     setIsSaving(true);
     
-    // Check if avatar has changed
+    // ─── CHECK IF AVATAR HAS CHANGED ──────────────────────────────────
     let avatarUrl = currentBabyData.avatar_url || currentBabyData.avatar;
     let avatarUpdated = false;
+    const currentAvatar = currentBabyData.avatar || currentBabyData.avatar_url || '';
+    
+    console.log('[BabyProfile] Current avatar:', currentAvatar);
+    console.log('[BabyProfile] New babyPhoto:', babyPhoto);
     
     // If a new photo was selected (and it's a file URI, not an emoji)
-    if (babyPhoto && babyPhoto !== currentBabyData.avatar && 
-        (babyPhoto.startsWith('file://') || babyPhoto.startsWith('content://'))) {
-      try {
-        // Upload to Supabase Storage
-        const uploadedUrl = await uploadImageToSupabase(babyPhoto, currentBabyData.id);
-        if (uploadedUrl) {
-          avatarUrl = uploadedUrl;
-          avatarUpdated = true;
-          console.log('[BabyFamilyCenter] Avatar uploaded to Supabase:', avatarUrl);
-          
-          // Also copy to local permanent storage as backup
-          await ensureDirExists();
-          const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
-          await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
-        } else {
-          // Fallback: save locally
+    if (babyPhoto && babyPhoto !== currentAvatar && 
+        (babyPhoto.startsWith('file://') || babyPhoto.startsWith('content://') || babyPhoto.startsWith('http'))) {
+      console.log('[BabyProfile] Avatar changed, uploading...');
+      
+      // If it's already a URL, use it directly
+      if (babyPhoto.startsWith('http')) {
+        avatarUrl = babyPhoto;
+        avatarUpdated = true;
+        console.log('[BabyProfile] Using existing URL:', avatarUrl);
+      } else {
+        try {
+          // ─── UPLOAD TO SUPABASE STORAGE ──────────────────────────────
+          const uploadedUrl = await uploadImageToSupabase(babyPhoto, currentBabyData.id);
+          if (uploadedUrl) {
+            avatarUrl = uploadedUrl;
+            avatarUpdated = true;
+            console.log('[BabyProfile] Avatar uploaded to Supabase:', avatarUrl);
+          } else {
+            // ─── FALLBACK: SAVE LOCALLY ──────────────────────────────────
+            await ensureDirExists();
+            const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
+            await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
+            avatarUrl = permanentUri;
+            avatarUpdated = true;
+            console.log('[BabyProfile] Avatar saved locally:', avatarUrl);
+          }
+        } catch (uploadError) {
+          console.error('[BabyProfile] Avatar upload error:', uploadError);
+          // ─── FALLBACK: SAVE LOCALLY ──────────────────────────────────
           await ensureDirExists();
           const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
           await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
           avatarUrl = permanentUri;
           avatarUpdated = true;
+          console.log('[BabyProfile] Avatar saved locally (fallback):', avatarUrl);
         }
-      } catch (uploadError) {
-        console.error('Avatar upload error:', uploadError);
-        // Fallback: save locally
-        await ensureDirExists();
-        const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
-        await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
-        avatarUrl = permanentUri;
-        avatarUpdated = true;
       }
-    } else if (babyPhoto && !babyPhoto.startsWith('file://') && !babyPhoto.startsWith('content://')) {
+    } else if (babyPhoto && !babyPhoto.startsWith('file://') && !babyPhoto.startsWith('content://') && !babyPhoto.startsWith('http')) {
       // It's an emoji or other non-file value
       avatarUrl = babyPhoto;
       avatarUpdated = true;
+      console.log('[BabyProfile] Using emoji avatar:', avatarUrl);
     }
     
+    // ─── BUILD UPDATE OBJECT ───────────────────────────────────────────
     const babyUpdates: any = {
       name: babyName,
       skinTone: selectedSkin,
       gender: selectedGender,
       birthDate: birthDate.toISOString(),
-      avatar: avatarUrl,
-      avatar_url: avatarUrl,  // Store both for compatibility
       bloodType,
       allergies: allergies.split(',').map(a => a.trim()).filter(Boolean),
       medicalNotes,
@@ -1255,18 +1267,29 @@ const handleSave = async () => {
       lastUpdated: new Date().toISOString(),
     };
     
+    // ─── ONLY UPDATE AVATAR IF CHANGED ─────────────────────────────────
+    if (avatarUpdated) {
+      babyUpdates.avatar = avatarUrl;
+      babyUpdates.avatar_url = avatarUrl;
+    }
+    
+    console.log('[BabyProfile] Saving updates:', babyUpdates);
+    
     await updateBaby(currentBabyData.id, babyUpdates);
     setIsEditing(false);
     
-    // Update local state with the new avatar URL
+    // ─── UPDATE LOCAL STATE WITH NEW AVATAR ───────────────────────────
     if (avatarUpdated) {
       setBabyPhoto(avatarUrl);
     }
     
+    // ─── FORCE REFRESH BABIES ──────────────────────────────────────────
+    await loadBabies(true);
+    
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated successfully.`);
   } catch (error) {
-    console.error('Save error:', error);
+    console.error('[BabyProfile] Save error:', error);
     sweetAlert.error('Error', 'Failed to update profile');
   } finally {
     setIsSaving(false);
