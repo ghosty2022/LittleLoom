@@ -1438,7 +1438,58 @@
         let userPermissions = ADMIN_ROLES['super_admin'].permissions;
         let sessionDataLoaded = false;
 
-        
+        // ─── SESSION PERSISTENCE ──────────────────────────────────────────
+        function saveSessionData(data) {
+            try {
+                // Store in sessionStorage (clears when browser is closed)
+                sessionStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
+                
+                const expiryTime = Date.now() + (SESSION_TIMEOUT_MINUTES * 60 * 1000);
+                sessionStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                
+                const rememberMe = localStorage.getItem(SESSION_KEYS.REMEMBER_ME);
+                if (rememberMe === 'true') {
+                    localStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
+                    localStorage.setItem(SESSION_KEYS.SESSION_EXPIRY, expiryTime.toString());
+                }
+            } catch (e) {
+                console.warn('Could not save session data:', e);
+            }
+        }
+
+        function getSessionData() {
+            try {
+                let data = sessionStorage.getItem(SESSION_KEYS.SESSION_DATA);
+                let expiry = sessionStorage.getItem(SESSION_KEYS.SESSION_EXPIRY);
+                
+                if (!data) {
+                    data = localStorage.getItem(SESSION_KEYS.SESSION_DATA);
+                    expiry = localStorage.getItem(SESSION_KEYS.SESSION_EXPIRY);
+                }
+                
+                if (data && expiry) {
+                    const expiryTime = parseInt(expiry, 10);
+                    if (Date.now() < expiryTime) {
+                        return JSON.parse(data);
+                    }
+                }
+                return null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearSessionData() {
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+            sessionStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
+            localStorage.removeItem(SESSION_KEYS.SESSION_DATA);
+            localStorage.removeItem(SESSION_KEYS.SESSION_EXPIRY);
+            localStorage.removeItem(SESSION_KEYS.REMEMBER_ME);
+        }
+
+        function setRememberMe(value) {
+            localStorage.setItem(SESSION_KEYS.REMEMBER_ME, value ? 'true' : 'false');
+        }
 
         // ─── INIT ─────────────────────────────────────────────────────────
         function initSupabase() {
@@ -1552,7 +1603,18 @@
             }
         }
 
-         = await supabase.auth.getSession();
+        // ─── AUTH ─────────────────────────────────────────────────────────
+        async function checkAuth() {
+            const overlay = document.getElementById('sessionCheckOverlay');
+            if (overlay) overlay.classList.add('show');
+
+            try {
+                const storedSession = getSessionData();
+                
+                if (storedSession && storedSession.user) {
+                    console.log('📦 Found stored session, validating...');
+                    
+                    const { data, error } = await supabase.auth.getSession();
                     
                     if (!error && data.session) {
                         session = data.session;
@@ -1735,7 +1797,20 @@
             return userIndex <= requiredIndex;
         }
 
-        
+        // ─── SESSION TIMER ───────────────────────────────────────────────
+        function startSessionTimer() {
+            if (sessionTimer) clearInterval(sessionTimer);
+            sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
+            sessionWarningShown = false;
+
+            sessionTimer = setInterval(() => {
+                sessionTimeRemaining--;
+                updateSessionDisplay();
+
+                if (sessionTimeRemaining <= 30 && !sessionWarningShown) {
+                    sessionWarningShown = true;
+                    showSessionBanner();
+                }
 
                 if (sessionTimeRemaining <= 0) {
                     clearInterval(sessionTimer);
@@ -1832,7 +1907,23 @@
             showToast('⏳ Session extended', 'success');
         }
 
-        );
+        // ─── LOGOUT ────────────────────────────────────────────────────────
+        async function handleLogout() {
+            const confirmed = await new Promise((resolve) => {
+                openModal(
+                    '🚪 Confirm Logout',
+                    `
+                        <div style="text-align:center;padding:12px 0;">
+                            <div style="font-size:48px;margin-bottom:12px;">👋</div>
+                            <p style="font-size:16px;font-weight:500;margin-bottom:8px;">Are you sure you want to logout?</p>
+                            <p style="font-size:13px;color:var(--text-muted);">You will need to sign in again to access the admin panel.</p>
+                        </div>
+                    `,
+                    'Yes, Logout',
+                    () => resolve(true),
+                    'Cancel'
+                );
+            });
 
             if (!confirmed) return;
 
@@ -1861,7 +1952,11 @@
             }
         }
 
-        "]`);
+        // ─── NAVIGATION ────────────────────────────────────────────────────
+        function navigateTo(page) {
+            if (window.innerWidth <= 1024) toggleSidebar(false);
+            
+            const navItem = document.querySelector(`.sidebar-nav-item[onclick*="${page}"]`);
             if (navItem && navItem.classList.contains('restricted')) {
                 showToast('🔒 You do not have permission to access this page', 'warning');
                 return;
@@ -1885,7 +1980,11 @@
             }
         }
 
-        
+        // ─── SAFE SET ─────────────────────────────────────────────────────
+        function safeSetText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value ?? '—';
+        }
 
         function safeSetHTML(id, value) {
             const el = document.getElementById(id);
