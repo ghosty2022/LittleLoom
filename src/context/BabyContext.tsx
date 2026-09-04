@@ -741,8 +741,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [mapTrackerEntryToDomain]);
 
-  // ─── Load babies from Supabase ────────────────────────────────────────
+ // ─── Load babies from Supabase ────────────────────────────────────────
   const loadBabies = useCallback(async (force = false) => {
+    // Prevent concurrent loads
     if (loadInProgressRef.current && !force) {
       console.log('[BabyContext] Load already in progress, skipping');
       return;
@@ -764,6 +765,201 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loadInProgressRef.current = false;
         return;
       }
+
+      console.log('[BabyContext] Loading babies for user:', userId);
+
+      let allBabies: any[] = [];
+
+      // ─── TRY PARENT1 QUERY ──────────────────────────────────────────
+      try {
+        const { data: parent1Babies, error: error1 } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent1_id', userId)
+          .eq('is_active', true);
+
+        if (error1) {
+          console.error('[BabyContext] parent1 query error:', error1.message);
+          
+          // Try without is_active filter if RLS error
+          if (error1.message?.includes('infinite recursion') || error1.message?.includes('policy')) {
+            console.log('[BabyContext] Trying without is_active filter due to RLS');
+            const { data: fallbackBabies, error: fallbackError } = await supabase
+              .from('babies')
+              .select('*')
+              .eq('parent1_id', userId);
+            
+            if (!fallbackError && fallbackBabies) {
+              allBabies = fallbackBabies.filter((b: any) => b.is_active !== false);
+            }
+          }
+        } else if (parent1Babies) {
+          allBabies = parent1Babies;
+        }
+      } catch (e) {
+        console.warn('[BabyContext] parent1 query failed:', e);
+      }
+
+      // ─── IF NO BABIES, TRY PARENT2 ──────────────────────────────────
+      if (allBabies.length === 0) {
+        try {
+          const { data: parent2Babies, error: error2 } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('parent2_id', userId)
+            .eq('is_active', true);
+
+          if (error2) {
+            console.error('[BabyContext] parent2 query error:', error2.message);
+            
+            if (error2.message?.includes('infinite recursion') || error2.message?.includes('policy')) {
+              const { data: fallbackBabies, error: fallbackError } = await supabase
+                .from('babies')
+                .select('*')
+                .eq('parent2_id', userId);
+              
+              if (!fallbackError && fallbackBabies) {
+                allBabies = fallbackBabies.filter((b: any) => b.is_active !== false);
+              }
+            }
+          } else if (parent2Babies) {
+            allBabies = parent2Babies;
+          }
+        } catch (e) {
+          console.warn('[BabyContext] parent2 query failed:', e);
+        }
+      }
+
+      console.log(`[BabyContext] Found ${allBabies.length} babies in Supabase`);
+
+      // ─── MAP TO PROFILES ─────────────────────────────────────────────
+      const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
+
+      // ─── CACHE BABIES ─────────────────────────────────────────────────
+      try {
+        await AsyncStorage.setItem(STORAGE_KEYS.BABIES_CACHE_KEY, JSON.stringify(babies));
+        await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC_KEY, Date.now().toString());
+      } catch (cacheError) {
+        console.warn('[BabyContext] Failed to cache babies:', cacheError);
+      }
+
+      // ─── DETERMINE CURRENT BABY ID ───────────────────────────────────
+      let currentId: string | null = null;
+      
+      // First try to get from app_settings
+      try {
+        const { data: settingsData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'current_baby_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        currentId = settingsData?.value || null;
+      } catch (e) {
+        console.warn('[BabyContext] Failed to get current_baby_id:', e);
+      }
+      
+      // If no current ID and we have babies, use first baby
+      if (!currentId && babies.length > 0) {
+        currentId = babies[0].id;
+        try {
+          await supabase
+            .from('app_settings')
+            .upsert({
+              key: 'current_baby_id',
+              value: currentId,
+              user_id: userId,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'key, user_id' });
+        } catch (e) {
+          console.warn('[BabyContext] Failed to set current_baby_id:', e);
+        }
+      }
+
+      // Store in AsyncStorage
+      if (currentId) {
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
+      }
+
+      // Find the baby object
+      const babyToSet = babies.find(b => b.id === currentId) || babies[0] || null;
+
+      // ─── CHECK IF BABY WAS SKIPPED ──────────────────────────────────
+      let hasSkippedBaby = false;
+      try {
+        const { data: skipData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'has_skipped_baby')
+          .eq('user_id', userId)
+          .maybeSingle();
+        hasSkippedBaby = skipData?.value === 'true';
+      } catch (e) {
+        console.warn('[BabyContext] Failed to get has_skipped_baby:', e);
+      }
+
+      if (!isMounted.current) {
+        loadInProgressRef.current = false;
+        return;
+      }
+
+      // ─── UPDATE STATE ─────────────────────────────────────────────────
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        babies,
+        currentBabyId: currentId,
+        currentBaby: babyToSet,
+        hasSkippedBaby,
+        lastSyncTime: Date.now(),
+        isInitialized: true,
+      }));
+
+      // ─── BROADCAST CHANGE ────────────────────────────────────────────
+      setTimeout(() => {
+        broadcastBabyChange(currentId);
+      }, 50);
+
+      // ─── LOAD TRACKER DATA FOR CURRENT BABY ─────────────────────────
+      if (currentId) {
+        console.log('[BabyContext] Loading tracker data for current baby...');
+        await loadAllBabyData(currentId);
+        console.log('[BabyContext] Tracker data loaded');
+      }
+
+      console.log('[BabyContext] loadBabies completed successfully');
+
+    } catch (error) {
+      console.error('[BabyContext] Error loading babies:', error);
+      
+      // ─── TRY TO LOAD FROM CACHE ──────────────────────────────────────
+      try {
+        const cached = await AsyncStorage.getItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+        if (cached) {
+          const cachedBabies = JSON.parse(cached);
+          console.log(`[BabyContext] Loaded ${cachedBabies.length} babies from cache`);
+          if (isMounted.current) {
+            const cachedBaby = cachedBabies.find((b: any) => b.id === state.currentBabyId) || cachedBabies[0] || null;
+            setState(prev => ({
+              ...prev,
+              isLoading: false,
+              babies: cachedBabies,
+              currentBaby: cachedBaby,
+              isInitialized: true,
+            }));
+          }
+        }
+      } catch (cacheError) {
+        console.warn('[BabyContext] Failed to load from cache:', cacheError);
+      }
+      
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
+      }
+    } finally {
+      loadInProgressRef.current = false;
+    }
+  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange, state.currentBabyId]);
 
       console.log('[BabyContext] Loading babies for user:', userId);
 

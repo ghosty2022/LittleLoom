@@ -551,6 +551,215 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
 
     console.log('[BabyProfile] Baby created with ID:', babyId);
 
+    // ─── SAVE AVATAR IMAGE IF CUSTOM ──────────────────────────────────
+    if (hasCustomImage && babyId) {
+      try {
+        // First try to upload to Supabase
+        const uploadedUrl = await uploadImageToSupabase(avatar, babyId);
+        let finalAvatarUrl = avatar;
+        
+        if (uploadedUrl) {
+          finalAvatarUrl = uploadedUrl;
+          console.log('[BabyProfile] Avatar uploaded to Supabase:', uploadedUrl);
+        } else {
+          // Fallback: save locally
+          const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
+          if (permanentUri) {
+            finalAvatarUrl = permanentUri;
+          }
+        }
+        
+        if (finalAvatarUrl) {
+          await updateBaby(babyId, { 
+            avatar: finalAvatarUrl,
+            avatar_url: finalAvatarUrl
+          });
+          
+          // ─── UPDATE LOCAL AVATAR STATE ──────────────────────────────
+          setAvatar(finalAvatarUrl);
+          
+          if (isMounted.current) {
+            toast('Profile photo saved!', 'success');
+          }
+        }
+      } catch (imgError) {
+        console.warn('[BabyProfile] Failed to persist baby image:', imgError);
+        if (isMounted.current) {
+          toast('Profile created but image could not be saved', 'warning');
+        }
+      }
+    }
+
+    if (isMounted.current) {
+      toast(`${trimmedName}'s profile created! 🎉`, 'success');
+    }
+
+    if (!isMounted.current) {
+      isCreatingRef.current = false;
+      setIsLoading(false);
+      return;
+    }
+
+    // ─── FORCE LOAD BABIES BEFORE NAVIGATION ──────────────────────────
+    try {
+      await loadBabies(true); // Force refresh
+      console.log('[BabyProfile] Babies reloaded');
+
+      // ─── VERIFY BABY EXISTS ──────────────────────────────────────────
+      const refreshedBabies = await getAllBabiesFromDb();
+      console.log('[BabyProfile] Refreshed babies count:', refreshedBabies.length);
+      
+      const found = refreshedBabies.find(b => b.id === babyId);
+      if (!found) {
+        console.error('[BabyProfile] CRITICAL: Baby not found in refreshed list!');
+        toast('Profile created but not found. Please try again.', 'error');
+        isCreatingRef.current = false;
+        setIsLoading(false);
+        return;
+      }
+
+      // ─── SWITCH TO NEW BABY ──────────────────────────────────────────
+      try {
+        await switchBaby(babyId);
+        console.log('[BabyProfile] Switched to new baby');
+      } catch (switchErr) {
+        console.warn('[BabyProfile] Failed to auto-switch to new baby:', switchErr);
+        // Try direct database set
+        await setAppSetting('current_baby_id', babyId);
+      }
+
+      // ─── COMPLETE SETUP ──────────────────────────────────────────────
+      await completeSetup('baby');
+
+      // ─── DETERMINE NEXT SCREEN ──────────────────────────────────────
+      const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
+      
+      console.log('[BabyProfile] Setup status:', { hasParent2, isSetupComplete });
+
+      if (isSetupComplete) {
+        console.log('[BabyProfile] Setup complete, navigating to Main');
+        navigation.replace('Main');
+      } else if (hasParent2 === false) {
+        console.log('[BabyProfile] Need to invite co-parent');
+        navigation.replace('CoParentInviteScreen');
+      } else if (hasParent2 === 'skipped') {
+        console.log('[BabyProfile] Co-parent skipped, completing and going to Main');
+        await completeSetup('parent2');
+        navigation.replace('Main');
+      } else {
+        console.log('[BabyProfile] Default navigation to Main');
+        navigation.replace('Main');
+      }
+      
+    } catch (navError) {
+      console.error('[BabyProfile] Post-create navigation error:', navError);
+      if (isMounted.current) {
+        toast('Could not finalize setup. Please try again.', 'error');
+      }
+      // ─── FALLBACK ────────────────────────────────────────────────────
+      try {
+        navigation.replace('Main');
+      } catch (e) {
+        console.error('[BabyProfile] Fallback navigation failed:', e);
+      }
+    }
+  } catch (error) {
+    console.error('[BabyProfile] Create baby error:', error);
+    if (isMounted.current) {
+      toast('An unexpected error occurred. Please try again.', 'error');
+    }
+  } finally {
+    isCreatingRef.current = false;
+    if (isMounted.current) {
+      setIsLoading(false);
+    }
+  }
+}, [
+  name,
+  birthDate,
+  birthTime,
+  gender,
+  skinTone,
+  avatar,
+  weight,
+  height,
+  bloodType,
+  allergies,
+  medicalNotes,
+  birthWeight,
+  birthHeight,
+  birthHeadCircumference,
+  gestationalWeeks,
+  apgar1Min,
+  apgar5Min,
+  deliveryType,
+  birthAttendant,
+  birthPlace,
+  multipleBirth,
+  birthOrder,
+  feedingPlan,
+  babies,
+  createBaby,
+  updateBaby,
+  loadBabies,
+  navigation,
+  validateStep1,
+  validateStep2,
+  toast,
+  triggerHaptic,
+  switchBaby,
+  wasSetupCompleted,
+  completeSetup,
+  userProfile,
+]);
+
+  try {
+    const hasCustomImage = isImageUri(avatar);
+    const avatarToSave = hasCustomImage ? '👶' : avatar;
+
+    const babyData: any = {
+      name: trimmedName,
+      birthDate: birthIso,
+      gender,
+      skinTone,
+      avatar: avatarToSave,
+      weight: weight.trim() || undefined,
+      height: height.trim() || undefined,
+      bloodType: bloodType.trim().toUpperCase() || undefined,
+      allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
+      medicalNotes: medicalNotes.trim() || undefined,
+      parent1Id: userId,
+      parent2Id: undefined,
+      birthWeight: birthWeight.trim() || undefined,
+      birthHeight: birthHeight.trim() || undefined,
+      birthHeadCircumference: birthHeadCircumference.trim() || undefined,
+      gestationalWeeks: gestationalWeeks.trim() || undefined,
+      apgar1Min: apgar1Min.trim() || undefined,
+      apgar5Min: apgar5Min.trim() || undefined,
+      deliveryType: deliveryType ? deliveryType.toLowerCase().replace(/-/g, '_') : undefined,
+      birthAttendant: birthAttendant ? birthAttendant.toLowerCase().replace(/ /g, '_') : undefined,
+      birthPlace: birthPlace.trim() || undefined,
+      multipleBirth: multipleBirth,
+      birthOrder: birthOrder.trim() || undefined,
+      feedingPlan: feedingPlan ? feedingPlan.toLowerCase() : undefined,
+      birthTime: birthTime.trim() || undefined,
+    };
+
+    console.log('[BabyProfile] Creating baby with data:', babyData);
+    
+    babyId = await createBaby(babyData);
+
+    if (!babyId) {
+      if (isMounted.current) {
+        toast('Failed to create profile. Please try again.', 'error');
+      }
+      isCreatingRef.current = false;
+      setIsLoading(false);
+      return;
+    }
+
+    console.log('[BabyProfile] Baby created with ID:', babyId);
+
     // Save avatar image if custom
     if (hasCustomImage && babyId) {
       try {
