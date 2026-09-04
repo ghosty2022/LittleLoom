@@ -7,7 +7,26 @@
     "development": {
       "node": "22.13.0",
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleFlags": "--no-daemon"
+      },
+      "env": {
+        "EXPO_USE_FAST_RESOLVER": "1"
+      }
+    },
+    "development-simulator": {
+      "node": "22.13.0",
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleFlags": "--no-daemon"
+      },
+      "ios": {
+        "simulator": true
+      }
     },
     "preview": {
       "node": "22.13.0",
