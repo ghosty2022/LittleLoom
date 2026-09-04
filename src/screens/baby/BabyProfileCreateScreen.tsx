@@ -27,7 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy'; // ← FIXED: Use legacy import
+import * as FileSystem from 'expo-file-system/legacy';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '@/utils/supabase';
 import { useSweetAlert } from '../../hooks/useSweetAlert';
@@ -47,10 +47,9 @@ const DELIVERY_TYPES = ['Vaginal', 'C-Section', 'VBAC', 'Other'];
 const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', 'Other'];
 const FEEDING_PLANS = ['Breastfeeding', 'Formula', 'Combination', 'Pumping'];
 
-// ─── UPLOAD IMAGE TO SUPABASE (Fixed with legacy FileSystem) ────────────
+// ─── UPLOAD IMAGE TO SUPABASE ────────────────────────────────────────────
 const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
   try {
-    // Use legacy FileSystem API
     const base64 = await FileSystem.readAsStringAsync(localUri, { 
       encoding: FileSystem.EncodingType.Base64 
     });
@@ -140,7 +139,7 @@ const SKIN_TONES = [
 
 const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '🌟', '💖'];
 
-// ─── HELPERS (Fixed with legacy FileSystem) ─────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────
 const ensureDirExists = async () => {
   const dirInfo = await FileSystem.getInfoAsync(BABY_IMAGES_DIR);
   if (!dirInfo.exists) {
@@ -480,9 +479,22 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     const trimmedName = name.trim();
     const birthIso = birthDate.toISOString();
     
-    const duplicate = babies.find(b => b.name === trimmedName && b.birthDate === birthIso);
+    // Check for duplicate in existing babies (case insensitive)
+    const duplicate = babies.find(b => 
+      b.name.toLowerCase() === trimmedName.toLowerCase() && 
+      b.birthDate === birthIso
+    );
     if (duplicate) {
-      toast('A baby with this name and birth date already exists', 'warning');
+      toast('A baby with this name and birth date already exists. Using existing profile.', 'info');
+      // Switch to the existing baby
+      await switchBaby(duplicate.id);
+      await completeSetup('baby');
+      const { hasParent2 } = await wasSetupCompleted();
+      if (hasParent2 === false) {
+        navigation.replace('CoParentInviteScreen');
+      } else {
+        navigation.replace('Main');
+      }
       return;
     }
 
@@ -542,7 +554,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       // Save avatar image if custom
       if (hasCustomImage && babyId) {
         try {
-          // Upload to Supabase Storage first
           const uploadedUrl = await uploadImageToSupabase(avatar, babyId);
           let finalAvatarUrl = avatar;
           
@@ -550,7 +561,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             finalAvatarUrl = uploadedUrl;
             console.log('[BabyProfile] Avatar uploaded to Supabase:', uploadedUrl);
           } else {
-            // Fallback to local storage
             const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
             if (permanentUri) {
               finalAvatarUrl = permanentUri;
@@ -609,6 +619,9 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           console.warn('[BabyProfile] Failed to auto-switch to new baby:', switchErr);
         }
 
+        // Complete setup before navigating
+        await completeSetup('baby');
+
         if (andContinue) {
           if (navigation.canGoBack()) {
             navigation.goBack();
@@ -617,6 +630,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
             if (hasParent2 === false) {
               navigation.replace('CoParentInviteScreen');
             } else {
+              await completeSetup('parent2');
               navigation.replace('Main');
             }
           }
@@ -703,6 +717,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     triggerHaptic,
     switchBaby,
     wasSetupCompleted,
+    completeSetup,
     userProfile,
   ]);
 
