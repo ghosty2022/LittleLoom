@@ -63,7 +63,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const loadAttemptedRef = useRef(false);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  // ─── NEW: Prevent infinite loops ──────────────────────────────────────
   const loadAttemptCountRef = useRef(0);
   const MAX_LOAD_ATTEMPTS = 2;
   const isInitializedRef = useRef(false);
@@ -261,7 +260,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
   // ─── CHECK AND SYNC BABIES ──────────────────────────────────────────
   const checkAndSyncBabies = useCallback(async () => {
-    // ─── NEW: Prevent multiple checks ──────────────────────────────────
     if (hasCheckedRef.current) {
       console.log('[BabyOnboarding] Already checked, skipping');
       return;
@@ -375,7 +373,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
   // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {
-    // ─── NEW: Prevent re-initialization ──────────────────────────────────
     if (isInitializedRef.current) {
       console.log('[BabyOnboarding] Already initialized, skipping');
       return;
@@ -391,7 +388,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     loadAttemptCountRef.current = 0;
     
     const loadData = async () => {
-      // ─── NEW: Max attempts check ──────────────────────────────────────
       if (loadAttemptedRef.current) {
         console.log('[BabyOnboarding] Load already attempted, skipping');
         return;
@@ -412,13 +408,11 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         setLocalLoading(true);
         console.log(`[BabyOnboarding] Starting load... (Attempt ${loadAttemptCountRef.current})`);
         
-        // Load babies from context
         await loadBabies();
         console.log('[BabyOnboarding] loadBabies completed');
         
         if (!isMountedRef.current) return;
         
-        // Check if we have babies
         if (babies && babies.length > 0) {
           setHasBabies(true);
           setRemoteBabies(babies);
@@ -429,7 +423,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           return;
         }
         
-        // Check local DB
         const localBabies = await getAllBabiesFromDb();
         console.log(`[BabyOnboarding] Local babies after load: ${localBabies.length}`);
         
@@ -462,7 +455,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       }
     };
     
-    // Small delay to allow context to initialize
     const timer = setTimeout(loadData, 300);
     loadTimeoutRef.current = timer;
     
@@ -474,7 +466,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         loadTimeoutRef.current = null;
       }
     };
-  // ─── NEW: Remove `babies` from dependencies to prevent re-runs ────
   }, [loadBabies, checkAndSyncBabies, checkAndNavigate]);
 
   // ─── HANDLERS ──────────────────────────────────────────────────────
@@ -580,7 +571,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }, [switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
 
   const handleRetry = useCallback(async () => {
-    // ─── NEW: Reset and retry ──────────────────────────────────────────
     setLoadError(null);
     setLocalLoading(true);
     hasCheckedRef.current = false;
@@ -758,6 +748,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
                   <View style={styles.babyCardContent}>
                     <SafeBabyAvatar
                       avatar={baby.avatar}
+                      avatarUrl={baby.avatar_url}  // ADD THIS for Supabase stored avatars
                       gender={baby.gender === 'male' ? 'boy' : baby.gender === 'female' ? 'girl' : 'other'}
                       size={64}
                       animated={!shouldReduceMotion}
@@ -806,6 +797,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
                   <View style={styles.babyCardContent}>
                     <SafeBabyAvatar
                       avatar={baby.avatar}
+                      avatarUrl={baby.avatar_url}  // ADD THIS for Supabase stored avatars
                       gender={baby.gender}
                       size={64}
                       animated={!shouldReduceMotion}

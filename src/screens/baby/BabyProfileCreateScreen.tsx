@@ -27,7 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy'; // ← FIXED: Use legacy import
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '@/utils/supabase';
 import { useSweetAlert } from '../../hooks/useSweetAlert';
@@ -47,10 +47,10 @@ const DELIVERY_TYPES = ['Vaginal', 'C-Section', 'VBAC', 'Other'];
 const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', 'Other'];
 const FEEDING_PLANS = ['Breastfeeding', 'Formula', 'Combination', 'Pumping'];
 
-// ADD this function after imports in BabyProfileCreateScreen.tsx
-
+// ─── UPLOAD IMAGE TO SUPABASE (Fixed with legacy FileSystem) ────────────
 const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
   try {
+    // Use legacy FileSystem API
     const base64 = await FileSystem.readAsStringAsync(localUri, { 
       encoding: FileSystem.EncodingType.Base64 
     });
@@ -70,7 +70,7 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
       });
     
     if (error) {
-      console.error('Upload error:', error);
+      console.error('[BabyProfile] Upload error:', error);
       return null;
     }
     
@@ -80,7 +80,7 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
     
     return urlData.publicUrl;
   } catch (error) {
-    console.error('Upload to Supabase error:', error);
+    console.error('[BabyProfile] Upload to Supabase error:', error);
     return null;
   }
 };
@@ -140,7 +140,7 @@ const SKIN_TONES = [
 
 const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '🌟', '💖'];
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────
+// ─── HELPERS (Fixed with legacy FileSystem) ─────────────────────────────
 const ensureDirExists = async () => {
   const dirInfo = await FileSystem.getInfoAsync(BABY_IMAGES_DIR);
   if (!dirInfo.exists) {
@@ -194,7 +194,6 @@ const isImageUri = (value: string | undefined | null): boolean => {
 type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
 
 // ─── TERM EXPLANATION TOOLTIP ──────────────────────────────────────────
-// Update the TermTooltip component:
 const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const info = TERM_EXPLANATIONS[term];
@@ -214,7 +213,6 @@ const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
       </TouchableOpacity>
       {showTooltip && (
         <>
-          {/* Backdrop to close on outside tap */}
           <TouchableOpacity 
             style={styles.tooltipBackdrop} 
             activeOpacity={1} 
@@ -246,6 +244,7 @@ const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
     </View>
   );
 };
+
 // ─── COMPONENT ────────────────────────────────────────────────────────────
 export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
   const insets = useSafeAreaInsets();
@@ -286,7 +285,6 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
   }>({ type: null });
   const [creatorRelationship, setCreatorRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Mother');
-  const [showTermTooltip, setShowTermTooltip] = useState<string | null>(null);
 
   const imagePickerLock = useRef(false);
   const isCreatingRef = useRef(false);
@@ -541,40 +539,41 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
       console.log('[BabyProfile] Baby created with ID:', babyId);
 
-if (hasCustomImage && babyId) {
-  try {
-    // Upload to Supabase Storage first
-    const uploadedUrl = await uploadImageToSupabase(avatar, babyId);
-    let finalAvatarUrl = avatar;
-    
-    if (uploadedUrl) {
-      finalAvatarUrl = uploadedUrl;
-      console.log('[BabyProfile] Avatar uploaded to Supabase:', uploadedUrl);
-    } else {
-      // Fallback to local storage
-      const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
-      if (permanentUri) {
-        finalAvatarUrl = permanentUri;
+      // Save avatar image if custom
+      if (hasCustomImage && babyId) {
+        try {
+          // Upload to Supabase Storage first
+          const uploadedUrl = await uploadImageToSupabase(avatar, babyId);
+          let finalAvatarUrl = avatar;
+          
+          if (uploadedUrl) {
+            finalAvatarUrl = uploadedUrl;
+            console.log('[BabyProfile] Avatar uploaded to Supabase:', uploadedUrl);
+          } else {
+            // Fallback to local storage
+            const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
+            if (permanentUri) {
+              finalAvatarUrl = permanentUri;
+            }
+          }
+          
+          if (finalAvatarUrl) {
+            await updateBaby(babyId, { 
+              avatar: finalAvatarUrl,
+              avatar_url: finalAvatarUrl
+            });
+            
+            if (isMounted.current) {
+              toast('Profile photo saved!', 'success');
+            }
+          }
+        } catch (imgError) {
+          console.warn('[BabyProfile] Failed to persist baby image:', imgError);
+          if (isMounted.current) {
+            toast('Profile created but image could not be saved', 'warning');
+          }
+        }
       }
-    }
-    
-    if (finalAvatarUrl) {
-      await updateBaby(babyId, { 
-        avatar: finalAvatarUrl,
-        avatar_url: finalAvatarUrl
-      });
-      
-      if (isMounted.current) {
-        toast('Profile photo saved!', 'success');
-      }
-    }
-  } catch (imgError) {
-    console.warn('Failed to persist baby image:', imgError);
-    if (isMounted.current) {
-      toast('Profile created but image could not be saved', 'warning');
-    }
-  }
-}
 
       if (isMounted.current) {
         toast(`${trimmedName}'s profile created! 🎉`, 'success');
@@ -607,7 +606,7 @@ if (hasCustomImage && babyId) {
           await switchBaby(babyId);
           console.log('[BabyProfile] Switched to new baby');
         } catch (switchErr) {
-          console.warn('Failed to auto-switch to new baby:', switchErr);
+          console.warn('[BabyProfile] Failed to auto-switch to new baby:', switchErr);
         }
 
         if (andContinue) {
@@ -622,6 +621,7 @@ if (hasCustomImage && babyId) {
             }
           }
         } else {
+          // Reset form for another baby
           setName('');
           setBirthDate(new Date());
           setBirthTime('');
@@ -652,13 +652,13 @@ if (hasCustomImage && babyId) {
           }
         }
       } catch (navError) {
-        console.error('Post-create error:', navError);
+        console.error('[BabyProfile] Post-create error:', navError);
         if (isMounted.current) {
           toast('Could not finalize setup', 'error');
         }
       }
     } catch (error) {
-      console.error('Create baby error:', error);
+      console.error('[BabyProfile] Create baby error:', error);
       if (isMounted.current) {
         toast('An unexpected error occurred. Please try again.', 'error');
       }
@@ -1817,19 +1817,17 @@ const styles = StyleSheet.create({
   tooltipTrigger: {
     padding: 2,
   },
-// Update the tooltipContainer style:
-tooltipContainer: {
-  position: 'absolute',
-  top: -8,
-  // Change from 'left: 24' to 'right: 0' for better positioning
-  right: 0,
-  width: Math.min(280, width - 80),
-  padding: 14,
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: 'rgba(99,102,241,0.15)',
-  zIndex: 1000,
-},
+  tooltipContainer: {
+    position: 'absolute',
+    top: -8,
+    right: 0,
+    width: Math.min(280, width - 80),
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.15)',
+    zIndex: 1000,
+  },
   tooltipShadow: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1859,13 +1857,13 @@ tooltipContainer: {
     fontWeight: '400',
   },
   tooltipBackdrop: {
-  position: 'absolute',
-  top: -200,
-  left: -200,
-  right: -200,
-  bottom: -200,
-  zIndex: 999,
-},
+    position: 'absolute',
+    top: -200,
+    left: -200,
+    right: -200,
+    bottom: -200,
+    zIndex: 999,
+  },
   tooltipCloseBtn: {
     marginTop: 10,
     alignSelf: 'flex-end',
