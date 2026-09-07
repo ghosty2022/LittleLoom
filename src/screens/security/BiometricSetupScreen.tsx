@@ -1,4 +1,4 @@
-// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED (No SweetAlert)
+// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED (No infinite loops)
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View, Animated, Alert, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -123,6 +123,10 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   const userName = userProfile?.fullName || 'there';
   const successScale = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  
+  // ✅ FIXED: Track if we've already checked biometrics to prevent loops
+  const hasCheckedBiometrics = useRef(false);
+  const isMounted = useRef(true);
 
   const safeGoBack = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -132,17 +136,22 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [navigation]);
 
-  // ─── FIXED: Biometric detection for all Android devices ──────────────
+  // ─── FIXED: Biometric detection - ONLY RUNS ONCE ──────────────
   useEffect(() => {
     let mounted = true;
+    isMounted.current = true;
 
     const checkBiometrics = async () => {
+      // ✅ FIXED: Prevent multiple checks
+      if (hasCheckedBiometrics.current) {
+        console.log('[BiometricSetup] Already checked, skipping');
+        return;
+      }
+      
       try {
         setIsLoading(true);
         console.log('[BiometricSetup] Checking biometrics...');
-        
-        // First, refresh the biometric status from the context
-        await refreshBiometricStatus();
+        hasCheckedBiometrics.current = true;
         
         let hasHardware = false;
         let isEnrolled = false;
@@ -248,7 +257,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
           }
         }
 
-        if (mounted) {
+        if (mounted && isMounted.current) {
           setHasHardware(hasHardware);
           setIsEnrolled(isEnrolled && hasHardware);
           setAvailableTypes(configs);
@@ -259,31 +268,29 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         }
       } catch (error) {
         console.error('[BiometricSetup] Biometric check failed:', error);
-        if (mounted) {
+        if (mounted && isMounted.current) {
           setHasHardware(false);
           setIsEnrolled(false);
           setBiometricCheckComplete(true);
         }
       } finally {
-        if (mounted) {
+        if (mounted && isMounted.current) {
           setIsLoading(false);
         }
       }
     };
 
     resetUnlockLock();
-    checkBiometrics();
-
-    const unsubscribe = navigation.addListener('focus', () => {
-      resetUnlockLock();
-      refreshBiometricStatus();
-    });
+    
+    // ✅ FIXED: Only check once with a small delay
+    const timer = setTimeout(checkBiometrics, 300);
 
     return () => {
       mounted = false;
-      unsubscribe();
+      isMounted.current = false;
+      clearTimeout(timer);
     };
-  }, [navigation, resetUnlockLock, getAvailableBiometricTypes, contextTypes, refreshBiometricStatus]);
+  }, []); // ✅ Empty dependency array - ONLY RUNS ONCE
 
   // Animate in
   useEffect(() => {

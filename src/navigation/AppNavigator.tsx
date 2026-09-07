@@ -1,5 +1,5 @@
 // src/navigation/AppNavigator.tsx - COMPLETE FIXED
-// Fixed navigation to properly handle 0 babies state
+// Properly handles 0 babies state and prevents navigation loops
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, AppState, TouchableOpacity, StyleSheet } from 'react-native';
@@ -203,7 +203,7 @@ async function validateSupabaseSession(): Promise<boolean> {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GET NAV STATE - FIXED
+   GET NAV STATE - CRITICAL FIX
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function getNavState(
@@ -220,7 +220,6 @@ function getNavState(
   seenOnboarding: boolean,
   firstOpen: boolean,
 ): NavigationState {
-  // ─── FIX: Check auth state first ──────────────────────────────────
   if (authLoading) return 'LOADING';
   
   if (!isAuth || !isValidSession) {
@@ -228,34 +227,34 @@ function getNavState(
     return 'LOGIN';
   }
 
-  // ─── FIX: Security lock check ─────────────────────────────────────
   if (isLocked && securityOn) {
     return 'SECURITY_LOCK';
   }
 
-  // ─── FIX: Check if baby is addressed ─────────────────────────────
-  // CRITICAL FIX: If there are 0 babies and baby is not skipped, go to SETUP_BABY
-  const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0 || skippedBaby;
+  // ─── CRITICAL FIX: Check if baby is properly addressed ──────────────
+  // A baby is addressed if:
+  // 1. hasBaby is true (setup step completed)
+  // 2. hasBaby is 'skipped' (user skipped)
+  // 3. babyCount > 0 (there are babies in the system)
+  // 4. skippedBaby is true (user previously skipped)
+  const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0 || skippedBaby === true;
   
-  // ─── FIX: If baby is NOT addressed, go to SETUP_BABY ─────────────
+  // ─── If baby is NOT addressed, go to SETUP_BABY ─────────────────────
   if (!babyAddressed) {
-    console.log('[Navigation] → SETUP_BABY (no baby)');
+    console.log('[Navigation] → SETUP_BABY (no baby addressed)');
     return 'SETUP_BABY';
   }
 
-  // ─── FIX: Check parent2 ────────────────────────────────────────────
+  // ─── Check parent2 ────────────────────────────────────────────────────
   const p2Addressed = hasP2 === true || hasP2 === 'skipped';
   
-  // ─── FIX: Setup is complete if both steps are addressed ─────────
+  // ─── Setup is complete if both steps are addressed ──────────────────
   const isActuallySetupComplete = setupDone || (babyAddressed && p2Addressed);
 
-  // ─── FIX: If setup is complete, go to MAIN ──────────────────────
   if (isActuallySetupComplete) {
     return 'MAIN';
   }
 
-  // ─── FIX: Otherwise navigate to setup screens ────────────────────
-  if (!babyAddressed) return 'SETUP_BABY';
   if (!p2Addressed) return 'SETUP_PARENT2';
 
   return 'MAIN';
@@ -337,6 +336,7 @@ function NavigationContent({
   const navReadyCalled = useRef(false);
   const navigationLoopCount = useRef(0);
   const lastNavigationTarget = useRef<string | null>(null);
+  const navLockRef = useRef(false);
 
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
@@ -548,6 +548,7 @@ function NavigationContent({
   // ═══════════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
+    if (navLockRef.current) return;
 
     const currentRoute = navRef.current.getCurrentRoute()?.name;
     
@@ -568,11 +569,15 @@ function NavigationContent({
         console.log('[Navigation] ⚠️ Navigation loop detected! Breaking...');
         navigationLoopCount.current = 0;
         lastNavigationTarget.current = null;
-        // Force to the correct state
-        if (babyCountRef.current === 0 && !hasSkippedBabyRef.current) {
+        
+        // Force to the correct state based on baby count
+        const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
+        if (!hasBabies) {
           console.log('[Navigation] Force navigating to BabyOptional');
+          navLockRef.current = true;
           navRef.current.reset({ index: 0, routes: [{ name: 'BabyOptional' }] });
           lastNavTime.current = Date.now();
+          setTimeout(() => { navLockRef.current = false; }, 500);
           return;
         }
         return;
@@ -587,7 +592,9 @@ function NavigationContent({
       if (currentRoute !== 'Login' && currentRoute !== 'Onboarding' && currentRoute !== 'SignUp') {
         console.log('[Navigation] → Login');
         lastNavTime.current = now;
+        navLockRef.current = true;
         navRef.current.reset({ index: 0, routes: [{ name: 'Login' }] });
+        setTimeout(() => { navLockRef.current = false; }, 500);
       }
       return;
     }
@@ -597,7 +604,9 @@ function NavigationContent({
       if (currentRoute !== 'Onboarding') {
         console.log('[Navigation] → Onboarding');
         lastNavTime.current = now;
+        navLockRef.current = true;
         navRef.current.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
+        setTimeout(() => { navLockRef.current = false; }, 500);
       }
       return;
     }
@@ -608,7 +617,9 @@ function NavigationContent({
         console.log('[Navigation] → SecurityLock');
         lastNavTime.current = now;
         resetUnlockLockRef.current();
+        navLockRef.current = true;
         navRef.current.reset({ index: 0, routes: [{ name: 'SecurityLock' }] });
+        setTimeout(() => { navLockRef.current = false; }, 500);
       }
       return;
     }
@@ -616,17 +627,20 @@ function NavigationContent({
     // ─── SETUP_BABY ────────────────────────────────────────────────────
     if (navState === 'SETUP_BABY') {
       // CRITICAL FIX: If we already have babies, go to Main
-      if (babyCountRef.current > 0 || hasSkippedBabyRef.current) {
+      const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
+      if (hasBabies) {
         if (currentRoute !== 'Main' && currentRoute !== 'Home') {
           console.log('[Navigation] → Main (has babies or skipped)');
           lastNavTime.current = now;
+          navLockRef.current = true;
           navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+          setTimeout(() => { navLockRef.current = false; }, 500);
         }
         return;
       }
       
-      // CRITICAL FIX: Always go to BabyOptional if no babies
-      // Check if we're already on a setup screen
+      // ─── CRITICAL FIX: Stay on BabyOptional if no babies ────────────
+      // Only navigate to BabyOptional if we're not already there
       if (currentRoute === 'BabyOptional' || currentRoute === 'CreateBabyProfile') {
         // We're already on a setup screen, stay there
         console.log('[Navigation] Already on setup screen:', currentRoute);
@@ -636,7 +650,9 @@ function NavigationContent({
       // Navigate to BabyOptional
       console.log('[Navigation] → BabyOptional (no babies)');
       lastNavTime.current = now;
+      navLockRef.current = true;
       navRef.current.reset({ index: 0, routes: [{ name: 'BabyOptional' }] });
+      setTimeout(() => { navLockRef.current = false; }, 500);
       return;
     }
 
@@ -645,7 +661,9 @@ function NavigationContent({
       if (currentRoute !== 'CoParentInviteScreen') {
         console.log('[Navigation] → CoParentInviteScreen');
         lastNavTime.current = now;
+        navLockRef.current = true;
         navRef.current.reset({ index: 0, routes: [{ name: 'CoParentInviteScreen' }] });
+        setTimeout(() => { navLockRef.current = false; }, 500);
       }
       return;
     }
@@ -657,7 +675,9 @@ function NavigationContent({
       if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
         console.log('[Navigation] → Main (from setup)');
         lastNavTime.current = now;
+        navLockRef.current = true;
         navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+        setTimeout(() => { navLockRef.current = false; }, 500);
         return;
       }
       
@@ -666,7 +686,9 @@ function NavigationContent({
         console.log('[Navigation] Force unlocking from SecurityLock');
         forceUnlockRef.current();
         lastNavTime.current = now;
+        navLockRef.current = true;
         navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+        setTimeout(() => { navLockRef.current = false; }, 500);
         return;
       }
       
@@ -678,14 +700,18 @@ function NavigationContent({
       // Otherwise navigate to Main
       console.log('[Navigation] → Main');
       lastNavTime.current = now;
+      navLockRef.current = true;
       navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+      setTimeout(() => { navLockRef.current = false; }, 500);
       return;
     }
 
     // ─── Fallback ──────────────────────────────────────────────────────
     console.log('[Navigation] → Fallback to Login');
     lastNavTime.current = now;
+    navLockRef.current = true;
     navRef.current.reset({ index: 0, routes: [{ name: 'Login' }] });
+    setTimeout(() => { navLockRef.current = false; }, 500);
     
   }, [navState, initialCheckDone, isNavReady, babies, isSecurityLocked]);
 
