@@ -1,9 +1,8 @@
 // src/context/BabyContext.tsx - COMPLETE FIXED VERSION
-// FIX: Properly syncs babies from Supabase and displays them
-// FIX: Hard delete baby from Supabase
-// FIX: Ensure baby is properly persisted after creation
+// FIX: Loads babies for ALL users including guardians and viewers
+// FIX: Properly handles role-based access and permissions
 // FIX: User isolation to prevent cross-device conflicts
-// FIX: Proper auth session handling to prevent "No authenticated user found"
+// FIX: Proper auth session handling
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Alert, Platform } from 'react-native';
@@ -38,6 +37,7 @@ export interface BabyProfile {
   parent1Id: string;
   parent2Id?: string;
   guardianIds?: string[];
+  role?: 'parent1' | 'parent2' | 'guardian' | 'viewer'; // User's role for this baby
   
   weight?: string;
   height?: string;
@@ -260,6 +260,9 @@ interface BabyState {
   activities: ActivityEntry[];
   lastSyncTime: number | null;
   isInitialized: boolean;
+  // ─── NEW: Role-based access tracking ──────────────────────────────
+  userRoles: Record<string, 'parent1' | 'parent2' | 'guardian' | 'viewer'>;
+  userPermissions: Record<string, Record<string, boolean>>;
 }
 
 interface BabyContextType extends BabyState {
@@ -274,6 +277,14 @@ interface BabyContextType extends BabyState {
   clearSkipBaby: () => Promise<void>;
   calculateAge: (birthDate: string) => string;
   getBabyAge: (babyId?: string) => string;
+
+  // ─── NEW: Role-based access helpers ──────────────────────────────
+  getUserRoleForBaby: (babyId?: string) => 'parent1' | 'parent2' | 'guardian' | 'viewer' | null;
+  hasPermissionForBaby: (babyId: string, action: string) => boolean;
+  getBabiesForRole: (role: 'parent1' | 'parent2' | 'guardian' | 'viewer') => BabyProfile[];
+  canManageBaby: (babyId?: string) => boolean;
+  canViewBaby: (babyId?: string) => boolean;
+  canEditBaby: (babyId?: string) => boolean;
 
   addGrowthMeasurement: (measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>) => Promise<boolean>;
   getGrowthData: (type?: GrowthMeasurement['type']) => GrowthMeasurement[];
@@ -376,6 +387,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     activities: [],
     lastSyncTime: null,
     isInitialized: false,
+    // ─── NEW ──────────────────────────────────────────────────────────
+    userRoles: {},
+    userPermissions: {},
   });
 
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
@@ -471,7 +485,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.babies, state.currentBabyId]);
 
   // ─── Map database row to BabyProfile ─────────────────────────────────
-  const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
+  const mapBabyRowToProfile = useCallback((row: any, userRole?: 'parent1' | 'parent2' | 'guardian' | 'viewer'): BabyProfile => {
     return {
       id: row.id,
       name: row.name,
@@ -483,6 +497,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       avatar_url: row.avatar_url || row.avatar || '',
       parent1Id: row.parent1_id || '',
       parent2Id: row.parent2_id || undefined,
+      guardianIds: row.guardian_ids || [],
+      role: userRole || 'viewer',
       bloodType: row.blood_type || undefined,
       medicalNotes: row.medical_notes || undefined,
       allergies: row.allergies || undefined,
@@ -512,7 +528,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [calculateAge]);
 
-  // ─── Load babies from Supabase ────────────────────────────────────────
+  // ─── Load babies from Supabase - FIXED for ALL users ──────────────────
   const loadBabies = useCallback(async (force = false) => {
     if (loadInProgressRef.current && !force) {
       console.log('[BabyContext] Load already in progress, skipping');
@@ -540,8 +556,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       currentUserIdRef.current = userId;
 
       let allBabies: any[] = [];
+      const userRoles: Record<string, 'parent1' | 'parent2' | 'guardian' | 'viewer'> = {};
+      const userPermissions: Record<string, Record<string, boolean>> = {};
 
-      // ─── Query parent1_id ──────────────────────────────────────────
+      // ─── QUERY 1: Babies where user is parent1 ──────────────────────
       try {
         const { data, error } = await supabase
           .from('babies')
@@ -551,62 +569,188 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error) {
           console.error('[BabyContext] Parent1 query error:', error.message);
-          
-          if (error.message?.includes('permission denied') || error.message?.includes('policy')) {
-            const { data: fallbackData, error: fallbackError } = await supabase
-              .from('babies')
-              .select('*')
-              .eq('parent1_id', userId);
-            
-            if (!fallbackError && fallbackData) {
-              allBabies = fallbackData.filter((b: any) => b.is_active !== false);
-              console.log(`[BabyContext] Found ${allBabies.length} babies (fallback query)`);
-            }
-          }
         } else if (data) {
-          allBabies = data;
-          console.log(`[BabyContext] Found ${allBabies.length} babies (parent1 query)`);
+          data.forEach((baby: any) => {
+            // Avoid duplicates
+            if (!allBabies.some(b => b.id === baby.id)) {
+              allBabies.push(baby);
+              userRoles[baby.id] = 'parent1';
+              userPermissions[baby.id] = {
+                view: true,
+                edit: true,
+                delete: true,
+                manage: true,
+                invite: true,
+                export: true,
+              };
+            }
+          });
+          console.log(`[BabyContext] Found ${data.length} babies (parent1 query)`);
         }
       } catch (e) {
         console.warn('[BabyContext] Parent1 query failed:', e);
       }
 
-      // ─── If no babies as parent1, try parent2 ──────────────────────
-      if (allBabies.length === 0) {
-        try {
-          const { data, error } = await supabase
-            .from('babies')
-            .select('*')
-            .eq('parent2_id', userId)
-            .eq('is_active', true);
+      // ─── QUERY 2: Babies where user is parent2 ──────────────────────
+      try {
+        const { data, error } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent2_id', userId)
+          .eq('is_active', true);
 
-          if (error) {
-            console.error('[BabyContext] Parent2 query error:', error.message);
-            
-            if (error.message?.includes('permission denied') || error.message?.includes('policy')) {
-              const { data: fallbackData, error: fallbackError } = await supabase
-                .from('babies')
-                .select('*')
-                .eq('parent2_id', userId);
-              
-              if (!fallbackError && fallbackData) {
-                allBabies = fallbackData.filter((b: any) => b.is_active !== false);
-                console.log(`[BabyContext] Found ${allBabies.length} babies (parent2 fallback)`);
-              }
+        if (error) {
+          console.error('[BabyContext] Parent2 query error:', error.message);
+        } else if (data) {
+          data.forEach((baby: any) => {
+            if (!allBabies.some(b => b.id === baby.id)) {
+              allBabies.push(baby);
+              userRoles[baby.id] = 'parent2';
+              userPermissions[baby.id] = {
+                view: true,
+                edit: true,
+                delete: true,
+                manage: true,
+                invite: true,
+                export: true,
+              };
             }
-          } else if (data) {
-            allBabies = data;
-            console.log(`[BabyContext] Found ${allBabies.length} babies (parent2 query)`);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] Parent2 query failed:', e);
+          });
+          console.log(`[BabyContext] Found ${data.length} babies (parent2 query)`);
         }
+      } catch (e) {
+        console.warn('[BabyContext] Parent2 query failed:', e);
+      }
+
+      // ─── QUERY 3: Babies where user is a guardian (via guardian_ids) ──
+      // THIS IS THE CRITICAL FIX FOR SECONDARY USERS
+      try {
+        const { data, error } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('is_active', true)
+          .contains('guardian_ids', [userId]);
+
+        if (error) {
+          console.error('[BabyContext] Guardian query error:', error.message);
+          
+          // ─── FALLBACK: Try with array containment ──────────────────
+          try {
+            // Some versions of Supabase use different syntax
+            const { data: fallbackData, error: fallbackError } = await supabase
+              .from('babies')
+              .select('*')
+              .eq('is_active', true);
+
+            if (!fallbackError && fallbackData) {
+              // Manually filter for guardian_ids containing userId
+              const filtered = fallbackData.filter((baby: any) => {
+                const guardianIds = baby.guardian_ids || [];
+                return guardianIds.includes(userId);
+              });
+              
+              filtered.forEach((baby: any) => {
+                if (!allBabies.some(b => b.id === baby.id)) {
+                  allBabies.push(baby);
+                  userRoles[baby.id] = 'guardian';
+                  userPermissions[baby.id] = {
+                    view: true,
+                    edit: true,
+                    delete: false,
+                    manage: false,
+                    invite: false,
+                    export: false,
+                  };
+                }
+              });
+              console.log(`[BabyContext] Found ${filtered.length} babies (guardian fallback)`);
+            }
+          } catch (fallbackE) {
+            console.warn('[BabyContext] Guardian fallback query failed:', fallbackE);
+          }
+        } else if (data) {
+          data.forEach((baby: any) => {
+            if (!allBabies.some(b => b.id === baby.id)) {
+              allBabies.push(baby);
+              userRoles[baby.id] = 'guardian';
+              userPermissions[baby.id] = {
+                view: true,
+                edit: true,
+                delete: false,
+                manage: false,
+                invite: false,
+                export: false,
+              };
+            }
+          });
+          console.log(`[BabyContext] Found ${data.length} babies (guardian query)`);
+        }
+      } catch (e) {
+        console.warn('[BabyContext] Guardian query failed:', e);
+      }
+
+      // ─── QUERY 4: Babies via family_members (viewers) ────────────────
+      // This catches viewers who are in family_members but not in guardian_ids
+      try {
+        const { data: familyMembers, error: fmError } = await supabase
+          .from('family_members')
+          .select('baby_id, role')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .eq('deleted_at', null);
+
+        if (fmError) {
+          console.error('[BabyContext] Family members query error:', fmError.message);
+        } else if (familyMembers && familyMembers.length > 0) {
+          // Get unique baby IDs from family members
+          const babyIds = familyMembers
+            .filter(fm => fm.baby_id)
+            .map(fm => fm.baby_id);
+          
+          if (babyIds.length > 0) {
+            const { data: babyData, error: babyError } = await supabase
+              .from('babies')
+              .select('*')
+              .in('id', babyIds)
+              .eq('is_active', true);
+
+            if (!babyError && babyData) {
+              babyData.forEach((baby: any) => {
+                if (!allBabies.some(b => b.id === baby.id)) {
+                  allBabies.push(baby);
+                  
+                  // Check if this is a viewer (not already assigned a role)
+                  if (!userRoles[baby.id]) {
+                    // Find the member's role
+                    const member = familyMembers.find(fm => fm.baby_id === baby.id);
+                    const role = member?.role === 'parent2' ? 'parent2' : 
+                                member?.role === 'guardian' ? 'guardian' : 'viewer';
+                    userRoles[baby.id] = role;
+                    userPermissions[baby.id] = {
+                      view: true,
+                      edit: role !== 'viewer',
+                      delete: role === 'parent1' || role === 'parent2',
+                      manage: role === 'parent1' || role === 'parent2',
+                      invite: role === 'parent1' || role === 'parent2',
+                      export: role === 'parent1' || role === 'parent2',
+                    };
+                  }
+                }
+              });
+              console.log(`[BabyContext] Found ${babyData.length} babies (family_members query)`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[BabyContext] Family members query failed:', e);
       }
 
       console.log(`[BabyContext] Total babies found: ${allBabies.length}`);
 
       // ─── MAP TO PROFILES ─────────────────────────────────────────────
-      const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
+      const babies: BabyProfile[] = allBabies.map(baby => 
+        mapBabyRowToProfile(baby, userRoles[baby.id] || 'viewer')
+      );
 
       // ─── CACHE BABIES ─────────────────────────────────────────────────
       if (babies.length > 0) {
@@ -642,8 +786,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const isValidCurrent = currentId && babies.some(b => b.id === currentId);
         
         if (!isValidCurrent) {
-          currentId = babies[0].id;
-          console.log(`[BabyContext] Setting current baby to first: ${currentId} (${babies[0].name})`);
+          // Prefer babies where user has higher role (parent1 > parent2 > guardian > viewer)
+          const prioritizedBabies = [...babies].sort((a, b) => {
+            const priority = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
+            return (priority[a.role as keyof typeof priority] || 3) - (priority[b.role as keyof typeof priority] || 3);
+          });
+          currentId = prioritizedBabies[0]?.id || babies[0].id;
+          console.log(`[BabyContext] Setting current baby to first: ${currentId}`);
           
           try {
             await supabase
@@ -710,6 +859,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasSkippedBaby,
         lastSyncTime: Date.now(),
         isInitialized: true,
+        userRoles,
+        userPermissions,
       }));
 
       // ─── BROADCAST CHANGE ──────────────────────────────────────────
@@ -781,6 +932,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           currentBabyId: null,
           currentBaby: null,
           isInitialized: false,
+          userRoles: {},
+          userPermissions: {},
         }));
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
         console.log('[BabyContext] Token refreshed');
@@ -795,7 +948,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadBabies]);
 
-  // ─── Initial load ──────────────────────────────────────────────────────
+  // ─── Initial load ─────────────────────────────────────────────────────
   useEffect(() => {
     if (initRef.current) return;
     
@@ -952,6 +1105,60 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [state.babies.length, calculateAge]);
 
+  // ─── ROLE-BASED ACCESS HELPERS ───────────────────────────────────────
+
+  const getUserRoleForBaby = useCallback((babyId?: string): 'parent1' | 'parent2' | 'guardian' | 'viewer' | null => {
+    const id = babyId || state.currentBabyId;
+    if (!id) return null;
+    return state.userRoles[id] || 'viewer';
+  }, [state.currentBabyId, state.userRoles]);
+
+  const hasPermissionForBaby = useCallback((babyId: string, action: string): boolean => {
+    const perms = state.userPermissions[babyId];
+    if (!perms) return false;
+    
+    // Map action to permission key
+    const actionMap: Record<string, string> = {
+      'view': 'view',
+      'edit': 'edit',
+      'delete': 'delete',
+      'manage': 'manage',
+      'invite': 'invite',
+      'export': 'export',
+      'add_entry': 'edit',
+      'edit_entry': 'edit',
+      'delete_entry': 'delete',
+    };
+    
+    const key = actionMap[action] || action;
+    return perms[key] || false;
+  }, [state.userPermissions]);
+
+  const getBabiesForRole = useCallback((role: 'parent1' | 'parent2' | 'guardian' | 'viewer'): BabyProfile[] => {
+    return state.babies.filter(baby => baby.role === role);
+  }, [state.babies]);
+
+  const canManageBaby = useCallback((babyId?: string): boolean => {
+    const id = babyId || state.currentBabyId;
+    if (!id) return false;
+    const perms = state.userPermissions[id];
+    return perms?.manage || perms?.delete || false;
+  }, [state.currentBabyId, state.userPermissions]);
+
+  const canViewBaby = useCallback((babyId?: string): boolean => {
+    const id = babyId || state.currentBabyId;
+    if (!id) return false;
+    const perms = state.userPermissions[id];
+    return perms?.view || false;
+  }, [state.currentBabyId, state.userPermissions]);
+
+  const canEditBaby = useCallback((babyId?: string): boolean => {
+    const id = babyId || state.currentBabyId;
+    if (!id) return false;
+    const perms = state.userPermissions[id];
+    return perms?.edit || false;
+  }, [state.currentBabyId, state.userPermissions]);
+
   // ─── Skip / Clear skip ────────────────────────────────────────────────
   const skipBaby = useCallback(async () => {
     const userId = await getCurrentUserId();
@@ -1096,6 +1303,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: now.toISOString(),
         lastUpdated: now.toISOString(),
         age: calculateAge(data.birthDate),
+        role: 'parent1',
       };
 
       const newCurrentId = result.id;
@@ -1108,6 +1316,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           currentBabyId: newCurrentId,
           currentBaby: newBaby,
           hasSkippedBaby: false,
+          userRoles: { ...prev.userRoles, [newCurrentId]: 'parent1' },
+          userPermissions: { 
+            ...prev.userPermissions, 
+            [newCurrentId]: { view: true, edit: true, delete: true, manage: true, invite: true, export: true }
+          },
         }));
       }
 
@@ -1163,6 +1376,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ─── Update baby ──────────────────────────────────────────────────────
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
     try {
+      // Check if user has permission
+      if (!canEditBaby(id)) {
+        Alert.alert('Permission Denied', 'You do not have permission to edit this baby\'s profile');
+        return;
+      }
+
       const remoteUpdates: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
@@ -1243,7 +1462,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (result && isMounted.current) {
-        const updatedBaby = mapBabyRowToProfile(result);
+        const updatedBaby = mapBabyRowToProfile(result, state.userRoles[id] || 'viewer');
         setState(prev => ({
           ...prev,
           babies: prev.babies.map(b => b.id === id ? updatedBaby : b),
@@ -1255,10 +1474,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Update baby error:', error);
       Alert.alert('Error', 'Failed to update baby profile');
     }
-  }, [mapBabyRowToProfile]);
+  }, [mapBabyRowToProfile, canEditBaby, state.userRoles]);
 
   // ─── Delete baby ──────────────────────────────────────────────────────
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
+    // Check if user has permission
+    if (!canManageBaby(id)) {
+      Alert.alert('Permission Denied', 'You do not have permission to delete this baby');
+      return false;
+    }
+
     try {
       const { error } = await supabase
         .from('babies')
@@ -1297,11 +1522,19 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.removeItem(STORAGE_KEYS.LAST_SYNC_KEY);
 
       if (isMounted.current) {
+        // Clean up roles and permissions
+        const newUserRoles = { ...state.userRoles };
+        const newUserPermissions = { ...state.userPermissions };
+        delete newUserRoles[id];
+        delete newUserPermissions[id];
+
         setState(prev => ({
           ...prev,
           babies: updatedBabies,
           currentBabyId: newCurrentId,
           currentBaby: newCurrentId ? updatedBabies.find(b => b.id === newCurrentId) || null : null,
+          userRoles: newUserRoles,
+          userPermissions: newUserPermissions,
         }));
       }
 
@@ -1317,7 +1550,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to delete baby profile');
       return false;
     }
-  }, [state.babies, state.currentBabyId, getCurrentUserId, broadcastBabyChange, loadBabies]);
+  }, [state.babies, state.currentBabyId, state.userRoles, state.userPermissions, getCurrentUserId, broadcastBabyChange, loadBabies, canManageBaby]);
 
   // ─── Switch baby ──────────────────────────────────────────────────────
   const switchBaby = useCallback(async (id: string): Promise<boolean> => {
@@ -1325,6 +1558,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userId = await getCurrentUserId();
       if (!userId) {
         console.warn('[BabyContext] No user for switchBaby');
+        return false;
+      }
+
+      // Check if user can view this baby
+      if (!canViewBaby(id)) {
+        Alert.alert('Permission Denied', 'You do not have permission to view this baby');
         return false;
       }
 
@@ -1352,7 +1591,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, id);
 
       if (isMounted.current) {
-        const babyProfile = mapBabyRowToProfile(baby);
+        const babyProfile = mapBabyRowToProfile(baby, state.userRoles[id] || 'viewer');
         setState(prev => ({
           ...prev,
           currentBabyId: id,
@@ -1372,7 +1611,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error switching baby:', error);
       return false;
     }
-  }, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
+  }, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange, state.userRoles, canViewBaby]);
 
   // ─── Refresh current baby ─────────────────────────────────────────────
   const refreshCurrentBaby = useCallback(async () => {
@@ -1400,7 +1639,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!isMounted.current) return;
 
-      const updatedBaby = mapBabyRowToProfile(baby);
+      const updatedBaby = mapBabyRowToProfile(baby, state.userRoles[state.currentBabyId] || 'viewer');
 
       setState(prev => ({
         ...prev,
@@ -1410,7 +1649,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error refreshing current baby:', error);
     }
-  }, [state.currentBabyId, mapBabyRowToProfile, loadBabies, getCurrentUserId]);
+  }, [state.currentBabyId, state.userRoles, mapBabyRowToProfile, loadBabies, getCurrentUserId]);
 
   // ─── STUB METHODS ─────────────────────────────────────────────────────
   const addGrowthMeasurement = useCallback(async () => false, []);
@@ -1466,6 +1705,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearSkipBaby,
     calculateAge,
     getBabyAge,
+    // ─── NEW: Role-based access ──────────────────────────────────────
+    getUserRoleForBaby,
+    hasPermissionForBaby,
+    getBabiesForRole,
+    canManageBaby,
+    canViewBaby,
+    canEditBaby,
     addGrowthMeasurement,
     getGrowthData,
     getLatestMeasurements,
@@ -1519,6 +1765,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearSkipBaby,
     calculateAge,
     getBabyAge,
+    getUserRoleForBaby,
+    hasPermissionForBaby,
+    getBabiesForRole,
+    canManageBaby,
+    canViewBaby,
+    canEditBaby,
     addGrowthMeasurement,
     getGrowthData,
     getLatestMeasurements,
