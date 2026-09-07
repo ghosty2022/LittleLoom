@@ -866,9 +866,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentId = null;
       }
       
-      // If no current ID and we have babies, use first baby
+      // ─── FIX: If no current ID but we have babies, use the FIRST baby ───
       if (!currentId && babies.length > 0) {
+        console.log(`[BabyContext] No current ID set, using first baby: ${babies[0].id}`);
         currentId = babies[0].id;
+        
+        // Persist the new current baby ID to Supabase
         try {
           await supabase
             .from('app_settings')
@@ -878,6 +881,28 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               user_id: userId,
               updated_at: new Date().toISOString(),
             }, { onConflict: 'key, user_id' });
+          console.log('[BabyContext] Saved current_baby_id to Supabase:', currentId);
+        } catch (e) {
+          console.warn('[BabyContext] Failed to set current_baby_id:', e);
+        }
+      }
+
+      // ─── FIX: If we have a currentId but it doesn't match a baby, use first baby ───
+      if (currentId && babies.length > 0 && !babies.some(b => b.id === currentId)) {
+        console.log(`[BabyContext] Current ID ${currentId} invalid, using first baby`);
+        currentId = babies[0].id;
+        
+        // Persist the correct current baby ID
+        try {
+          await supabase
+            .from('app_settings')
+            .upsert({
+              key: 'current_baby_id',
+              value: currentId,
+              user_id: userId,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'key, user_id' });
+          console.log('[BabyContext] Corrected current_baby_id in Supabase:', currentId);
         } catch (e) {
           console.warn('[BabyContext] Failed to set current_baby_id:', e);
         }
@@ -888,8 +913,33 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
       }
 
-      // Find the baby object
-      const babyToSet = babies.find(b => b.id === currentId) || babies[0] || null;
+      // ─── FIX: Find the baby object - properly find the baby ──────────
+      let babyToSet = null;
+      if (currentId) {
+        babyToSet = babies.find(b => b.id === currentId) || null;
+      }
+      
+      // ─── FIX: If babyToSet is null but we have babies, use first ─────
+      if (!babyToSet && babies.length > 0) {
+        babyToSet = babies[0];
+        currentId = babies[0].id;
+        console.log('[BabyContext] Using fallback first baby:', currentId);
+        
+        // Persist the fallback current baby ID
+        try {
+          await supabase
+            .from('app_settings')
+            .upsert({
+              key: 'current_baby_id',
+              value: currentId,
+              user_id: userId,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'key, user_id' });
+          console.log('[BabyContext] Saved fallback current_baby_id to Supabase:', currentId);
+        } catch (e) {
+          console.warn('[BabyContext] Failed to set current_baby_id:', e);
+        }
+      }
 
       // ─── CHECK IF BABY WAS SKIPPED ──────────────────────────────────
       let hasSkippedBaby = false;
@@ -998,7 +1048,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadBabies]);
 
-  // ─── FIXED: Watch for auth changes ──────────────────────────────────
+  // ─── Watch for auth changes ──────────────────────────────────────────
   useEffect(() => {
     if (authProfile?.id) {
       console.log('[BabyContext] Auth user detected, loading babies...');
@@ -1018,9 +1068,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       };
     }
-  }, [authProfile?.id]); // ONLY depend on authProfile.id
+  }, [authProfile?.id]);
 
-  // ─── FIXED: Auto-refresh on app focus ─────────────────────────────────
+  // ─── Auto-refresh on app focus ────────────────────────────────────────
   useEffect(() => {
     // Clean up previous listener
     if (appStateListenerRef.current) {
@@ -1055,7 +1105,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadBabies]);
 
-  // ─── FIXED: Auto-refresh every 5 minutes ──────────────────────────────
+  // ─── Auto-refresh every 5 minutes ─────────────────────────────────────
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -1318,17 +1368,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         age: calculateAge(data.birthDate),
       };
 
-      // ─── GET BABY COUNT ───────────────────────────────────────────────
-      const { count } = await supabase
-        .from('babies')
-        .select('*', { count: 'exact', head: true })
-        .eq('parent1_id', userId)
-        .eq('is_active', true);
+      // ─── FIX: Always set the newly created baby as current ──────────
+      const newCurrentId = result.id; // Always use the new baby's ID
 
-      const isFirstBaby = (count || 0) <= 1;
-      const newCurrentId = isFirstBaby ? result.id : (state.currentBabyId || result.id);
-
-      // ─── SET CURRENT BABY ─────────────────────────────────────────────
       try {
         await supabase
           .from('app_settings')
@@ -1338,6 +1380,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             user_id: userId,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'key, user_id' });
+        console.log('[BabyContext] Set current baby to newly created:', newCurrentId);
       } catch (e) {
         console.warn('[BabyContext] Failed to set current_baby_id:', e);
       }
@@ -1362,7 +1405,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...prev,
           babies: [...prev.babies, newBaby],
           currentBabyId: newCurrentId,
-          currentBaby: isFirstBaby ? newBaby : prev.currentBaby,
+          currentBaby: newBaby,
           hasSkippedBaby: false,
         }));
       }
@@ -1388,7 +1431,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[BabyContext] Create baby error:', error);
       return null;
     }
-  }, [calculateAge, loadAllBabyData, state.currentBabyId, authProfile, broadcastBabyChange]);
+  }, [calculateAge, loadAllBabyData, authProfile, broadcastBabyChange]);
 
   // ─── Update baby ──────────────────────────────────────────────────────
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
