@@ -39,6 +39,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const BABY_IMAGES_DIR = FileSystem.documentDirectory + 'baby_images/';
