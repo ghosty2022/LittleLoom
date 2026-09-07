@@ -1403,202 +1403,238 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ─── FIXED: SIGN UP WITH INVITE CODE ──────────────────────────────────
   
-  const signUpWithInviteCode = useCallback(async (
-    code: string,
-    fullName: string,
-    email: string,
-    password: string
-  ): Promise<{ success: boolean; message: string }> => {
-    try {
-      const trimmedCode = code.trim().toUpperCase();
-      
-      // ─── 1. Validate the invite code from the database ──────────────
-      const { data: inviteData, error: inviteError } = await supabase
+// src/context/AuthContext.tsx - Updated signUpWithInviteCode function
+
+// ─── FIXED: SIGN UP WITH INVITE CODE ──────────────────────────────────
+const signUpWithInviteCode = useCallback(async (
+  code: string,
+  fullName: string,
+  email: string,
+  password: string
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const trimmedCode = code.trim().toUpperCase();
+    
+    // ─── 1. Validate the invite code from the database ──────────────
+    const { data: inviteData, error: inviteError } = await supabase
+      .from('invite_codes')
+      .select('*')
+      .eq('code', trimmedCode)
+      .eq('used', false)
+      .eq('revoked', false)
+      .maybeSingle();
+
+    if (inviteError) {
+      console.error('[Auth] Invite code validation error:', inviteError);
+      return { success: false, message: 'Error validating invite code' };
+    }
+
+    if (!inviteData) {
+      // ─── Check if this is a partial signup ──────────────────────────
+      const { data: partialData, error: partialError } = await supabase
         .from('invite_codes')
         .select('*')
         .eq('code', trimmedCode)
-        .eq('used', false)
+        .eq('used', true)
+        .eq('signup_completed', false)
         .eq('revoked', false)
         .maybeSingle();
 
-      if (inviteError) {
-        console.error('[Auth] Invite code validation error:', inviteError);
-        return { success: false, message: 'Error validating invite code' };
-      }
-
-      if (!inviteData) {
+      if (!partialError && partialData) {
+        // This is a partial signup - allow continuing
+        console.log('[Auth] Continuing partial signup for code:', trimmedCode);
+        // Proceed with signup but don't mark as used again
+      } else {
         return { success: false, message: 'Invalid or expired invite code' };
       }
+    }
 
-      // ─── 2. Check if expired ─────────────────────────────────────────
-      const now = Date.now();
-      const expiresAt = inviteData.created_at + (inviteData.expires_in_days || 7) * 24 * 60 * 60 * 1000;
-      if (now > expiresAt) {
-        return { success: false, message: 'Invite code has expired' };
-      }
+    // ─── 2. Check if expired ─────────────────────────────────────────
+    const now = Date.now();
+    const expiresAt = (inviteData?.created_at || 0) + (inviteData?.expires_in_days || 7) * 24 * 60 * 60 * 1000;
+    if (inviteData && now > expiresAt) {
+      return { success: false, message: 'Invite code has expired' };
+    }
 
-      // ─── 3. Check if user already exists ─────────────────────────────
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email.trim().toLowerCase())
-        .maybeSingle();
+    // ─── 3. Check if user already exists ─────────────────────────────
+    const { data: existingUser } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle();
 
-      if (existingUser) {
-        return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
-      }
+    if (existingUser) {
+      return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
+    }
 
-      // ─── 4. Proceed with signup ──────────────────────────────────────
-      const signUpResult = await signUp(fullName, email, password);
-      
-      if (!signUpResult.success) {
-        return signUpResult;
-      }
+    // ─── 4. Proceed with signup ──────────────────────────────────────
+    const signUpResult = await signUp(fullName, email, password);
+    
+    if (!signUpResult.success) {
+      return signUpResult;
+    }
 
-      // ─── 5. Get the newly created user ──────────────────────────────
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        // ─── 6. Mark the invite code as used ──────────────────────────
+    // ─── 5. Get the newly created user ──────────────────────────────
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      // ─── 6. Mark the invite code as used ──────────────────────────
+      if (inviteData) {
         const { error: updateError } = await supabase
           .from('invite_codes')
           .update({
             used: true,
             used_by: user.id,
             used_at: Date.now(),
+            used_by_email: email.trim().toLowerCase(),
+            used_by_name: fullName.trim(),
+            signup_completed: true,
+            updated_at: Date.now(),
           })
           .eq('code', trimmedCode);
 
         if (updateError) {
           console.error('[Auth] Failed to mark invite code as used:', updateError);
-          // Don't fail the signup, just log the error
         }
+      } else {
+        // For partial signup, just mark as completed
+        const { error: updateError } = await supabase
+          .from('invite_codes')
+          .update({
+            signup_completed: true,
+            used_by: user.id,
+            used_by_email: email.trim().toLowerCase(),
+            used_by_name: fullName.trim(),
+            updated_at: Date.now(),
+          })
+          .eq('code', trimmedCode);
 
-        // ─── 7. Create family member entry ─────────────────────────────
-        // FIXED: Use a more reliable ID generation
-        const familyMemberId = `fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        
-        // FIXED: Handle RLS by using the service role or checking permissions
-        // We'll try to insert with a more permissive approach
-        try {
-          const familyMemberData = {
-            id: familyMemberId,
-            baby_id: inviteData.family_id,
-            user_id: user.id,
-            email: email.trim().toLowerCase(),
-            full_name: fullName.trim(),
-            role: inviteData.role || 'viewer',
-            relationship: inviteData.relationship || 'Family Member',
-            permissions: {},
-            added_at: new Date().toISOString(),
-            added_by: inviteData.creator_id || user.id,
-            can_be_removed: true,
-            notifications_enabled: true,
-            status: 'active',
-            updated_at: new Date().toISOString(),
-            is_deleted: false,
-          };
-
-          console.log('[Auth] Creating family member:', JSON.stringify(familyMemberData, null, 2));
-
-          const { error: familyError } = await supabase
-            .from('family_members')
-            .insert(familyMemberData);
-
-          if (familyError) {
-            console.error('[Auth] Failed to create family member:', familyError);
-            
-            // Try with minimal fields if the full insert fails
-            try {
-              const minimalData = {
-                id: familyMemberId,
-                baby_id: inviteData.family_id,
-                user_id: user.id,
-                email: email.trim().toLowerCase(),
-                full_name: fullName.trim(),
-                role: inviteData.role || 'viewer',
-                relationship: inviteData.relationship || 'Family Member',
-                permissions: {},
-                added_at: new Date().toISOString(),
-                added_by: inviteData.creator_id || user.id,
-                can_be_removed: true,
-                notifications_enabled: true,
-                status: 'active',
-                updated_at: new Date().toISOString(),
-              };
-              
-              const { error: retryError } = await supabase
-                .from('family_members')
-                .insert(minimalData);
-                
-              if (retryError) {
-                console.error('[Auth] Failed to create family member (retry):', retryError);
-              }
-            } catch (retryErr) {
-              console.error('[Auth] Family member retry failed:', retryErr);
-            }
-          } else {
-            console.log('[Auth] Family member created successfully:', familyMemberId);
-          }
-        } catch (familyInsertError) {
-          console.error('[Auth] Family member insertion error:', familyInsertError);
-          // Don't fail the signup, continue
-        }
-
-        // ─── 8. Update baby's guardian_ids if needed ──────────────────
-        if (inviteData.role !== 'parent2') {
-          try {
-            const { data: babyData } = await supabase
-              .from('babies')
-              .select('guardian_ids')
-              .eq('id', inviteData.family_id)
-              .maybeSingle();
-
-            if (babyData) {
-              const currentGuardians = babyData.guardian_ids || [];
-              if (!currentGuardians.includes(familyMemberId)) {
-                await supabase
-                  .from('babies')
-                  .update({
-                    guardian_ids: [...currentGuardians, familyMemberId],
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', inviteData.family_id);
-              }
-            }
-          } catch (updateBabyError) {
-            console.error('[Auth] Failed to update baby guardians:', updateBabyError);
-          }
-        } else {
-          // If role is parent2, update the baby's parent2_id
-          try {
-            await supabase
-              .from('babies')
-              .update({
-                parent2_id: user.id,
-                parent2_name: fullName.trim(),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', inviteData.family_id);
-          } catch (updateParent2Error) {
-            console.error('[Auth] Failed to update parent2:', updateParent2Error);
-          }
+        if (updateError) {
+          console.error('[Auth] Failed to complete partial signup:', updateError);
         }
       }
 
-      const roleDisplay = inviteData.role === 'parent2' ? 'Parent 2' 
-        : inviteData.role === 'guardian' ? 'Guardian' 
-        : 'Viewer';
+      // ─── 7. Create family member entry ─────────────────────────────
+      // This is how guardians are tracked (NOT via guardian_ids)
+      const familyMemberId = `fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      
+      try {
+        // Determine the role from the invite
+        const role = inviteData?.role || 'viewer';
+        const relationship = inviteData?.relationship || 'Family Member';
+        const creatorId = inviteData?.creator_id || user.id;
+        const babyId = inviteData?.family_id;
 
-      return { 
-        success: true, 
-        message: `Welcome to the family! You've joined as ${roleDisplay}` 
-      };
-    } catch (error) {
-      console.error('[Auth] Sign up with invite code error:', error);
-      return { success: false, message: 'Failed to join family. Please try again.' };
+        if (!babyId) {
+          console.error('[Auth] No family_id in invite data');
+          return { 
+            success: true, 
+            message: 'Account created but no family found. Please contact support.' 
+          };
+        }
+
+        const familyMemberData = {
+          id: familyMemberId,
+          baby_id: babyId,
+          user_id: user.id,
+          email: email.trim().toLowerCase(),
+          full_name: fullName.trim(),
+          role: role,
+          relationship: relationship,
+          permissions: {},
+          added_at: new Date().toISOString(),
+          added_by: creatorId,
+          can_be_removed: true,
+          notifications_enabled: true,
+          status: 'active',
+          updated_at: new Date().toISOString(),
+          is_deleted: false,
+        };
+
+        console.log('[Auth] Creating family member:', JSON.stringify(familyMemberData, null, 2));
+
+        // ─── CRITICAL: Insert into family_members ──────────────────────
+        const { error: familyError } = await supabase
+          .from('family_members')
+          .insert(familyMemberData);
+
+        if (familyError) {
+          console.error('[Auth] Failed to create family member:', familyError);
+          
+          // ─── Try with minimal fields if full insert fails ────────────
+          try {
+            const minimalData = {
+              id: familyMemberId,
+              baby_id: babyId,
+              user_id: user.id,
+              email: email.trim().toLowerCase(),
+              full_name: fullName.trim(),
+              role: role,
+              relationship: relationship,
+              permissions: {},
+              added_at: new Date().toISOString(),
+              added_by: creatorId,
+              can_be_removed: true,
+              notifications_enabled: true,
+              status: 'active',
+              updated_at: new Date().toISOString(),
+            };
+            
+            const { error: retryError } = await supabase
+              .from('family_members')
+              .insert(minimalData);
+              
+            if (retryError) {
+              console.error('[Auth] Failed to create family member (retry):', retryError);
+            }
+          } catch (retryErr) {
+            console.error('[Auth] Family member retry failed:', retryErr);
+          }
+        } else {
+          console.log('[Auth] Family member created successfully:', familyMemberId);
+        }
+
+        // ─── 8. If role is parent2, update baby's parent2_id ──────────
+        if (role === 'parent2') {
+          try {
+            const { error: updateBabyError } = await supabase
+              .from('babies')
+              .update({
+                parent2_id: user.id,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', babyId);
+
+            if (updateBabyError) {
+              console.error('[Auth] Failed to update parent2:', updateBabyError);
+            }
+          } catch (updateParent2Error) {
+            console.error('[Auth] Parent2 update error:', updateParent2Error);
+          }
+        }
+        
+        // ─── 9. If role is guardian or viewer, no extra updates needed ──
+        // They are already in family_members, which BabyContext queries
+
+      } catch (familyInsertError) {
+        console.error('[Auth] Family member insertion error:', familyInsertError);
+        // Don't fail the signup, continue
+      }
     }
-  }, [signUp]);
+
+    const roleDisplay = inviteData?.role === 'parent2' ? 'Parent 2' 
+      : inviteData?.role === 'guardian' ? 'Guardian' 
+      : 'Viewer';
+
+    return { 
+      success: true, 
+      message: `Welcome to the family! You've joined as ${roleDisplay}` 
+    };
+  } catch (error) {
+    console.error('[Auth] Sign up with invite code error:', error);
+    return { success: false, message: 'Failed to join family. Please try again.' };
+  }
+}, [signUp]);
 
   // ─── FIND USER FUNCTIONS (Supabase only) ─────────────────────────────
 

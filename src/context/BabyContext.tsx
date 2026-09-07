@@ -529,379 +529,313 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [calculateAge]);
 
   // ─── Load babies from Supabase - FIXED for ALL users ──────────────────
-  const loadBabies = useCallback(async (force = false) => {
-    if (loadInProgressRef.current && !force) {
-      console.log('[BabyContext] Load already in progress, skipping');
+// ─── Load babies from Supabase - FIXED for ALL users ──────────────────
+const loadBabies = useCallback(async (force = false) => {
+  if (loadInProgressRef.current && !force) {
+    console.log('[BabyContext] Load already in progress, skipping');
+    return;
+  }
+
+  if (!isMounted.current) return;
+
+  loadInProgressRef.current = true;
+  console.log('[BabyContext] Starting loadBabies...');
+
+  setState(prev => ({ ...prev, isLoading: true }));
+
+  try {
+    const userId = await getCurrentUserId();
+    
+    if (!userId) {
+      console.warn('[BabyContext] No authenticated user found');
+      setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
+      loadInProgressRef.current = false;
       return;
     }
 
-    if (!isMounted.current) return;
+    console.log('[BabyContext] Loading babies for user ID (UUID):', userId);
+    currentUserIdRef.current = userId;
 
-    loadInProgressRef.current = true;
-    console.log('[BabyContext] Starting loadBabies...');
+    let allBabies: any[] = [];
+    const userRoles: Record<string, 'parent1' | 'parent2' | 'guardian' | 'viewer'> = {};
+    const userPermissions: Record<string, Record<string, boolean>> = {};
 
-    setState(prev => ({ ...prev, isLoading: true }));
-
+    // ─── QUERY 1: Babies where user is parent1 ──────────────────────
     try {
-      const userId = await getCurrentUserId();
-      
-      if (!userId) {
-        console.warn('[BabyContext] No authenticated user found');
-        setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
-        loadInProgressRef.current = false;
-        return;
-      }
+      const { data, error } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent1_id', userId)
+        .eq('is_active', true);
 
-      console.log('[BabyContext] Loading babies for user ID (UUID):', userId);
-      currentUserIdRef.current = userId;
-
-      let allBabies: any[] = [];
-      const userRoles: Record<string, 'parent1' | 'parent2' | 'guardian' | 'viewer'> = {};
-      const userPermissions: Record<string, Record<string, boolean>> = {};
-
-      // ─── QUERY 1: Babies where user is parent1 ──────────────────────
-      try {
-        const { data, error } = await supabase
-          .from('babies')
-          .select('*')
-          .eq('parent1_id', userId)
-          .eq('is_active', true);
-
-        if (error) {
-          console.error('[BabyContext] Parent1 query error:', error.message);
-        } else if (data) {
-          data.forEach((baby: any) => {
-            // Avoid duplicates
-            if (!allBabies.some(b => b.id === baby.id)) {
-              allBabies.push(baby);
-              userRoles[baby.id] = 'parent1';
-              userPermissions[baby.id] = {
-                view: true,
-                edit: true,
-                delete: true,
-                manage: true,
-                invite: true,
-                export: true,
-              };
-            }
-          });
-          console.log(`[BabyContext] Found ${data.length} babies (parent1 query)`);
-        }
-      } catch (e) {
-        console.warn('[BabyContext] Parent1 query failed:', e);
-      }
-
-      // ─── QUERY 2: Babies where user is parent2 ──────────────────────
-      try {
-        const { data, error } = await supabase
-          .from('babies')
-          .select('*')
-          .eq('parent2_id', userId)
-          .eq('is_active', true);
-
-        if (error) {
-          console.error('[BabyContext] Parent2 query error:', error.message);
-        } else if (data) {
-          data.forEach((baby: any) => {
-            if (!allBabies.some(b => b.id === baby.id)) {
-              allBabies.push(baby);
-              userRoles[baby.id] = 'parent2';
-              userPermissions[baby.id] = {
-                view: true,
-                edit: true,
-                delete: true,
-                manage: true,
-                invite: true,
-                export: true,
-              };
-            }
-          });
-          console.log(`[BabyContext] Found ${data.length} babies (parent2 query)`);
-        }
-      } catch (e) {
-        console.warn('[BabyContext] Parent2 query failed:', e);
-      }
-
-      // ─── QUERY 3: Babies where user is a guardian (via guardian_ids) ──
-      // THIS IS THE CRITICAL FIX FOR SECONDARY USERS
-      try {
-        const { data, error } = await supabase
-          .from('babies')
-          .select('*')
-          .eq('is_active', true)
-          .contains('guardian_ids', [userId]);
-
-        if (error) {
-          console.error('[BabyContext] Guardian query error:', error.message);
-          
-          // ─── FALLBACK: Try with array containment ──────────────────
-          try {
-            // Some versions of Supabase use different syntax
-            const { data: fallbackData, error: fallbackError } = await supabase
-              .from('babies')
-              .select('*')
-              .eq('is_active', true);
-
-            if (!fallbackError && fallbackData) {
-              // Manually filter for guardian_ids containing userId
-              const filtered = fallbackData.filter((baby: any) => {
-                const guardianIds = baby.guardian_ids || [];
-                return guardianIds.includes(userId);
-              });
-              
-              filtered.forEach((baby: any) => {
-                if (!allBabies.some(b => b.id === baby.id)) {
-                  allBabies.push(baby);
-                  userRoles[baby.id] = 'guardian';
-                  userPermissions[baby.id] = {
-                    view: true,
-                    edit: true,
-                    delete: false,
-                    manage: false,
-                    invite: false,
-                    export: false,
-                  };
-                }
-              });
-              console.log(`[BabyContext] Found ${filtered.length} babies (guardian fallback)`);
-            }
-          } catch (fallbackE) {
-            console.warn('[BabyContext] Guardian fallback query failed:', fallbackE);
+      if (error) {
+        console.error('[BabyContext] Parent1 query error:', error.message);
+      } else if (data) {
+        data.forEach((baby: any) => {
+          if (!allBabies.some(b => b.id === baby.id)) {
+            allBabies.push(baby);
+            userRoles[baby.id] = 'parent1';
+            userPermissions[baby.id] = {
+              view: true,
+              edit: true,
+              delete: true,
+              manage: true,
+              invite: true,
+              export: true,
+            };
           }
-        } else if (data) {
-          data.forEach((baby: any) => {
-            if (!allBabies.some(b => b.id === baby.id)) {
-              allBabies.push(baby);
-              userRoles[baby.id] = 'guardian';
-              userPermissions[baby.id] = {
-                view: true,
-                edit: true,
-                delete: false,
-                manage: false,
-                invite: false,
-                export: false,
-              };
-            }
-          });
-          console.log(`[BabyContext] Found ${data.length} babies (guardian query)`);
-        }
-      } catch (e) {
-        console.warn('[BabyContext] Guardian query failed:', e);
+        });
+        console.log(`[BabyContext] Found ${data.length} babies (parent1 query)`);
       }
+    } catch (e) {
+      console.warn('[BabyContext] Parent1 query failed:', e);
+    }
 
-      // ─── QUERY 4: Babies via family_members (viewers) ────────────────
-      // This catches viewers who are in family_members but not in guardian_ids
-      try {
-        const { data: familyMembers, error: fmError } = await supabase
-          .from('family_members')
-          .select('baby_id, role')
-          .eq('user_id', userId)
-          .eq('status', 'active')
-          .eq('deleted_at', null);
+    // ─── QUERY 2: Babies where user is parent2 ──────────────────────
+    try {
+      const { data, error } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent2_id', userId)
+        .eq('is_active', true);
 
-        if (fmError) {
-          console.error('[BabyContext] Family members query error:', fmError.message);
-        } else if (familyMembers && familyMembers.length > 0) {
-          // Get unique baby IDs from family members
-          const babyIds = familyMembers
-            .filter(fm => fm.baby_id)
-            .map(fm => fm.baby_id);
-          
-          if (babyIds.length > 0) {
-            const { data: babyData, error: babyError } = await supabase
-              .from('babies')
-              .select('*')
-              .in('id', babyIds)
-              .eq('is_active', true);
-
-            if (!babyError && babyData) {
-              babyData.forEach((baby: any) => {
-                if (!allBabies.some(b => b.id === baby.id)) {
-                  allBabies.push(baby);
-                  
-                  // Check if this is a viewer (not already assigned a role)
-                  if (!userRoles[baby.id]) {
-                    // Find the member's role
-                    const member = familyMembers.find(fm => fm.baby_id === baby.id);
-                    const role = member?.role === 'parent2' ? 'parent2' : 
-                                member?.role === 'guardian' ? 'guardian' : 'viewer';
-                    userRoles[baby.id] = role;
-                    userPermissions[baby.id] = {
-                      view: true,
-                      edit: role !== 'viewer',
-                      delete: role === 'parent1' || role === 'parent2',
-                      manage: role === 'parent1' || role === 'parent2',
-                      invite: role === 'parent1' || role === 'parent2',
-                      export: role === 'parent1' || role === 'parent2',
-                    };
-                  }
-                }
-              });
-              console.log(`[BabyContext] Found ${babyData.length} babies (family_members query)`);
-            }
+      if (error) {
+        console.error('[BabyContext] Parent2 query error:', error.message);
+      } else if (data) {
+        data.forEach((baby: any) => {
+          if (!allBabies.some(b => b.id === baby.id)) {
+            allBabies.push(baby);
+            userRoles[baby.id] = 'parent2';
+            userPermissions[baby.id] = {
+              view: true,
+              edit: true,
+              delete: true,
+              manage: true,
+              invite: true,
+              export: true,
+            };
           }
-        }
-      } catch (e) {
-        console.warn('[BabyContext] Family members query failed:', e);
+        });
+        console.log(`[BabyContext] Found ${data.length} babies (parent2 query)`);
       }
+    } catch (e) {
+      console.warn('[BabyContext] Parent2 query failed:', e);
+    }
 
-      console.log(`[BabyContext] Total babies found: ${allBabies.length}`);
+// ─── QUERY 3: Babies via family_members (guardians and viewers) ──
+// FIXED: Handle null properly for timestamp columns
+try {
+  // Use .is('deleted_at', null) instead of .eq('deleted_at', null)
+  const { data: familyMembers, error: fmError } = await supabase
+    .from('family_members')
+    .select('baby_id, role, relationship')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .is('deleted_at', null);  // ← FIXED: Use .is() for null
 
-      // ─── MAP TO PROFILES ─────────────────────────────────────────────
-      const babies: BabyProfile[] = allBabies.map(baby => 
-        mapBabyRowToProfile(baby, userRoles[baby.id] || 'viewer')
-      );
+  if (fmError) {
+    console.error('[BabyContext] Family members query error:', fmError.message);
+  } else if (familyMembers && familyMembers.length > 0) {
+    console.log(`[BabyContext] Found ${familyMembers.length} family memberships for user`);
 
-      // ─── CACHE BABIES ─────────────────────────────────────────────────
-      if (babies.length > 0) {
-        try {
-          await AsyncStorage.setItem(STORAGE_KEYS.BABIES_CACHE_KEY, JSON.stringify(babies));
-          await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC_KEY, Date.now().toString());
-        } catch (cacheError) {
-          console.warn('[BabyContext] Failed to cache babies:', cacheError);
-        }
-      } else {
-        await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
-      }
+    // Get unique baby IDs from family members
+    const babyIds = familyMembers
+      .filter((fm: any) => fm.baby_id)
+      .map((fm: any) => fm.baby_id);
+    
+    if (babyIds.length > 0) {
+      const { data: babyData, error: babyError } = await supabase
+        .from('babies')
+        .select('*')
+        .in('id', babyIds)
+        .eq('is_active', true);
 
-      // ─── DETERMINE CURRENT BABY ID ───────────────────────────────────
-      let currentId: string | null = null;
-      
-      if (babies.length > 0) {
-        // First try to get from app_settings
-        try {
-          const { data: settingsData } = await supabase
-            .from('app_settings')
-            .select('value')
-            .eq('key', 'current_baby_id')
-            .eq('user_id', userId)
-            .maybeSingle();
-          currentId = settingsData?.value || null;
-          console.log('[BabyContext] Current baby ID from app_settings:', currentId);
-        } catch (e) {
-          console.warn('[BabyContext] Failed to get current_baby_id:', e);
-        }
-        
-        // Validate and correct currentId
-        const isValidCurrent = currentId && babies.some(b => b.id === currentId);
-        
-        if (!isValidCurrent) {
-          // Prefer babies where user has higher role (parent1 > parent2 > guardian > viewer)
-          const prioritizedBabies = [...babies].sort((a, b) => {
-            const priority = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
-            return (priority[a.role as keyof typeof priority] || 3) - (priority[b.role as keyof typeof priority] || 3);
-          });
-          currentId = prioritizedBabies[0]?.id || babies[0].id;
-          console.log(`[BabyContext] Setting current baby to first: ${currentId}`);
-          
-          try {
-            await supabase
-              .from('app_settings')
-              .upsert({
-                key: 'current_baby_id',
-                value: currentId,
-                user_id: userId,
-                updated_at: new Date().toISOString(),
-              }, { onConflict: 'key, user_id' });
-          } catch (e) {
-            console.warn('[BabyContext] Failed to save current_baby_id:', e);
+      if (!babyError && babyData) {
+        babyData.forEach((baby: any) => {
+          if (!allBabies.some(b => b.id === baby.id)) {
+            allBabies.push(baby);
+            
+            // Find the member's role for this baby
+            const member = familyMembers.find((fm: any) => fm.baby_id === baby.id);
+            const role = member?.role || 'viewer';
+            userRoles[baby.id] = role;
+            
+            // Set permissions based on role
+            userPermissions[baby.id] = {
+              view: true,
+              edit: role === 'parent1' || role === 'parent2' || role === 'guardian',
+              delete: role === 'parent1' || role === 'parent2',
+              manage: role === 'parent1' || role === 'parent2',
+              invite: role === 'parent1' || role === 'parent2',
+              export: role === 'parent1' || role === 'parent2',
+            };
           }
-        }
-      } else {
-        currentId = null;
-        console.log('[BabyContext] No babies found for user');
-        
-        await supabase
-          .from('app_settings')
-          .delete()
-          .eq('key', 'current_baby_id')
-          .eq('user_id', userId);
-        
-        await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_BABY_ID);
+        });
+        console.log(`[BabyContext] Found ${babyData.length} babies (family_members query)`);
       }
+    }
+  }
+} catch (e) {
+  console.warn('[BabyContext] Family members query failed:', e);
+}
 
-      // Store in AsyncStorage
-      if (currentId) {
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
-      }
+    console.log(`[BabyContext] Total babies found: ${allBabies.length}`);
 
-      // Find the baby object
-      const babyToSet = currentId ? babies.find(b => b.id === currentId) || null : null;
+    // ─── MAP TO PROFILES ─────────────────────────────────────────────
+    const babies: BabyProfile[] = allBabies.map((baby: any) => 
+      mapBabyRowToProfile(baby, userRoles[baby.id] || 'viewer')
+    );
 
-      // ─── CHECK IF BABY WAS SKIPPED ──────────────────────────────────
-      let hasSkippedBaby = false;
+    // ─── CACHE BABIES ─────────────────────────────────────────────────
+    if (babies.length > 0) {
       try {
-        const { data: skipData } = await supabase
+        await AsyncStorage.setItem(STORAGE_KEYS.BABIES_CACHE_KEY, JSON.stringify(babies));
+        await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC_KEY, Date.now().toString());
+      } catch (cacheError) {
+        console.warn('[BabyContext] Failed to cache babies:', cacheError);
+      }
+    } else {
+      await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+    }
+
+    // ─── DETERMINE CURRENT BABY ID ───────────────────────────────────
+    let currentId: string | null = null;
+    
+    if (babies.length > 0) {
+      // First try to get from app_settings
+      try {
+        const { data: settingsData } = await supabase
           .from('app_settings')
           .select('value')
-          .eq('key', 'has_skipped_baby')
+          .eq('key', 'current_baby_id')
           .eq('user_id', userId)
           .maybeSingle();
-        hasSkippedBaby = skipData?.value === 'true';
+        currentId = settingsData?.value || null;
+        console.log('[BabyContext] Current baby ID from app_settings:', currentId);
       } catch (e) {
-        console.warn('[BabyContext] Failed to get has_skipped_baby:', e);
+        console.warn('[BabyContext] Failed to get current_baby_id:', e);
       }
-
-      if (!isMounted.current) {
-        loadInProgressRef.current = false;
-        return;
-      }
-
-      // ─── UPDATE STATE ─────────────────────────────────────────────────
-      console.log(`[BabyContext] Setting state: ${babies.length} babies, current: ${currentId}`);
       
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        babies,
-        currentBabyId: currentId,
-        currentBaby: babyToSet,
-        hasSkippedBaby,
-        lastSyncTime: Date.now(),
-        isInitialized: true,
-        userRoles,
-        userPermissions,
-      }));
-
-      // ─── BROADCAST CHANGE ──────────────────────────────────────────
-      setTimeout(() => {
-        broadcastBabyChange(currentId);
-      }, 100);
-
-      console.log('[BabyContext] loadBabies completed successfully');
-
-    } catch (error) {
-      console.error('[BabyContext] Error loading babies:', error);
+      // Validate and correct currentId
+      const isValidCurrent = currentId && babies.some(b => b.id === currentId);
       
-      // ─── TRY TO LOAD FROM CACHE ──────────────────────────────────────
-      try {
-        const cached = await AsyncStorage.getItem(STORAGE_KEYS.BABIES_CACHE_KEY);
-        if (cached) {
-          const cachedBabies = JSON.parse(cached);
-          console.log(`[BabyContext] Loaded ${cachedBabies.length} babies from cache`);
-          if (isMounted.current && cachedBabies.length > 0) {
-            const cachedBaby = cachedBabies.find((b: any) => b.id === state.currentBabyId) || cachedBabies[0] || null;
-            setState(prev => ({
-              ...prev,
-              isLoading: false,
-              babies: cachedBabies,
-              currentBaby: cachedBaby,
-              currentBabyId: cachedBaby?.id || null,
-              isInitialized: true,
-            }));
-          }
+      if (!isValidCurrent) {
+        // Prefer babies where user has higher role (parent1 > parent2 > guardian > viewer)
+        const prioritizedBabies = [...babies].sort((a, b) => {
+          const priority = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
+          return (priority[a.role as keyof typeof priority] || 3) - (priority[b.role as keyof typeof priority] || 3);
+        });
+        currentId = prioritizedBabies[0]?.id || babies[0].id;
+        console.log(`[BabyContext] Setting current baby to first: ${currentId}`);
+        
+        try {
+          await supabase
+            .from('app_settings')
+            .upsert({
+              key: 'current_baby_id',
+              value: currentId,
+              user_id: userId,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'key, user_id' });
+        } catch (e) {
+          console.warn('[BabyContext] Failed to save current_baby_id:', e);
         }
-      } catch (cacheError) {
-        console.warn('[BabyContext] Failed to load from cache:', cacheError);
       }
+    } else {
+      currentId = null;
+      console.log('[BabyContext] No babies found for user');
       
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
-      }
-    } finally {
-      loadInProgressRef.current = false;
+      await supabase
+        .from('app_settings')
+        .delete()
+        .eq('key', 'current_baby_id')
+        .eq('user_id', userId);
+      
+      await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_BABY_ID);
     }
-  }, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
+
+    // Store in AsyncStorage
+    if (currentId) {
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
+    }
+
+    // Find the baby object
+    const babyToSet = currentId ? babies.find(b => b.id === currentId) || null : null;
+
+    // ─── CHECK IF BABY WAS SKIPPED ──────────────────────────────────
+    let hasSkippedBaby = false;
+    try {
+      const { data: skipData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'has_skipped_baby')
+        .eq('user_id', userId)
+        .maybeSingle();
+      hasSkippedBaby = skipData?.value === 'true';
+    } catch (e) {
+      console.warn('[BabyContext] Failed to get has_skipped_baby:', e);
+    }
+
+    if (!isMounted.current) {
+      loadInProgressRef.current = false;
+      return;
+    }
+
+    // ─── UPDATE STATE ─────────────────────────────────────────────────
+    console.log(`[BabyContext] Setting state: ${babies.length} babies, current: ${currentId}`);
+    
+    setState(prev => ({
+      ...prev,
+      isLoading: false,
+      babies,
+      currentBabyId: currentId,
+      currentBaby: babyToSet,
+      hasSkippedBaby,
+      lastSyncTime: Date.now(),
+      isInitialized: true,
+      userRoles,
+      userPermissions,
+    }));
+
+    // ─── BROADCAST CHANGE ──────────────────────────────────────────
+    setTimeout(() => {
+      broadcastBabyChange(currentId);
+    }, 100);
+
+    console.log('[BabyContext] loadBabies completed successfully');
+
+  } catch (error) {
+    console.error('[BabyContext] Error loading babies:', error);
+    
+    // ─── TRY TO LOAD FROM CACHE ──────────────────────────────────────
+    try {
+      const cached = await AsyncStorage.getItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+      if (cached) {
+        const cachedBabies = JSON.parse(cached);
+        console.log(`[BabyContext] Loaded ${cachedBabies.length} babies from cache`);
+        if (isMounted.current && cachedBabies.length > 0) {
+          const cachedBaby = cachedBabies.find((b: any) => b.id === state.currentBabyId) || cachedBabies[0] || null;
+          setState(prev => ({
+            ...prev,
+            isLoading: false,
+            babies: cachedBabies,
+            currentBaby: cachedBaby,
+            currentBabyId: cachedBaby?.id || null,
+            isInitialized: true,
+          }));
+        }
+      }
+    } catch (cacheError) {
+      console.warn('[BabyContext] Failed to load from cache:', cacheError);
+    }
+    
+    if (isMounted.current) {
+      setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
+    }
+  } finally {
+    loadInProgressRef.current = false;
+  }
+}, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
 
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
