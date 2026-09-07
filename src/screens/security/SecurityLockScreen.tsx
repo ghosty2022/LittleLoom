@@ -1,4 +1,4 @@
-// screens/security/SecurityLockScreen.tsx - COMPLETE FIXED with custom modals
+// screens/security/SecurityLockScreen.tsx - COMPLETE FIXED with SweetAlert toasts
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -30,6 +30,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSecurity, hashAnswer } from '../../context/SecurityContext';
+import { useSweetAlert } from '../../components/SweetAlert';
 
 type SecurityLockScreenProps = NativeStackScreenProps<RootStackParamList, 'SecurityLock'>;
 
@@ -61,97 +62,6 @@ const getBiometricInfo = (types: LocalAuthentication.AuthenticationType[]): Biom
   }
   return { name: 'Biometric', icon: 'finger-print', label: 'Biometric' };
 };
-
-// ─── Custom Modal Component ────────────────────────────────────────────
-interface CustomModalProps {
-  visible: boolean;
-  onClose: () => void;
-  title: string;
-  message: string;
-  icon?: string;
-  iconColor?: string;
-  primaryAction?: { label: string; onPress: () => void };
-  secondaryAction?: { label: string; onPress: () => void };
-  isDark: boolean;
-  primaryColor: string;
-}
-
-const CustomModal = React.memo<CustomModalProps>(({
-  visible,
-  onClose,
-  title,
-  message,
-  icon = 'information-circle',
-  iconColor,
-  primaryAction,
-  secondaryAction,
-  isDark,
-  primaryColor,
-}) => {
-  const scale = useRef(new Animated.Value(0.8)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.parallel([
-        Animated.spring(scale, { toValue: 1, friction: 20, tension: 300, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(scale, { toValue: 0.8, duration: 150, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [visible]);
-
-  if (!visible) return null;
-
-  return (
-    <Pressable style={styles.customModalOverlay} onPress={onClose}>
-      <Animated.View
-        style={[
-          styles.customModalContent,
-          isDark && styles.customModalContentDark,
-          { transform: [{ scale }], opacity },
-        ]}
-      >
-        <BlurView
-          intensity={isDark ? 60 : 90}
-          style={StyleSheet.absoluteFill}
-          tint={isDark ? 'dark' : 'light'}
-        />
-        <View style={[styles.customModalIconWrap, { backgroundColor: `${iconColor || primaryColor}15` }]}>
-          <Ionicons name={icon as any} size={32} color={iconColor || primaryColor} />
-        </View>
-
-        <Text style={[styles.customModalTitle, isDark && styles.textLight]}>{title}</Text>
-        <Text style={[styles.customModalDesc, isDark && styles.textMuted]}>{message}</Text>
-
-        <View style={styles.customModalButtons}>
-          {secondaryAction && (
-            <TouchableOpacity
-              style={[styles.customModalSecondaryBtn, { borderColor: `${primaryColor}30`, borderWidth: 1 }]}
-              onPress={() => { secondaryAction.onPress(); onClose(); }}
-            >
-              <Text style={[styles.customModalSecondaryBtnText, { color: primaryColor }]}>
-                {secondaryAction.label}
-              </Text>
-            </TouchableOpacity>
-          )}
-          {primaryAction && (
-            <TouchableOpacity
-              style={[styles.customModalPrimaryBtn, { backgroundColor: primaryColor }]}
-              onPress={() => { primaryAction.onPress(); onClose(); }}
-            >
-              <Text style={styles.customModalPrimaryBtnText}>{primaryAction.label}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </Animated.View>
-    </Pressable>
-  );
-});
 
 const BiometricIcon = ({
   type,
@@ -202,17 +112,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const [verifyAnswers, setVerifyAnswers] = useState(['', '', '']);
   const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
 
-  // ─── Modal States ────────────────────────────────────────────────────
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalConfig, setModalConfig] = useState<{
-    title: string;
-    message: string;
-    icon?: string;
-    iconColor?: string;
-    primaryAction?: { label: string; onPress: () => void };
-    secondaryAction?: { label: string; onPress: () => void };
-  } | null>(null);
-
   const { signOut, userProfile } = useAuth();
   const {
     unlockApp,
@@ -231,62 +130,9 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const insets = useSafeAreaInsets();
-
-  // ─── Custom Modal Helpers ──────────────────────────────────────────────
-  const showModal = useCallback((config: {
-    title: string;
-    message: string;
-    icon?: string;
-    iconColor?: string;
-    primaryAction?: { label: string; onPress: () => void };
-    secondaryAction?: { label: string; onPress: () => void };
-  }) => {
-    setModalConfig(config);
-    setModalVisible(true);
-  }, []);
-
-  const hideModal = useCallback(() => {
-    setModalVisible(false);
-    setTimeout(() => setModalConfig(null), 300);
-  }, []);
-
-  const showToast = useCallback((title: string, message?: string) => {
-    showModal({
-      title,
-      message: message || '',
-      icon: 'information-circle',
-      iconColor: themeColors.primary,
-      primaryAction: { label: 'OK', onPress: hideModal },
-    });
-  }, [showModal, hideModal, themeColors.primary]);
-
-  const showError = useCallback((title: string, message?: string) => {
-    showModal({
-      title,
-      message: message || '',
-      icon: 'alert-circle',
-      iconColor: '#ef4444',
-      primaryAction: { label: 'OK', onPress: hideModal },
-    });
-  }, [showModal, hideModal]);
-
-  const showConfirm = useCallback((
-    title: string,
-    message: string,
-    onConfirm: () => void,
-    onCancel?: () => void,
-    confirmText: string = 'Confirm',
-    cancelText: string = 'Cancel'
-  ) => {
-    showModal({
-      title,
-      message,
-      icon: 'warning',
-      iconColor: '#f59e0b',
-      primaryAction: { label: confirmText, onPress: onConfirm },
-      secondaryAction: { label: cancelText, onPress: onCancel || hideModal },
-    });
-  }, [showModal, hideModal]);
+  
+  // ✅ Use SweetAlert
+  const sweetAlert = useSweetAlert();
 
   const availableMethods = getAvailableAuthMethods();
   const hasBiometric = availableMethods.hasBiometric || isBiometricHardwareAvailable;
@@ -336,7 +182,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   useEffect(() => {
     loadSecurityQuestions();
-    // Refresh biometric status on mount
     refreshBiometricStatus();
   }, [refreshBiometricStatus]);
 
@@ -355,7 +200,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   const verifySecurityAnswers = async () => {
     if (verifyAnswers.some(a => a.trim().length === 0)) {
-      showError('Incomplete', 'Please answer all questions');
+      sweetAlert.warning('Incomplete', 'Please answer all questions');
       return;
     }
 
@@ -371,7 +216,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       if (allCorrect.every(Boolean)) {
         triggerHaptic('success');
         setShowForgotPin(false);
-        showToast('Verified!', 'Redirecting to PIN reset...');
+        sweetAlert.success('Verified!', 'Redirecting to PIN reset...');
 
         setTimeout(() => {
           navigation.navigate('SecurityCenter', {
@@ -381,7 +226,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         }, 1500);
       } else {
         triggerHaptic('error');
-        showError('Incorrect', 'One or more answers are wrong. Try again.');
+        sweetAlert.error('Incorrect', 'One or more answers are wrong. Try again.');
         setVerifyAnswers(['', '', '']);
       }
     } finally {
@@ -426,7 +271,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     detectBiometricType();
   }, []);
 
-  // ─── FIXED: Auto-prompt biometric with better state handling ──────────
+  // ─── Auto-prompt biometric ──────────────────────────────────────
   useEffect(() => {
     if (!effectiveBiometricEnabled) return;
     if (!isBiometricHardwareAvailable) return;
@@ -435,7 +280,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
     const unsubscribe = navigation.addListener('focus', () => {
       hasAutoPrompted.current = false;
-      // Refresh biometric status when screen comes into focus
       refreshBiometricStatus();
     });
 
@@ -443,7 +287,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       clearTimeout(autoPromptTimer.current);
     }
 
-    // Delay auto-prompt to let UI settle
     autoPromptTimer.current = setTimeout(() => {
       if (
         isMounted.current &&
@@ -478,7 +321,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       resetUnlockLock();
       setShowForgotPin(false);
       setVerifyAnswers(['', '', '']);
-      // Refresh biometric status on focus
       refreshBiometricStatus();
     });
     return unsubscribe;
@@ -498,7 +340,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const handleLockout = useCallback(() => {
     setIsLockedOut(true);
     triggerHaptic('error');
-    showConfirm(
+    sweetAlert.confirm(
       'Too Many Attempts',
       'For security purposes, you need to sign out and sign in again.',
       async () => {
@@ -507,9 +349,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       },
       undefined,
       'Sign Out',
-      'Cancel'
+      'Cancel',
+      true // destructive
     );
-  }, [signOut, forceUnlock, triggerHaptic, showConfirm]);
+  }, [signOut, forceUnlock, triggerHaptic, sweetAlert]);
 
   const handlePinComplete = useCallback(
     async (completedPin: string) => {
@@ -534,13 +377,16 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             const remaining = MAX_ATTEMPTS - newAttempts;
             if (remaining <= 2) {
               triggerHaptic('warning');
-              showError('Incorrect PIN', `${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`);
+              sweetAlert.warning(
+                'Incorrect PIN',
+                `${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+              );
             }
           }
         } else {
           setAttempts(0);
           triggerHaptic('success');
-          showToast('Welcome Back!', `Good to see you, ${userName}`);
+          sweetAlert.success('Welcome Back!', `Good to see you, ${userName}`);
           await forceUnlock?.();
           dismissLockScreen();
         }
@@ -554,7 +400,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         }
       }
     },
-    [unlockApp, shake, attempts, isLockedOut, handleLockout, triggerHaptic, userName, showToast, showError, forceUnlock, dismissLockScreen]
+    [unlockApp, shake, attempts, isLockedOut, handleLockout, triggerHaptic, userName, sweetAlert, forceUnlock, dismissLockScreen]
   );
 
   const handleNumberPress = useCallback(
@@ -579,15 +425,13 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   }, [pin.length, isLoading, isLockedOut, triggerHaptic]);
 
-  // ─── FIXED: Biometric authentication with better state handling ──────
+  // ─── Biometric authentication ──────────────────────────────────
   const handleBiometricAuth = useCallback(async () => {
-    // First check if biometrics are available
     if (!isBiometricHardwareAvailable) {
       console.log('[SecurityLock] No biometric hardware');
       return;
     }
 
-    // Refresh biometric status before attempting
     await refreshBiometricStatus();
 
     if (!effectiveBiometricEnabled) {
@@ -600,7 +444,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       return;
     }
 
-    // Check if biometric is actually enrolled (for Android)
     let isEnrolled = isBiometricEnrolled;
     if (!isEnrolled && Platform.OS === 'android') {
       try {
@@ -623,7 +466,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
 
     if (!isEnrolled) {
-      showError('Biometric Not Set Up', 'Please set up biometrics in your device settings first.');
+      sweetAlert.warning(
+        'Biometric Not Set Up',
+        'Please set up biometrics in your device settings first.'
+      );
       refreshBiometricStatus();
       return;
     }
@@ -646,7 +492,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
       if (success) {
         triggerHaptic('success');
-        showToast('Welcome Back!', `Good to see you, ${userName}`);
+        sweetAlert.success('Welcome Back!', `Good to see you, ${userName}`);
         await forceUnlock?.();
         dismissLockScreen();
       } else {
@@ -656,7 +502,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     } catch (error) {
       console.error('[SecurityLock] Biometric error:', error);
       if (error instanceof Error && error.message.includes('not_enrolled')) {
-        showError('Biometric Not Set Up', 'Please set up biometrics in your device settings first.');
+        sweetAlert.warning(
+          'Biometric Not Set Up',
+          'Please set up biometrics in your device settings first.'
+        );
         refreshBiometricStatus();
       }
     } finally {
@@ -676,8 +525,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     shake,
     triggerHaptic,
     userName,
-    showToast,
-    showError,
+    sweetAlert,
     forceUnlock,
     dismissLockScreen,
     refreshBiometricStatus,
@@ -970,7 +818,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 style={[styles.unlockButton, { backgroundColor: colors.primary }]}
                 onPress={async () => {
                   await forceUnlock?.();
-                  showToast('Unlocked', 'Welcome back!');
+                  sweetAlert.success('Unlocked', 'Welcome back!');
                   dismissLockScreen();
                 }}
               >
@@ -1008,13 +856,14 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             <TouchableOpacity
               style={styles.emergencyButton}
               onPress={() => {
-                showConfirm(
+                sweetAlert.confirm(
                   'Sign Out',
                   'Are you sure you want to sign out?',
                   () => signOut(),
                   undefined,
                   'Sign Out',
-                  'Cancel'
+                  'Cancel',
+                  true
                 );
               }}
             >
@@ -1023,20 +872,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
           </View>
         </View>
       </LinearGradient>
-
-      {/* ─── Custom Modal ──────────────────────────────────────────────── */}
-      <CustomModal
-        visible={modalVisible}
-        onClose={hideModal}
-        title={modalConfig?.title || ''}
-        message={modalConfig?.message || ''}
-        icon={modalConfig?.icon}
-        iconColor={modalConfig?.iconColor}
-        primaryAction={modalConfig?.primaryAction}
-        secondaryAction={modalConfig?.secondaryAction}
-        isDark={isDark}
-        primaryColor={colors.primary}
-      />
     </View>
   );
 }
@@ -1332,88 +1167,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textDecorationLine: 'underline',
   },
-  // ─── Custom Modal Styles ──────────────────────────────────────────────
-  customModalOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    zIndex: 999,
-  },
-  customModalContent: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 28,
-    padding: 28,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 20,
-    overflow: 'hidden',
-  },
-  customModalContentDark: {
-    backgroundColor: 'rgba(26,26,46,0.95)',
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  customModalIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  customModalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    marginBottom: 8,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  customModalDesc: {
-    fontSize: 15,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-    paddingHorizontal: 8,
-  },
-  customModalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  customModalPrimaryBtn: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  customModalPrimaryBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  customModalSecondaryBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  customModalSecondaryBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  textLight: { color: '#ffffff' },
-  textMuted: { color: '#888' },
 });

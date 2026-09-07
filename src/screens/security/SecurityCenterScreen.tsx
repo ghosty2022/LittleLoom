@@ -1,6 +1,6 @@
-// screens/security/SecurityCenterScreen.tsx - COMPLETE FIXED
+// screens/security/SecurityCenterScreen.tsx - COMPLETE FIXED with SweetAlert toasts
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View, Alert } from 'react-native';
+import { Animated, ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSecurity } from '../../context/SecurityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -150,6 +151,9 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const { userProfile } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const insets = useSafeAreaInsets();
+  
+  // ✅ Use SweetAlert
+  const sweetAlert = useSweetAlert();
 
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
   const [storedQuestions, setStoredQuestions] = useState<SecurityQuestion[]>([]);
@@ -189,45 +193,12 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     };
   }, []);
 
-  // ─── Alert helpers ───────────────────────────────────────────────
-  const showToast = useCallback((title: string, message?: string) => {
-    Alert.alert(title, message || '');
-  }, []);
-
-  const showError = useCallback((title: string, message?: string) => {
-    Alert.alert(title, message || '');
-  }, []);
-
-  const showSuccess = useCallback((title: string, message?: string) => {
-    Alert.alert(title, message || '');
-  }, []);
-
-  const showConfirm = useCallback((
-    title: string,
-    message: string,
-    onConfirm: () => void,
-    onCancel?: () => void,
-    confirmText: string = 'Confirm',
-    cancelText: string = 'Cancel'
-  ) => {
-    Alert.alert(
-      title,
-      message,
-      [
-        { text: cancelText, style: 'cancel', onPress: onCancel },
-        { text: confirmText, style: 'destructive', onPress: onConfirm },
-      ]
-    );
-  }, []);
-
   // ─── FIXED: Biometric check with proper debounce ────────────────
   const [forceUpdate, setForceUpdate] = useState(false);
 
-  // Only check biometrics on mount with a delay, not on every focus
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
-        // Only check if not already checked recently
         await checkBiometricCapabilities();
         setForceUpdate(prev => !prev);
       } catch (error) {
@@ -235,7 +206,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       }
     };
 
-    // Initial check with delay
     if (biometricCheckTimer.current) {
       clearTimeout(biometricCheckTimer.current);
     }
@@ -245,10 +215,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       }
     }, 500);
 
-    // Only check on focus if the screen is actually visible and not already checking
     const unsubscribe = navigation.addListener('focus', () => {
       if (isMounted.current) {
-        // Refresh status but don't force a full check
         refreshBiometricStatus();
       }
     });
@@ -333,34 +301,34 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             setPinOld(completedPin);
             setPinStep('confirm');
             setPinInput('');
-            showSuccess('Verified', 'Now enter your new PIN');
+            sweetAlert.success('Verified', 'Now enter your new PIN');
           } else {
             shake();
             setPinInput('');
-            showError('Incorrect PIN', 'Please try again');
+            sweetAlert.error('Incorrect PIN', 'Please try again');
           }
         } else if (pinStep === 'confirm') {
           if (!pinConfirm) {
             setPinConfirm(completedPin);
             setPinInput('');
-            showToast('Confirm PIN', 'Re-enter to confirm');
+            sweetAlert.info('Confirm PIN', 'Re-enter to confirm');
           } else {
             if (completedPin === pinConfirm) {
               const success = await changePin(pinOld, completedPin);
               if (success) {
-                showSuccess('PIN Updated', 'Your PIN has been changed');
+                sweetAlert.success('PIN Updated', 'Your PIN has been changed');
                 setPinMode('verify');
                 setPinStep('success');
               } else {
                 shake();
-                showError('Failed', 'Could not update PIN');
+                sweetAlert.error('Failed', 'Could not update PIN');
                 resetPinState();
               }
             } else {
               shake();
               setPinInput('');
               setPinConfirm('');
-              showError('Mismatch', 'PINs do not match. Try again.');
+              sweetAlert.error('Mismatch', 'PINs do not match. Try again.');
             }
           }
         }
@@ -369,12 +337,12 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           setPinConfirm(completedPin);
           setPinStep('confirm');
           setPinInput('');
-          showToast('Confirm PIN', 'Re-enter your new PIN');
+          sweetAlert.info('Confirm PIN', 'Re-enter your new PIN');
         } else if (pinStep === 'confirm') {
           if (completedPin === pinConfirm) {
             const success = await setupPin(completedPin);
             if (success) {
-              showSuccess('PIN Set', 'Your PIN is now active');
+              sweetAlert.success('PIN Set', 'Your PIN is now active');
               setPinMode('verify');
               setPinStep('success');
               if (!checkHasSecurityQuestions()) {
@@ -385,47 +353,50 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
               }
             } else {
               shake();
-              showError('Failed', 'Could not set PIN');
+              sweetAlert.error('Failed', 'Could not set PIN');
               resetPinState();
             }
           } else {
             shake();
             setPinInput('');
             setPinConfirm('');
-            showError('Mismatch', 'PINs do not match. Try again.');
+            sweetAlert.error('Mismatch', 'PINs do not match. Try again.');
           }
         }
       } else if (pinMode === 'deactivate') {
         const valid = await verifyPin(completedPin);
         if (valid) {
-          showConfirm(
+          sweetAlert.confirm(
             'Deactivate PIN?',
             'You will only be able to use biometric unlock. Are you sure?',
             async () => {
               await clearPinOnly();
-              showSuccess('PIN Deactivated', 'Biometric is now your only unlock method');
+              sweetAlert.success('PIN Deactivated', 'Biometric is now your only unlock method');
               setActiveSection('dashboard');
             },
             () => {
               setPinMode('verify');
               setPinStep('success');
-            }
+            },
+            'Deactivate',
+            'Cancel',
+            true
           );
         } else {
           shake();
           setPinInput('');
-          showError('Incorrect PIN', 'Verification failed');
+          sweetAlert.error('Incorrect PIN', 'Verification failed');
         }
       } else if (pinMode === 'verify') {
         const valid = await verifyPin(completedPin);
         if (valid) {
-          showSuccess('Verified', 'PIN is correct');
+          sweetAlert.success('Verified', 'PIN is correct');
           setPinStep('success');
           setShowPinHint(true);
         } else {
           shake();
           setPinInput('');
-          showError('Incorrect', 'PIN does not match');
+          sweetAlert.error('Incorrect', 'PIN does not match');
         }
       }
     } finally {
@@ -450,11 +421,11 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
   const handleSaveQuestions = async () => {
     if (selectedQuestionIndices.some(q => q === -1)) {
-      showError('Incomplete', 'Select all 3 questions');
+      sweetAlert.warning('Incomplete', 'Select all 3 questions');
       return;
     }
     if (questionAnswers.some(a => a.trim().length < 2)) {
-      showError('Incomplete', 'All answers must be at least 2 characters');
+      sweetAlert.warning('Incomplete', 'All answers must be at least 2 characters');
       return;
     }
 
@@ -467,10 +438,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       const success = await saveSecurityQuestions(questionsData);
       if (success) {
         setStoredQuestions(await loadSecurityQuestions());
-        showSuccess('Saved', 'Security questions updated');
+        sweetAlert.success('Saved', 'Security questions updated');
         setActiveSection('dashboard');
       } else {
-        showError('Failed', 'Could not save questions');
+        sweetAlert.error('Failed', 'Could not save questions');
       }
     } finally {
       setIsLoading(false);
@@ -479,20 +450,20 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
   const handleVerifyAndEdit = async () => {
     if (verifyAnswers.some(a => a.trim().length === 0)) {
-      showError('Incomplete', 'Answer all questions');
+      sweetAlert.warning('Incomplete', 'Answer all questions');
       return;
     }
     setIsLoading(true);
     try {
       const valid = await verifySecurityAnswers(verifyAnswers);
       if (valid) {
-        showSuccess('Verified', 'You can now update your questions');
+        sweetAlert.success('Verified', 'You can now update your questions');
         setQuestionStep('edit');
         setSelectedQuestionIndices(storedQuestions.map((q, i) => SECURITY_QUESTIONS_POOL.indexOf(q.question)));
         setQuestionAnswers(['', '', '']);
       } else {
         shake();
-        showError('Incorrect', 'One or more answers are wrong');
+        sweetAlert.error('Incorrect', 'One or more answers are wrong');
         setVerifyAnswers(['', '', '']);
       }
     } finally {
@@ -500,37 +471,33 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
-  // ─── FIXED: Toggle biometric with proper state management ──────
+  // ─── Toggle biometric ──────────────────────────────────────────
   const handleToggleBiometric = useCallback(async () => {
     if (biometricLoading) return;
     setBiometricLoading(true);
     try {
-      // Refresh biometric status first
       await refreshBiometricStatus();
 
       const result = await toggleBiometric(!isBiometricEnabled);
       if (result) {
-        // Only refresh if the toggle succeeded
         await refreshBiometricStatus();
-        showSuccess(
+        sweetAlert.success(
           isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
           isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
         );
       } else {
-        showError('Failed', 'Could not change biometric setting. Please ensure biometrics are set up in your device settings.');
+        sweetAlert.error('Failed', 'Could not change biometric setting. Please ensure biometrics are set up in your device settings.');
       }
     } catch (error) {
       console.error('Biometric toggle error:', error);
-      showError('Error', 'An error occurred while changing biometric settings.');
+      sweetAlert.error('Error', 'An error occurred while changing biometric settings.');
     } finally {
       setBiometricLoading(false);
     }
-  }, [isBiometricEnabled, toggleBiometric, refreshBiometricStatus, showSuccess, showError, biometricLoading]);
+  }, [isBiometricEnabled, toggleBiometric, refreshBiometricStatus, sweetAlert, biometricLoading]);
 
-  // ─── FIXED: Only refresh biometrics when toggle completes ──────
   useEffect(() => {
     if (biometricLoading) return;
-    // Only refresh if we're on this screen and not loading
     if (activeSection === 'biometric' || activeSection === 'dashboard') {
       refreshBiometricStatus();
     }
@@ -539,7 +506,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const handleTimeoutChange = async (minutes: number) => {
     setSelectedTimeout(minutes);
     await updateAutoLockTimeout(minutes);
-    showSuccess('Updated', `Auto-lock set to ${formatTimeoutLabel(minutes)}`);
+    sweetAlert.success('Updated', `Auto-lock set to ${formatTimeoutLabel(minutes)}`);
   };
 
   const getSecurityScore = useCallback(() => {
@@ -560,8 +527,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const score = useMemo(() => getSecurityScore(), [getSecurityScore]);
   const scoreLabel = useMemo(() => getScoreLabel(score), [score, getScoreLabel]);
 
-  // ─── Render Sections ────────────────────────────────────────────
-
+  // ─── Render Dashboard ──────────────────────────────────────────
   const renderDashboard = () => (
     <AnimatedRe.View entering={FadeInUp.duration(500)} style={styles.section}>
       <View style={[styles.scoreCard, isDark && styles.scoreCardDark]}>
@@ -634,7 +600,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         }
         onPress={() => {
           if (!isBiometricHardwareAvailable || !isBiometricEnrolled) {
-            showError('Unavailable', 'Biometric authentication is not set up on this device');
+            sweetAlert.warning('Unavailable', 'Biometric authentication is not set up on this device');
             return;
           }
           setActiveSection('biometric');
@@ -689,7 +655,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         status={securitySettings.isAppLockEnabled ? 'active' : 'inactive'}
         onPress={async () => {
           await toggleAppLock(!securitySettings.isAppLockEnabled);
-          showSuccess(
+          sweetAlert.success(
             securitySettings.isAppLockEnabled ? 'App Lock Off' : 'App Lock On',
             securitySettings.isAppLockEnabled ? 'App will no longer lock on launch' : 'App will lock when launched'
           );
@@ -701,6 +667,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
+  // ─── Render PIN Section ────────────────────────────────────────
   const renderPinSection = () => {
     const isSetup = pinMode === 'create';
     const isChange = pinMode === 'change';
@@ -820,7 +787,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
                   setPinStep('input');
                   resetPinState();
                 } else {
-                  showError('Cannot Deactivate', 'Enable biometric unlock first');
+                  sweetAlert.warning('Cannot Deactivate', 'Enable biometric unlock first');
                 }
               }}
             >
@@ -833,6 +800,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   };
 
+  // ─── Render Questions Section ──────────────────────────────────
   const renderQuestionsSection = () => (
     <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
       <View style={styles.pinHeader}>
@@ -965,6 +933,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
+  // ─── Render Biometric Section ──────────────────────────────────
   const renderBiometricSection = () => {
     const bioName = getBiometricTypeName();
     const bioConfig = availableBiometricTypes[0];
@@ -1024,6 +993,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   };
 
+  // ─── Render Timeout Section ────────────────────────────────────
   const renderTimeoutSection = () => (
     <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
       <View style={styles.pinHeader}>

@@ -1,6 +1,6 @@
-// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED (No infinite loops)
+// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED with SweetAlert toasts
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View, Animated, Alert, Platform } from 'react-native';
+import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View, Animated, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { useSecurity, BiometricTypeConfig } from '../../context/SecurityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 
 type BiometricSetupScreenProps = NativeStackScreenProps<RootStackParamList, 'BiometricSetup'>;
@@ -119,12 +120,14 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
   
   const insets = useSafeAreaInsets();
+  
+  // ✅ Use SweetAlert
+  const sweetAlert = useSweetAlert();
 
   const userName = userProfile?.fullName || 'there';
   const successScale = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   
-  // ✅ FIXED: Track if we've already checked biometrics to prevent loops
   const hasCheckedBiometrics = useRef(false);
   const isMounted = useRef(true);
 
@@ -136,13 +139,12 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [navigation]);
 
-  // ─── FIXED: Biometric detection - ONLY RUNS ONCE ──────────────
+  // ─── Biometric detection - ONLY RUNS ONCE ──────────────────────
   useEffect(() => {
     let mounted = true;
     isMounted.current = true;
 
     const checkBiometrics = async () => {
-      // ✅ FIXED: Prevent multiple checks
       if (hasCheckedBiometrics.current) {
         console.log('[BiometricSetup] Already checked, skipping');
         return;
@@ -179,7 +181,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             console.warn('[BiometricSetup] supportedAuthenticationTypesAsync failed:', e);
           }
 
-          // For Android devices - try direct auth verification
           if (!isEnrolled) {
             console.log('[BiometricSetup] Trying direct auth verification...');
             try {
@@ -208,7 +209,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
         let configs: BiometricTypeConfig[] = [];
         
-        // Use context types if available, otherwise build manually
         if (contextTypes && contextTypes.length > 0) {
           configs = contextTypes;
         } else if (hasHardware) {
@@ -281,8 +281,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     };
 
     resetUnlockLock();
-    
-    // ✅ FIXED: Only check once with a small delay
     const timer = setTimeout(checkBiometrics, 300);
 
     return () => {
@@ -290,7 +288,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       isMounted.current = false;
       clearTimeout(timer);
     };
-  }, []); // ✅ Empty dependency array - ONLY RUNS ONCE
+  }, []);
 
   // Animate in
   useEffect(() => {
@@ -327,24 +325,22 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
   const handleEnableBiometric = async () => {
     if (!selectedType) {
-      Alert.alert('Error', 'Please select a biometric method');
+      sweetAlert.warning('Error', 'Please select a biometric method');
       return;
     }
 
     if (!hasHardware) {
-      Alert.alert(
+      sweetAlert.warning(
         'Not Available',
-        'This device does not support biometric authentication.',
-        [{ text: 'OK' }]
+        'This device does not support biometric authentication.'
       );
       return;
     }
 
     if (!isEnrolled) {
-      Alert.alert(
+      sweetAlert.warning(
         'Not Set Up',
-        'Please set up biometrics in your device settings first.',
-        [{ text: 'OK' }]
+        'Please set up biometrics in your device settings first.'
       );
       return;
     }
@@ -359,14 +355,14 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       if (enabled) {
         triggerHaptic('success');
         setSetupComplete(true);
-        Alert.alert('Enabled!', `${selectedType.name} is now active for ${userName}`);
+        sweetAlert.success('Enabled!', `${selectedType.name} is now active for ${userName}`);
       } else {
-        Alert.alert('Cancelled', 'Biometric setup was cancelled');
+        sweetAlert.info('Cancelled', 'Biometric setup was cancelled');
       }
     } catch (error) {
       console.error('Biometric error:', error);
       setIsScanning(false);
-      Alert.alert('Error', 'An error occurred during authentication');
+      sweetAlert.error('Error', 'An error occurred during authentication');
     }
   };
 

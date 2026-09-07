@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx - COMPLETE FIXED with modals
+// screens/main/MoreScreen.tsx - COMPLETE FIXED with proper biometric sync
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -64,6 +64,9 @@ import type { FamilyMember } from '../../types/roles';
 
 // ─── Services ─────────────────────────────────────────────────────
 import { createBackup } from '../../utils/backupService';
+
+// ─── SweetAlert ────────────────────────────────────────────────────
+import { useSweetAlert } from '../../components/SweetAlert';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
@@ -996,6 +999,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     getBiometricIcon,
     checkBiometricCapabilities,
     resetUnlockLock,
+    refreshBiometricStatus,
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
   const { guardians, parent2: parent2Profile, familyMembers } = useFamily();
@@ -1011,6 +1015,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   // ─── Supabase Hooks ─────────────────────────────────────────────
   const { isConnected, user: supabaseUser } = useSupabase();
   const { sync, isSyncing, getQueueStatus } = useOfflineSync();
+
+  // ─── SweetAlert ──────────────────────────────────────────────────
+  const sweetAlert = useSweetAlert();
 
   // ─── State ──────────────────────────────────────────────────────
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -1080,17 +1087,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   const handleAutoLockTimeout = useCallback(() => {
     if (!securitySettings.isAppLockEnabled) {
-      setModalConfig({
-        title: 'Enable App Lock First',
-        message: 'Turn on Auto-Lock App to set a timeout',
-        icon: 'information-circle',
-        iconColor: '#f59e0b',
-        primaryAction: { label: 'OK', onPress: () => {} },
-      });
+      sweetAlert.warning('Enable App Lock First', 'Turn on Auto-Lock App to set a timeout');
       return;
     }
     setShowTimeoutModal(true);
-  }, [securitySettings.isAppLockEnabled]);
+  }, [securitySettings.isAppLockEnabled, sweetAlert]);
 
   // ─── Handlers ──────────────────────────────────────────────────
 
@@ -1110,7 +1111,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       await Promise.all([
         loadBabies(),
         loadEntries?.(),
-        checkBiometricCapabilities(),
+        refreshBiometricStatus(),
       ]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -1118,9 +1119,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, loadEntries, checkBiometricCapabilities]);
+  }, [loadBabies, loadEntries, refreshBiometricStatus]);
 
-  // ─── FIXED: Handle Sign Out with Custom Modal ──────────────────
+  // ─── Handle Sign Out ────────────────────────────────────────────
   const handleLogout = useCallback(async () => {
     setShowLogoutModal(true);
   }, []);
@@ -1146,13 +1147,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         routes: [{ name: 'Login' as never }],
       });
       
-      setModalConfig({
-        title: 'Signed Out',
-        message: 'You have been signed out successfully',
-        icon: 'checkmark-circle',
-        iconColor: '#43e97b',
-        primaryAction: { label: 'OK', onPress: () => {} },
-      });
+      sweetAlert.success('Signed Out', 'You have been signed out successfully');
     } catch (error) {
       console.error('Sign out error:', error);
       
@@ -1165,26 +1160,14 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         console.error('Navigation reset error:', navError);
       }
       
-      setModalConfig({
-        title: 'Error',
-        message: 'Failed to sign out. Please try again.',
-        icon: 'alert-circle',
-        iconColor: '#ef4444',
-        primaryAction: { label: 'OK', onPress: () => {} },
-      });
+      sweetAlert.error('Error', 'Failed to sign out. Please try again.');
     }
-  }, [signOut, triggerHaptic, navigation]);
+  }, [signOut, triggerHaptic, navigation, sweetAlert]);
 
-  // ─── FIXED: Handle Sync with Cloud ─────────────────────────────
+  // ─── Handle Sync with Cloud ─────────────────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
-      setModalConfig({
-        title: 'Sync in Progress',
-        message: 'Please wait for the current sync to complete.',
-        icon: 'information-circle',
-        iconColor: '#4facfe',
-        primaryAction: { label: 'OK', onPress: () => {} },
-      });
+      sweetAlert.info('Sync in Progress', 'Please wait for the current sync to complete.');
       return;
     }
 
@@ -1208,115 +1191,100 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           console.warn('Backup creation error (non-critical):', backupError);
         }
         
-        setModalConfig({
-          title: '✅ Synced!',
-          message: 'Your data is now in sync with the cloud',
-          icon: 'checkmark-circle',
-          iconColor: '#43e97b',
-          primaryAction: { label: 'Great!', onPress: () => {} },
-        });
+        sweetAlert.success('✅ Synced!', 'Your data is now in sync with the cloud');
       } else {
         setSyncStatus('error');
-        setModalConfig({
-          title: '⚠️ Sync Issue',
-          message: 'Some items failed to sync. They will be retried.',
-          icon: 'warning',
-          iconColor: '#f59e0b',
-          primaryAction: { label: 'OK', onPress: () => {} },
-        });
+        sweetAlert.warning('⚠️ Sync Issue', 'Some items failed to sync. They will be retried.');
       }
     } catch (error) {
       console.error('Sync error:', error);
       setSyncStatus('error');
-      setModalConfig({
-        title: '❌ Sync Failed',
-        message: 'Could not sync data. Please try again.',
-        icon: 'alert-circle',
-        iconColor: '#ef4444',
-        primaryAction: { label: 'Try Again', onPress: () => handleSync() },
-        secondaryAction: { label: 'Cancel', onPress: () => {} },
-      });
+      sweetAlert.error('❌ Sync Failed', 'Could not sync data. Please try again.');
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [isSyncing, sync, triggerHaptic]);
+  }, [isSyncing, sync, triggerHaptic, sweetAlert]);
 
-  // ─── FIXED: Handle Biometric Toggle with Custom Modal ──────────
+  // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
+      // Check if biometric is available
+      await refreshBiometricStatus();
+      
       if (!hasBiometric) {
-        setModalConfig({
-          title: 'Biometric Not Available',
-          message: 'Please set up biometric authentication in your device settings first.',
-          icon: 'finger-print',
-          iconColor: '#f59e0b',
-          primaryAction: { label: 'OK', onPress: () => {} },
-        });
+        sweetAlert.warning(
+          'Biometric Not Available',
+          'Please set up biometric authentication in your device settings first.'
+        );
         return;
       }
+      
+      // Navigate to setup screen
       navigation.navigate('BiometricSetup');
     } else {
+      // Disable biometric - show confirmation
       setShowBiometricModal(true);
     }
-  }, [hasBiometric, navigation]);
+  }, [hasBiometric, navigation, refreshBiometricStatus, sweetAlert]);
 
+  // ─── FIXED: Confirm disable biometric ───────────────────────────
   const confirmDisableBiometric = useCallback(async () => {
     setShowBiometricModal(false);
     const success = await toggleBiometric(false);
-    if (!success) {
-      setModalConfig({
-        title: 'Error',
-        message: 'Could not disable biometric authentication.',
-        icon: 'alert-circle',
-        iconColor: '#ef4444',
-        primaryAction: { label: 'OK', onPress: () => {} },
-      });
+    if (success) {
+      // Force refresh the biometric status after toggle
+      await refreshBiometricStatus();
+      sweetAlert.success('Biometric Disabled', 'Biometric authentication has been turned off.');
+    } else {
+      sweetAlert.error('Error', 'Could not disable biometric authentication.');
     }
-  }, [toggleBiometric]);
+  }, [toggleBiometric, refreshBiometricStatus, sweetAlert]);
 
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
   }, [navigation]);
 
+  // ─── FIXED: Handle Lock Now - properly checks security methods ──
   const handleLockNow = useCallback(async () => {
-    const hasAnySecurity = availableMethods.hasPin || availableMethods.hasBiometric || securitySettings.isAppLockEnabled;
+    // Check if ANY security method is available (PIN, Biometric, or App Lock)
+    const hasAnySecurity = securitySettings.isPinEnabled || 
+                           (isBiometricEnabled && isBiometricHardwareAvailable && isBiometricEnrolled) || 
+                           securitySettings.isAppLockEnabled;
+    
     if (!hasAnySecurity) {
+      // Show the "No Security" modal with options
       setShowSecurityModal(true);
       return;
     }
+    
+    // Lock the app
     await lockApp();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
-    setModalConfig({
-      title: '🔒 App Locked',
-      message: 'LittleLoom has been secured.',
-      icon: 'lock-closed',
-      iconColor: '#43e97b',
-      primaryAction: { label: 'OK', onPress: () => {} },
-    });
-  }, [availableMethods, securitySettings.isAppLockEnabled, lockApp]);
+    sweetAlert.success('🔒 App Locked', 'LittleLoom has been secured.');
+    
+    // Navigate to the lock screen
+    navigation.navigate('SecurityLock');
+  }, [
+    securitySettings.isPinEnabled, 
+    securitySettings.isAppLockEnabled,
+    isBiometricEnabled, 
+    isBiometricHardwareAvailable, 
+    isBiometricEnrolled,
+    lockApp, 
+    navigation, 
+    sweetAlert
+  ]);
 
   const handleSelectTimeout = useCallback(async (minutes: number) => {
     setShowTimeoutModal(false);
     try {
       await updateAutoLockTimeout(minutes);
-      setModalConfig({
-        title: 'Timeout Updated',
-        message: `Auto-lock set to ${formatTimeout(minutes)}`,
-        icon: 'time',
-        iconColor: '#43e97b',
-        primaryAction: { label: 'OK', onPress: () => {} },
-      });
+      sweetAlert.success('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`);
     } catch (err) {
-      setModalConfig({
-        title: 'Update Failed',
-        message: 'Could not update auto-lock timeout.',
-        icon: 'alert-circle',
-        iconColor: '#ef4444',
-        primaryAction: { label: 'OK', onPress: () => {} },
-      });
+      sweetAlert.error('Update Failed', 'Could not update auto-lock timeout.');
     }
-  }, [updateAutoLockTimeout, formatTimeout]);
+  }, [updateAutoLockTimeout, formatTimeout, sweetAlert]);
 
   const handleSelectBabyFromModal = useCallback((baby: any) => {
     setShowBabyModal(false);
@@ -1344,22 +1312,20 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Effects ────────────────────────────────────────────────────
 
-  // ✅ FIXED: Only check biometrics once on mount, not on every focus
+  // ✅ FIXED: Refresh biometric status on mount and on focus
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
-        await checkBiometricCapabilities();
+        await refreshBiometricStatus();
       } catch (error) {
         console.error('Error checking biometrics:', error);
       }
     };
     
-    // Initial check with delay to avoid startup congestion
-    const timer = setTimeout(checkBiometrics, 1000);
+    const timer = setTimeout(checkBiometrics, 500);
     return () => clearTimeout(timer);
-  }, [checkBiometricCapabilities]);
+  }, [refreshBiometricStatus]);
 
-  // ✅ FIXED: Debounced focus loading
   useFocusEffect(
     useCallback(() => {
       if (focusLoadTimeout.current) {
@@ -1369,7 +1335,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
         loadBabies();
         loadEntries?.();
-        // Don't check biometrics on focus - only refresh status
+        // Refresh biometric status on focus
+        refreshBiometricStatus();
       }, 300);
       
       return () => {
@@ -1377,7 +1344,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           clearTimeout(focusLoadTimeout.current);
         }
       };
-    }, [loadBabies, loadEntries])
+    }, [loadBabies, loadEntries, refreshBiometricStatus])
   );
 
   useEffect(() => {
@@ -2112,13 +2079,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           label: 'Lock Anyway', 
           onPress: async () => {
             await lockApp(true);
-            setModalConfig({
-              title: '🔒 App Locked',
-              message: 'Locked without security. Tap unlock to enter.',
-              icon: 'lock-closed',
-              iconColor: '#f59e0b',
-              primaryAction: { label: 'OK', onPress: () => {} },
-            });
+            sweetAlert.info('🔒 App Locked', 'Locked without security. Tap unlock to enter.');
+            navigation.navigate('SecurityLock');
           }
         }}
       />
