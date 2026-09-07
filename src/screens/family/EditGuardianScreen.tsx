@@ -1336,32 +1336,29 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   };
 
-  // Updated persistPickedImage using new FileSystem API
+  // Completely rewritten persistPickedImage without using deprecated methods
   const persistPickedImage = async (sourceUri: string, memberId: string): Promise<string | null> => {
     try {
-      // Use the new FileSystem API with Directory class
-      const dirInfo = await FileSystem.getInfoAsync(GUARDIAN_IMAGES_DIR);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true });
-      }
-
+      // Use the newer FileSystem API with try-catch instead of getInfoAsync
       const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
-      const processedUri = `${GUARDIAN_IMAGES_DIR}${memberId}_${Date.now()}.${safeExt}`;
+      const filename = `${memberId}_${Date.now()}.${safeExt}`;
+      const processedUri = `${GUARDIAN_IMAGES_DIR}${filename}`;
 
-      // Use the new FileSystem API - copy the file
+      // Try to create directory - it will fail if exists, that's fine
+      try {
+        await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true });
+      } catch (dirError) {
+        // Directory already exists or other error - continue
+      }
+
+      // Copy the file
       await FileSystem.copyAsync({
         from: sourceUri,
         to: processedUri,
       });
 
-      // Check if file exists using the new API
-      const fileInfo = await FileSystem.getInfoAsync(processedUri);
-      if (!fileInfo.exists) {
-        console.error('[persistPickedImage] File not found after write:', processedUri);
-        return null;
-      }
-
+      // Return the URI - assume it worked since no error was thrown
       return processedUri;
     } catch (error) {
       console.error('[persistPickedImage] Failed to persist image:', error);

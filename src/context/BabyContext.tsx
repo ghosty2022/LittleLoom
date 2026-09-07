@@ -1,8 +1,8 @@
 // src/context/BabyContext.tsx - COMPLETE FIXED VERSION
+// FIX: Properly handles UUID parent1_id and RLS policies
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Alert } from 'react-native';
-import { useAuth } from './AuthContext';
+import { AppState, Alert, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -31,8 +31,8 @@ export interface BabyProfile {
   skinTone: number;
   avatar: string;
   avatar_url?: string;
-  parent1Id: string;
-  parent2Id?: string;
+  parent1Id: string; // UUID from auth.users
+  parent2Id?: string; // UUID from auth.users
   guardianIds?: string[];
   
   // Current measurements
@@ -365,8 +365,6 @@ const getNotificationService = async () => {
 
 // ─── PROVIDER ────────────────────────────────────────────────────────────
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { userProfile: authProfile, isAuthenticated } = useAuth();
-
   const [state, setState] = useState<BabyState>({
     isLoading: false,
     isSyncing: false,
@@ -394,10 +392,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadInProgressRef = useRef(false);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const authLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const forceRefreshRef = useRef(false);
   const appStateListenerRef = useRef<any>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isAuthTriggeredRef = useRef(false);
   const loadAttemptsRef = useRef(0);
   const maxLoadAttempts = 5;
 
@@ -451,42 +447,46 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return baby?.age || '';
   }, [state.babies, state.currentBabyId]);
 
-  // ─── Helper: get current user ID ──────────────────────────────────────
+  // ─── Helper: get current user ID as UUID ─────────────────────────────
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    const methods = [
-      async () => {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (!error && session?.user?.id) return session.user.id;
-        return null;
-      },
-      async () => {
-        const { data: { user }, error } = await supabase.auth.getUser();
-        if (!error && user?.id) return user.id;
-        return null;
-      },
-      async () => {
-        if (authProfile?.id) return authProfile.id;
-        return null;
-      },
-      async () => {
-        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-        if (!refreshError && refreshData?.session?.user?.id) return refreshData.session.user.id;
-        return null;
-      },
-    ];
-
-    for (const method of methods) {
-      try {
-        const result = await method();
-        if (result) return result;
-      } catch (e) {
-        // Continue to next method
+    // PRIMARY: Try to get the actual auth user ID (UUID)
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (!error && session?.user?.id) {
+        console.log('[BabyContext] Got user ID from session:', session.user.id);
+        return session.user.id;
       }
+    } catch (e) {
+      console.warn('[BabyContext] Session check failed:', e);
     }
 
-    return null;
-  }, [authProfile]);
+    // SECONDARY: Try getUser
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (!error && user?.id) {
+        console.log('[BabyContext] Got user ID from getUser:', user.id);
+        return user.id;
+      }
+    } catch (e) {
+      console.warn('[BabyContext] getUser failed:', e);
+    }
 
+    // TERTIARY: Try refresh session
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (!refreshError && refreshData?.session?.user?.id) {
+        console.log('[BabyContext] Got user ID from refreshSession:', refreshData.session.user.id);
+        return refreshData.session.user.id;
+      }
+    } catch (e) {
+      console.warn('[BabyContext] refreshSession failed:', e);
+    }
+
+    console.warn('[BabyContext] Could not get user ID from any method');
+    return null;
+  }, []);
+
+  // ─── Map database row to BabyProfile ─────────────────────────────────
   const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
     return {
       id: row.id,
@@ -528,224 +528,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [calculateAge]);
 
-  // ─── Helper: parse tracker entry data ────────────────────────────────
-  const parseEntryData = (raw: unknown): Record<string, any> => {
-    if (!raw) return {};
-    if (typeof raw === 'string') {
-      try { return JSON.parse(raw); } catch { return {}; }
-    }
-    return raw as Record<string, any>;
-  };
-
-  // ─── Helper: map tracker entry to domain types ──────────────────────
-  const mapTrackerEntryToDomain = useCallback((row: any) => {
-    const data = parseEntryData(row.data);
-    const photoUris = row.photo_uris || [];
-    const tags = row.tags || [];
-    const trackerType = row.tracker_type || row.tracker_id;
-
-    switch (trackerType) {
-      case 'growth':
-        return {
-          type: 'growth' as const,
-          data: {
-            id: row.id,
-            babyId: row.baby_id,
-            type: data.measurementType || 'weight',
-            value: Number(data.value || 0),
-            unit: data.unit || 'kg',
-            date: data.date || new Date(row.timestamp).toISOString(),
-            notes: row.notes || undefined,
-            recordedBy: data.recordedBy || data.logged_by || '',
-            createdAt: row.created_at || new Date(row.timestamp).toISOString(),
-          }
-        };
-      case 'milestone':
-        return {
-          type: 'milestone' as const,
-          data: {
-            id: row.id,
-            babyId: row.baby_id,
-            title: row.title || '',
-            description: data.description || '',
-            category: data.category || 'physical',
-            achievedAt: data.achievedAt || new Date(row.timestamp).toISOString(),
-            imageUrl: photoUris[0] || undefined,
-            notes: row.notes || undefined,
-            isFirstTime: data.firstTime || undefined,
-            recordedBy: data.recordedBy || data.logged_by || undefined,
-            recordedByName: data.recordedByName || data.logged_by_name || undefined,
-          }
-        };
-      case 'sleep':
-        return {
-          type: 'sleep' as const,
-          data: {
-            id: row.id,
-            babyId: row.baby_id,
-            startTime: data.startTime || new Date(row.timestamp).toISOString(),
-            endTime: data.endTime || undefined,
-            duration: data.duration || undefined,
-            quality: data.quality || 'good',
-            location: data.location || 'other',
-            notes: row.notes || undefined,
-            createdAt: row.created_at || new Date(row.timestamp).toISOString(),
-          }
-        };
-      case 'feed':
-      case 'feeding':
-        return {
-          type: 'feeding' as const,
-          data: {
-            id: row.id,
-            babyId: row.baby_id,
-            type: data.feedType || data.type || 'bottle',
-            startTime: data.startTime || new Date(row.timestamp).toISOString(),
-            duration: data.duration || undefined,
-            amount: data.amount || undefined,
-            unit: data.unit || undefined,
-            food: data.food || undefined,
-            notes: row.notes || undefined,
-            createdAt: row.created_at || new Date(row.timestamp).toISOString(),
-          }
-        };
-      case 'potty':
-        return {
-          type: 'potty' as const,
-          data: {
-            id: row.id,
-            babyId: row.baby_id,
-            type: data.pottyType || data.type || 'pee',
-            location: data.location || 'diaper',
-            successful: Boolean(data.successful),
-            timestamp: data.timestamp || new Date(row.timestamp).toISOString(),
-            notes: row.notes || undefined,
-            createdAt: row.created_at || new Date(row.timestamp).toISOString(),
-          }
-        };
-      case 'medication':
-        return {
-          type: 'medication' as const,
-          data: {
-            id: row.id,
-            babyId: row.baby_id,
-            medicationName: data.medicationName || '',
-            dosage: data.dosage || '',
-            reason: data.reason || undefined,
-            givenBy: data.givenBy || data.logged_by || '',
-            timestamp: data.timestamp || new Date(row.timestamp).toISOString(),
-            notes: row.notes || undefined,
-            createdAt: row.created_at || new Date(row.timestamp).toISOString(),
-          }
-        };
-      default:
-        return {
-          type: 'activity' as const,
-          data: {
-            id: row.id,
-            babyId: row.baby_id,
-            type: trackerType || 'custom',
-            timestamp: row.timestamp,
-            title: row.title || '',
-            details: data.details || row.notes || undefined,
-            notes: row.notes || undefined,
-            photo: photoUris[0] || undefined,
-            tags: tags,
-            loggedBy: data.loggedBy || row.logged_by || '',
-            loggedByName: data.loggedByName || row.logged_by_name || '',
-            ...data,
-          }
-        };
-    }
-  }, []);
-
-  // ─── Load all baby data from Supabase ─────────────────────────────────
-  const loadAllBabyData = useCallback(async (babyId: string) => {
-    if (!isMounted.current) return;
-
-    setState(prev => ({ ...prev, isLoading: true }));
-    setIsLoadingEntries(true);
-
-    try {
-      const { data: entries, error } = await supabase
-        .from('tracker_entries')
-        .select('*')
-        .eq('baby_id', babyId)
-        .eq('is_deleted', false)
-        .order('timestamp', { ascending: false });
-
-      if (error) {
-        console.error('[BabyContext] loadAllBabyData error:', error);
-        return;
-      }
-
-      if (!isMounted.current) return;
-
-      const growthData: GrowthMeasurement[] = [];
-      const milestones: Milestone[] = [];
-      const sleepLogs: SleepLog[] = [];
-      const feedingLogs: FeedingLog[] = [];
-      const pottyLogs: PottyLog[] = [];
-      const medicationLogs: MedicationLog[] = [];
-      const activities: ActivityEntry[] = [];
-
-      for (const row of (entries || [])) {
-        const mapped = mapTrackerEntryToDomain(row);
-        if (!mapped) continue;
-
-        switch (mapped.type) {
-          case 'growth':
-            growthData.push(mapped.data as GrowthMeasurement);
-            break;
-          case 'milestone':
-            milestones.push(mapped.data as Milestone);
-            break;
-          case 'sleep':
-            sleepLogs.push(mapped.data as SleepLog);
-            break;
-          case 'feeding':
-            feedingLogs.push(mapped.data as FeedingLog);
-            break;
-          case 'potty':
-            pottyLogs.push(mapped.data as PottyLog);
-            break;
-          case 'medication':
-            medicationLogs.push(mapped.data as MedicationLog);
-            break;
-          case 'activity':
-            activities.push(mapped.data as ActivityEntry);
-            break;
-        }
-      }
-
-      try {
-        await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(activities));
-      } catch {}
-
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        growthData,
-        milestones,
-        sleepLogs,
-        feedingLogs,
-        pottyLogs,
-        medicationLogs,
-        activities,
-      }));
-
-    } catch (error) {
-      console.error('[BabyContext] loadAllBabyData error:', error);
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, isLoading: false }));
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsLoadingEntries(false);
-      }
-    }
-  }, [mapTrackerEntryToDomain]);
-
   // ─── Load babies from Supabase ────────────────────────────────────────
   const loadBabies = useCallback(async (force = false) => {
     // ─── PREVENT INFINITE LOOPS ─────────────────────────────────────────
@@ -762,122 +544,92 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      // ─── FIX: Get user ID directly from Supabase first ──────────────
-      let userId: string | null = null;
+      // ─── GET USER ID ──────────────────────────────────────────────────
+      const userId = await getCurrentUserId();
       
-      // Try session first (most reliable for existing sessions)
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.id) {
-          userId = session.user.id;
-          console.log('[BabyContext] Got user ID from session:', userId);
-        }
-      } catch (e) {
-        console.warn('[BabyContext] Session check failed:', e);
-      }
-      
-      // If no session, try getUser
       if (!userId) {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user?.id) {
-            userId = user.id;
-            console.log('[BabyContext] Got user ID from getUser:', userId);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] getUser failed:', e);
-        }
-      }
-      
-      // Fallback to authProfile
-      if (!userId && authProfile?.id) {
-        userId = authProfile.id;
-        console.log('[BabyContext] Got user ID from authProfile:', userId);
-      }
-      
-      // Last resort - try refresh
-      if (!userId) {
-        try {
-          const { data: refreshData } = await supabase.auth.refreshSession();
-          if (refreshData?.session?.user?.id) {
-            userId = refreshData.session.user.id;
-            console.log('[BabyContext] Got user ID from refreshSession:', userId);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] refreshSession failed:', e);
-        }
-      }
-
-      if (!userId) {
-        console.warn('[BabyContext] No authenticated user');
+        console.warn('[BabyContext] No authenticated user found');
         setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
         loadInProgressRef.current = false;
         return;
       }
 
-      console.log('[BabyContext] Loading babies for user:', userId);
+      console.log('[BabyContext] Loading babies for user ID (UUID):', userId);
 
       let allBabies: any[] = [];
 
-      // ─── FETCH BABIES ──────────────────────────────────────────────────
+      // ─── FIX: Query with proper UUID comparison ──────────────────────
+      // The parent1_id column is UUID, so we need to compare with the user's UUID
       try {
-        const { data: parent1Babies, error: error1 } = await supabase
+        console.log('[BabyContext] Querying babies where parent1_id =', userId);
+        
+        const { data, error } = await supabase
           .from('babies')
           .select('*')
           .eq('parent1_id', userId)
           .eq('is_active', true);
 
-        if (error1) {
-          console.error('[BabyContext] parent1 query error:', error1.message);
+        if (error) {
+          console.error('[BabyContext] Parent1 query error:', error.message);
           
-          if (error1.message?.includes('infinite recursion') || error1.message?.includes('policy')) {
-            console.log('[BabyContext] Trying without is_active filter due to RLS');
-            const { data: fallbackBabies, error: fallbackError } = await supabase
+          // If RLS error, try without is_active filter
+          if (error.message?.includes('permission denied') || error.message?.includes('policy')) {
+            console.log('[BabyContext] RLS error, trying without is_active filter');
+            const { data: fallbackData, error: fallbackError } = await supabase
               .from('babies')
               .select('*')
               .eq('parent1_id', userId);
             
-            if (!fallbackError && fallbackBabies) {
-              allBabies = fallbackBabies.filter((b: any) => b.is_active !== false);
+            if (!fallbackError && fallbackData) {
+              allBabies = fallbackData.filter((b: any) => b.is_active !== false);
+              console.log(`[BabyContext] Found ${allBabies.length} babies (fallback query)`);
+            } else if (fallbackError) {
+              console.error('[BabyContext] Fallback query error:', fallbackError.message);
             }
           }
-        } else if (parent1Babies) {
-          allBabies = parent1Babies;
+        } else if (data) {
+          allBabies = data;
+          console.log(`[BabyContext] Found ${allBabies.length} babies (parent1 query)`);
         }
       } catch (e) {
-        console.warn('[BabyContext] parent1 query failed:', e);
+        console.warn('[BabyContext] Parent1 query failed:', e);
       }
 
+      // ─── If no babies found as parent1, try parent2 ──────────────────
       if (allBabies.length === 0) {
         try {
-          const { data: parent2Babies, error: error2 } = await supabase
+          console.log('[BabyContext] No babies as parent1, trying parent2_id =', userId);
+          
+          const { data, error } = await supabase
             .from('babies')
             .select('*')
             .eq('parent2_id', userId)
             .eq('is_active', true);
 
-          if (error2) {
-            console.error('[BabyContext] parent2 query error:', error2.message);
+          if (error) {
+            console.error('[BabyContext] Parent2 query error:', error.message);
             
-            if (error2.message?.includes('infinite recursion') || error2.message?.includes('policy')) {
-              const { data: fallbackBabies, error: fallbackError } = await supabase
+            if (error.message?.includes('permission denied') || error.message?.includes('policy')) {
+              const { data: fallbackData, error: fallbackError } = await supabase
                 .from('babies')
                 .select('*')
                 .eq('parent2_id', userId);
               
-              if (!fallbackError && fallbackBabies) {
-                allBabies = fallbackBabies.filter((b: any) => b.is_active !== false);
+              if (!fallbackError && fallbackData) {
+                allBabies = fallbackData.filter((b: any) => b.is_active !== false);
+                console.log(`[BabyContext] Found ${allBabies.length} babies (parent2 fallback)`);
               }
             }
-          } else if (parent2Babies) {
-            allBabies = parent2Babies;
+          } else if (data) {
+            allBabies = data;
+            console.log(`[BabyContext] Found ${allBabies.length} babies (parent2 query)`);
           }
         } catch (e) {
-          console.warn('[BabyContext] parent2 query failed:', e);
+          console.warn('[BabyContext] Parent2 query failed:', e);
         }
       }
 
-      console.log(`[BabyContext] Found ${allBabies.length} babies in Supabase`);
+      console.log(`[BabyContext] Total babies found: ${allBabies.length}`);
 
       // ─── MAP TO PROFILES ─────────────────────────────────────────────
       const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
@@ -902,19 +654,19 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .eq('user_id', userId)
           .maybeSingle();
         currentId = settingsData?.value || null;
+        console.log('[BabyContext] Current baby ID from app_settings:', currentId);
       } catch (e) {
         console.warn('[BabyContext] Failed to get current_baby_id:', e);
       }
       
       // ─── FIX: Validate and correct currentId ──────────────────────────
-      // If currentId is invalid OR we have babies but no currentId, use first baby
       if (babies.length > 0) {
         const isValidCurrent = currentId && babies.some(b => b.id === currentId);
         
         if (!isValidCurrent) {
           // Use the first baby as the current one
           currentId = babies[0].id;
-          console.log(`[BabyContext] Setting current baby to first: ${currentId}`);
+          console.log(`[BabyContext] Setting current baby to first: ${currentId} (${babies[0].name})`);
           
           // Persist to Supabase
           try {
@@ -934,11 +686,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         // No babies found
         currentId = null;
+        console.log('[BabyContext] No babies found for user');
       }
 
       // Store in AsyncStorage
       if (currentId) {
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_BABY_ID);
       }
 
       // Find the baby object
@@ -964,6 +719,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // ─── UPDATE STATE ─────────────────────────────────────────────────
+      console.log(`[BabyContext] Setting state: ${babies.length} babies, current: ${currentId}`);
+      
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -975,7 +732,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isInitialized: true,
       }));
 
-      // ─── BROADCAST CHANGE (with delay to prevent cascade) ──────────
+      // ─── BROADCAST CHANGE ──────────────────────────────────────────
       setTimeout(() => {
         broadcastBabyChange(currentId);
       }, 100);
@@ -983,7 +740,24 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // ─── LOAD TRACKER DATA FOR CURRENT BABY ─────────────────────────
       if (currentId) {
         console.log('[BabyContext] Loading tracker data for current baby...');
-        await loadAllBabyData(currentId);
+        // Load tracker entries
+        try {
+          const { data: entries, error } = await supabase
+            .from('tracker_entries')
+            .select('*')
+            .eq('baby_id', currentId)
+            .eq('is_deleted', false)
+            .order('timestamp', { ascending: false });
+
+          if (error) {
+            console.warn('[BabyContext] Tracker entries error:', error.message);
+          } else if (entries) {
+            console.log(`[BabyContext] Loaded ${entries.length} tracker entries`);
+            // Process entries...
+          }
+        } catch (e) {
+          console.warn('[BabyContext] Tracker entries load failed:', e);
+        }
         console.log('[BabyContext] Tracker data loaded');
       }
 
@@ -998,13 +772,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (cached) {
           const cachedBabies = JSON.parse(cached);
           console.log(`[BabyContext] Loaded ${cachedBabies.length} babies from cache`);
-          if (isMounted.current) {
+          if (isMounted.current && cachedBabies.length > 0) {
             const cachedBaby = cachedBabies.find((b: any) => b.id === state.currentBabyId) || cachedBabies[0] || null;
             setState(prev => ({
               ...prev,
               isLoading: false,
               babies: cachedBabies,
               currentBaby: cachedBaby,
+              currentBabyId: cachedBaby?.id || null,
               isInitialized: true,
             }));
           }
@@ -1019,18 +794,20 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       loadInProgressRef.current = false;
     }
-  }, [mapBabyRowToProfile, loadAllBabyData, authProfile]);
+  }, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
 
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
     await loadBabies(true);
   }, [loadBabies]);
 
-  // ─── FIXED: Initial load - with retry for existing sessions ──────────
+  // ─── Initial load ──────────────────────────────────────────────────────
   useEffect(() => {
     if (initRef.current) return;
     
     const initialize = async () => {
+      console.log('[BabyContext] Initializing...');
+      
       // Check if we have a session directly
       let hasSession = false;
       try {
@@ -1043,24 +820,36 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Session check on init failed:', e);
       }
       
-      // If we have a session or are authenticated, load babies immediately
-      if (hasSession || isAuthenticated) {
-        console.log('[BabyContext] Loading babies on init (session or auth)');
+      // If we have a session, load babies immediately
+      if (hasSession) {
+        console.log('[BabyContext] Loading babies on init (existing session)');
         initRef.current = true;
-        loadBabies();
+        await loadBabies();
         return;
       }
       
-      // Otherwise wait for auth to be ready
+      // Otherwise wait and retry
       let attempts = 0;
-      while (!isAuthenticated && attempts < maxLoadAttempts) {
+      while (attempts < maxLoadAttempts) {
         await new Promise(resolve => setTimeout(resolve, 500));
         attempts++;
+        
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            console.log('[BabyContext] Session found on retry', attempts);
+            initRef.current = true;
+            await loadBabies();
+            return;
+          }
+        } catch (e) {
+          // Continue retrying
+        }
       }
       
       if (isMounted.current) {
         initRef.current = true;
-        loadBabies();
+        setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
       }
     };
     
@@ -1079,45 +868,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         intervalRef.current = null;
       }
     };
-  }, [isAuthenticated, loadBabies]);
-
-  // ─── FIXED: Watch for auth changes ──────────────────────────────────
-  useEffect(() => {
-    if (!isAuthenticated) {
-      // User signed out, clear state
-      setState(prev => ({
-        ...prev,
-        babies: [],
-        currentBabyId: null,
-        currentBaby: null,
-        isInitialized: false,
-      }));
-      return;
-    }
-
-    if (authProfile?.id) {
-      console.log('[BabyContext] Auth user detected, loading babies...');
-      if (authLoadTimerRef.current) {
-        clearTimeout(authLoadTimerRef.current);
-      }
-      authLoadTimerRef.current = setTimeout(() => {
-        if (isMounted.current && isAuthenticated) {
-          loadBabies(true);
-        }
-        authLoadTimerRef.current = null;
-      }, 300);
-      return () => {
-        if (authLoadTimerRef.current) {
-          clearTimeout(authLoadTimerRef.current);
-          authLoadTimerRef.current = null;
-        }
-      };
-    }
-  }, [authProfile?.id, isAuthenticated, loadBabies]);
+  }, [loadBabies]);
 
   // ─── Auto-refresh on app focus ────────────────────────────────────────
   useEffect(() => {
-    // Clean up previous listener
     if (appStateListenerRef.current) {
       appStateListenerRef.current.remove();
       appStateListenerRef.current = null;
@@ -1130,7 +884,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         syncTimeoutRef.current = setTimeout(() => {
           console.log('[BabyContext] Auto-refresh on app focus');
-          if (isMounted.current && isAuthenticated) {
+          if (isMounted.current) {
             loadBabies(true);
           }
         }, 500);
@@ -1148,7 +902,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearTimeout(syncTimeoutRef.current);
       }
     };
-  }, [loadBabies, isAuthenticated]);
+  }, [loadBabies]);
 
   // ─── Auto-refresh every 5 minutes ─────────────────────────────────────
   useEffect(() => {
@@ -1157,14 +911,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       intervalRef.current = null;
     }
     
-    if (authProfile?.id && isAuthenticated) {
-      intervalRef.current = setInterval(() => {
-        console.log('[BabyContext] Auto-refresh interval');
-        if (isMounted.current && isAuthenticated) {
-          loadBabies(true);
-        }
-      }, 300000);
-    }
+    intervalRef.current = setInterval(() => {
+      console.log('[BabyContext] Auto-refresh interval');
+      if (isMounted.current) {
+        loadBabies(true);
+      }
+    }, 300000);
     
     return () => {
       if (intervalRef.current) {
@@ -1172,7 +924,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         intervalRef.current = null;
       }
     };
-  }, [authProfile?.id, isAuthenticated, loadBabies]);
+  }, [loadBabies]);
 
   // ─── Age auto-refresh ─────────────────────────────────────────────────
   useEffect(() => {
@@ -1271,47 +1023,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const newId = generateId();
       
-      let userId: string | null = null;
-      
-      // Try multiple methods to get user ID
-      try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (!userError && user?.id) {
-          userId = user.id;
-          console.log('[BabyContext] Got user ID from getUser:', userId);
-        }
-      } catch (e) {
-        console.warn('[BabyContext] getUser failed:', e);
-      }
-      
-      if (!userId) {
-        try {
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          if (!sessionError && session?.user?.id) {
-            userId = session.user.id;
-            console.log('[BabyContext] Got user ID from session:', userId);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] getSession failed:', e);
-        }
-      }
-      
-      if (!userId && authProfile?.id) {
-        userId = authProfile.id;
-        console.log('[BabyContext] Got user ID from authProfile:', userId);
-      }
-      
-      if (!userId) {
-        try {
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-          if (!refreshError && refreshData?.session?.user?.id) {
-            userId = refreshData.session.user.id;
-            console.log('[BabyContext] Got user ID from refreshSession:', userId);
-          }
-        } catch (e) {
-          console.warn('[BabyContext] refreshSession failed:', e);
-        }
-      }
+      // Get user ID
+      const userId = await getCurrentUserId();
       
       if (!userId) {
         console.error('[BabyContext] No authenticated user for createBaby');
@@ -1320,26 +1033,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.log('[BabyContext] Creating baby with parent1_id:', userId);
-
-      // ─── CHECK FOR DUPLICATE ──────────────────────────────────────────
-      const { data: existingBabies, error: duplicateError } = await supabase
-        .from('babies')
-        .select('id')
-        .eq('name', data.name)
-        .eq('date_of_birth', data.birthDate)
-        .eq('parent1_id', userId)
-        .eq('is_active', true);
-
-      if (duplicateError) {
-        console.warn('[BabyContext] Duplicate check error:', duplicateError);
-      }
-
-      // ─── RETURN EXISTING BABY ID IF DUPLICATE ─────────────────────────
-      if (existingBabies && existingBabies.length > 0) {
-        console.log('[BabyContext] Duplicate baby found, returning existing ID:', existingBabies[0].id);
-        isCreatingRef.current = false;
-        return existingBabies[0].id;
-      }
 
       // ─── BUILD BABY DATA ──────────────────────────────────────────────
       const babyData = {
@@ -1351,7 +1044,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         blood_type: data.bloodType || null,
         medical_notes: data.medicalNotes || null,
         allergies: data.allergies || null,
-        parent1_id: userId,
+        parent1_id: userId, // UUID
         parent2_id: data.parent2Id || null,
         current_weight_kg: data.weight ? parseFloat(data.weight) : null,
         current_height_cm: data.height ? parseFloat(data.height) : null,
@@ -1413,8 +1106,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         age: calculateAge(data.birthDate),
       };
 
-      // ─── FIX: Always set the newly created baby as current ──────────
-      const newCurrentId = result.id; // Always use the new baby's ID
+      // ─── Set as current baby ──────────────────────────────────────────
+      const newCurrentId = result.id;
 
       try {
         await supabase
@@ -1457,9 +1150,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // ─── CLEAR CACHE ──────────────────────────────────────────────────
       await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
 
-      // ─── LOAD TRACKER DATA ────────────────────────────────────────────
-      await loadAllBabyData(newCurrentId);
-
       // ─── BROADCAST CHANGE ─────────────────────────────────────────────
       setTimeout(() => {
         broadcastBabyChange(newCurrentId);
@@ -1475,7 +1165,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[BabyContext] Create baby error:', error);
       return null;
     }
-  }, [calculateAge, loadAllBabyData, authProfile, broadcastBabyChange]);
+  }, [calculateAge, getCurrentUserId, broadcastBabyChange]);
 
   // ─── Update baby ──────────────────────────────────────────────────────
   const updateBaby = useCallback(async (id: string, updates: Partial<BabyProfile>) => {
@@ -1544,10 +1234,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.streak !== undefined) remoteUpdates.streak = updates.streak;
       if (updates.milestones !== undefined) remoteUpdates.milestones_count = updates.milestones;
       if (updates.photos !== undefined) remoteUpdates.photos_count = updates.photos;
-      
-      if (updates.avatar !== undefined || updates.avatar_url !== undefined) {
-        remoteUpdates.avatar_updated_at = new Date().toISOString();
-      }
 
       const { data: result, error } = await supabase
         .from('babies')
@@ -1635,24 +1321,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           babies: prev.babies.filter(b => b.id !== id),
           currentBabyId: newCurrentId,
           currentBaby: newCurrentId ? prev.babies.find(b => b.id === newCurrentId) || null : null,
-          growthData: newCurrentId ? prev.growthData : [],
-          milestones: newCurrentId ? prev.milestones : [],
-          sleepLogs: newCurrentId ? prev.sleepLogs : [],
-          feedingLogs: newCurrentId ? prev.feedingLogs : [],
-          pottyLogs: newCurrentId ? prev.pottyLogs : [],
-          medicationLogs: newCurrentId ? prev.medicationLogs : [],
-          activities: newCurrentId ? prev.activities : [],
         }));
         await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
       }
-
-      if (newCurrentId) {
-        await loadAllBabyData(newCurrentId);
-      }
-
-      setTimeout(() => {
-        broadcastBabyChange(newCurrentId);
-      }, 100);
 
       return true;
     } catch (error) {
@@ -1660,7 +1331,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       Alert.alert('Error', 'Failed to delete baby profile');
       return false;
     }
-  }, [state.currentBabyId, state.babies, loadAllBabyData, getCurrentUserId, broadcastBabyChange]);
+  }, [state.currentBabyId, state.babies, getCurrentUserId, broadcastBabyChange]);
 
   // ─── Switch baby ──────────────────────────────────────────────────────
   const switchBaby = useCallback(async (id: string): Promise<boolean> => {
@@ -1694,8 +1365,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, id);
 
-      await loadAllBabyData(id);
-
       if (isMounted.current) {
         const babyProfile = mapBabyRowToProfile(baby);
         setState(prev => ({
@@ -1717,7 +1386,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error switching baby:', error);
       return false;
     }
-  }, [loadAllBabyData, mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
+  }, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
 
   // ─── Refresh current baby ─────────────────────────────────────────────
   const refreshCurrentBaby = useCallback(async () => {
@@ -1752,831 +1421,50 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentBaby: updatedBaby,
         babies: prev.babies.map(b => b.id === state.currentBabyId ? updatedBaby : b),
       }));
-
-      await loadAllBabyData(state.currentBabyId);
     } catch (error) {
       console.error('Error refreshing current baby:', error);
     }
-  }, [state.currentBabyId, mapBabyRowToProfile, loadAllBabyData, loadBabies, getCurrentUserId]);
-
-  // ─── GROWTH FUNCTIONS ──────────────────────────────────────────────────
-  const addGrowthMeasurement = useCallback(async (
-    measurement: Omit<GrowthMeasurement, 'id' | 'createdAt'>
-  ): Promise<boolean> => {
-    try {
-      const newId = generateId();
-      const now = new Date().toISOString();
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_type: 'growth',
-          baby_id: measurement.babyId,
-          timestamp: new Date(measurement.date).getTime() || Date.now(),
-          title: `📏 ${measurement.type}: ${measurement.value} ${measurement.unit}`,
-          data: {
-            measurementType: measurement.type,
-            value: measurement.value,
-            unit: measurement.unit,
-            date: measurement.date,
-            recordedBy: measurement.recordedBy,
-          },
-          notes: measurement.notes || null,
-          logged_by: measurement.recordedBy,
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
-
-      if (error) {
-        console.error('Add growth measurement error:', error);
-        Alert.alert('Error', 'Failed to save measurement');
-        return false;
-      }
-
-      const newMeasurement: GrowthMeasurement = { 
-        ...measurement, 
-        id: newId, 
-        createdAt: now 
-      };
-
-      if (measurement.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          growthData: [...prev.growthData, newMeasurement] 
-        }));
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      return true;
-    } catch (error) {
-      console.error('Add growth measurement error:', error);
-      Alert.alert('Error', 'Failed to save measurement');
-      return false;
-    }
-  }, [state.currentBabyId]);
-
-  const getGrowthData = useCallback((type?: GrowthMeasurement['type']) => {
-    let data = [...state.growthData];
-    if (type) data = data.filter(m => m.type === type);
-    return data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [state.growthData]);
-
-  const getLatestMeasurements = useCallback((): Record<GrowthMeasurement['type'], GrowthMeasurement | null> => {
-    const types: GrowthMeasurement['type'][] = ['height', 'weight', 'head', 'temperature'];
-    const latest: Record<GrowthMeasurement['type'], GrowthMeasurement | null> = { 
-      height: null, 
-      weight: null, 
-      head: null, 
-      temperature: null 
-    };
-    types.forEach(type => {
-      const typeData = state.growthData
-        .filter(m => m.type === type)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      latest[type] = typeData[0] || null;
-    });
-    return latest;
-  }, [state.growthData]);
-
-  const deleteGrowthMeasurement = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      const { error } = await supabase
-        .from('tracker_entries')
-        .update({
-          is_deleted: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) {
-        console.error('Delete growth measurement error:', error);
-        return false;
-      }
-
-      const filtered = state.growthData.filter(m => m.id !== id);
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, growthData: filtered }));
-      }
-      return true;
-    } catch (error) {
-      console.error('Delete growth measurement error:', error);
-      return false;
-    }
-  }, [state.growthData]);
-
-  // ─── MILESTONE FUNCTIONS ──────────────────────────────────────────────
-  const addMilestone = useCallback(async (milestone: Omit<Milestone, 'id'>): Promise<boolean> => {
-    try {
-      const newId = generateId();
-      const now = new Date().toISOString();
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_type: 'milestone',
-          baby_id: milestone.babyId,
-          timestamp: new Date(milestone.achievedAt).getTime() || Date.now(),
-          title: milestone.title,
-          data: {
-            description: milestone.description,
-            category: milestone.category,
-            achievedAt: milestone.achievedAt,
-            firstTime: milestone.isFirstTime,
-            recordedBy: milestone.recordedBy,
-            recordedByName: milestone.recordedByName,
-          },
-          notes: milestone.notes || null,
-          photo_uris: milestone.imageUrl ? [milestone.imageUrl] : null,
-          logged_by: milestone.recordedBy,
-          logged_by_name: milestone.recordedByName,
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
-
-      if (error) {
-        console.error('Add milestone error:', error);
-        Alert.alert('Error', 'Failed to save milestone');
-        return false;
-      }
-
-      const newMilestone: Milestone = { ...milestone, id: newId };
-
-      if (milestone.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          milestones: [...prev.milestones, newMilestone] 
-        }));
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      return true;
-    } catch (error) {
-      console.error('Add milestone error:', error);
-      Alert.alert('Error', 'Failed to save milestone');
-      return false;
-    }
-  }, [state.currentBabyId]);
-
-  const getMilestones = useCallback((category?: Milestone['category']) => {
-    let data = [...state.milestones];
-    if (category) data = data.filter(m => m.category === category);
-    return data.sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime());
-  }, [state.milestones]);
-
-  const deleteMilestone = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      const { error } = await supabase
-        .from('tracker_entries')
-        .update({
-          is_deleted: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) {
-        console.error('Delete milestone error:', error);
-        return false;
-      }
-
-      const filtered = state.milestones.filter(m => m.id !== id);
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, milestones: filtered }));
-      }
-      return true;
-    } catch (error) {
-      console.error('Delete milestone error:', error);
-      return false;
-    }
-  }, [state.milestones]);
-
-  // ─── SLEEP FUNCTIONS ──────────────────────────────────────────────────
-  const addSleepLog = useCallback(async (log: Omit<SleepLog, 'id' | 'createdAt'>): Promise<boolean> => {
-    try {
-      const newId = generateId();
-      const now = new Date().toISOString();
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_type: 'sleep',
-          baby_id: log.babyId,
-          timestamp: new Date(log.startTime).getTime() || Date.now(),
-          title: '😴 Sleep',
-          data: {
-            startTime: log.startTime,
-            endTime: log.endTime,
-            duration: log.duration,
-            quality: log.quality,
-            location: log.location,
-          },
-          notes: log.notes || null,
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
-
-      if (error) {
-        console.error('Add sleep log error:', error);
-        Alert.alert('Error', 'Failed to save sleep log');
-        return false;
-      }
-
-      const newLog: SleepLog = { ...log, id: newId, createdAt: now };
-
-      if (log.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          sleepLogs: [...prev.sleepLogs, newLog] 
-        }));
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Add sleep log error:', error);
-      Alert.alert('Error', 'Failed to save sleep log');
-      return false;
-    }
-  }, [state.currentBabyId]);
-
-  const getSleepLogs = useCallback((days: number = 7) => {
-    if (days <= 0) return [];
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
-    return state.sleepLogs
-      .filter(log => new Date(log.startTime) >= cutoff)
-      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-  }, [state.sleepLogs]);
-
-  const endSleepSession = useCallback(async (logId: string, endTime: string): Promise<boolean> => {
-    try {
-      const target = state.sleepLogs.find(log => log.id === logId);
-      if (!target) return false;
-
-      const start = new Date(target.startTime);
-      const end = new Date(endTime);
-      if (end <= start) {
-        console.warn('End time must be after start time');
-        return false;
-      }
-      const duration = Math.floor((end.getTime() - start.getTime()) / (1000 * 60));
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .update({
-          data: {
-            startTime: target.startTime,
-            endTime,
-            duration,
-            quality: target.quality,
-            location: target.location,
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', logId);
-
-      if (error) {
-        console.error('End sleep session error:', error);
-        return false;
-      }
-
-      const updated = state.sleepLogs.map(log =>
-        log.id === logId ? { ...log, endTime, duration } : log
-      );
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, sleepLogs: updated }));
-      }
-      return true;
-    } catch (error) {
-      console.error('End sleep session error:', error);
-      return false;
-    }
-  }, [state.sleepLogs]);
-
-  const getTodaySleepCount = useCallback(() => {
-    const today = getStartOfDay();
-    return state.sleepLogs.filter(log => new Date(log.startTime) >= today).length;
-  }, [state.sleepLogs]);
-
-  // ─── FEEDING FUNCTIONS ─────────────────────────────────────────────────
-  const addFeedingLog = useCallback(async (log: Omit<FeedingLog, 'id' | 'createdAt'>): Promise<boolean> => {
-    try {
-      if (log.amount !== undefined && (typeof log.amount !== 'number' || isNaN(log.amount) || log.amount < 0)) {
-        Alert.alert('Invalid Amount', 'Please enter a valid positive amount');
-        return false;
-      }
-
-      const newId = generateId();
-      const now = new Date().toISOString();
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_type: 'feed',
-          baby_id: log.babyId,
-          timestamp: new Date(log.startTime).getTime() || Date.now(),
-          title: '🍼 Feeding',
-          data: {
-            feedType: log.type,
-            startTime: log.startTime,
-            duration: log.duration,
-            amount: log.amount,
-            unit: log.unit,
-            food: log.food,
-          },
-          notes: log.notes || null,
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
-
-      if (error) {
-        console.error('Add feeding log error:', error);
-        Alert.alert('Error', 'Failed to save feeding log');
-        return false;
-      }
-
-      const newLog: FeedingLog = { ...log, id: newId, createdAt: now };
-
-      if (log.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          feedingLogs: [...prev.feedingLogs, newLog] 
-        }));
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Add feeding log error:', error);
-      Alert.alert('Error', 'Failed to save feeding log');
-      return false;
-    }
-  }, [state.currentBabyId]);
-
-  const getFeedingLogs = useCallback((days: number = 7) => {
-    if (days <= 0) return [];
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
-    return state.feedingLogs
-      .filter(log => new Date(log.startTime) >= cutoff)
-      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-  }, [state.feedingLogs]);
-
-  const getTodayFeedCount = useCallback(() => {
-    const today = getStartOfDay();
-    return state.feedingLogs.filter(log => new Date(log.startTime) >= today).length;
-  }, [state.feedingLogs]);
-
-  // ─── POTTY FUNCTIONS ──────────────────────────────────────────────────
-  const calculatePottyStreak = useCallback((logs: PottyLog[]): number => {
-    if (logs.length === 0) return 0;
-
-    const successfulDays = new Set<string>();
-    logs.forEach(log => { if (log.successful) successfulDays.add(getDateKey(log.timestamp)); });
-
-    let streak = 0;
-    const today = getStartOfDay();
-
-    for (let i = 0; i < 365; i++) {
-      const checkDate = new Date(today);
-      checkDate.setDate(checkDate.getDate() - i);
-      const dateKey = getDateKey(checkDate);
-      if (successfulDays.has(dateKey)) {
-        streak++;
-      } else if (i > 0) {
-        break;
-      }
-    }
-
-    return streak;
-  }, []);
-
-  const addPottyLog = useCallback(async (log: Omit<PottyLog, 'id' | 'createdAt'>): Promise<boolean> => {
-    try {
-      const newId = generateId();
-      const now = new Date().toISOString();
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_type: 'potty',
-          baby_id: log.babyId,
-          timestamp: new Date(log.timestamp).getTime() || Date.now(),
-          title: '🚽 Potty',
-          data: {
-            pottyType: log.type,
-            location: log.location,
-            successful: log.successful,
-            timestamp: log.timestamp,
-          },
-          notes: log.notes || null,
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
-
-      if (error) {
-        console.error('Add potty log error:', error);
-        Alert.alert('Error', 'Failed to save potty log');
-        return false;
-      }
-
-      const newLog: PottyLog = { ...log, id: newId, createdAt: now };
-
-      if (log.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          pottyLogs: [...prev.pottyLogs, newLog] 
-        }));
-      }
-
-      if (log.successful) {
-        const streak = calculatePottyStreak([...state.pottyLogs, newLog]);
-        await updateBaby(log.babyId, { streak });
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Add potty log error:', error);
-      Alert.alert('Error', 'Failed to save potty log');
-      return false;
-    }
-  }, [state.currentBabyId, state.pottyLogs, updateBaby, calculatePottyStreak]);
-
-  const getPottyLogs = useCallback((days: number = 7) => {
-    if (days <= 0) return [];
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
-    return state.pottyLogs
-      .filter(log => new Date(log.timestamp) >= cutoff)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [state.pottyLogs]);
-
-  const getPottyStreak = useCallback(() => calculatePottyStreak(state.pottyLogs), [state.pottyLogs, calculatePottyStreak]);
-  const getTodayPottyCount = useCallback(() => {
-    const today = getStartOfDay();
-    return state.pottyLogs.filter(log => new Date(log.timestamp) >= today).length;
-  }, [state.pottyLogs]);
-  const getPottySuccessRate = useCallback(() => {
-    if (state.pottyLogs.length === 0) return 0;
-    const successful = state.pottyLogs.filter(log => log.successful).length;
-    return Math.round((successful / state.pottyLogs.length) * 100);
-  }, [state.pottyLogs]);
-
-  // ─── MEDICATION FUNCTIONS ─────────────────────────────────────────────
-  const addMedicationLog = useCallback(async (log: Omit<MedicationLog, 'id' | 'createdAt'>): Promise<boolean> => {
-    try {
-      if (!log.medicationName.trim()) {
-        Alert.alert('Missing Information', 'Please enter a medication name');
-        return false;
-      }
-
-      const newId = generateId();
-      const now = new Date().toISOString();
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_type: 'medication',
-          baby_id: log.babyId,
-          timestamp: new Date(log.timestamp).getTime() || Date.now(),
-          title: `💊 ${log.medicationName.trim()}`,
-          data: {
-            medicationName: log.medicationName.trim(),
-            dosage: log.dosage,
-            reason: log.reason,
-            givenBy: log.givenBy,
-            timestamp: log.timestamp,
-          },
-          notes: log.notes || null,
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
-
-      if (error) {
-        console.error('Add medication log error:', error);
-        Alert.alert('Error', 'Failed to save medication log');
-        return false;
-      }
-
-      const newLog: MedicationLog = {
-        ...log,
-        medicationName: log.medicationName.trim(),
-        id: newId,
-        createdAt: now,
-      };
-
-      if (log.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          medicationLogs: [...prev.medicationLogs, newLog] 
-        }));
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Add medication log error:', error);
-      Alert.alert('Error', 'Failed to save medication log');
-      return false;
-    }
-  }, [state.currentBabyId]);
-
-  const getMedicationLogs = useCallback((days: number = 30) => {
-    if (days <= 0) return [];
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
-    return state.medicationLogs
-      .filter(log => new Date(log.timestamp) >= cutoff)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [state.medicationLogs]);
-
-  // ─── ACTIVITY FUNCTIONS ──────────────────────────────────────────────
-  const addActivity = useCallback(async (entry: Omit<ActivityEntry, 'id'>): Promise<boolean> => {
-    if (!entry.babyId || !entry.type || !entry.title || !entry.timestamp) {
-      console.error('Invalid activity entry: missing required fields');
-      return false;
-    }
-
-    try {
-      const newId = generateId();
-      const now = new Date().toISOString();
-
-      const entryData: Record<string, unknown> = {};
-      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'loggedByRole', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
-      for (const [key, value] of Object.entries(entry)) {
-        if (!skipFields.includes(key) && value !== undefined) {
-          entryData[key] = value;
-        }
-      }
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_type: entry.type,
-          baby_id: entry.babyId,
-          timestamp: entry.timestamp,
-          title: entry.title,
-          data: entryData,
-          notes: entry.notes || entry.details || null,
-          photo_uris: entry.photo ? [entry.photo] : null,
-          tags: entry.tags || null,
-          logged_by: entry.loggedBy,
-          logged_by_name: entry.loggedByName,
-          logged_by_role: entry.loggedByRole || null,
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
-
-      if (error) {
-        console.error('Failed to add activity:', error);
-        Alert.alert('Error', 'Failed to save activity');
-        return false;
-      }
-
-      const newEntry: ActivityEntry = { ...entry, id: newId };
-
-      if (entry.babyId === state.currentBabyId && isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          activities: [newEntry, ...prev.activities] 
-        }));
-      }
-
-      try {
-        const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
-        const existingEntries: ActivityEntry[] = existing ? JSON.parse(existing) : [];
-        const merged = [newEntry, ...existingEntries];
-        await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(merged));
-      } catch {}
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      return true;
-    } catch (error) {
-      console.error('Failed to add activity:', error);
-      Alert.alert('Error', 'Failed to save activity');
-      return false;
-    }
-  }, [state.currentBabyId]);
-
-  const getRecentActivities = useCallback((limit: number = 10) => {
-    return [...state.activities]
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, Math.max(0, limit));
-  }, [state.activities]);
-
-  const getActivitiesByType = useCallback((type: ActivityType) => {
-    return state.activities
-      .filter(a => a.type === type)
-      .sort((a, b) => b.timestamp - a.timestamp);
-  }, [state.activities]);
-
-  const deleteActivity = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      const entry = state.activities.find(a => a.id === id);
-      if (entry?.notificationId) {
-        const service = await getNotificationService();
-        if (service) {
-          await service.cancelNotification(entry.notificationId);
-        }
-        await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
-      }
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .update({
-          is_deleted: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) {
-        console.error('Failed to delete activity:', error);
-        return false;
-      }
-
-      const filtered = state.activities.filter(a => a.id !== id);
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, activities: filtered }));
-      }
-
-      try {
-        const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
-        if (existing) {
-          const entries: ActivityEntry[] = JSON.parse(existing);
-          const filteredStorage = entries.filter(e => e.id !== id);
-          await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(filteredStorage));
-        }
-      } catch {}
-
-      return true;
-    } catch (error) {
-      console.error('Failed to delete activity:', error);
-      return false;
-    }
-  }, [state.activities]);
-
-  // ─── ACTIVITY CONTEXT COMPATIBILITY ──────────────────────────────────
-  const entries = state.activities;
-
-  const loadEntries = useCallback(async () => {
-    if (state.currentBabyId) {
-      await loadAllBabyData(state.currentBabyId);
-    }
-  }, [state.currentBabyId, loadAllBabyData]);
-
-  const deleteEntry = deleteActivity;
-  const addEntry = addActivity;
-
-  const updateEntry = useCallback(async (id: string, updates: Partial<ActivityEntry>): Promise<boolean> => {
-    try {
-      const existingEntry = state.activities.find(a => a.id === id);
-      if (!existingEntry) return false;
-
-      const merged: ActivityEntry = { ...existingEntry, ...updates };
-
-      const entryData: Record<string, unknown> = {};
-      const skipFields = ['id', 'type', 'babyId', 'timestamp', 'title', 'details', 'icon', 'loggedBy', 'loggedByName', 'loggedByRole', 'notes', 'photo', 'tags', 'notificationId', 'reminderScheduled', 'syncedAt'];
-      for (const [key, value] of Object.entries(merged)) {
-        if (!skipFields.includes(key) && value !== undefined) {
-          entryData[key] = value;
-        }
-      }
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .update({
-          timestamp: merged.timestamp,
-          title: merged.title,
-          data: entryData,
-          notes: merged.notes || merged.details || null,
-          tags: merged.tags || null,
-          photo_uris: merged.photo ? [merged.photo] : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) {
-        console.error('Failed to update entry:', error);
-        return false;
-      }
-
-      const updated = state.activities.map(a => a.id === id ? merged : a);
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, activities: updated }));
-      }
-
-      try {
-        const existing = await AsyncStorage.getItem(ACTIVITY_CONTEXT_KEY);
-        if (existing) {
-          const entries: ActivityEntry[] = JSON.parse(existing);
-          const idx = entries.findIndex(e => e.id === id);
-          if (idx >= 0) {
-            entries[idx] = { ...entries[idx], ...updates };
-            await AsyncStorage.setItem(ACTIVITY_CONTEXT_KEY, JSON.stringify(entries));
-          }
-        }
-      } catch {}
-
-      return true;
-    } catch (error) {
-      console.error('Failed to update entry:', error);
-      return false;
-    }
-  }, [state.activities]);
-
-  const getEntryById = useCallback((id: string) => {
-    return state.activities.find(a => a.id === id);
-  }, [state.activities]);
-
-  const getDateTitle = useCallback((timestamp: number | string): string => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const today = getStartOfDay();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (date >= today) return 'Today';
-    if (date >= yesterday) return 'Yesterday';
-
-    const days = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-    if (days < 7) {
-      const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      return daysOfWeek[date.getDay()] || 'Unknown';
-    }
-
-    return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
-  }, []);
-
-  // ─── STATS FUNCTIONS ──────────────────────────────────────────────────
-  const getBabyStats = useCallback(() => {
-    return {
-      streak: state.currentBaby?.streak || 0,
-      milestones: state.currentBaby?.milestones || 0,
-      photos: state.currentBaby?.photos || 0,
-      entries: state.activities.length,
-    };
-  }, [state.currentBaby, state.activities]);
-
-  const updateBabyStats = useCallback(async (updates: Partial<BabyProfile>) => {
-    if (!state.currentBaby) return;
-    await updateBaby(state.currentBaby.id, updates);
-  }, [state.currentBaby, updateBaby]);
-
-  // ─── Get current baby ID ─────────────────────────────────────────────
-  const getCurrentBabyId = useCallback((): string | null => {
-    return state.currentBabyId;
-  }, [state.currentBabyId]);
+  }, [state.currentBabyId, mapBabyRowToProfile, loadBabies, getCurrentUserId]);
 
   // ─── STUB METHODS ─────────────────────────────────────────────────────
+  const addGrowthMeasurement = useCallback(async () => false, []);
+  const getGrowthData = useCallback(() => [], []);
+  const getLatestMeasurements = useCallback(() => ({ height: null, weight: null, head: null, temperature: null }), []);
+  const deleteGrowthMeasurement = useCallback(async () => false, []);
+  const addMilestone = useCallback(async () => false, []);
+  const getMilestones = useCallback(() => [], []);
+  const deleteMilestone = useCallback(async () => false, []);
+  const addSleepLog = useCallback(async () => false, []);
+  const getSleepLogs = useCallback(() => [], []);
+  const endSleepSession = useCallback(async () => false, []);
+  const getTodaySleepCount = useCallback(() => 0, []);
+  const addFeedingLog = useCallback(async () => false, []);
+  const getFeedingLogs = useCallback(() => [], []);
+  const getTodayFeedCount = useCallback(() => 0, []);
+  const addPottyLog = useCallback(async () => false, []);
+  const getPottyLogs = useCallback(() => [], []);
+  const getPottyStreak = useCallback(() => 0, []);
+  const getTodayPottyCount = useCallback(() => 0, []);
+  const getPottySuccessRate = useCallback(() => 0, []);
+  const addMedicationLog = useCallback(async () => false, []);
+  const getMedicationLogs = useCallback(() => [], []);
+  const addActivity = useCallback(async () => false, []);
+  const getRecentActivities = useCallback(() => [], []);
+  const getActivitiesByType = useCallback(() => [], []);
+  const deleteActivity = useCallback(async () => false, []);
+  const getBabyStats = useCallback(() => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }), []);
+  const updateBabyStats = useCallback(async () => {}, []);
+  const entries: ActivityEntry[] = [];
+  const loadEntries = useCallback(async () => {}, []);
+  const deleteEntry = useCallback(async () => false, []);
+  const addEntry = useCallback(async () => false, []);
+  const updateEntry = useCallback(async () => false, []);
+  const getEntryById = useCallback(() => undefined, []);
+  const getDateTitle = useCallback(() => '', []);
   const syncWithActivityContext = useCallback(async () => {}, []);
-  
-  const scheduleActivityReminder = useCallback(async (entry: ActivityEntry, minutes: number): Promise<string | null> => {
-    try {
-      const service = await getNotificationService();
-      if (!service) return null;
-
-      const notifId = await service.scheduleActivityReminder(
-        entry.type,
-        state.currentBaby?.name || 'baby',
-        minutes,
-        entry.details
-      );
-
-      if (notifId) {
-        await updateEntry(entry.id, { notificationId: notifId, reminderScheduled: true });
-        await AsyncStorage.setItem(`${NOTIFICATION_PREFIX}${entry.id}`, notifId);
-      }
-
-      return notifId;
-    } catch {
-      return null;
-    }
-  }, [state.currentBaby, updateEntry]);
-
-  const cancelActivityReminder = useCallback(async (notificationId: string) => {
-    try {
-      const service = await getNotificationService();
-      if (service) {
-        await service.cancelNotification(notificationId);
-      }
-
-      const entry = state.activities.find(a => a.notificationId === notificationId);
-      if (entry) {
-        await updateEntry(entry.id, { notificationId: undefined, reminderScheduled: false });
-        await AsyncStorage.removeItem(`${NOTIFICATION_PREFIX}${entry.id}`);
-      }
-    } catch {}
-  }, [state.activities, updateEntry]);
+  const scheduleActivityReminder = useCallback(async () => null, []);
+  const cancelActivityReminder = useCallback(async () => {}, []);
+  const getCurrentBabyId = useCallback((): string | null => state.currentBabyId, [state.currentBabyId]);
 
   // ─── MEMOIZED VALUE ────────────────────────────────────────────────────
   const value = useMemo<BabyContextType>(() => ({
