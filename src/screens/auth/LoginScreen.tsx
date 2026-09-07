@@ -1,5 +1,5 @@
 // src/screens/auth/LoginScreen.tsx - COMPLETE FIXED VERSION
-// FIX: Invite code validation and user isolation
+// FIX: Invite code validation, partial sign-up handling, and user isolation
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
@@ -76,7 +76,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const [showJoinPassword, setShowJoinPassword] = useState(false);
   const [showJoinConfirmPassword, setShowJoinConfirmPassword] = useState(false);
   const [codeValidated, setCodeValidated] = useState(false);
-  const [codeInfo, setCodeInfo] = useState<{ role: string; relationship?: string } | null>(null);
+  const [codeInfo, setCodeInfo] = useState<{ role: string; relationship?: string; used?: boolean; signupCompleted?: boolean } | null>(null);
   const [isValidatingCode, setIsValidatingCode] = useState(false);
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -103,8 +103,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     findUserByEmailOrUsername,
   } = useAuth();
 
-  // ─── FIX: Use FamilyContext for invite validation ─────────────────────
-  const { validateInviteCode: validateInviteCodeFromFamily } = useFamily();
+  // ─── Use FamilyContext for invite validation ─────────────────────
+  const { validateInviteCode: validateInviteCodeFromFamily, getInviteCodeById } = useFamily();
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
   
@@ -113,7 +113,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
   const triggerHaptic = customization?.triggerHaptic ?? (() => {});
   
-  const { toast, error: showError, success: showSuccess, confirm, info: showInfo } = useSweetAlert();
+  const { toast, error: showError, success: showSuccess, confirm, info: showInfo, alert: showAlert } = useSweetAlert();
 
   const insets = useSafeAreaInsets();
 
@@ -321,7 +321,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     );
   }, []);
 
-  // ─── FIXED: CODE VALIDATION using FamilyContext ──────────────────────
+  // ─── FIXED: CODE VALIDATION with partial sign-up support ────────────
   useEffect(() => {
     if (activeTab !== 'join') return;
     if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
@@ -338,12 +338,67 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     setIsValidatingCode(true);
     codeDebounceTimer.current = setTimeout(async () => {
       try {
-        console.log('[Login] Validating invite code:', trimmed);
+        console.log('[Login] 🔍 Validating invite code:', trimmed);
         
-        // ─── FIX: Use FamilyContext validateInviteCode ──────────────────
-        const result = await validateInviteCodeFromFamily(trimmed);
+        // ─── First try to get code details ────────────────────────────
+        let codeDetails = await getInviteCodeById(trimmed);
+        console.log('[Login] 📊 Code details:', codeDetails);
 
-        console.log('[Login] Validation result:', result);
+        if (codeDetails) {
+          // Check if code is already used but not completed (partial sign-up)
+          if (codeDetails.used && !codeDetails.signup_completed) {
+            console.log('[Login] ⚠️ Partial sign-up detected for code:', trimmed);
+            
+            // Show partial sign-up warning with option to continue or sign in
+            if (isMounted.current) {
+              setCodeValidated(true);
+              setCodeInfo({
+                role: codeDetails.role || 'viewer',
+                relationship: codeDetails.relationship,
+                used: true,
+                signupCompleted: false,
+              });
+              
+              // Show warning to user
+              showAlert(
+                'Partial Sign-up Detected',
+                'This invite code was used but the sign-up was not completed. You can either continue with the same email or sign in if you already created an account.',
+                'warning'
+              );
+              
+              // Pre-fill email if available
+              if (codeDetails.used_by_email) {
+                setJoinEmail(codeDetails.used_by_email);
+              }
+              if (codeDetails.used_by_name) {
+                setJoinFullName(codeDetails.used_by_name);
+              }
+              
+              setIsValidatingCode(false);
+            }
+            return;
+          }
+
+          // Check if code is already used and completed
+          if (codeDetails.used && codeDetails.signup_completed) {
+            if (isMounted.current) {
+              setCodeValidated(false);
+              setCodeInfo(null);
+              showInfo('Code Already Used', 'This invite code has already been used. Please sign in with your account.');
+              setTimeout(() => {
+                if (isMounted.current) {
+                  setActiveTab('signin');
+                }
+              }, 2000);
+              setIsValidatingCode(false);
+            }
+            return;
+          }
+        }
+
+        // ─── Use FamilyContext validateInviteCode ──────────────────
+        const result = await validateInviteCodeFromFamily(trimmed);
+        console.log('[Login] 📋 Validation result:', result);
 
         if (isMounted.current) {
           if (result.valid && result.data) {
@@ -351,6 +406,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
             setCodeInfo({
               role: result.data.role,
               relationship: result.data.relationship,
+              used: false,
+              signupCompleted: false,
             });
             showInfo('Valid Code!', `You'll join as ${result.data.role === 'parent2' ? 'Parent 2' : result.data.role === 'guardian' ? 'Guardian' : 'Viewer'}`);
           } else {
@@ -360,7 +417,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           }
         }
       } catch (error) {
-        console.error('Code validation error:', error);
+        console.error('[Login] 💥 Code validation error:', error);
         if (isMounted.current) {
           setCodeValidated(false);
           setCodeInfo(null);
@@ -369,7 +426,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         if (isMounted.current) setIsValidatingCode(false);
       }
     }, 500);
-  }, [inviteCode, activeTab, validateInviteCodeFromFamily, showInfo]);
+  }, [inviteCode, activeTab, validateInviteCodeFromFamily, getInviteCodeById, showInfo, showAlert]);
 
   // ─── HANDLE SIGN IN ──────────────────────────────────────────────────
   const handleLogin = useCallback(async () => {
@@ -485,7 +542,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     showSuccess,
   ]);
 
-  // ─── HANDLE JOIN FAMILY ─────────────────────────────────────────────
+  // ─── HANDLE JOIN FAMILY with partial sign-up support ──────────────
   const handleJoinFamily = useCallback(async () => {
     joinAttempted.current = false;
 
@@ -497,16 +554,56 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       return;
     }
 
+    // ─── Check if this is a partial sign-up completion ──────────────
+    const trimmedCode = inviteCode.trim();
+    let isPartialSignup = false;
+    
+    if (trimmedCode.length === 6) {
+      try {
+        const codeDetails = await getInviteCodeById(trimmedCode);
+        if (codeDetails?.used && !codeDetails?.signup_completed) {
+          isPartialSignup = true;
+          console.log('[Login] Completing partial sign-up for code:', trimmedCode);
+          
+          // Check if the email matches the partial sign-up email
+          if (codeDetails.used_by_email && joinEmail.trim().toLowerCase() !== codeDetails.used_by_email.toLowerCase()) {
+            showError('Email Mismatch', `This partial sign-up was started with ${codeDetails.used_by_email}. Please use the same email to continue.`);
+            setJoinEmail(codeDetails.used_by_email || '');
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('[Login] Error checking partial sign-up:', e);
+      }
+    }
+
+    // ─── Check if user already exists ──────────────────────────────────
     const existingUser = await findUserByEmail(joinEmail.trim());
     
     if (existingUser) {
+      if (isPartialSignup) {
+        // For partial sign-up, offer to sign in
+        confirm(
+          'Account Exists',
+          'You already have an account. Would you like to sign in instead?',
+          () => {
+            setActiveTab('signin');
+            setEmail(joinEmail.trim());
+          },
+          () => {
+            // User wants to continue with sign-up anyway (shouldn't happen for partial)
+          },
+          'Sign In',
+          'Continue'
+        );
+        return;
+      }
+      
       showInfo('Account Found', 'You already have an account. Please sign in instead.');
       setActiveTab('signin');
       setEmail(joinEmail.trim());
       return;
     }
-
-    const trimmedCode = inviteCode.trim();
 
     if (trimmedCode.length !== 6) {
       showError('Invalid Code', 'Invite code must be exactly 6 characters');
@@ -538,8 +635,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       triggerHaptic('error');
       return;
     }
-    if (joinPassword.length < 6) {
-      showError('Weak Password', 'Password must be at least 6 characters');
+    if (joinPassword.length < 8) {
+      showError('Weak Password', 'Password must be at least 8 characters');
       triggerHaptic('error');
       return;
     }
@@ -570,7 +667,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, isProcessing, authLoading, isAuthenticated, setupComplete, triggerHaptic, showError, showSuccess, showInfo, forceUnlock, navigation]);
+  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, getInviteCodeById, isProcessing, authLoading, isAuthenticated, setupComplete, triggerHaptic, showError, showSuccess, showInfo, confirm, forceUnlock, navigation]);
 
   // ─── BIOMETRIC LOGIN ─────────────────────────────────────────────────
   const handleBiometricLogin = useCallback(async () => {
@@ -1022,6 +1119,16 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </Text>
                   </TouchableOpacity>
 
+                  {/* ─── Partial Sign-up Warning ─── */}
+                  {codeInfo?.used && !codeInfo?.signupCompleted && (
+                    <View style={[styles.partialWarning, { backgroundColor: '#f59e0b15', borderColor: '#f59e0b30' }]}>
+                      <Ionicons name="warning" size={18} color="#f59e0b" />
+                      <Text style={[styles.partialWarningText, { color: '#f59e0b' }]}>
+                        This code was used for a partial sign-up. Please complete your registration or sign in if you already have an account.
+                      </Text>
+                    </View>
+                  )}
+
                   {/* Invite Code Input */}
                   <View style={[
                     styles.inputContainer,
@@ -1045,12 +1152,15 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     {isValidatingCode && (
                       <ActivityIndicator size="small" color="#667eea" style={{ marginLeft: 8 }} />
                     )}
-                    {codeValidated && !isValidatingCode && (
+                    {codeValidated && !isValidatingCode && !codeInfo?.used && (
                       <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+                    )}
+                    {codeInfo?.used && !codeInfo?.signupCompleted && (
+                      <Ionicons name="warning" size={22} color="#f59e0b" />
                     )}
                   </View>
 
-                  {codeValidated && codeInfo && (
+                  {codeValidated && codeInfo && !codeInfo.used && (
                     <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }]}>
                       <Ionicons name="shield-checkmark" size={18} color="#22c55e" />
                       <Text style={[styles.codeInfoText, { color: isDark ? '#86efac' : '#15803d' }]}>
@@ -1069,7 +1179,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </View>
                   )}
 
-                  {codeValidated && (
+                  {codeValidated && !codeInfo?.used && (
                     <>
                       <View style={styles.divider}>
                         <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
@@ -1116,7 +1226,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
                         <TextInput
                           style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-                          placeholder="Password (min 6 characters)"
+                          placeholder="Password (min 8 characters)"
                           placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
                           value={joinPassword}
                           onChangeText={setJoinPassword}
@@ -1194,6 +1304,137 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         </Text>
                         <TouchableOpacity onPress={handleGoToSignUp} disabled={isLoading}>
                           <Text style={[styles.signupLink, { color: '#22c55e' }]}>Sign Up Instead</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+
+                  {/* ─── Partial Sign-up Completion Form ─── */}
+                  {codeInfo?.used && !codeInfo?.signupCompleted && (
+                    <>
+                      <View style={styles.divider}>
+                        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                        <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          complete your registration
+                        </Text>
+                        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Full name"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinFullName}
+                          onChangeText={setJoinFullName}
+                          autoCapitalize="words"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="name"
+                        />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Email address"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinEmail}
+                          onChangeText={setJoinEmail}
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="emailAddress"
+                        />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Password (min 8 characters)"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinPassword}
+                          onChangeText={setJoinPassword}
+                          secureTextEntry={!showJoinPassword}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="newPassword"
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowJoinPassword(!showJoinPassword)}
+                          style={styles.eyeButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          disabled={isLoading}
+                        >
+                          <Ionicons
+                            name={showJoinPassword ? 'eye-outline' : 'eye-off-outline'}
+                            size={20}
+                            color="#667eea"
+                          />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="shield-checkmark-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Confirm password"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinConfirmPassword}
+                          onChangeText={setJoinConfirmPassword}
+                          secureTextEntry={!showJoinConfirmPassword}
+                          editable={!isLoading}
+                          returnKeyType="done"
+                          onSubmitEditing={handleJoinFamily}
+                          textContentType="newPassword"
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowJoinConfirmPassword(!showJoinConfirmPassword)}
+                          style={styles.eyeButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          disabled={isLoading}
+                        >
+                          <Ionicons
+                            name={showJoinConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
+                            size={20}
+                            color="#667eea"
+                          />
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                        onPress={handleJoinFamily}
+                        disabled={isLoading}
+                        activeOpacity={0.8}
+                      >
+                        <LinearGradient
+                          colors={['#f59e0b', '#d97706']}
+                          style={styles.loginGradient}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                        >
+                          {isLoading ? (
+                            <ActivityIndicator color="white" size="small" />
+                          ) : (
+                            <Text style={styles.loginText}>Complete Sign-up</Text>
+                          )}
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      {/* ─── Already have an account? ─── */}
+                      <View style={styles.signupLinkContainer}>
+                        <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          Already have an account?
+                        </Text>
+                        <TouchableOpacity onPress={() => { setActiveTab('signin'); setEmail(joinEmail); }} disabled={isLoading}>
+                          <Text style={[styles.signupLink, { color: '#f59e0b' }]}>Sign In</Text>
                         </TouchableOpacity>
                       </View>
                     </>
@@ -1511,5 +1752,21 @@ const styles = StyleSheet.create({
   qrButtonText: {
     fontWeight: '600',
     fontSize: 15,
+  },
+  // ─── Partial Sign-up Styles ───
+  partialWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  partialWarningText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+    lineHeight: 18,
   },
 });
