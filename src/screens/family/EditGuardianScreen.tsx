@@ -47,7 +47,8 @@ import { useBaby, ActivityEntry } from '../../context/BabyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+// IMPORTANT: Use legacy API to avoid deprecation warnings
+import * as FileSystem from 'expo-file-system/legacy';
 
 /* Permanent storage for guardian/member photos */
 const GUARDIAN_IMAGES_DIR = FileSystem.documentDirectory + 'guardian_images/';
@@ -1336,29 +1337,41 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   };
 
-  // Completely rewritten persistPickedImage without using deprecated methods
+  // Fixed persistPickedImage using legacy FileSystem API
   const persistPickedImage = async (sourceUri: string, memberId: string): Promise<string | null> => {
     try {
-      // Use the newer FileSystem API with try-catch instead of getInfoAsync
-      const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
-      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
-      const filename = `${memberId}_${Date.now()}.${safeExt}`;
-      const processedUri = `${GUARDIAN_IMAGES_DIR}${filename}`;
-
-      // Try to create directory - it will fail if exists, that's fine
-      try {
+      // Ensure directory exists
+      const dirInfo = await FileSystem.getInfoAsync(GUARDIAN_IMAGES_DIR);
+      if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true });
-      } catch (dirError) {
-        // Directory already exists or other error - continue
       }
 
-      // Copy the file
-      await FileSystem.copyAsync({
-        from: sourceUri,
-        to: processedUri,
-      });
+      const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
+      const processedUri = `${GUARDIAN_IMAGES_DIR}${memberId}_${Date.now()}.${safeExt}`;
 
-      // Return the URI - assume it worked since no error was thrown
+      // Handle different URI types
+      if (sourceUri.startsWith('content://')) {
+        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      } else if (sourceUri.startsWith('data:')) {
+        const base64Data = sourceUri.split(',')[1];
+        if (base64Data) {
+          await FileSystem.writeAsStringAsync(processedUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+        } else {
+          throw new Error('Invalid data URI');
+        }
+      } else {
+        await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
+      }
+
+      // Verify file exists
+      const fileInfo = await FileSystem.getInfoAsync(processedUri);
+      if (!fileInfo.exists) {
+        console.error('[persistPickedImage] File not found after write:', processedUri);
+        return null;
+      }
+
       return processedUri;
     } catch (error) {
       console.error('[persistPickedImage] Failed to persist image:', error);
