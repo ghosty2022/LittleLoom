@@ -199,12 +199,68 @@ const checkAndNavigate = useCallback(async () => {
 
       // ─── FIX: Try direct query without RLS filters first ────────────
       // Many RLS policies cause recursion issues with is_active filter
-      try {
-        const { data: babiesData, error } = await supabase
+      // ─── FIX: Try direct query - check parent1_id, parent2_id, and family_members ──
+try {
+  let allFoundBabies: any[] = [];
+  
+  // Check parent1_id
+  const { data: parent1Data, error: p1Error } = await supabase
+    .from('babies')
+    .select('*')
+    .eq('parent1_id', userId);
+  
+  if (!p1Error && parent1Data && parent1Data.length > 0) {
+    allFoundBabies = [...allFoundBabies, ...parent1Data];
+    console.log(`[BabyOnboarding] Found ${parent1Data.length} babies via parent1_id`);
+  }
+  
+  // Check parent2_id
+  const { data: parent2Data, error: p2Error } = await supabase
+    .from('babies')
+    .select('*')
+    .eq('parent2_id', userId);
+  
+  if (!p2Error && parent2Data && parent2Data.length > 0) {
+    // Avoid duplicates
+    const existingIds = new Set(allFoundBabies.map(b => b.id));
+    parent2Data.forEach(b => {
+      if (!existingIds.has(b.id)) {
+        allFoundBabies.push(b);
+        existingIds.add(b.id);
+      }
+    });
+    console.log(`[BabyOnboarding] Found ${parent2Data.length} babies via parent2_id`);
+  }
+  
+  // Check family_members as fallback
+  if (allFoundBabies.length === 0) {
+    const { data: familyData, error: fmError } = await supabase
+      .from('family_members')
+      .select('baby_id')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .is('deleted_at', null);
+    
+    if (!fmError && familyData && familyData.length > 0) {
+      const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
+      if (babyIds.length > 0) {
+        const { data: babyData, error: bError } = await supabase
           .from('babies')
           .select('*')
-          .eq('parent1_id', userId);
-
+          .in('id', babyIds)
+          .eq('is_active', true);
+        
+        if (!bError && babyData && babyData.length > 0) {
+          allFoundBabies = babyData;
+          console.log(`[BabyOnboarding] Found ${babyData.length} babies via family_members`);
+        }
+      }
+    }
+  }
+  
+  if (allFoundBabies.length > 0) {
+    allBabies = allFoundBabies;
+  }
         if (error) {
           console.error('[BabyOnboarding] Direct query error:', error.message);
           
