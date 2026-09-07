@@ -1,3 +1,6 @@
+// src/screens/auth/SignUpScreen.tsx - COMPLETE FIXED VERSION
+// FIX: Invite code validation and user isolation
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Animated, {
   FadeIn,
@@ -351,11 +354,15 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
+    console.log('[SignUp] 🔍 Validating invite code:', trimmed);
     setIsValidatingCode(true);
+    
     codeDebounceTimer.current = setTimeout(async () => {
       try {
         // ─── FIX: Use FamilyContext validateInviteCode ──────────────────
         const result = await validateInviteCodeFromFamily(trimmed);
+
+        console.log('[SignUp] 📊 Validation result:', result);
 
         if (isMounted.current) {
           if (result.valid && result.data) {

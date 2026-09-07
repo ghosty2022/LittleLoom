@@ -48,7 +48,7 @@ interface FamilyContextType extends FamilyState {
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
 
-// ─── FIX: Generate a proper 6-character invite code ──────────────────────
+// ─── Generate a proper 6-character invite code ──────────────────────
 const generateInviteCodeString = (): string => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -93,7 +93,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const loadingRef = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
 
-  // ─── UPDATE: Track current user to prevent cross-device conflicts ────
+  // ─── Track current user to prevent cross-device conflicts ────
   useEffect(() => {
     if (authProfile?.id) {
       currentUserIdRef.current = authProfile.id;
@@ -159,7 +159,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return currentBaby.parent1_id === effectiveProfile.id;
   }, [authProfile, currentBaby]);
 
-  // ─── FIXED: Load family with user isolation ──────────────────────────
+  // ─── Load family with user isolation ──────────────────────────
   const loadFamily = useCallback(async () => {
     if (!currentBaby?.id) {
       setState({
@@ -173,9 +173,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
-    // ─── FIX: Only load if the current user is part of this baby ────
+    // ─── Only load if the current user is part of this baby ────
     if (authProfile?.id && currentBaby.parent1_id !== authProfile.id && currentBaby.parent2_id !== authProfile.id) {
-      // Check if user is a guardian
       const guardianIds = currentBaby.guardian_ids || [];
       if (!guardianIds.includes(authProfile.id)) {
         console.log('[FamilyContext] User not associated with this baby, skipping load');
@@ -630,8 +629,17 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const now = Date.now();
       const expiresInDays = 7;
 
-      // ─── FIX: Ensure code is exactly 6 characters ──────────────────
+      // ─── Ensure code is exactly 6 characters ──────────────────
       const finalCode = code.padStart(6, '0').slice(0, 6);
+
+      // ─── Log the insert attempt ─────────────────────────────────
+      console.log('[FamilyContext] Inserting invite code:', {
+        code: finalCode,
+        family_id: currentBaby.id,
+        role: role,
+        relationship: relationship,
+        creator_id: authProfile.id
+      });
 
       const { data, error } = await supabase
         .from('invite_codes')
@@ -655,14 +663,39 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (error) {
         console.error('Error generating invite code:', error);
-        const fallbackCode = generateInviteCodeString();
-        return { code: fallbackCode, success: true, message: 'Invite code generated (local only)' };
+        
+        // ─── Try without select if single fails ──────────────────
+        const { error: insertError } = await supabase
+          .from('invite_codes')
+          .insert({
+            code: finalCode,
+            family_id: currentBaby.id,
+            baby_name: currentBaby.name,
+            baby_dob: currentBaby.date_of_birth,
+            baby_gender: currentBaby.gender,
+            creator_id: authProfile.id,
+            creator_name: authProfile.full_name,
+            role: role,
+            relationship: relationship || null,
+            created_at: now,
+            expires_in_days: expiresInDays,
+            used: false,
+            revoked: false,
+          });
+
+        if (insertError) {
+          console.error('Error inserting invite code (fallback):', insertError);
+          return { code: finalCode, success: false, message: 'Failed to save invite code to database: ' + insertError.message };
+        }
+
+        return { code: finalCode, success: true, message: 'Invite code generated successfully (fallback)' };
       }
 
-      return { code: data.code, success: true, message: 'Invite code generated successfully' };
+      console.log('[FamilyContext] Invite code inserted successfully:', data?.code);
+      return { code: data?.code || finalCode, success: true, message: 'Invite code generated successfully' };
     } catch (error) {
       console.error('Error generating invite code:', error);
-      return { code: '', success: false, message: 'Failed to generate invite code' };
+      return { code: '', success: false, message: 'Failed to generate invite code: ' + String(error) };
     }
   }, [isOwner, authProfile, currentBaby]);
 
@@ -720,7 +753,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [isOwner, currentBaby]);
 
-  // ─── FIXED: Validate Invite Code with detailed logging ──────────────
+  // ─── FIXED: Validate Invite Code with robust query ──────────────
   const validateInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; data: any; message: string }> => {
     if (!code || code.length < 4) {
       return { valid: false, data: null, message: 'Invalid invite code format' };
@@ -728,10 +761,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const trimmedCode = code.trim().toUpperCase();
-      console.log('[FamilyContext] Validating invite code:', trimmedCode);
+      console.log('[FamilyContext] 🔍 Validating invite code:', trimmedCode);
       
-      // ─── FIX: Use correct table and filters ─────────────────────────
-      const { data, error } = await supabase
+      // ─── First try exact match with all filters ─────────────────
+      let { data, error } = await supabase
         .from('invite_codes')
         .select('*')
         .eq('code', trimmedCode)
@@ -739,11 +772,47 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('revoked', false)
         .maybeSingle();
 
-      console.log('[FamilyContext] Query result:', { 
+      console.log('[FamilyContext] 📊 Query result (strict):', { 
         found: !!data, 
         error: error?.message,
-        data: data ? { id: data.id, role: data.role, family_id: data.family_id } : null
+        data: data ? { id: data.id, role: data.role, family_id: data.family_id, code: data.code } : null
       });
+
+      // ─── If no result, try without the used/revoked filters ────
+      if (!data) {
+        console.log('[FamilyContext] No result with strict filters, trying relaxed...');
+        
+        const { data: relaxedData, error: relaxedError } = await supabase
+          .from('invite_codes')
+          .select('*')
+          .eq('code', trimmedCode)
+          .maybeSingle();
+
+        console.log('[FamilyContext] 📊 Relaxed query result:', { 
+          found: !!relaxedData, 
+          error: relaxedError?.message,
+          data: relaxedData ? { 
+            id: relaxedData.id, 
+            role: relaxedData.role, 
+            family_id: relaxedData.family_id, 
+            code: relaxedData.code,
+            used: relaxedData.used,
+            revoked: relaxedData.revoked,
+            created_at: relaxedData.created_at
+          } : null
+        });
+
+        if (relaxedData) {
+          // Check if already used or revoked
+          if (relaxedData.used) {
+            return { valid: false, data: null, message: 'This invite code has already been used' };
+          }
+          if (relaxedData.revoked) {
+            return { valid: false, data: null, message: 'This invite code has been revoked' };
+          }
+          data = relaxedData;
+        }
+      }
 
       if (error) {
         console.error('Error validating invite code:', error);
@@ -751,21 +820,44 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (!data) {
-        console.log('[FamilyContext] No invite code found for:', trimmedCode);
-        return { valid: false, data: null, message: 'Invalid or expired invite code' };
+        // ─── Check if code exists with different case ─────────────
+        console.log('[FamilyContext] No invite code found with exact case, trying case-insensitive...');
+        
+        const { data: caseInsensitiveData, error: caseError } = await supabase
+          .from('invite_codes')
+          .select('*')
+          .ilike('code', trimmedCode)
+          .maybeSingle();
+
+        if (caseInsensitiveData) {
+          console.log('[FamilyContext] Found code with case-insensitive match:', caseInsensitiveData.code);
+          
+          if (caseInsensitiveData.used) {
+            return { valid: false, data: null, message: 'This invite code has already been used' };
+          }
+          if (caseInsensitiveData.revoked) {
+            return { valid: false, data: null, message: 'This invite code has been revoked' };
+          }
+          data = caseInsensitiveData;
+        }
+
+        if (!data) {
+          console.log('[FamilyContext] ❌ No invite code found for:', trimmedCode);
+          return { valid: false, data: null, message: 'Invalid or expired invite code' };
+        }
       }
 
-      // ─── FIX: Check expiration properly ─────────────────────────────
+      // ─── Check expiration properly ─────────────────────────────
       const now = Date.now();
       const expiresAt = data.created_at + (data.expires_in_days || 7) * 24 * 60 * 60 * 1000;
-      console.log('[FamilyContext] Expires at:', new Date(expiresAt).toISOString(), 'Now:', new Date(now).toISOString());
+      console.log('[FamilyContext] ⏰ Expires at:', new Date(expiresAt).toISOString(), 'Now:', new Date(now).toISOString());
       
       if (now > expiresAt) {
-        console.log('[FamilyContext] Code expired');
+        console.log('[FamilyContext] ⏰ Code expired');
         return { valid: false, data: null, message: 'Invite code has expired' };
       }
 
-      console.log('[FamilyContext] Code is valid!');
+      console.log('[FamilyContext] ✅ Code is valid!');
       return { valid: true, data, message: 'Invite code is valid' };
     } catch (error) {
       console.error('Error validating invite code:', error);
