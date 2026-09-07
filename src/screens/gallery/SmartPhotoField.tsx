@@ -15,7 +15,7 @@ import {
   Pressable,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy'; // Changed to legacy import
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import Animated, {
@@ -317,6 +317,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           return;
         }
 
+        // Use the legacy API to get file info
         const fileInfo = await FileSystem.getInfoAsync(uri);
         const meta: PhotoMeta = {
           uri,

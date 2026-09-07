@@ -889,124 +889,129 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   /* ─── Entry CRUD ──────────────────────────────────────────────────── */
 
-  const handleAddEntry = useCallback(async (
-    trackerId: string,
-    data: Record<string, unknown>,
-    options?: {
-      title?: string;
-      notes?: string;
-      photoUris?: string[];
-      tags?: string[];
-    }
-  ): Promise<TrackerEntry | null> => {
-    const babyId = getCurrentBabyId();
-    if (!babyId) {
-      sweetAlert('Error', 'No baby profile selected. Please select a baby first.', 'warning');
-      return null;
-    }
+const handleAddEntry = useCallback(async (
+  trackerId: string,
+  data: Record<string, unknown>,
+  options?: {
+    title?: string;
+    notes?: string;
+    photoUris?: string[];
+    tags?: string[];
+  }
+): Promise<TrackerEntry | null> => {
+  const babyId = getCurrentBabyId();
+  if (!babyId) {
+    sweetAlert('Error', 'No baby profile selected. Please select a baby first.', 'warning');
+    return null;
+  }
 
-    if (!canCreateEntry(trackerId)) {
-      sweetAlert('Permission Denied', 'You do not have permission to add entries to this tracker', 'warning');
-      return null;
-    }
+  if (!canCreateEntry(trackerId)) {
+    sweetAlert('Permission Denied', 'You do not have permission to add entries to this tracker', 'warning');
+    return null;
+  }
 
-    const tracker = getTracker(trackerId);
-    if (!tracker) {
-      sweetAlert('Error', 'Tracker not found', 'warning');
-      return null;
-    }
+  const tracker = getTracker(trackerId);
+  if (!tracker) {
+    sweetAlert('Error', 'Tracker not found', 'warning');
+    return null;
+  }
 
-    const missingFields = tracker.fields
-      .filter(f => f.required && (data[f.id] === undefined || data[f.id] === '' || data[f.id] === null))
-      .map(f => f.label);
+  const missingFields = tracker.fields
+    .filter(f => f.required && (data[f.id] === undefined || data[f.id] === '' || data[f.id] === null))
+    .map(f => f.label);
 
-    if (missingFields.length > 0) {
-      Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
-      return null;
-    }
+  if (missingFields.length > 0) {
+    Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
+    return null;
+  }
 
-    try {
-      const newId = generateId();
-      const now = new Date().toISOString();
-      const newEntry: TrackerEntry = {
+  try {
+    const newId = generateId();
+    const now = new Date().toISOString();
+    const timestamp = Date.now(); // Keep as number for the entry object
+    
+    const newEntry: TrackerEntry = {
+      id: newId,
+      babyId: babyId,
+      trackerId,
+      timestamp: timestamp, // Number for internal use
+      title: options?.title || `${tracker.emoji} ${tracker.name}`,
+      data,
+      loggedBy: userProfile?.id || 'unknown',
+      loggedByName: userProfile?.fullName || 'Unknown',
+      loggedByRole: (myRole as any) || 'parent1',
+      notes: options?.notes,
+      photoUris: options?.photoUris,
+      tags: options?.tags,
+      linkedEntries: [],
+      isDeleted: false,
+    };
+
+    // Convert timestamp to ISO string for Supabase
+    const timestampISO = new Date(timestamp).toISOString();
+
+    const { error } = await supabase
+      .from('tracker_entries')
+      .insert({
         id: newId,
-        babyId: babyId,
-        trackerId,
-        timestamp: Date.now(),
+        tracker_id: trackerId,
+        baby_id: babyId,
+        timestamp: timestampISO, // Use ISO string here
         title: options?.title || `${tracker.emoji} ${tracker.name}`,
-        data,
-        loggedBy: userProfile?.id || 'unknown',
-        loggedByName: userProfile?.fullName || 'Unknown',
-        loggedByRole: (myRole as any) || 'parent1',
-        notes: options?.notes,
-        photoUris: options?.photoUris,
-        tags: options?.tags,
-        linkedEntries: [],
-        isDeleted: false,
-      };
+        data: data,
+        notes: options?.notes || null,
+        photo_uris: options?.photoUris || null,
+        tags: options?.tags || null,
+        logged_by: userProfile?.id || 'unknown',
+        logged_by_name: userProfile?.fullName || 'Unknown',
+        logged_by_role: (myRole as any) || 'parent1',
+        created_at: now,
+        updated_at: now,
+        is_deleted: false,
+      });
 
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_id: trackerId,
-          baby_id: babyId,
-          timestamp: Date.now(),
-          title: options?.title || `${tracker.emoji} ${tracker.name}`,
-          data: data,
-          notes: options?.notes || null,
-          photo_uris: options?.photoUris || null,
-          tags: options?.tags || null,
-          logged_by: userProfile?.id || 'unknown',
-          logged_by_name: userProfile?.fullName || 'Unknown',
-          logged_by_role: (myRole as any) || 'parent1',
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
-
-      if (error) {
-        console.error('Failed to add entry:', error);
-        sweetAlert('Error', 'Failed to save entry', 'warning');
-        return null;
-      }
-
-      const updatedEntries = [newEntry, ...state.entries];
-
-      const updatedEntriesByTracker = { ...state.entriesByTracker };
-      if (!updatedEntriesByTracker[trackerId]) {
-        updatedEntriesByTracker[trackerId] = [];
-      }
-      updatedEntriesByTracker[trackerId] = [newEntry, ...updatedEntriesByTracker[trackerId]];
-
-      await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.LAST_TRACKER, trackerId);
-
-      setState(prev => ({
-        ...prev,
-        entries: updatedEntries,
-        entriesByTracker: updatedEntriesByTracker,
-        lastTrackerId: trackerId,
-      }));
-
-      if (babyId) {
-        const streak = calculateStreak(trackerId, updatedEntries, babyId);
-        if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
-          triggerHaptic('success');
-          success(
-            `${streak.currentStreak} Day Streak!`,
-            `You've been consistently tracking ${tracker.name} for ${streak.currentStreak} days! 🎉`
-          );
-        }
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      return newEntry;
-    } catch (error) {
+    if (error) {
       console.error('Failed to add entry:', error);
       sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
     }
-  }, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert]);
+
+    const updatedEntries = [newEntry, ...state.entries];
+
+    const updatedEntriesByTracker = { ...state.entriesByTracker };
+    if (!updatedEntriesByTracker[trackerId]) {
+      updatedEntriesByTracker[trackerId] = [];
+    }
+    updatedEntriesByTracker[trackerId] = [newEntry, ...updatedEntriesByTracker[trackerId]];
+
+    await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.LAST_TRACKER, trackerId);
+
+    setState(prev => ({
+      ...prev,
+      entries: updatedEntries,
+      entriesByTracker: updatedEntriesByTracker,
+      lastTrackerId: trackerId,
+    }));
+
+    if (babyId) {
+      const streak = calculateStreak(trackerId, updatedEntries, babyId);
+      if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
+        triggerHaptic('success');
+        success(
+          `${streak.currentStreak} Day Streak!`,
+          `You've been consistently tracking ${tracker.name} for ${streak.currentStreak} days! 🎉`
+        );
+      }
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    return newEntry;
+  } catch (error) {
+    console.error('Failed to add entry:', error);
+    sweetAlert('Error', 'Failed to save entry', 'warning');
+    return null;
+  }
+}, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert]);
 
   const handleUpdateEntry = useCallback(async (
     entryId: string,

@@ -696,7 +696,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [isOwner, currentBaby]);
 
-  // ─── Validate Invite Code ─────────────────────────────────────────────
+  // ─── FIXED: Validate Invite Code with detailed logging ──────────────
   const validateInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; data: any; message: string }> => {
     if (!code || code.length < 4) {
       return { valid: false, data: null, message: 'Invalid invite code format' };
@@ -704,6 +704,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const trimmedCode = code.trim().toUpperCase();
+      console.log('[FamilyContext] Validating invite code:', trimmedCode);
       
       const { data, error } = await supabase
         .from('invite_codes')
@@ -713,21 +714,28 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('revoked', false)
         .maybeSingle();
 
+      console.log('[FamilyContext] Query result:', { data: data ? 'found' : 'not found', error: error?.message });
+
       if (error) {
         console.error('Error validating invite code:', error);
         return { valid: false, data: null, message: 'Error validating code' };
       }
 
       if (!data) {
+        console.log('[FamilyContext] No invite code found for:', trimmedCode);
         return { valid: false, data: null, message: 'Invalid or expired invite code' };
       }
 
       const now = Date.now();
       const expiresAt = data.created_at + (data.expires_in_days || 7) * 24 * 60 * 60 * 1000;
+      console.log('[FamilyContext] Expires at:', new Date(expiresAt).toISOString(), 'Now:', new Date(now).toISOString());
+      
       if (now > expiresAt) {
+        console.log('[FamilyContext] Code expired');
         return { valid: false, data: null, message: 'Invite code has expired' };
       }
 
+      console.log('[FamilyContext] Code is valid!');
       return { valid: true, data, message: 'Invite code is valid' };
     } catch (error) {
       console.error('Error validating invite code:', error);
