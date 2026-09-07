@@ -1,4 +1,4 @@
-// App.tsx - WITHOUT Stripe
+// App.tsx - WITHOUT Stripe (with SweetAlertProvider)
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -31,6 +31,14 @@ import { ensureAllImageDirs } from '@/utils/imageUtils';
 
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
+
+// ─── SweetAlert Provider ──────────────────────────────────────────────
+// Import from the fixed SweetAlert component
+import SweetAlertProvider from '@/components/SweetAlert';
+
+// ─── ImageUtils SweetAlert setter ─────────────────────────────────────
+import { setSweetAlert } from '@/utils/imageUtils';
+import { useSweetAlert } from '@/components/SweetAlert';
 
 // FIX: Lazy load Reanimated to avoid resolution issues
 let ReanimatedLoaded = false;
@@ -153,25 +161,47 @@ const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrue
   );
 });
 
+// ─── InnerApp with SweetAlert setter ──────────────────────────────────
+
 interface InnerAppProps {
   initialState: object | undefined;
   onStateChange: (state: object | undefined) => void;
 }
 
 const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateChange }) => {
-  const { isDark } = useTheme();
+  const { isDark, themeColors } = useTheme();
   useAppLock();
+  
+  // Get sweetAlert instance and set it for ImageUtils
+  const sweetAlert = useSweetAlert();
+  
+  // Set sweetAlert for ImageUtils on mount
+  useEffect(() => {
+    setSweetAlert(sweetAlert);
+  }, [sweetAlert]);
 
   return (
-    <ModalProvider>
-      <View style={styles.container}>
-        <AppNavigator initialState={initialState} onStateChange={onStateChange} />
-        <GlobalAudioPlayer />
-      </View>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-    </ModalProvider>
+    <SweetAlertProvider
+      isDark={isDark}
+      themeColors={{
+        primary: themeColors?.primary || '#6366f1',
+        secondary: themeColors?.secondary || '#8b5cf6',
+        accent: themeColors?.accent || '#ec4899',
+      }}
+      reduceMotion={false}
+    >
+      <ModalProvider>
+        <View style={styles.container}>
+          <AppNavigator initialState={initialState} onStateChange={onStateChange} />
+          <GlobalAudioPlayer />
+        </View>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+      </ModalProvider>
+    </SweetAlertProvider>
   );
 });
+
+// ─── Main App ──────────────────────────────────────────────────────────
 
 export default function App(): JSX.Element | null {
   const systemScheme = useColorScheme();

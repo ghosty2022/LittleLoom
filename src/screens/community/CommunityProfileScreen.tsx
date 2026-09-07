@@ -984,15 +984,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           setFormData(prev => ({ ...prev, avatar: uploadedUrl }));
           await updateCommunityProfile({ avatar: uploadedUrl });
           await updateUserContextProfile({ avatar: uploadedUrl });
-          // Update user context avatar
-          if (currentUser) {
-            // The avatar will be updated via the context
-          }
           sweetAlert.success('Photo Updated', 'Profile picture saved to cloud');
         } else {
           setFormData(prev => ({ ...prev, coverPhoto: uploadedUrl }));
           await updateCommunityProfile({ coverPhoto: uploadedUrl });
-          // Update user context cover
           await updateUserContextProfile({ coverPhoto: uploadedUrl });
           sweetAlert.success('Cover Updated', 'Cover photo saved to cloud');
         }
@@ -1328,206 +1323,206 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-// ─── RENDER FUNCTIONS ──────────────────────────────────────────────
-const renderStickyHeader = () => (
-  <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
-    <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-    <Text style={styles.stickyTitle}>{currentUser?.displayName || 'Community Profile'}</Text>
-    <Text style={styles.stickySubtitle}>{currentUser?.handle || ''}</Text>
-  </Animated.View>
-);
+  // ─── RENDER FUNCTIONS ──────────────────────────────────────────────
+  const renderStickyHeader = () => (
+    <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
+      <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+      <Text style={styles.stickyTitle}>{currentUser?.displayName || 'Community Profile'}</Text>
+      <Text style={styles.stickySubtitle}>{currentUser?.handle || ''}</Text>
+    </Animated.View>
+  );
 
-const renderProfileHero = () => {
-  if (!currentUser) return null;
-  const roleConfig = currentUser.isVerified ? ROLE_CONFIG.verified : ROLE_CONFIG.member;
-  const coverPhoto = formData.coverPhoto || currentUser.coverPhoto;
-  const avatarSource = formData.avatar || currentUser.avatar;
-  
-  const isEmoji = isEmojiAvatar(avatarSource);
-  const isUrl = avatarSource && (avatarSource.startsWith('http') || avatarSource.startsWith('file://'));
-  
-  return (
-    <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
-      {/* Cover Photo Container */}
-      <View style={styles.coverPhotoContainer}>
-        {coverPhoto ? (
-          <Image 
-            source={{ uri: coverPhoto }} 
-            style={styles.coverPhoto} 
-            resizeMode="cover"
-            onError={() => {
-              console.warn('Cover photo failed to load');
-            }}
-          />
-        ) : (
-          <LinearGradient 
-            colors={['#6366f1', '#8b5cf6', '#6a82fb']} 
-            style={styles.coverPhoto}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.coverPhotoPlaceholder}>
-              <Ionicons name="camera-outline" size={36} color="rgba(255,255,255,0.5)" />
-              <Text style={styles.coverPhotoText}>Add Cover Photo</Text>
-            </View>
-          </LinearGradient>
-        )}
-        
-        {/* Cover Photo Edit Button - Only show when editing */}
-        {isEditing && (
-          <TouchableOpacity 
-            style={styles.coverPhotoEditBadge} 
-            onPress={() => setShowCoverPicker(true)}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={['rgba(99,102,241,0.9)', 'rgba(139,92,246,0.9)']}
-              style={styles.coverPhotoEditBadgeGradient}
+  const renderProfileHero = () => {
+    if (!currentUser) return null;
+    const roleConfig = currentUser.isVerified ? ROLE_CONFIG.verified : ROLE_CONFIG.member;
+    const coverPhoto = formData.coverPhoto || currentUser.coverPhoto;
+    const avatarSource = formData.avatar || currentUser.avatar;
+    
+    const isEmoji = isEmojiAvatar(avatarSource);
+    const isUrl = avatarSource && (avatarSource.startsWith('http') || avatarSource.startsWith('file://'));
+    
+    return (
+      <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
+        {/* Cover Photo Container */}
+        <View style={styles.coverPhotoContainer}>
+          {coverPhoto ? (
+            <Image 
+              source={{ uri: coverPhoto }} 
+              style={styles.coverPhoto} 
+              resizeMode="cover"
+              onError={() => {
+                console.warn('Cover photo failed to load');
+              }}
+            />
+          ) : (
+            <LinearGradient 
+              colors={['#6366f1', '#8b5cf6', '#6a82fb']} 
+              style={styles.coverPhoto}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-            />
-            <Ionicons name="camera" size={18} color="#fff" />
-          </TouchableOpacity>
-        )}
-        
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.6)']}
-          style={styles.coverPhotoOverlay}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-        />
-      </View>
-
-      {/* Avatar Section */}
-      <View style={styles.avatarSection}>
-        <TouchableOpacity 
-          activeOpacity={0.9} 
-          onPress={() => isEditing && setShowImagePicker(true)} 
-          style={styles.avatarWrapper}
-          disabled={!isEditing}
-        >
-          {avatarSource ? (
-            isEmoji ? (
-              <View style={[styles.avatarImage, styles.avatarEmojiContainer, { backgroundColor: '#6366f125' }]}>
-                <Text style={styles.avatarEmojiText}>{avatarSource}</Text>
+            >
+              <View style={styles.coverPhotoPlaceholder}>
+                <Ionicons name="camera-outline" size={36} color="rgba(255,255,255,0.5)" />
+                <Text style={styles.coverPhotoText}>Add Cover Photo</Text>
               </View>
-            ) : isUrl ? (
-              <Image 
-                source={{ uri: avatarSource }} 
-                style={styles.avatarImage}
-                resizeMode="cover"
-                onError={() => {
-                  console.warn('Avatar image failed to load');
-                }}
+            </LinearGradient>
+          )}
+          
+          {/* Cover Photo Edit Button - Only show when editing */}
+          {isEditing && (
+            <TouchableOpacity 
+              style={styles.coverPhotoEditBadge} 
+              onPress={() => setShowCoverPicker(true)}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['rgba(99,102,241,0.9)', 'rgba(139,92,246,0.9)']}
+                style={styles.coverPhotoEditBadgeGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
               />
+              <Ionicons name="camera" size={18} color="#fff" />
+            </TouchableOpacity>
+          )}
+          
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.6)']}
+            style={styles.coverPhotoOverlay}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          />
+        </View>
+
+        {/* Avatar Section */}
+        <View style={styles.avatarSection}>
+          <TouchableOpacity 
+            activeOpacity={0.9} 
+            onPress={() => isEditing && setShowImagePicker(true)} 
+            style={styles.avatarWrapper}
+            disabled={!isEditing}
+          >
+            {avatarSource ? (
+              isEmoji ? (
+                <View style={[styles.avatarImage, styles.avatarEmojiContainer, { backgroundColor: '#6366f125' }]}>
+                  <Text style={styles.avatarEmojiText}>{avatarSource}</Text>
+                </View>
+              ) : isUrl ? (
+                <Image 
+                  source={{ uri: avatarSource }} 
+                  style={styles.avatarImage}
+                  resizeMode="cover"
+                  onError={() => {
+                    console.warn('Avatar image failed to load');
+                  }}
+                />
+              ) : (
+                <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: '#6366f125' }]}>
+                  <Text style={styles.avatarPlaceholderText}>
+                    {currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )
             ) : (
-              <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: '#6366f125' }]}>
+              <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: `${roleConfig.color}25` }]}>
                 <Text style={styles.avatarPlaceholderText}>
                   {currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}
                 </Text>
               </View>
-            )
-          ) : (
-            <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: `${roleConfig.color}25` }]}>
-              <Text style={styles.avatarPlaceholderText}>
-                {currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-          {isEditing && (
-            <View style={styles.avatarEditBadge}>
-              <Ionicons name="camera" size={14} color="#fff" />
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Profile Info */}
-      <View style={styles.profileInfo}>
-        <View style={styles.nameRow}>
-          <Text style={styles.profileName}>{currentUser.displayName}</Text>
-          {currentUser.isVerified && (
-            <View style={styles.verifiedBadge}>
-              <Ionicons name="checkmark" size={12} color="#fff" />
-            </View>
-          )}
+            )}
+            {isEditing && (
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="camera" size={14} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
-        <Text style={styles.profileMeta}>{currentUser.handle} • {roleConfig.label}</Text>
-        
-        {currentUser.bio && (
-          <Text style={styles.profileBio} numberOfLines={2}>{currentUser.bio}</Text>
+
+        {/* Profile Info */}
+        <View style={styles.profileInfo}>
+          <View style={styles.nameRow}>
+            <Text style={styles.profileName}>{currentUser.displayName}</Text>
+            {currentUser.isVerified && (
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="checkmark" size={12} color="#fff" />
+              </View>
+            )}
+          </View>
+          <Text style={styles.profileMeta}>{currentUser.handle} • {roleConfig.label}</Text>
+          
+          {currentUser.bio && (
+            <Text style={styles.profileBio} numberOfLines={2}>{currentUser.bio}</Text>
+          )}
+          
+          <View style={styles.profileTags}>
+            <View style={[styles.profileTag, { backgroundColor: `${roleConfig.color}20` }]}>
+              <Ionicons name={roleConfig.icon as any} size={12} color={roleConfig.color} />
+              <Text style={[styles.profileTagText, { color: roleConfig.color }]}>{roleConfig.label}</Text>
+            </View>
+            {isEditing && (
+              <View style={[styles.profileTag, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+                <View style={styles.editingDot} />
+                <Text style={[styles.profileTagText, { color: '#f59e0b' }]}>Editing</Text>
+              </View>
+            )}
+            {isProfileDeactivated && (
+              <View style={[styles.profileTag, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+                <Ionicons name="eye-off" size={12} color="#ef4444" />
+                <Text style={[styles.profileTagText, { color: '#ef4444' }]}>Hidden</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Stats Row */}
+          <View style={styles.statsRow}>
+            <View style={styles.statsItem}>
+              <Text style={styles.statsValue}>{userPostList.length}</Text>
+              <Text style={styles.statsLabel}>Posts</Text>
+            </View>
+            <View style={styles.statsDivider} />
+            <View style={styles.statsItem}>
+              <Text style={styles.statsValue}>{followerCount}</Text>
+              <Text style={styles.statsLabel}>Followers</Text>
+            </View>
+            <View style={styles.statsDivider} />
+            <View style={styles.statsItem}>
+              <Text style={styles.statsValue}>{followingCount}</Text>
+              <Text style={styles.statsLabel}>Following</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Edit/Save button - Only show edit when not editing, save when editing */}
+        {!isEditing ? (
+          <TouchableOpacity 
+            style={styles.editToggleBtn} 
+            onPress={() => setIsEditing(true)}
+            disabled={isSaving || avatarUploading || coverUploading}
+          >
+            <Ionicons name="create-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.editToggleBtn, styles.editToggleBtnActive]} 
+            onPress={() => {
+              if (hasChanges) {
+                handleSave();
+              } else {
+                setIsEditing(false);
+                setFormData({ ...originalData });
+              }
+            }}
+            disabled={isSaving || avatarUploading || coverUploading}
+          >
+            {isSaving || avatarUploading || coverUploading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="save-outline" size={20} color="#fff" />
+            )}
+          </TouchableOpacity>
         )}
-        
-        <View style={styles.profileTags}>
-          <View style={[styles.profileTag, { backgroundColor: `${roleConfig.color}20` }]}>
-            <Ionicons name={roleConfig.icon as any} size={12} color={roleConfig.color} />
-            <Text style={[styles.profileTagText, { color: roleConfig.color }]}>{roleConfig.label}</Text>
-          </View>
-          {isEditing && (
-            <View style={[styles.profileTag, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
-              <View style={styles.editingDot} />
-              <Text style={[styles.profileTagText, { color: '#f59e0b' }]}>Editing</Text>
-            </View>
-          )}
-          {isProfileDeactivated && (
-            <View style={[styles.profileTag, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
-              <Ionicons name="eye-off" size={12} color="#ef4444" />
-              <Text style={[styles.profileTagText, { color: '#ef4444' }]}>Hidden</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statsItem}>
-            <Text style={styles.statsValue}>{userPostList.length}</Text>
-            <Text style={styles.statsLabel}>Posts</Text>
-          </View>
-          <View style={styles.statsDivider} />
-          <View style={styles.statsItem}>
-            <Text style={styles.statsValue}>{followerCount}</Text>
-            <Text style={styles.statsLabel}>Followers</Text>
-          </View>
-          <View style={styles.statsDivider} />
-          <View style={styles.statsItem}>
-            <Text style={styles.statsValue}>{followingCount}</Text>
-            <Text style={styles.statsLabel}>Following</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Edit/Save button - Only show edit when not editing, save when editing */}
-      {!isEditing ? (
-        <TouchableOpacity 
-          style={[styles.editToggleBtn]} 
-          onPress={() => setIsEditing(true)}
-          disabled={isSaving || avatarUploading || coverUploading}
-        >
-          <Ionicons name="create-outline" size={20} color="#fff" />
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity 
-          style={[styles.editToggleBtn, styles.editToggleBtnActive]} 
-          onPress={() => {
-            if (hasChanges) {
-              handleSave();
-            } else {
-              setIsEditing(false);
-              setFormData({ ...originalData });
-            }
-          }}
-          disabled={isSaving || avatarUploading || coverUploading}
-        >
-          {isSaving || avatarUploading || coverUploading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name="save-outline" size={20} color="#fff" />
-          )}
-        </TouchableOpacity>
-      )}
-    </Animated.View>
-  );
-};
+      </Animated.View>
+    );
+  };
 
   const tabs = [
     { key: 'overview' as ProfileTab, label: 'Overview', icon: 'grid-outline' },
@@ -2267,23 +2262,23 @@ const renderProfileHero = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.spinnerColor} />
         }
       >
-// In the main return section, update the topHeader:
-<Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-  <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-    <Ionicons name="arrow-back" size={22} color="#fff" />
-  </TouchableOpacity>
-  <View style={{ flex: 1 }} />
-  {isEditing && (
-    <TouchableOpacity 
-      onPress={handleSave} 
-      style={[styles.saveBtn, (!hasChanges || isSaving) && styles.saveBtnDisabled]} 
-      disabled={isSaving || !hasChanges}
-      activeOpacity={0.8}
-    >
-      {isSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>Save</Text>}
-    </TouchableOpacity>
-  )}
-</Animated.View>
+        {/* Top Header - Back button and Save button when editing */}
+        <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          {isEditing && (
+            <TouchableOpacity 
+              onPress={handleSave} 
+              style={[styles.saveBtn, (!hasChanges || isSaving) && styles.saveBtnDisabled]} 
+              disabled={isSaving || !hasChanges}
+              activeOpacity={0.8}
+            >
+              {isSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>Save</Text>}
+            </TouchableOpacity>
+          )}
+        </Animated.View>
 
         {renderProfileHero()}
         <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={fullThemeColors} />
@@ -2451,31 +2446,29 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   },
   coverPhotoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   coverPhotoText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600' },
-// Add to getStyles function, inside the StyleSheet.create({ ... })
-
-coverPhotoEditBadge: { 
-  position: 'absolute', 
-  bottom: 12, 
-  right: 12, 
-  width: 44, 
-  height: 44, 
-  borderRadius: 22, 
-  overflow: 'hidden',
-  justifyContent: 'center', 
-  alignItems: 'center',
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.3,
-  shadowRadius: 8,
-  elevation: 6,
-},
-coverPhotoEditBadgeGradient: {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-},
+  coverPhotoEditBadge: { 
+    position: 'absolute', 
+    bottom: 12, 
+    right: 12, 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
+    overflow: 'hidden',
+    justifyContent: 'center', 
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  coverPhotoEditBadgeGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
 
   avatarSection: { alignItems: 'center', marginTop: -50 },
   avatarWrapper: { 
@@ -2545,25 +2538,25 @@ coverPhotoEditBadgeGradient: {
   profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
   profileTagText: { fontSize: 12, fontWeight: '700' },
   editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
-editToggleBtn: { 
-  position: 'absolute', 
-  right: 12, 
-  top: 12, 
-  width: 44, 
-  height: 44, 
-  borderRadius: 22, 
-  backgroundColor: 'rgba(99,102,241,0.9)',
-  alignItems: 'center', 
-  justifyContent: 'center',
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.3,
-  shadowRadius: 8,
-  elevation: 6,
-},
-editToggleBtnActive: { 
-  backgroundColor: '#6366f1',
-},
+  editToggleBtn: { 
+    position: 'absolute', 
+    right: 12, 
+    top: 12, 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
+    backgroundColor: 'rgba(99,102,241,0.9)',
+    alignItems: 'center', 
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  editToggleBtnActive: { 
+    backgroundColor: '#6366f1',
+  },
   locationDetectedText: { 
     fontSize: 12, 
     color: '#10b981', 
