@@ -418,7 +418,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const subscriptionRef = useRef<(() => void) | null>(null);
 
   // ─── Subscribe to baby changes from BabyContext ─────────────────────
-  // FIXED: Proper cleanup and loop prevention
+  // FIXED: Proper cleanup and loop prevention using requestAnimationFrame
   useEffect(() => {
     // Clean up previous subscription
     if (subscriptionRef.current) {
@@ -430,21 +430,22 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const unsubscribe = subscribeToBabyChanges((babyId) => {
       console.log('[TrackerContext] Baby changed to:', babyId);
       
-      // Only update if baby actually changed and we're not already refreshing
-      if (babyId !== currentBabyIdRef.current && !isRefreshingRef.current) {
+      // Only update if baby actually changed
+      if (babyId !== currentBabyIdRef.current) {
         currentBabyIdRef.current = babyId;
-        // Use setTimeout to break the render cycle and prevent infinite loops
-        setTimeout(() => {
-          if (babyId) {
+        
+        // Use requestAnimationFrame to break the render cycle and prevent infinite loops
+        requestAnimationFrame(() => {
+          if (babyId && !isRefreshingRef.current) {
             refreshEntriesInternal();
-          } else {
+          } else if (!babyId) {
             setState(prev => ({
               ...prev,
               entries: [],
               entriesByTracker: {},
             }));
           }
-        }, 0);
+        });
       }
     });
 

@@ -365,7 +365,7 @@ const getNotificationService = async () => {
 
 // ─── PROVIDER ────────────────────────────────────────────────────────────
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { userProfile: authProfile } = useAuth();
+  const { userProfile: authProfile, isAuthenticated } = useAuth();
 
   const [state, setState] = useState<BabyState>({
     isLoading: false,
@@ -398,6 +398,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const appStateListenerRef = useRef<any>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isAuthTriggeredRef = useRef(false);
+  const loadAttemptsRef = useRef(0);
+  const maxLoadAttempts = 5;
 
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     babyChangeSubscribers.forEach(callback => {
@@ -980,15 +982,25 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadBabies(true);
   }, [loadBabies]);
 
-  // ─── Initial load ──────────────────────────────────────────────────────
+  // ─── FIXED: Initial load - wait for auth to be ready ──────────────────
   useEffect(() => {
     if (initRef.current) return;
-    initRef.current = true;
-
-    isMounted.current = true;
     
-    // Load babies immediately
-    loadBabies();
+    const initialize = async () => {
+      // Wait for auth to be ready
+      let attempts = 0;
+      while (!isAuthenticated && attempts < maxLoadAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+      
+      if (isMounted.current) {
+        initRef.current = true;
+        loadBabies();
+      }
+    };
+    
+    initialize();
 
     return () => {
       isMounted.current = false;
@@ -1003,21 +1015,33 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         intervalRef.current = null;
       }
     };
-  }, [loadBabies]);
+  }, [isAuthenticated, loadBabies]);
 
-  // ─── Watch for auth changes ──────────────────────────────────────────
+  // ─── FIXED: Watch for auth changes with proper delay ──────────────────
   useEffect(() => {
+    if (!isAuthenticated) {
+      // User signed out, clear state
+      setState(prev => ({
+        ...prev,
+        babies: [],
+        currentBabyId: null,
+        currentBaby: null,
+        isInitialized: false,
+      }));
+      return;
+    }
+
     if (authProfile?.id) {
       console.log('[BabyContext] Auth user detected, loading babies...');
       if (authLoadTimerRef.current) {
         clearTimeout(authLoadTimerRef.current);
       }
       authLoadTimerRef.current = setTimeout(() => {
-        if (isMounted.current) {
+        if (isMounted.current && isAuthenticated) {
           loadBabies(true);
         }
         authLoadTimerRef.current = null;
-      }, 500);
+      }, 300);
       return () => {
         if (authLoadTimerRef.current) {
           clearTimeout(authLoadTimerRef.current);
@@ -1025,7 +1049,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       };
     }
-  }, [authProfile?.id]);
+  }, [authProfile?.id, isAuthenticated, loadBabies]);
 
   // ─── Auto-refresh on app focus ────────────────────────────────────────
   useEffect(() => {
@@ -1042,7 +1066,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         syncTimeoutRef.current = setTimeout(() => {
           console.log('[BabyContext] Auto-refresh on app focus');
-          if (isMounted.current) {
+          if (isMounted.current && isAuthenticated) {
             loadBabies(true);
           }
         }, 500);
@@ -1060,7 +1084,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearTimeout(syncTimeoutRef.current);
       }
     };
-  }, [loadBabies]);
+  }, [loadBabies, isAuthenticated]);
 
   // ─── Auto-refresh every 5 minutes ─────────────────────────────────────
   useEffect(() => {
@@ -1069,10 +1093,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       intervalRef.current = null;
     }
     
-    if (authProfile?.id) {
+    if (authProfile?.id && isAuthenticated) {
       intervalRef.current = setInterval(() => {
         console.log('[BabyContext] Auto-refresh interval');
-        if (isMounted.current) {
+        if (isMounted.current && isAuthenticated) {
           loadBabies(true);
         }
       }, 300000);
@@ -1084,7 +1108,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         intervalRef.current = null;
       }
     };
-  }, [authProfile?.id, loadBabies]);
+  }, [authProfile?.id, isAuthenticated, loadBabies]);
 
   // ─── Age auto-refresh ─────────────────────────────────────────────────
   useEffect(() => {

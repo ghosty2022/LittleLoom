@@ -246,6 +246,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   const currentBabyIdRef = useRef<string | null>(null);
   const subscriptionRef = useRef<(() => void) | null>(null);
   const isRefreshingRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   // ─── Subscribe to baby changes from BabyContext ─────────────────────
   // FIXED: Proper cleanup and loop prevention
@@ -258,19 +259,23 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
     // Create new subscription
     const unsubscribe = subscribeToBabyChanges((babyId) => {
+      if (!isMountedRef.current) return;
+      
       console.log('[ActivityContext] Baby changed to:', babyId);
       
       // Only update if baby actually changed and we're not already refreshing
       if (babyId !== currentBabyIdRef.current && !isRefreshingRef.current) {
         currentBabyIdRef.current = babyId;
-        // Use setTimeout to break the render cycle
-        setTimeout(() => {
+        
+        // Use requestAnimationFrame to break the render cycle
+        requestAnimationFrame(() => {
+          if (!isMountedRef.current) return;
           if (babyId) {
             loadEntriesInternal();
           } else {
             setEntries([]);
           }
-        }, 0);
+        });
       }
     });
 
@@ -284,6 +289,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
     // Cleanup on unmount
     return () => {
+      isMountedRef.current = false;
       if (subscriptionRef.current) {
         subscriptionRef.current();
         subscriptionRef.current = null;
