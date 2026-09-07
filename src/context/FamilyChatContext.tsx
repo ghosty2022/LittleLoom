@@ -1,5 +1,5 @@
 // src/context/FamilyChatContext.tsx
-// Full Supabase real-time implementation
+// Full Supabase real-time implementation with notifications
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import * as Crypto from 'expo-crypto';
@@ -8,7 +8,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Share } from 'react-native';
+import { Share, Platform } from 'react-native';
 import { supabase } from '@/utils/supabase';
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
@@ -17,6 +17,7 @@ import { useBaby } from './BabyContext';
 import { useFamily } from './FamilyContext';
 import type { FamilyMember } from './FamilyContext';
 import { useSweetAlert } from '../components/SweetAlert';
+import { notificationService } from '../services/NotificationService';
 
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
@@ -222,30 +223,49 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const isInitializedRef = useRef(false);
   const isSubscribedRef = useRef(false);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const currentChatIdRef = useRef<string | null>(null);
+  const notificationEnabledRef = useRef(true);
 
   /* ─── Initialize Device ID ──────────────────────────────────── */
   useEffect(() => {
     (async () => {
       deviceIdRef.current = await getOrCreateDeviceId();
       await loadFamilyCode();
+      
+      // Initialize notification service
+      await notificationService.initialize();
     })();
   }, []);
 
   /* ─── Setup Realtime Listeners ──────────────────────────────── */
   const setupRealtimeListeners = useCallback(() => {
     if (!state.familyCode) return;
-    if (isSubscribedRef.current) return;
-
+    
     // Unsubscribe from existing channel
     if (realtimeChannelRef.current) {
       realtimeChannelRef.current.unsubscribe();
       realtimeChannelRef.current = null;
+      isSubscribedRef.current = false;
     }
 
-    // Create a channel for this family
-    const channel = supabase.channel(`family-chat-${state.familyCode}`);
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
 
-    // Listen for new messages
+    console.log('[FamilyChat] Setting up realtime channel for family:', state.familyCode);
+
+    // Create a channel for this family with proper config
+    const channel = supabase.channel(`family-chat-${state.familyCode}`, {
+      config: {
+        broadcast: { ack: true, self: true },
+        presence: { key: deviceIdRef.current },
+      },
+    });
+
+    // Listen for new messages - INSERT
     channel.on(
       'postgres_changes',
       {
@@ -255,74 +275,123 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         filter: `family_code=eq.${state.familyCode}`,
       },
       (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+        console.log('[FamilyChat] Received INSERT payload:', payload);
         const newMessage = payload.new as Record<string, unknown>;
         if (!newMessage) return;
 
         // Check if message is from this device
-        if (newMessage.device_id === deviceIdRef.current) return;
+        if (newMessage.device_id === deviceIdRef.current) {
+          console.log('[FamilyChat] Message from this device, ignoring');
+          return;
+        }
 
-        const message: FamilyMessage = {
-          id: newMessage.id as string,
-          syncId: newMessage.sync_id as string,
-          deviceId: newMessage.device_id as string,
-          version: newMessage.version as number || 1,
-          chatId: newMessage.chat_id as string,
-          senderId: newMessage.sender_id as string,
-          senderName: newMessage.sender_name as string,
-          senderRole: newMessage.sender_role as string,
-          senderAvatar: newMessage.sender_avatar as string || undefined,
-          receiverId: newMessage.receiver_id as string || undefined,
-          content: newMessage.content as string,
-          type: newMessage.type as MessageType || 'text',
-          imageUrl: newMessage.image_url as string || undefined,
-          fileUrl: newMessage.file_url as string || undefined,
-          voiceUrl: newMessage.voice_url as string || undefined,
-          fileMetadata: newMessage.file_metadata ? JSON.parse(newMessage.file_metadata as string) : undefined,
-          timestamp: newMessage.timestamp as string,
-          read: newMessage.read as boolean || false,
-          readBy: newMessage.read_by as string[] || [],
-          familyCode: newMessage.family_code as string,
-          reactions: newMessage.reactions ? JSON.parse(newMessage.reactions as string) : [],
-          replyTo: newMessage.reply_to as string || undefined,
-          replyToPreview: newMessage.reply_to_preview as string || undefined,
-          isEdited: newMessage.is_edited as boolean || false,
-          editedAt: newMessage.edited_at as string || undefined,
-          deliveryStatus: 'sent',
-        };
-
-        setState(prev => {
-          const chatMessages = prev.messages[message.chatId] || [];
-          const exists = chatMessages.some(m => m.syncId === message.syncId);
-          if (exists) return prev;
-
-          const updatedMessages = {
-            ...prev.messages,
-            [message.chatId]: [...chatMessages, message],
+        try {
+          const message: FamilyMessage = {
+            id: newMessage.id as string,
+            syncId: newMessage.sync_id as string,
+            deviceId: newMessage.device_id as string,
+            version: newMessage.version as number || 1,
+            chatId: newMessage.chat_id as string,
+            senderId: newMessage.sender_id as string,
+            senderName: newMessage.sender_name as string,
+            senderRole: newMessage.sender_role as string,
+            senderAvatar: newMessage.sender_avatar as string || undefined,
+            receiverId: newMessage.receiver_id as string || undefined,
+            content: newMessage.content as string,
+            type: newMessage.type as MessageType || 'text',
+            imageUrl: newMessage.image_url as string || undefined,
+            fileUrl: newMessage.file_url as string || undefined,
+            voiceUrl: newMessage.voice_url as string || undefined,
+            fileMetadata: newMessage.file_metadata ? JSON.parse(newMessage.file_metadata as string) : undefined,
+            timestamp: newMessage.timestamp as string,
+            read: newMessage.read as boolean || false,
+            readBy: newMessage.read_by as string[] || [],
+            familyCode: newMessage.family_code as string,
+            reactions: newMessage.reactions ? JSON.parse(newMessage.reactions as string) : [],
+            replyTo: newMessage.reply_to as string || undefined,
+            replyToPreview: newMessage.reply_to_preview as string || undefined,
+            isEdited: newMessage.is_edited as boolean || false,
+            editedAt: newMessage.edited_at as string || undefined,
+            deliveryStatus: 'sent',
           };
 
-          // Update chat's last message
-          const updatedChats = prev.chats.map(chat => {
-            if (chat.id === message.chatId) {
-              return {
-                ...chat,
-                lastMessage: message,
-                updatedAt: message.timestamp,
-                unreadCount: chat.unreadCount + 1,
-              };
+          console.log('[FamilyChat] Processing new message:', message.id, 'from:', message.senderName);
+
+          // Check if chat is muted
+          const chat = state.chats.find(c => c.id === message.chatId);
+          const isChatMuted = chat?.isMuted || false;
+
+          setState(prev => {
+            const chatMessages = prev.messages[message.chatId] || [];
+            // Check if message already exists
+            const exists = chatMessages.some(m => m.id === message.id || m.syncId === message.syncId);
+            if (exists) {
+              console.log('[FamilyChat] Message already exists, skipping');
+              return prev;
             }
-            return chat;
+
+            const updatedMessages = {
+              ...prev.messages,
+              [message.chatId]: [...chatMessages, message],
+            };
+
+            // Update chat's last message
+            const updatedChats = prev.chats.map(chat => {
+              if (chat.id === message.chatId) {
+                return {
+                  ...chat,
+                  lastMessage: message,
+                  updatedAt: message.timestamp,
+                  unreadCount: (chat.unreadCount || 0) + 1,
+                };
+              }
+              return chat;
+            });
+
+            console.log('[FamilyChat] Added message to state, chat:', message.chatId);
+
+            return {
+              ...prev,
+              messages: updatedMessages,
+              chats: updatedChats,
+            };
           });
 
-          return {
-            ...prev,
-            messages: updatedMessages,
-            chats: updatedChats,
-          };
-        });
+          // ─── SEND NOTIFICATION ──────────────────────────────────────
+          // Only send notification if:
+          // 1. Not in the current chat
+          // 2. Chat is not muted
+          // 3. Not from this device (already checked)
+          // 4. Not a system message
+          const currentChatId = currentChatIdRef.current;
+          if (currentChatId !== message.chatId && !isChatMuted && message.type !== 'system') {
+            console.log('[FamilyChat] Sending notification for message from:', message.senderName);
+            
+            // Get the chat name for the notification
+            const chatName = chat?.name || 'Family Chat';
+            
+            // Send notification using the notification service
+            notificationService.sendChatNotification(
+              message.senderName,
+              message.type === 'image' ? '📷 Sent a photo' :
+              message.type === 'file' ? '📎 Sent a file' :
+              message.type === 'voice' ? '🎤 Sent a voice message' :
+              message.content,
+              message.chatId
+            ).catch(error => {
+              console.warn('[FamilyChat] Failed to send notification:', error);
+            });
+          } else if (isChatMuted) {
+            console.log('[FamilyChat] Chat is muted, not sending notification');
+          }
+
+        } catch (error) {
+          console.error('[FamilyChat] Error processing received message:', error);
+        }
       }
     );
 
-    // Listen for message updates (read status, edits, reactions)
+    // Listen for message updates
     channel.on(
       'postgres_changes',
       {
@@ -332,6 +401,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         filter: `family_code=eq.${state.familyCode}`,
       },
       (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+        console.log('[FamilyChat] Received UPDATE payload:', payload);
         const updatedData = payload.new as Record<string, unknown>;
         if (!updatedData) return;
 
@@ -405,13 +475,46 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     );
 
-    // Subscribe to the channel
-    channel.subscribe((status) => {
+    // Listen for presence (online status)
+    channel.on('presence', { event: 'sync' }, () => {
+      const presenceState = channel.presenceState();
+      console.log('[FamilyChat] Presence sync:', presenceState);
+    });
+
+    // Subscribe to the channel with retry logic
+    channel.subscribe((status, err) => {
+      console.log('[FamilyChat] Channel status:', status, err);
       if (status === 'SUBSCRIBED') {
-        console.log('[FamilyChat] Subscribed to real-time channel');
+        console.log('[FamilyChat] Successfully subscribed to real-time channel');
         isSubscribedRef.current = true;
+        reconnectAttemptsRef.current = 0;
+        
+        // Track presence
+        channel.track({
+          user_id: userProfile?.id,
+          user_name: userProfile?.fullName,
+          device_id: deviceIdRef.current,
+          online_at: new Date().toISOString(),
+        });
       } else if (status === 'CHANNEL_ERROR') {
-        console.warn('[FamilyChat] Channel error, will retry...');
+        console.warn('[FamilyChat] Channel error:', err);
+        isSubscribedRef.current = false;
+        // Retry with exponential backoff
+        reconnectAttemptsRef.current += 1;
+        const delay = Math.min(5000 * Math.pow(1.5, reconnectAttemptsRef.current - 1), 30000);
+        console.log(`[FamilyChat] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
+        
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (realtimeChannelRef.current) {
+            realtimeChannelRef.current.subscribe();
+          }
+        }, delay);
+      } else if (status === 'TIMED_OUT') {
+        console.warn('[FamilyChat] Channel timed out, will retry...');
+        isSubscribedRef.current = false;
         setTimeout(() => {
           if (realtimeChannelRef.current) {
             realtimeChannelRef.current.subscribe();
@@ -421,7 +524,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     realtimeChannelRef.current = channel;
-  }, [state.familyCode]);
+  }, [state.familyCode, state.chats, userProfile]);
 
   /* ─── Load Family Code ────────────────────────────────────────── */
   const loadFamilyCode = useCallback(async () => {
@@ -555,7 +658,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isSynced: true,
       }));
 
-      // Setup real-time listeners
+      // Setup real-time listeners after sync
       setupRealtimeListeners();
 
     } catch (error) {
@@ -571,6 +674,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [deviceIdRef.current, state.familyCode, performInitialSync]);
 
+  /* ─── Track current chat ID ─────────────────────────────────────── */
+  useEffect(() => {
+    currentChatIdRef.current = state.currentChatId;
+  }, [state.currentChatId]);
+
   /* ─── Cleanup ────────────────────────────────────────────────────── */
   useEffect(() => {
     return () => {
@@ -578,6 +686,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         realtimeChannelRef.current.unsubscribe();
         realtimeChannelRef.current = null;
         isSubscribedRef.current = false;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
   }, []);
@@ -784,144 +896,181 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   /* ─── Send Message ────────────────────────────────────────────────── */
 
-// Replace your sendMessage function with this fixed version
-
-const sendMessage = useCallback(async (
-  chatId: string,
-  content: string,
-  type: MessageType = 'text',
-  mediaData?: string,
-  fileMeta?: FileMetadata,
-  replyToId?: string
-): Promise<void> => {
-  if (!state.familyCode || !userProfile) {
-    sweetAlert.alert('Error', 'You must be logged in to send messages', 'info');
-    return;
-  }
-
-  const chat = state.chats.find(c => c.id === chatId);
-  if (!chat) {
-    sweetAlert.alert('Error', 'Chat not found', 'error');
-    return;
-  }
-
-  // Check if user is blocked
-  if (chat.type === 'direct') {
-    const otherId = chat.participants.find(p => p !== userProfile.id);
-    if (otherId && state.blockedUsers.includes(otherId)) {
-      sweetAlert.alert('Blocked', 'You have blocked this user. Unblock to send messages.', 'warning');
+  const sendMessage = useCallback(async (
+    chatId: string,
+    content: string,
+    type: MessageType = 'text',
+    mediaData?: string,
+    fileMeta?: FileMetadata,
+    replyToId?: string
+  ): Promise<void> => {
+    if (!state.familyCode || !userProfile) {
+      sweetAlert.alert('Error', 'You must be logged in to send messages', 'info');
       return;
     }
-  }
 
-  const syncId = Crypto.randomUUID();
-  const now = new Date().toISOString();
+    const chat = state.chats.find(c => c.id === chatId);
+    if (!chat) {
+      sweetAlert.alert('Error', 'Chat not found', 'error');
+      return;
+    }
 
-  let replyToPreview: string | undefined;
-  if (replyToId) {
-    const repliedMsg = state.messages[chatId]?.find(m => m.id === replyToId);
-    replyToPreview = repliedMsg ? (repliedMsg.content.slice(0, 60) || 'Media') : undefined;
-  }
-
-  const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-  
-  const newMessage: FamilyMessage = {
-    id: messageId,
-    syncId,
-    deviceId: deviceIdRef.current,
-    version: 1,
-    chatId,
-    senderId: userProfile.id,
-    senderName: userProfile.fullName,
-    senderRole: userProfile.role || 'parent1',
-    senderAvatar: userProfile.avatar,
-    content,
-    type,
-    imageUrl: type === 'image' ? mediaData : undefined,
-    fileUrl: type === 'file' ? mediaData : undefined,
-    voiceUrl: type === 'voice' ? mediaData : undefined,
-    fileMetadata: type === 'file' ? fileMeta : undefined,
-    timestamp: now,
-    read: false,
-    readBy: [userProfile.id],
-    familyCode: state.familyCode,
-    reactions: [],
-    replyTo: replyToId,
-    replyToPreview,
-    deliveryStatus: 'sending',
-  };
-
-  // Add to local state immediately
-  setState(prev => {
-    const updatedChats = prev.chats.map(c => {
-      if (c.id === chatId) {
-        return { ...c, lastMessage: newMessage, updatedAt: now };
+    // Check if user is blocked
+    if (chat.type === 'direct') {
+      const otherId = chat.participants.find(p => p !== userProfile.id);
+      if (otherId && state.blockedUsers.includes(otherId)) {
+        sweetAlert.alert('Blocked', 'You have blocked this user. Unblock to send messages.', 'warning');
+        return;
       }
-      return c;
+    }
+
+    const syncId = Crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    let replyToPreview: string | undefined;
+    if (replyToId) {
+      const repliedMsg = state.messages[chatId]?.find(m => m.id === replyToId);
+      replyToPreview = repliedMsg ? (repliedMsg.content.slice(0, 60) || 'Media') : undefined;
+    }
+
+    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    
+    const newMessage: FamilyMessage = {
+      id: messageId,
+      syncId,
+      deviceId: deviceIdRef.current,
+      version: 1,
+      chatId,
+      senderId: userProfile.id,
+      senderName: userProfile.fullName,
+      senderRole: userProfile.role || 'parent1',
+      senderAvatar: userProfile.avatar,
+      content,
+      type,
+      imageUrl: type === 'image' ? mediaData : undefined,
+      fileUrl: type === 'file' ? mediaData : undefined,
+      voiceUrl: type === 'voice' ? mediaData : undefined,
+      fileMetadata: type === 'file' ? fileMeta : undefined,
+      timestamp: now,
+      read: false,
+      readBy: [userProfile.id],
+      familyCode: state.familyCode,
+      reactions: [],
+      replyTo: replyToId,
+      replyToPreview,
+      deliveryStatus: 'sending',
+    };
+
+    // Add to local state immediately
+    setState(prev => {
+      const updatedChats = prev.chats.map(c => {
+        if (c.id === chatId) {
+          return { ...c, lastMessage: newMessage, updatedAt: now };
+        }
+        return c;
+      });
+      return {
+        ...prev,
+        chats: updatedChats,
+        messages: {
+          ...prev.messages,
+          [chatId]: [...(prev.messages[chatId] || []), newMessage],
+        },
+      };
     });
-    return {
-      ...prev,
-      chats: updatedChats,
-      messages: {
-        ...prev.messages,
-        [chatId]: [...(prev.messages[chatId] || []), newMessage],
-      },
-    };
-  });
 
-  try {
-    // Prepare the insert data - make sure all required fields are present
-    const insertData: any = {
-      id: newMessage.id,
-      sync_id: newMessage.syncId,
-      device_id: newMessage.deviceId,
-      version: newMessage.version,
-      chat_id: newMessage.chatId,
-      sender_id: newMessage.senderId, // This should be a valid UUID from auth.users
-      sender_name: newMessage.senderName,
-      sender_role: newMessage.senderRole,
-      sender_avatar: newMessage.senderAvatar || null,
-      content: newMessage.content,
-      type: newMessage.type,
-      timestamp: newMessage.timestamp,
-      read: newMessage.read,
-      read_by: newMessage.readBy,
-      family_code: newMessage.familyCode,
-      reactions: JSON.stringify(newMessage.reactions || []),
-      delivery_status: 'sent',
-      created_at: now,
-    };
+    try {
+      // Prepare the insert data
+      const insertData: any = {
+        id: newMessage.id,
+        sync_id: newMessage.syncId,
+        device_id: newMessage.deviceId,
+        version: newMessage.version,
+        chat_id: newMessage.chatId,
+        sender_id: newMessage.senderId,
+        sender_name: newMessage.senderName,
+        sender_role: newMessage.senderRole,
+        sender_avatar: newMessage.senderAvatar || null,
+        content: newMessage.content,
+        type: newMessage.type,
+        timestamp: newMessage.timestamp,
+        read: newMessage.read,
+        read_by: newMessage.readBy,
+        family_code: newMessage.familyCode,
+        reactions: JSON.stringify(newMessage.reactions || []),
+        delivery_status: 'sent',
+        created_at: now,
+      };
 
-    // Add optional fields only if they exist
-    if (newMessage.imageUrl) {
-      insertData.image_url = newMessage.imageUrl;
-    }
-    if (newMessage.fileUrl) {
-      insertData.file_url = newMessage.fileUrl;
-    }
-    if (newMessage.voiceUrl) {
-      insertData.voice_url = newMessage.voiceUrl;
-    }
-    if (newMessage.fileMetadata) {
-      insertData.file_metadata = JSON.stringify(newMessage.fileMetadata);
-    }
-    if (newMessage.replyTo) {
-      insertData.reply_to = newMessage.replyTo;
-    }
-    if (newMessage.replyToPreview) {
-      insertData.reply_to_preview = newMessage.replyToPreview;
-    }
+      // Add optional fields only if they exist
+      if (newMessage.imageUrl) {
+        insertData.image_url = newMessage.imageUrl;
+      }
+      if (newMessage.fileUrl) {
+        insertData.file_url = newMessage.fileUrl;
+      }
+      if (newMessage.voiceUrl) {
+        insertData.voice_url = newMessage.voiceUrl;
+      }
+      if (newMessage.fileMetadata) {
+        insertData.file_metadata = JSON.stringify(newMessage.fileMetadata);
+      }
+      if (newMessage.replyTo) {
+        insertData.reply_to = newMessage.replyTo;
+      }
+      if (newMessage.replyToPreview) {
+        insertData.reply_to_preview = newMessage.replyToPreview;
+      }
 
-    console.log('[FamilyChat] Sending message with data:', insertData);
+      console.log('[FamilyChat] Sending message with data:', JSON.stringify(insertData, null, 2));
 
-    // Insert into Supabase
-    const { error } = await supabase
-      .from('family_messages')
-      .insert(insertData);
+      // Insert into Supabase
+      const { data: insertedData, error } = await supabase
+        .from('family_messages')
+        .insert(insertData)
+        .select();
 
-    if (error) {
+      if (error) {
+        console.error('[FamilyChat] Send message error:', error);
+        setState(prev => ({
+          ...prev,
+          messages: {
+            ...prev.messages,
+            [chatId]: prev.messages[chatId]?.map(m =>
+              m.id === newMessage.id ? { ...m, deliveryStatus: 'failed' } : m
+            ) || [],
+          },
+        }));
+        sweetAlert.alert('Error', `Failed to send message: ${error.message}`, 'error');
+        return;
+      }
+
+      console.log('[FamilyChat] Message sent successfully:', insertedData);
+
+      // Update chat last message
+      await supabase
+        .from('family_chats')
+        .update({
+          last_message_id: newMessage.id,
+          updated_at: now,
+        })
+        .eq('id', chatId);
+
+      // Update local state
+      setState(prev => ({
+        ...prev,
+        messages: {
+          ...prev.messages,
+          [chatId]: prev.messages[chatId]?.map(m =>
+            m.id === newMessage.id ? { ...m, deliveryStatus: 'sent' } : m
+          ) || [],
+        },
+      }));
+
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    } catch (error) {
       console.error('[FamilyChat] Send message error:', error);
-      // Update message as failed
       setState(prev => ({
         ...prev,
         messages: {
@@ -931,47 +1080,9 @@ const sendMessage = useCallback(async (
           ) || [],
         },
       }));
-      sweetAlert.alert('Error', `Failed to send message: ${error.message}`, 'error');
-      return;
+      sweetAlert.alert('Error', 'Failed to send message. Please try again.', 'error');
     }
-
-    // Update chat last message
-    await supabase
-      .from('family_chats')
-      .update({
-        last_message_id: newMessage.id,
-        updated_at: now,
-        unread_count: supabase.sql`unread_count + 1`,
-      })
-      .eq('id', chatId);
-
-    // Update local state
-    setState(prev => ({
-      ...prev,
-      messages: {
-        ...prev.messages,
-        [chatId]: prev.messages[chatId]?.map(m =>
-          m.id === newMessage.id ? { ...m, deliveryStatus: 'sent' } : m
-        ) || [],
-      },
-    }));
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-  } catch (error) {
-    console.error('[FamilyChat] Send message error:', error);
-    setState(prev => ({
-      ...prev,
-      messages: {
-        ...prev.messages,
-        [chatId]: prev.messages[chatId]?.map(m =>
-          m.id === newMessage.id ? { ...m, deliveryStatus: 'failed' } : m
-        ) || [],
-      },
-    }));
-    sweetAlert.alert('Error', 'Failed to send message. Please try again.', 'error');
-  }
-}, [state.familyCode, state.chats, state.messages, state.blockedUsers, userProfile, sweetAlert]);
+  }, [state.familyCode, state.chats, state.messages, state.blockedUsers, userProfile, sweetAlert]);
 
   /* ─── Resend Message ────────────────────────────────────────────────── */
 
@@ -979,7 +1090,6 @@ const sendMessage = useCallback(async (
     const message = state.messages[chatId]?.find(m => m.id === messageId);
     if (!message || message.deliveryStatus !== 'failed') return;
 
-    // Reset status
     setState(prev => ({
       ...prev,
       messages: {
@@ -1116,7 +1226,6 @@ const sendMessage = useCallback(async (
     const message = state.messages[chatId]?.find(m => m.id === messageId);
     if (!message) return;
 
-    // Only allow deletion by sender or parent1
     if (message.senderId !== userProfile.id && userProfile.role !== 'parent1') {
       sweetAlert.alert('Permission Denied', 'You can only delete your own messages', 'warning');
       return;
@@ -1148,7 +1257,6 @@ const sendMessage = useCallback(async (
   const clearChat = useCallback(async (chatId: string) => {
     if (!state.familyCode || !userProfile) return;
 
-    // Only allow clearing by parent1
     if (userProfile.role !== 'parent1') {
       sweetAlert.alert('Permission Denied', 'Only Parent 1 can clear the chat', 'warning');
       return;
@@ -1210,7 +1318,6 @@ const sendMessage = useCallback(async (
         await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'chat_media/', { intermediates: true });
         await FileSystem.copyAsync({ from: uri, to: permanentUri });
 
-        // Upload to Supabase storage
         const fileExt = uri.split('.').pop() || 'jpg';
         const storagePath = `chat_images/${state.familyCode}/${Date.now()}.${fileExt}`;
 
@@ -1258,7 +1365,6 @@ const sendMessage = useCallback(async (
       await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'chat_files/', { intermediates: true });
       await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
 
-      // Upload to Supabase storage
       const storagePath = `chat_files/${state.familyCode}/${Date.now()}_${asset.name}`;
       const fileData = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       const { error: uploadError } = await supabase.storage
@@ -1413,7 +1519,7 @@ const sendMessage = useCallback(async (
     });
 
     // Broadcast typing status via Supabase
-    if (state.familyCode && realtimeChannelRef.current) {
+    if (state.familyCode && realtimeChannelRef.current && isSubscribedRef.current) {
       realtimeChannelRef.current.send({
         type: 'broadcast',
         event: 'typing',
@@ -1424,6 +1530,8 @@ const sendMessage = useCallback(async (
           isTyping,
           timestamp: new Date().toISOString(),
         },
+      }).catch((error) => {
+        console.warn('[FamilyChat] Failed to send typing status:', error);
       });
     }
 
@@ -1521,7 +1629,6 @@ const sendMessage = useCallback(async (
       return;
     }
 
-    // Remove user from participants
     const updatedParticipants = chat.participants.filter(p => p !== userProfile.id);
 
     const { error } = await supabase
@@ -1549,7 +1656,6 @@ const sendMessage = useCallback(async (
   const deleteChat = useCallback(async (chatId: string) => {
     if (!state.familyCode || !userProfile) return;
 
-    // Only allow deletion by parent1 or chat owner
     if (userProfile.role !== 'parent1') {
       sweetAlert.alert('Permission Denied', 'Only Parent 1 can delete chats', 'warning');
       return;
@@ -1567,7 +1673,6 @@ const sendMessage = useCallback(async (
       return;
     }
 
-    // Also delete all messages in this chat
     await supabase
       .from('family_messages')
       .delete()
@@ -1596,7 +1701,6 @@ const sendMessage = useCallback(async (
 
   const joinFamilyByCode = useCallback(async (code: string): Promise<boolean> => {
     try {
-      // Verify code exists
       const { data: chatData, error: chatError } = await supabase
         .from('family_chats')
         .select('*')
@@ -1609,7 +1713,6 @@ const sendMessage = useCallback(async (
         return false;
       }
 
-      // Update family code in settings
       await supabase
         .from('app_settings')
         .upsert({
@@ -1618,7 +1721,6 @@ const sendMessage = useCallback(async (
           updated_at: new Date().toISOString(),
         }, { onConflict: 'key' });
 
-      // Add user to participants
       if (userProfile && !chatData.participants.includes(userProfile.id)) {
         const updatedParticipants = [...chatData.participants, userProfile.id];
         const updatedNames = { ...chatData.participant_names, [userProfile.id]: userProfile.fullName };
@@ -1636,7 +1738,6 @@ const sendMessage = useCallback(async (
           })
           .eq('id', chatData.id);
 
-        // Add welcome message
         const welcomeMsg = createSystemMessage(
           chatData.id,
           `👋 ${userProfile.fullName} joined the family`,
@@ -1689,7 +1790,6 @@ const sendMessage = useCallback(async (
         ? prev.blockedUsers.filter(id => id !== userId)
         : [...prev.blockedUsers, userId];
       
-      // Store in AsyncStorage for persistence
       if (prev.familyCode) {
         const blockedKey = `@littleloom_blocked_${prev.familyCode}`;
         AsyncStorage.setItem(blockedKey, JSON.stringify(updated)).catch(console.error);
