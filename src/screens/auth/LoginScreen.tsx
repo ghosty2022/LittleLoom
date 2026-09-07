@@ -1,5 +1,5 @@
-// src/screens/auth/LoginScreen.tsx - COMPLETE FIXED VERSION
-// FIX: Invite code validation, partial sign-up handling, and user isolation
+// src/screens/auth/LoginScreen.tsx - COMPLETE REDESIGNED
+// Matches SecurityLockScreen theme - glass UI, friendly language, fast
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
@@ -345,7 +345,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     const trimmed = inviteCode.trim();
 
-    // Skip validation if code is empty or less than 6 chars
     if (trimmed.length !== 6) {
       setCodeValidated(false);
       setCodeInfo(null);
@@ -359,7 +358,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       try {
         console.log('[Login] 🔍 Validating invite code:', trimmed);
         
-        // ─── First check for partial signup info ────────────────────
         const partialInfo = await getPartialSignupInfo(trimmed);
         console.log('[Login] 📊 Partial signup info:', partialInfo);
 
@@ -379,7 +377,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
             });
             setShowPartialRecovery(true);
             
-            // Pre-fill fields with partial data if available
             if (partialInfo.email) setJoinEmail(partialInfo.email);
             if (partialInfo.phone) setJoinPhone(partialInfo.phone);
             if (partialInfo.name) setJoinFullName(partialInfo.name);
@@ -395,12 +392,10 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           return;
         }
 
-        // ─── Get code details ────────────────────────────────────────
         let codeDetails = await getInviteCodeById(trimmed);
         console.log('[Login] 📊 Code details:', codeDetails);
 
         if (codeDetails) {
-          // Check if code is already used and completed
           if (codeDetails.used && codeDetails.signup_completed) {
             if (isMounted.current) {
               setCodeValidated(false);
@@ -417,7 +412,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           }
         }
 
-        // ─── Use FamilyContext validateInviteCode ──────────────────
         const result = await validateInviteCodeFromFamily(trimmed);
         console.log('[Login] 📋 Validation result:', result);
 
@@ -435,7 +429,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           } else {
             setCodeValidated(false);
             setCodeInfo(null);
-            // Don't show error toast here, let the user see the red indicator
           }
         }
       } catch (error) {
@@ -485,11 +478,9 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       return;
     }
 
-    // Check if user already exists
     try {
       const existingUser = await findUserByEmail(joinEmail.trim());
       if (existingUser) {
-        // User exists - try to recover the partial signup
         showInfo('Account Found', 'You already have an account. Would you like to sign in instead?');
         setActiveTab('signin');
         setEmail(joinEmail.trim());
@@ -504,7 +495,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('medium');
 
     try {
-      // First, create the account via signUp
       const signUpResult = await signUpWithInviteCode(
         trimmedCode,
         joinFullName.trim(),
@@ -513,7 +503,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       );
 
       if (signUpResult.success && isMounted.current) {
-        // Now mark the partial signup as complete
         const recoveryResult = await recoverPartialSignup(
           trimmedCode,
           userProfile?.id || '',
@@ -526,7 +515,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           showSuccess('Welcome to the family!', recoveryResult.message);
           forceUnlock().catch(() => {});
         } else {
-          // Even if recovery fails, the user is signed up
           showSuccess('Account Created!', 'Your account has been created. Please complete your family setup.');
           forceUnlock().catch(() => {});
         }
@@ -580,7 +568,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       return;
     }
 
-    // Check what type of identifier we have
     const isEmail = isValidEmail(trimmedIdentifier);
     const isPhone = isValidPhone(trimmedIdentifier);
     const isUsername = isValidUsername(trimmedIdentifier);
@@ -603,10 +590,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('medium');
 
     try {
-      // Try to find user by identifier first
       let userIdentifier = trimmedIdentifier;
       
-      // If it's a username, try to find the associated email
       if (isUsername) {
         try {
           const user = await findUserByEmailOrUsername(trimmedIdentifier);
@@ -675,7 +660,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     showSuccess,
   ]);
 
-  // ─── HANDLE JOIN FAMILY with partial sign-up support ──────────────
+  // ─── HANDLE JOIN FAMILY ──────────────────────────────────────────────
   const handleJoinFamily = useCallback(async () => {
     joinAttempted.current = false;
 
@@ -687,7 +672,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       return;
     }
 
-    // ─── Check if this is a partial sign-up completion ──────────────
     const trimmedCode = inviteCode.trim();
     let isPartialSignup = false;
     
@@ -698,7 +682,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           isPartialSignup = true;
           console.log('[Login] Completing partial sign-up for code:', trimmedCode);
           
-          // Check if the email matches the partial sign-up email
           if (partialInfo.email && joinEmail.trim().toLowerCase() !== partialInfo.email.toLowerCase()) {
             showError('Email Mismatch', `This partial sign-up was started with ${partialInfo.email}. Please use the same email to continue.`);
             setJoinEmail(partialInfo.email || '');
@@ -710,12 +693,10 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       }
     }
 
-    // ─── Check if user already exists ──────────────────────────────────
     const existingUser = await findUserByEmail(joinEmail.trim());
     
     if (existingUser) {
       if (isPartialSignup) {
-        // For partial sign-up, offer to sign in
         confirm(
           'Account Exists',
           'You already have an account. Would you like to sign in instead?',
@@ -723,9 +704,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
             setActiveTab('signin');
             setEmail(joinEmail.trim());
           },
-          () => {
-            // User wants to continue with sign-up anyway (shouldn't happen for partial)
-          },
+          () => {},
           'Sign In',
           'Continue'
         );
@@ -788,7 +767,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       const result = await signUpWithInviteCode(trimmedCode, joinFullName.trim(), joinEmail.trim(), joinPassword);
 
       if (result.success && isMounted.current) {
-        // ─── If this was a partial signup, mark it as complete ──────
         if (isPartialSignup && userProfile?.id) {
           await markSignupComplete(trimmedCode, userProfile.id);
         }
@@ -1002,7 +980,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Logo */}
+          {/* ─── Logo ─── */}
           <Animated.View style={[styles.logoContainer, logoStyle]}>
             <View style={styles.logoFloatWrap}>
               <Image
@@ -1015,7 +993,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
             <Text style={styles.logoTagline}>Track every precious moment</Text>
           </Animated.View>
 
-          {/* Form Card */}
+          {/* ─── Form Card - Glass UI ─── */}
           <Animated.View style={[styles.formContainer, formStyle]}>
             <BlurView intensity={isDark ? 40 : 80} style={styles.glassCard} tint={isDark ? 'dark' : 'light'}>
               <LinearGradient
@@ -1070,7 +1048,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
               {activeTab === 'signin' ? (
                 // ─── SIGN IN FORM ──────────────────────────────────────
                 <>
-                  {/* All Social Login Options */}
+                  {/* ─── Social Login Options ─── */}
                   <View style={styles.socialIconsContainer}>
                     <TouchableOpacity
                       style={[styles.socialIconButton, { borderColor: 'rgba(219,68,55,0.2)' }]}
@@ -1110,7 +1088,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
                   </View>
 
-                  {/* Biometric Login Button */}
+                  {/* ─── Biometric Login Button ─── */}
                   {showBiometricButton && (
                     <Animated.View entering={FadeInUp.delay(200)} style={styles.biometricSection}>
                       <TouchableOpacity
@@ -1133,12 +1111,12 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </Animated.View>
                   )}
 
-                  {/* Email/Username/Phone Input */}
+                  {/* ─── Email/Username/Phone Input ─── */}
                   <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
                     <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
                     <TextInput
                       style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-                      placeholder="Email, username, or phone number"
+                      placeholder="Email, username, or phone"
                       placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
                       value={email}
                       onChangeText={setEmail}
@@ -1149,7 +1127,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     />
                   </View>
 
-                  {/* Password Input */}
+                  {/* ─── Password Input ─── */}
                   <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
                     <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
                     <TextInput
@@ -1178,7 +1156,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Remember Me & Forgot Password */}
+                  {/* ─── Remember Me & Forgot Password ─── */}
                   <View style={styles.rowContainer}>
                     <TouchableOpacity 
                       style={styles.rememberMeContainer}
@@ -1200,7 +1178,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Login Button */}
+                  {/* ─── Login Button ─── */}
                   <TouchableOpacity
                     style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
                     onPress={handleLogin}
@@ -1221,13 +1199,13 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </LinearGradient>
                   </TouchableOpacity>
 
-                  {/* Sign up link */}
+                  {/* ─── Sign up link ─── */}
                   <View style={styles.signupLinkContainer}>
                     <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
                       Don't have an account?
                     </Text>
                     <TouchableOpacity onPress={() => navigation.navigate('SignUp')} disabled={isLoading}>
-                      <Text style={styles.signupLink}>Sign Up</Text>
+                      <Text style={[styles.signupLink, { color: '#667eea' }]}>Sign Up</Text>
                     </TouchableOpacity>
                   </View>
                 </>
@@ -1279,7 +1257,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </View>
                   )}
 
-                  {/* Invite Code Input */}
+                  {/* ─── Invite Code Input ─── */}
                   <View style={[
                     styles.inputContainer,
                     isDark && styles.inputContainerDark,
@@ -1467,7 +1445,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         </LinearGradient>
                       </TouchableOpacity>
 
-                      {/* ─── SIGN UP LINK IN JOIN TAB ─── */}
                       <View style={styles.signupLinkContainer}>
                         <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
                           Don't have an invite code?
@@ -1614,7 +1591,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         </LinearGradient>
                       </TouchableOpacity>
 
-                      {/* ─── Already have an account? ─── */}
                       <View style={styles.signupLinkContainer}>
                         <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
                           Already have an account?
@@ -1699,11 +1675,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 20,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   welcomeText: {
     fontSize: 24,
@@ -1724,11 +1700,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabButtonActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   tabText: {
     fontSize: 14,
@@ -1748,6 +1724,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   socialIcon: {
     width: 28,
@@ -1775,6 +1756,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(102,126,234,0.3)',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   biometricTitle: {
     fontSize: 18,
@@ -1812,6 +1798,11 @@ const styles = StyleSheet.create({
     height: 56,
     borderWidth: 1,
     borderColor: 'rgba(102,126,234,0.15)',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   inputContainerDark: {
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -1855,6 +1846,11 @@ const styles = StyleSheet.create({
     borderColor: '#667eea',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   checkboxChecked: {
     backgroundColor: '#667eea',
@@ -1871,6 +1867,11 @@ const styles = StyleSheet.create({
   loginButton: {
     borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   loginButtonDisabled: {
     opacity: 0.6,
@@ -1921,6 +1922,11 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     marginBottom: 16,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   codeInfoText: {
     fontSize: 13,
@@ -1938,12 +1944,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(102,126,234,0.05)',
     marginBottom: 16,
     gap: 8,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   qrButtonText: {
     fontWeight: '600',
     fontSize: 15,
   },
-  // ─── Partial Sign-up Styles ───
   partialWarning: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1952,6 +1962,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 16,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   partialWarningText: {
     fontSize: 13,
