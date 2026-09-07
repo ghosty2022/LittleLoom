@@ -1,5 +1,5 @@
 // src/screens/baby/CoParentInviteScreen.tsx - COMPLETE FIXED VERSION
-// FIX: Proper invite code generation and user isolation
+// FIX: Shows ALL codes with status, includes modal with code details
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,6 +17,9 @@ import {
   View,
   Share,
   Dimensions,
+  Modal,
+  FlatList,
+  Pressable,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -92,6 +95,13 @@ const ROLE_META: Record<RoleKey, {
   },
 };
 
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  active: { label: 'Active', color: '#22c55e', icon: 'checkmark-circle' },
+  used: { label: 'Used', color: '#64748b', icon: 'checkmark-done-circle' },
+  revoked: { label: 'Revoked', color: '#ef4444', icon: 'close-circle' },
+  expired: { label: 'Expired', color: '#f59e0b', icon: 'time' },
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════
    INLINE TOAST
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -129,6 +139,127 @@ const Toast = ({ message, type, visible, onHide }: {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   CODE DETAILS MODAL
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function CodeDetailsModal({ 
+  code, 
+  visible, 
+  onClose,
+  isDark,
+  primaryColor,
+}: { 
+  code: any; 
+  visible: boolean; 
+  onClose: () => void;
+  isDark: boolean;
+  primaryColor: string;
+}) {
+  if (!code) return null;
+
+  const statusConfig = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
+  const roleMeta = ROLE_META[code.role as RoleKey];
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={[styles.modalContent, isDark && styles.modalContentDark]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, isDark && styles.textDark]}>Invite Code Details</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
+              <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalBody}>
+            {/* Code Display */}
+            <View style={[styles.modalCodeDisplay, { borderColor: primaryColor + '30' }]}>
+              <Text style={[styles.modalCodeText, { color: primaryColor }]}>{code.code}</Text>
+              <View style={[styles.modalStatusBadge, { backgroundColor: statusConfig.color + '15' }]}>
+                <Ionicons name={statusConfig.icon} size={14} color={statusConfig.color} />
+                <Text style={[styles.modalStatusText, { color: statusConfig.color }]}>
+                  {statusConfig.label}
+                </Text>
+              </View>
+            </View>
+
+            {/* Details Grid */}
+            <View style={styles.modalDetailsGrid}>
+              <DetailItem label="Role" value={roleMeta?.label || code.role} icon={roleMeta?.icon || 'person'} isDark={isDark} />
+              <DetailItem label="Relationship" value={code.relationship || 'Not specified'} icon="heart" isDark={isDark} />
+              <DetailItem label="Created" value={new Date(code.created_at).toLocaleDateString()} icon="calendar" isDark={isDark} />
+              <DetailItem label="Expires" value={new Date(code.expiresAt).toLocaleDateString()} icon="time" isDark={isDark} />
+              {code.used && (
+                <DetailItem label="Used By" value={code.used_by || 'Unknown'} icon="person" isDark={isDark} />
+              )}
+              {code.usedAt && (
+                <DetailItem label="Used At" value={new Date(code.usedAt).toLocaleDateString()} icon="calendar" isDark={isDark} />
+              )}
+            </View>
+
+            {/* QR Code */}
+            <View style={styles.modalQrSection}>
+              <Text style={[styles.modalSectionLabel, isDark && { color: '#94a3b8' }]}>QR Code</Text>
+              <View style={[styles.modalQrWrap, isDark && styles.modalQrWrapDark]}>
+                <QRCode
+                  value={code.code}
+                  size={120}
+                  color={isDark ? '#ffffff' : '#1a1a1a'}
+                  backgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
+                  logo={require('../../../assets/icon.png')}
+                  logoSize={24}
+                  logoBackgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
+                />
+              </View>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalActionBtn, { backgroundColor: primaryColor + '15' }]}
+                onPress={() => {
+                  Clipboard.setStringAsync(code.code);
+                  onClose();
+                }}
+              >
+                <Ionicons name="copy-outline" size={20} color={primaryColor} />
+                <Text style={[styles.modalActionText, { color: primaryColor }]}>Copy Code</Text>
+              </TouchableOpacity>
+              {code.status === 'active' && (
+                <TouchableOpacity
+                  style={[styles.modalActionBtn, { backgroundColor: '#ef444415' }]}
+                  onPress={onClose}
+                >
+                  <Ionicons name="share-outline" size={20} color="#ef4444" />
+                  <Text style={[styles.modalActionText, { color: '#ef4444' }]}>Share</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function DetailItem({ label, value, icon, isDark }: { label: string; value: string; icon: string; isDark: boolean }) {
+  return (
+    <View style={[styles.detailItem, isDark && styles.detailItemDark]}>
+      <Ionicons name={icon as any} size={16} color="#667eea" />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.detailLabel, isDark && { color: '#94a3b8' }]}>{label}</Text>
+        <Text style={[styles.detailValue, isDark && styles.textDark]}>{value || '—'}</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MAIN SCREEN — Unified Invite Flow
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -156,6 +287,10 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const [activeCodes, setActiveCodes] = useState<any[]>([]);
   const [isLoadingCodes, setIsLoadingCodes] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' as const });
+  
+  // ── Modal State ──
+  const [selectedCode, setSelectedCode] = useState<any>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const isOnboarding = useMemo(() => !setupComplete, [setupComplete]);
 
@@ -204,7 +339,15 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     setIsLoadingCodes(true);
     try {
       const codes = await getActiveInviteCodes();
-      if (codes) setActiveCodes(codes);
+      if (codes) {
+        // Sort: active first, then by creation date
+        const sorted = codes.sort((a, b) => {
+          if (a.status === 'active' && b.status !== 'active') return -1;
+          if (a.status !== 'active' && b.status === 'active') return 1;
+          return b.created_at - a.created_at;
+        });
+        setActiveCodes(sorted);
+      }
     } catch (e) { console.error(e); }
     finally { setIsLoadingCodes(false); }
   };
@@ -221,7 +364,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     return true;
   };
 
-  // ─── FIXED: Generate code with proper 6-character format ─────────────
+  // ─── Generate code with proper 6-character format ─────────────
   const handleGenerate = useCallback(async () => {
     if (!validate()) return;
     if (!currentBaby?.id) {
@@ -236,7 +379,6 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       const result = await generateInviteCode(role, relationship.trim(), fullName.trim() || undefined, email.trim() || undefined, phone.trim() || undefined);
 
       if (result.success && result.code) {
-        // ─── FIX: Ensure code is exactly 6 characters ─────────────────
         const code = result.code.padStart(6, '0').slice(0, 6);
         setGeneratedCode(code);
         triggerHaptic('success');
@@ -348,6 +490,19 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const handleBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.navigate('Main' as never);
+  };
+
+  const handleCodePress = (code: any) => {
+    setSelectedCode(code);
+    setModalVisible(true);
+  };
+
+  const getStatusColor = (status: string) => {
+    return STATUS_CONFIG[status]?.color || '#64748b';
+  };
+
+  const getStatusLabel = (status: string) => {
+    return STATUS_CONFIG[status]?.label || status;
   };
 
   return (
@@ -564,42 +719,88 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
               </Animated.View>
             )}
 
-            {/* ── Active Codes List ── */}
-            {activeCodes.length > 0 && (
-              <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(240)} style={styles.section}>
-                <View style={styles.sectionHeaderRow}>
-                  <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>Active Codes</Text>
-                  <TouchableOpacity onPress={loadActiveCodes} disabled={isLoadingCodes} style={{ padding: 4 }}>
-                    <Ionicons name="refresh" size={18} color={dynamicPrimary} />
-                  </TouchableOpacity>
-                </View>
-
-                {activeCodes.map((code, index) => (
-                  <Animated.View
-                    key={code.code}
-                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 60)}
-                    style={[styles.activeCodeRow, isDark && styles.activeCodeRowDark]}
-                  >
-                    <View style={[styles.activeDot, { backgroundColor: ROLE_META[code.role as RoleKey]?.color || '#64748b' }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.activeCodeText, isDark && styles.textDark, { letterSpacing: 3 }]}>{code.code}</Text>
-                      <Text style={[styles.activeCodeMeta, isDark && { color: '#94a3b8' }]}>
-                        {ROLE_META[code.role as RoleKey]?.label || code.role} • {code.relationship || 'Family'} • Expires {new Date(code.expiresAt).toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <TouchableOpacity style={[styles.revokeBtn, { backgroundColor: '#ef444415' }]} onPress={() => handleRevoke(code.code)}>
-                      <Ionicons name="close" size={18} color="#ef4444" />
-                    </TouchableOpacity>
-                  </Animated.View>
-                ))}
-              </Animated.View>
-            )}
-
-            {isLoadingCodes && (
-              <View style={{ alignItems: 'center', padding: 20 }}>
-                <ActivityIndicator color={dynamicPrimary} />
+            {/* ─── Active Codes List ── */}
+            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(240)} style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>
+                  All Codes ({activeCodes.length})
+                </Text>
+                <TouchableOpacity onPress={loadActiveCodes} disabled={isLoadingCodes} style={{ padding: 4 }}>
+                  <Ionicons name="refresh" size={18} color={dynamicPrimary} />
+                </TouchableOpacity>
               </View>
-            )}
+
+              {isLoadingCodes ? (
+                <View style={{ alignItems: 'center', padding: 20 }}>
+                  <ActivityIndicator color={dynamicPrimary} />
+                </View>
+              ) : activeCodes.length === 0 ? (
+                <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
+                  <Ionicons name="key-outline" size={32} color={isDark ? '#64748b' : '#94a3b8'} />
+                  <Text style={[styles.emptyStateText, isDark && { color: '#94a3b8' }]}>
+                    No invite codes generated yet
+                  </Text>
+                  <Text style={[styles.emptyStateSub, isDark && { color: '#64748b' }]}>
+                    Generate your first invite code above
+                  </Text>
+                </View>
+              ) : (
+                activeCodes.map((code, index) => {
+                  const statusConfig = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
+                  const roleMeta = ROLE_META[code.role as RoleKey];
+                  
+                  return (
+                    <Animated.View
+                      key={code.code}
+                      entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 60)}
+                      style={[styles.activeCodeRow, isDark && styles.activeCodeRowDark]}
+                    >
+                      <TouchableOpacity
+                        style={styles.activeCodeTouchable}
+                        onPress={() => handleCodePress(code)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.activeCodeMain}>
+                          <View style={[styles.activeDot, { backgroundColor: getStatusColor(code.status) }]} />
+                          <View style={{ flex: 1 }}>
+                            <View style={styles.activeCodeHeader}>
+                              <Text style={[styles.activeCodeText, isDark && styles.textDark, { letterSpacing: 2 }]}>
+                                {code.code}
+                              </Text>
+                              <View style={[styles.activeStatusBadge, { backgroundColor: getStatusColor(code.status) + '15' }]}>
+                                <Ionicons name={statusConfig.icon} size={12} color={getStatusColor(code.status)} />
+                                <Text style={[styles.activeStatusText, { color: getStatusColor(code.status) }]}>
+                                  {statusConfig.label}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={[styles.activeCodeMeta, isDark && { color: '#94a3b8' }]}>
+                              {roleMeta?.label || code.role} • {code.relationship || 'Family'} 
+                              {code.status === 'used' && code.used_by && ` • Used by: ${code.used_by}`}
+                            </Text>
+                            {code.status === 'active' && (
+                              <Text style={[styles.activeCodeExpiry, { color: '#f59e0b' }]}>
+                                Expires: {new Date(code.expiresAt).toLocaleDateString()}
+                              </Text>
+                            )}
+                          </View>
+                          <Ionicons name="chevron-forward" size={18} color={isDark ? '#64748b' : '#94a3b8'} />
+                        </View>
+                      </TouchableOpacity>
+                      
+                      {code.status === 'active' && (
+                        <TouchableOpacity 
+                          style={[styles.revokeBtnSmall, { backgroundColor: '#ef444415' }]} 
+                          onPress={() => handleRevoke(code.code)}
+                        >
+                          <Ionicons name="close" size={16} color="#ef4444" />
+                        </TouchableOpacity>
+                      )}
+                    </Animated.View>
+                  );
+                })
+              )}
+            </Animated.View>
 
             {/* ── Footer Actions ── */}
             <View style={styles.footerActions}>
@@ -639,6 +840,18 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       </LinearGradient>
 
       <Toast {...toast} onHide={() => setToast(prev => ({ ...prev, visible: false }))} />
+
+      {/* ── Code Details Modal ── */}
+      <CodeDetailsModal
+        code={selectedCode}
+        visible={modalVisible}
+        onClose={() => {
+          setModalVisible(false);
+          setSelectedCode(null);
+        }}
+        isDark={isDark}
+        primaryColor={dynamicPrimary}
+      />
     </View>
   );
 }
@@ -797,16 +1010,99 @@ const styles = StyleSheet.create({
   resetBtn: { marginTop: 8, padding: 8 },
   resetText: { fontSize: 13, fontWeight: '800' },
 
-  /* Active Codes */
+  /* Active Codes List - Updated */
   activeCodeRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14,
-    borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.02)', marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
   },
-  activeCodeRowDark: { backgroundColor: 'rgba(255,255,255,0.03)' },
-  activeDot: { width: 8, height: 8, borderRadius: 4 },
-  activeCodeText: { fontSize: 16, fontWeight: '800', color: '#1a1a1a', marginBottom: 2 },
-  activeCodeMeta: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
-  revokeBtn: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  activeCodeTouchable: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  activeCodeRowDark: { 
+    backgroundColor: 'rgba(255,255,255,0.03)' 
+  },
+  activeCodeMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  activeDot: { 
+    width: 8, 
+    height: 8, 
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  activeCodeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  activeCodeText: { 
+    fontSize: 16, 
+    fontWeight: '800', 
+    color: '#1a1a1a',
+    letterSpacing: 2,
+  },
+  activeStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  activeStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  activeCodeMeta: { 
+    fontSize: 12, 
+    fontWeight: '500', 
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  activeCodeExpiry: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  revokeBtnSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  /* Empty State */
+  emptyState: {
+    alignItems: 'center',
+    padding: 30,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  emptyStateDark: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94a3b8',
+    marginTop: 8,
+  },
+  emptyStateSub: {
+    fontSize: 12,
+    color: '#cbd5e1',
+    marginTop: 2,
+  },
 
   /* Footer Actions */
   footerActions: { marginTop: 8, marginBottom: 16, gap: 12 },
@@ -825,4 +1121,139 @@ const styles = StyleSheet.create({
   /* Footer */
   footer: { alignItems: 'center', marginTop: 4, marginBottom: 20 },
   footerText: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+
+  /* ─── Modal Styles ─── */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    overflow: 'hidden',
+    maxHeight: '90%',
+  },
+  modalContentDark: {
+    backgroundColor: '#1a1a2e',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1a1a1a',
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalCodeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(102,126,234,0.2)',
+    backgroundColor: 'rgba(102,126,234,0.03)',
+    marginBottom: 16,
+  },
+  modalCodeText: {
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 4,
+  },
+  modalStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  modalStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalDetailsGrid: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  detailItemDark: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  detailLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  modalQrSection: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalSectionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 8,
+  },
+  modalQrWrap: {
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalQrWrapDark: {
+    backgroundColor: '#1a1a2e',
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  modalActionText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
 });

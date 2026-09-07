@@ -1,5 +1,5 @@
 // src/context/FamilyContext.tsx
-// COMPLETE FIXED VERSION - Invite codes and user isolation
+// COMPLETE FIXED VERSION - Handles partial sign-ups and displays user info
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
@@ -44,6 +44,10 @@ interface FamilyContextType extends FamilyState {
   getBabyId: () => string | null;
   validateInviteCode: (code: string) => Promise<{ valid: boolean; data: any; message: string }>;
   useInviteCode: (code: string, userId?: string) => Promise<{ success: boolean; message: string }>;
+  // ─── NEW: Mark signup as completed ──────────────────────────────────
+  markSignupComplete: (code: string, userId: string) => Promise<{ success: boolean; message: string }>;
+  // ─── NEW: Get invite code by ID ────────────────────────────────────
+  getInviteCodeById: (code: string) => Promise<any>;
 }
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
@@ -657,6 +661,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           expires_in_days: expiresInDays,
           used: false,
           revoked: false,
+          used_by_email: inviteeEmail || null,
+          used_by_phone: inviteePhone || null,
+          used_by_name: inviteeName || null,
+          signup_completed: false,
+          updated_at: now,
         })
         .select('code')
         .single();
@@ -681,6 +690,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             expires_in_days: expiresInDays,
             used: false,
             revoked: false,
+            used_by_email: inviteeEmail || null,
+            used_by_phone: inviteePhone || null,
+            used_by_name: inviteeName || null,
+            signup_completed: false,
+            updated_at: now,
           });
 
         if (insertError) {
@@ -699,36 +713,118 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [isOwner, authProfile, currentBaby]);
 
-  // ─── Get Active Invite Codes ──────────────────────────────────────────
+  // ─── Get Active Invite Codes - Returns ALL codes with status ──────────
   const getActiveInviteCodes = useCallback(async () => {
     if (!currentBaby?.id) return [];
 
     try {
       const now = Date.now();
+      // ─── Get ALL codes for this baby ──────────────────────────────
       const { data, error } = await supabase
         .from('invite_codes')
         .select('*')
         .eq('family_id', currentBaby.id)
-        .eq('used', false)
-        .eq('revoked', false)
-        .gt('created_at', now - 7 * 24 * 60 * 60 * 1000);
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching invite codes:', error);
         return [];
       }
 
-      return (data || []).map(item => ({
-        ...item,
-        expiresAt: new Date(item.created_at + (item.expires_in_days || 7) * 24 * 60 * 60 * 1000).toISOString(),
-        role: item.role,
-        relationship: item.relationship,
-      }));
+      // ─── Add computed fields for each code ──────────────────────────
+      return (data || []).map(item => {
+        const expiresAt = item.created_at + (item.expires_in_days || 7) * 24 * 60 * 60 * 1000;
+        const isExpired = now > expiresAt;
+        
+        // ─── FIX: Determine status with partial sign-up support ──────
+        let status = 'active';
+        if (item.used) {
+          status = item.signup_completed ? 'used' : 'partial';
+        } else if (item.revoked) {
+          status = 'revoked';
+        } else if (isExpired) {
+          status = 'expired';
+        }
+        
+        return {
+          ...item,
+          expiresAt: new Date(expiresAt).toISOString(),
+          isExpired,
+          status,
+          role: item.role,
+          relationship: item.relationship,
+          usedBy: item.used_by,
+          usedByEmail: item.used_by_email || null,
+          usedByPhone: item.used_by_phone || null,
+          usedByName: item.used_by_name || null,
+          usedAt: item.used_at,
+          createdAt: item.created_at,
+          signupCompleted: item.signup_completed || false,
+          updatedAt: item.updated_at,
+        };
+      });
     } catch (error) {
       console.error('Error fetching invite codes:', error);
       return [];
     }
   }, [currentBaby?.id]);
+
+  // ─── Get Invite Code by ID ────────────────────────────────────────────
+  const getInviteCodeById = useCallback(async (code: string): Promise<any> => {
+    if (!code) return null;
+
+    try {
+      const trimmedCode = code.trim().toUpperCase();
+      const { data, error } = await supabase
+        .from('invite_codes')
+        .select('*')
+        .eq('code', trimmedCode)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching invite code:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching invite code:', error);
+      return null;
+    }
+  }, []);
+
+  // ─── Mark Signup as Complete ──────────────────────────────────────────
+  const markSignupComplete = useCallback(async (code: string, userId: string): Promise<{ success: boolean; message: string }> => {
+    if (!code || !userId) {
+      return { success: false, message: 'Missing code or user ID' };
+    }
+
+    try {
+      const trimmedCode = code.trim().toUpperCase();
+      const now = Date.now();
+
+      const { error } = await supabase
+        .from('invite_codes')
+        .update({
+          signup_completed: true,
+          used: true,
+          used_by: userId,
+          used_at: now,
+          updated_at: now,
+        })
+        .eq('code', trimmedCode);
+
+      if (error) {
+        console.error('Error marking signup complete:', error);
+        return { success: false, message: 'Failed to update signup status' };
+      }
+
+      return { success: true, message: 'Signup marked as complete' };
+    } catch (error) {
+      console.error('Error marking signup complete:', error);
+      return { success: false, message: 'Failed to update signup status' };
+    }
+  }, []);
 
   // ─── Revoke Invite Code ───────────────────────────────────────────────
   const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
@@ -737,7 +833,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const { error } = await supabase
         .from('invite_codes')
-        .update({ revoked: true })
+        .update({ 
+          revoked: true,
+          updated_at: Date.now(),
+        })
         .eq('code', code)
         .eq('family_id', currentBaby.id);
 
@@ -753,7 +852,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [isOwner, currentBaby]);
 
-  // ─── FIXED: Validate Invite Code with robust query ──────────────
+  // ─── Validate Invite Code with robust query ──────────────────────────
   const validateInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; data: any; message: string }> => {
     if (!code || code.length < 4) {
       return { valid: false, data: null, message: 'Invalid invite code format' };
@@ -798,13 +897,17 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             code: relaxedData.code,
             used: relaxedData.used,
             revoked: relaxedData.revoked,
+            signup_completed: relaxedData.signup_completed,
+            used_by_email: relaxedData.used_by_email,
+            used_by_phone: relaxedData.used_by_phone,
+            used_by_name: relaxedData.used_by_name,
             created_at: relaxedData.created_at
           } : null
         });
 
         if (relaxedData) {
           // Check if already used or revoked
-          if (relaxedData.used) {
+          if (relaxedData.used && relaxedData.signup_completed) {
             return { valid: false, data: null, message: 'This invite code has already been used' };
           }
           if (relaxedData.revoked) {
@@ -832,7 +935,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (caseInsensitiveData) {
           console.log('[FamilyContext] Found code with case-insensitive match:', caseInsensitiveData.code);
           
-          if (caseInsensitiveData.used) {
+          if (caseInsensitiveData.used && caseInsensitiveData.signup_completed) {
             return { valid: false, data: null, message: 'This invite code has already been used' };
           }
           if (caseInsensitiveData.revoked) {
@@ -880,13 +983,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { success: false, message: validation.message };
       }
 
-      // Mark it as used
+      // Mark it as used (but not completed yet - partial signup)
+      const now = Date.now();
       const { error } = await supabase
         .from('invite_codes')
         .update({
           used: true,
           used_by: userId || null,
-          used_at: Date.now(),
+          used_at: now,
+          signup_completed: false,
+          updated_at: now,
         })
         .eq('code', trimmedCode)
         .eq('used', false)
@@ -934,10 +1040,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     getBabyId,
     validateInviteCode,
     useInviteCode,
+    markSignupComplete,
+    getInviteCodeById,
   }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, 
       updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, 
       refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode,
-      getCurrentBaby, getBabyId, validateInviteCode, useInviteCode]);
+      getCurrentBaby, getBabyId, validateInviteCode, useInviteCode,
+      markSignupComplete, getInviteCodeById]);
 
   return (
     <FamilyContext.Provider value={value}>
