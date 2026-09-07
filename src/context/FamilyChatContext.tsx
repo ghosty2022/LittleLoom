@@ -4,7 +4,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1402,7 +1402,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ['images'],
           allowsEditing: true,
           aspect: [4, 3],
           quality: 0.8,
@@ -1412,8 +1412,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         const fileName = `chat_img_${Date.now()}.jpg`;
-        const permanentUri = FileSystem.documentDirectory + 'chat_media/' + fileName;
-        await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'chat_media/', { intermediates: true });
+        const chatMediaDir = FileSystem.documentDirectory + 'chat_media/';
+        const permanentUri = chatMediaDir + fileName;
+        
+        // Check if directory exists, create if not
+        const dirInfo = await FileSystem.getInfoAsync(chatMediaDir);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(chatMediaDir, { intermediates: true });
+        }
+        
         await FileSystem.copyAsync({ from: uri, to: permanentUri });
 
         const fileExt = uri.split('.').pop() || 'jpg';
@@ -1422,7 +1429,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const fileData = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
         const { error: uploadError } = await supabase.storage
           .from('chat_media')
-          .upload(storagePath, Buffer.from(fileData, 'base64'), {
+          .upload(storagePath, fileData, {
             contentType: `image/${fileExt}`,
           });
 
@@ -1441,7 +1448,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     } catch (error) {
       console.error('[FamilyChat] Pick image error:', error);
-      sweetAlert.alert('Error', 'Failed to send image', 'error');
+      sweetAlert.alert('Error', 'Failed to send image: ' + (error as Error).message, 'error');
     }
   }, [state.familyCode, sendMessage, sweetAlert]);
 
@@ -1455,19 +1462,26 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (result.canceled) return;
 
       const asset = result.assets[0];
+      const chatFilesDir = FileSystem.documentDirectory + 'chat_files/';
+      
+      // Check if directory exists, create if not
+      const dirInfo = await FileSystem.getInfoAsync(chatFilesDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(chatFilesDir, { intermediates: true });
+      }
+
       const fileInfo = await FileSystem.getInfoAsync(asset.uri);
       const size = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
 
       const fileName = `chat_file_${Date.now()}_${asset.name}`;
-      const permanentUri = FileSystem.documentDirectory + 'chat_files/' + fileName;
-      await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'chat_files/', { intermediates: true });
+      const permanentUri = chatFilesDir + fileName;
       await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
 
       const storagePath = `chat_files/${state.familyCode}/${Date.now()}_${asset.name}`;
       const fileData = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       const { error: uploadError } = await supabase.storage
         .from('chat_files')
-        .upload(storagePath, Buffer.from(fileData, 'base64'), {
+        .upload(storagePath, fileData, {
           contentType: asset.mimeType || 'application/octet-stream',
         });
 
@@ -1492,7 +1506,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.error('[FamilyChat] File pick error:', error);
-      sweetAlert.alert('Error', 'Failed to send file', 'error');
+      sweetAlert.alert('Error', 'Failed to send file: ' + (error as Error).message, 'error');
     }
   }, [state.familyCode, sendMessage, sweetAlert]);
 

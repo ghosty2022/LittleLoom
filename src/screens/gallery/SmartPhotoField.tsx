@@ -1,5 +1,6 @@
 // SmartPhotoField.tsx — COMPLETE FIXED VERSION
 // Fix: Camera crash issues resolved
+// Fix: Text strings must be rendered within <Text> component
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
@@ -96,14 +97,14 @@ interface SmartPhotoFieldProps {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-const formatBytes = (bytes?: number) => {
+const formatBytes = (bytes?: number): string => {
   if (!bytes || bytes === undefined || bytes === null || isNaN(bytes)) return '—';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 };
 
-const formatDate = (iso?: string) => {
+const formatDate = (iso?: string): string => {
   if (!iso || iso === undefined || iso === null || iso === '') return '—';
   try {
     const date = new Date(iso);
@@ -307,7 +308,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     })();
   }, []);
 
-  // ── Photo Capture ── FIXED: Safe file handling ────────────────────────────
+  // ── Photo Capture ─────────────────────────────────────────────────────────
   const processPhoto = useCallback(
     async (uri: string, exif: any) => {
       // Prevent duplicate processing
@@ -334,19 +335,16 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         let height = 0;
 
         try {
-          // Use the standard FileSystem API (not legacy)
           const fileInfo = await FileSystem.getInfoAsync(uri);
           if (fileInfo.exists && 'size' in fileInfo) {
             fileSize = fileInfo.size;
           }
         } catch (fileError) {
           console.warn('Could not get file info:', fileError);
-          // Continue without file size
         }
 
         // ── SAFELY get image dimensions ──
         try {
-          // Use Image.getSize from React Native
           await new Promise<{ width: number; height: number }>((resolve, reject) => {
             Image.getSize(
               uri,
@@ -365,7 +363,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           });
         } catch (dimError) {
           console.warn('Could not get image dimensions:', dimError);
-          // Use EXIF fallback
           if (exif?.ImageWidth) width = exif.ImageWidth;
           if (exif?.ImageLength) height = exif.ImageLength;
           if (exif?.width) width = exif.width;
@@ -408,13 +405,11 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
             if (onChange) onChange(uri, meta, result);
           } catch (analysisError) {
             console.warn('Analysis error:', analysisError);
-            // Silent fail for analysis
           } finally {
             setAnalyzing(false);
           }
         }
 
-        // ── Success haptic ──
         try {
           const Haptics = require('expo-haptics');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -433,7 +428,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [photos, maxPhotos, autoAnalyze, trackerContext, onChange]
   );
 
-  // ── Take Photo ── FIXED: Better error handling ─────────────────────────────
+  // ── Take Photo ─────────────────────────────────────────────────────────────
   const takePhoto = useCallback(async () => {
     try {
       const result = await ImagePicker.launchCameraAsync({
@@ -456,7 +451,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [processPhoto]);
 
-  // ── Pick Photo ── FIXED ────────────────────────────────────────────────────
+  // ── Pick Photo ─────────────────────────────────────────────────────────────
   const pickPhoto = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -1050,9 +1045,11 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 };
 
 // ── Subcomponents ────────────────────────────────────────────────────────────
-const MetaRow = ({ label, value }: { label?: string; value?: string }) => {
-  const safeLabel = label || '—';
-  const safeValue = value || '—';
+// FIXED: Properly handle undefined values and always render Text components
+const MetaRow = ({ label, value }: { label?: string | null; value?: string | null }) => {
+  // Ensure we always have a string value
+  const safeLabel = (label !== undefined && label !== null) ? String(label) : '—';
+  const safeValue = (value !== undefined && value !== null) ? String(value) : '—';
   
   return (
     <View style={styles.metaRow}>

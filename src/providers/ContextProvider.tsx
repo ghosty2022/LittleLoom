@@ -279,24 +279,47 @@ const SweetAlertWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   );
 };
 
-// Wrapper that defers FamilyChatProvider to next tick
+// ─── FIXED FamilyChatWrapper with better error handling ──────────────────
 const FamilyChatWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [ready, setReady] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setReady(true), 0);
-    return () => clearTimeout(timer);
+    try {
+      // Check if FamilyChatProvider is defined
+      if (typeof FamilyChatProvider === 'undefined') {
+        console.error('[FamilyChatWrapper] FamilyChatProvider is undefined');
+        setHasError(true);
+        setReady(true);
+        return;
+      }
+      
+      const timer = setTimeout(() => {
+        setReady(true);
+      }, 50); // Slightly longer delay to ensure everything is loaded
+      
+      return () => clearTimeout(timer);
+    } catch (error) {
+      console.error('[FamilyChatWrapper] Error initializing:', error);
+      setHasError(true);
+      setReady(true);
+    }
   }, []);
 
-  if (!ready) {
+  // If there's an error or not ready yet, render children directly
+  if (!ready || hasError) {
+    if (hasError) {
+      console.warn('[FamilyChatWrapper] FamilyChatProvider failed to load, rendering children directly');
+    }
     return <>{children}</>;
   }
 
-  return (
-    <FamilyChatProvider>
-      {children}
-    </FamilyChatProvider>
-  );
+  try {
+    return <FamilyChatProvider>{children}</FamilyChatProvider>;
+  } catch (error) {
+    console.error('[FamilyChatWrapper] Error rendering FamilyChatProvider:', error);
+    return <>{children}</>;
+  }
 };
 
 // ─── FIXED PROVIDER ORDER ─────────────────────────────────────────────

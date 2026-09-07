@@ -6,7 +6,7 @@ import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, isSameWeek, isToday, isYesterday } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -1868,7 +1868,12 @@ export default function FamilyChatScreen({
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
     try {
-      await FileSystem.getContentUriAsync(meta.uri);
+      // Check if file exists first
+      const fileInfo = await FileSystem.getInfoAsync(meta.uri);
+      if (!fileInfo.exists) {
+        showSweetAlert('error', 'File Not Found', 'The file no longer exists');
+        return;
+      }
       await Share.share({ url: meta.uri, title: meta.name });
     } catch (error) {
       console.error('File open error:', error);
@@ -2183,7 +2188,10 @@ export default function FamilyChatScreen({
                   : 'rgba(0,0,0,0.05)',
               },
             ]}
-            onPress={() => {}}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              showSweetAlert('info', 'Video Call', 'Video calling feature coming soon! 📹');
+            }}
           >
             <Ionicons name="videocam" size={22} color={theme.text.primary} />
           </TouchableOpacity>
@@ -2196,7 +2204,10 @@ export default function FamilyChatScreen({
                   : 'rgba(0,0,0,0.05)',
               },
             ]}
-            onPress={() => {}}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              showSweetAlert('info', 'Voice Call', 'Voice calling feature coming soon! 📞');
+            }}
           >
             <Ionicons name="call" size={22} color={theme.text.primary} />
           </TouchableOpacity>

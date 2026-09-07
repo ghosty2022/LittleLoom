@@ -7,6 +7,7 @@ import { BlurView } from 'expo-blur';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInRight, FadeIn, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
+// Add this import for Layout animations
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -784,6 +785,7 @@ export default function FamilyChatListScreen({
     muteChat,
     isLoading,
     getTypingUsers,
+    createFamilyGroup,
   } = useFamilyChat();
   const { members, parent1, parent2, guardians } = useFamily();
   const { userProfile } = useAuth();
@@ -1097,18 +1099,34 @@ export default function FamilyChatListScreen({
       return;
     }
 
-    Haptics.notificationAsync(
-      Haptics.NotificationFeedbackType.Success
-    );
-    showSweetAlert(
-      'success',
-      'Group Created! 🎉',
-      `Created group with ${selectedMembers.length} members`
-    );
-    setShowNewChatModal(false);
-    setSelectedMembers([]);
-    setGroupName('');
-    setGroupPhoto(null);
+    try {
+      // Actually create the group
+      const groupNameToUse = groupName.trim() || `Family Group`;
+      const chatId = await createFamilyGroup(groupNameToUse, groupPhoto || undefined);
+      
+      if (chatId) {
+        Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success
+        );
+        showSweetAlert(
+          'success',
+          'Group Created! 🎉',
+          `Created "${groupNameToUse}" with ${selectedMembers.length} members`
+        );
+        setShowNewChatModal(false);
+        setSelectedMembers([]);
+        setGroupName('');
+        setGroupPhoto(null);
+        
+        // Navigate to the new group chat
+        navigation.navigate('FamilyChat', { chatId });
+      } else {
+        showSweetAlert('error', 'Error', 'Failed to create group. Please try again.');
+      }
+    } catch (error) {
+      console.error('Create group error:', error);
+      showSweetAlert('error', 'Error', 'Failed to create group. Please try again.');
+    }
   };
 
   const toggleMemberSelection = (memberId: string) => {
