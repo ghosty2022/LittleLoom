@@ -112,6 +112,8 @@ interface SecurityContextType extends SecurityState {
   saveBiometricCredentials: (email: string, password: string) => Promise<boolean>;
   clearBiometricCredentials: () => Promise<void>;
   refreshBiometricStatus: () => Promise<void>;
+  getBiometricHardwareAvailable: () => boolean;
+  getBiometricEnrolled: () => boolean;
 }
 
 const SecurityContext = createContext<SecurityContextType | null>(null);
@@ -255,13 +257,12 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const biometricCheckPromise = useRef<Promise<void> | null>(null);
   const biometricCheckInProgressRef = useRef<boolean>(false);
   const lastBiometricCheckRef = useRef<number>(0);
-  const BIOMETRIC_CHECK_DEBOUNCE = 5000; // 5 seconds debounce
+  const BIOMETRIC_CHECK_DEBOUNCE = 3000; // 3 seconds debounce
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       isMounted.current = false;
-      // Cancel any pending biometric check
       biometricCheckPromise.current = null;
       biometricCheckInProgressRef.current = false;
     };
@@ -368,7 +369,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
       if (previousState.match(/inactive|background/) && nextAppState === 'active') {
         checkedThisCycleRef.current = false;
-        // Use a timeout to avoid blocking UI
         setTimeout(() => {
           if (isSubscribed) {
             checkSecurityOnResume();
@@ -483,7 +483,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         // Get security level (safe check for method existence)
         let securityLevel = LocalAuthentication.SecurityLevel.NONE;
         try {
-          // Check if getEnrolledLevelAsync exists before calling
           if (LocalAuthentication.getEnrolledLevelAsync) {
             securityLevel = await LocalAuthentication.getEnrolledLevelAsync();
           }
@@ -616,6 +615,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const refreshBiometricStatus = useCallback(async () => {
     // Reset the debounce timer to force a fresh check
     lastBiometricCheckRef.current = 0;
+    biometricCheckInProgressRef.current = false;
     await checkBiometricCapabilities();
   }, [checkBiometricCapabilities]);
 
@@ -707,6 +707,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     if (enabled) {
       // Check if biometrics are available (with debounce reset)
       lastBiometricCheckRef.current = 0;
+      biometricCheckInProgressRef.current = false;
       await checkBiometricCapabilities();
       
       // Double-check enrollment status
@@ -804,6 +805,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       if (method === 'biometric') {
         // Check if biometrics are available before attempting
         lastBiometricCheckRef.current = 0;
+        biometricCheckInProgressRef.current = false;
         await checkBiometricCapabilities();
         if (!state.isBiometricHardwareAvailable) {
           console.log('[Security] Biometric hardware not available');
@@ -986,6 +988,14 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, []);
 
+  const getBiometricHardwareAvailable = useCallback(() => {
+    return state.isBiometricHardwareAvailable;
+  }, [state.isBiometricHardwareAvailable]);
+
+  const getBiometricEnrolled = useCallback(() => {
+    return state.isBiometricEnrolled;
+  }, [state.isBiometricEnrolled]);
+
   const setSharingActive = useCallback(async (active: boolean) => {
     sharingActiveRef.current = active;
     if (active) {
@@ -1140,6 +1150,8 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     saveBiometricCredentials,
     clearBiometricCredentials,
     refreshBiometricStatus,
+    getBiometricHardwareAvailable,
+    getBiometricEnrolled,
     isAppLocked: state.isSecurityLocked,
   }), [
     state,
@@ -1173,6 +1185,8 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     saveBiometricCredentials,
     clearBiometricCredentials,
     refreshBiometricStatus,
+    getBiometricHardwareAvailable,
+    getBiometricEnrolled,
   ]);
 
   return (

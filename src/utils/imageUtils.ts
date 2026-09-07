@@ -1,5 +1,6 @@
 // src/utils/imageUtils.ts
-import * as FileSystem from 'expo-file-system';
+// ✅ Use the legacy API explicitly
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Image } from 'react-native';
@@ -7,13 +8,32 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
 
-const BASE_DIR = FileSystem.documentDirectory || '';
-export const CACHE_DIR = FileSystem.cacheDirectory + 'littleloom/';
-export const PARENT_IMAGES_DIR = BASE_DIR + 'parent_images/';
-export const GUARDIAN_IMAGES_DIR = BASE_DIR + 'guardian_images/';
-export const BABY_IMAGES_DIR = BASE_DIR + 'baby_images/';
-export const MILESTONE_IMAGES_DIR = BASE_DIR + 'milestone_images/';
-export const GALLERY_DIR = BASE_DIR + 'gallery/';
+// Get the document directory - with fallback
+const getDocumentDir = (): string => {
+  try {
+    return FileSystem.documentDirectory || '';
+  } catch {
+    return '';
+  }
+};
+
+const getCacheDir = (): string => {
+  try {
+    return FileSystem.cacheDirectory || '';
+  } catch {
+    return '';
+  }
+};
+
+const DOCUMENT_DIR = getDocumentDir();
+const CACHE_DIR_ROOT = getCacheDir();
+
+export const CACHE_DIR = CACHE_DIR_ROOT ? `${CACHE_DIR_ROOT}littleloom/` : 'littleloom/';
+export const PARENT_IMAGES_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}parent_images/` : 'parent_images/';
+export const GUARDIAN_IMAGES_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}guardian_images/` : 'guardian_images/';
+export const BABY_IMAGES_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}baby_images/` : 'baby_images/';
+export const MILESTONE_IMAGES_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}milestone_images/` : 'milestone_images/';
+export const GALLERY_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}gallery/` : 'gallery/';
 
 export const MAX_CACHE_SIZE = 100 * 1024 * 1024; // 100MB
 export const DEFAULT_COMPRESSION = 0.8;
@@ -21,10 +41,6 @@ export const MAX_IMAGE_DIMENSION = 2048;
 export const THUMBNAIL_SIZE = 300;
 
 // ─── SWEETALERT FALLBACK ────────────────────────────────────────────────────
-
-// Since sweetAlert is used in this file but not imported, we'll use Alert as fallback
-// In your app, you should import sweetAlert from your hooks
-// For now, we'll use a function that can be overridden
 
 type SweetAlertType = {
   alert: (title: string, message: string, type?: 'warning' | 'error' | 'success' | 'info') => void;
@@ -38,7 +54,6 @@ export const setSweetAlert = (instance: SweetAlertType) => {
   sweetAlertInstance = instance;
 };
 
-// Fallback alert function
 const showAlert = (title: string, message: string, type: 'warning' | 'error' | 'success' | 'info' = 'warning') => {
   if (sweetAlertInstance) {
     sweetAlertInstance.alert(title, message, type);
@@ -47,7 +62,6 @@ const showAlert = (title: string, message: string, type: 'warning' | 'error' | '
   }
 };
 
-// Fallback toast function
 const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
   if (sweetAlertInstance) {
     sweetAlertInstance.toast(message, type);
@@ -59,13 +73,23 @@ const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'inf
 // ─── DIRECTORY HELPERS ──────────────────────────────────────────────────────
 
 export async function ensureDirectory(dir: string): Promise<void> {
+  if (!dir || dir.length === 0) {
+    console.warn('Attempted to ensure directory with empty path');
+    return;
+  }
+  
   try {
     const dirInfo = await FileSystem.getInfoAsync(dir);
     if (!dirInfo.exists) {
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
     }
-  } catch (error) {
+  } catch (error: any) {
+    // Ignore "already exists" errors
+    if (error.message?.includes('already exists') || error.code === 'EEXIST') {
+      return;
+    }
     console.error('Error ensuring directory:', error);
+    throw error;
   }
 }
 
@@ -109,7 +133,17 @@ export function getCachePath(filename: string): string {
 // ─── FILE OPERATIONS ────────────────────────────────────────────────────────
 
 export async function copyImage(sourceUri: string, destinationUri: string): Promise<boolean> {
+  if (!sourceUri || !destinationUri) {
+    console.error('Invalid source or destination URI');
+    return false;
+  }
+  
   try {
+    // Ensure destination directory exists
+    const destPath = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
+    await ensureDirectory(destPath);
+    
+    // Try copy first
     await FileSystem.copyAsync({ from: sourceUri, to: destinationUri });
     return true;
   } catch (copyError) {
@@ -125,6 +159,8 @@ export async function copyImage(sourceUri: string, destinationUri: string): Prom
 }
 
 export async function deleteImage(uri: string): Promise<boolean> {
+  if (!uri) return false;
+  
   try {
     const fileInfo = await FileSystem.getInfoAsync(uri);
     if (fileInfo.exists) {
@@ -138,6 +174,8 @@ export async function deleteImage(uri: string): Promise<boolean> {
 }
 
 export async function imageExists(uri: string): Promise<boolean> {
+  if (!uri) return false;
+  
   try {
     const fileInfo = await FileSystem.getInfoAsync(uri);
     return fileInfo.exists;
@@ -147,6 +185,8 @@ export async function imageExists(uri: string): Promise<boolean> {
 }
 
 export async function getFileSize(uri: string): Promise<number> {
+  if (!uri) return 0;
+  
   try {
     const fileInfo = await FileSystem.getInfoAsync(uri);
     return fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
@@ -156,6 +196,8 @@ export async function getFileSize(uri: string): Promise<number> {
 }
 
 export async function readDirectory(dir: string): Promise<string[]> {
+  if (!dir) return [];
+  
   try {
     const dirInfo = await FileSystem.getInfoAsync(dir);
     if (!dirInfo.exists) return [];
@@ -355,6 +397,8 @@ export async function processImageBatch(
 // ─── CACHING ──────────────────────────────────────────────────────────────
 
 export async function cacheImage(uri: string, customFilename?: string): Promise<string> {
+  if (!uri) return '';
+  
   try {
     await ensureDirectory(CACHE_DIR);
 
@@ -375,6 +419,8 @@ export async function cacheImage(uri: string, customFilename?: string): Promise<
 }
 
 export async function getCachedImage(uri: string): Promise<string | null> {
+  if (!uri) return null;
+  
   try {
     const filename = uri.split('/').pop();
     if (!filename) return null;
@@ -402,9 +448,6 @@ export async function clearImageCache(): Promise<void> {
 
 export async function getCacheSize(): Promise<number> {
   try {
-    const dirInfo = await FileSystem.getInfoAsync(CACHE_DIR);
-    if (!dirInfo.exists) return 0;
-
     const files = await readDirectory(CACHE_DIR);
     let totalSize = 0;
 
@@ -516,10 +559,6 @@ export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
 
 // ─── VALIDATION HELPERS (FIXED for array handling) ───────────────────────
 
-/**
- * Normalizes a value to a string or null
- * Handles arrays by extracting the first element
- */
 export function normalizeStringValue(value: unknown): string | null {
   if (value == null) return null;
   if (Array.isArray(value)) {
@@ -531,23 +570,14 @@ export function normalizeStringValue(value: unknown): string | null {
   return null;
 }
 
-/**
- * Checks if a string is a valid image URI
- * FIXED: Handles arrays properly
- */
 export function isValidImageUri(value: string | undefined | null | unknown): boolean {
-  // Handle null/undefined
   if (value == null) return false;
-  
-  // Handle arrays
   if (Array.isArray(value)) {
     if (value.length === 0) return false;
     return isValidImageUri(value[0]);
   }
-  
-  // Handle non-string values
   if (typeof value !== 'string') return false;
-  
+
   const trimmed = value.trim();
   if (trimmed.length === 0) return false;
 
@@ -567,23 +597,14 @@ export function isValidImageUri(value: string | undefined | null | unknown): boo
   return false;
 }
 
-/**
- * Checks if a string is an emoji
- * FIXED: Handles arrays properly
- */
 export function isEmoji(value: string | undefined | null | unknown): boolean {
-  // Handle null/undefined
   if (value == null) return false;
-  
-  // Handle arrays
   if (Array.isArray(value)) {
     if (value.length === 0) return false;
     return isEmoji(value[0]);
   }
-  
-  // Handle non-string values
   if (typeof value !== 'string') return false;
-  
+
   if (value.length > 8) return false;
   const code = value.codePointAt(0) || 0;
   return (
@@ -601,19 +622,12 @@ export function isEmoji(value: string | undefined | null | unknown): boolean {
   );
 }
 
-/**
- * Gets the display value from a potential avatar source
- * FIXED: Handles arrays properly
- */
 export function getAvatarDisplayValue(value: unknown): string | null {
   const normalized = normalizeStringValue(value);
   if (!normalized) return null;
   return normalized;
 }
 
-/**
- * Checks if a value is a displayable emoji (handles arrays)
- */
 export function isDisplayableEmoji(value: unknown): boolean {
   const displayValue = getAvatarDisplayValue(value);
   if (!displayValue) return false;
@@ -665,17 +679,14 @@ export const ImageUtils = {
   saveGuardianImage,
   saveBabyImage,
   saveGalleryImage,
-
   saveToPhotoLibrary,
 
-  // Validation helpers (now array-safe)
   isValidImageUri,
   isEmoji,
   normalizeStringValue,
   getAvatarDisplayValue,
   isDisplayableEmoji,
   
-  // SweetAlert setter
   setSweetAlert,
 };
 

@@ -14,6 +14,7 @@ import {
   Image,
   Modal,
   Pressable,
+  Platform,
 } from 'react-native';
 
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -222,8 +223,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     getAvailableAuthMethods,
     resetUnlockLock,
     refreshBiometricStatus,
+    getBiometricTypeName,
+    getBiometricIcon,
   } = useSecurity();
-  
+
   const effectiveBiometricEnabled = isBiometricEnabled ?? false;
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
@@ -371,9 +374,9 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         showToast('Verified!', 'Redirecting to PIN reset...');
 
         setTimeout(() => {
-          navigation.navigate('SecurityCenter', { 
-            mode: 'reset', 
-            fromForgotPassword: true 
+          navigation.navigate('SecurityCenter', {
+            mode: 'reset',
+            fromForgotPassword: true
           });
         }, 1500);
       } else {
@@ -429,11 +432,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     if (!isBiometricHardwareAvailable) return;
     if (isLockedOut) return;
     if (unlockInProgress.current) return;
-    if (!isBiometricEnrolled) {
-      // Try to refresh enrollment status
-      refreshBiometricStatus();
-      return;
-    }
 
     const unsubscribe = navigation.addListener('focus', () => {
       hasAutoPrompted.current = false;
@@ -468,7 +466,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   }, [
     effectiveBiometricEnabled,
     isBiometricHardwareAvailable,
-    isBiometricEnrolled,
     isLockedOut,
     navigation,
     refreshBiometricStatus,
@@ -589,17 +586,45 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       console.log('[SecurityLock] No biometric hardware');
       return;
     }
-    
+
     // Refresh biometric status before attempting
     await refreshBiometricStatus();
-    
+
     if (!effectiveBiometricEnabled) {
       console.log('[SecurityLock] Biometric not enabled');
       return;
     }
-    
+
     if (isLockedOut || isLoading || unlockInProgress.current) {
       console.log('[SecurityLock] Locked or in progress');
+      return;
+    }
+
+    // Check if biometric is actually enrolled (for Android)
+    let isEnrolled = isBiometricEnrolled;
+    if (!isEnrolled && Platform.OS === 'android') {
+      try {
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        if (!enrolled) {
+          const testAuth = await LocalAuthentication.authenticateAsync({
+            promptMessage: 'Verify biometric setup',
+            disableDeviceFallback: true,
+            cancelLabel: 'Cancel',
+          });
+          if (testAuth.success || testAuth.error === 'user_cancel' || testAuth.error === 'system_cancel') {
+            isEnrolled = true;
+          }
+        } else {
+          isEnrolled = enrolled;
+        }
+      } catch (e) {
+        console.log('[SecurityLock] Enrollment check failed:', e);
+      }
+    }
+
+    if (!isEnrolled) {
+      showError('Biometric Not Set Up', 'Please set up biometrics in your device settings first.');
+      refreshBiometricStatus();
       return;
     }
 
@@ -643,6 +668,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   }, [
     isBiometricHardwareAvailable,
     effectiveBiometricEnabled,
+    isBiometricEnrolled,
     isLockedOut,
     isLoading,
     unlockApp,
@@ -795,7 +821,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 <TextInput
                   style={[
                     styles.answerInput,
-                    { 
+                    {
                       backgroundColor: colors.surfaceHighlight,
                       color: colors.text,
                       borderColor: colors.border,

@@ -1,5 +1,5 @@
 // src/screens/EditGuardianScreen.tsx
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -38,6 +38,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { UserRole, ROLE_LABELS } from '../../types/roles';
@@ -1044,14 +1045,20 @@ const ActionModal = React.memo(({ visible, onClose, title, children, isDark }: a
 
 export default function EditGuardianScreen({ navigation, route }: EditGuardianScreenProps) {
   const { guardianId, mode = 'guardian', fromChat = false } = route.params;
-  const { members, updateGuardianProfile, removeMember, loadFamily } = useFamily();
+  const { members, updateGuardianProfile, removeMember, loadFamily, refreshFamily } = useFamily();
   const { hasPermission, profile, updateProfile } = useUser();
-  const { currentBaby, getRecentActivities, milestones } = useBaby();
+  const { currentBaby, getRecentActivities, milestones, refreshBabyData } = useBaby();
   const { userProfile } = useAuth();
   const { darkMode, triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
   const colorScheme = useColorScheme();
   const isDark = darkMode ?? (colorScheme === 'dark');
+
+  // ─── REFS ──────────────────────────────────────────────────────────────
+  const isLoadingRef = useRef(false);
+  const initialLoadDone = useRef(false);
+  const isMountedRef = useRef(true);
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
@@ -1078,30 +1085,27 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
   const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
 
-  useEffect(() => { loadFamily(); }, [loadFamily]);
-
-  // Add verifyPassword function - you'll need to implement this based on your auth system
-  const verifyPassword = useCallback(async (password: string): Promise<boolean> => {
-    try {
-      // This should be implemented to verify the user's password
-      // For example, using Firebase Auth:
-      // const user = auth.currentUser;
-      // if (!user) return false;
-      // const credential = EmailAuthProvider.credential(user.email!, password);
-      // await user.reauthenticateWithCredential(credential);
-      // return true;
-      
-      // Placeholder - implement based on your auth system
-      return true;
-    } catch (error) {
-      console.error('Password verification error:', error);
-      return false;
-    }
-  }, []);
-
+  // ─── INITIAL LOAD ──────────────────────────────────────────────────────
   useEffect(() => {
-    const findMember = async () => {
-      setIsLoading(true);
+    if (member && !initialLoadDone.current && !isLoadingRef.current) {
+      initialLoadDone.current = true;
+    }
+    return () => {
+      isMountedRef.current = false;
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+      }
+    };
+  }, [member?.id]);
+
+  // ─── LOAD MEMBER DATA ─────────────────────────────────────────────────
+  const loadMemberData = useCallback(async () => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    
+    try {
+      await loadFamily();
+      
       let found = members.find(m => m.id === guardianId);
       if (!found) {
         const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
@@ -1118,20 +1122,101 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           } as FamilyMember;
         }
       }
-      if (found) {
+      if (found && isMountedRef.current) {
         setMember(found);
-        const initialData = { fullName: found.fullName || '', email: found.email || '', phoneNumber: found.phoneNumber || '', relationship: found.relationship || '', avatar: found.avatar || '', notificationsEnabled: found.notificationsEnabled ?? true };
+        const initialData = { 
+          fullName: found.fullName || '', 
+          email: found.email || '', 
+          phoneNumber: found.phoneNumber || '', 
+          relationship: found.relationship || '', 
+          avatar: found.avatar || '', 
+          notificationsEnabled: found.notificationsEnabled ?? true 
+        };
         setFormData(initialData);
         setOriginalData(initialData);
         if (currentBaby) await loadMemberActivities(found.id, found.userId, found.fullName);
-      } else {
+      } else if (isMountedRef.current) {
         sweetAlert.error('Member Not Found', 'The requested family member could not be found.');
       }
-      setIsLoading(false);
-    };
-    findMember();
-  }, [members, guardianId, currentBaby, userProfile, profile, sweetAlert]);
+    } catch (error) {
+      console.error('Error loading member data:', error);
+    } finally {
+      isLoadingRef.current = false;
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [guardianId, members, loadFamily, userProfile, profile, currentBaby, sweetAlert]);
 
+  // ─── INITIAL LOAD ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!initialLoadDone.current) {
+      loadMemberData();
+    }
+  }, []);
+
+  // ─── REFRESH MEMBER DATA (light refresh) ─────────────────────────────
+  const refreshMemberData = useCallback(async () => {
+    if (isLoadingRef.current || !member) return;
+    isLoadingRef.current = true;
+    
+    try {
+      await refreshFamily();
+      await refreshBabyData(currentBaby?.id || '');
+      
+      const updatedMember = members.find(m => m.id === member.id);
+      if (updatedMember && isMountedRef.current) {
+        setMember(updatedMember);
+        const initialData = { 
+          fullName: updatedMember.fullName || '', 
+          email: updatedMember.email || '', 
+          phoneNumber: updatedMember.phoneNumber || '', 
+          relationship: updatedMember.relationship || '', 
+          avatar: updatedMember.avatar || '', 
+          notificationsEnabled: updatedMember.notificationsEnabled ?? true 
+        };
+        setFormData(initialData);
+        setOriginalData(initialData);
+        if (currentBaby) await loadMemberActivities(updatedMember.id, updatedMember.userId, updatedMember.fullName);
+      }
+    } catch (error) {
+      console.error('Error refreshing member data:', error);
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, [member, members, refreshFamily, refreshBabyData, currentBaby]);
+
+  // ─── FOCUS EFFECT - Auto-refresh on focus ─────────────────────────────
+  useFocusEffect(
+    useCallback(() => {
+      if (member && !isLoadingRef.current) {
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+        }
+        refreshTimerRef.current = setTimeout(() => {
+          refreshMemberData();
+        }, 300);
+      }
+      return () => {
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+        }
+      };
+    }, [member, refreshMemberData])
+  );
+
+  // ─── VERIFY PASSWORD ──────────────────────────────────────────────────
+  const verifyPassword = useCallback(async (password: string): Promise<boolean> => {
+    try {
+      // Implement based on your auth system
+      return true;
+    } catch (error) {
+      console.error('Password verification error:', error);
+      return false;
+    }
+  }, []);
+
+  // ─── LOAD MEMBER ACTIVITIES ───────────────────────────────────────────
   const loadMemberActivities = useCallback(async (memberId: string, memberUserId?: string, memberName?: string) => {
     if (!currentBaby) return;
     setIsLoadingActivities(true);
@@ -1143,11 +1228,18 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         if (memberName && a.loggedByName === memberName) return true;
         return false;
       });
-      setMemberActivities(memberActs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 30));
-    } catch (error) { console.error('Error loading member activities:', error); setMemberActivities([]); }
-    finally { setIsLoadingActivities(false); }
+      if (isMountedRef.current) {
+        setMemberActivities(memberActs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 30));
+      }
+    } catch (error) { 
+      console.error('Error loading member activities:', error); 
+      if (isMountedRef.current) setMemberActivities([]);
+    } finally { 
+      if (isMountedRef.current) setIsLoadingActivities(false); 
+    }
   }, [currentBaby, getRecentActivities]);
 
+  // ─── HANDLE SAVE ──────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!member) return;
     if (!formData.fullName.trim()) { sweetAlert.error('Validation Error', 'Name is required'); triggerHaptic('error'); return; }
@@ -1166,12 +1258,25 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     try {
       if (isCurrentUser) { try { await updateProfile({ phoneNumber: formData.phoneNumber, email: formData.email, avatar: formData.avatar }); } catch (err) {} }
       const success = await updateGuardianProfile(member.id, updates);
-      if (success) { triggerHaptic('success'); setIsEditing(false); setMember(prev => prev ? { ...prev, ...updates } : null); setOriginalData({ ...formData }); sweetAlert.success('Profile Updated', 'All changes saved successfully'); }
-      else { triggerHaptic('error'); sweetAlert.error('Save Failed', 'Please try again.'); }
-    } catch (error) { triggerHaptic('error'); sweetAlert.error('Error', 'An unexpected error occurred'); }
+      if (success) { 
+        triggerHaptic('success'); 
+        setIsEditing(false); 
+        setMember(prev => prev ? { ...prev, ...updates } : null); 
+        setOriginalData({ ...formData }); 
+        sweetAlert.success('Profile Updated', 'All changes saved successfully');
+        await refreshMemberData();
+      } else { 
+        triggerHaptic('error'); 
+        sweetAlert.error('Save Failed', 'Please try again.'); 
+      }
+    } catch (error) { 
+      triggerHaptic('error'); 
+      sweetAlert.error('Error', 'An unexpected error occurred'); 
+    }
     setIsSaving(false);
   };
 
+  // ─── HANDLE REMOVE ────────────────────────────────────────────────────
   const handleRemove = useCallback(() => {
     if (!member) return;
     const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
@@ -1189,7 +1294,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       'Remove Family Member',
       `Remove ${member.fullName}? Their history will be preserved but they will lose access.`,
       async () => {
-        // Ask for password confirmation
         sweetAlert.prompt(
           'Confirm Password',
           'Enter your password to confirm removal:',
@@ -1200,7 +1304,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
               return;
             }
             
-            // Verify password
             const isValid = await verifyPassword(password);
             if (!isValid) {
               sweetAlert.error('Error', 'Incorrect password. Please try again.');
@@ -1227,6 +1330,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     );
   }, [member, userProfile, profile, hasPermission, removeMember, navigation, sweetAlert, triggerHaptic, verifyPassword]);
 
+  // ─── HANDLE CAMERA CAPTURE ────────────────────────────────────────────
   const handleCameraCapture = async () => {
     setShowImagePicker(false);
     if (!member) {
@@ -1271,6 +1375,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         setOriginalData(prev => ({ ...prev, avatar: processedUri }));
         triggerHaptic('success');
         sweetAlert.success('Photo Updated', 'Camera photo saved permanently');
+        await refreshMemberData();
       }
     } catch (error) {
       console.error('[EditGuardian] Camera error:', error);
@@ -1280,6 +1385,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   };
 
+  // ─── HANDLE IMAGE PICK ────────────────────────────────────────────────
   const handleImagePick = async () => {
     setShowImagePicker(false);
     if (!member) {
@@ -1325,6 +1431,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         setOriginalData(prev => ({ ...prev, avatar: processedUri }));
         triggerHaptic('success');
         sweetAlert.success('Photo Updated', 'Profile picture saved permanently');
+        await refreshMemberData();
       } else {
         sweetAlert.error('Save Failed', 'Image saved locally but failed to update profile');
       }
@@ -1337,10 +1444,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   };
 
-  // Fixed persistPickedImage using legacy FileSystem API
+  // ─── PERSIST PICKED IMAGE ─────────────────────────────────────────────
   const persistPickedImage = async (sourceUri: string, memberId: string): Promise<string | null> => {
     try {
-      // Ensure directory exists
       const dirInfo = await FileSystem.getInfoAsync(GUARDIAN_IMAGES_DIR);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true });
@@ -1350,7 +1456,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const processedUri = `${GUARDIAN_IMAGES_DIR}${memberId}_${Date.now()}.${safeExt}`;
 
-      // Handle different URI types
       if (sourceUri.startsWith('content://')) {
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -1365,7 +1470,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
       }
 
-      // Verify file exists
       const fileInfo = await FileSystem.getInfoAsync(processedUri);
       if (!fileInfo.exists) {
         console.error('[persistPickedImage] File not found after write:', processedUri);
@@ -1379,42 +1483,60 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   };
 
+  // ─── HANDLE ROLE CHANGE ──────────────────────────────────────────────
   const handleRoleChange = async (newRole: UserRole) => {
     if (!member || !hasPermission('manageFamily')) return;
     if (member.role === newRole) { setShowRoleModal(false); return; }
     const roleConfig = ROLE_CONFIG[newRole];
     sweetAlert.confirm('Change Role', `Change ${member.fullName} to ${roleConfig.label}?`, async () => {
       setIsSaving(true);
-      try { const success = await updateGuardianProfile(member.id, { role: newRole }); if (success) { setMember(prev => prev ? { ...prev, role: newRole } : null); sweetAlert.success('Role Updated', `${member.fullName} is now a ${roleConfig.label}`); } else sweetAlert.error('Error', 'Failed to update role'); }
-      catch (error) { sweetAlert.error('Error', 'An error occurred'); }
+      try { 
+        const success = await updateGuardianProfile(member.id, { role: newRole }); 
+        if (success) { 
+          setMember(prev => prev ? { ...prev, role: newRole } : null); 
+          sweetAlert.success('Role Updated', `${member.fullName} is now a ${roleConfig.label}`);
+          await refreshMemberData();
+        } else sweetAlert.error('Error', 'Failed to update role'); 
+      } catch (error) { sweetAlert.error('Error', 'An error occurred'); }
       setIsSaving(false); setShowRoleModal(false);
     }, () => setShowRoleModal(false), 'Change', 'Cancel');
   };
 
+  // ─── HANDLE CALL ──────────────────────────────────────────────────────
   const handleCall = async () => {
     if (!member?.phoneNumber) { sweetAlert.alert('No Phone Number', 'No phone number on file.', 'warning'); return; }
     const phoneUrl = `tel:${member.phoneNumber.replace(/\s/g, '')}`;
     if (await Linking.canOpenURL(phoneUrl)) { triggerHaptic('medium'); await Linking.openURL(phoneUrl); }
   };
 
+  // ─── HANDLE MESSAGE ──────────────────────────────────────────────────
   const handleMessage = () => {
     if (!member) return;
     navigation.navigate('FamilyChat' as never, { memberId: member.id, memberName: member.fullName, memberAvatar: member.avatar, memberRole: member.role });
   };
 
+  // ─── HANDLE SHARE ─────────────────────────────────────────────────────
   const handleShare = async () => {
     if (!member) return;
     try { triggerHaptic('medium'); await Share.share({ message: `${member.fullName} - ${ROLE_LABELS[member.role] || member.role}\n${member.email || ''}\n${member.phoneNumber || ''}`, title: `${member.fullName}'s Contact Info` }); }
     catch (error) { console.error('Error sharing contact:', error); }
   };
 
+  // ─── ON REFRESH ──────────────────────────────────────────────────────
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadFamily();
-    if (member && currentBaby) await loadMemberActivities(member.id, member.userId, member.fullName);
-    setRefreshing(false);
-  }, [loadFamily, member, currentBaby, loadMemberActivities]);
+    try {
+      await loadFamily();
+      await refreshBabyData(currentBaby?.id || '');
+      if (member) await loadMemberActivities(member.id, member.userId, member.fullName);
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadFamily, refreshBabyData, currentBaby, member, loadMemberActivities]);
 
+  // ─── HANDLE TAB CHANGE ───────────────────────────────────────────────
   const handleTabChange = useCallback((tab: ProfileTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
@@ -1429,6 +1551,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const canRemove = useMemo(() => hasPermission('manageFamily') && roleConfig?.canRemove && !isCurrentUser, [hasPermission, roleConfig, isCurrentUser]);
   const canManagePermissions = useMemo(() => hasPermission('manageFamily') && !isCurrentUser, [hasPermission, isCurrentUser]);
 
+  // ─── LOADING STATE ──────────────────────────────────────────────────
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
