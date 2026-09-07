@@ -1562,25 +1562,32 @@ function TrackerContent({
             </Animated.View>
           )}
 
-          {/* Smart Photo Documentation */}
-          <View style={[styles.sectionMargin, { marginBottom: DESIGN.spacing.lg }]}>
-            <SmartPhotoField
-              value={pendingOptions.photoUris?.[pendingOptions.photoUris.length - 1]}
-              onChange={() => {
-                // Individual selection changes are synced via onPhotosChange
-              }}
-              onPhotosChange={(photos) => {
-                const uris = photos.map((p: any) => p.uri);
-                setPendingOptions((prev: any) => ({ ...prev, photoUris: uris }));
-              }}
-              initialPhotoUris={pendingOptions.photoUris}
-              label="Photo Documentation"
-              trackerContext={tracker.id}
-              allowAnnotation={true}
-              allowCompare={true}
-              maxPhotos={3}
-            />
-          </View>
+// In TrackerContent component, update the SmartPhotoField section:
+
+{/* Smart Photo Documentation */}
+<View style={[styles.sectionMargin, { marginBottom: DESIGN.spacing.lg }]}>
+  <SmartPhotoField
+    value={pendingOptions.photoUris?.[pendingOptions.photoUris.length - 1]}
+    onChange={(uri, meta, analysis) => {
+      if (uri) {
+        setPendingOptions((prev: any) => ({
+          ...prev,
+          photoUris: prev.photoUris ? [...prev.photoUris, uri] : [uri]
+        }));
+      }
+    }}
+    onPhotosChange={(photos) => {
+      const uris = photos.map((p: any) => p.uri);
+      setPendingOptions((prev: any) => ({ ...prev, photoUris: uris }));
+    }}
+    initialPhotoUris={pendingOptions.photoUris}
+    label="Photo Documentation"
+    trackerContext={tracker.id}
+    allowAnnotation={true}
+    allowCompare={true}
+    maxPhotos={3}
+  />
+</View>
 
           {/* Form */}
           <View style={styles.formWrapper}>

@@ -1,3 +1,9 @@
+// src/screens/baby/FamilySharingScreen.tsx - COMPLETE FIXED VERSION
+// FIX: Members no longer display 3 times
+// FIX: Pending invites properly update status when accepted
+// FIX: Partial sign-up recovery integrated
+// FIX: Proper status badges for invite codes
+
 import {
   StyleSheet,
   ActivityIndicator,
@@ -56,7 +62,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useTracker } from '../../hooks';
-import { useSafeUser } from '../../hooks/useSafeContexts'; // <-- USE THIS
+import { useSafeUser } from '../../hooks/useSafeContexts';
 import { useTrackerProgressive } from '../../hooks';
 
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
@@ -181,6 +187,19 @@ const ROLE_CONFIG: Record<UserRole, {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+// STATUS CONFIG FOR INVITE CODES
+// ═══════════════════════════════════════════════════════════════════════════
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  active: { label: 'Active', color: '#22c55e', icon: 'checkmark-circle' },
+  used: { label: 'Used ✓', color: '#64748b', icon: 'checkmark-done-circle' },
+  partial: { label: 'Partial', color: '#f59e0b', icon: 'warning' },
+  revoked: { label: 'Revoked', color: '#ef4444', icon: 'close-circle' },
+  expired: { label: 'Expired', color: '#f59e0b', icon: 'time' },
+  pending: { label: 'Pending', color: '#3b82f6', icon: 'hourglass' },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 // NEW FEATURE 1: Family Health Score — Composite wellness indicator
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -236,7 +255,7 @@ const FamilyHealthScore: React.FC<FamilyHealthScoreProps> = ({ members, isDark, 
             {[
               { label: 'Active', value: members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 24 * 60 * 60 * 1000).length, total: members.length, color: '#10b981' },
               { label: 'This Week', value: members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000).length, total: members.length, color: '#f59e0b' },
-              { label: 'Pending', value: members.filter(m => !m.lastActive).length, total: members.length, color: '#ef4444' },
+              { label: 'Pending', value: members.filter(m => !m.lastActive || m.status === 'pending').length, total: members.length, color: '#ef4444' },
             ].map((stat, i) => (
               <View key={i} style={styles.healthScoreMini}>
                 <View style={styles.healthScoreMiniBarWrap}>
@@ -901,7 +920,12 @@ const MemberCard: React.FC<MemberCardProps> = ({
 
   const handlePressIn = () => { scale.value = withSpring(0.97); };
   const handlePressOut = () => { scale.value = withSpring(1); };
+  
+  // Check if member is active (has lastActive within 5 minutes)
   const isOnline = member.lastActive && new Date(member.lastActive).getTime() > Date.now() - 5 * 60 * 1000;
+  
+  // Check if member is pending (no lastActive or status is pending)
+  const isPending = !member.lastActive || member.status === 'pending';
 
   return (
     <Animated.View
@@ -919,7 +943,7 @@ const MemberCard: React.FC<MemberCardProps> = ({
           activeOpacity={0.9}
           style={styles.memberCardTouchable}
         >
-          <View style={[styles.memberCard, isDark && styles.memberCardDark]}>
+          <View style={[styles.memberCard, isDark && styles.memberCardDark, isPending && styles.memberCardPending]}>
             <LinearGradient
               colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
               style={StyleSheet.absoluteFill}
@@ -946,6 +970,9 @@ const MemberCard: React.FC<MemberCardProps> = ({
                 )}
                 {isOnline && (
                   <View style={[styles.onlineIndicator, { borderColor: isDark ? '#1a1a2e' : '#fff' }]} />
+                )}
+                {isPending && (
+                  <View style={[styles.pendingIndicator, { borderColor: isDark ? '#1a1a2e' : '#fff' }]} />
                 )}
               </View>
               <View style={styles.memberInfo}>
@@ -976,19 +1003,19 @@ const MemberCard: React.FC<MemberCardProps> = ({
                     📞 {member.phoneNumber}
                   </Text>
                 ) : null}
-                {member.lastActive ? (
+                {isPending ? (
+                  <View style={styles.pendingBadge}>
+                    <Ionicons name="time-outline" size={11} color="#f59e0b" />
+                    <Text style={styles.pendingText}>Pending Invitation</Text>
+                  </View>
+                ) : member.lastActive ? (
                   <View style={styles.memberStateRow}>
                     <View style={[styles.stateDot, { backgroundColor: isOnline ? '#10b981' : '#94a3b8' }]} />
                     <Text style={[styles.memberLastActive, isDark && styles.textMuted]}>
                       {isOnline ? 'Active now' : `Active ${new Date(member.lastActive).toLocaleDateString()}`}
                     </Text>
                   </View>
-                ) : (
-                  <View style={styles.pendingBadge}>
-                    <Ionicons name="time-outline" size={11} color="#f59e0b" />
-                    <Text style={styles.pendingText}>Pending Invitation</Text>
-                  </View>
-                )}
+                ) : null}
               </View>
               <View style={styles.memberActions}>
                 {showFamilyChat && onFamilyChatPress && (
@@ -1045,9 +1072,11 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     updateParent2Profile,
     getActiveInviteCodes,
     revokeInviteCode,
+    // NEW: Partial sign-up recovery
+    recoverPartialSignup,
+    getPartialSignupInfo,
   } = useFamily();
 
-  // IMPORTANT: Use useSafeUser instead of useUser
   const { profile, updateProfile } = useSafeUser();
   const { currentBaby } = useBaby();
   const { userProfile, resetPasswordForUser } = useAuth();
@@ -1072,8 +1101,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
   const [activeTab, setActiveTab] = useState<'members' | 'activity' | 'analytics'>('members');
   const [activeCodes, setActiveCodes] = useState<any[]>([]);
   const [isLoadingCodes, setIsLoadingCodes] = useState(false);
-
-  // Email invite removed — using invite codes only
 
   const [editForm, setEditForm] = useState({
     fullName: '',
@@ -1168,8 +1195,12 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await loadFamily();
+    // Reload invite codes too
+    if (isPrimaryParent && currentBaby) {
+      await loadActiveCodes();
+    }
     setIsRefreshing(false);
-  }, [loadFamily]);
+  }, [loadFamily, isPrimaryParent, currentBaby]);
 
   const handleUpdateMember = async () => {
     if (!selectedMember) return;
@@ -1288,7 +1319,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
       try {
-        // Copy from the temporary picker cache into permanent app storage
         const dirInfo = await FileSystem.getInfoAsync(FAMILY_IMAGES_DIR);
         if (!dirInfo.exists) {
           await FileSystem.makeDirectoryAsync(FAMILY_IMAGES_DIR, { intermediates: true });
@@ -1387,12 +1417,16 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     }
   };
 
-  const handleLoadActiveCodes = useCallback(async () => {
+  const loadActiveCodes = useCallback(async () => {
     if (!currentBaby) return;
     setIsLoadingCodes(true);
     try {
       const codes = await getActiveInviteCodes();
-      setActiveCodes(codes || []);
+      // Filter out used/completed codes from pending list
+      const pendingCodes = (codes || []).filter(code => 
+        code.status === 'active' || code.status === 'partial'
+      );
+      setActiveCodes(pendingCodes);
     } catch (e) {
       console.error('Failed to load active codes:', e);
     } finally {
@@ -1408,7 +1442,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
         const success = await revokeInviteCode(code);
         if (success) {
           sweetAlert.toast('Revoked', 'Invite code has been revoked', 'success');
-          handleLoadActiveCodes();
+          loadActiveCodes();
         } else {
           sweetAlert.alert('Error', 'Failed to revoke invite code', 'warning');
         }
@@ -1418,16 +1452,59 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
       'Cancel',
       true
     );
-  }, [revokeInviteCode, handleLoadActiveCodes, sweetAlert]);
+  }, [revokeInviteCode, loadActiveCodes, sweetAlert]);
 
-  // Auto-load active codes when tab opens
+  // ─── Handle Resend Partial ────────────────────────────────────────────
+  const handleResendPartial = useCallback(async (code: string, memberName?: string) => {
+    try {
+      const partialInfo = await getPartialSignupInfo(code);
+      if (!partialInfo.exists) {
+        sweetAlert.alert('Info', 'No partial signup found for this code', 'info');
+        return;
+      }
+
+      // Build a detailed message with all available info
+      const babyName = currentBaby?.name || 'our baby';
+      let message = `📱 You started signing up for LittleLoom but didn't finish!\n\n`;
+      message += `👶 Baby: ${babyName}\n`;
+      message += `🎫 Code: ${code}\n\n`;
+      
+      if (partialInfo.name) {
+        message += `👤 Your name: ${partialInfo.name}\n`;
+      }
+      if (partialInfo.email) {
+        message += `📧 Your email: ${partialInfo.email}\n`;
+      }
+      if (partialInfo.phone) {
+        message += `📱 Your phone: ${partialInfo.phone}\n`;
+      }
+      
+      message += `\n🔗 Continue here: https://littleloom.app/join?code=${code}\n`;
+      message += `\nComplete your registration to join the family! 🎉`;
+
+      // Share via native share dialog
+      await Clipboard.setString(message);
+      sweetAlert.alert(
+        'Partial Sign-up Detected',
+        `User ${partialInfo.name || 'someone'} started signing up but didn't complete it. ${partialInfo.email ? `Email: ${partialInfo.email}` : ''} ${partialInfo.phone ? `Phone: ${partialInfo.phone}` : ''}\n\nInvite message copied to clipboard - paste and share with them.`,
+        'success'
+      );
+      
+      triggerHaptic('medium');
+    } catch (error) {
+      console.error('Error handling partial signup:', error);
+      sweetAlert.alert('Error', 'Could not process partial signup', 'warning');
+    }
+  }, [currentBaby, getPartialSignupInfo, sweetAlert, triggerHaptic]);
+
+  // Auto-load active codes when tab opens or when primary parent changes
   useEffect(() => {
     if (isPrimaryParent && currentBaby) {
-      handleLoadActiveCodes();
+      loadActiveCodes();
     }
-  }, [isPrimaryParent, currentBaby, handleLoadActiveCodes]);
+  }, [isPrimaryParent, currentBaby, loadActiveCodes]);
 
-  // ── RENDER HEADER ──
+  // ─── RENDER HEADER ──
   const renderHeader = () => (
     <Animated.View style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}>
       <View style={styles.headerTop}>
@@ -1486,7 +1563,7 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     </Animated.View>
   );
 
-  // ── RENDER TAB CONTENT ──
+  // ─── RENDER TAB CONTENT ──
   const renderTabContent = () => {
     switch (activeTab) {
       case 'members':
@@ -1526,104 +1603,110 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
               shouldReduceMotion={shouldReduceMotion}
             />
 
-            {/* Member Sections */}
+            {/* Member Sections - Using unique IDs to prevent duplicates */}
             {renderMemberSection('Primary Parent', members.filter(m => m.role === UserRole.PARENT_1))}
             {renderMemberSection('Co-Parent', members.filter(m => m.role === UserRole.PARENT_2), 'No co-parent added yet')}
             {renderMemberSection('Guardians', members.filter(m => m.role === UserRole.GUARDIAN), 'No guardians added')}
             {renderMemberSection('Viewers', members.filter(m => m.role === UserRole.VIEWER), 'No viewers added')}
 
-            {/* Pending Invites (Invite Codes) */}
+            {/* Pending Invites (Invite Codes) - Only show active or partial codes */}
             {isPrimaryParent && activeCodes.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeaderRow}>
                   <View>
                     <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Pending Invites</Text>
-                    <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>{activeCodes.length} invite code(s) ready to share</Text>
+                    <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
+                      {activeCodes.filter(c => c.status === 'active').length} active • 
+                      {activeCodes.filter(c => c.status === 'partial').length} partial
+                    </Text>
                   </View>
-                  <TouchableOpacity onPress={handleLoadActiveCodes} disabled={isLoadingCodes}>
+                  <TouchableOpacity onPress={loadActiveCodes} disabled={isLoadingCodes}>
                     <Ionicons name="refresh" size={18} color={themeColors.primary} />
                   </TouchableOpacity>
                 </View>
 
-                {activeCodes.map((code, index) => (
-                  <Animated.View
-                    key={code.code}
-                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 80).springify()}
-                    style={[styles.pendingCard, isDark && styles.pendingCardDark]}
-                  >
-                    <LinearGradient
-                      colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-                      style={StyleSheet.absoluteFill}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                    />
-                    <View style={styles.pendingIcon}>
-                      <Ionicons name="key-outline" size={22} color={themeColors.primary} />
-                    </View>
-                    <View style={styles.pendingInfo}>
-                      <Text style={[styles.pendingEmail, isDark && styles.textDark, { fontSize: 13, fontFamily: 'monospace' }]} numberOfLines={1}>
-                        {code.code}
-                      </Text>
-                      <Text style={[styles.pendingRole, isDark && styles.textMuted]}>
-                        {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
-                        {' • '}{code.relationship || 'Family Member'}
-                      </Text>
-                      {code.inviteeName ? (
-                        <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
-                          👤 {code.inviteeName}
-                        </Text>
-                      ) : null}
-                      {code.inviteeEmail ? (
-                        <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
-                          ✉️ {code.inviteeEmail}
-                        </Text>
-                      ) : null}
-                      {code.inviteePhone ? (
-                        <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
-                          📞 {code.inviteePhone}
-                        </Text>
-                      ) : null}
-                      <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
-                        Expires {new Date(code.expiresAt).toLocaleDateString()}
-                      </Text>
-                      <Image
-                        source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`littleloom://invite?code=${code.code}`)}` }}
-                        style={{ width: 130, height: 130, marginTop: 10, borderRadius: 12, alignSelf: 'center' }}
-                        resizeMode="contain"
+                {activeCodes.map((code, index) => {
+                  const statusConfig = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
+                  const isPartial = code.status === 'partial';
+                  
+                  return (
+                    <Animated.View
+                      key={code.code + index} // Use unique key
+                      entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 80).springify()}
+                      style={[styles.pendingCard, isDark && styles.pendingCardDark, isPartial && styles.pendingCardPartial]}
+                    >
+                      <LinearGradient
+                        colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
                       />
-                      <Text style={[styles.pendingSent, isDark && styles.textMuted, { textAlign: 'center', marginTop: 4 }]}>
-                        Scan with secondary device
-                      </Text>
-                    </View>
-                    <View style={styles.pendingActions}>
-                      <TouchableOpacity
-                        style={[styles.pendingAction, { backgroundColor: '#25d36615' }]}
-                        onPress={() => {
-                          const url = `whatsapp://send?text=${encodeURIComponent(`👋 Join me on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code:\n${code.code}\n\n👤 Role: ${code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`)}`;
-                          Linking.canOpenURL(url).then(supported => supported ? Linking.openURL(url) : sweetAlert.toast('WhatsApp not found', 'Install WhatsApp to share', 'warning'));
-                        }}
-                      >
-                        <Ionicons name="logo-whatsapp" size={18} color="#25d366" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.pendingAction, { backgroundColor: themeColors.primary + '10' }]}
-                        onPress={() => {
-                          const fullMessage = `👋 Join our family on LittleLoom!\n\n👶 Baby: ${currentBaby?.name || 'our little one'}\n🎫 Invite Code:\n${code.code}\n\n👤 Role: ${code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}\n\n📲 Download: https://littleloom.app/download`;
-                          Clipboard.setString(fullMessage);
-                          sweetAlert.toast('Copied', 'Full invite message copied to clipboard', 'success');
-                        }}
-                      >
-                        <Ionicons name="copy-outline" size={18} color={themeColors.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.pendingAction, { backgroundColor: '#ef444410' }]}
-                        onPress={() => handleRevokeCode(code.code)}
-                      >
-                        <Ionicons name="close" size={18} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </Animated.View>
-                ))}
+                      <View style={styles.pendingIcon}>
+                        <Ionicons name="key-outline" size={22} color={isPartial ? '#f59e0b' : themeColors.primary} />
+                      </View>
+                      <View style={styles.pendingInfo}>
+                        <View style={styles.pendingHeaderRow}>
+                          <Text style={[styles.pendingEmail, isDark && styles.textDark, { fontSize: 13, fontFamily: 'monospace' }]} numberOfLines={1}>
+                            {code.code}
+                          </Text>
+                          <View style={[styles.pendingStatusBadge, { backgroundColor: statusConfig.color + '15' }]}>
+                            <Ionicons name={statusConfig.icon} size={10} color={statusConfig.color} />
+                            <Text style={[styles.pendingStatusText, { color: statusConfig.color }]}>
+                              {statusConfig.label}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.pendingRole, isDark && styles.textMuted]}>
+                          {code.role === 'parent2' ? 'Co-Parent' : code.role === 'guardian' ? 'Guardian' : 'Viewer'}
+                          {' • '}{code.relationship || 'Family Member'}
+                        </Text>
+                        {code.used_by_name && (
+                          <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
+                            👤 {code.used_by_name}
+                          </Text>
+                        )}
+                        {code.used_by_email && (
+                          <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
+                            ✉️ {code.used_by_email}
+                          </Text>
+                        )}
+                        {code.used_by_phone && (
+                          <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
+                            📞 {code.used_by_phone}
+                          </Text>
+                        )}
+                        {isPartial && (
+                          <Text style={[styles.pendingPartialText, { color: '#f59e0b' }]}>
+                            ⚠️ Partial sign-up - user didn't complete registration
+                          </Text>
+                        )}
+                        {code.expiresAt && (
+                          <Text style={[styles.pendingSent, isDark && styles.textMuted]}>
+                            Expires {new Date(code.expiresAt).toLocaleDateString()}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.pendingActions}>
+                        {isPartial && (
+                          <TouchableOpacity
+                            style={[styles.pendingAction, { backgroundColor: '#f59e0b15' }]}
+                            onPress={() => handleResendPartial(code.code, code.used_by_name)}
+                          >
+                            <Ionicons name="refresh-outline" size={18} color="#f59e0b" />
+                          </TouchableOpacity>
+                        )}
+                        {code.status === 'active' && (
+                          <TouchableOpacity
+                            style={[styles.pendingAction, { backgroundColor: '#ef444410' }]}
+                            onPress={() => handleRevokeCode(code.code)}
+                          >
+                            <Ionicons name="close" size={18} color="#ef4444" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </Animated.View>
+                  );
+                })}
               </View>
             )}
 
@@ -1662,22 +1745,18 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                 })}
               </View>
             </View>
-
-            {/* Active invite codes now shown in Pending Invites above */}
           </View>
         );
 
       case 'activity':
         return (
           <View style={styles.tabContent}>
-            {/* NEW FEATURE 4: Family Activity Timeline */}
             <FamilyActivityTimeline
               events={timelineEvents}
               isDark={isDark}
               shouldReduceMotion={shouldReduceMotion}
             />
 
-            {/* NEW FEATURE 5: Family Chat Preview */}
             <FamilyChatPreview
               chats={chatPreviews}
               isDark={isDark}
@@ -1729,97 +1808,109 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                   <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Last 7 days</Text>
                 </View>
               </View>
-              {members.map((member, index) => (
-                <Animated.View
-                  key={member.id}
-                  entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 50).springify()}
-                  style={[styles.analyticsMemberRow, isDark && styles.analyticsMemberRowDark]}
-                >
-                  <LinearGradient
-                    colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-                    style={StyleSheet.absoluteFill}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  />
-                  <View style={styles.analyticsMemberInfo}>
-                    <Text style={[styles.analyticsMemberName, isDark && styles.textDark]}>
-                      {member.fullName}
-                    </Text>
-                    <Text style={[styles.analyticsMemberRole, isDark && styles.textMuted]}>
-                      {ROLE_LABELS[member.role]}
-                    </Text>
-                  </View>
-                  <View style={styles.analyticsMemberStats}>
-                    <View style={[styles.activityDot, { backgroundColor: member.lastActive && new Date(member.lastActive).getTime() > Date.now() - 24 * 60 * 60 * 1000 ? '#10b981' : '#94a3b8' }]} />
-                    <Text style={[styles.analyticsStat, { color: ROLE_CONFIG[member.role].color }]}>
-                      {member.lastActive ? 'Active' : 'Inactive'}
-                    </Text>
-                  </View>
-                </Animated.View>
-              ))}
+              {members.map((member, index) => {
+                const isActive = member.lastActive && new Date(member.lastActive).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000;
+                const isPending = !member.lastActive || member.status === 'pending';
+                
+                return (
+                  <Animated.View
+                    key={member.id + index}
+                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 50).springify()}
+                    style={[styles.analyticsMemberRow, isDark && styles.analyticsMemberRowDark, isPending && styles.analyticsMemberRowPending]}
+                  >
+                    <LinearGradient
+                      colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    <View style={styles.analyticsMemberInfo}>
+                      <Text style={[styles.analyticsMemberName, isDark && styles.textDark]}>
+                        {member.fullName}
+                      </Text>
+                      <Text style={[styles.analyticsMemberRole, isDark && styles.textMuted]}>
+                        {ROLE_LABELS[member.role]}
+                      </Text>
+                    </View>
+                    <View style={styles.analyticsMemberStats}>
+                      <View style={[styles.activityDot, { backgroundColor: isActive ? '#10b981' : isPending ? '#f59e0b' : '#94a3b8' }]} />
+                      <Text style={[styles.analyticsStat, { color: isActive ? '#10b981' : isPending ? '#f59e0b' : '#94a3b8' }]}>
+                        {isPending ? 'Pending' : isActive ? 'Active' : 'Inactive'}
+                      </Text>
+                    </View>
+                  </Animated.View>
+                );
+              })}
             </View>
           </View>
         );
     }
   };
 
-  const renderMemberSection = (title: string, data: FamilyMember[], emptyText?: string) => (
-    <View style={styles.section}>
-      <View style={styles.sectionHeaderRow}>
-        <View>
-          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{title}</Text>
-          <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
-            {data.length} {data.length === 1 ? 'member' : 'members'}
-            {data.filter(m => m.lastActive).length > 0 ? ` • ${data.filter(m => m.lastActive).length} active` : ''}
-            {data.filter(m => !m.lastActive).length > 0 ? ` • ${data.filter(m => !m.lastActive).length} pending` : ''}
-          </Text>
-        </View>
-      </View>
+  const renderMemberSection = (title: string, data: FamilyMember[], emptyText?: string) => {
+    // Deduplicate members by ID to prevent duplicates
+    const uniqueMembers = data.filter((member, index, self) => 
+      index === self.findIndex(m => m.id === member.id)
+    );
 
-      {data.length === 0 && emptyText ? (
-        <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
-          <Ionicons name="people-outline" size={32} color={isDark ? '#555' : '#ccc'} />
-          <Text style={[styles.emptyStateText, isDark && styles.textMuted]}>{emptyText}</Text>
-          {isPrimaryParent && title !== 'Primary Parent' && (
-            <TouchableOpacity
-              style={[styles.addFirstMemberBtn, { backgroundColor: themeColors.primary }]}
-              onPress={() => navigation.navigate('CoParentInviteScreen')}
-            >
-              <Text style={styles.addFirstMemberText}>Add First Member</Text>
-            </TouchableOpacity>
-          )}
+    return (
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <View>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{title}</Text>
+            <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
+              {uniqueMembers.length} {uniqueMembers.length === 1 ? 'member' : 'members'}
+              {uniqueMembers.filter(m => m.lastActive && m.status !== 'pending').length > 0 ? ` • ${uniqueMembers.filter(m => m.lastActive && m.status !== 'pending').length} active` : ''}
+              {uniqueMembers.filter(m => !m.lastActive || m.status === 'pending').length > 0 ? ` • ${uniqueMembers.filter(m => !m.lastActive || m.status === 'pending').length} pending` : ''}
+            </Text>
+          </View>
         </View>
-      ) : (
-        data.map((member, index) => (
-          <MemberCard
-            key={member.id}
-            member={member}
-            isCurrentUser={member.id === currentUserId || member.userId === currentUserId}
-            isPrimaryParent={isPrimaryParent}
-            onPress={() => openMemberDetails(member)}
-            onLongPress={isPrimaryParent && member.role !== UserRole.PARENT_1 ? () => {
-              setSelectedMember(member);
-              sweetAlert.confirm(
-                'Quick Actions',
-                `What would you like to do with ${member.fullName}?`,
-                () => {},
-                () => {},
-                'Cancel',
-                'Edit',
-                true
-              );
-            } : undefined}
-            index={index}
-            isDark={isDark}
-            showFamilyChat={!!currentBaby && member.id !== currentUserId}
-            onFamilyChatPress={() => handleFamilyChatPress(member)}
-            themeColors={themeColors}
-            shouldReduceMotion={shouldReduceMotion}
-          />
-        ))
-      )}
-    </View>
-  );
+
+        {uniqueMembers.length === 0 && emptyText ? (
+          <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
+            <Ionicons name="people-outline" size={32} color={isDark ? '#555' : '#ccc'} />
+            <Text style={[styles.emptyStateText, isDark && styles.textMuted]}>{emptyText}</Text>
+            {isPrimaryParent && title !== 'Primary Parent' && (
+              <TouchableOpacity
+                style={[styles.addFirstMemberBtn, { backgroundColor: themeColors.primary }]}
+                onPress={() => navigation.navigate('CoParentInviteScreen')}
+              >
+                <Text style={styles.addFirstMemberText}>Add First Member</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          uniqueMembers.map((member, index) => (
+            <MemberCard
+              key={member.id + index} // Ensure unique key
+              member={member}
+              isCurrentUser={member.id === currentUserId || member.userId === currentUserId}
+              isPrimaryParent={isPrimaryParent}
+              onPress={() => openMemberDetails(member)}
+              onLongPress={isPrimaryParent && member.role !== UserRole.PARENT_1 ? () => {
+                setSelectedMember(member);
+                sweetAlert.confirm(
+                  'Quick Actions',
+                  `What would you like to do with ${member.fullName}?`,
+                  () => {},
+                  () => {},
+                  'Cancel',
+                  'Edit',
+                  true
+                );
+              } : undefined}
+              index={index}
+              isDark={isDark}
+              showFamilyChat={!!currentBaby && member.id !== currentUserId && member.status !== 'pending'}
+              onFamilyChatPress={() => handleFamilyChatPress(member)}
+              themeColors={themeColors}
+              shouldReduceMotion={shouldReduceMotion}
+            />
+          ))
+        )}
+      </View>
+    );
+  };
 
   if (isLoading && members.length === 0) {
     return (
@@ -1898,6 +1989,12 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
                 <Ionicons name={ROLE_CONFIG[selectedMember.role].icon} size={14} color="#fff" />
                 <Text style={styles.memberDetailRoleText}>{ROLE_CONFIG[selectedMember.role].label}</Text>
               </LinearGradient>
+              {(!selectedMember.lastActive || selectedMember.status === 'pending') && (
+                <View style={[styles.memberDetailPendingBadge, { backgroundColor: '#f59e0b15', borderColor: '#f59e0b30' }]}>
+                  <Ionicons name="time-outline" size={12} color="#f59e0b" />
+                  <Text style={[styles.memberDetailPendingText, { color: '#f59e0b' }]}>Pending Invite</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.detailSection}>
@@ -1946,18 +2043,20 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
             </View>
 
             <View style={styles.detailActions}>
-              <TouchableOpacity
-                style={styles.detailActionBtn}
-                onPress={() => {
-                  setShowMemberModal(false);
-                  handleFamilyChatPress(selectedMember);
-                }}
-              >
-                <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.detailActionGradient}>
-                  <Ionicons name="chatbubble" size={20} color="#fff" />
-                  <Text style={styles.detailActionText}>Family Chat</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+              {selectedMember.status !== 'pending' && (
+                <TouchableOpacity
+                  style={styles.detailActionBtn}
+                  onPress={() => {
+                    setShowMemberModal(false);
+                    handleFamilyChatPress(selectedMember);
+                  }}
+                >
+                  <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.detailActionGradient}>
+                    <Ionicons name="chatbubble" size={20} color="#fff" />
+                    <Text style={styles.detailActionText}>Family Chat</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
 
               {isPrimaryParent && selectedMember.role !== UserRole.PARENT_1 && (
                 <>
@@ -2137,8 +2236,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
         </View>
       </ActionModal>
 
-      {/* Email invite modal removed — invite codes only */}
-
       {/* Change Role Modal */}
       <ActionModal
         visible={showRoleModal}
@@ -2193,8 +2290,6 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
             })}
         </View>
       </ActionModal>
-
-      {/* Baby selector now routes to SwitchBaby screen */}
     </View>
   );
 }
@@ -2256,7 +2351,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
-    /* no shadow */
   },
   headerBtnDark: {
     backgroundColor: 'rgba(40,40,50,0.95)',
@@ -2374,7 +2468,6 @@ const styles = StyleSheet.create({
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
     marginBottom: DESIGN.spacing.xl,
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -2463,7 +2556,6 @@ const styles = StyleSheet.create({
   goalCard: {
     borderRadius: DESIGN.radius.md,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -2562,7 +2654,6 @@ const styles = StyleSheet.create({
     width: SCREEN_W * 0.75,
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -2667,7 +2758,6 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: DESIGN.radius.md,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -2745,7 +2835,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: DESIGN.radius.md,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     gap: 12,
@@ -2826,7 +2915,6 @@ const styles = StyleSheet.create({
   insightItem: {
     borderRadius: DESIGN.radius.md,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     flexDirection: 'row',
@@ -2910,10 +2998,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    /* no shadow */
   },
   memberCardDark: {
     borderColor: 'rgba(255,255,255,0.08)',
+  },
+  memberCardPending: {
+    borderColor: 'rgba(245,158,11,0.3)',
   },
   roleStrip: {
     height: 3,
@@ -2955,6 +3045,16 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: '#10b981',
+    borderWidth: 2,
+  },
+  pendingIndicator: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#f59e0b',
     borderWidth: 2,
   },
   memberInfo: {
@@ -3073,12 +3173,15 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: DESIGN.spacing.md,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
   pendingCardDark: {
     borderColor: 'rgba(255,255,255,0.08)',
+  },
+  pendingCardPartial: {
+    borderColor: 'rgba(245,158,11,0.3)',
+    backgroundColor: 'rgba(245,158,11,0.05)',
   },
   pendingIcon: {
     width: 44,
@@ -3092,11 +3195,28 @@ const styles = StyleSheet.create({
   pendingInfo: {
     flex: 1,
   },
+  pendingHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   pendingEmail: {
     fontSize: 15,
     fontWeight: '700',
     color: '#1a1a1a',
     letterSpacing: -0.2,
+  },
+  pendingStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  pendingStatusText: {
+    fontSize: 9,
+    fontWeight: '700',
   },
   pendingRole: {
     fontSize: 12,
@@ -3108,6 +3228,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: '#94a3b8',
+    marginTop: 2,
+  },
+  pendingPartialText: {
+    fontSize: 11,
+    fontWeight: '600',
     marginTop: 2,
   },
   pendingActions: {
@@ -3146,7 +3271,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -3213,7 +3337,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -3238,12 +3361,14 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 8,
     overflow: 'hidden',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
   analyticsMemberRowDark: {
     borderColor: 'rgba(255,255,255,0.08)',
+  },
+  analyticsMemberRowPending: {
+    borderColor: 'rgba(245,158,11,0.2)',
   },
   analyticsMemberInfo: {
     flex: 1,
@@ -3302,7 +3427,6 @@ const styles = StyleSheet.create({
     borderRadius: DESIGN.radius.xl,
     overflow: 'hidden',
     backgroundColor: '#fff',
-    /* no shadow */
   },
   modalContentDark: {
     backgroundColor: '#1a1a2e',
@@ -3355,6 +3479,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginLeft: 6,
+  },
+  memberDetailPendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  memberDetailPendingText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   detailSection: {
     marginBottom: 20,
