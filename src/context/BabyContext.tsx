@@ -623,7 +623,7 @@ const loadBabies = useCallback(async (force = false) => {
     }
 
 // ─── QUERY 3: Babies via family_members (guardians and viewers) ──
-// FIXED: Handle null properly for timestamp columns
+// FIXED: Handle null properly for timestamp columns and ensure baby_id format matches
 try {
   // Use .is('deleted_at', null) instead of .eq('deleted_at', null)
   const { data: familyMembers, error: fmError } = await supabase
@@ -640,17 +640,41 @@ try {
 
     // Get unique baby IDs from family members
     const babyIds = familyMembers
-      .filter((fm: any) => fm.baby_id)
+      .filter((fm: any) => fm.baby_id && fm.baby_id.trim().length > 0)
       .map((fm: any) => fm.baby_id);
     
+    console.log(`[BabyContext] Baby IDs from family_members:`, babyIds);
+    
     if (babyIds.length > 0) {
-      const { data: babyData, error: babyError } = await supabase
+      // ─── FIX: Use string comparison with .in filter ────────────────
+      // Also try a simpler query without is_active filter first
+      let babyData: any[] = [];
+      let babyError: any = null;
+      
+      // Try with is_active filter first
+      const { data: data1, error: err1 } = await supabase
         .from('babies')
         .select('*')
         .in('id', babyIds)
         .eq('is_active', true);
+      
+      if (!err1 && data1 && data1.length > 0) {
+        babyData = data1;
+      } else {
+        // Try without is_active filter as fallback
+        const { data: data2, error: err2 } = await supabase
+          .from('babies')
+          .select('*')
+          .in('id', babyIds);
+        
+        if (!err2 && data2 && data2.length > 0) {
+          babyData = data2;
+          console.log(`[BabyContext] Found ${babyData.length} babies without is_active filter`);
+        }
+      }
 
-      if (!babyError && babyData) {
+      if (!babyError && babyData && babyData.length > 0) {
+        console.log(`[BabyContext] Processing ${babyData.length} babies from family_members`);
         babyData.forEach((baby: any) => {
           if (!allBabies.some(b => b.id === baby.id)) {
             allBabies.push(baby);
@@ -669,9 +693,38 @@ try {
               invite: role === 'parent1' || role === 'parent2',
               export: role === 'parent1' || role === 'parent2',
             };
+            
+            console.log(`[BabyContext] Added baby: ${baby.name} (${baby.id}) with role: ${role}`);
           }
         });
         console.log(`[BabyContext] Found ${babyData.length} babies (family_members query)`);
+      } else {
+        console.log('[BabyContext] No baby data found for the given baby IDs');
+        // ─── FALLBACK: Try direct query by parent2_id ────────────────
+        // Since this user is parent2, try to find babies where parent2_id matches
+        const { data: parent2Data, error: parent2Error } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent2_id', userId)
+          .eq('is_active', true);
+        
+        if (!parent2Error && parent2Data && parent2Data.length > 0) {
+          console.log(`[BabyContext] Found ${parent2Data.length} babies via parent2_id fallback`);
+          parent2Data.forEach((baby: any) => {
+            if (!allBabies.some(b => b.id === baby.id)) {
+              allBabies.push(baby);
+              userRoles[baby.id] = 'parent2';
+              userPermissions[baby.id] = {
+                view: true,
+                edit: true,
+                delete: true,
+                manage: true,
+                invite: true,
+                export: true,
+              };
+            }
+          });
+        }
       }
     }
   }

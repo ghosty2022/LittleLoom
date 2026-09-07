@@ -92,65 +92,101 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }, [userProfile]);
 
   // ─── CHECK AND NAVIGATE ─────────────────────────────────────────────
-  const checkAndNavigate = useCallback(async () => {
-    if (navigationAttemptedRef.current) {
-      console.log('[BabyOnboarding] Navigation already attempted, skipping');
-      return false;
-    }
-    if (!isMountedRef.current) return false;
-    
-    try {
-      // First check if setup is already complete
-      const { setupComplete: isSetupComplete } = await wasSetupCompleted();
-      if (isSetupComplete) {
+const checkAndNavigate = useCallback(async () => {
+  if (navigationAttemptedRef.current) {
+    console.log('[BabyOnboarding] Navigation already attempted, skipping');
+    return false;
+  }
+  if (!isMountedRef.current) return false;
+  
+  try {
+    // ─── FIX: First check if babies exist in context ──────────────
+    if (babies && babies.length > 0) {
+      console.log(`[BabyOnboarding] Found ${babies.length} babies in context`);
+      setHasBabies(true);
+      setRemoteBabies(babies);
+      
+      // If we have a current baby or we have babies, complete setup and navigate
+      const babyId = currentBabyId || babies[0]?.id;
+      if (babyId) {
+        // Make sure current baby is set
+        if (!currentBabyId) {
+          await switchBaby(babyId);
+        }
+        await completeSetup('baby');
         navigationAttemptedRef.current = true;
-        console.log('[BabyOnboarding] Setup already complete, navigating to Main');
+        console.log('[BabyOnboarding] Baby found, navigating to Main');
         navigation.replace('Main');
         return true;
       }
+      return true;
+    }
 
-      // ─── FIX: Check if babies exist in context ──────────────────────
-      if (babies && babies.length > 0) {
-        console.log(`[BabyOnboarding] Found ${babies.length} babies in context`);
-        setHasBabies(true);
-        setRemoteBabies(babies);
-        
-        // If we have a current baby, complete setup and navigate
-        if (currentBabyId) {
-          await completeSetup('baby');
-          const { setupComplete: newSetupComplete } = await wasSetupCompleted();
-          if (newSetupComplete) {
-            navigationAttemptedRef.current = true;
-            console.log('[BabyOnboarding] Marked baby complete, navigating to Main');
-            navigation.replace('Main');
-            return true;
+    // ─── FIX: Check local DB ─────────────────────────────────────────
+    const localBabies = await getAllBabiesFromDb();
+    if (localBabies && localBabies.length > 0) {
+      console.log(`[BabyOnboarding] Found ${localBabies.length} babies in local DB`);
+      setHasBabies(true);
+      setRemoteBabies(localBabies);
+      
+      // Auto-select first baby if none selected
+      const babyId = currentBabyId || localBabies[0]?.id;
+      if (babyId) {
+        if (!currentBabyId) {
+          await switchBaby(babyId);
+        }
+        await completeSetup('baby');
+        navigationAttemptedRef.current = true;
+        console.log('[BabyOnboarding] Local baby found, navigating to Main');
+        navigation.replace('Main');
+        return true;
+      }
+    }
+    
+    // ─── FIX: Check if user is parent2 via family_members ──────────
+    // If no babies found, but user might be a parent2 or guardian
+    const userId = await getUserId();
+    if (userId) {
+      const { data: familyData, error: fmError } = await supabase
+        .from('family_members')
+        .select('baby_id, role')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .is('deleted_at', null);
+      
+      if (!fmError && familyData && familyData.length > 0) {
+        console.log(`[BabyOnboarding] Found ${familyData.length} family memberships`);
+        const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
+        if (babyIds.length > 0) {
+          const { data: remoteBabiesData } = await supabase
+            .from('babies')
+            .select('*')
+            .in('id', babyIds)
+            .eq('is_active', true);
+          
+          if (remoteBabiesData && remoteBabiesData.length > 0) {
+            console.log(`[BabyOnboarding] Found ${remoteBabiesData.length} remote babies via family_members`);
+            setHasBabies(true);
+            setRemoteBabies(remoteBabiesData);
+            // Auto-select first baby
+            if (remoteBabiesData[0]) {
+              await switchBaby(remoteBabiesData[0].id);
+              await completeSetup('baby');
+              navigationAttemptedRef.current = true;
+              navigation.replace('Main');
+              return true;
+            }
           }
         }
-        return true;
       }
-
-      // ─── FIX: Check local DB ─────────────────────────────────────────
-      const localBabies = await getAllBabiesFromDb();
-      if (localBabies && localBabies.length > 0) {
-        console.log(`[BabyOnboarding] Found ${localBabies.length} babies in local DB`);
-        setHasBabies(true);
-        setRemoteBabies(localBabies);
-        
-        // Auto-select first baby if none selected
-        if (!currentBabyId && localBabies[0]) {
-          await switchBaby(localBabies[0].id);
-          await completeSetup('baby');
-        }
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.warn('[BabyOnboarding] Check navigate error:', error);
-      return false;
     }
-  }, [navigation, wasSetupCompleted, completeSetup, babies, switchBaby, currentBabyId]);
-
+    
+    return false;
+  } catch (error) {
+    console.warn('[BabyOnboarding] Check navigate error:', error);
+    return false;
+  }
+}, [navigation, wasSetupCompleted, completeSetup, babies, switchBaby, currentBabyId, getUserId]);
   // ─── SYNC BABIES FROM SUPABASE ──────────────────────────────────────
   const syncBabiesFromSupabase = useCallback(async (userId: string): Promise<boolean> => {
     if (syncInProgress) return false;

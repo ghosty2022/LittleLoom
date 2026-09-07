@@ -223,11 +223,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
 
-      const { data: dbMembers, error: membersError } = await supabase
-        .from('family_members')
-        .select('*')
-        .eq('baby_id', currentBaby.id)
-        .eq('deleted_at', null);
+const { data: dbMembers, error: membersError } = await supabase
+  .from('family_members')
+  .select('*')
+  .eq('baby_id', currentBaby.id)
+  .is('deleted_at', null);
 
       if (!membersError && dbMembers) {
         for (const dbMember of dbMembers) {
@@ -450,12 +450,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const { data: existing } = await supabase
-        .from('family_members')
-        .select('id')
-        .eq('baby_id', currentBaby.id)
-        .eq('email', email.toLowerCase())
-        .eq('deleted_at', null)
-        .maybeSingle();
+  .from('family_members')
+  .select('id')
+  .eq('baby_id', currentBaby.id)
+  .eq('email', email.toLowerCase())
+  .is('deleted_at', null)
+  .maybeSingle();
 
       if (existing) {
         showAlert('Duplicate Invite', 'An invitation has already been sent to this email');
