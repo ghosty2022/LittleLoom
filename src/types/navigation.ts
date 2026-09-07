@@ -1,4 +1,5 @@
-// src/types/navigation.ts (Updated with all new screens)
+// src/types/navigation.ts (Updated with QRScanner)
+
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
@@ -170,9 +171,18 @@ export type RootStackParamList = {
   // ── Auth Flow ──
   Splash: undefined;
   Onboarding: undefined;
-  Login: undefined;
-  SignUp: undefined;
+  Login: {
+    inviteCode?: string;
+    activeTab?: 'signin' | 'join';
+  } | undefined;
+  SignUp: {
+    inviteCode?: string;
+    activeTab?: 'create' | 'join';
+  } | undefined;
   ForgotPassword: undefined;
+
+  // ── QR Scanner ──
+  QRScanner: undefined;
 
   // ── Setup Flow ──
   CoParentInviteScreen: { fromSetup?: boolean } | undefined;
@@ -421,6 +431,8 @@ export type CommunityProfileRouteProp = RouteProp<CommunityStackParamList, 'Comm
 export type CommunityMemberProfileNavigationProp = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>['navigation'];
 export type CommunityMemberProfileRouteProp = RouteProp<CommunityStackParamList, 'CommunityMemberProfile'>;
 
+export type QRScannerNavigationProp = NativeStackScreenProps<RootStackParamList, 'QRScanner'>['navigation'];
+
 // ─── Navigation State ──────────────────────────────────────────────
 
 export type NavigationState =
@@ -468,6 +480,7 @@ export type CommunityStackRoute = keyof CommunityStackParamList;
 export const isRootStackScreen = (name: string): name is RootStackRoute => {
   const rootScreens: RootStackRoute[] = [
     'Splash', 'Onboarding', 'Login', 'SignUp', 'ForgotPassword',
+    'QRScanner',
     'CoParentInviteScreen', 'BabyOptional', 'CreateBabyProfile',
     'SwitchBaby', 'Main', 'UniversalTrackerHub', 'AllTrackers',
     'Timeline', 'AddEntry', 'EntryDetail', 'CreateCustomTracker',

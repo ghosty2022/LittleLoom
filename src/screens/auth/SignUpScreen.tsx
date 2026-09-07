@@ -34,6 +34,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
+import { useFamily } from '../../context/FamilyContext';
 
 type SignUpScreenProps = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 const { width } = Dimensions.get('window');
@@ -96,6 +97,9 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     isAuthenticated,
     findUserByEmail,
   } = useAuth();
+
+  // ─── FIX: Use FamilyContext for invite validation ─────────────────────
+  const { validateInviteCode: validateInviteCodeFromFamily } = useFamily();
 
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
@@ -334,7 +338,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   };
 
-  // ─── CODE VALIDATION ─────────────────────────────────────────────────
+  // ─── FIXED: CODE VALIDATION using FamilyContext ──────────────────────
   useEffect(() => {
     if (activeTab !== 'join') return;
     if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
@@ -350,29 +354,17 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     setIsValidatingCode(true);
     codeDebounceTimer.current = setTimeout(async () => {
       try {
-        let result: { valid: boolean; invite?: any; message?: string };
-        try {
-          const { validateInviteCode } = await import('@/utils/portableInvite');
-          result = await validateInviteCode(trimmed);
-        } catch {
-          const raw = await AsyncStorage.getItem('littleloom_invite_codes');
-          const codes = raw ? JSON.parse(raw) : {};
-          const invite = codes[trimmed];
-          if (!invite || invite.used || invite.revoked || Date.now() > invite.expiresAt) {
-            result = { valid: false };
-          } else {
-            result = { valid: true, invite };
-          }
-        }
+        // ─── FIX: Use FamilyContext validateInviteCode ──────────────────
+        const result = await validateInviteCodeFromFamily(trimmed);
 
         if (isMounted.current) {
-          if (result.valid && result.invite) {
+          if (result.valid && result.data) {
             setCodeValidated(true);
             setCodeInfo({
-              role: result.invite.role,
-              relationship: result.invite.relationship,
+              role: result.data.role,
+              relationship: result.data.relationship,
             });
-            showInfo('Valid Code!', `You'll join as ${result.invite.role === 'parent2' ? 'Parent 2' : result.invite.role === 'guardian' ? 'Guardian' : 'Viewer'}`);
+            showInfo('Valid Code!', `You'll join as ${result.data.role === 'parent2' ? 'Parent 2' : result.data.role === 'guardian' ? 'Guardian' : 'Viewer'}`);
           } else {
             setCodeValidated(false);
             setCodeInfo(null);
@@ -388,7 +380,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         if (isMounted.current) setIsValidatingCode(false);
       }
     }, 500);
-  }, [inviteCode, activeTab]);
+  }, [inviteCode, activeTab, validateInviteCodeFromFamily]);
 
   // ─── CREATE ACCOUNT HANDLER ─────────────────────────────────────────
   const handleSignUp = useCallback(async () => {
@@ -866,7 +858,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                     <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
                     <TextInput
                       style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 3, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
-                      placeholder="Paste invite code"
+                      placeholder="Enter 6-digit code"
                       placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
                       value={inviteCode}
                       onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}

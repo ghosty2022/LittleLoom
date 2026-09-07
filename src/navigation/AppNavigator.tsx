@@ -1,5 +1,4 @@
-// src/navigation/AppNavigator.tsx - COMPLETE FIXED
-// Properly handles 0 babies state and prevents navigation loops
+// src/navigation/AppNavigator.tsx - COMPLETE FIXED with QRScanner
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, AppState, TouchableOpacity, StyleSheet } from 'react-native';
@@ -12,6 +11,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
+
+// ─── Import all screens ──────────────────────────────────────────────
 import CommunityProfileScreen from '../screens/community/CommunityProfileScreen';
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -58,6 +59,9 @@ import UniversalTrackerHubScreen from '../screens/tracking/UniversalTrackerHubSc
 import CreateCustomTrackerScreen from '../screens/tracking/CreateCustomTrackerScreen';
 import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleScreen';
 import PediatricianPDFExport from '../screens/tracking/PediatricianPDFExport';
+
+// ─── QR Scanner ──────────────────────────────────────────────────────
+import QRScannerScreen from '../screens/tracking/QRScannerScreen';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
 import { InlineSpinner } from '../components/UniversalSpinner';
@@ -231,24 +235,14 @@ function getNavState(
     return 'SECURITY_LOCK';
   }
 
-  // ─── CRITICAL FIX: Check if baby is properly addressed ──────────────
-  // A baby is addressed if:
-  // 1. hasBaby is true (setup step completed)
-  // 2. hasBaby is 'skipped' (user skipped)
-  // 3. babyCount > 0 (there are babies in the system)
-  // 4. skippedBaby is true (user previously skipped)
   const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0 || skippedBaby === true;
   
-  // ─── If baby is NOT addressed, go to SETUP_BABY ─────────────────────
   if (!babyAddressed) {
     console.log('[Navigation] → SETUP_BABY (no baby addressed)');
     return 'SETUP_BABY';
   }
 
-  // ─── Check parent2 ────────────────────────────────────────────────────
   const p2Addressed = hasP2 === true || hasP2 === 'skipped';
-  
-  // ─── Setup is complete if both steps are addressed ──────────────────
   const isActuallySetupComplete = setupDone || (babyAddressed && p2Addressed);
 
   if (isActuallySetupComplete) {
@@ -554,14 +548,12 @@ function NavigationContent({
     
     console.log('[Navigation] State:', navState, 'Current route:', currentRoute);
 
-    // ─── PREVENT NAVIGATION LOOPS ──────────────────────────────────────
     const now = Date.now();
     if (now - lastNavTime.current < 500) {
       console.log('[Navigation] Throttling navigation');
       return;
     }
 
-    // ─── DETECT AND BREAK NAVIGATION LOOPS ────────────────────────────
     const target = navState;
     if (target === lastNavigationTarget.current) {
       navigationLoopCount.current += 1;
@@ -570,7 +562,6 @@ function NavigationContent({
         navigationLoopCount.current = 0;
         lastNavigationTarget.current = null;
         
-        // Force to the correct state based on baby count
         const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
         if (!hasBabies) {
           console.log('[Navigation] Force navigating to BabyOptional');
@@ -626,7 +617,6 @@ function NavigationContent({
 
     // ─── SETUP_BABY ────────────────────────────────────────────────────
     if (navState === 'SETUP_BABY') {
-      // CRITICAL FIX: If we already have babies, go to Main
       const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
       if (hasBabies) {
         if (currentRoute !== 'Main' && currentRoute !== 'Home') {
@@ -639,15 +629,11 @@ function NavigationContent({
         return;
       }
       
-      // ─── CRITICAL FIX: Stay on BabyOptional if no babies ────────────
-      // Only navigate to BabyOptional if we're not already there
       if (currentRoute === 'BabyOptional' || currentRoute === 'CreateBabyProfile') {
-        // We're already on a setup screen, stay there
         console.log('[Navigation] Already on setup screen:', currentRoute);
         return;
       }
       
-      // Navigate to BabyOptional
       console.log('[Navigation] → BabyOptional (no babies)');
       lastNavTime.current = now;
       navLockRef.current = true;
@@ -670,8 +656,6 @@ function NavigationContent({
 
     // ─── MAIN ──────────────────────────────────────────────────────────
     if (navState === 'MAIN') {
-      // CRITICAL FIX: If we're on a setup screen but should be in MAIN,
-      // navigate to Main
       if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
         console.log('[Navigation] → Main (from setup)');
         lastNavTime.current = now;
@@ -681,7 +665,6 @@ function NavigationContent({
         return;
       }
       
-      // If we're on a security screen and shouldn't be, force unlock
       if (currentRoute === 'SecurityLock') {
         console.log('[Navigation] Force unlocking from SecurityLock');
         forceUnlockRef.current();
@@ -692,12 +675,10 @@ function NavigationContent({
         return;
       }
       
-      // If we're already on a main screen, stay
       if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
         return;
       }
       
-      // Otherwise navigate to Main
       console.log('[Navigation] → Main');
       lastNavTime.current = now;
       navLockRef.current = true;
@@ -706,7 +687,6 @@ function NavigationContent({
       return;
     }
 
-    // ─── Fallback ──────────────────────────────────────────────────────
     console.log('[Navigation] → Fallback to Login');
     lastNavTime.current = now;
     navLockRef.current = true;
@@ -759,6 +739,17 @@ function NavigationContent({
             />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </Stack.Group>
+
+          {/* QR SCANNER - Add this screen */}
+          <Stack.Screen 
+            name="QRScanner" 
+            component={QRScannerScreen}
+            options={{ 
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
 
           {/* SETUP FLOW */}
           <Stack.Group screenOptions={{ animation: 'slide_from_right' }}>
