@@ -1,5 +1,5 @@
-// src/components/SafeAvatar.tsx
-import React, { useCallback, useState } from 'react';
+// src/components/SafeAvatar.tsx - FIXED VERSION
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -78,41 +78,97 @@ export interface SafeParentAvatarProps {
 /**
  * Safely resolves an avatar source into a React Native Image source.
  * Handles: remote URLs, local file:// URIs, data: URIs, static require() numbers, null/undefined.
+ * FIXED: Properly handles arrays by converting to string or returning null.
  */
 export const resolveAvatarSource = (avatar: AvatarSource): ImageSourcePropType | null => {
+  // Handle null/undefined
   if (avatar == null) return null;
+  
+  // Handle arrays - extract first element or return null
+  if (Array.isArray(avatar)) {
+    // If array is empty, return null
+    if (avatar.length === 0) return null;
+    // Use the first element of the array
+    const firstElement = avatar[0];
+    // Recursively resolve the first element
+    return resolveAvatarSource(firstElement);
+  }
+  
+  // Handle numbers (require() assets)
   if (typeof avatar === 'number') {
     return avatar;
   }
+  
+  // Handle strings
   if (typeof avatar === 'string' && avatar.length > 0) {
+    // Check if it's an emoji - these are not images
+    if (isEmoji(avatar)) return null;
+    
+    // File URI
     if (avatar.startsWith('file://')) {
       return { uri: avatar };
     }
+    // Content URI (Android content provider)
     if (avatar.startsWith('content://')) {
       return { uri: avatar };
     }
+    // Data URI (base64)
     if (avatar.startsWith('data:')) {
       return { uri: avatar };
     }
+    // Remote HTTP/HTTPS URL
     if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
       return { uri: avatar, cache: 'force-cache' };
     }
+    // Absolute file path
     if (avatar.startsWith('/')) {
       return { uri: `file://${avatar}` };
     }
+    // Supabase storage URL (might be missing protocol)
     if (avatar.includes('supabase.co')) {
-      return { uri: `https://${avatar}` };
+      // Add protocol if missing
+      if (!avatar.startsWith('http')) {
+        return { uri: `https://${avatar}`, cache: 'force-cache' };
+      }
+      return { uri: avatar, cache: 'force-cache' };
     }
+    // Any other string - assume it's a URI
     return { uri: avatar };
   }
+  
+  return null;
+};
+
+/**
+ * Normalizes avatar value to a string or null.
+ * FIXED: Ensures we always have a consistent type.
+ */
+export const normalizeAvatar = (avatar: AvatarSource): string | null => {
+  if (avatar == null) return null;
+  if (Array.isArray(avatar)) {
+    if (avatar.length === 0) return null;
+    // If first element is a string, return it
+    if (typeof avatar[0] === 'string') return avatar[0];
+    return null;
+  }
+  if (typeof avatar === 'string') return avatar;
   return null;
 };
 
 /**
  * Checks if the avatar has a displayable image (not emoji, not null).
+ * FIXED: Handles arrays properly.
  */
 export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): boolean => {
   if (avatar == null || hasError) return false;
+  
+  // Handle arrays
+  if (Array.isArray(avatar)) {
+    if (avatar.length === 0) return false;
+    // Check the first element
+    return hasDisplayableImage(avatar[0], hasError);
+  }
+  
   if (typeof avatar === 'number') return true;
   if (typeof avatar === 'string') {
     if (isEmoji(avatar)) return false;
@@ -123,6 +179,20 @@ export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): bo
     return isValid;
   }
   return false;
+};
+
+/**
+ * Gets the display value for avatar (emoji or initial).
+ * FIXED: Handles arrays properly.
+ */
+export const getAvatarDisplayValue = (avatar: AvatarSource): string | null => {
+  if (avatar == null) return null;
+  if (Array.isArray(avatar)) {
+    if (avatar.length === 0) return null;
+    return getAvatarDisplayValue(avatar[0]);
+  }
+  if (typeof avatar === 'string') return avatar;
+  return null;
 };
 
 interface AvatarContentProps {
@@ -150,6 +220,9 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
   borderRadius,
   imageSource,
 }) => {
+  // Normalize avatar to a consistent value
+  const normalizedAvatar = useMemo(() => normalizeAvatar(avatar), [avatar]);
+  
   if (imageSource) {
     return (
       <>
@@ -171,13 +244,14 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
     );
   }
 
-  const imageSourceResolved = resolveAvatarSource(avatar);
-  const hasImage = hasDisplayableImage(avatar, hasError);
-  const hasEmojiValue = avatar != null && typeof avatar === 'string' && isEmoji(avatar);
+  const imageSourceResolved = resolveAvatarSource(normalizedAvatar);
+  const hasImage = hasDisplayableImage(normalizedAvatar, hasError);
+  const displayValue = getAvatarDisplayValue(normalizedAvatar);
+  const hasEmojiValue = displayValue != null && isEmoji(displayValue);
 
   if (hasImage && imageSourceResolved) {
-    const sourceWithCache = typeof avatar === 'string' && avatar.startsWith('http')
-      ? { uri: avatar, cache: 'force-cache' }
+    const sourceWithCache = typeof normalizedAvatar === 'string' && normalizedAvatar.startsWith('http')
+      ? { uri: normalizedAvatar, cache: 'force-cache' }
       : imageSourceResolved;
       
     return (
@@ -203,7 +277,7 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
   if (hasEmojiValue) {
     return (
       <Text style={[styles.emoji, { fontSize: size * 0.5 }]}>
-        {avatar}
+        {displayValue}
       </Text>
     );
   }
@@ -254,7 +328,11 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   const shouldReduceMotion = reduceMotion ?? false;
 
   // Use avatarUrl if provided, otherwise use avatar
-  const effectiveAvatar = avatarUrl || avatar;
+  // FIXED: Normalize both sources to handle arrays
+  const effectiveAvatar = useMemo(() => {
+    if (avatarUrl != null) return normalizeAvatar(avatarUrl);
+    return normalizeAvatar(avatar);
+  }, [avatarUrl, avatar]);
 
   const effectiveFallbackColor = fallbackColor || themeColors.primary;
   const effectiveFallbackBgColor = fallbackBgColor || `${effectiveFallbackColor}20`;
@@ -348,8 +426,11 @@ export const SafeBabyAvatar: React.FC<SafeBabyAvatarProps> = ({
   const themeColors = propThemeColors || DEFAULT_THEME_COLORS;
   const shouldReduceMotion = reduceMotion ?? false;
 
-  // Use avatarUrl if provided, otherwise use avatar
-  const effectiveAvatar = avatarUrl || avatar;
+  // FIXED: Normalize both sources to handle arrays
+  const effectiveAvatar = useMemo(() => {
+    if (avatarUrl != null) return normalizeAvatar(avatarUrl);
+    return normalizeAvatar(avatar);
+  }, [avatarUrl, avatar]);
 
   const genderColors: Record<string, string[]> = {
     boy: [themeColors.primary, themeColors.secondary],
@@ -431,8 +512,12 @@ export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
   const themeColors = propThemeColors || DEFAULT_THEME_COLORS;
   const shouldReduceMotion = reduceMotion ?? false;
 
-  const hasImage = hasDisplayableImage(avatar, hasError);
-  const hasEmojiValue = avatar != null && typeof avatar === 'string' && isEmoji(avatar);
+  // FIXED: Normalize avatar to handle arrays
+  const effectiveAvatar = useMemo(() => normalizeAvatar(avatar), [avatar]);
+  
+  const hasImage = hasDisplayableImage(effectiveAvatar, hasError);
+  const displayValue = getAvatarDisplayValue(effectiveAvatar);
+  const hasEmojiValue = displayValue != null && isEmoji(displayValue);
   const initial = name?.charAt(0)?.toUpperCase() || 'P';
 
   const parentColors = [themeColors.primary, themeColors.secondary];
@@ -463,7 +548,7 @@ export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
           {hasImage ? (
             <>
               <Image
-                source={resolveAvatarSource(avatar)!}
+                source={resolveAvatarSource(effectiveAvatar)!}
                 style={[styles.parentImage, { width: size, height: size, borderRadius }]}
                 resizeMode="cover"
                 onError={() => { setHasError(true); setIsLoading(false); }}
@@ -484,7 +569,7 @@ export const SafeParentAvatar: React.FC<SafeParentAvatarProps> = ({
             </>
           ) : hasEmojiValue ? (
             <Text style={[styles.parentEmoji, { fontSize: size * 0.5 }]}>
-              {avatar}
+              {displayValue}
             </Text>
           ) : (
             <Text style={[styles.parentInitial, { fontSize: size * 0.4, color: '#fff' }]}>

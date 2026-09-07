@@ -1,8 +1,11 @@
+// src/utils/imageUtils.ts
 import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Image } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+
+// ─── CONSTANTS ──────────────────────────────────────────────────────────────
 
 const BASE_DIR = FileSystem.documentDirectory || '';
 export const CACHE_DIR = FileSystem.cacheDirectory + 'littleloom/';
@@ -17,10 +20,52 @@ export const DEFAULT_COMPRESSION = 0.8;
 export const MAX_IMAGE_DIMENSION = 2048;
 export const THUMBNAIL_SIZE = 300;
 
+// ─── SWEETALERT FALLBACK ────────────────────────────────────────────────────
+
+// Since sweetAlert is used in this file but not imported, we'll use Alert as fallback
+// In your app, you should import sweetAlert from your hooks
+// For now, we'll use a function that can be overridden
+
+type SweetAlertType = {
+  alert: (title: string, message: string, type?: 'warning' | 'error' | 'success' | 'info') => void;
+  confirm: (title: string, message: string, onConfirm: () => void, onCancel?: () => void) => void;
+  toast: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+};
+
+let sweetAlertInstance: SweetAlertType | null = null;
+
+export const setSweetAlert = (instance: SweetAlertType) => {
+  sweetAlertInstance = instance;
+};
+
+// Fallback alert function
+const showAlert = (title: string, message: string, type: 'warning' | 'error' | 'success' | 'info' = 'warning') => {
+  if (sweetAlertInstance) {
+    sweetAlertInstance.alert(title, message, type);
+  } else {
+    Alert.alert(title, message);
+  }
+};
+
+// Fallback toast function
+const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+  if (sweetAlertInstance) {
+    sweetAlertInstance.toast(message, type);
+  } else {
+    console.log(`[${type}] ${message}`);
+  }
+};
+
+// ─── DIRECTORY HELPERS ──────────────────────────────────────────────────────
+
 export async function ensureDirectory(dir: string): Promise<void> {
-  const dirInfo = await FileSystem.getInfoAsync(dir);
-  if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  try {
+    const dirInfo = await FileSystem.getInfoAsync(dir);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    }
+  } catch (error) {
+    console.error('Error ensuring directory:', error);
   }
 }
 
@@ -34,6 +79,8 @@ export async function ensureAllImageDirs(): Promise<void> {
     ensureDirectory(GALLERY_DIR),
   ]);
 }
+
+// ─── PATH HELPERS ───────────────────────────────────────────────────────────
 
 export function getParentImagePath(parentId: string): string {
   return `${PARENT_IMAGES_DIR}${parentId}_avatar_${Date.now()}.jpg`;
@@ -58,6 +105,8 @@ export function getGalleryPath(filename: string): string {
 export function getCachePath(filename: string): string {
   return `${CACHE_DIR}${filename}`;
 }
+
+// ─── FILE OPERATIONS ────────────────────────────────────────────────────────
 
 export async function copyImage(sourceUri: string, destinationUri: string): Promise<boolean> {
   try {
@@ -116,6 +165,8 @@ export async function readDirectory(dir: string): Promise<string[]> {
   }
 }
 
+// ─── IMAGE PICKER ──────────────────────────────────────────────────────────
+
 export interface PickImageOptions {
   allowsEditing?: boolean;
   aspect?: [number, number];
@@ -128,12 +179,12 @@ export async function pickImage(options?: PickImageOptions): Promise<string | nu
   try {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      sweetAlert.alert('Permission Required', 'Please allow access to photos to continue.', 'warning');
+      showAlert('Permission Required', 'Please allow access to photos to continue.', 'warning');
       return null;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: options?.allowsEditing ?? true,
       aspect: options?.aspect ?? [1, 1],
       quality: options?.quality ?? 1,
@@ -147,7 +198,7 @@ export async function pickImage(options?: PickImageOptions): Promise<string | nu
     return null;
   } catch (error) {
     console.error('Error picking image:', error);
-    sweetAlert.alert('Error', 'Failed to pick image. Please try again.', 'warning');
+    showAlert('Error', 'Failed to pick image. Please try again.', 'warning');
     return null;
   }
 }
@@ -156,12 +207,12 @@ export async function pickMultipleImages(limit: number = 10): Promise<string[]> 
   try {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      sweetAlert.alert('Permission Required', 'Please allow access to photos to continue.', 'warning');
+      showAlert('Permission Required', 'Please allow access to photos to continue.', 'warning');
       return [];
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       selectionLimit: limit,
       quality: 1,
@@ -181,7 +232,7 @@ export async function takePhoto(options?: PickImageOptions): Promise<string | nu
   try {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      sweetAlert.alert('Permission Required', 'Please allow camera access to take photos.', 'warning');
+      showAlert('Permission Required', 'Please allow camera access to take photos.', 'warning');
       return null;
     }
 
@@ -197,10 +248,12 @@ export async function takePhoto(options?: PickImageOptions): Promise<string | nu
     return null;
   } catch (error) {
     console.error('Error taking photo:', error);
-    sweetAlert.alert('Error', 'Failed to take photo. Please try again.', 'warning');
+    showAlert('Error', 'Failed to take photo. Please try again.', 'warning');
     return null;
   }
 }
+
+// ─── IMAGE PROCESSING ─────────────────────────────────────────────────────
 
 export async function compressImage(uri: string, quality: number = DEFAULT_COMPRESSION): Promise<string> {
   try {
@@ -299,6 +352,8 @@ export async function processImageBatch(
   return results;
 }
 
+// ─── CACHING ──────────────────────────────────────────────────────────────
+
 export async function cacheImage(uri: string, customFilename?: string): Promise<string> {
   try {
     await ensureDirectory(CACHE_DIR);
@@ -368,6 +423,8 @@ export async function isCacheFull(): Promise<boolean> {
   const size = await getCacheSize();
   return size >= MAX_CACHE_SIZE;
 }
+
+// ─── SAVE IMAGE HELPERS ────────────────────────────────────────────────────
 
 export interface SaveImageResult {
   success: boolean;
@@ -444,11 +501,12 @@ export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
   try {
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
-      sweetAlert.alert('Permission Required', 'Please allow access to save photos to your library.', 'warning');
+      showAlert('Permission Required', 'Please allow access to save photos to your library.', 'warning');
       return false;
     }
 
     await MediaLibrary.saveToLibraryAsync(uri);
+    showToast('Image saved to gallery', 'success');
     return true;
   } catch (error) {
     console.error('Error saving to library:', error);
@@ -456,8 +514,40 @@ export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
   }
 }
 
-export function isValidImageUri(value: string | undefined | null): boolean {
-  if (!value || typeof value !== 'string') return false;
+// ─── VALIDATION HELPERS (FIXED for array handling) ───────────────────────
+
+/**
+ * Normalizes a value to a string or null
+ * Handles arrays by extracting the first element
+ */
+export function normalizeStringValue(value: unknown): string | null {
+  if (value == null) return null;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    return normalizeStringValue(value[0]);
+  }
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return null;
+}
+
+/**
+ * Checks if a string is a valid image URI
+ * FIXED: Handles arrays properly
+ */
+export function isValidImageUri(value: string | undefined | null | unknown): boolean {
+  // Handle null/undefined
+  if (value == null) return false;
+  
+  // Handle arrays
+  if (Array.isArray(value)) {
+    if (value.length === 0) return false;
+    return isValidImageUri(value[0]);
+  }
+  
+  // Handle non-string values
+  if (typeof value !== 'string') return false;
+  
   const trimmed = value.trim();
   if (trimmed.length === 0) return false;
 
@@ -477,8 +567,23 @@ export function isValidImageUri(value: string | undefined | null): boolean {
   return false;
 }
 
-export function isEmoji(value: string | undefined | null): boolean {
-  if (!value || typeof value !== 'string') return false;
+/**
+ * Checks if a string is an emoji
+ * FIXED: Handles arrays properly
+ */
+export function isEmoji(value: string | undefined | null | unknown): boolean {
+  // Handle null/undefined
+  if (value == null) return false;
+  
+  // Handle arrays
+  if (Array.isArray(value)) {
+    if (value.length === 0) return false;
+    return isEmoji(value[0]);
+  }
+  
+  // Handle non-string values
+  if (typeof value !== 'string') return false;
+  
   if (value.length > 8) return false;
   const code = value.codePointAt(0) || 0;
   return (
@@ -495,6 +600,27 @@ export function isEmoji(value: string | undefined | null): boolean {
     code === 0x2763
   );
 }
+
+/**
+ * Gets the display value from a potential avatar source
+ * FIXED: Handles arrays properly
+ */
+export function getAvatarDisplayValue(value: unknown): string | null {
+  const normalized = normalizeStringValue(value);
+  if (!normalized) return null;
+  return normalized;
+}
+
+/**
+ * Checks if a value is a displayable emoji (handles arrays)
+ */
+export function isDisplayableEmoji(value: unknown): boolean {
+  const displayValue = getAvatarDisplayValue(value);
+  if (!displayValue) return false;
+  return isEmoji(displayValue);
+}
+
+// ─── EXPORT ──────────────────────────────────────────────────────────────
 
 export const ImageUtils = {
   ensureDirectory,
@@ -542,8 +668,15 @@ export const ImageUtils = {
 
   saveToPhotoLibrary,
 
+  // Validation helpers (now array-safe)
   isValidImageUri,
   isEmoji,
+  normalizeStringValue,
+  getAvatarDisplayValue,
+  isDisplayableEmoji,
+  
+  // SweetAlert setter
+  setSweetAlert,
 };
 
 export default ImageUtils;
