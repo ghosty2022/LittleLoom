@@ -325,6 +325,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     const trimmed = inviteCode.trim();
 
+    // Skip validation if code is empty or less than 6 chars
     if (trimmed.length !== 6) {
       setCodeValidated(false);
       setCodeInfo(null);
@@ -334,8 +335,12 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     setIsValidatingCode(true);
     codeDebounceTimer.current = setTimeout(async () => {
       try {
+        console.log('[Login] Validating invite code:', trimmed);
+        
         // ─── FIX: Use FamilyContext validateInviteCode ──────────────────
         const result = await validateInviteCodeFromFamily(trimmed);
+
+        console.log('[Login] Validation result:', result);
 
         if (isMounted.current) {
           if (result.valid && result.data) {
@@ -361,7 +366,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         if (isMounted.current) setIsValidatingCode(false);
       }
     }, 500);
-  }, [inviteCode, activeTab, validateInviteCodeFromFamily]);
+  }, [inviteCode, activeTab, validateInviteCodeFromFamily, showInfo]);
 
   // ─── HANDLE SIGN IN ──────────────────────────────────────────────────
   const handleLogin = useCallback(async () => {
@@ -718,6 +723,19 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
+  // ─── NAVIGATE TO QR SCANNER ──────────────────────────────────────────
+  const handleScanQR = useCallback(() => {
+    triggerHaptic('light');
+    // Navigate to QR scanner screen
+    navigation.navigate('QRScanner' as never);
+  }, [navigation, triggerHaptic]);
+
+  // ─── NAVIGATE TO SIGN UP ─────────────────────────────────────────────
+  const handleGoToSignUp = useCallback(() => {
+    triggerHaptic('light');
+    navigation.navigate('SignUp');
+  }, [navigation, triggerHaptic]);
+
   // ─── RENDER ──────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
@@ -993,6 +1011,19 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </Text>
                   </View>
 
+                  {/* ─── QR SCAN BUTTON ─── */}
+                  <TouchableOpacity
+                    style={[styles.qrButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(102,126,234,0.05)' }]}
+                    onPress={handleScanQR}
+                    disabled={isLoading}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="qr-code-outline" size={22} color="#667eea" />
+                    <Text style={[styles.qrButtonText, { color: isDark ? '#fff' : '#1e293b' }]}>
+                      Scan QR Code Instead
+                    </Text>
+                  </TouchableOpacity>
+
                   {/* Invite Code Input */}
                   <View style={[
                     styles.inputContainer,
@@ -1157,7 +1188,29 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                           )}
                         </LinearGradient>
                       </TouchableOpacity>
+
+                      {/* ─── SIGN UP LINK IN JOIN TAB ─── */}
+                      <View style={styles.signupLinkContainer}>
+                        <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          Don't have an invite code?
+                        </Text>
+                        <TouchableOpacity onPress={handleGoToSignUp} disabled={isLoading}>
+                          <Text style={[styles.signupLink, { color: '#22c55e' }]}>Sign Up Instead</Text>
+                        </TouchableOpacity>
+                      </View>
                     </>
+                  )}
+
+                  {/* ─── SHOW SIGN UP LINK EVEN WITHOUT CODE ─── */}
+                  {!codeValidated && inviteCode.length < 6 && (
+                    <View style={styles.signupLinkContainer}>
+                      <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                        Don't have an invite code?
+                      </Text>
+                      <TouchableOpacity onPress={handleGoToSignUp} disabled={isLoading}>
+                        <Text style={[styles.signupLink, { color: '#22c55e' }]}>Sign Up Instead</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </>
               )}
@@ -1444,5 +1497,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     flex: 1,
+  },
+  qrButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(102,126,234,0.15)',
+    backgroundColor: 'rgba(102,126,234,0.05)',
+    marginBottom: 16,
+    gap: 8,
+  },
+  qrButtonText: {
+    fontWeight: '600',
+    fontSize: 15,
   },
 });
