@@ -1336,31 +1336,26 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   };
 
+  // Updated persistPickedImage using new FileSystem API
   const persistPickedImage = async (sourceUri: string, memberId: string): Promise<string | null> => {
     try {
+      // Use the new FileSystem API with Directory class
       const dirInfo = await FileSystem.getInfoAsync(GUARDIAN_IMAGES_DIR);
-      if (!dirInfo.exists) { 
-        await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true }); 
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(GUARDIAN_IMAGES_DIR, { intermediates: true });
       }
 
       const ext = sourceUri.split('.').pop()?.toLowerCase() || 'jpg';
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const processedUri = `${GUARDIAN_IMAGES_DIR}${memberId}_${Date.now()}.${safeExt}`;
 
-      if (sourceUri.startsWith('content://')) {
-        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
-        await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-      } else if (sourceUri.startsWith('data:')) {
-        const base64Data = sourceUri.split(',')[1];
-        if (base64Data) {
-          await FileSystem.writeAsStringAsync(processedUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
-        } else {
-          throw new Error('Invalid data URI');
-        }
-      } else {
-        await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
-      }
+      // Use the new FileSystem API - copy the file
+      await FileSystem.copyAsync({
+        from: sourceUri,
+        to: processedUri,
+      });
 
+      // Check if file exists using the new API
       const fileInfo = await FileSystem.getInfoAsync(processedUri);
       if (!fileInfo.exists) {
         console.error('[persistPickedImage] File not found after write:', processedUri);
