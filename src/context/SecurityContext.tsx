@@ -111,7 +111,6 @@ interface SecurityContextType extends SecurityState {
   getStoredBiometricCredentials: () => Promise<{ email: string; password: string } | null>;
   saveBiometricCredentials: (email: string, password: string) => Promise<boolean>;
   clearBiometricCredentials: () => Promise<void>;
-  // New: Force refresh biometric status
   refreshBiometricStatus: () => Promise<void>;
 }
 
@@ -177,8 +176,7 @@ const getBiometricConfigs = (types: LocalAuthentication.AuthenticationType[]): B
     });
   }
   
-  // ✅ FIXED: For devices with biometric hardware but no specific type detected,
-  // add a generic biometric option (common on some Android devices)
+  // For devices with biometric hardware but no specific type detected
   if (configs.length === 0) {
     configs.push({
       type: LocalAuthentication.AuthenticationType.FINGERPRINT,
@@ -255,10 +253,28 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const backgroundTimeRef = useRef<number>(0);
   const checkedThisCycleRef = useRef<boolean>(false);
   const biometricCheckPromise = useRef<Promise<void> | null>(null);
+  const biometricCheckInProgressRef = useRef<boolean>(false);
+  const lastBiometricCheckRef = useRef<number>(0);
+  const BIOMETRIC_CHECK_DEBOUNCE = 5000; // 5 seconds debounce
 
-  useEffect(() => { return () => { isMounted.current = false; }; }, []);
-  useEffect(() => { isAuthenticatedRef.current = isAuthenticated; }, [isAuthenticated]);
-  useEffect(() => { setupCompleteRef.current = setupComplete; }, [setupComplete]);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+      // Cancel any pending biometric check
+      biometricCheckPromise.current = null;
+      biometricCheckInProgressRef.current = false;
+    };
+  }, []);
+
+  // Update refs when props change
+  useEffect(() => { 
+    isAuthenticatedRef.current = isAuthenticated; 
+  }, [isAuthenticated]);
+  
+  useEffect(() => { 
+    setupCompleteRef.current = setupComplete; 
+  }, [setupComplete]);
 
   const loadSecurityState = useCallback(async () => {
     try {
@@ -309,13 +325,16 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, []);
 
+  // Initialize security state
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
     
     const init = async () => {
       if (!isAuthenticated) {
-        if (isMounted.current) setState(prev => ({ ...prev, isLoading: false }));
+        if (isMounted.current) {
+          setState(prev => ({ ...prev, isLoading: false }));
+        }
         return;
       }
 
@@ -324,14 +343,20 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         setState(prev => ({ ...prev, ...loadedState }));
       }
 
+      // Initial biometric check with debounce
       await checkBiometricCapabilities();
     };
 
     init();
   }, [isAuthenticated, loadSecurityState]);
 
+  // App state listener - properly cleaned up
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+    let isSubscribed = true;
+    
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (!isSubscribed) return;
+      
       const previousState = appState.current;
 
       if (nextAppState.match(/inactive|background/) && previousState === 'active') {
@@ -343,28 +368,42 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
       if (previousState.match(/inactive|background/) && nextAppState === 'active') {
         checkedThisCycleRef.current = false;
+        // Use a timeout to avoid blocking UI
         setTimeout(() => {
-          checkSecurityOnResume();
+          if (isSubscribed) {
+            checkSecurityOnResume();
+          }
         }, 600);
       }
 
       appState.current = nextAppState;
-    });
-    return () => subscription.remove();
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    return () => {
+      isSubscribed = false;
+      subscription.remove();
+    };
   }, []);
 
-  // ✅ FIXED: Enhanced biometric detection for all Android devices
+  // ✅ FIXED: Enhanced biometric detection with debounce and race condition prevention
   const checkBiometricCapabilities = useCallback(async () => {
     // Prevent concurrent checks
-    if (biometricCheckPromise.current) {
-      await biometricCheckPromise.current;
+    if (biometricCheckInProgressRef.current) {
+      console.log('[Security] Biometric check already in progress, skipping');
       return;
     }
 
-    let resolveCheck: (() => void) | null = null;
-    biometricCheckPromise.current = new Promise<void>((resolve) => {
-      resolveCheck = resolve;
-    });
+    // Debounce: prevent too frequent checks
+    const now = Date.now();
+    if (now - lastBiometricCheckRef.current < BIOMETRIC_CHECK_DEBOUNCE) {
+      console.log('[Security] Biometric check debounced, skipping');
+      return;
+    }
+
+    biometricCheckInProgressRef.current = true;
+    lastBiometricCheckRef.current = now;
 
     try {
       console.log('[Security] Checking biometric capabilities...');
@@ -379,7 +418,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
             availableBiometricTypes: [],
           }));
         }
-        resolveCheck?.();
         return;
       }
 
@@ -396,7 +434,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       }
 
       if (hasHardware) {
-        // ─── STEP 1: Check enrollment ─────────────────────────────
+        // Check enrollment
         try {
           isEnrolled = await LocalAuthentication.isEnrolledAsync();
           console.log('[Security] Is enrolled (standard):', isEnrolled);
@@ -404,10 +442,8 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
           console.warn('[Security] isEnrolledAsync failed:', e);
         }
 
-        // ─── STEP 2: FIXED: For devices that return false even when enrolled ──
-        // Many Android devices (Samsung, Xiaomi, etc.) return false for isEnrolled
-        // even when biometrics are set up. We need to try direct auth.
-        if (!isEnrolled) {
+        // For Android devices that return false even when enrolled
+        if (!isEnrolled && Platform.OS === 'android') {
           console.log('[Security] Standard enrollment check returned false, trying direct auth verification...');
           try {
             const testAuth = await LocalAuthentication.authenticateAsync({
@@ -419,7 +455,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
               isEnrolled = true;
               console.log('[Security] ✅ Direct auth verification successful!');
             } else if (testAuth.error === 'user_cancel' || testAuth.error === 'system_cancel') {
-              // User canceled, but biometric prompt appeared - treat as enrolled
               isEnrolled = true;
               console.log('[Security] User canceled but biometric prompt appeared - treating as enrolled');
             } else {
@@ -427,11 +462,10 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
             }
           } catch (authError) {
             console.log('[Security] Direct auth verification threw error:', authError);
-            // Don't set isEnrolled to false - keep optimistic
           }
         }
 
-        // ─── STEP 3: Get supported types ──────────────────────────
+        // Get supported types
         try {
           const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
           types = supportedTypes || [];
@@ -440,20 +474,21 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
           console.warn('[Security] supportedAuthenticationTypesAsync failed:', e);
         }
 
-        // ─── STEP 4: If no types but we have hardware, assume fingerprint ──
+        // If no types but we have hardware, assume fingerprint
         if (types.length === 0 && hasHardware) {
           console.log('[Security] No specific types detected, assuming fingerprint');
           types = [LocalAuthentication.AuthenticationType.FINGERPRINT];
         }
 
-        // ─── STEP 5: Get security level ──────────────────────────
+        // Get security level (safe check for method existence)
         let securityLevel = LocalAuthentication.SecurityLevel.NONE;
         try {
+          // Check if getEnrolledLevelAsync exists before calling
           if (LocalAuthentication.getEnrolledLevelAsync) {
             securityLevel = await LocalAuthentication.getEnrolledLevelAsync();
           }
         } catch (e) {
-          console.warn('[Security] getEnrolledLevelAsync failed:', e);
+          console.warn('[Security] getEnrolledLevelAsync failed or not available:', e);
         }
 
         const biometricConfigs = getBiometricConfigs(types);
@@ -489,28 +524,31 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       }
     } catch (error) {
       console.error('[Security] Biometric check failed:', error);
+      // Only set fallback if we have no existing configs
       if (isMounted.current) {
-        // Don't disable biometrics on error - keep optimistic for Android
         const hasExistingConfigs = state.availableBiometricTypes.length > 0;
-        setState(prev => ({
-          ...prev,
-          isBiometricHardwareAvailable: true, // Keep optimistic
-          isBiometricEnrolled: true, // Keep optimistic
-          availableBiometricTypes: hasExistingConfigs ? prev.availableBiometricTypes : [{
-            type: LocalAuthentication.AuthenticationType.FINGERPRINT,
-            name: 'Biometric',
-            icon: 'finger-print',
-            iconFilled: 'finger-print',
-            label: 'Biometric Authentication',
-            description: 'Use your device biometrics to unlock',
-            color: '#667eea',
-            gradient: ['#667eea', '#764ba2'],
-            isAvailable: true,
-          }],
-        }));
+        if (!hasExistingConfigs && Platform.OS === 'android') {
+          // Provide a fallback for Android devices
+          setState(prev => ({
+            ...prev,
+            isBiometricHardwareAvailable: true,
+            isBiometricEnrolled: true,
+            availableBiometricTypes: [{
+              type: LocalAuthentication.AuthenticationType.FINGERPRINT,
+              name: 'Biometric',
+              icon: 'finger-print',
+              iconFilled: 'finger-print',
+              label: 'Biometric Authentication',
+              description: 'Use your device biometrics to unlock',
+              color: '#667eea',
+              gradient: ['#667eea', '#764ba2'],
+              isAvailable: true,
+            }],
+          }));
+        }
       }
     } finally {
-      resolveCheck?.();
+      biometricCheckInProgressRef.current = false;
       biometricCheckPromise.current = null;
     }
   }, [state.availableBiometricTypes]);
@@ -529,7 +567,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     
     biometricPromptInProgressRef.current = true;
     try {
-      // For Android devices, we need to be more lenient with authentication
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: promptMessage || `Authenticate with ${state.settings.biometricTypeName}`,
         fallbackLabel: 'Use PIN',
@@ -538,21 +575,20 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       });
       console.log('[Security] Biometric auth result:', result);
       
-      // On Android, sometimes authentication succeeds but we get a warning
       if (result.success) {
         return { success: true };
       }
       
-      // If user canceled, don't treat as error
+      // User canceled - don't treat as error
       if (result.error === 'user_cancel' || result.error === 'system_cancel') {
         return { success: false, error: 'user_cancel' };
       }
       
       // For Android, if we get a biometric not recognized error, try once more
-      if (result.error === 'not_enrolled' || result.error === 'not_available') {
-        console.log('[Security] Biometric not available, checking again...');
+      if (Platform.OS === 'android' && (result.error === 'not_enrolled' || result.error === 'not_available')) {
+        console.log('[Security] Biometric not available, refreshing capabilities...');
         await checkBiometricCapabilities();
-        // Try one more time with a different prompt
+        
         const retryResult = await LocalAuthentication.authenticateAsync({
           promptMessage: promptMessage || `Use ${state.settings.biometricTypeName}`,
           fallbackLabel: 'Use PIN',
@@ -576,8 +612,10 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, [state.settings.biometricTypeName, checkBiometricCapabilities]);
 
-  // ─── FIXED: Force refresh biometric status ──────────────────────────
+  // ─── Force refresh biometric status ──────────────────────────
   const refreshBiometricStatus = useCallback(async () => {
+    // Reset the debounce timer to force a fresh check
+    lastBiometricCheckRef.current = 0;
     await checkBiometricCapabilities();
   }, [checkBiometricCapabilities]);
 
@@ -667,15 +705,15 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   // ─── FIXED: Toggle biometric with better state management ──────────
   const toggleBiometric = useCallback(async (enabled: boolean): Promise<boolean> => {
     if (enabled) {
-      // Check if biometrics are available
+      // Check if biometrics are available (with debounce reset)
+      lastBiometricCheckRef.current = 0;
       await checkBiometricCapabilities();
       
       // Double-check enrollment status
       let isEnrolled = state.isBiometricEnrolled;
-      if (!isEnrolled) {
+      if (!isEnrolled && Platform.OS === 'android') {
         try {
           isEnrolled = await LocalAuthentication.isEnrolledAsync();
-          // If still false, try direct auth
           if (!isEnrolled) {
             const testAuth = await LocalAuthentication.authenticateAsync({
               promptMessage: 'Verify biometric setup',
@@ -765,6 +803,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     try {
       if (method === 'biometric') {
         // Check if biometrics are available before attempting
+        lastBiometricCheckRef.current = 0;
         await checkBiometricCapabilities();
         if (!state.isBiometricHardwareAvailable) {
           console.log('[Security] Biometric hardware not available');
@@ -772,7 +811,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         }
         const result = await authenticateWithBiometric();
         isValid = result.success;
-        // If user canceled, don't count as failure
         if (result.error === 'user_cancel' || result.error === 'system_cancel') {
           console.log('[Security] User canceled biometric auth');
           return false;
@@ -927,23 +965,24 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         return [];
       }
       
-      // Even if isEnrolled is false on Android, we still return configs
-      // because the enrollment check might be incorrect
       return getBiometricConfigs(types);
     } catch (error) {
       console.error('[Security] getAvailableBiometricTypes error:', error);
       // Return fallback for Android devices
-      return [{
-        type: LocalAuthentication.AuthenticationType.FINGERPRINT,
-        name: 'Biometric',
-        icon: 'finger-print',
-        iconFilled: 'finger-print',
-        label: 'Biometric Authentication',
-        description: 'Use your device biometrics to unlock',
-        color: '#667eea',
-        gradient: ['#667eea', '#764ba2'],
-        isAvailable: true,
-      }];
+      if (Platform.OS === 'android') {
+        return [{
+          type: LocalAuthentication.AuthenticationType.FINGERPRINT,
+          name: 'Biometric',
+          icon: 'finger-print',
+          iconFilled: 'finger-print',
+          label: 'Biometric Authentication',
+          description: 'Use your device biometrics to unlock',
+          color: '#667eea',
+          gradient: ['#667eea', '#764ba2'],
+          isAvailable: true,
+        }];
+      }
+      return [];
     }
   }, []);
 
@@ -1050,6 +1089,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     securityCheckLockRef.current = false;
     biometricPromptInProgressRef.current = false;
     checkedThisCycleRef.current = false;
+    lastBiometricCheckRef.current = 0;
     
     if (isMounted.current) {
       setState(prev => ({
