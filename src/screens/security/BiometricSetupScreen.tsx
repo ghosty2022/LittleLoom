@@ -113,6 +113,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     isBiometricEnrolled,
     availableBiometricTypes: contextTypes,
     getBiometricTypeName,
+    refreshBiometricStatus,
   } = useSecurity();
   const { userProfile } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
@@ -131,7 +132,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [navigation]);
 
-  // ─── FIXED: Biometric detection for Samsung A06 ──────────────
+  // ─── FIXED: Biometric detection for all Android devices ──────────────
   useEffect(() => {
     let mounted = true;
 
@@ -139,6 +140,9 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       try {
         setIsLoading(true);
         console.log('[BiometricSetup] Checking biometrics...');
+        
+        // First, refresh the biometric status from the context
+        await refreshBiometricStatus();
         
         let hasHardware = false;
         let isEnrolled = false;
@@ -166,7 +170,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             console.warn('[BiometricSetup] supportedAuthenticationTypesAsync failed:', e);
           }
 
-          // For Samsung A06 - try direct auth verification
+          // For Android devices - try direct auth verification
           if (!isEnrolled) {
             console.log('[BiometricSetup] Trying direct auth verification...');
             try {
@@ -195,60 +199,52 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
         let configs: BiometricTypeConfig[] = [];
         
-        if (hasHardware) {
-          try {
-            const contextConfigs = await getAvailableBiometricTypes();
-            if (contextConfigs && contextConfigs.length > 0) {
-              configs = contextConfigs;
-            }
-          } catch (e) {
-            console.warn('[BiometricSetup] getAvailableBiometricTypes failed:', e);
+        // Use context types if available, otherwise build manually
+        if (contextTypes && contextTypes.length > 0) {
+          configs = contextTypes;
+        } else if (hasHardware) {
+          console.log('[BiometricSetup] Building manual configs');
+          
+          if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT) || types.length === 0) {
+            configs.push({
+              type: LocalAuthentication.AuthenticationType.FINGERPRINT,
+              name: 'Fingerprint',
+              icon: 'finger-print',
+              iconFilled: 'finger-print',
+              label: 'Touch ID / Fingerprint',
+              description: 'Use your fingerprint to unlock',
+              color: '#10b981',
+              gradient: ['#11998e', '#38ef7d'],
+              isAvailable: true,
+            });
+          }
+          
+          if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+            configs.push({
+              type: LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
+              name: 'Face ID',
+              icon: 'scan-outline',
+              iconFilled: 'scan',
+              label: 'Face Recognition',
+              description: 'Use your face to unlock',
+              color: '#667eea',
+              gradient: ['#667eea', '#764ba2'],
+              isAvailable: true,
+            });
           }
 
-          if (configs.length === 0) {
-            console.log('[BiometricSetup] Building manual configs');
-            
-            if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT) || types.length === 0) {
-              configs.push({
-                type: LocalAuthentication.AuthenticationType.FINGERPRINT,
-                name: 'Fingerprint',
-                icon: 'finger-print',
-                iconFilled: 'finger-print',
-                label: 'Touch ID / Fingerprint',
-                description: 'Use your fingerprint to unlock',
-                color: '#10b981',
-                gradient: ['#11998e', '#38ef7d'],
-                isAvailable: true,
-              });
-            }
-            
-            if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-  configs.push({
-    type: LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION,
-    name: 'Face ID',
-    icon: 'scan-outline',
-    iconFilled: 'scan',
-    label: 'Face Recognition',
-    description: 'Use your face to unlock',
-    color: '#667eea',
-    gradient: ['#667eea', '#764ba2'],
-    isAvailable: true,
-  });
-}
-
-            if (configs.length === 0 && hasHardware) {
-              configs.push({
-                type: LocalAuthentication.AuthenticationType.FINGERPRINT,
-                name: 'Biometric',
-                icon: 'finger-print',
-                iconFilled: 'finger-print',
-                label: 'Biometric Authentication',
-                description: 'Use your device biometrics to unlock',
-                color: '#667eea',
-                gradient: ['#667eea', '#764ba2'],
-                isAvailable: true,
-              });
-            }
+          if (configs.length === 0 && hasHardware) {
+            configs.push({
+              type: LocalAuthentication.AuthenticationType.FINGERPRINT,
+              name: 'Biometric',
+              icon: 'finger-print',
+              iconFilled: 'finger-print',
+              label: 'Biometric Authentication',
+              description: 'Use your device biometrics to unlock',
+              color: '#667eea',
+              gradient: ['#667eea', '#764ba2'],
+              isAvailable: true,
+            });
           }
         }
 
@@ -280,13 +276,14 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
     const unsubscribe = navigation.addListener('focus', () => {
       resetUnlockLock();
+      refreshBiometricStatus();
     });
 
     return () => {
       mounted = false;
       unsubscribe();
     };
-  }, [navigation, resetUnlockLock, getAvailableBiometricTypes]);
+  }, [navigation, resetUnlockLock, getAvailableBiometricTypes, contextTypes, refreshBiometricStatus]);
 
   // Animate in
   useEffect(() => {

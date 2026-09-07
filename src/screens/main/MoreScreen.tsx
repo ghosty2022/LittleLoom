@@ -1,5 +1,4 @@
-// screens/main/MoreScreen.tsx - COMPLETE FIXED with integrated family management
-
+// screens/main/MoreScreen.tsx - COMPLETE FIXED with modals
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -15,9 +14,9 @@ import {
   RefreshControl,
   Share,
   Platform,
+  Alert,
   Linking,
   Pressable,
-  useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,13 +55,12 @@ import { useActivity } from '../../context/ActivityContext';
 import { useUser } from '../../context/UserContext';
 
 // ─── Components ────────────────────────────────────────────────────
-import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
+import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 
 // ─── Types ─────────────────────────────────────────────────────────
 import type { RootStackParamList } from '../../types/navigation';
 import type { FamilyMember } from '../../types/roles';
-import { UserRole } from '../../types/roles';
 
 // ─── Services ─────────────────────────────────────────────────────
 import { createBackup } from '../../utils/backupService';
@@ -132,7 +130,7 @@ const PressableScale = React.memo<PressableScaleProps>(({
   );
 });
 
-// ─── Custom Modal Components ──────────────────────────────────────
+// ─── Custom Modal Components (like HomeScreen) ────────────────────
 
 interface CustomModalProps {
   visible: boolean;
@@ -416,89 +414,6 @@ const MenuItem = React.memo<MenuItemProps>(({
   );
 });
 
-// ─── Family Member Item (Enhanced) ───────────────────────────────
-
-interface FamilyMemberItemProps {
-  member: FamilyMember;
-  isDark: boolean;
-  isCurrentUser?: boolean;
-  onPress: (member: FamilyMember) => void;
-  onRemove?: (member: FamilyMember) => void;
-  primaryColor: string;
-}
-
-const FamilyMemberItem = React.memo<FamilyMemberItemProps>(({
-  member,
-  isDark,
-  isCurrentUser = false,
-  onPress,
-  onRemove,
-  primaryColor,
-}) => {
-  const roleColors: Record<string, string[]> = {
-    [UserRole.PARENT_1]: ['#667eea', '#764ba2'],
-    [UserRole.PARENT_2]: ['#fa709a', '#fee140'],
-    [UserRole.GUARDIAN]: ['#11998e', '#38ef7d'],
-    [UserRole.VIEWER]: ['#64748b', '#94a3b8'],
-  };
-
-  const roleLabels: Record<string, string> = {
-    [UserRole.PARENT_1]: 'Primary',
-    [UserRole.PARENT_2]: 'Co-Parent',
-    [UserRole.GUARDIAN]: 'Guardian',
-    [UserRole.VIEWER]: 'Viewer',
-  };
-
-  const colors = roleColors[member.role] || roleColors[UserRole.VIEWER];
-  const roleLabel = roleLabels[member.role] || 'Member';
-  const displayName = member.fullName || member.name || 'Unknown';
-  const initial = displayName.charAt(0) || '?';
-
-  return (
-    <PressableScale onPress={() => onPress(member)} activeScale={0.95} style={styles.familyMemberItem}>
-      <LinearGradient colors={colors} style={styles.familyMemberAvatar}>
-        <Text style={styles.familyMemberAvatarText}>{initial}</Text>
-      </LinearGradient>
-
-      <View style={styles.familyMemberInfo}>
-        <View style={styles.familyMemberNameRow}>
-          <Text style={[styles.familyMemberName, isDark && styles.textLight]} numberOfLines={1}>
-            {displayName}
-          </Text>
-          {isCurrentUser && (
-            <View style={[styles.familyMemberBadge, { backgroundColor: `${primaryColor}15` }]}>
-              <Text style={[styles.familyMemberBadgeText, { color: primaryColor }]}>You</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.familyMemberMeta}>
-          <View style={[styles.familyMemberRolePill, { backgroundColor: `${colors[0]}20` }]}>
-            <Text style={[styles.familyMemberRoleText, { color: colors[0] }]}>{roleLabel}</Text>
-          </View>
-          {member.relationship && (
-            <Text style={[styles.familyMemberRelationship, isDark && styles.textMuted]}>
-              {member.relationship}
-            </Text>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.familyMemberActions}>
-        {onRemove && member.canBeRemoved && (
-          <TouchableOpacity
-            onPress={() => onRemove(member)}
-            style={styles.familyMemberRemoveBtn}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="close-circle" size={22} color="#ef4444" />
-          </TouchableOpacity>
-        )}
-        <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#bbb'} />
-      </View>
-    </PressableScale>
-  );
-});
-
 // ─── Stat Card ─────────────────────────────────────────────────────
 
 interface StatCardProps {
@@ -542,6 +457,58 @@ const QuickAction = React.memo<QuickActionProps>(({ icon, label, color, isDark, 
       <Ionicons name={icon} size={22} color={color} />
     </View>
     <Text style={[styles.quickActionLabel, isDark && styles.textMuted]}>{label}</Text>
+  </PressableScale>
+));
+
+// ─── Family Member Item ───────────────────────────────────────────
+
+interface FamilyMemberProps {
+  avatar?: string | number;
+  name: string;
+  label: string;
+  color: string;
+  isDark: boolean;
+  onPress: () => void;
+  badge?: React.ReactNode;
+  isBaby?: boolean;
+  gender?: 'boy' | 'girl' | 'other';
+}
+
+const FamilyMemberItem = React.memo<FamilyMemberProps>(({
+  avatar,
+  name,
+  label,
+  color,
+  isDark,
+  onPress,
+  badge,
+  isBaby = false,
+  gender = 'other',
+}) => (
+  <PressableScale onPress={onPress} activeScale={0.92} style={styles.familyMember}>
+    <View style={[styles.familyAvatarWrap, { borderColor: `${color}40` }]}>
+      {isBaby ? (
+        <SafeBabyAvatar
+          avatar={avatar}
+          gender={gender}
+          size={48}
+          showBadge={false}
+        />
+      ) : (
+        <SafeAvatar
+          avatar={avatar}
+          size={48}
+          fallbackIcon="person"
+          fallbackColor={color}
+          borderWidth={0}
+        />
+      )}
+      {badge}
+    </View>
+    <Text style={[styles.familyName, isDark && styles.textLight]} numberOfLines={1}>
+      {name}
+    </Text>
+    <Text style={[styles.familyLabel, isDark && styles.textMuted]}>{label}</Text>
   </PressableScale>
 ));
 
@@ -847,6 +814,83 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
         />
       </View>
 
+      {/* Family Members Scroll */}
+      <View style={styles.familySection}>
+        <Text style={[styles.familySectionTitle, isDark && styles.textMuted]}>
+          FAMILY MEMBERS
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.familyScroll}
+        >
+          <FamilyMemberItem
+            avatar={userProfile?.avatar}
+            name="You"
+            label="Parent"
+            color={primaryColor}
+            isDark={isDark}
+            onPress={handleCurrentUserPress}
+            badge={
+              <View style={[styles.onlineIndicator, { backgroundColor: accentColor, borderColor: isDark ? '#1a1a2e' : '#fff' }]} />
+            }
+          />
+
+          <FamilyMemberItem
+            avatar={currentBaby?.avatar}
+            name={currentBaby?.name || 'Baby'}
+            label="Baby"
+            color={secondaryColor}
+            isDark={isDark}
+            onPress={handleBabyPress}
+            isBaby={true}
+            gender={currentBaby?.gender}
+            badge={hasMultipleBabies ? (
+              <View style={[styles.babyCountBadge, { backgroundColor: primaryColor }]}>
+                <Text style={styles.babyCountText}>{safeBabies.length}</Text>
+              </View>
+            ) : undefined}
+          />
+
+          {parent2Profile && (
+            <FamilyMemberItem
+              avatar={parent2Profile?.avatar}
+              name={parent2Profile?.fullName || 'Co-Parent'}
+              label="Co-Parent"
+              color="#11998e"
+              isDark={isDark}
+              onPress={handleParent2Press}
+            />
+          )}
+
+          {guardians?.map((guardian, index) => (
+            <FamilyMemberItem
+              key={guardian.id || index}
+              avatar={guardian?.avatar}
+              name={guardian.fullName || 'Guardian'}
+              label="Guardian"
+              color="#9b59b6"
+              isDark={isDark}
+              onPress={() => handleGuardianPress(guardian)}
+            />
+          ))}
+
+          <FamilyMemberItem
+            avatar={undefined}
+            name="Add"
+            label="Member"
+            color={primaryColor}
+            isDark={isDark}
+            onPress={() => navigation.navigate('FamilySharing')}
+            badge={
+              <View style={[styles.addBadge, isDark && styles.addBadgeDark]}>
+                <Ionicons name="add" size={18} color={primaryColor} />
+              </View>
+            }
+          />
+        </ScrollView>
+      </View>
+
       {/* Quick Actions */}
       <View style={styles.quickActionsRow}>
         <QuickAction
@@ -927,7 +971,6 @@ const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
 
   // ─── Contexts ────────────────────────────────────────────────────
   const { signOut, userProfile, isLoading: authLoading } = useAuth();
@@ -955,14 +998,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     resetUnlockLock,
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
-  const {
-    guardians,
-    parent2: parent2Profile,
-    familyMembers,
-    members,
-    loadFamily,
-    removeMember,
-  } = useFamily();
+  const { guardians, parent2: parent2Profile, familyMembers } = useFamily();
   const { entries, loadEntries } = useActivity();
   const {
     themeColors,
@@ -984,7 +1020,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
-
+  
   // ─── Custom Modal States ────────────────────────────────────────
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showBiometricModal, setShowBiometricModal] = useState(false);
@@ -998,7 +1034,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const focusLoadTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // ─── Computed ──────────────────────────────────────────────────
-  const isDark = customizationIsDark ?? (colorScheme === 'dark');
+  const isDark = customizationIsDark;
   const primary = themeColors?.primary || '#667eea';
   const secondary = themeColors?.secondary || '#fa709a';
   const accent = themeColors?.accent || '#43e97b';
@@ -1007,7 +1043,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const availableMethods = getAvailableAuthMethods();
   const biometricTypeName = getBiometricTypeName();
   const biometricIcon = getBiometricIcon();
-
+  
   const hasBiometric = isBiometricHardwareAvailable && isBiometricEnrolled;
   const biometricEnabled = isBiometricEnabled || false;
 
@@ -1018,69 +1054,20 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     milestones: babyStats.milestones || 0,
   };
 
-  // ─── Get all family members including current user ──────────────
-  const allFamilyMembers = useMemo(() => {
-    const result: FamilyMember[] = [];
-
-    // Add current user if available
-    if (userProfile || userContextProfile) {
-      const user = userProfile || userContextProfile;
-      result.push({
-        id: user.id || 'current-user',
-        fullName: user.fullName || 'You',
-        role: UserRole.PARENT_1,
-        relationship: 'Parent',
-        email: user.email || '',
-        addedAt: new Date().toISOString(),
-        addedBy: '',
-        canBeRemoved: false,
-        permissions: {
-          read: true,
-          write: true,
-          delete: true,
-          manageFamily: true,
-          manageSecurity: true,
-          exportData: true,
-        },
-        avatar: user.avatar || null,
-      });
+  const bgColors = useMemo(() => {
+    if (isDark) {
+      return [
+        fullThemeColors?.background || '#0f0f1e',
+        fullThemeColors?.surface || '#1a1a2e',
+        fullThemeColors?.card || '#16162a',
+      ];
     }
-
-    // Add parent2 (co-parent)
-    if (parent2Profile) {
-      result.push({
-        ...parent2Profile,
-        role: UserRole.PARENT_2,
-        canBeRemoved: true,
-      });
-    }
-
-    // Add guardians
-    if (guardians && guardians.length > 0) {
-      guardians.forEach((g) => {
-        result.push({
-          ...g,
-          role: UserRole.GUARDIAN,
-          canBeRemoved: true,
-        });
-      });
-    }
-
-    // Add family members from family context if available
-    if (members && members.length > 0) {
-      members.forEach((m) => {
-        // Avoid duplicates
-        if (!result.find((r) => r.id === m.id)) {
-          result.push({
-            ...m,
-            canBeRemoved: m.canBeRemoved ?? true,
-          });
-        }
-      });
-    }
-
-    return result;
-  }, [userProfile, userContextProfile, parent2Profile, guardians, members]);
+    return [
+      fullThemeColors?.background || '#f8faff',
+      fullThemeColors?.surface || '#ffffff',
+      fullThemeColors?.card || '#f0f4ff',
+    ];
+  }, [isDark, fullThemeColors]);
 
   // ─── Helper Functions ──────────────────────────────────────────
 
@@ -1123,7 +1110,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       await Promise.all([
         loadBabies(),
         loadEntries?.(),
-        loadFamily(),
         checkBiometricCapabilities(),
       ]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1132,9 +1118,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, loadEntries, loadFamily, checkBiometricCapabilities]);
+  }, [loadBabies, loadEntries, checkBiometricCapabilities]);
 
-  // ─── Handle Sign Out ────────────────────────────────────────────
+  // ─── FIXED: Handle Sign Out with Custom Modal ──────────────────
   const handleLogout = useCallback(async () => {
     setShowLogoutModal(true);
   }, []);
@@ -1143,23 +1129,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     setShowLogoutModal(false);
     try {
       triggerHaptic('medium');
-
+      
       await AsyncStorage.setItem('littleloom_security_lock', 'false');
-
+      
       await AsyncStorage.multiRemove([
         'littleloom_nav_state_v4',
         '@littleloom_nav_state_v4',
         'littleloom_last_auth_state',
         'littleloom_security_lock',
       ]);
-
+      
       await signOut();
-
+      
       navigation.reset({
         index: 0,
         routes: [{ name: 'Login' as never }],
       });
-
+      
       setModalConfig({
         title: 'Signed Out',
         message: 'You have been signed out successfully',
@@ -1169,7 +1155,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       });
     } catch (error) {
       console.error('Sign out error:', error);
-
+      
       try {
         navigation.reset({
           index: 0,
@@ -1178,7 +1164,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       } catch (navError) {
         console.error('Navigation reset error:', navError);
       }
-
+      
       setModalConfig({
         title: 'Error',
         message: 'Failed to sign out. Please try again.',
@@ -1189,7 +1175,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [signOut, triggerHaptic, navigation]);
 
-  // ─── Handle Sync ────────────────────────────────────────────────
+  // ─── FIXED: Handle Sync with Cloud ─────────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
       setModalConfig({
@@ -1208,9 +1194,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (result.success) {
         setSyncStatus('success');
         triggerHaptic('success');
-
+        
+        // Create a backup in the background
         try {
-          const backupResult = await createBackup({
+          const backupResult = await createBackup({ 
             encrypted: false,
             includePhotos: true,
           });
@@ -1220,7 +1207,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         } catch (backupError) {
           console.warn('Backup creation error (non-critical):', backupError);
         }
-
+        
         setModalConfig({
           title: '✅ Synced!',
           message: 'Your data is now in sync with the cloud',
@@ -1254,7 +1241,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [isSyncing, sync, triggerHaptic]);
 
-  // ─── Handle Biometric Toggle ────────────────────────────────────
+  // ─── FIXED: Handle Biometric Toggle with Custom Modal ──────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
       if (!hasBiometric) {
@@ -1299,7 +1286,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
     await lockApp();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
+    
     setModalConfig({
       title: '🔒 App Locked',
       message: 'LittleLoom has been secured.',
@@ -1336,64 +1323,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
   }, [navigation]);
 
-  // ─── Family Member Handlers ──────────────────────────────────────
-  const handleFamilyMemberPress = useCallback((member: FamilyMember) => {
-    if (hapticFeedback) triggerHaptic('light').catch(() => {});
-    const isCurrentUser = member.id === (userProfile?.id || userContextProfile?.id);
-    navigation.navigate('EditGuardian', {
-      guardianId: member.id,
-      mode: isCurrentUser || member.role === UserRole.PARENT_2 ? 'parent2' : 'guardian',
-      fromChat: false,
-    });
-  }, [userProfile, userContextProfile, hapticFeedback, triggerHaptic, navigation]);
-
-  const handleRemoveFamilyMember = useCallback((member: FamilyMember) => {
-    if (!member.canBeRemoved) return;
-    setModalConfig({
-      title: 'Remove Family Member',
-      message: `Remove ${member.fullName || 'this member'} from your family?`,
-      icon: 'person-remove',
-      iconColor: '#ef4444',
-      primaryAction: {
-        label: 'Remove',
-        onPress: async () => {
-          try {
-            await removeMember(member.id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setModalConfig({
-              title: 'Member Removed',
-              message: `${member.fullName || 'Member'} has been removed from your family.`,
-              icon: 'checkmark-circle',
-              iconColor: '#43e97b',
-              primaryAction: { label: 'OK', onPress: () => {} },
-            });
-          } catch (error) {
-            setModalConfig({
-              title: 'Error',
-              message: 'Could not remove member. Please try again.',
-              icon: 'alert-circle',
-              iconColor: '#ef4444',
-              primaryAction: { label: 'OK', onPress: () => {} },
-            });
-          }
-        },
-      },
-      secondaryAction: { label: 'Cancel', onPress: () => {} },
-    });
-  }, [removeMember]);
-
-  const handleNavigateToFamilyDashboard = useCallback(() => {
-    navigation.navigate('FamilySharing');
-  }, [navigation]);
-
-  const handleNavigateToFamilyChat = useCallback(() => {
-    navigation.navigate('FamilyChatList');
-  }, [navigation]);
-
-  const handleNavigateToInvite = useCallback(() => {
-    navigation.navigate('CoParentInviteScreen');
-  }, [navigation]);
-
   const handleShare = useCallback(async () => {
     try {
       await Share.share({
@@ -1423,7 +1352,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         console.error('Error checking biometrics:', error);
       }
     };
-
+    
     checkBiometrics();
   }, [checkBiometricCapabilities]);
 
@@ -1433,19 +1362,18 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         clearTimeout(focusLoadTimeout.current);
       }
       focusLoadTimeout.current = setTimeout(() => {
-        console.log('🔄 [MoreScreen] Focus - loading data (debounced)');
+        console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
         loadBabies();
         loadEntries?.();
-        loadFamily();
         checkBiometricCapabilities();
       }, 300);
-
+      
       return () => {
         if (focusLoadTimeout.current) {
           clearTimeout(focusLoadTimeout.current);
         }
       };
-    }, [loadBabies, loadEntries, loadFamily, checkBiometricCapabilities])
+    }, [loadBabies, loadEntries, checkBiometricCapabilities])
   );
 
   useEffect(() => {
@@ -1461,7 +1389,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     const isExpanded = expandedSections.has('security');
     const bioAvailable = isBiometricHardwareAvailable && isBiometricEnrolled;
     const bioEnabled = isBiometricEnabled || false;
-
+    
     return (
       <Animated.View entering={FadeInUp.delay(100)} layout={Layout.springify()} style={styles.section}>
         <SectionHeader
@@ -1614,31 +1542,20 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     );
   }, [expandedSections, isDark, toggleSection, navigation]);
 
-  // ─── Family Section (Enhanced with full member list) ────────────
   const renderFamilySection = useCallback(() => {
     const isExpanded = expandedSections.has('family');
     const queueStatus = getQueueStatus();
-    const memberCount = allFamilyMembers.length;
-
     return (
       <Animated.View entering={FadeInUp.delay(200)} layout={Layout.springify()} style={styles.section}>
         <SectionHeader
           icon="people"
           title="Family & Sharing"
-          subtitle={`${memberCount} family members`}
+          subtitle={`${guardians?.length || 0} guardians connected`}
           color={secondary}
           isDark={isDark}
           isExpanded={isExpanded}
           onPress={() => toggleSection('family')}
-          badge={memberCount || undefined}
-          rightAction={
-            <TouchableOpacity
-              onPress={handleNavigateToFamilyDashboard}
-              style={styles.familyDashboardBtn}
-            >
-              <Ionicons name="apps-outline" size={18} color={secondary} />
-            </TouchableOpacity>
-          }
+          badge={guardians?.length || undefined}
         />
         {isExpanded && (
           <BlurView
@@ -1646,82 +1563,24 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             style={styles.menuContainer}
             tint={isDark ? 'dark' : 'light'}
           >
-            {/* Family Members List */}
-            <View style={styles.familyMembersSection}>
-              <View style={styles.familyMembersHeader}>
-                <Text style={[styles.familyMembersTitle, isDark && styles.textMuted]}>
-                  Members ({memberCount})
-                </Text>
-                <TouchableOpacity onPress={handleNavigateToInvite} style={styles.inviteBtn}>
-                  <Ionicons name="person-add" size={16} color={primary} />
-                  <Text style={[styles.inviteBtnText, { color: primary }]}>Invite</Text>
-                </TouchableOpacity>
-              </View>
-
-              {allFamilyMembers.length === 0 ? (
-                <View style={styles.familyEmptyState}>
-                  <Ionicons name="people-outline" size={32} color={isDark ? '#555' : '#ccc'} />
-                  <Text style={[styles.familyEmptyText, isDark && styles.textMuted]}>
-                    No family members added yet
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.familyEmptyBtn, { backgroundColor: primary }]}
-                    onPress={handleNavigateToInvite}
-                  >
-                    <Text style={styles.familyEmptyBtnText}>Invite Family Members</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                allFamilyMembers.map((member, index) => {
-                  const isCurrentUser = member.id === (userProfile?.id || userContextProfile?.id);
-                  return (
-                    <FamilyMemberItem
-                      key={member.id}
-                      member={member}
-                      isDark={isDark}
-                      isCurrentUser={isCurrentUser}
-                      onPress={handleFamilyMemberPress}
-                      onRemove={member.canBeRemoved ? handleRemoveFamilyMember : undefined}
-                      primaryColor={primary}
-                    />
-                  );
-                })
-              )}
-            </View>
-
-            {/* Family Actions */}
-            <View style={styles.familyActionsDivider} />
-
-            <MenuItem
-              icon="chatbubbles"
-              title="Family Chat"
-              subtitle="Chat with family members"
-              onPress={handleNavigateToFamilyChat}
-              color="#06b6d4"
-              isDark={isDark}
-              showArrow
-            />
-
             <MenuItem
               icon="people-outline"
               title="Family Dashboard"
               subtitle="Manage co-parents and guardians"
-              onPress={handleNavigateToFamilyDashboard}
+              onPress={() => navigation.navigate('FamilySharing')}
               color={secondary}
               isDark={isDark}
               showArrow
             />
-
             <MenuItem
               icon="person-add"
               title="Invite Co-Parent"
               subtitle="Generate an invite code for family members"
-              onPress={handleNavigateToInvite}
+              onPress={() => navigation.navigate('CoParentInviteScreen')}
               color="#11998e"
               isDark={isDark}
               showArrow
             />
-
             <MenuItem
               icon="share-outline"
               title="Export Data"
@@ -1731,7 +1590,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               isDark={isDark}
               showArrow
             />
-
             <MenuItem
               icon="cloud-upload"
               title="Sync with Cloud"
@@ -1753,9 +1611,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     );
   }, [
     expandedSections,
-    allFamilyMembers,
-    userProfile,
-    userContextProfile,
+    guardians,
     secondary,
     accent,
     isDark,
@@ -1766,12 +1622,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     syncStatus,
     handleSync,
     getQueueStatus,
-    handleFamilyMemberPress,
-    handleRemoveFamilyMember,
-    handleNavigateToFamilyDashboard,
-    handleNavigateToFamilyChat,
-    handleNavigateToInvite,
-    primary,
   ]);
 
   const renderTrackingSection = useCallback(() => {
@@ -1936,7 +1786,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   // ─── Loading State ─────────────────────────────────────────────
 
   const [forceShowContent, setForceShowContent] = useState(false);
-
+  
   useEffect(() => {
     if (authLoading || (babyLoading && safeBabies.length === 0)) {
       const timeout = setTimeout(() => {
@@ -1958,21 +1808,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       </LinearGradient>
     );
   }
-
-  const bgColors = useMemo(() => {
-    if (isDark) {
-      return [
-        fullThemeColors?.background || '#0f0f1e',
-        fullThemeColors?.surface || '#1a1a2e',
-        fullThemeColors?.card || '#16162a',
-      ];
-    }
-    return [
-      fullThemeColors?.background || '#f8faff',
-      fullThemeColors?.surface || '#ffffff',
-      fullThemeColors?.card || '#f0f4ff',
-    ];
-  }, [isDark, fullThemeColors]);
 
   // ─── Render ────────────────────────────────────────────────────
 
@@ -2223,7 +2058,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         primaryColor={primary}
       />
 
-      {/* ─── Custom Modals ────────────────────────────────────── */}
+      {/* ─── Custom Modals (like HomeScreen) ────────────────────── */}
 
       {/* Logout Confirmation Modal */}
       <CustomModal
@@ -2263,14 +2098,14 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         iconColor="#f59e0b"
         isDark={isDark}
         primaryColor={primary}
-        primaryAction={{
-          label: 'Set Up Security',
+        primaryAction={{ 
+          label: 'Set Up Security', 
           onPress: () => {
             navigation.navigate('SecurityCenter', { mode: 'setup' });
           }
         }}
-        secondaryAction={{
-          label: 'Lock Anyway',
+        secondaryAction={{ 
+          label: 'Lock Anyway', 
           onPress: async () => {
             await lockApp(true);
             setModalConfig({
@@ -2472,6 +2307,96 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
+  familySection: { marginBottom: 18 },
+  familySectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#888',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  familyScroll: {
+    paddingRight: 16,
+    gap: 14,
+    flexDirection: 'row',
+  },
+  familyMember: {
+    alignItems: 'center',
+    minWidth: 64,
+  },
+  familyAvatarWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    marginBottom: 6,
+  },
+  familyName: {
+    fontSize: 12,
+    color: '#1a1a1a',
+    fontWeight: '700',
+    maxWidth: 70,
+    textAlign: 'center',
+  },
+  familyLabel: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+  },
+  babyCountBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  babyCountText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  addBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(102,126,234,0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addBadgeDark: {
+    backgroundColor: '#1a1a2e',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+
   quickActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -2661,145 +2586,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 10,
     fontWeight: '800',
-  },
-
-  // ─── Family Members Section ────────────────────────────────────
-  familyMembersSection: {
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-  },
-  familyMembersHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  familyMembersTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  inviteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-  },
-  inviteBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  familyDashboardBtn: {
-    padding: 4,
-  },
-  familyEmptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-    gap: 8,
-  },
-  familyEmptyText: {
-    fontSize: 14,
-    color: '#888',
-    fontWeight: '500',
-  },
-  familyEmptyBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  familyEmptyBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  familyActionsDivider: {
-    height: 1,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    marginHorizontal: 12,
-    marginVertical: 4,
-  },
-
-  // ─── Family Member Item ────────────────────────────────────────
-  familyMemberItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    marginVertical: 2,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
-  familyMemberAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  familyMemberAvatarText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  familyMemberInfo: {
-    flex: 1,
-    marginLeft: 12,
-    gap: 3,
-  },
-  familyMemberNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  familyMemberName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  familyMemberBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  familyMemberBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  familyMemberMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  familyMemberRolePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  familyMemberRoleText: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  familyMemberRelationship: {
-    fontSize: 12,
-    color: '#888',
-    fontWeight: '500',
-  },
-  familyMemberActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  familyMemberRemoveBtn: {
-    padding: 2,
   },
 
   // ─── App Info ──────────────────────────────────────────────────

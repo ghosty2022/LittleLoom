@@ -669,54 +669,54 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }, [currentBabyData, refreshBabyDataLight])
   );
 
-  // ─── IMAGE HANDLING ────────────────────────────────────────────────────
-  const ensureDirExists = async () => {
-    const dir = FileSystem.documentDirectory + 'baby_images/';
-    try {
-      const dirInfo = await FileSystem.getInfoAsync(dir);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-      }
-    } catch (error) {
-      console.warn('[BabyProfile] ensureDirExists error:', error);
+// ─── IMAGE HANDLING ────────────────────────────────────────────────────
+const ensureDirExists = async () => {
+  const dir = FileSystem.documentDirectory + 'baby_images/';
+  try {
+    const dirInfo = await FileSystem.getInfoAsync(dir);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
     }
-  };
+  } catch (error) {
+    console.warn('[BabyProfile] ensureDirExists error:', error);
+  }
+};
 
-  const getPermanentImagePath = (babyId: string, isAvatar: boolean = true) => {
-    const dir = FileSystem.documentDirectory + 'baby_images/';
-    return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
-  };
+const getPermanentImagePath = (babyId: string, isAvatar: boolean = true) => {
+  const dir = FileSystem.documentDirectory + 'baby_images/';
+  return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
+};
 
-  const persistPickedImage = async (sourceUri: string, babyId: string): Promise<string | null> => {
-    try {
-      await ensureDirExists();
-      const permanentUri = getPermanentImagePath(babyId, 'avatar');
-      
-      if (sourceUri.startsWith('content://')) {
-        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
-        await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-      } else if (sourceUri.startsWith('data:')) {
-        const base64Data = sourceUri.split(',')[1];
-        if (base64Data) {
-          await FileSystem.writeAsStringAsync(permanentUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
-        } else {
-          throw new Error('Invalid data URI');
-        }
+const persistPickedImage = async (sourceUri: string, babyId: string): Promise<string | null> => {
+  try {
+    await ensureDirExists();
+    const permanentUri = getPermanentImagePath(babyId, 'avatar');
+    
+    if (sourceUri.startsWith('content://')) {
+      const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+      await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+    } else if (sourceUri.startsWith('data:')) {
+      const base64Data = sourceUri.split(',')[1];
+      if (base64Data) {
+        await FileSystem.writeAsStringAsync(permanentUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
       } else {
-        await FileSystem.copyAsync({ from: sourceUri, to: permanentUri });
+        throw new Error('Invalid data URI');
       }
+    } else {
+      await FileSystem.copyAsync({ from: sourceUri, to: permanentUri });
+    }
 
-      const fileInfo = await FileSystem.getInfoAsync(permanentUri);
-      if (!fileInfo.exists) {
-        return null;
-      }
-
-      return permanentUri;
-    } catch (error) {
-      console.error('[persistPickedImage] Failed:', error);
+    const fileInfo = await FileSystem.getInfoAsync(permanentUri);
+    if (!fileInfo.exists) {
       return null;
     }
-  };
+
+    return permanentUri;
+  } catch (error) {
+    console.error('[persistPickedImage] Failed:', error);
+    return null;
+  }
+};
 
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();

@@ -143,7 +143,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     clearSecurityState,
     clearPinOnly,
     resetUnlockLock,
-    checkBiometricCapabilities, // ← ADDED: Import from useSecurity
+    checkBiometricCapabilities,
+    refreshBiometricStatus,
   } = useSecurity();
 
   const { userProfile } = useAuth();
@@ -204,28 +205,26 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   }, []);
 
-// ─── FIXED: Force biometric check on mount and focus ───────────
-useEffect(() => {
-  const checkBiometrics = async () => {
-    try {
-      await checkBiometricCapabilities();
-      // Force re-render to update UI
-      setForceUpdate(prev => !prev);
-    } catch (error) {
-      console.error('Error checking biometrics:', error);
-    }
-  };
-  checkBiometrics();
+  // ─── FIXED: Force biometric check on mount and focus ───────────
+  const [forceUpdate, setForceUpdate] = useState(false);
 
-  const unsubscribe = navigation.addListener('focus', () => {
+  useEffect(() => {
+    const checkBiometrics = async () => {
+      try {
+        await checkBiometricCapabilities();
+        setForceUpdate(prev => !prev);
+      } catch (error) {
+        console.error('Error checking biometrics:', error);
+      }
+    };
     checkBiometrics();
-  });
 
-  return unsubscribe;
-}, [navigation, checkBiometricCapabilities]);
+    const unsubscribe = navigation.addListener('focus', () => {
+      checkBiometrics();
+    });
 
-// Add this state for force update
-const [forceUpdate, setForceUpdate] = useState(false);
+    return unsubscribe;
+  }, [navigation, checkBiometricCapabilities]);
 
   useEffect(() => {
     resetUnlockLock();
@@ -465,45 +464,45 @@ const [forceUpdate, setForceUpdate] = useState(false);
     }
   };
 
-const handleToggleBiometric = useCallback(async () => {
-  setBiometricLoading(true);
-  try {
-    // First refresh biometric status to get latest state
-    await checkBiometricCapabilities();
-    
-    const result = await toggleBiometric(!isBiometricEnabled);
-    if (result) {
-      // Force refresh biometric status after toggle
-      await checkBiometricCapabilities();
-      setForceUpdate(prev => !prev);
-      showSuccess(
-        isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
-        isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
-      );
-    } else {
-      showError('Failed', 'Could not change biometric setting. Please ensure biometrics are set up in your device settings.');
-    }
-  } catch (error) {
-    console.error('Biometric toggle error:', error);
-    showError('Error', 'An error occurred while changing biometric settings.');
-  } finally {
-    setBiometricLoading(false);
-  }
-}, [isBiometricEnabled, toggleBiometric, checkBiometricCapabilities, showSuccess, showError]);
-
-// Force refresh biometric status after toggle
-useEffect(() => {
-  if (biometricLoading) return;
-  const refreshBiometrics = async () => {
+  const handleToggleBiometric = useCallback(async () => {
+    setBiometricLoading(true);
     try {
+      // First refresh biometric status to get latest state
       await checkBiometricCapabilities();
-      setForceUpdate(prev => !prev);
+
+      const result = await toggleBiometric(!isBiometricEnabled);
+      if (result) {
+        // Force refresh biometric status after toggle
+        await refreshBiometricStatus();
+        setForceUpdate(prev => !prev);
+        showSuccess(
+          isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
+          isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
+        );
+      } else {
+        showError('Failed', 'Could not change biometric setting. Please ensure biometrics are set up in your device settings.');
+      }
     } catch (error) {
-      console.error('Error refreshing biometrics:', error);
+      console.error('Biometric toggle error:', error);
+      showError('Error', 'An error occurred while changing biometric settings.');
+    } finally {
+      setBiometricLoading(false);
     }
-  };
-  refreshBiometrics();
-}, [isBiometricEnabled, biometricLoading]);
+  }, [isBiometricEnabled, toggleBiometric, checkBiometricCapabilities, refreshBiometricStatus, showSuccess, showError]);
+
+  // Force refresh biometric status after toggle
+  useEffect(() => {
+    if (biometricLoading) return;
+    const refreshBiometrics = async () => {
+      try {
+        await checkBiometricCapabilities();
+        setForceUpdate(prev => !prev);
+      } catch (error) {
+        console.error('Error refreshing biometrics:', error);
+      }
+    };
+    refreshBiometrics();
+  }, [isBiometricEnabled, biometricLoading, checkBiometricCapabilities]);
 
   const handleTimeoutChange = async (minutes: number) => {
     setSelectedTimeout(minutes);

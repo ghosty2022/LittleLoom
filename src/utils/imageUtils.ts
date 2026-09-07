@@ -1,5 +1,5 @@
 // src/utils/imageUtils.ts
-// ✅ Use the legacy API explicitly
+// ✅ Use the legacy API
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
@@ -8,7 +8,7 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
 
-// Get the document directory - with fallback
+// Safely get directories with fallbacks
 const getDocumentDir = (): string => {
   try {
     return FileSystem.documentDirectory || '';
@@ -25,17 +25,17 @@ const getCacheDir = (): string => {
   }
 };
 
-const DOCUMENT_DIR = getDocumentDir();
+const DOC_DIR = getDocumentDir();
 const CACHE_DIR_ROOT = getCacheDir();
 
 export const CACHE_DIR = CACHE_DIR_ROOT ? `${CACHE_DIR_ROOT}littleloom/` : 'littleloom/';
-export const PARENT_IMAGES_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}parent_images/` : 'parent_images/';
-export const GUARDIAN_IMAGES_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}guardian_images/` : 'guardian_images/';
-export const BABY_IMAGES_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}baby_images/` : 'baby_images/';
-export const MILESTONE_IMAGES_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}milestone_images/` : 'milestone_images/';
-export const GALLERY_DIR = DOCUMENT_DIR ? `${DOCUMENT_DIR}gallery/` : 'gallery/';
+export const PARENT_IMAGES_DIR = DOC_DIR ? `${DOC_DIR}parent_images/` : 'parent_images/';
+export const GUARDIAN_IMAGES_DIR = DOC_DIR ? `${DOC_DIR}guardian_images/` : 'guardian_images/';
+export const BABY_IMAGES_DIR = DOC_DIR ? `${DOC_DIR}baby_images/` : 'baby_images/';
+export const MILESTONE_IMAGES_DIR = DOC_DIR ? `${DOC_DIR}milestone_images/` : 'milestone_images/';
+export const GALLERY_DIR = DOC_DIR ? `${DOC_DIR}gallery/` : 'gallery/';
 
-export const MAX_CACHE_SIZE = 100 * 1024 * 1024; // 100MB
+export const MAX_CACHE_SIZE = 100 * 1024 * 1024;
 export const DEFAULT_COMPRESSION = 0.8;
 export const MAX_IMAGE_DIMENSION = 2048;
 export const THUMBNAIL_SIZE = 300;
@@ -84,12 +84,10 @@ export async function ensureDirectory(dir: string): Promise<void> {
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
     }
   } catch (error: any) {
-    // Ignore "already exists" errors
     if (error.message?.includes('already exists') || error.code === 'EEXIST') {
       return;
     }
     console.error('Error ensuring directory:', error);
-    throw error;
   }
 }
 
@@ -134,27 +132,17 @@ export function getCachePath(filename: string): string {
 
 export async function copyImage(sourceUri: string, destinationUri: string): Promise<boolean> {
   if (!sourceUri || !destinationUri) {
-    console.error('Invalid source or destination URI');
     return false;
   }
   
   try {
-    // Ensure destination directory exists
     const destPath = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
     await ensureDirectory(destPath);
-    
-    // Try copy first
     await FileSystem.copyAsync({ from: sourceUri, to: destinationUri });
     return true;
-  } catch (copyError) {
-    console.log('copyAsync failed, trying downloadAsync fallback:', copyError);
-    try {
-      await FileSystem.downloadAsync(sourceUri, destinationUri);
-      return true;
-    } catch (downloadError) {
-      console.error('Both copy and download failed:', downloadError);
-      return false;
-    }
+  } catch (error) {
+    console.error('Error copying image:', error);
+    return false;
   }
 }
 
@@ -557,7 +545,7 @@ export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
   }
 }
 
-// ─── VALIDATION HELPERS (FIXED for array handling) ───────────────────────
+// ─── VALIDATION HELPERS ───────────────────────────────────────────────────
 
 export function normalizeStringValue(value: unknown): string | null {
   if (value == null) return null;
