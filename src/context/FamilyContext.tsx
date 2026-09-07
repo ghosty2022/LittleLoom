@@ -1,12 +1,11 @@
 // src/context/FamilyContext.tsx
-// COMPLETE FIXED VERSION - Works with RLS disabled
+// COMPLETE FIXED VERSION - Handles partial sign-ups and displays user info
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from './AuthContext';
-import { useBaby } from './BabyContext';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
 
 export type { FamilyMember } from '../types/roles';
@@ -47,7 +46,9 @@ interface FamilyContextType extends FamilyState {
   useInviteCode: (code: string, userId?: string) => Promise<{ success: boolean; message: string }>;
   markSignupComplete: (code: string, userId: string) => Promise<{ success: boolean; message: string }>;
   getInviteCodeById: (code: string) => Promise<any>;
+  // ─── NEW: Recover partial sign-up ──────────────────────────────────
   recoverPartialSignup: (code: string, userId: string, email?: string, phone?: string, name?: string) => Promise<{ success: boolean; message: string }>;
+  // ─── NEW: Get partial signup info ──────────────────────────────────
   getPartialSignupInfo: (code: string) => Promise<{ exists: boolean; email?: string; phone?: string; name?: string; usedBy?: string; usedAt?: number }>;
 }
 
@@ -78,9 +79,12 @@ const showAlert = (title: string, message: string) => {
 };
 
 export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { userProfile: authProfile } = useAuth();
-  const { currentBaby, loadBabies } = useBaby();
+  const { userProfile: authProfile, session } = useAuth();
   
+  const [currentBaby, setCurrentBaby] = useState<any>(null);
+  const [babies, setBabies] = useState<any[]>([]);
+  const [babyLoading, setBabyLoading] = useState(true);
+
   const [state, setState] = useState<FamilyState>({
     isLoading: false,
     members: [],
@@ -92,23 +96,78 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const initRef = useRef(false);
   const familyLoadInProgress = useRef(false);
+  const loadingRef = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
-  const isMounted = useRef(true);
 
-  // ─── Track current user ──────────────────────────────────────────────
+  // ─── Track current user to prevent cross-device conflicts ────
   useEffect(() => {
     if (authProfile?.id) {
       currentUserIdRef.current = authProfile.id;
     }
-    return () => {
-      isMounted.current = false;
-    };
   }, [authProfile?.id]);
 
-  // ─── Load family members ─────────────────────────────────────────────
+  const loadBabyData = useCallback(async () => {
+    if (!authProfile?.id) return;
+
+    try {
+      setBabyLoading(true);
+
+      const { data: settingData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'current_baby_id')
+        .eq('user_id', authProfile.id)
+        .maybeSingle();
+
+      const currentBabyId = settingData?.value;
+
+      if (currentBabyId) {
+        const { data: babyData, error: babyError } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('id', currentBabyId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (!babyError && babyData) {
+          setCurrentBaby(babyData);
+        }
+      }
+
+      const { data: allBabies, error: allError } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent1_id', authProfile.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (!allError && allBabies) {
+        setBabies(allBabies);
+      }
+    } catch (error) {
+      console.warn('[FamilyProvider] Could not load baby data:', error);
+    } finally {
+      setBabyLoading(false);
+    }
+  }, [authProfile?.id]);
+
+  useEffect(() => {
+    if (authProfile?.id) {
+      loadBabyData();
+    }
+  }, [authProfile?.id]);
+
+  const isOwner = useMemo(() => {
+    const effectiveProfile = authProfile;
+    if (!effectiveProfile) return false;
+    if (effectiveProfile.role === 'parent1' || effectiveProfile.role === UserRole.PARENT_1) return true;
+    if (!currentBaby) return false;
+    return currentBaby.parent1_id === effectiveProfile.id;
+  }, [authProfile, currentBaby]);
+
+  // ─── Load family with user isolation ──────────────────────────
   const loadFamily = useCallback(async () => {
     if (!currentBaby?.id) {
-      console.log('[FamilyContext] No current baby, clearing state');
       setState({
         isLoading: false,
         members: [],
@@ -120,220 +179,118 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
-    if (familyLoadInProgress.current) {
-      console.log('[FamilyContext] Load already in progress');
-      return;
+    // ─── Only load if the current user is part of this baby ────
+    if (authProfile?.id && currentBaby.parent1_id !== authProfile.id && currentBaby.parent2_id !== authProfile.id) {
+      const guardianIds = currentBaby.guardian_ids || [];
+      if (!guardianIds.includes(authProfile.id)) {
+        console.log('[FamilyContext] User not associated with this baby, skipping load');
+        return;
+      }
     }
 
+    if (familyLoadInProgress.current) return;
     familyLoadInProgress.current = true;
-    console.log('[FamilyContext] Loading family for baby:', currentBaby.id);
 
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
       const members: FamilyMember[] = [];
+      const effectiveProfile = authProfile;
 
-      // ─── 1. Add Parent 1 ──────────────────────────────────────────────
       if (currentBaby.parent1_id) {
-        try {
-          const { data: parentData, error: parentError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', currentBaby.parent1_id)
-            .maybeSingle();
-
-          if (!parentError && parentData) {
-            members.push({
-              id: currentBaby.parent1_id,
-              userId: currentBaby.parent1_id,
-              fullName: parentData.full_name || 'Parent 1',
-              email: parentData.email || '',
-              avatar: parentData.avatar || parentData.community_avatar || '👤',
-              role: UserRole.PARENT_1,
-              relationship: 'Parent',
-              permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
-              addedAt: currentBaby.created_at || new Date().toISOString(),
-              addedBy: currentBaby.parent1_id,
-              canBeRemoved: false,
-              phoneNumber: parentData.phone_number || undefined,
-              notificationsEnabled: true,
-              lastActive: new Date().toISOString(),
-              status: 'active',
-            });
-          } else {
-            // Fallback: create from baby data
-            members.push({
-              id: currentBaby.parent1_id,
-              userId: currentBaby.parent1_id,
-              fullName: 'Parent 1',
-              email: '',
-              avatar: '👤',
-              role: UserRole.PARENT_1,
-              relationship: 'Parent',
-              permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
-              addedAt: currentBaby.created_at || new Date().toISOString(),
-              addedBy: currentBaby.parent1_id,
-              canBeRemoved: false,
-              phoneNumber: undefined,
-              notificationsEnabled: true,
-              lastActive: new Date().toISOString(),
-              status: 'active',
-            });
-          }
-        } catch (e) {
-          console.warn('[FamilyContext] Error loading parent1:', e);
-        }
-      }
-
-      // ─── 2. Load family_members from Supabase ─────────────────────────
-      try {
-        console.log('[FamilyContext] Querying family_members for baby:', currentBaby.id);
-        
-        const { data: dbMembers, error: membersError } = await supabase
-          .from('family_members')
+        const { data: parentData } = await supabase
+          .from('profiles')
           .select('*')
-          .eq('baby_id', currentBaby.id)
-          .is('deleted_at', null);
+          .eq('id', currentBaby.parent1_id)
+          .maybeSingle();
 
-        if (membersError) {
-          console.error('[FamilyContext] Error loading family members:', membersError.message);
-        } else if (dbMembers && dbMembers.length > 0) {
-          console.log(`[FamilyContext] Found ${dbMembers.length} family members`);
-
-          for (const dbMember of dbMembers) {
-            // Skip parent1 (already added)
-            if (dbMember.role === 'parent1') continue;
-
-            let userProfile = null;
-            if (dbMember.user_id) {
-              try {
-                const { data: profileData } = await supabase
-                  .from('profiles')
-                  .select('*')
-                  .eq('id', dbMember.user_id)
-                  .maybeSingle();
-                userProfile = profileData;
-              } catch (e) {
-                console.warn('[FamilyContext] Error loading profile for member:', dbMember.user_id, e);
-              }
-            }
-
-            const member: FamilyMember = {
-              id: dbMember.id,
-              userId: dbMember.user_id || dbMember.id,
-              fullName: userProfile?.full_name || dbMember.full_name || 'Family Member',
-              email: userProfile?.email || dbMember.email || '',
-              avatar: userProfile?.avatar || userProfile?.community_avatar || dbMember.avatar || '👤',
-              role: dbMember.role === 'parent2' ? UserRole.PARENT_2 
-                : dbMember.role === 'guardian' ? UserRole.GUARDIAN 
-                : UserRole.VIEWER,
-              relationship: dbMember.relationship || 'Family Member',
-              permissions: dbMember.permissions as Permission || ROLE_PERMISSIONS[UserRole.VIEWER],
-              addedAt: dbMember.added_at || new Date().toISOString(),
-              addedBy: dbMember.added_by || currentBaby.parent1_id,
-              canBeRemoved: dbMember.can_be_removed !== false,
-              lastActive: dbMember.last_active || undefined,
-              phoneNumber: userProfile?.phone_number || dbMember.phone_number || undefined,
-              notificationsEnabled: dbMember.notifications_enabled !== false,
-              status: dbMember.status || (dbMember.last_active ? 'active' : 'pending'),
-            };
-            members.push(member);
-          }
-        } else {
-          console.log('[FamilyContext] No family members found in database');
-        }
-      } catch (e) {
-        console.error('[FamilyContext] Error in family_members query:', e);
-      }
-
-      // ─── 3. Fallback: Try to get family members from invite_codes ─────
-      if (members.length <= 1) {
-        console.log('[FamilyContext] No family members found, checking invite_codes...');
-        try {
-          const { data: inviteCodes, error: inviteError } = await supabase
-            .from('invite_codes')
-            .select('*')
-            .eq('family_id', currentBaby.id)
-            .eq('used', true)
-            .eq('revoked', false);
-
-          if (!inviteError && inviteCodes && inviteCodes.length > 0) {
-            console.log(`[FamilyContext] Found ${inviteCodes.length} used invite codes`);
-            for (const invite of inviteCodes) {
-              // Check if this user is already in members
-              const exists = members.some(m => m.userId === invite.used_by || m.email === invite.used_by_email);
-              if (!exists && invite.used_by) {
-                let userProfile = null;
-                try {
-                  const { data: profileData } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', invite.used_by)
-                    .maybeSingle();
-                  userProfile = profileData;
-                } catch (e) {
-                  console.warn('[FamilyContext] Error loading profile for invite user:', invite.used_by);
-                }
-
-                const member: FamilyMember = {
-                  id: invite.used_by,
-                  userId: invite.used_by,
-                  fullName: userProfile?.full_name || invite.used_by_name || 'Family Member',
-                  email: userProfile?.email || invite.used_by_email || '',
-                  avatar: userProfile?.avatar || userProfile?.community_avatar || '👤',
-                  role: invite.role === 'parent2' ? UserRole.PARENT_2 
-                    : invite.role === 'guardian' ? UserRole.GUARDIAN 
-                    : UserRole.VIEWER,
-                  relationship: invite.relationship || 'Family Member',
-                  permissions: ROLE_PERMISSIONS[UserRole.VIEWER],
-                  addedAt: new Date(invite.created_at).toISOString(),
-                  addedBy: invite.creator_id || currentBaby.parent1_id,
-                  canBeRemoved: true,
-                  lastActive: userProfile?.last_active || undefined,
-                  phoneNumber: userProfile?.phone_number || invite.used_by_phone || undefined,
-                  notificationsEnabled: true,
-                  status: 'active',
-                };
-                members.push(member);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[FamilyContext] Error checking invite_codes:', e);
-        }
-      }
-
-      // ─── 4. Separate into roles ──────────────────────────────────────
-      const parent1 = members.find(m => m.role === UserRole.PARENT_1) || null;
-      const parent2 = members.find(m => m.role === UserRole.PARENT_2) || null;
-      const guardians = members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
-      const pendingInvites = members.filter(m => m.status === 'pending' && m.role !== UserRole.PARENT_1);
-
-      console.log(`[FamilyContext] Family loaded: ${members.length} members, parent1: ${!!parent1}, parent2: ${!!parent2}, guardians: ${guardians.length}`);
-
-      if (isMounted.current) {
-        setState({
-          isLoading: false,
-          members,
-          parent1,
-          parent2,
-          guardians,
-          pendingInvites,
+        members.push({
+          id: currentBaby.parent1_id,
+          userId: currentBaby.parent1_id,
+          fullName: parentData?.full_name || 'Parent',
+          email: parentData?.email || '',
+          avatar: parentData?.avatar || parentData?.community_avatar,
+          role: UserRole.PARENT_1,
+          relationship: 'Parent',
+          permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
+          addedAt: currentBaby.created_at,
+          addedBy: currentBaby.parent1_id,
+          canBeRemoved: false,
+          phoneNumber: parentData?.phone_number,
+          notificationsEnabled: true,
+          lastActive: new Date().toISOString(),
+          status: 'active',
         });
       }
-    } catch (error) {
-      console.error('[FamilyContext] Error loading family:', error);
-      if (isMounted.current) {
-        setState(prev => ({ ...prev, isLoading: false }));
+
+const { data: dbMembers, error: membersError } = await supabase
+  .from('family_members')
+  .select('*')
+  .eq('baby_id', currentBaby.id)
+  .is('deleted_at', null);
+
+      if (!membersError && dbMembers) {
+        for (const dbMember of dbMembers) {
+          if (dbMember.role === 'parent1') continue;
+
+          let userProfile = null;
+          if (dbMember.user_id) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', dbMember.user_id)
+              .maybeSingle();
+            userProfile = profileData;
+          }
+
+          const member: FamilyMember = {
+            id: dbMember.id,
+            userId: dbMember.user_id || dbMember.id,
+            fullName: userProfile?.full_name || dbMember.full_name || 'Family Member',
+            email: userProfile?.email || dbMember.email || '',
+            avatar: userProfile?.avatar || userProfile?.community_avatar || dbMember.avatar || undefined,
+            role: dbMember.role === 'parent2' ? UserRole.PARENT_2 
+              : dbMember.role === 'guardian' ? UserRole.GUARDIAN 
+              : UserRole.VIEWER,
+            relationship: dbMember.relationship,
+            permissions: dbMember.permissions as Permission || ROLE_PERMISSIONS[UserRole.VIEWER],
+            addedAt: dbMember.added_at,
+            addedBy: dbMember.added_by,
+            canBeRemoved: dbMember.can_be_removed !== false,
+            lastActive: dbMember.last_active || undefined,
+            phoneNumber: userProfile?.phone_number || dbMember.phone_number || undefined,
+            notificationsEnabled: dbMember.notifications_enabled !== false,
+            status: dbMember.status || (dbMember.last_active ? 'active' : 'pending'),
+          };
+          members.push(member);
+        }
       }
+
+      const nextParent1 = members.find(m => m.role === UserRole.PARENT_1) || null;
+      const nextParent2 = members.find(m => m.role === UserRole.PARENT_2) || null;
+      const nextGuardians = members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
+      const nextPending = members.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1);
+
+      setState({
+        isLoading: false,
+        members,
+        parent1: nextParent1,
+        parent2: nextParent2,
+        guardians: nextGuardians,
+        pendingInvites: nextPending,
+      });
+    } catch (error) {
+      console.error('Error loading family:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
     } finally {
       familyLoadInProgress.current = false;
     }
-  }, [currentBaby]);
+  }, [currentBaby, authProfile]);
 
-  // ─── Load family when baby changes ──────────────────────────────────
   useEffect(() => {
-    if (!currentBaby?.id) {
+    if (babyLoading || !authProfile) return;
+
+    if (!currentBaby) {
       setState({
         isLoading: false,
         members: [],
@@ -342,17 +299,20 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         guardians: [],
         pendingInvites: [],
       });
+      initRef.current = false;
+      return;
+    }
+
+    if (initRef.current && state.members.length > 0) {
+      loadFamily();
       return;
     }
 
     if (!initRef.current) {
       initRef.current = true;
       loadFamily();
-    } else {
-      // Re-load when baby changes
-      loadFamily();
     }
-  }, [currentBaby?.id, loadFamily]);
+  }, [currentBaby?.id, babyLoading, authProfile]);
 
   // ─── Update Parent 2 Profile ───────────────────────────────────────────
   const updateParent2Profile = useCallback(async (
@@ -389,6 +349,36 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.error('Error updating parent2:', updateError);
         showAlert('Error', 'Failed to update Parent 2 profile');
         return false;
+      }
+
+      if (currentBaby.parent2_id) {
+        const { data: memberData } = await supabase
+          .from('family_members')
+          .select('user_id')
+          .eq('id', currentBaby.parent2_id)
+          .maybeSingle();
+
+        if (memberData?.user_id) {
+          const profileUpdates: any = {};
+          if (updates.fullName !== undefined) profileUpdates.full_name = updates.fullName;
+          if (updates.avatar !== undefined) profileUpdates.avatar = updates.avatar;
+          if (updates.phoneNumber !== undefined) profileUpdates.phone_number = updates.phoneNumber;
+
+          await supabase
+            .from('profiles')
+            .update(profileUpdates)
+            .eq('id', memberData.user_id);
+        }
+      }
+
+      if (updates.fullName) {
+        await supabase
+          .from('babies')
+          .update({
+            parent2_name: updates.fullName,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', currentBaby.id);
       }
 
       await loadFamily();
@@ -448,7 +438,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // ─── Invite Member ─────────────────────────────────────────────────────
   const inviteMember = useCallback(async (email: string, role: UserRole, relationship: string) => {
-    if (!authProfile || !currentBaby) {
+    if (!isOwner || !authProfile || !currentBaby) {
       showAlert('Permission Denied', 'Only the account creator can invite family members');
       return false;
     }
@@ -460,12 +450,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const { data: existing } = await supabase
-        .from('family_members')
-        .select('id')
-        .eq('baby_id', currentBaby.id)
-        .eq('email', email.toLowerCase())
-        .is('deleted_at', null)
-        .maybeSingle();
+  .from('family_members')
+  .select('id')
+  .eq('baby_id', currentBaby.id)
+  .eq('email', email.toLowerCase())
+  .is('deleted_at', null)
+  .maybeSingle();
 
       if (existing) {
         showAlert('Duplicate Invite', 'An invitation has already been sent to this email');
@@ -507,6 +497,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return false;
       }
 
+      const guardianIds = [...(currentBaby.guardian_ids || []), newId];
+      await supabase
+        .from('babies')
+        .update({ guardian_ids: guardianIds })
+        .eq('id', currentBaby.id);
+
       await loadFamily();
       showAlert('Invitation Sent', 'Family member has been invited');
       return true;
@@ -515,7 +511,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       showAlert('Error', 'Failed to send invitation');
       return false;
     }
-  }, [authProfile, currentBaby, loadFamily]);
+  }, [isOwner, authProfile, currentBaby, loadFamily]);
 
   // ─── Remove Member ─────────────────────────────────────────────────────
   const removeMember = useCallback(async (memberId: string) => {
@@ -546,6 +542,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         showAlert('Error', 'Failed to remove member');
         return false;
       }
+
+      const guardianIds = (currentBaby.guardian_ids || []).filter((id: string) => id !== memberId);
+      await supabase
+        .from('babies')
+        .update({ guardian_ids: guardianIds })
+        .eq('id', currentBaby.id);
 
       if (state.parent2?.id === memberId) {
         await supabase
@@ -595,7 +597,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     inviteeEmail?: string,
     inviteePhone?: string
   ): Promise<{ code: string; success: boolean; message: string }> => {
-    if (!authProfile || !currentBaby) {
+    if (!isOwner || !authProfile || !currentBaby) {
       return { code: '', success: false, message: 'Only the account creator can invite family members' };
     }
 
@@ -605,7 +607,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let isUnique = false;
       let attempts = 0;
       while (!isUnique && attempts < 10) {
-        const { data: existing } = await supabase
+        const { data: existing, error } = await supabase
           .from('invite_codes')
           .select('code')
           .eq('code', code)
@@ -619,7 +621,30 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
+      if (!isUnique) {
+        const timestamp = Date.now().toString(36).toUpperCase();
+        code = timestamp.slice(-6);
+        if (code.length < 6) {
+          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          while (code.length < 6) {
+            code += chars[Math.floor(Math.random() * chars.length)];
+          }
+        }
+      }
+
+      const now = Date.now();
+      const expiresInDays = 7;
+
+      // ─── Ensure code is exactly 6 characters ──────────────────
       const finalCode = code.padStart(6, '0').slice(0, 6);
+
+      console.log('[FamilyContext] Inserting invite code:', {
+        code: finalCode,
+        family_id: currentBaby.id,
+        role: role,
+        relationship: relationship,
+        creator_id: authProfile.id
+      });
 
       const { data, error } = await supabase
         .from('invite_codes')
@@ -633,32 +658,63 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           creator_name: authProfile.full_name,
           role: role,
           relationship: relationship || null,
-          created_at: Date.now(),
-          expires_in_days: 7,
+          created_at: now,
+          expires_in_days: expiresInDays,
           used: false,
           revoked: false,
           used_by_email: inviteeEmail || null,
           used_by_phone: inviteePhone || null,
           used_by_name: inviteeName || null,
           signup_completed: false,
-          updated_at: Date.now(),
+          updated_at: now,
         })
         .select('code')
         .single();
 
       if (error) {
         console.error('Error generating invite code:', error);
-        return { code: finalCode, success: false, message: 'Failed to save invite code' };
+        
+        // ─── Try without select if single fails ──────────────────
+        const { error: insertError } = await supabase
+          .from('invite_codes')
+          .insert({
+            code: finalCode,
+            family_id: currentBaby.id,
+            baby_name: currentBaby.name,
+            baby_dob: currentBaby.date_of_birth,
+            baby_gender: currentBaby.gender,
+            creator_id: authProfile.id,
+            creator_name: authProfile.full_name,
+            role: role,
+            relationship: relationship || null,
+            created_at: now,
+            expires_in_days: expiresInDays,
+            used: false,
+            revoked: false,
+            used_by_email: inviteeEmail || null,
+            used_by_phone: inviteePhone || null,
+            used_by_name: inviteeName || null,
+            signup_completed: false,
+            updated_at: now,
+          });
+
+        if (insertError) {
+          console.error('Error inserting invite code (fallback):', insertError);
+          return { code: finalCode, success: false, message: 'Failed to save invite code to database: ' + insertError.message };
+        }
+
+        return { code: finalCode, success: true, message: 'Invite code generated successfully (fallback)' };
       }
 
+      console.log('[FamilyContext] Invite code inserted successfully:', data?.code);
       return { code: data?.code || finalCode, success: true, message: 'Invite code generated successfully' };
     } catch (error) {
       console.error('Error generating invite code:', error);
-      return { code: '', success: false, message: 'Failed to generate invite code' };
+      return { code: '', success: false, message: 'Failed to generate invite code: ' + String(error) };
     }
-  }, [authProfile, currentBaby]);
+  }, [isOwner, authProfile, currentBaby]);
 
-  // ─── Get Active Invite Codes ──────────────────────────────────────────
+  // ─── Get Active Invite Codes - Returns ALL codes with status ──────────
   const getActiveInviteCodes = useCallback(async () => {
     if (!currentBaby?.id) return [];
 
@@ -735,13 +791,14 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
-  // ─── Get Partial Signup Info ──────────────────────────────────────────
+  // ─── NEW: Get Partial Signup Info ─────────────────────────────────────
   const getPartialSignupInfo = useCallback(async (code: string): Promise<{ exists: boolean; email?: string; phone?: string; name?: string; usedBy?: string; usedAt?: number }> => {
     if (!code) return { exists: false };
 
     try {
       const trimmedCode = code.trim().toUpperCase();
       
+      // First check if the code exists and is in partial state
       const { data, error } = await supabase
         .from('invite_codes')
         .select('used, signup_completed, used_by, used_by_email, used_by_phone, used_by_name, used_at')
@@ -752,6 +809,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { exists: false };
       }
 
+      // Check if it's a partial signup
       if (data.used && !data.signup_completed) {
         return {
           exists: true,
@@ -770,7 +828,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
-  // ─── Recover Partial Signup ───────────────────────────────────────────
+  // ─── NEW: Recover Partial Signup ──────────────────────────────────────
   const recoverPartialSignup = useCallback(async (
     code: string,
     userId: string,
@@ -786,6 +844,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const trimmedCode = code.trim().toUpperCase();
       const now = Date.now();
 
+      // First verify this is a partial signup
       const { data: existing, error: fetchError } = await supabase
         .from('invite_codes')
         .select('*')
@@ -804,14 +863,18 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { success: false, message: 'This signup is already completed.' };
       }
 
+      // Check if the user ID matches or if we should update it
       const updates: any = {
         signup_completed: true,
         updated_at: now,
       };
 
+      // If userId doesn't match but we have a new user, update it
       if (existing.used_by !== userId) {
         updates.used_by = userId;
       }
+
+      // Update with provided email/phone/name if they weren't stored before
       if (email && !existing.used_by_email) {
         updates.used_by_email = email;
       }
@@ -832,6 +895,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { success: false, message: 'Failed to complete signup: ' + updateError.message };
       }
 
+      // ─── Also update the family_members table if needed ──────────────
       if (existing.family_id) {
         const { data: familyMember } = await supabase
           .from('family_members')
@@ -896,7 +960,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // ─── Revoke Invite Code ───────────────────────────────────────────────
   const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
-    if (!currentBaby) return false;
+    if (!isOwner || !currentBaby) return false;
 
     try {
       const { error } = await supabase
@@ -918,9 +982,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.error('Error revoking invite code:', error);
       return false;
     }
-  }, [currentBaby]);
+  }, [isOwner, currentBaby]);
 
-  // ─── Validate Invite Code ─────────────────────────────────────────────
+  // ─── Validate Invite Code with robust query ──────────────────────────
   const validateInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; data: any; message: string }> => {
     if (!code || code.length < 4) {
       return { valid: false, data: null, message: 'Invalid invite code format' };
@@ -928,7 +992,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const trimmedCode = code.trim().toUpperCase();
+      console.log('[FamilyContext] 🔍 Validating invite code:', trimmedCode);
       
+      // ─── First try exact match with all filters ─────────────────
       let { data, error } = await supabase
         .from('invite_codes')
         .select('*')
@@ -937,21 +1003,55 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('revoked', false)
         .maybeSingle();
 
+      console.log('[FamilyContext] 📊 Query result (strict):', { 
+        found: !!data, 
+        error: error?.message,
+        data: data ? { id: data.id, role: data.role, family_id: data.family_id, code: data.code } : null
+      });
+
+      // ─── If no result, try without the used/revoked filters ────
       if (!data) {
-        const { data: relaxedData } = await supabase
+        console.log('[FamilyContext] No result with strict filters, trying relaxed...');
+        
+        const { data: relaxedData, error: relaxedError } = await supabase
           .from('invite_codes')
           .select('*')
           .eq('code', trimmedCode)
           .maybeSingle();
 
+        console.log('[FamilyContext] 📊 Relaxed query result:', { 
+          found: !!relaxedData, 
+          error: relaxedError?.message,
+          data: relaxedData ? { 
+            id: relaxedData.id, 
+            role: relaxedData.role, 
+            family_id: relaxedData.family_id, 
+            code: relaxedData.code,
+            used: relaxedData.used,
+            revoked: relaxedData.revoked,
+            signup_completed: relaxedData.signup_completed,
+            used_by_email: relaxedData.used_by_email,
+            used_by_phone: relaxedData.used_by_phone,
+            used_by_name: relaxedData.used_by_name,
+            created_at: relaxedData.created_at
+          } : null
+        });
+
         if (relaxedData) {
+          // Check if already used and completed
           if (relaxedData.used && relaxedData.signup_completed) {
             return { valid: false, data: null, message: 'This invite code has already been used' };
           }
+          // ─── NEW: Check if it's a partial signup ────────────────────
           if (relaxedData.used && !relaxedData.signup_completed) {
+            // This is a partial signup - allow continuing
             return { 
               valid: true, 
-              data: { ...relaxedData, isPartial: true }, 
+              data: { 
+                ...relaxedData, 
+                isPartial: true,
+                message: 'This code was used for a partial signup. Please complete your registration.' 
+              }, 
               message: 'Partial signup detected - continue registration' 
             };
           }
@@ -968,13 +1068,18 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (!data) {
-        const { data: caseInsensitiveData } = await supabase
+        // ─── Check if code exists with different case ─────────────
+        console.log('[FamilyContext] No invite code found with exact case, trying case-insensitive...');
+        
+        const { data: caseInsensitiveData, error: caseError } = await supabase
           .from('invite_codes')
           .select('*')
           .ilike('code', trimmedCode)
           .maybeSingle();
 
         if (caseInsensitiveData) {
+          console.log('[FamilyContext] Found code with case-insensitive match:', caseInsensitiveData.code);
+          
           if (caseInsensitiveData.used && caseInsensitiveData.signup_completed) {
             return { valid: false, data: null, message: 'This invite code has already been used' };
           }
@@ -992,17 +1097,22 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         if (!data) {
+          console.log('[FamilyContext] ❌ No invite code found for:', trimmedCode);
           return { valid: false, data: null, message: 'Invalid or expired invite code' };
         }
       }
 
+      // ─── Check expiration properly ─────────────────────────────
       const now = Date.now();
       const expiresAt = data.created_at + (data.expires_in_days || 7) * 24 * 60 * 60 * 1000;
+      console.log('[FamilyContext] ⏰ Expires at:', new Date(expiresAt).toISOString(), 'Now:', new Date(now).toISOString());
       
       if (now > expiresAt) {
+        console.log('[FamilyContext] ⏰ Code expired');
         return { valid: false, data: null, message: 'Invite code has expired' };
       }
 
+      console.log('[FamilyContext] ✅ Code is valid!');
       return { valid: true, data, message: 'Invite code is valid' };
     } catch (error) {
       console.error('Error validating invite code:', error);
@@ -1010,7 +1120,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
-  // ─── Use Invite Code ──────────────────────────────────────────────────
+  // ─── Mark Invite Code as Used ─────────────────────────────────────────
   const useInviteCode = useCallback(async (code: string, userId?: string): Promise<{ success: boolean; message: string }> => {
     if (!code) {
       return { success: false, message: 'No invite code provided' };
@@ -1019,11 +1129,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const trimmedCode = code.trim().toUpperCase();
       
+      // First validate the code
       const validation = await validateInviteCode(trimmedCode);
       if (!validation.valid) {
         return { success: false, message: validation.message };
       }
 
+      // Mark it as used (but not completed yet - partial signup)
       const now = Date.now();
       const { error } = await supabase
         .from('invite_codes')
@@ -1082,6 +1194,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     useInviteCode,
     markSignupComplete,
     getInviteCodeById,
+    // ─── NEW ──────────────────────────────────────────────────────────
     recoverPartialSignup,
     getPartialSignupInfo,
   }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, 

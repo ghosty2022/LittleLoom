@@ -1,6 +1,4 @@
-// screens/security/SecurityLockScreen.tsx
-// FULLY FIXED - Proper lock screen with working biometrics
-
+// screens/security/SecurityLockScreen.tsx - COMPLETE FIXED with Login Screen UI
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -113,17 +111,18 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const userAvatar = userProfile?.avatar || '👶';
 
   const colors = {
-    background: isDark ? ['#0F172A', '#1E293B'] : ['#F8F9FE', '#EEF2FF'],
+    background: isDark ? ['#0F172A', '#1E293B'] : ['#667eea', '#764ba2'],
     primary: themeColors.primary,
     primaryLight: themeColors.secondary,
-    text: isDark ? '#F8FAFC' : '#1E293B',
-    textSecondary: isDark ? '#94A3B8' : '#64748B',
-    surface: isDark ? '#1E293B' : '#FFFFFF',
-    surfaceHighlight: isDark ? '#334155' : '#F1F5F9',
+    text: '#FFFFFF',
+    textSecondary: 'rgba(255,255,255,0.8)',
+    textMuted: 'rgba(255,255,255,0.5)',
+    surface: 'rgba(255,255,255,0.15)',
+    surfaceHighlight: 'rgba(255,255,255,0.25)',
     error: '#EF4444',
     success: '#10B981',
     warning: '#F59E0B',
-    border: isDark ? '#334155' : '#E2E8F0',
+    border: 'rgba(255,255,255,0.2)',
   };
 
   const isMounted = useRef(true);
@@ -518,8 +517,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             style={[
               styles.pinDot,
               {
-                backgroundColor: isFilled ? colors.primary : 'transparent',
-                borderColor: isFilled ? colors.primary : colors.border,
+                backgroundColor: isFilled ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
+                borderColor: isFilled ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.3)',
                 transform: [
                   {
                     scale: pinProgress.interpolate({
@@ -547,14 +546,14 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
               key={key}
               style={[
                 styles.keypadButton,
-                { backgroundColor: colors.surfaceHighlight },
+                { backgroundColor: 'rgba(255,255,255,0.15)' },
                 (isLoading || isLockedOut || unlockInProgress.current) && styles.keypadButtonDisabled,
               ]}
               onPress={() => handleNumberPress(key)}
               disabled={isLoading || isLockedOut || unlockInProgress.current}
               activeOpacity={0.7}
             >
-              <Text style={[styles.keypadButtonText, { color: colors.text }]}>{key}</Text>
+              <Text style={[styles.keypadButtonText, { color: '#fff' }]}>{key}</Text>
             </TouchableOpacity>
           ))}
 
@@ -571,7 +570,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
               <Ionicons
                 name={biometricInfo.icon as any}
                 size={28}
-                color={colors.primary}
+                color="#fff"
               />
             ) : (
               <View style={{ width: 28 }} />
@@ -581,14 +580,14 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
           <TouchableOpacity
             style={[
               styles.keypadButton,
-              { backgroundColor: colors.surfaceHighlight },
+              { backgroundColor: 'rgba(255,255,255,0.15)' },
               (isLoading || isLockedOut || unlockInProgress.current) && styles.keypadButtonDisabled,
             ]}
             onPress={() => handleNumberPress('0')}
             disabled={isLoading || isLockedOut || unlockInProgress.current}
             activeOpacity={0.7}
           >
-            <Text style={[styles.keypadButtonText, { color: colors.text }]}>0</Text>
+            <Text style={[styles.keypadButtonText, { color: '#fff' }]}>0</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -603,7 +602,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             <Ionicons
               name="backspace-outline"
               size={24}
-              color={pin.length > 0 ? colors.textSecondary : colors.border}
+              color={pin.length > 0 ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)'}
             />
           </TouchableOpacity>
         </View>
@@ -641,13 +640,13 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                   style={[
                     styles.answerInput,
                     {
-                      backgroundColor: colors.surfaceHighlight,
+                      backgroundColor: 'rgba(255,255,255,0.1)',
                       color: colors.text,
                       borderColor: colors.border,
                     },
                   ]}
                   placeholder="Your answer"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textMuted}
                   value={verifyAnswers[index]}
                   onChangeText={(text) => {
                     const newAnswers = [...verifyAnswers];
@@ -661,7 +660,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             ))}
 
             <TouchableOpacity
-              style={[styles.verifyButton, { backgroundColor: colors.primary }]}
+              style={[styles.verifyButton, { backgroundColor: '#667eea' }]}
               onPress={verifySecurityAnswers}
               disabled={isVerifyingQuestions}
             >
@@ -689,7 +688,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             setVerifyAnswers(['', '', '']);
           }}
         >
-          <Text style={[styles.backToPinText, { color: colors.primary }]}>
+          <Text style={[styles.backToPinText, { color: '#667eea' }]}>
             Back to PIN Entry
           </Text>
         </TouchableOpacity>
@@ -698,18 +697,29 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.surface }]}>
-      <StatusBar barStyle={isDark ? 'light' : 'dark'} />
+    <View style={[styles.container]}>
+      <StatusBar barStyle="light-content" />
 
-      <LinearGradient colors={colors.background as [string, string]} style={styles.gradient}>
+      <LinearGradient colors={['#667eea', '#764ba2', '#f093fb']} style={styles.gradient}>
         <View
           style={[
             styles.content,
-            { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20 },
+            { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 20 },
           ]}
         >
+          {/* Logo */}
+          <View style={styles.logoContainer}>
+            <View style={styles.logoFloatWrap}>
+              <Image
+                source={require('../../../assets/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+
           <View style={styles.header}>
-            <View style={[styles.iconContainer, { backgroundColor: colors.surface }]}>
+            <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
               {typeof userAvatar === 'number' ? (
                 <Image source={userAvatar} style={styles.avatarImage} resizeMode="cover" />
               ) : typeof userAvatar === 'string' && (userAvatar.startsWith('file://') || userAvatar.startsWith('http://') || userAvatar.startsWith('https://') || userAvatar.startsWith('data:')) ? (
@@ -719,12 +729,12 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
               )}
             </View>
 
-            <Text style={[styles.title, { color: colors.text }]}>
+            <Text style={[styles.title, { color: '#fff' }]}>
               {isLockedOut ? 'Locked Out' : showForgotPin ? 'PIN Recovery' : `Welcome, ${userName}`}
             </Text>
 
             {!showForgotPin && (
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.8)' }]}>
                 {hasBiometric && hasPin
                   ? `Use ${biometricInfo.name} or enter PIN`
                   : hasPin
@@ -734,16 +744,16 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             )}
 
             {attempts > 0 && !isLockedOut && !showForgotPin && (
-              <View style={[styles.attemptsBadge, { backgroundColor: `${colors.warning}20` }]}>
-                <Text style={[styles.attemptsText, { color: colors.warning }]}>
+              <View style={[styles.attemptsBadge, { backgroundColor: 'rgba(245,158,11,0.2)' }]}>
+                <Text style={[styles.attemptsText, { color: '#f59e0b' }]}>
                   {MAX_ATTEMPTS - attempts} attempts remaining
                 </Text>
               </View>
             )}
 
             {isLockedOut && (
-              <View style={[styles.attemptsBadge, { backgroundColor: `${colors.error}20` }]}>
-                <Text style={[styles.attemptsText, { color: colors.error }]}>Locked Out</Text>
+              <View style={[styles.attemptsBadge, { backgroundColor: 'rgba(239,68,68,0.2)' }]}>
+                <Text style={[styles.attemptsText, { color: '#ef4444' }]}>Locked Out</Text>
               </View>
             )}
           </View>
@@ -759,19 +769,16 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 activeOpacity={0.8}
               >
                 <View style={styles.biometricIconWrapper}>
-                  <LinearGradient
-                    colors={[colors.primary + '33', colors.primary + '11']}
-                    style={styles.biometricIconBg}
-                  >
-                    <Ionicons name={biometricInfo.icon as any} size={50} color={colors.primary} />
-                  </LinearGradient>
+                  <View style={styles.biometricIconBg}>
+                    <Ionicons name={biometricInfo.icon as any} size={50} color="#fff" />
+                  </View>
                   {isLoading && (
                     <View style={styles.biometricLoadingRing}>
-                      <ActivityIndicator size="large" color={colors.primary} />
+                      <ActivityIndicator size="large" color="#fff" />
                     </View>
                   )}
                 </View>
-                <Text style={[styles.biometricLabel, { color: colors.primary }]}>
+                <Text style={[styles.biometricLabel, { color: 'rgba(255,255,255,0.9)' }]}>
                   {isLoading ? 'Authenticating...' : `Tap to use ${biometricInfo.name}`}
                 </Text>
               </TouchableOpacity>
@@ -782,7 +789,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             <View style={styles.pinSection}>
               {renderPinDots()}
               {isLoading && (
-                <ActivityIndicator size="small" color={colors.primary} style={styles.loadingIndicator} />
+                <ActivityIndicator size="small" color="#fff" style={styles.loadingIndicator} />
               )}
               {renderKeypad()}
             </View>
@@ -790,22 +797,22 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
           {!showForgotPin && !hasBiometric && !hasPin && !isLockedOut && (
             <View style={styles.noSecurityContainer}>
-              <Ionicons name="lock-open-outline" size={48} color={colors.primary} />
-              <Text style={[styles.noSecurityTitle, { color: colors.text }]}>
+              <Ionicons name="lock-open-outline" size={48} color="#fff" />
+              <Text style={[styles.noSecurityTitle, { color: '#fff' }]}>
                 No Security Enabled
               </Text>
-              <Text style={[styles.noSecurityText, { color: colors.textSecondary }]}>
+              <Text style={[styles.noSecurityText, { color: 'rgba(255,255,255,0.8)' }]}>
                 Tap below to unlock the app
               </Text>
               <TouchableOpacity
-                style={[styles.unlockButton, { backgroundColor: colors.primary }]}
+                style={[styles.unlockButton, { backgroundColor: '#fff' }]}
                 onPress={async () => {
                   await forceUnlock?.();
                   sweetAlert.success('Unlocked', 'Welcome back!');
                   dismissLockScreen();
                 }}
               >
-                <Text style={styles.unlockButtonText}>Unlock App</Text>
+                <Text style={[styles.unlockButtonText, { color: '#667eea' }]}>Unlock App</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.setupSecurityLink}
@@ -814,7 +821,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                   navigation.navigate('SecurityCenter', { mode: 'setup' });
                 }}
               >
-                <Text style={[styles.setupSecurityText, { color: colors.primary }]}>
+                <Text style={[styles.setupSecurityText, { color: '#fff' }]}>
                   Set Up Security Now
                 </Text>
               </TouchableOpacity>
@@ -829,7 +836,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 setPin('');
               }}
             >
-              <Text style={[styles.forgotPinLinkText, { color: colors.primary }]}>
+              <Text style={[styles.forgotPinLinkText, { color: 'rgba(255,255,255,0.8)' }]}>
                 Forgot PIN?
               </Text>
             </TouchableOpacity>
@@ -850,7 +857,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 );
               }}
             >
-              <Text style={[styles.emergencyText, { color: colors.error }]}>Sign Out</Text>
+              <Text style={[styles.emergencyText, { color: 'rgba(255,255,255,0.7)' }]}>Sign Out</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -865,10 +872,25 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  logoFloatWrap: {
+    width: 80,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImage: {
+    width: 70,
+    height: 70,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 30,
   },
   iconContainer: {
     width: 80,
@@ -876,12 +898,9 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 8,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   avatarText: { fontSize: 40 },
   avatarImage: { width: 80, height: 80, borderRadius: 24 },
@@ -909,7 +928,7 @@ const styles = StyleSheet.create({
   },
   biometricSection: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
   },
   biometricButton: {
     alignItems: 'center',
@@ -929,8 +948,9 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(99,102,241,0.2)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   biometricLoadingRing: {
     ...StyleSheet.absoluteFillObject,
@@ -943,14 +963,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   pinSection: {
-    flex: 1,
+    width: '100%',
     alignItems: 'center',
   },
   pinContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 16,
-    marginBottom: 40,
+    marginBottom: 30,
     height: 24,
   },
   pinDot: {
@@ -979,26 +999,23 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   keypadButtonSpecial: {
     backgroundColor: 'transparent',
-    shadowOpacity: 0,
-    elevation: 0,
+    borderWidth: 0,
   },
-  keypadButtonDisabled: { opacity: 0.3 },
+  keypadButtonDisabled: { opacity: 0.4 },
   keypadButtonText: {
     fontSize: 28,
     fontWeight: '600',
+    color: '#fff',
     fontVariant: ['tabular-nums'],
   },
   forgotPinLink: {
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 16,
     marginBottom: 10,
   },
   forgotPinLinkText: {
@@ -1016,7 +1033,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 24,
     marginHorizontal: 12,
-    marginVertical: 80,
+    marginVertical: 60,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.3,
@@ -1106,7 +1123,7 @@ const styles = StyleSheet.create({
   noSecurityContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 30,
     gap: 12,
   },
   noSecurityTitle: {
@@ -1133,7 +1150,6 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   unlockButtonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },
