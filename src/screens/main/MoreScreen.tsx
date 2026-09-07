@@ -1211,7 +1211,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       // Check if biometric is available
       await refreshBiometricStatus();
       
-      if (!hasBiometric) {
+      // Double-check hardware and enrollment
+      const hasHardware = isBiometricHardwareAvailable;
+      const isEnrolled = isBiometricEnrolled;
+      
+      if (!hasHardware || !isEnrolled) {
         sweetAlert.warning(
           'Biometric Not Available',
           'Please set up biometric authentication in your device settings first.'
@@ -1225,7 +1229,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       // Disable biometric - show confirmation
       setShowBiometricModal(true);
     }
-  }, [hasBiometric, navigation, refreshBiometricStatus, sweetAlert]);
+  }, [isBiometricHardwareAvailable, isBiometricEnrolled, navigation, refreshBiometricStatus, sweetAlert]);
 
   // ─── FIXED: Confirm disable biometric ───────────────────────────
   const confirmDisableBiometric = useCallback(async () => {
@@ -1269,7 +1273,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       
       sweetAlert.success('🔒 App Locked', 'LittleLoom has been secured.');
       
-      // ✅ FIXED: Navigate to the lock screen after locking
+      // Navigate to the lock screen after locking
       navigation.navigate('SecurityLock');
     } catch (error) {
       console.error('Lock error:', error);
@@ -1322,7 +1326,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Effects ────────────────────────────────────────────────────
 
-  // ✅ FIXED: Refresh biometric status on mount and on focus
+  // Refresh biometric status on mount and on focus
   useEffect(() => {
     const checkBiometrics = async () => {
       try {

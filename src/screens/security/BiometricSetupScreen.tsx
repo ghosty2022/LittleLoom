@@ -1,4 +1,4 @@
-// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED with SweetAlert
+// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED with proper UI
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Animated, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -136,7 +136,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [navigation]);
 
-  // ─── Biometric detection - ONLY RUNS ONCE ──────────────────────
+  // ─── Biometric detection ──────────────────────────────────────
   useEffect(() => {
     isMounted.current = true;
     
@@ -182,6 +182,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             console.warn('[BiometricSetup] supportedAuthenticationTypesAsync failed:', e);
           }
 
+          // Android fallback
           if (!isEnrolled) {
             console.log('[BiometricSetup] Trying direct auth verification...');
             try {

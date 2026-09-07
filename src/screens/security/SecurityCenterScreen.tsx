@@ -1,4 +1,4 @@
-// screens/security/SecurityCenterScreen.tsx - COMPLETE FIXED with SweetAlert toasts
+// screens/security/SecurityCenterScreen.tsx - COMPLETE FIXED with BiometricSetup navigation
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -152,7 +152,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const insets = useSafeAreaInsets();
   
-  // ✅ Use SweetAlert
   const sweetAlert = useSweetAlert();
 
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
@@ -471,20 +470,51 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
-  // ─── Toggle biometric ──────────────────────────────────────────
+  // ─── FIXED: Navigate to BiometricSetup ──────────────────────────
+  const navigateToBiometricSetup = useCallback(() => {
+    // Navigate to BiometricSetup and ensure we return here
+    navigation.navigate('BiometricSetup');
+  }, [navigation]);
+
+  // ─── FIXED: Toggle biometric with proper state handling ──────────────────────────
   const handleToggleBiometric = useCallback(async () => {
     if (biometricLoading) return;
+    
+    // Check if biometric hardware is available and enrolled
+    if (!isBiometricEnabled) {
+      // Trying to enable - check if hardware and enrollment are available
+      if (!isBiometricHardwareAvailable || !isBiometricEnrolled) {
+        // Show SweetAlert with option to navigate to BiometricSetup
+        sweetAlert.confirm(
+          'Biometric Not Available',
+          'Please set up biometrics in your device settings first, or continue to setup.',
+          () => {
+            navigateToBiometricSetup();
+          },
+          undefined,
+          'Go to Setup',
+          'Cancel',
+          false
+        );
+        return;
+      }
+    }
+    
     setBiometricLoading(true);
     try {
       await refreshBiometricStatus();
-
-      const result = await toggleBiometric(!isBiometricEnabled);
+      
+      const newState = !isBiometricEnabled;
+      const result = await toggleBiometric(newState);
+      
       if (result) {
         await refreshBiometricStatus();
         sweetAlert.success(
-          isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
-          isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
+          newState ? 'Biometric On' : 'Biometric Off',
+          newState ? 'Biometric unlock enabled' : 'Biometric unlock disabled'
         );
+        // Force UI update
+        setForceUpdate(prev => !prev);
       } else {
         sweetAlert.error('Failed', 'Could not change biometric setting. Please ensure biometrics are set up in your device settings.');
       }
@@ -494,7 +524,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     } finally {
       setBiometricLoading(false);
     }
-  }, [isBiometricEnabled, toggleBiometric, refreshBiometricStatus, sweetAlert, biometricLoading]);
+  }, [isBiometricEnabled, isBiometricHardwareAvailable, isBiometricEnrolled, toggleBiometric, refreshBiometricStatus, sweetAlert, biometricLoading, navigateToBiometricSetup]);
 
   useEffect(() => {
     if (biometricLoading) return;
@@ -600,7 +630,18 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         }
         onPress={() => {
           if (!isBiometricHardwareAvailable || !isBiometricEnrolled) {
-            sweetAlert.warning('Unavailable', 'Biometric authentication is not set up on this device');
+            // Show SweetAlert with option to navigate to BiometricSetup
+            sweetAlert.confirm(
+              'Biometric Not Available',
+              'Please set up biometrics in your device settings first, or continue to setup.',
+              () => {
+                navigateToBiometricSetup();
+              },
+              undefined,
+              'Go to Setup',
+              'Cancel',
+              false
+            );
             return;
           }
           setActiveSection('biometric');
@@ -933,15 +974,18 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
-  // ─── Render Biometric Section ──────────────────────────────────
+  // ─── FIXED: Render Biometric Section with Setup Link ──────────────────────────────────
   const renderBiometricSection = () => {
     const bioName = getBiometricTypeName();
     const bioConfig = availableBiometricTypes[0];
+    const bioEnabled = isBiometricEnabled || false;
+    const hasHardware = isBiometricHardwareAvailable || false;
+    const isEnrolled = isBiometricEnrolled || false;
 
     return (
       <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
         <View style={styles.pinHeader}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => setActiveSection('dashboard')}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => { setActiveSection('dashboard'); }}>
             <Ionicons name="arrow-back" size={24} color={isDark ? '#f1f5f9' : '#1e293b'} />
           </TouchableOpacity>
           <Text style={[styles.pinHeaderTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>{bioName} Settings</Text>
@@ -958,20 +1002,48 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             {bioConfig?.description || 'Use biometric authentication to unlock the app'}
           </Text>
 
+          {/* FIXED: Show proper status message with Setup link */}
+          {!hasHardware ? (
+            <Text style={[styles.bioStatusText, { color: '#ef4444' }]}>
+              ⚠️ Biometric hardware not available on this device
+            </Text>
+          ) : !isEnrolled ? (
+            <TouchableOpacity 
+              style={styles.bioStatusLink}
+              onPress={navigateToBiometricSetup}
+            >
+              <Text style={[styles.bioStatusText, { color: '#f59e0b' }]}>
+                ⚠️ Please set up biometrics in your device settings 
+              </Text>
+              <Text style={[styles.bioStatusLinkText, { color: themeColors.primary }]}>
+                Tap here to set up →
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           <View style={styles.bioToggleRow}>
             <Text style={[styles.bioToggleLabel, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
               Enable {bioName} Unlock
             </Text>
             <Switch
-              value={isBiometricEnabled}
+              value={bioEnabled}
               onValueChange={handleToggleBiometric}
-              disabled={biometricLoading}
+              disabled={biometricLoading || !hasHardware || !isEnrolled}
               trackColor={{ false: '#d1d5db', true: themeColors.primary + '80' }}
-              thumbColor={isBiometricEnabled ? themeColors.primary : '#f9fafb'}
+              thumbColor={bioEnabled ? themeColors.primary : '#f9fafb'}
             />
           </View>
 
-          {isBiometricEnabled && securitySettings.isPinEnabled && (
+          {biometricLoading && (
+            <View style={styles.bioLoadingContainer}>
+              <ActivityIndicator size="small" color={themeColors.primary} />
+              <Text style={[styles.bioLoadingText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                {bioEnabled ? 'Disabling...' : 'Enabling...'}
+              </Text>
+            </View>
+          )}
+
+          {bioEnabled && securitySettings.isPinEnabled && (
             <AnimatedRe.View entering={FadeInUp.duration(400)} style={styles.bioPriorityBox}>
               <Ionicons name="information-circle-outline" size={18} color={themeColors.primary} />
               <Text style={[styles.bioPriorityText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
@@ -980,13 +1052,38 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             </AnimatedRe.View>
           )}
 
-          {isBiometricEnabled && !securitySettings.isPinEnabled && (
+          {bioEnabled && !securitySettings.isPinEnabled && (
             <AnimatedRe.View entering={FadeInUp.duration(400)} style={[styles.bioPriorityBox, { backgroundColor: '#fef3c7' }]}>
               <Ionicons name="warning-outline" size={18} color="#f59e0b" />
               <Text style={[styles.bioPriorityText, { color: '#92400e' }]}>
                 No fallback method! If {bioName} fails, you may be locked out. Set a PIN for safety.
               </Text>
             </AnimatedRe.View>
+          )}
+
+          {/* FIXED: Setup button when not enrolled */}
+          {!bioEnabled && !isEnrolled && hasHardware && (
+            <TouchableOpacity
+              style={[styles.bioSetupButton, { backgroundColor: themeColors.primary }]}
+              onPress={navigateToBiometricSetup}
+            >
+              <Ionicons name="finger-print" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.bioSetupButtonText}>Set Up {bioName}</Text>
+            </TouchableOpacity>
+          )}
+
+          {!bioEnabled && !hasHardware && (
+            <TouchableOpacity
+              style={[styles.bioSetupButton, { backgroundColor: '#64748b' }]}
+              onPress={() => {
+                sweetAlert.info(
+                  'Not Supported',
+                  'This device does not support biometric authentication. You can use PIN instead.'
+                );
+              }}
+            >
+              <Text style={styles.bioSetupButtonText}>Device Not Supported</Text>
+            </TouchableOpacity>
           )}
         </View>
       </AnimatedRe.View>
@@ -1152,10 +1249,17 @@ const styles = StyleSheet.create({
   bioIconCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   bioTitle: { fontSize: 22, fontWeight: '800', marginBottom: 6 },
   bioDesc: { fontSize: 14, textAlign: 'center', marginBottom: 24, lineHeight: 20, paddingHorizontal: 20 },
+  bioStatusText: { fontSize: 14, textAlign: 'center', marginBottom: 16, paddingHorizontal: 10, fontWeight: '600' },
+  bioStatusLink: { alignItems: 'center', marginBottom: 16 },
+  bioStatusLinkText: { fontSize: 14, fontWeight: '700', marginTop: 4, textDecorationLine: 'underline' },
   bioToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingVertical: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
   bioToggleLabel: { fontSize: 16, fontWeight: '600' },
+  bioLoadingContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  bioLoadingText: { fontSize: 14, fontWeight: '500' },
   bioPriorityBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 16, padding: 14, backgroundColor: 'rgba(102,126,234,0.08)', borderRadius: 14, width: '100%' },
   bioPriorityText: { fontSize: 13, lineHeight: 18, flex: 1 },
+  bioSetupButton: { borderRadius: 16, paddingVertical: 14, paddingHorizontal: 24, marginTop: 16, width: '100%', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  bioSetupButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
   timeoutDesc: { fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20, paddingHorizontal: 20 },
   timeoutGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginBottom: 24 },
