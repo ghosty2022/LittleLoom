@@ -1,6 +1,8 @@
-// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED with SweetAlert
+// screens/security/BiometricSetupScreen.tsx - COMPLETE REDESIGNED
+// Matches SecurityLockScreen theme - glass UI, no shadows, friendly language
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Animated, Platform } from 'react-native';
+import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Animated, Platform, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -105,6 +107,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   const [hasHardware, setHasHardware] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [biometricCheckComplete, setBiometricCheckComplete] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { 
     toggleBiometric, 
@@ -113,6 +116,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     isBiometricEnrolled,
     availableBiometricTypes: contextTypes,
     refreshBiometricStatus,
+    getBiometricEnabled,
   } = useSecurity();
   const { userProfile } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
@@ -124,6 +128,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   const userName = userProfile?.fullName || 'there';
   const successScale = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   
   const isInitialized = useRef(false);
   const isMounted = useRef(true);
@@ -136,7 +141,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [navigation]);
 
-  // ─── Biometric detection - ONLY RUNS ONCE ──────────────────────
+  // ─── Biometric detection ──────────────────────────────────────
   useEffect(() => {
     isMounted.current = true;
     
@@ -182,6 +187,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             console.warn('[BiometricSetup] supportedAuthenticationTypesAsync failed:', e);
           }
 
+          // Android fallback
           if (!isEnrolled) {
             console.log('[BiometricSetup] Trying direct auth verification...');
             try {
@@ -290,7 +296,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     };
   }, []);
 
-  // Animate in
+  // Animate in - Login screen style
   useEffect(() => {
     if (!shouldReduceMotion) {
       Animated.timing(slideAnim, {
@@ -298,8 +304,14 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         duration: 600,
         useNativeDriver: true,
       }).start();
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }).start();
     } else {
       slideAnim.setValue(0);
+      fadeAnim.setValue(1);
     }
   }, [shouldReduceMotion]);
 
@@ -325,27 +337,34 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
   const handleEnableBiometric = async () => {
     if (!selectedType) {
-      sweetAlert.warning('Error', 'Please select a biometric method');
+      sweetAlert.warning('Oops', 'Please pick a biometric method first');
       return;
     }
 
-    if (!hasHardware) {
+    // First check if hardware is available
+    await refreshBiometricStatus();
+    
+    const hasHardwareNow = isBiometricHardwareAvailable;
+    const isEnrolledNow = isBiometricEnrolled;
+    
+    if (!hasHardwareNow) {
       sweetAlert.warning(
         'Not Available',
-        'This device does not support biometric authentication.'
+        'Your device doesn\'t support biometric authentication. You can use a PIN instead.'
       );
       return;
     }
 
-    if (!isEnrolled) {
+    if (!isEnrolledNow) {
       sweetAlert.warning(
         'Not Set Up',
-        'Please set up biometrics in your device settings first.'
+        'Please set up biometrics in your device settings first, then try again.'
       );
       return;
     }
 
     setIsScanning(true);
+    setErrorMessage(null);
     triggerHaptic('medium');
 
     try {
@@ -355,14 +374,17 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       if (enabled) {
         triggerHaptic('success');
         setSetupComplete(true);
-        sweetAlert.success('Enabled!', `${selectedType.name} is now active for ${userName}`);
+        sweetAlert.success('All Set! 🎉', `${selectedType.name} is now active for ${userName}`);
         await refreshBiometricStatus();
+        setTimeout(() => safeGoBack(), 2000);
       } else {
+        setErrorMessage('Setup was cancelled or didn\'t complete');
         sweetAlert.info('Cancelled', 'Biometric setup was cancelled');
       }
     } catch (error) {
       console.error('Biometric error:', error);
       setIsScanning(false);
+      setErrorMessage('Something went wrong during setup');
       sweetAlert.error('Error', 'An error occurred during authentication');
     }
   };
@@ -383,12 +405,12 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
         <StatusBar barStyle={isDark ? 'light' : 'dark'} />
         <LinearGradient
-          colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : [themeColors.primary, themeColors.secondary, themeColors.accent]}
+          colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']}
           style={styles.gradient}
         />
         <View style={[styles.content, { paddingTop: insets.top + 40, justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator size="large" color={themeColors.primary} />
-          <Text style={[styles.loadingText, { color: isDark ? '#94a3b8' : '#fff' }]}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={[styles.loadingText, { color: 'rgba(255,255,255,0.8)' }]}>
             Checking biometric availability...
           </Text>
         </View>
@@ -401,7 +423,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
         <StatusBar barStyle={isDark ? 'light' : 'dark'} />
         <LinearGradient
-          colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : [themeColors.primary, themeColors.secondary, themeColors.accent]}
+          colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']}
           style={styles.gradient}
         />
         <View style={[styles.content, { paddingTop: insets.top + 100, justifyContent: 'center', alignItems: 'center' }]}>
@@ -409,10 +431,10 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             <View style={[styles.successCircle, isDark && styles.successCircleDark]}>
               <Ionicons name="checkmark" size={60} color="#fff" />
             </View>
-            <Text style={[styles.successTitle, { color: isDark ? '#fff' : '#fff' }]}>
+            <Text style={[styles.successTitle, { color: '#fff' }]}>
               {selectedType?.name || 'Biometric'} Enabled!
             </Text>
-            <Text style={[styles.successSubtitle, { color: isDark ? '#cbd5e1' : 'rgba(255,255,255,0.9)' }]}>
+            <Text style={[styles.successSubtitle, { color: 'rgba(255,255,255,0.9)' }]}>
               You can now unlock LittleLoom securely, {userName}
             </Text>
           </Animated.View>
@@ -428,24 +450,43 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       <StatusBar barStyle={isDark ? 'light' : 'dark'} />
 
       <LinearGradient
-        colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : [themeColors.primary, themeColors.secondary, themeColors.accent]}
+        colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']}
         style={styles.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
 
-      <Animated.View style={[styles.content, { paddingTop: insets.top + 20, transform: [{ translateY: slideAnim }] }]}>
+      <Animated.View style={[styles.content, { paddingTop: insets.top + 20, transform: [{ translateY: slideAnim }], opacity: fadeAnim }]}>
+        {/* ─── Header with back button - SecurityLock style ─── */}
         <View style={styles.header}>
           <TouchableOpacity
             style={[styles.backButton, isDark && styles.backButtonDark]}
             onPress={safeGoBack}
           >
-            <Ionicons name="close" size={24} color={isDark ? '#fff' : themeColors.primary} />
+            <LinearGradient
+              colors={isDark ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)'] : ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.7)']}
+              style={[StyleSheet.absoluteFill, { borderRadius: 22 }]}
+            />
+            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#667eea'} />
           </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: '#fff' }]}>Biometric Setup</Text>
+          <View style={{ width: 44 }} />
         </View>
 
-        <Animated.ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           <View style={styles.mainContent}>
+            {/* ─── Logo ─── */}
+            <View style={styles.logoContainer}>
+              <View style={styles.logoFloatWrap}>
+                <Image
+                  source={require('../../../assets/logo.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+
+            {/* ─── Biometric Icon ─── */}
             {selectedType && (
               <View style={styles.iconWrapper}>
                 <BiometricIcon
@@ -458,18 +499,29 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
               </View>
             )}
 
-            <Text style={[styles.title, { color: isDark ? '#fff' : '#fff' }]}>
-              {availableTypes.length > 1 ? 'Choose Biometric Method' : `Enable ${availableTypes[0]?.name || 'Biometric'}`}
+            {/* ─── Friendly Title ─── */}
+            <Text style={[styles.title, { color: '#fff' }]}>
+              {availableTypes.length > 1 ? 'Pick Your Method' : `Turn on ${availableTypes[0]?.name || 'Biometric'}`}
             </Text>
 
-            <Text style={[styles.subtitle, { color: isDark ? '#cbd5e1' : 'rgba(255,255,255,0.9)' }]}>
+            {/* ─── Friendly Subtitle ─── */}
+            <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.85)' }]}>
               {hasBiometricAvailable
-                ? `Hi ${userName}, use biometric authentication for quick and secure access to your baby's memories.`
+                ? `Hey ${userName}! 👋 Use biometrics to unlock LittleLoom quickly and securely.`
                 : hasHardware 
-                  ? 'Please set up biometrics in your device settings first, then try again.'
-                  : 'Biometric authentication is not available on this device.'}
+                  ? 'Please set up biometrics in your device settings first, then come back here.'
+                  : 'Biometric authentication isn\'t available on this device. You can use a PIN instead.'}
             </Text>
 
+            {/* ─── Error Message ─── */}
+            {errorMessage && (
+              <View style={[styles.errorContainer, { backgroundColor: 'rgba(239,68,68,0.2)' }]}>
+                <Ionicons name="alert-circle" size={20} color="#ef4444" />
+                <Text style={[styles.errorText, { color: '#ef4444' }]}>{errorMessage}</Text>
+              </View>
+            )}
+
+            {/* ─── Biometric Options ─── */}
             {availableTypes.length > 0 && hasBiometricAvailable && (
               <View style={styles.optionsContainer}>
                 {availableTypes.map((config) => (
@@ -477,20 +529,25 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
                     key={config.type}
                     style={[
                       styles.optionCard,
-                      selectedType?.type === config.type && { borderColor: themeColors.primary },
+                      selectedType?.type === config.type && { borderColor: '#fff' },
                       isDark && styles.optionCardDark,
                     ]}
                     onPress={() => selectBiometricType(config)}
                     disabled={isScanning}
                   >
+                    <BlurView
+                      intensity={isDark ? 30 : 60}
+                      style={styles.optionCardBlur}
+                      tint={isDark ? 'dark' : 'light'}
+                    />
                     <View
                       style={[
                         styles.optionIcon,
                         {
                           backgroundColor:
                             selectedType?.type === config.type
-                              ? themeColors.primary + '33'
-                              : 'rgba(100,116,139,0.1)',
+                              ? 'rgba(255,255,255,0.2)'
+                              : 'rgba(255,255,255,0.08)',
                         },
                       ]}
                     >
@@ -499,7 +556,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
                         size={28}
                         color={
                           selectedType?.type === config.type
-                            ? themeColors.primary
+                            ? '#fff'
                             : isDark
                               ? '#94a3b8'
                               : '#64748b'
@@ -507,33 +564,34 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
                       />
                     </View>
                     <View style={styles.optionTextContainer}>
-                      <Text style={[styles.optionName, { color: isDark ? '#fff' : '#1e293b' }]}>
+                      <Text style={[styles.optionName, { color: '#fff' }]}>
                         {config.name}
                       </Text>
-                      <Text style={[styles.optionDescription, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                      <Text style={[styles.optionDescription, { color: 'rgba(255,255,255,0.7)' }]}>
                         {config.description}
                       </Text>
                     </View>
                     {selectedType?.type === config.type && (
-                      <Ionicons name="checkmark-circle" size={24} color={themeColors.primary} />
+                      <Ionicons name="checkmark-circle" size={24} color="#fff" />
                     )}
                   </TouchableOpacity>
                 ))}
               </View>
             )}
 
+            {/* ─── Benefits - Friendly icons ─── */}
             {hasBiometricAvailable && (
               <View style={styles.benefitsContainer}>
                 {[
-                  { icon: 'flash', text: 'Quick Access', color: themeColors.primary },
-                  { icon: 'shield-checkmark', text: 'Secure', color: '#11998e' },
-                  { icon: 'happy', text: 'Convenient', color: '#f59e0b' },
+                  { icon: 'flash', text: 'Quick Access', color: '#fff' },
+                  { icon: 'shield-checkmark', text: 'Secure', color: '#fff' },
+                  { icon: 'happy', text: 'Convenient', color: '#fff' },
                 ].map((benefit, index) => (
                   <View key={index} style={styles.benefitItem}>
-                    <View style={[styles.benefitIcon, { backgroundColor: `${benefit.color}20` }]}>
-                      <Ionicons name={benefit.icon as any} size={20} color={benefit.color} />
+                    <View style={[styles.benefitIcon, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                      <Ionicons name={benefit.icon as any} size={20} color="#fff" />
                     </View>
-                    <Text style={[styles.benefitText, { color: isDark ? '#cbd5e1' : 'rgba(255,255,255,0.9)' }]}>
+                    <Text style={[styles.benefitText, { color: 'rgba(255,255,255,0.9)' }]}>
                       {benefit.text}
                     </Text>
                   </View>
@@ -541,8 +599,9 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
               </View>
             )}
           </View>
-        </Animated.ScrollView>
+        </ScrollView>
 
+        {/* ─── Button Container ─── */}
         <View style={styles.buttonContainer}>
           {hasBiometricAvailable ? (
             <>
@@ -552,23 +611,24 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
                 disabled={!selectedType || isScanning}
               >
                 <LinearGradient
-                  colors={[themeColors.primary, themeColors.secondary]}
-                  style={StyleSheet.absoluteFill}
+                  colors={['#667eea', '#764ba2']}
+                  style={styles.enableGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                />
-                {isScanning ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <View style={styles.enableButtonContent}>
-                    <Ionicons name={selectedType?.icon || 'finger-print'} size={24} color="#fff" />
-                    <Text style={styles.enableText}>Enable {selectedType?.name || 'Biometric'}</Text>
-                  </View>
-                )}
+                >
+                  {isScanning ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <View style={styles.enableButtonContent}>
+                      <Ionicons name={selectedType?.icon || 'finger-print'} size={24} color="#fff" />
+                      <Text style={styles.enableText}>Turn On {selectedType?.name || 'Biometric'}</Text>
+                    </View>
+                  )}
+                </LinearGradient>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.skipButton} onPress={handleSkip} disabled={isScanning}>
-                <Text style={[styles.skipText, { color: isDark ? '#94a3b8' : 'rgba(255,255,255,0.8)' }]}>
+                <Text style={[styles.skipText, { color: 'rgba(255,255,255,0.7)' }]}>
                   Maybe Later
                 </Text>
               </TouchableOpacity>
@@ -576,30 +636,36 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
           ) : (
             <>
               <View style={[styles.unavailableCard, isDark && styles.unavailableCardDark]}>
+                <BlurView
+                  intensity={isDark ? 30 : 60}
+                  style={StyleSheet.absoluteFill}
+                  tint={isDark ? 'dark' : 'light'}
+                />
                 <Ionicons name="alert-circle" size={48} color="#ef4444" />
-                <Text style={[styles.unavailableTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+                <Text style={[styles.unavailableTitle, { color: '#fff' }]}>
                   {!hasHardware ? 'Not Supported' : 'Not Set Up'}
                 </Text>
-                <Text style={[styles.unavailableText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                <Text style={[styles.unavailableText, { color: 'rgba(255,255,255,0.7)' }]}>
                   {!hasHardware
-                    ? 'This device does not support biometric authentication.'
+                    ? 'Your device doesn\'t support biometric authentication. You can use a PIN instead.'
                     : 'Please set up biometrics in your device settings first, then try again.'}
                 </Text>
                 {!hasHardware && (
-                  <Text style={[styles.unavailableText, { color: isDark ? '#94a3b8' : '#64748b', marginTop: 8 }]}>
-                    You can still use PIN or password protection.
+                  <Text style={[styles.unavailableText, { color: 'rgba(255,255,255,0.7)', marginTop: 8 }]}>
+                    PIN is a great alternative to keep your data safe!
                   </Text>
                 )}
               </View>
 
               <TouchableOpacity style={styles.enableButton} onPress={safeGoBack}>
                 <LinearGradient
-                  colors={[themeColors.primary, themeColors.secondary]}
-                  style={StyleSheet.absoluteFill}
+                  colors={['#667eea', '#764ba2']}
+                  style={styles.enableGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                />
-                <Text style={styles.enableText}>Go Back</Text>
+                >
+                  <Text style={styles.enableText}>Go Back</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </>
           )}
@@ -616,36 +682,60 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
   },
+  // ─── Header ──────────────────────────────────────────────────
   header: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 20,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
   backButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    overflow: 'hidden',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   backButtonDark: {
-    backgroundColor: 'rgba(30,41,59,0.8)',
+    shadowColor: 'transparent',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    color: '#fff',
   },
   scrollContent: {
     flexGrow: 1,
   },
   mainContent: {
     alignItems: 'center',
-    paddingTop: 20,
+    paddingTop: 10,
   },
+  // ─── Logo ──────────────────────────────────────────────────
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  logoFloatWrap: {
+    width: 80,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImage: {
+    width: 70,
+    height: 70,
+  },
+  // ─── Biometric Icon ────────────────────────────────────────
   iconWrapper: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   biometricIconContainer: {
     alignItems: 'center',
@@ -657,11 +747,11 @@ const styles = StyleSheet.create({
     borderRadius: 70,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#667eea',
+    shadowColor: 'transparent',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   title: {
     fontSize: 28,
@@ -677,6 +767,22 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     paddingHorizontal: 20,
   },
+  // ─── Error ──────────────────────────────────────────────────
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    width: '100%',
+  },
+  errorText: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  // ─── Options ──────────────────────────────────────────────
   optionsContainer: {
     width: '100%',
     gap: 12,
@@ -685,19 +791,23 @@ const styles = StyleSheet.create({
   optionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 20,
     padding: 16,
+    borderRadius: 20,
     borderWidth: 2,
-    borderColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderColor: 'rgba(255,255,255,0.2)',
+    overflow: 'hidden',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   optionCardDark: {
-    backgroundColor: 'rgba(30,41,59,0.8)',
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  optionCardBlur: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
   },
   optionIcon: {
     width: 56,
@@ -718,11 +828,12 @@ const styles = StyleSheet.create({
   optionDescription: {
     fontSize: 14,
   },
+  // ─── Benefits ──────────────────────────────────────────────
   benefitsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 32,
-    marginBottom: 32,
+    marginBottom: 16,
   },
   benefitItem: {
     alignItems: 'center',
@@ -734,30 +845,41 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   benefitText: {
     fontSize: 13,
     fontWeight: '600',
   },
+  // ─── Buttons ──────────────────────────────────────────────
   buttonContainer: {
     paddingBottom: 40,
-    paddingTop: 20,
+    paddingTop: 10,
   },
   enableButton: {
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 16,
     height: 58,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   enableButtonDisabled: {
     opacity: 0.5,
+  },
+  enableGradient: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   enableButtonContent: {
     flexDirection: 'row',
@@ -777,17 +899,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // ─── Unavailable ───────────────────────────────────────────
   unavailableCard: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 28,
     padding: 32,
     alignItems: 'center',
     marginBottom: 24,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(239,68,68,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   unavailableCardDark: {
-    backgroundColor: 'rgba(30,41,59,0.8)',
+    backgroundColor: 'rgba(30,41,59,0.4)',
     borderColor: 'rgba(239,68,68,0.3)',
   },
   unavailableTitle: {
@@ -801,10 +930,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
+  // ─── Loading ──────────────────────────────────────────────
   loadingText: {
     marginTop: 16,
     fontSize: 16,
   },
+  // ─── Success ──────────────────────────────────────────────
   successCircle: {
     width: 120,
     height: 120,
@@ -814,24 +945,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'center',
     marginBottom: 24,
-    shadowColor: '#11998e',
+    shadowColor: 'transparent',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   successCircleDark: {
-    shadowColor: '#0d9488',
+    shadowColor: 'transparent',
   },
   successTitle: {
     fontSize: 28,
     fontWeight: '800',
     textAlign: 'center',
     marginBottom: 8,
+    color: '#fff',
   },
   successSubtitle: {
     fontSize: 16,
     textAlign: 'center',
     paddingHorizontal: 40,
+    color: 'rgba(255,255,255,0.9)',
   },
 });
