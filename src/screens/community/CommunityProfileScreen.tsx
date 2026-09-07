@@ -41,13 +41,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-// IMPORTANT: Use legacy API to avoid deprecation warnings
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// ─── FIX: Use proper import for base64-arraybuffer ────────────────────
 import { decode } from 'base64-arraybuffer';
 
 import type { CommunityStackParamList } from '../../types/navigation';
@@ -56,7 +54,6 @@ import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useMedia } from '../../context/MediaContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-// ─── FIX: Import UniversalSpinner correctly ──────────────────────────
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '@/utils/supabase';
@@ -118,8 +115,8 @@ const TOPIC_COLORS: Record<string, string> = {
 
 type ProfileTab = 'overview' | 'posts' | 'achievements' | 'settings';
 
-// ─── CONSTANTS ──────────────────────────────────────────────────────────
 const COMMUNITY_AVATARS_BUCKET = 'community_avatars';
+const COMMUNITY_COVERS_BUCKET = 'community_covers';
 
 // ─── HELPERS ────────────────────────────────────────────────────────────
 const isEmojiAvatar = (avatar: string | undefined): boolean => {
@@ -255,6 +252,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     getPopularPosts,
     getTrendingTopics,
     getPostRank,
+    refreshTopics: refreshTopicsData,
   } = useCommunity();
   const { 
     profile, 
@@ -292,8 +290,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-  const [locationDetected, setLocationDetected] = useState<string>('');
+  const [locationDetected, setLocationDetected] = useState<{ city: string; region: string; country: string; full: string } | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
 
   const [formData, setFormData] = useState({
     displayName: '',
@@ -312,6 +311,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   
   const isLoadingRef = useRef(false);
   const initialLoadDone = useRef(false);
+  const isMountedRef = useRef(true);
 
   // ─── COMPUTED DATA ──────────────────────────────────────────────────
   const userPostList = useMemo(() => getUserPosts(currentUser?.id || ''), [currentUser, getUserPosts]);
@@ -567,17 +567,22 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return () => { show.remove(); hide.remove(); };
   }, []);
 
+  // Load data only when currentUser changes and not already loading
   useEffect(() => {
-    if (currentUser && !initialLoadDone.current) {
+    if (currentUser && !initialLoadDone.current && !isLoadingRef.current) {
       loadUserData();
       initialLoadDone.current = true;
     }
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [currentUser]);
 
   useFocusEffect(
     useCallback(() => {
       if (currentUser && !isLoadingRef.current) {
-        loadUserData();
+        // Refresh data on focus but don't show full loading
+        refreshUserData();
       }
       return () => {};
     }, [currentUser])
@@ -586,6 +591,30 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   useEffect(() => {
     loadActivityLog();
   }, []);
+
+  // ─── REFRESH USER DATA (light refresh without full reload) ────────
+  const refreshUserData = useCallback(async () => {
+    if (isLoadingRef.current || !currentUser) return;
+    isLoadingRef.current = true;
+    
+    try {
+      const posts = getUserPosts(currentUser.id);
+      const topics = getSelectedTopics();
+      const followers = await getFollowers(currentUser.id);
+      const following = await getFollowing(currentUser.id);
+      
+      if (isMountedRef.current) {
+        setUserPosts(posts);
+        setSelectedTopics(topics);
+        setFollowerCount(followers.length);
+        setFollowingCount(following.length);
+      }
+    } catch (error) { 
+      console.error('Error refreshing user data:', error); 
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, [currentUser, getUserPosts, getSelectedTopics, getFollowers, getFollowing]);
 
   // ─── LOAD ACTIVITY LOG ─────────────────────────────────────────────
   const loadActivityLog = async () => {
@@ -651,26 +680,61 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     };
   }, [formData.handle, checkUsername]);
 
-  // ─── LOCATION DETECTION ────────────────────────────────────────────
+  // ─── ENHANCED LOCATION DETECTION ───────────────────────────────────
   useEffect(() => {
     let isMounted = true;
     const detectLocation = async () => {
       try {
+        // First try to get cached location
+        const cachedLocation = await AsyncStorage.getItem('@user_location_cache');
+        if (cachedLocation) {
+          const parsed = JSON.parse(cachedLocation);
+          if (Date.now() - parsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
+            if (isMounted) {
+              setLocationDetected(parsed.data);
+              setFormData(prev => ({ ...prev, location: parsed.data.full }));
+            }
+            return;
+          }
+        }
+
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted' && isMounted) {
-          const location = await Location.getCurrentPositionAsync({});
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+          
           const reverseGeocode = await Location.reverseGeocodeAsync({
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           });
+          
           if (reverseGeocode.length > 0 && isMounted) {
             const place = reverseGeocode[0];
-            const locationString = [place.city, place.region, place.country]
-              .filter(Boolean)
-              .join(', ');
-            if (locationString) {
-              setLocationDetected(locationString);
-              setFormData(prev => ({ ...prev, location: locationString }));
+            // Get detailed location info
+            const city = place.city || place.district || place.subregion || '';
+            const region = place.region || place.state || '';
+            const country = place.country || '';
+            
+            // Build full location string with priority to city
+            const locationParts = [];
+            if (city) locationParts.push(city);
+            if (region && region !== city) locationParts.push(region);
+            if (country && !locationParts.includes(country)) locationParts.push(country);
+            
+            const fullLocation = locationParts.join(', ') || 'Unknown Location';
+            
+            const locationData = { city, region, country, full: fullLocation };
+            
+            // Cache the location
+            await AsyncStorage.setItem('@user_location_cache', JSON.stringify({
+              data: locationData,
+              timestamp: Date.now(),
+            }));
+            
+            if (isMounted) {
+              setLocationDetected(locationData);
+              setFormData(prev => ({ ...prev, location: fullLocation }));
             }
           }
         }
@@ -694,10 +758,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         const topics = getSelectedTopics();
         const followers = await getFollowers(currentUser.id);
         const following = await getFollowing(currentUser.id);
-        setUserPosts(posts);
-        setSelectedTopics(topics);
-        setFollowerCount(followers.length);
-        setFollowingCount(following.length);
+        
+        if (isMountedRef.current) {
+          setUserPosts(posts);
+          setSelectedTopics(topics);
+          setFollowerCount(followers.length);
+          setFollowingCount(following.length);
+        }
         
         let currentHandle = currentUser.handle || '';
         if (!currentHandle) {
@@ -714,14 +781,17 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           bio: currentUser.bio || '',
           avatar: currentUser.avatar || '',
           coverPhoto: currentUser.coverPhoto || '',
-          location: currentUser.country || currentUser.location || locationDetected || '',
+          location: currentUser.country || currentUser.location || locationDetected?.full || '',
           isPublic: true,
           notificationsEnabled: true,
           showActivityStatus: true,
           allowMessages: true,
         };
-        setFormData(initialData);
-        setOriginalData(initialData);
+        
+        if (isMountedRef.current) {
+          setFormData(initialData);
+          setOriginalData(initialData);
+        }
       }
     } catch (error) { 
       console.error('Error loading profile:', error); 
@@ -733,18 +803,29 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   // ─── REFRESH ────────────────────────────────────────────────────────
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refreshFeed();
-    await loadUserData();
-    await loadActivityLog();
-    setRefreshing(false);
-  }, [refreshFeed]);
+    try {
+      await refreshFeed();
+      await refreshTopicsData();
+      await loadUserData();
+      await loadActivityLog();
+      await refreshUserData();
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshFeed, refreshTopicsData]);
 
   // ═══════════════════════════════════════════════════════════════════
-  // ─── UPLOAD AVATAR TO SUPABASE STORAGE ────────────────────────────
+  // ─── UPLOAD IMAGE TO SUPABASE STORAGE ─────────────────────────────
   // ═══════════════════════════════════════════════════════════════════
-  const uploadAvatarToStorage = useCallback(async (localUri: string, userId: string): Promise<string | null> => {
+  const uploadImageToStorage = useCallback(async (localUri: string, userId: string, type: 'avatar' | 'cover'): Promise<string | null> => {
     try {
-      setAvatarUploading(true);
+      if (type === 'avatar') {
+        setAvatarUploading(true);
+      } else {
+        setCoverUploading(true);
+      }
       
       // Read file as base64 using legacy API
       const fileData = await FileSystem.readAsStringAsync(localUri, {
@@ -755,11 +836,14 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       const ext = localUri.split('.').pop()?.toLowerCase() || 'jpg';
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const fileName = generateUniqueFileName(userId, safeExt);
-      const filePath = `avatars/${fileName}`;
+      
+      // Use different paths for avatar and cover
+      const bucket = type === 'avatar' ? COMMUNITY_AVATARS_BUCKET : COMMUNITY_COVERS_BUCKET;
+      const filePath = type === 'avatar' ? `avatars/${fileName}` : `covers/${fileName}`;
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
-        .from(COMMUNITY_AVATARS_BUCKET)
+        .from(bucket)
         .upload(filePath, decode(fileData), {
           contentType: `image/${safeExt}`,
           cacheControl: '3600',
@@ -767,39 +851,44 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         });
 
       if (uploadError) {
-        console.error('[uploadAvatarToStorage] Upload error:', uploadError);
-        setAvatarUploading(false);
+        console.error(`[uploadImageToStorage] Upload error for ${type}:`, uploadError);
+        if (type === 'avatar') setAvatarUploading(false);
+        else setCoverUploading(false);
         return null;
       }
 
       // Get public URL
       const { data: urlData } = supabase.storage
-        .from(COMMUNITY_AVATARS_BUCKET)
+        .from(bucket)
         .getPublicUrl(filePath);
 
       const publicUrl = urlData.publicUrl;
-      console.log('[uploadAvatarToStorage] Uploaded to:', publicUrl);
+      console.log(`[uploadImageToStorage] Uploaded ${type} to:`, publicUrl);
 
-      // Update the profiles table with the avatar URL
+      // Update the profiles table
+      const updateData = type === 'avatar' 
+        ? { avatar_url: publicUrl, community_avatar: publicUrl }
+        : { cover_photo_url: publicUrl, community_cover: publicUrl };
+      
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ 
-          avatar_url: publicUrl,
-          community_avatar: publicUrl,
+          ...updateData,
           updated_at: new Date().toISOString(),
         })
         .eq('id', userId);
 
       if (updateError) {
-        console.error('[uploadAvatarToStorage] Profile update error:', updateError);
-        // Still return the URL even if profile update fails
+        console.error(`[uploadImageToStorage] Profile update error for ${type}:`, updateError);
       }
 
-      setAvatarUploading(false);
+      if (type === 'avatar') setAvatarUploading(false);
+      else setCoverUploading(false);
       return publicUrl;
     } catch (error) {
-      console.error('[uploadAvatarToStorage] Error:', error);
-      setAvatarUploading(false);
+      console.error(`[uploadImageToStorage] Error uploading ${type}:`, error);
+      if (type === 'avatar') setAvatarUploading(false);
+      else setCoverUploading(false);
       return null;
     }
   }, []);
@@ -809,10 +898,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   // ═══════════════════════════════════════════════════════════════════
   const COMMUNITY_IMAGES_DIR = FileSystem.documentDirectory + 'community_images/';
 
-  // ─── FIXED: persistCommunityImage using legacy API ──────────────────
   const persistCommunityImage = async (sourceUri: string): Promise<string | null> => {
     try {
-      // Ensure directory exists
       const dirInfo = await FileSystem.getInfoAsync(COMMUNITY_IMAGES_DIR);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(COMMUNITY_IMAGES_DIR, { intermediates: true });
@@ -821,7 +908,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const processedUri = `${COMMUNITY_IMAGES_DIR}${Date.now()}.${safeExt}`;
 
-      // Handle different URI types with legacy API
       if (sourceUri.startsWith('content://')) {
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -836,7 +922,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
       }
 
-      // Verify file exists
       const fileInfo = await FileSystem.getInfoAsync(processedUri);
       if (!fileInfo.exists) {
         console.error('[persistCommunityImage] File not found:', processedUri);
@@ -872,6 +957,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         sweetAlert.toast('No Image Selected', 'You did not select an image');
         return;
       }
+      
       setIsSaving(true);
       const rawUri = result.assets[0].uri;
       let processedUri = rawUri;
@@ -883,37 +969,50 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         return;
       }
       
-      if (type === 'avatar') {
-        // ─── UPLOAD TO SUPABASE STORAGE ──────────────────────────────
-        const userId = currentUser?.id;
-        if (userId) {
-          const uploadedUrl = await uploadAvatarToStorage(permanentUri, userId);
-          if (uploadedUrl) {
-            // Update form data with the public URL
-            setFormData(prev => ({ ...prev, avatar: uploadedUrl }));
-            // Update community profile
-            await updateCommunityProfile({ avatar: uploadedUrl });
-            await updateUserContextProfile({ avatar: uploadedUrl });
-            sweetAlert.success('Photo Updated', 'Profile picture saved to cloud');
-          } else {
-            // Fallback: use local URI
-            setFormData(prev => ({ ...prev, avatar: permanentUri }));
-            await updateCommunityProfile({ avatar: permanentUri });
-            await updateUserContextProfile({ avatar: permanentUri });
-            sweetAlert.success('Photo Updated', 'Profile picture saved locally');
+      const userId = currentUser?.id;
+      if (!userId) {
+        sweetAlert.error('Error', 'User not authenticated');
+        setIsSaving(false);
+        return;
+      }
+      
+      // Upload to Supabase Storage
+      const uploadedUrl = await uploadImageToStorage(permanentUri, userId, type);
+      
+      if (uploadedUrl) {
+        if (type === 'avatar') {
+          setFormData(prev => ({ ...prev, avatar: uploadedUrl }));
+          await updateCommunityProfile({ avatar: uploadedUrl });
+          await updateUserContextProfile({ avatar: uploadedUrl });
+          // Update user context avatar
+          if (currentUser) {
+            // The avatar will be updated via the context
           }
+          sweetAlert.success('Photo Updated', 'Profile picture saved to cloud');
         } else {
-          setFormData(prev => ({ ...prev, avatar: permanentUri }));
+          setFormData(prev => ({ ...prev, coverPhoto: uploadedUrl }));
+          await updateCommunityProfile({ coverPhoto: uploadedUrl });
+          // Update user context cover
+          await updateUserContextProfile({ coverPhoto: uploadedUrl });
+          sweetAlert.success('Cover Updated', 'Cover photo saved to cloud');
         }
       } else {
-        setFormData(prev => ({ ...prev, coverPhoto: permanentUri }));
-        if (currentUser) {
+        // Fallback: use local URI
+        if (type === 'avatar') {
+          setFormData(prev => ({ ...prev, avatar: permanentUri }));
+          await updateCommunityProfile({ avatar: permanentUri });
+          await updateUserContextProfile({ avatar: permanentUri });
+        } else {
+          setFormData(prev => ({ ...prev, coverPhoto: permanentUri }));
           await updateCommunityProfile({ coverPhoto: permanentUri });
+          await updateUserContextProfile({ coverPhoto: permanentUri });
         }
+        sweetAlert.success(`${type === 'avatar' ? 'Photo' : 'Cover'} Updated`, 'Saved locally');
       }
       
       triggerHaptic('success');
-      await loadUserData();
+      // Refresh only the user data, not the whole page
+      await refreshUserData();
     } catch (error) {
       console.error(`[handleImagePick] Error:`, error);
       sweetAlert.error('Error', 'Failed to process image');
@@ -951,32 +1050,41 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         return;
       }
       
-      if (type === 'avatar') {
-        const userId = currentUser?.id;
-        if (userId) {
-          const uploadedUrl = await uploadAvatarToStorage(permanentUri, userId);
-          if (uploadedUrl) {
-            setFormData(prev => ({ ...prev, avatar: uploadedUrl }));
-            await updateCommunityProfile({ avatar: uploadedUrl });
-            await updateUserContextProfile({ avatar: uploadedUrl });
-            sweetAlert.success('Photo Updated', 'Profile picture saved to cloud');
-          } else {
-            setFormData(prev => ({ ...prev, avatar: permanentUri }));
-            await updateCommunityProfile({ avatar: permanentUri });
-            await updateUserContextProfile({ avatar: permanentUri });
-          }
+      const userId = currentUser?.id;
+      if (!userId) {
+        sweetAlert.error('Error', 'User not authenticated');
+        setIsSaving(false);
+        return;
+      }
+      
+      const uploadedUrl = await uploadImageToStorage(permanentUri, userId, type);
+      
+      if (uploadedUrl) {
+        if (type === 'avatar') {
+          setFormData(prev => ({ ...prev, avatar: uploadedUrl }));
+          await updateCommunityProfile({ avatar: uploadedUrl });
+          await updateUserContextProfile({ avatar: uploadedUrl });
+          sweetAlert.success('Photo Updated', 'Profile picture saved to cloud');
         } else {
-          setFormData(prev => ({ ...prev, avatar: permanentUri }));
+          setFormData(prev => ({ ...prev, coverPhoto: uploadedUrl }));
+          await updateCommunityProfile({ coverPhoto: uploadedUrl });
+          await updateUserContextProfile({ coverPhoto: uploadedUrl });
+          sweetAlert.success('Cover Updated', 'Cover photo saved to cloud');
         }
       } else {
-        setFormData(prev => ({ ...prev, coverPhoto: permanentUri }));
-        if (currentUser) {
+        if (type === 'avatar') {
+          setFormData(prev => ({ ...prev, avatar: permanentUri }));
+          await updateCommunityProfile({ avatar: permanentUri });
+          await updateUserContextProfile({ avatar: permanentUri });
+        } else {
+          setFormData(prev => ({ ...prev, coverPhoto: permanentUri }));
           await updateCommunityProfile({ coverPhoto: permanentUri });
+          await updateUserContextProfile({ coverPhoto: permanentUri });
         }
       }
       
       triggerHaptic('success');
-      await loadUserData();
+      await refreshUserData();
     } catch (error) {
       console.error(`[handleTakePhoto] Error:`, error);
       sweetAlert.error('Error', 'Failed to take photo');
@@ -994,21 +1102,21 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       `Remove ${type === 'avatar' ? 'Photo' : 'Cover Photo'}`,
       `Remove your ${type === 'avatar' ? 'profile picture' : 'cover photo'}?`,
       async () => {
+        const userId = currentUser?.id;
+        if (!userId) return;
+        
         if (type === 'avatar') {
           setFormData(prev => ({ ...prev, avatar: '' }));
-          if (currentUser) { 
-            await updateCommunityProfile({ avatar: '' });
-            await updateUserContextProfile({ avatar: '' });
-          }
+          await updateCommunityProfile({ avatar: '' });
+          await updateUserContextProfile({ avatar: '' });
           sweetAlert.success('Photo Removed', 'Profile picture removed');
         } else {
           setFormData(prev => ({ ...prev, coverPhoto: '' }));
-          if (currentUser) { 
-            await updateCommunityProfile({ coverPhoto: '' });
-          }
+          await updateCommunityProfile({ coverPhoto: '' });
+          await updateUserContextProfile({ coverPhoto: '' });
           sweetAlert.success('Cover Photo Removed', 'Cover photo removed');
         }
-        await loadUserData();
+        await refreshUserData();
       },
       () => {},
       'Remove',
@@ -1200,7 +1308,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       setIsEditing(false); 
       setOriginalData({ ...formData });
       sweetAlert.success('Profile Updated', 'Your community profile has been saved');
-      await loadUserData();
+      await refreshUserData();
     } catch (error: any) { 
       triggerHaptic('error'); 
       sweetAlert.error('Save Failed', error.message || 'Please try again'); 
@@ -1235,7 +1343,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     const coverPhoto = formData.coverPhoto || currentUser.coverPhoto;
     const avatarSource = formData.avatar || currentUser.avatar;
     
-    // Check if avatar is an emoji or a URL
     const isEmoji = isEmojiAvatar(avatarSource);
     const isUrl = avatarSource && (avatarSource.startsWith('http') || avatarSource.startsWith('file://'));
     
@@ -1248,6 +1355,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               source={{ uri: coverPhoto }} 
               style={styles.coverPhoto} 
               resizeMode="cover"
+              onError={() => {
+                // If image fails to load, show fallback
+                console.warn('Cover photo failed to load');
+              }}
             />
           ) : (
             <LinearGradient 
@@ -1297,6 +1408,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
                   source={{ uri: avatarSource }} 
                   style={styles.avatarImage}
                   resizeMode="cover"
+                  onError={() => {
+                    // If image fails to load, show placeholder
+                    console.warn('Avatar image failed to load');
+                  }}
                 />
               ) : (
                 <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: '#6366f125' }]}>
@@ -1387,9 +1502,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               setIsEditing(true);
             }
           }}
-          disabled={isSaving || avatarUploading}
+          disabled={isSaving || avatarUploading || coverUploading}
         >
-          {isSaving || avatarUploading ? (
+          {isSaving || avatarUploading || coverUploading ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Ionicons 
@@ -1692,8 +1807,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             <Text style={styles.inputLabel}>Location</Text>
             <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
               <Ionicons name="location-outline" size={18} color="#6366f1" style={styles.inputIcon} />
-              <TextInput style={[styles.input, styles.flexInput]} value={formData.location} onChangeText={(text) => setFormData(prev => ({ ...prev, location: text }))} placeholder={locationDetected || "Detecting location..."} placeholderTextColor="#666" editable={isEditing} selectionColor={themeColors.primary} />
+              <TextInput style={[styles.input, styles.flexInput]} value={formData.location} onChangeText={(text) => setFormData(prev => ({ ...prev, location: text }))} placeholder={locationDetected?.full || "Detecting location..."} placeholderTextColor="#666" editable={isEditing} selectionColor={themeColors.primary} />
             </View>
+            {locationDetected && (
+              <Text style={styles.locationDetectedText}>
+                📍 Detected: {locationDetected.full}
+              </Text>
+            )}
           </View>
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Username</Text>
@@ -1756,7 +1876,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       {/* Manage Topics */}
       <TouchableOpacity
         style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
-        onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })}
+        onPress={() => {
+          navigation.navigate('CommunityOnboarding', { editing: true });
+        }}
       >
         <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
         <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
@@ -2161,7 +2283,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
       </Animated.ScrollView>
 
-      <UniversalSpinner visible={isSaving || avatarUploading} text={avatarUploading ? "Uploading photo..." : "Saving changes..."} size="medium" overlay={true} blur={true} section="main" />
+      <UniversalSpinner visible={isSaving || avatarUploading || coverUploading} text={avatarUploading ? "Uploading avatar..." : coverUploading ? "Uploading cover..." : "Saving changes..."} size="medium" overlay={true} blur={true} section="main" />
 
       {/* Image Picker Modals */}
       <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo" isDark={isDark} colors={fullThemeColors}>
@@ -2409,6 +2531,13 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     justifyContent: 'center' 
   },
   editToggleBtnActive: { backgroundColor: '#6366f1' },
+  locationDetectedText: { 
+    fontSize: 12, 
+    color: '#10b981', 
+    marginTop: 4, 
+    marginHorizontal: 20,
+    fontWeight: '500' 
+  },
 
   // Stats Row
   statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, gap: 20 },

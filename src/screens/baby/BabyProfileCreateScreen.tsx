@@ -1,4 +1,6 @@
-// src/screens/baby/BabyProfileCreateScreen.tsx
+// src/screens/baby/BabyProfileCreateScreen.tsx - UPDATED WITH UNIFIED UI
+// Streamlined with centered modals matching BabyFamilyCenterScreen
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -47,42 +49,16 @@ const DELIVERY_TYPES = ['Vaginal', 'C-Section', 'VBAC', 'Other'];
 const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', 'Other'];
 const FEEDING_PLANS = ['Breastfeeding', 'Formula', 'Combination', 'Pumping'];
 
-// ─── UPLOAD IMAGE TO SUPABASE ────────────────────────────────────────────
-const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
-  try {
-    const base64 = await FileSystem.readAsStringAsync(localUri, { 
-      encoding: FileSystem.EncodingType.Base64 
-    });
-    
-    const fileExt = localUri.split('.').pop()?.toLowerCase() || 'jpg';
-    const fileName = `${babyId}_${Date.now()}.${fileExt}`;
-    const filePath = `baby_avatars/${fileName}`;
-    
-    const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-    
-    const { data, error } = await supabase.storage
-      .from('baby_avatars')
-      .upload(filePath, arrayBuffer, {
-        contentType: `image/${fileExt}`,
-        cacheControl: '3600',
-        upsert: false,
-      });
-    
-    if (error) {
-      console.error('[BabyProfile] Upload error:', error);
-      return null;
-    }
-    
-    const { data: urlData } = supabase.storage
-      .from('baby_avatars')
-      .getPublicUrl(filePath);
-    
-    return urlData.publicUrl;
-  } catch (error) {
-    console.error('[BabyProfile] Upload to Supabase error:', error);
-    return null;
-  }
-};
+const SKIN_TONES = [
+  { id: 0, emoji: '👶', color: '#F5D0C5', label: 'Light' },
+  { id: 1, emoji: '👶🏻', color: '#F5D0C5', label: 'Fair' },
+  { id: 2, emoji: '👶🏼', color: '#E8C4A0', label: 'Medium' },
+  { id: 3, emoji: '👶🏽', color: '#D4A373', label: 'Tan' },
+  { id: 4, emoji: '👶🏾', color: '#A67C52', label: 'Brown' },
+  { id: 5, emoji: '👶🏿', color: '#6B4423', label: 'Dark' },
+];
+
+const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '🌟', '💖'];
 
 // ─── TERM EXPLANATIONS ──────────────────────────────────────────────────
 const TERM_EXPLANATIONS: Record<string, { label: string; explanation: string; emoji: string }> = {
@@ -128,16 +104,42 @@ const TERM_EXPLANATIONS: Record<string, { label: string; explanation: string; em
   },
 };
 
-const SKIN_TONES = [
-  { id: 0, emoji: '👶', color: '#F5D0C5', label: 'Light' },
-  { id: 1, emoji: '👶🏻', color: '#F5D0C5', label: 'Fair' },
-  { id: 2, emoji: '👶🏼', color: '#E8C4A0', label: 'Medium' },
-  { id: 3, emoji: '👶🏽', color: '#D4A373', label: 'Tan' },
-  { id: 4, emoji: '👶🏾', color: '#A67C52', label: 'Brown' },
-  { id: 5, emoji: '👶🏿', color: '#6B4423', label: 'Dark' },
-];
-
-const AVATAR_OPTIONS = ['👶', '🍼', '🧸', '🎀', '👼', '🤱', '👨‍🍼', '👩‍🍼', '🌟', '💖'];
+// ─── UPLOAD IMAGE TO SUPABASE ────────────────────────────────────────────
+const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
+  try {
+    const base64 = await FileSystem.readAsStringAsync(localUri, { 
+      encoding: FileSystem.EncodingType.Base64 
+    });
+    
+    const fileExt = localUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const fileName = `${babyId}_${Date.now()}.${fileExt}`;
+    const filePath = `baby_avatars/${fileName}`;
+    
+    const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    
+    const { data, error } = await supabase.storage
+      .from('baby_avatars')
+      .upload(filePath, arrayBuffer, {
+        contentType: `image/${fileExt}`,
+        cacheControl: '3600',
+        upsert: false,
+      });
+    
+    if (error) {
+      console.error('[BabyProfile] Upload error:', error);
+      return null;
+    }
+    
+    const { data: urlData } = supabase.storage
+      .from('baby_avatars')
+      .getPublicUrl(filePath);
+    
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('[BabyProfile] Upload to Supabase error:', error);
+    return null;
+  }
+};
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────
 const ensureDirExists = async () => {
@@ -187,10 +189,77 @@ const copyImageToPermanent = async (
 
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
-  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
+  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:') || value.startsWith('ph://');
 };
 
 type BabyProfileCreateScreenProps = NativeStackScreenProps<RootStackParamList, 'CreateBabyProfile'>;
+
+// ─── PICKER MODAL (Centered) ────────────────────────────────────────────
+const PickerModal = React.memo(({ 
+  visible, 
+  onClose, 
+  onSelect, 
+  options, 
+  selectedValue, 
+  title, 
+  isDark, 
+  colors 
+}: { 
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (value: string) => void;
+  options: string[];
+  selectedValue: string;
+  title: string;
+  isDark?: boolean;
+  colors?: any;
+}) => {
+  if (!visible) return null;
+  
+  return (
+    <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { maxHeight: '60%' }]}>
+          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+          <View style={styles.modalDragHandle}>
+            <View style={styles.dragIndicator} />
+          </View>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+              <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.pickerList}>
+            {options.map((item) => (
+              <TouchableOpacity
+                key={item}
+                style={[
+                  styles.pickerItem,
+                  selectedValue === item && { backgroundColor: 'rgba(99,102,241,0.1)' },
+                ]}
+                onPress={() => { onSelect(item); onClose(); }}
+              >
+                <Text style={[
+                  styles.pickerItemText,
+                  { color: isDark ? '#fff' : '#1e293b' },
+                  selectedValue === item && { color: '#6366f1', fontWeight: '700' }
+                ]}>
+                  {item}
+                </Text>
+                {selectedValue === item && (
+                  <Ionicons name="checkmark-circle" size={20} color="#6366f1" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+});
 
 // ─── TERM EXPLANATION TOOLTIP ──────────────────────────────────────────
 const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
@@ -198,13 +267,10 @@ const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
   const info = TERM_EXPLANATIONS[term];
   if (!info) return null;
 
-  const handleToggle = () => setShowTooltip(prev => !prev);
-  const handleClose = () => setShowTooltip(false);
-
   return (
     <View style={styles.tooltipWrapper}>
       <TouchableOpacity
-        onPress={handleToggle}
+        onPress={() => setShowTooltip(!showTooltip)}
         style={styles.tooltipTrigger}
         activeOpacity={0.7}
       >
@@ -215,7 +281,7 @@ const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
           <TouchableOpacity 
             style={styles.tooltipBackdrop} 
             activeOpacity={1} 
-            onPress={handleClose} 
+            onPress={() => setShowTooltip(false)} 
           />
           <View style={[
             styles.tooltipContainer,
@@ -232,7 +298,7 @@ const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
               {info.explanation}
             </Text>
             <TouchableOpacity
-              onPress={handleClose}
+              onPress={() => setShowTooltip(false)}
               style={styles.tooltipCloseBtn}
             >
               <Text style={[styles.tooltipCloseText, { color: '#6366f1' }]}>Got it</Text>
@@ -244,7 +310,7 @@ const TermTooltip = ({ term, isDark }: { term: string; isDark: boolean }) => {
   );
 };
 
-// ─── COMPONENT ────────────────────────────────────────────────────────────
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────
 export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreateScreenProps) {
   const insets = useSafeAreaInsets();
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
@@ -280,10 +346,13 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
-  const [showPicker, setShowPicker] = useState<{
-    type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
-  }>({ type: null });
   const [creatorRelationship, setCreatorRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Mother');
+  
+  // ─── Picker State ──────────────────────────────────────────────────────
+  const [pickerState, setPickerState] = useState<{
+    visible: boolean;
+    type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
+  }>({ visible: false, type: null });
 
   const imagePickerLock = useRef(false);
   const isCreatingRef = useRef(false);
@@ -457,321 +526,253 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     }
   }, [currentStep, navigation, triggerHaptic]);
 
-const handleCreateProfile = useCallback(async (andContinue = false) => {
-  if (isCreatingRef.current) {
-    toast('A profile is already being created', 'warning');
-    return;
-  }
-  if (!validateStep1() || !validateStep2()) return;
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  console.log('[BabyProfile] Auth check - user:', user?.id);
-
-  if (userError || !user) {
-    toast('Please sign in again to create a baby profile', 'error');
-    navigation.replace('Login');
-    return;
-  }
-
-  const userId = user.id;
-  console.log('[BabyProfile] Creating baby with parent1Id (from session):', userId);
-
-  const trimmedName = name.trim();
-  const birthIso = birthDate.toISOString();
-  
-  // Check for duplicate in existing babies (case insensitive)
-  const duplicate = babies.find(b => 
-    b.name.toLowerCase() === trimmedName.toLowerCase() && 
-    b.birthDate === birthIso
-  );
-  if (duplicate) {
-    toast('A baby with this name and birth date already exists. Using existing profile.', 'info');
-    // Switch to the existing baby
-    await switchBaby(duplicate.id);
-    await completeSetup('baby');
-    const { hasParent2 } = await wasSetupCompleted();
-    if (hasParent2 === false) {
-      navigation.replace('CoParentInviteScreen');
-    } else {
-      navigation.replace('Main');
+  const handleCreateProfile = useCallback(async (andContinue = false) => {
+    if (isCreatingRef.current) {
+      toast('A profile is already being created', 'warning');
+      return;
     }
-    return;
-  }
+    if (!validateStep1() || !validateStep2()) return;
 
-  isCreatingRef.current = true;
-  setIsLoading(true);
-  triggerHaptic('medium');
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    console.log('[BabyProfile] Auth check - user:', user?.id);
 
-  let babyId: string | null = null;
+    if (userError || !user) {
+      toast('Please sign in again to create a baby profile', 'error');
+      navigation.replace('Login');
+      return;
+    }
 
-  try {
-    const hasCustomImage = isImageUri(avatar);
-    const avatarToSave = hasCustomImage ? '👶' : avatar;
+    const userId = user.id;
+    console.log('[BabyProfile] Creating baby with parent1Id (from session):', userId);
 
-    const babyData: any = {
-      name: trimmedName,
-      birthDate: birthIso,
-      gender,
-      skinTone,
-      avatar: avatarToSave,
-      weight: weight.trim() || undefined,
-      height: height.trim() || undefined,
-      bloodType: bloodType.trim().toUpperCase() || undefined,
-      allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
-      medicalNotes: medicalNotes.trim() || undefined,
-      parent1Id: userId,
-      parent2Id: undefined,
-      birthWeight: birthWeight.trim() || undefined,
-      birthHeight: birthHeight.trim() || undefined,
-      birthHeadCircumference: birthHeadCircumference.trim() || undefined,
-      gestationalWeeks: gestationalWeeks.trim() || undefined,
-      apgar1Min: apgar1Min.trim() || undefined,
-      apgar5Min: apgar5Min.trim() || undefined,
-      deliveryType: deliveryType ? deliveryType.toLowerCase().replace(/-/g, '_') : undefined,
-      birthAttendant: birthAttendant ? birthAttendant.toLowerCase().replace(/ /g, '_') : undefined,
-      birthPlace: birthPlace.trim() || undefined,
-      multipleBirth: multipleBirth,
-      birthOrder: birthOrder.trim() || undefined,
-      feedingPlan: feedingPlan ? feedingPlan.toLowerCase() : undefined,
-      birthTime: birthTime.trim() || undefined,
-    };
-
-    console.log('[BabyProfile] Creating baby with data:', babyData);
+    const trimmedName = name.trim();
+    const birthIso = birthDate.toISOString();
     
-    babyId = await createBaby(babyData);
-
-    if (!babyId) {
-      if (isMounted.current) {
-        toast('Failed to create profile. Please try again.', 'error');
+    // Check for duplicate in existing babies (case insensitive)
+    const duplicate = babies.find(b => 
+      b.name.toLowerCase() === trimmedName.toLowerCase() && 
+      b.birthDate === birthIso
+    );
+    if (duplicate) {
+      toast('A baby with this name and birth date already exists. Using existing profile.', 'info');
+      await switchBaby(duplicate.id);
+      await completeSetup('baby');
+      const { hasParent2 } = await wasSetupCompleted();
+      if (hasParent2 === false) {
+        navigation.replace('CoParentInviteScreen');
+      } else {
+        navigation.replace('Main');
       }
-      isCreatingRef.current = false;
-      setIsLoading(false);
       return;
     }
 
-    console.log('[BabyProfile] Baby created with ID:', babyId);
+    isCreatingRef.current = true;
+    setIsLoading(true);
+    triggerHaptic('medium');
 
-    // ─── SAVE AVATAR IMAGE IF CUSTOM ──────────────────────────────────
-    if (hasCustomImage && babyId) {
-      try {
-        // First try to upload to Supabase
-        const uploadedUrl = await uploadImageToSupabase(avatar, babyId);
-        let finalAvatarUrl = avatar;
-        
-        if (uploadedUrl) {
-          finalAvatarUrl = uploadedUrl;
-          console.log('[BabyProfile] Avatar uploaded to Supabase:', uploadedUrl);
-        } else {
-          // Fallback: save locally
-          const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
-          if (permanentUri) {
-            finalAvatarUrl = permanentUri;
-          }
-        }
-        
-        if (finalAvatarUrl) {
-          await updateBaby(babyId, { 
-            avatar: finalAvatarUrl,
-            avatar_url: finalAvatarUrl
-          });
-          
-          // ─── UPDATE LOCAL AVATAR STATE ──────────────────────────────
-          setAvatar(finalAvatarUrl);
-          
-          if (isMounted.current) {
-            toast('Profile photo saved!', 'success');
-          }
-        }
-      } catch (imgError) {
-        console.warn('[BabyProfile] Failed to persist baby image:', imgError);
-        if (isMounted.current) {
-          toast('Profile created but image could not be saved', 'warning');
-        }
-      }
-    }
+    let babyId: string | null = null;
 
-    if (isMounted.current) {
-      toast(`${trimmedName}'s profile created! 🎉`, 'success');
-    }
-
-    if (!isMounted.current) {
-      isCreatingRef.current = false;
-      setIsLoading(false);
-      return;
-    }
-
-    // ─── FORCE LOAD BABIES BEFORE NAVIGATION ──────────────────────────
     try {
-      await loadBabies(true); // Force refresh
-      console.log('[BabyProfile] Babies reloaded');
+      const hasCustomImage = isImageUri(avatar);
+      const avatarToSave = hasCustomImage ? '👶' : avatar;
 
-      // ─── VERIFY BABY EXISTS ──────────────────────────────────────────
-      const refreshedBabies = await getAllBabiesFromDb();
-      console.log('[BabyProfile] Refreshed babies count:', refreshedBabies.length);
+      const babyData: any = {
+        name: trimmedName,
+        birthDate: birthIso,
+        gender,
+        skinTone,
+        avatar: avatarToSave,
+        weight: weight.trim() || undefined,
+        height: height.trim() || undefined,
+        bloodType: bloodType.trim().toUpperCase() || undefined,
+        allergies: allergies.trim() ? allergies.split(',').map((a) => a.trim()).filter(Boolean) : undefined,
+        medicalNotes: medicalNotes.trim() || undefined,
+        parent1Id: userId,
+        parent2Id: undefined,
+        birthWeight: birthWeight.trim() || undefined,
+        birthHeight: birthHeight.trim() || undefined,
+        birthHeadCircumference: birthHeadCircumference.trim() || undefined,
+        gestationalWeeks: gestationalWeeks.trim() || undefined,
+        apgar1Min: apgar1Min.trim() || undefined,
+        apgar5Min: apgar5Min.trim() || undefined,
+        deliveryType: deliveryType ? deliveryType.toLowerCase().replace(/-/g, '_') : undefined,
+        birthAttendant: birthAttendant ? birthAttendant.toLowerCase().replace(/ /g, '_') : undefined,
+        birthPlace: birthPlace.trim() || undefined,
+        multipleBirth: multipleBirth,
+        birthOrder: birthOrder.trim() || undefined,
+        feedingPlan: feedingPlan ? feedingPlan.toLowerCase() : undefined,
+        birthTime: birthTime.trim() || undefined,
+      };
+
+      console.log('[BabyProfile] Creating baby with data:', babyData);
       
-      const found = refreshedBabies.find(b => b.id === babyId);
-      if (!found) {
-        console.error('[BabyProfile] CRITICAL: Baby not found in refreshed list!');
-        toast('Profile created but not found. Please try again.', 'error');
+      babyId = await createBaby(babyData);
+
+      if (!babyId) {
+        if (isMounted.current) {
+          toast('Failed to create profile. Please try again.', 'error');
+        }
         isCreatingRef.current = false;
         setIsLoading(false);
         return;
       }
 
-      // ─── SWITCH TO NEW BABY ──────────────────────────────────────────
-      try {
-        await switchBaby(babyId);
-        console.log('[BabyProfile] Switched to new baby');
-      } catch (switchErr) {
-        console.warn('[BabyProfile] Failed to auto-switch to new baby:', switchErr);
-        // Try direct database set
-        await setAppSetting('current_baby_id', babyId);
+      console.log('[BabyProfile] Baby created with ID:', babyId);
+
+      // ─── SAVE AVATAR IMAGE IF CUSTOM ──────────────────────────────────
+      if (hasCustomImage && babyId) {
+        try {
+          const uploadedUrl = await uploadImageToSupabase(avatar, babyId);
+          let finalAvatarUrl = avatar;
+          
+          if (uploadedUrl) {
+            finalAvatarUrl = uploadedUrl;
+            console.log('[BabyProfile] Avatar uploaded to Supabase:', uploadedUrl);
+          } else {
+            const permanentUri = await copyImageToPermanent(avatar, babyId, 'avatar');
+            if (permanentUri) {
+              finalAvatarUrl = permanentUri;
+            }
+          }
+          
+          if (finalAvatarUrl) {
+            await updateBaby(babyId, { 
+              avatar: finalAvatarUrl,
+              avatar_url: finalAvatarUrl
+            });
+            
+            setAvatar(finalAvatarUrl);
+            
+            if (isMounted.current) {
+              toast('Profile photo saved!', 'success');
+            }
+          }
+        } catch (imgError) {
+          console.warn('[BabyProfile] Failed to persist baby image:', imgError);
+          if (isMounted.current) {
+            toast('Profile created but image could not be saved', 'warning');
+          }
+        }
       }
 
-      // ─── COMPLETE SETUP ──────────────────────────────────────────────
-      await completeSetup('baby');
-
-      // ─── DETERMINE NEXT SCREEN ──────────────────────────────────────
-      const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
-      
-      console.log('[BabyProfile] Setup status:', { hasParent2, isSetupComplete });
-
-      if (isSetupComplete) {
-        console.log('[BabyProfile] Setup complete, navigating to Main');
-        navigation.replace('Main');
-      } else if (hasParent2 === false) {
-        console.log('[BabyProfile] Need to invite co-parent');
-        navigation.replace('CoParentInviteScreen');
-      } else if (hasParent2 === 'skipped') {
-        console.log('[BabyProfile] Co-parent skipped, completing and going to Main');
-        await completeSetup('parent2');
-        navigation.replace('Main');
-      } else {
-        console.log('[BabyProfile] Default navigation to Main');
-        navigation.replace('Main');
-      }
-      
-    } catch (navError) {
-      console.error('[BabyProfile] Post-create navigation error:', navError);
       if (isMounted.current) {
-        toast('Could not finalize setup. Please try again.', 'error');
+        toast(`${trimmedName}'s profile created! 🎉`, 'success');
       }
-      // ─── FALLBACK ────────────────────────────────────────────────────
+
+      if (!isMounted.current) {
+        isCreatingRef.current = false;
+        setIsLoading(false);
+        return;
+      }
+
+      // ─── FORCE LOAD BABIES BEFORE NAVIGATION ──────────────────────────
       try {
-        navigation.replace('Main');
-      } catch (e) {
-        console.error('[BabyProfile] Fallback navigation failed:', e);
+        await loadBabies(true);
+        console.log('[BabyProfile] Babies reloaded');
+
+        const refreshedBabies = await getAllBabiesFromDb();
+        console.log('[BabyProfile] Refreshed babies count:', refreshedBabies.length);
+        
+        const found = refreshedBabies.find(b => b.id === babyId);
+        if (!found) {
+          console.error('[BabyProfile] CRITICAL: Baby not found in refreshed list!');
+          toast('Profile created but not found. Please try again.', 'error');
+          isCreatingRef.current = false;
+          setIsLoading(false);
+          return;
+        }
+
+        try {
+          await switchBaby(babyId);
+          console.log('[BabyProfile] Switched to new baby');
+        } catch (switchErr) {
+          console.warn('[BabyProfile] Failed to auto-switch to new baby:', switchErr);
+          await setAppSetting('current_baby_id', babyId);
+        }
+
+        await completeSetup('baby');
+
+        const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
+        
+        console.log('[BabyProfile] Setup status:', { hasParent2, isSetupComplete });
+
+        if (isSetupComplete) {
+          console.log('[BabyProfile] Setup complete, navigating to Main');
+          navigation.replace('Main');
+        } else if (hasParent2 === false) {
+          console.log('[BabyProfile] Need to invite co-parent');
+          navigation.replace('CoParentInviteScreen');
+        } else if (hasParent2 === 'skipped') {
+          console.log('[BabyProfile] Co-parent skipped, completing and going to Main');
+          await completeSetup('parent2');
+          navigation.replace('Main');
+        } else {
+          console.log('[BabyProfile] Default navigation to Main');
+          navigation.replace('Main');
+        }
+        
+      } catch (navError) {
+        console.error('[BabyProfile] Post-create navigation error:', navError);
+        if (isMounted.current) {
+          toast('Could not finalize setup. Please try again.', 'error');
+        }
+        try {
+          navigation.replace('Main');
+        } catch (e) {
+          console.error('[BabyProfile] Fallback navigation failed:', e);
+        }
+      }
+    } catch (error) {
+      console.error('[BabyProfile] Create baby error:', error);
+      if (isMounted.current) {
+        toast('An unexpected error occurred. Please try again.', 'error');
+      }
+    } finally {
+      isCreatingRef.current = false;
+      if (isMounted.current) {
+        setIsLoading(false);
       }
     }
-  } catch (error) {
-    console.error('[BabyProfile] Create baby error:', error);
-    if (isMounted.current) {
-      toast('An unexpected error occurred. Please try again.', 'error');
-    }
-  } finally {
-    isCreatingRef.current = false;
-    if (isMounted.current) {
-      setIsLoading(false);
-    }
-  }
-}, [
-  name,
-  birthDate,
-  birthTime,
-  gender,
-  skinTone,
-  avatar,
-  weight,
-  height,
-  bloodType,
-  allergies,
-  medicalNotes,
-  birthWeight,
-  birthHeight,
-  birthHeadCircumference,
-  gestationalWeeks,
-  apgar1Min,
-  apgar5Min,
-  deliveryType,
-  birthAttendant,
-  birthPlace,
-  multipleBirth,
-  birthOrder,
-  feedingPlan,
-  babies,
-  createBaby,
-  updateBaby,
-  loadBabies,
-  navigation,
-  validateStep1,
-  validateStep2,
-  toast,
-  triggerHaptic,
-  switchBaby,
-  wasSetupCompleted,
-  completeSetup,
-  userProfile,
-]);
+  }, [
+    name,
+    birthDate,
+    birthTime,
+    gender,
+    skinTone,
+    avatar,
+    weight,
+    height,
+    bloodType,
+    allergies,
+    medicalNotes,
+    birthWeight,
+    birthHeight,
+    birthHeadCircumference,
+    gestationalWeeks,
+    apgar1Min,
+    apgar5Min,
+    deliveryType,
+    birthAttendant,
+    birthPlace,
+    multipleBirth,
+    birthOrder,
+    feedingPlan,
+    babies,
+    createBaby,
+    updateBaby,
+    loadBabies,
+    navigation,
+    validateStep1,
+    validateStep2,
+    toast,
+    triggerHaptic,
+    switchBaby,
+    wasSetupCompleted,
+    completeSetup,
+    userProfile,
+  ]);
 
-
-
-  // ─── RENDER PICKER MODAL ──────────────────────────────────────────────
-  const renderPickerModal = (
-    title: string,
-    options: string[],
-    selectedValue: string,
-    onSelect: (value: string) => void,
-    isVisible: boolean,
-    onClose: () => void
-  ) => (
-    <Modal
-      transparent
-      animationType="slide"
-      visible={isVisible}
-      onRequestClose={onClose}
-    >
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <View style={[styles.modalContent, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, isDark && styles.textDark]}>{title}</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={isDark ? '#fff' : '#333'} />
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={options}
-            keyExtractor={(item) => item}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.pickerItem,
-                  selectedValue === item && { backgroundColor: themeColors.primary + '20' },
-                ]}
-                onPress={() => {
-                  onSelect(item);
-                  onClose();
-                  triggerHaptic('light');
-                }}
-              >
-                <Text style={[
-                  styles.pickerItemText,
-                  isDark && styles.textDark,
-                  selectedValue === item && { color: themeColors.primary, fontWeight: '700' }
-                ]}>
-                  {item}
-                </Text>
-                {selectedValue === item && (
-                  <Ionicons name="checkmark-circle" size={24} color={themeColors.primary} />
-                )}
-              </TouchableOpacity>
-            )}
-            contentContainerStyle={styles.pickerList}
-          />
-        </View>
-      </Pressable>
-    </Modal>
-  );
-
+  // ─── RENDER DATE PICKER ──────────────────────────────────────────────
   const renderDatePicker = () => {
     if (!showDatePicker) return null;
 
@@ -1224,7 +1225,7 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
             'Delivery Type',
             <TouchableOpacity
               style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
-              onPress={() => setShowPicker({ type: 'deliveryType' })}
+              onPress={() => setPickerState({ visible: true, type: 'deliveryType' })}
               activeOpacity={0.7}
             >
               <Ionicons name="medkit-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
@@ -1241,7 +1242,7 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
             'Birth Attendant',
             <TouchableOpacity
               style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
-              onPress={() => setShowPicker({ type: 'birthAttendant' })}
+              onPress={() => setPickerState({ visible: true, type: 'birthAttendant' })}
               activeOpacity={0.7}
             >
               <Ionicons name="people-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
@@ -1323,7 +1324,7 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
             'Feeding Plan',
             <TouchableOpacity
               style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
-              onPress={() => setShowPicker({ type: 'feedingPlan' })}
+              onPress={() => setPickerState({ visible: true, type: 'feedingPlan' })}
               activeOpacity={0.7}
             >
               <Ionicons name="nutrition-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
@@ -1348,7 +1349,7 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
           <Text style={[styles.label, isDark && styles.textDark]}>Blood Type</Text>
           <TouchableOpacity
             style={[styles.inputWrapper, styles.pickerWrapper, isDark && styles.inputWrapperDark]}
-            onPress={() => setShowPicker({ type: 'bloodType' })}
+            onPress={() => setPickerState({ visible: true, type: 'bloodType' })}
             activeOpacity={0.7}
           >
             <Ionicons name="water-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
@@ -1395,6 +1396,60 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
       <Text style={[styles.stepIndicator, isDark && { color: '#94a3b8' }]}>2 of 2 • Health Details</Text>
     </Animated.View>
   );
+
+  // ─── RENDER PICKER ─────────────────────────────────────────────────────
+  const renderPickerModal = () => {
+    const type = pickerState.type;
+    if (!type || !pickerState.visible) return null;
+
+    let options: string[] = [];
+    let title = '';
+    let value = '';
+
+    switch (type) {
+      case 'bloodType':
+        options = BLOOD_TYPES;
+        title = 'Select Blood Type';
+        value = bloodType;
+        break;
+      case 'deliveryType':
+        options = DELIVERY_TYPES;
+        title = 'Select Delivery Type';
+        value = deliveryType;
+        break;
+      case 'birthAttendant':
+        options = BIRTH_ATTENDANTS;
+        title = 'Select Birth Attendant';
+        value = birthAttendant;
+        break;
+      case 'feedingPlan':
+        options = FEEDING_PLANS;
+        title = 'Select Feeding Plan';
+        value = feedingPlan;
+        break;
+    }
+
+    return (
+      <PickerModal
+        visible={true}
+        onClose={() => setPickerState({ visible: false, type: null })}
+        onSelect={(val) => {
+          switch (type) {
+            case 'bloodType': setBloodType(val); break;
+            case 'deliveryType': setDeliveryType(val); break;
+            case 'birthAttendant': setBirthAttendant(val); break;
+            case 'feedingPlan': setFeedingPlan(val); break;
+          }
+          triggerHaptic('light');
+        }}
+        options={options}
+        selectedValue={value}
+        title={title}
+        isDark={isDark}
+        colors={themeColors}
+      />
+    );
+  };
 
   // ─── MAIN RENDER ──────────────────────────────────────────────────────
   return (
@@ -1539,11 +1594,8 @@ const handleCreateProfile = useCallback(async (andContinue = false) => {
         </KeyboardAvoidingView>
       </LinearGradient>
 
-      {/* Picker Modals */}
-      {renderPickerModal('Select Blood Type', BLOOD_TYPES, bloodType, setBloodType, showPicker.type === 'bloodType', () => setShowPicker({ type: null }))}
-      {renderPickerModal('Select Delivery Type', DELIVERY_TYPES, deliveryType, setDeliveryType, showPicker.type === 'deliveryType', () => setShowPicker({ type: null }))}
-      {renderPickerModal('Select Birth Attendant', BIRTH_ATTENDANTS, birthAttendant, setBirthAttendant, showPicker.type === 'birthAttendant', () => setShowPicker({ type: null }))}
-      {renderPickerModal('Select Feeding Plan', FEEDING_PLANS, feedingPlan, setFeedingPlan, showPicker.type === 'feedingPlan', () => setShowPicker({ type: null }))}
+      {/* Picker Modal - Centered */}
+      {renderPickerModal()}
     </View>
   );
 }
@@ -1554,6 +1606,7 @@ const styles = StyleSheet.create({
   gradient: { flex: 1 },
   scrollContent: { paddingHorizontal: 24 },
 
+  // ─── IOS Date Picker ──────────────────────────────────────────────────
   iosPickerOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1576,6 +1629,7 @@ const styles = StyleSheet.create({
   iosPickerButton: { fontSize: 16, fontWeight: '600' },
   iosPickerTitle: { fontSize: 16, fontWeight: '700' },
 
+  // ─── Header ──────────────────────────────────────────────────────────
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1590,6 +1644,7 @@ const styles = StyleSheet.create({
   placeholder: { width: 44 },
   textDark: { color: '#fff' },
 
+  // ─── Progress ────────────────────────────────────────────────────────
   progressContainer: {
     height: 4,
     backgroundColor: 'rgba(102,126,234,0.2)',
@@ -1599,6 +1654,7 @@ const styles = StyleSheet.create({
   },
   progressBar: { height: '100%', borderRadius: 2 },
 
+  // ─── Preview Card ────────────────────────────────────────────────────
   previewCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1614,9 +1670,11 @@ const styles = StyleSheet.create({
   previewDetails: { fontSize: 13, color: '#666', marginBottom: 2 },
   previewParent: { fontSize: 12, fontWeight: '600' },
 
+  // ─── Step Container ─────────────────────────────────────────────────
   stepContainer: { gap: 18 },
   stepIndicator: { fontSize: 13, color: '#94a3b8', textAlign: 'center', marginTop: 8 },
 
+  // ─── Inputs ──────────────────────────────────────────────────────────
   inputGroup: { marginBottom: 2 },
   labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   label: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
@@ -1648,37 +1706,62 @@ const styles = StyleSheet.create({
   charCount: { fontSize: 11, color: '#999', textAlign: 'right', marginTop: 2, marginRight: 4 },
 
   pickerWrapper: { justifyContent: 'space-between' },
-  pickerItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(150,150,150,0.08)',
-  },
-  pickerItemText: { fontSize: 16, fontWeight: '500', color: '#1a1a1a' },
-  pickerList: { paddingHorizontal: 16, paddingTop: 8 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  // ─── Modals ──────────────────────────────────────────────────────────
+  modalOverlay: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
   modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 40,
-    maxHeight: '60%',
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    padding: 20,
+    overflow: 'hidden',
+  },
+  modalDragHandle: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  dragIndicator: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(150,150,150,0.3)',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(150,150,150,0.15)',
+    marginBottom: 16,
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+  modalTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  modalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: 'rgba(150,150,150,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerList: { paddingVertical: 4 },
+  pickerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(150,150,150,0.06)',
+  },
+  pickerItemText: { fontSize: 15, fontWeight: '500' },
 
+  // ─── Age Chip ────────────────────────────────────────────────────────
   ageChip: {
     paddingVertical: 6,
     paddingHorizontal: 14,
@@ -1688,6 +1771,7 @@ const styles = StyleSheet.create({
   },
   ageChipText: { fontSize: 14, fontWeight: '600' },
 
+  // ─── Relationship ────────────────────────────────────────────────────
   relationshipContainer: { flexDirection: 'row', gap: 10 },
   relationshipButton: {
     flex: 1,
@@ -1702,6 +1786,7 @@ const styles = StyleSheet.create({
   relationshipEmoji: { fontSize: 28, marginBottom: 4 },
   relationshipText: { fontSize: 13, color: '#666', fontWeight: '600' },
 
+  // ─── Gender ──────────────────────────────────────────────────────────
   genderContainer: { flexDirection: 'row', gap: 10 },
   genderButton: {
     flex: 1,
@@ -1716,6 +1801,7 @@ const styles = StyleSheet.create({
   genderEmoji: { fontSize: 28, marginBottom: 4 },
   genderText: { fontSize: 13, color: '#666', fontWeight: '600' },
 
+  // ─── Skin Tone ──────────────────────────────────────────────────────
   skinToneContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
   skinToneButton: {
     alignItems: 'center',
@@ -1729,6 +1815,7 @@ const styles = StyleSheet.create({
   skinToneEmoji: { fontSize: 28 },
   checkmark: { position: 'absolute', bottom: -2, right: -2, backgroundColor: 'white', borderRadius: 8 },
 
+  // ─── Avatar ──────────────────────────────────────────────────────────
   avatarSelector: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.85)',
@@ -1762,6 +1849,7 @@ const styles = StyleSheet.create({
   avatarOptionEmoji: { fontSize: 28 },
   avatarOptionLabel: { fontSize: 10, marginTop: 2, fontWeight: '600' },
 
+  // ─── Section Headers ─────────────────────────────────────────────────
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1771,6 +1859,7 @@ const styles = StyleSheet.create({
   },
   sectionHeaderText: { fontSize: 15, fontWeight: '700', color: '#1a1a1a' },
 
+  // ─── Multiple Birth ──────────────────────────────────────────────────
   multipleBirthContainer: { flexDirection: 'row', gap: 8, marginTop: 4 },
   multipleBirthButton: {
     flex: 1,
@@ -1783,6 +1872,7 @@ const styles = StyleSheet.create({
   },
   multipleBirthText: { fontSize: 14, fontWeight: '600', color: '#666' },
 
+  // ─── Bottom Actions ──────────────────────────────────────────────────
   bottomContainer: {
     position: 'absolute',
     bottom: 0,
