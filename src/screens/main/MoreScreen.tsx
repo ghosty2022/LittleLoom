@@ -1,4 +1,4 @@
-// screens/main/MoreScreen.tsx - INSTANT LOADING
+// screens/main/MoreScreen.tsx - FIXED BIOMETRIC TOGGLE
 // No skeleton loader, renders immediately with available data
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1033,8 +1033,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const biometricTypeName = getBiometricTypeName();
   const biometricIcon = getBiometricIcon();
   
-  const hasBiometric = isBiometricHardwareAvailable && isBiometricEnrolled;
-  const biometricEnabled = isBiometricEnabled || false;
+  // ✅ FIXED: Use isBiometricEnabled from security context directly
+  // The context value is the source of truth
+  const bioEnabled = isBiometricEnabled || false;
+  const hasHardware = isBiometricHardwareAvailable || false;
+  const isEnrolled = isBiometricEnrolled || false;
 
   const babyStats = currentBaby ? getBabyStats() : { streak: 0, milestones: 0, photos: 0, entries: 0 };
   const activityStats = {
@@ -1186,24 +1189,34 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [isSyncing, sync, triggerHaptic, sweetAlert]);
 
-  // ─── Handle Biometric Toggle ────────────────────────────────────
+  // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
+      // Try to enable - check if hardware and enrollment are available
       await refreshBiometricStatus();
       
-      const hasHardware = isBiometricHardwareAvailable;
-      const isEnrolled = isBiometricEnrolled;
+      const hasHardwareNow = isBiometricHardwareAvailable;
+      const isEnrolledNow = isBiometricEnrolled;
       
-      if (!hasHardware || !isEnrolled) {
-        sweetAlert.warning(
+      if (!hasHardwareNow || !isEnrolledNow) {
+        sweetAlert.confirm(
           'Biometric Not Available',
-          'Please set up biometric authentication in your device settings first.'
+          'Please set up biometrics in your device settings first, or continue to setup.',
+          () => {
+            navigation.navigate('BiometricSetup');
+          },
+          undefined,
+          'Go to Setup',
+          'Cancel',
+          false
         );
         return;
       }
       
+      // Navigate to BiometricSetup to enable
       navigation.navigate('BiometricSetup');
     } else {
+      // Disable - show confirmation
       setShowBiometricModal(true);
     }
   }, [isBiometricHardwareAvailable, isBiometricEnrolled, navigation, refreshBiometricStatus, sweetAlert]);
@@ -1351,7 +1364,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         <SectionHeader
           icon="shield-checkmark"
           title="Security & Privacy"
-          subtitle={bioEnabled ? `${biometricTypeName} enabled` : 'Protect your data'}
+          subtitle={bioEnabled ? `${biometricTypeName} enabled` : bioAvailable ? `${biometricTypeName} available` : 'Protect your data'}
           color={primary}
           isDark={isDark}
           isExpanded={isExpanded}
@@ -1366,12 +1379,12 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             <MenuItem
               icon={bioEnabled ? (biometricIcon.includes('-outline') ? biometricIcon : `${biometricIcon}`) as any : `${biometricIcon}` as any}
               title={`${biometricTypeName} Unlock`}
-              subtitle={bioEnabled ? 'Enabled' : bioAvailable ? 'Disabled' : 'Not Available'}
+              subtitle={bioEnabled ? 'Enabled' : bioAvailable ? 'Tap to enable' : 'Not Available'}
               isEnabled={bioEnabled}
               onToggle={handleBiometricToggle}
               color={primary}
               isDark={isDark}
-              disabled={!bioAvailable}
+              disabled={!bioAvailable && !bioEnabled}
             />
             <MenuItem
               icon="keypad"
