@@ -1085,18 +1085,36 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
   const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
 
-  // ─── INITIAL LOAD ──────────────────────────────────────────────────────
-  useEffect(() => {
-    if (member && !initialLoadDone.current && !isLoadingRef.current) {
-      initialLoadDone.current = true;
-    }
-    return () => {
-      isMountedRef.current = false;
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
+  const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
+  const isCurrentUser = member?.id === currentUserId;
+  
+  const roleConfig = member ? ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER] : null;
+  const canEdit = useMemo(() => { if (isCurrentUser) return true; return hasPermission('manageFamily') && roleConfig?.canEdit; }, [hasPermission, roleConfig, isCurrentUser]);
+  const canRemove = useMemo(() => hasPermission('manageFamily') && roleConfig?.canRemove && !isCurrentUser, [hasPermission, roleConfig, isCurrentUser]);
+  const canManagePermissions = useMemo(() => hasPermission('manageFamily') && !isCurrentUser, [hasPermission, isCurrentUser]);
+
+  // ─── LOAD MEMBER ACTIVITIES ───────────────────────────────────────────
+  const loadMemberActivities = useCallback(async (memberId: string, memberUserId?: string, memberName?: string) => {
+    if (!currentBaby) return;
+    setIsLoadingActivities(true);
+    try {
+      const allActivities = getRecentActivities(100);
+      const memberActs = allActivities.filter(a => {
+        if (a.loggedBy === memberId) return true;
+        if (memberUserId && a.loggedBy === memberUserId) return true;
+        if (memberName && a.loggedByName === memberName) return true;
+        return false;
+      });
+      if (isMountedRef.current) {
+        setMemberActivities(memberActs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 30));
       }
-    };
-  }, [member?.id]);
+    } catch (error) { 
+      console.error('Error loading member activities:', error); 
+      if (isMountedRef.current) setMemberActivities([]);
+    } finally { 
+      if (isMountedRef.current) setIsLoadingActivities(false); 
+    }
+  }, [currentBaby, getRecentActivities]);
 
   // ─── LOAD MEMBER DATA ─────────────────────────────────────────────────
   const loadMemberData = useCallback(async () => {
@@ -1108,10 +1126,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       
       let found = members.find(m => m.id === guardianId);
       if (!found) {
-        const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-        if (guardianId === currentUserId || guardianId === 'parent1') {
+        const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
+        if (guardianId === currentUserIdLocal || guardianId === 'parent1') {
           found = {
-            id: currentUserId || 'parent1', userId: currentUserId || 'parent1',
+            id: currentUserIdLocal || 'parent1', userId: currentUserIdLocal || 'parent1',
             fullName: userProfile?.fullName || profile?.fullName || 'Primary Parent',
             email: userProfile?.email || profile?.email || '',
             phoneNumber: userProfile?.phoneNumber || profile?.phoneNumber || '',
@@ -1146,18 +1164,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         setIsLoading(false);
       }
     }
-  }, [guardianId, members, loadFamily, userProfile, profile, currentBaby, sweetAlert]);
-
-  // ─── INITIAL LOAD ──────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!initialLoadDone.current) {
-      loadMemberData();
-    }
-  }, []);
+  }, [guardianId, members, loadFamily, userProfile, profile, currentBaby, sweetAlert, loadMemberActivities]);
 
   // ─── REFRESH MEMBER DATA (light refresh) ─────────────────────────────
   const refreshMemberData = useCallback(async () => {
-    if (isLoadingRef.current || !member) return;
+    if (isLoadingRef.current || !member) {
+      console.log('Skipping refresh: isLoadingRef.current =', isLoadingRef.current, 'member =', !!member);
+      return;
+    }
     isLoadingRef.current = true;
     
     try {
@@ -1184,7 +1198,26 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     } finally {
       isLoadingRef.current = false;
     }
-  }, [member, members, refreshFamily, refreshBabyData, currentBaby]);
+  }, [member, members, refreshFamily, refreshBabyData, currentBaby, loadMemberActivities]);
+
+  // ─── INITIAL LOAD ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      loadMemberData();
+    }
+  }, []);
+
+  // ─── CLEANUP ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // ─── FOCUS EFFECT - Auto-refresh on focus ─────────────────────────────
   useFocusEffect(
@@ -1192,6 +1225,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       if (member && !isLoadingRef.current) {
         if (refreshTimerRef.current) {
           clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = null;
         }
         refreshTimerRef.current = setTimeout(() => {
           refreshMemberData();
@@ -1200,6 +1234,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       return () => {
         if (refreshTimerRef.current) {
           clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = null;
         }
       };
     }, [member, refreshMemberData])
@@ -1216,29 +1251,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   }, []);
 
-  // ─── LOAD MEMBER ACTIVITIES ───────────────────────────────────────────
-  const loadMemberActivities = useCallback(async (memberId: string, memberUserId?: string, memberName?: string) => {
-    if (!currentBaby) return;
-    setIsLoadingActivities(true);
-    try {
-      const allActivities = getRecentActivities(100);
-      const memberActs = allActivities.filter(a => {
-        if (a.loggedBy === memberId) return true;
-        if (memberUserId && a.loggedBy === memberUserId) return true;
-        if (memberName && a.loggedByName === memberName) return true;
-        return false;
-      });
-      if (isMountedRef.current) {
-        setMemberActivities(memberActs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 30));
-      }
-    } catch (error) { 
-      console.error('Error loading member activities:', error); 
-      if (isMountedRef.current) setMemberActivities([]);
-    } finally { 
-      if (isMountedRef.current) setIsLoadingActivities(false); 
-    }
-  }, [currentBaby, getRecentActivities]);
-
   // ─── HANDLE SAVE ──────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!member) return;
@@ -1246,9 +1258,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) { sweetAlert.error('Validation Error', 'Please enter a valid email address'); triggerHaptic('error'); return; }
     setIsSaving(true); triggerHaptic('medium');
     const updates: Partial<FamilyMember> = {};
-    const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-    const isCurrentUser = member.id === currentUserId;
-    if (!isCurrentUser && formData.fullName !== originalData.fullName) updates.fullName = formData.fullName.trim();
+    const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
+    const isCurrentUserLocal = member.id === currentUserIdLocal;
+    if (!isCurrentUserLocal && formData.fullName !== originalData.fullName) updates.fullName = formData.fullName.trim();
     if (formData.email !== originalData.email) updates.email = formData.email.trim();
     if (formData.phoneNumber !== originalData.phoneNumber) updates.phoneNumber = formData.phoneNumber.trim();
     if (formData.relationship !== originalData.relationship) updates.relationship = formData.relationship.trim();
@@ -1256,7 +1268,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     if (formData.notificationsEnabled !== originalData.notificationsEnabled) updates.notificationsEnabled = formData.notificationsEnabled;
     if (Object.keys(updates).length === 0) { sweetAlert.toast('No Changes', 'No changes were made'); setIsEditing(false); setIsSaving(false); return; }
     try {
-      if (isCurrentUser) { try { await updateProfile({ phoneNumber: formData.phoneNumber, email: formData.email, avatar: formData.avatar }); } catch (err) {} }
+      if (isCurrentUserLocal) { try { await updateProfile({ phoneNumber: formData.phoneNumber, email: formData.email, avatar: formData.avatar }); } catch (err) {} }
       const success = await updateGuardianProfile(member.id, updates);
       if (success) { 
         triggerHaptic('success'); 
@@ -1279,8 +1291,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   // ─── HANDLE REMOVE ────────────────────────────────────────────────────
   const handleRemove = useCallback(() => {
     if (!member) return;
-    const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-    if (member.id === currentUserId) { 
+    const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
+    if (member.id === currentUserIdLocal) { 
       sweetAlert.alert('Cannot Remove', 'You cannot remove yourself.', 'warning'); 
       return; 
     }
@@ -1363,9 +1375,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
       setFormData(prev => ({ ...prev, avatar: processedUri }));
       
-      const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-      const isCurrentUser = member.id === currentUserId;
-      if (isCurrentUser) {
+      const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
+      const isCurrentUserLocal = member.id === currentUserIdLocal;
+      if (isCurrentUserLocal) {
         try { await updateProfile({ avatar: processedUri }); } catch (e) {}
       }
       
@@ -1419,9 +1431,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
       setFormData(prev => ({ ...prev, avatar: processedUri }));
       
-      const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-      const isCurrentUser = member.id === currentUserId;
-      if (isCurrentUser) {
+      const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
+      const isCurrentUserLocal = member.id === currentUserIdLocal;
+      if (isCurrentUserLocal) {
         try { await updateProfile({ avatar: processedUri }); } catch (e) {}
       }
       
@@ -1487,14 +1499,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const handleRoleChange = async (newRole: UserRole) => {
     if (!member || !hasPermission('manageFamily')) return;
     if (member.role === newRole) { setShowRoleModal(false); return; }
-    const roleConfig = ROLE_CONFIG[newRole];
-    sweetAlert.confirm('Change Role', `Change ${member.fullName} to ${roleConfig.label}?`, async () => {
+    const roleConfigLocal = ROLE_CONFIG[newRole];
+    sweetAlert.confirm('Change Role', `Change ${member.fullName} to ${roleConfigLocal.label}?`, async () => {
       setIsSaving(true);
       try { 
         const success = await updateGuardianProfile(member.id, { role: newRole }); 
         if (success) { 
           setMember(prev => prev ? { ...prev, role: newRole } : null); 
-          sweetAlert.success('Role Updated', `${member.fullName} is now a ${roleConfig.label}`);
+          sweetAlert.success('Role Updated', `${member.fullName} is now a ${roleConfigLocal.label}`);
           await refreshMemberData();
         } else sweetAlert.error('Error', 'Failed to update role'); 
       } catch (error) { sweetAlert.error('Error', 'An error occurred'); }
@@ -1544,12 +1556,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   }, [triggerHaptic]);
 
   const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
-  const roleConfig = member ? ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER] : null;
-  const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-  const isCurrentUser = member?.id === currentUserId;
-  const canEdit = useMemo(() => { if (isCurrentUser) return true; return hasPermission('manageFamily') && roleConfig?.canEdit; }, [hasPermission, roleConfig, isCurrentUser]);
-  const canRemove = useMemo(() => hasPermission('manageFamily') && roleConfig?.canRemove && !isCurrentUser, [hasPermission, roleConfig, isCurrentUser]);
-  const canManagePermissions = useMemo(() => hasPermission('manageFamily') && !isCurrentUser, [hasPermission, isCurrentUser]);
 
   // ─── LOADING STATE ──────────────────────────────────────────────────
   if (isLoading) {

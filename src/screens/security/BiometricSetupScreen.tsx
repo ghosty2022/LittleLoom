@@ -1,4 +1,4 @@
-// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED (No infinite loops)
+// screens/security/BiometricSetupScreen.tsx - COMPLETE FIXED with SweetAlert
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Animated, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -125,7 +125,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
   const successScale = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   
-  // ✅ FIXED: Track initialization to prevent multiple checks
   const isInitialized = useRef(false);
   const isMounted = useRef(true);
 
@@ -137,11 +136,10 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [navigation]);
 
-  // ─── FIXED: Biometric detection - ONLY RUNS ONCE ──────────────
+  // ─── Biometric detection - ONLY RUNS ONCE ──────────────────────
   useEffect(() => {
     isMounted.current = true;
     
-    // ✅ Prevent re-initialization
     if (isInitialized.current) {
       console.log('[BiometricSetup] Already initialized, skipping');
       return;
@@ -184,7 +182,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             console.warn('[BiometricSetup] supportedAuthenticationTypesAsync failed:', e);
           }
 
-          // For Android devices - try direct auth verification
           if (!isEnrolled) {
             console.log('[BiometricSetup] Trying direct auth verification...');
             try {
@@ -213,7 +210,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
         let configs: BiometricTypeConfig[] = [];
         
-        // Use context types if available, otherwise build manually
         if (contextTypes && contextTypes.length > 0) {
           configs = contextTypes;
         } else if (hasHardware) {
@@ -285,17 +281,14 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       }
     };
 
-    // Reset locks and check biometrics ONCE
     resetUnlockLock();
-    
-    // ✅ Use a longer delay to avoid any race conditions
     const timer = setTimeout(checkBiometrics, 500);
 
     return () => {
       isMounted.current = false;
       clearTimeout(timer);
     };
-  }, []); // ✅ Empty dependency array - ONLY RUNS ONCE
+  }, []);
 
   // Animate in
   useEffect(() => {
@@ -363,8 +356,6 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         triggerHaptic('success');
         setSetupComplete(true);
         sweetAlert.success('Enabled!', `${selectedType.name} is now active for ${userName}`);
-        
-        // ✅ Refresh status after successful enable
         await refreshBiometricStatus();
       } else {
         sweetAlert.info('Cancelled', 'Biometric setup was cancelled');
