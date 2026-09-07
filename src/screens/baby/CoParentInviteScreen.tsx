@@ -1,5 +1,6 @@
 // src/screens/baby/CoParentInviteScreen.tsx - COMPLETE FIXED VERSION
-// FIX: Shows ALL codes with status, includes modal with code details
+// FIX: Shows ALL codes with status, includes modal with code details, partial sign-up recovery
+// FIX: Displays email, phone, and name used during partial sign-up
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -18,7 +19,6 @@ import {
   Share,
   Dimensions,
   Modal,
-  FlatList,
   Pressable,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -28,8 +28,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeInUp,
-  FadeIn,
-  FadeInDown,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -98,6 +96,7 @@ const ROLE_META: Record<RoleKey, {
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
   active: { label: 'Active', color: '#22c55e', icon: 'checkmark-circle' },
   used: { label: 'Used', color: '#64748b', icon: 'checkmark-done-circle' },
+  partial: { label: 'Partial', color: '#f59e0b', icon: 'warning' },
   revoked: { label: 'Revoked', color: '#ef4444', icon: 'close-circle' },
   expired: { label: 'Expired', color: '#f59e0b', icon: 'time' },
 };
@@ -139,7 +138,7 @@ const Toast = ({ message, type, visible, onHide }: {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CODE DETAILS MODAL
+   CODE DETAILS MODAL - Enhanced with Partial Sign-Up Info
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function CodeDetailsModal({ 
@@ -148,17 +147,27 @@ function CodeDetailsModal({
   onClose,
   isDark,
   primaryColor,
+  onResendPartial,
 }: { 
   code: any; 
   visible: boolean; 
   onClose: () => void;
   isDark: boolean;
   primaryColor: string;
+  onResendPartial?: (code: string) => void;
 }) {
   if (!code) return null;
 
   const statusConfig = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
   const roleMeta = ROLE_META[code.role as RoleKey];
+  const isPartial = code.status === 'partial';
+
+  // ─── Extract partial signup info ──────────────────────────────────────
+  const partialEmail = code.used_by_email || null;
+  const partialPhone = code.used_by_phone || null;
+  const partialName = code.used_by_name || null;
+  const partialUserId = code.used_by || null;
+  const partialUsedAt = code.used_at || null;
 
   return (
     <Modal
@@ -178,8 +187,8 @@ function CodeDetailsModal({
 
           <View style={styles.modalBody}>
             {/* Code Display */}
-            <View style={[styles.modalCodeDisplay, { borderColor: primaryColor + '30' }]}>
-              <Text style={[styles.modalCodeText, { color: primaryColor }]}>{code.code}</Text>
+            <View style={[styles.modalCodeDisplay, { borderColor: isPartial ? '#f59e0b30' : primaryColor + '30' }]}>
+              <Text style={[styles.modalCodeText, { color: isPartial ? '#f59e0b' : primaryColor }]}>{code.code}</Text>
               <View style={[styles.modalStatusBadge, { backgroundColor: statusConfig.color + '15' }]}>
                 <Ionicons name={statusConfig.icon} size={14} color={statusConfig.color} />
                 <Text style={[styles.modalStatusText, { color: statusConfig.color }]}>
@@ -188,17 +197,92 @@ function CodeDetailsModal({
               </View>
             </View>
 
+            {/* Partial Sign-up Warning with Full User Info */}
+            {isPartial && (
+              <View style={[styles.partialModalWarning, { backgroundColor: '#f59e0b15', borderColor: '#f59e0b30' }]}>
+                <Ionicons name="warning" size={18} color="#f59e0b" />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.partialModalWarningText, { color: '#f59e0b' }]}>
+                    ⚠️ Partial Sign-up Detected
+                  </Text>
+                  
+                  {/* ─── User Info Section ─── */}
+                  <View style={styles.partialUserInfo}>
+                    <Text style={[styles.partialUserInfoLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                      User Information Provided:
+                    </Text>
+                    
+                    {partialName && (
+                      <View style={styles.partialInfoRow}>
+                        <Ionicons name="person-outline" size={14} color="#f59e0b" />
+                        <Text style={[styles.partialInfoText, { color: isDark ? '#e2e8f0' : '#1a1a1a' }]}>
+                          Name: <Text style={{ fontWeight: '700' }}>{partialName}</Text>
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {partialEmail && (
+                      <View style={styles.partialInfoRow}>
+                        <Ionicons name="mail-outline" size={14} color="#f59e0b" />
+                        <Text style={[styles.partialInfoText, { color: isDark ? '#e2e8f0' : '#1a1a1a' }]}>
+                          Email: <Text style={{ fontWeight: '700' }}>{partialEmail}</Text>
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {partialPhone && (
+                      <View style={styles.partialInfoRow}>
+                        <Ionicons name="call-outline" size={14} color="#f59e0b" />
+                        <Text style={[styles.partialInfoText, { color: isDark ? '#e2e8f0' : '#1a1a1a' }]}>
+                          Phone: <Text style={{ fontWeight: '700' }}>{partialPhone}</Text>
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {partialUserId && (
+                      <View style={styles.partialInfoRow}>
+                        <Ionicons name="person-circle-outline" size={14} color="#f59e0b" />
+                        <Text style={[styles.partialInfoText, { color: isDark ? '#e2e8f0' : '#1a1a1a' }]}>
+                          User ID: <Text style={{ fontWeight: '500', fontSize: 11 }}>{partialUserId.substring(0, 12)}...</Text>
+                        </Text>
+                      </View>
+                    )}
+                    
+                    {partialUsedAt && (
+                      <View style={styles.partialInfoRow}>
+                        <Ionicons name="calendar-outline" size={14} color="#f59e0b" />
+                        <Text style={[styles.partialInfoText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          Started: {new Date(partialUsedAt).toLocaleString()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  
+                  <Text style={[styles.partialModalSubtext, { color: isDark ? '#94a3b8' : '#64748b', marginTop: 8 }]}>
+                    This person started sign-up but didn't complete it. 
+                    {partialEmail ? ` Contact them at ${partialEmail} to help them finish.` : ' Resend the invite to help them complete registration.'}
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {/* Details Grid */}
             <View style={styles.modalDetailsGrid}>
               <DetailItem label="Role" value={roleMeta?.label || code.role} icon={roleMeta?.icon || 'person'} isDark={isDark} />
               <DetailItem label="Relationship" value={code.relationship || 'Not specified'} icon="heart" isDark={isDark} />
               <DetailItem label="Created" value={new Date(code.created_at).toLocaleDateString()} icon="calendar" isDark={isDark} />
               <DetailItem label="Expires" value={new Date(code.expiresAt).toLocaleDateString()} icon="time" isDark={isDark} />
-              {code.used && (
+              {code.used_by && !isPartial && (
                 <DetailItem label="Used By" value={code.used_by || 'Unknown'} icon="person" isDark={isDark} />
               )}
-              {code.usedAt && (
-                <DetailItem label="Used At" value={new Date(code.usedAt).toLocaleDateString()} icon="calendar" isDark={isDark} />
+              {code.used_by_email && !isPartial && (
+                <DetailItem label="Used Email" value={code.used_by_email} icon="mail" isDark={isDark} />
+              )}
+              {code.used_by_phone && !isPartial && (
+                <DetailItem label="Used Phone" value={code.used_by_phone} icon="call" isDark={isDark} />
+              )}
+              {code.used_at && (
+                <DetailItem label="Used At" value={new Date(code.used_at).toLocaleString()} icon="calendar" isDark={isDark} />
               )}
             </View>
 
@@ -230,10 +314,37 @@ function CodeDetailsModal({
                 <Ionicons name="copy-outline" size={20} color={primaryColor} />
                 <Text style={[styles.modalActionText, { color: primaryColor }]}>Copy Code</Text>
               </TouchableOpacity>
-              {code.status === 'active' && (
+              {isPartial && onResendPartial && (
+                <TouchableOpacity
+                  style={[styles.modalActionBtn, { backgroundColor: '#f59e0b15' }]}
+                  onPress={() => {
+                    onResendPartial(code.code);
+                    onClose();
+                  }}
+                >
+                  <Ionicons name="refresh-outline" size={20} color="#f59e0b" />
+                  <Text style={[styles.modalActionText, { color: '#f59e0b' }]}>Resend</Text>
+                </TouchableOpacity>
+              )}
+              {(code.status === 'active' || code.status === 'partial') && (
                 <TouchableOpacity
                   style={[styles.modalActionBtn, { backgroundColor: '#ef444415' }]}
-                  onPress={onClose}
+                  onPress={() => {
+                    let message = code.status === 'partial' 
+                      ? `📱 You started signing up for LittleLoom but didn't finish.\n\n🎫 Code: ${code.code}\n🔗 https://littleloom.app/join?code=${code.code}`
+                      : `👋 Join me on LittleLoom! Use code: ${code.code}\n🔗 https://littleloom.app/join?code=${code.code}`;
+                    
+                    // Add partial user info to the message if available
+                    if (isPartial) {
+                      if (partialEmail) message += `\n\n📧 Your email: ${partialEmail}`;
+                      if (partialPhone) message += `\n📱 Your phone: ${partialPhone}`;
+                      if (partialName) message += `\n👤 Your name: ${partialName}`;
+                      message += `\n\nComplete your registration to join the family! 🎉`;
+                    }
+                    
+                    Share.share({ message });
+                    onClose();
+                  }}
                 >
                   <Ionicons name="share-outline" size={20} color="#ef4444" />
                   <Text style={[styles.modalActionText, { color: '#ef4444' }]}>Share</Text>
@@ -269,7 +380,13 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const { themeColors, shouldReduceMotion, triggerHaptic, avatar } = useCustomization();
   const { userProfile, skipSetup, completeSetup, setupComplete } = useAuth();
   const { currentBaby } = useBaby();
-  const { generateInviteCode, getActiveInviteCodes, revokeInviteCode } = useFamily();
+  const { 
+    generateInviteCode, 
+    getActiveInviteCodes, 
+    revokeInviteCode,
+    getPartialSignupInfo,
+    recoverPartialSignup,
+  } = useFamily();
 
   const dynamicPrimary = themeColors.primary || colors.primary;
   const dynamicSecondary = themeColors.secondary || colors.primaryLight;
@@ -340,10 +457,12 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     try {
       const codes = await getActiveInviteCodes();
       if (codes) {
-        // Sort: active first, then by creation date
+        // Sort: partial first (needs attention), then active, then others
         const sorted = codes.sort((a, b) => {
-          if (a.status === 'active' && b.status !== 'active') return -1;
-          if (a.status !== 'active' && b.status === 'active') return 1;
+          const priority: Record<string, number> = { partial: 0, active: 1, used: 2, expired: 3, revoked: 4 };
+          const priorityA = priority[a.status] ?? 5;
+          const priorityB = priority[b.status] ?? 5;
+          if (priorityA !== priorityB) return priorityA - priorityB;
           return b.created_at - a.created_at;
         });
         setActiveCodes(sorted);
@@ -396,6 +515,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     }
   }, [relationship, fullName, email, phone, currentBaby, userProfile, role, triggerHaptic, showToast, triggerSuccessAnim, generateInviteCode]);
   
+  // ─── Handle Share ──────────────────────────────────────────────────────
   const handleShare = useCallback(async (method: 'copy' | 'whatsapp' | 'sms' | 'email' | 'native') => {
     if (!generatedCode) return;
     const roleLabel = ROLE_META[role].label;
@@ -422,6 +542,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     }
   }, [generatedCode, role, currentBaby, triggerHaptic, showToast]);
 
+  // ─── Handle Revoke ────────────────────────────────────────────────────
   const handleRevoke = useCallback(async (code: string) => {
     const success = await revokeInviteCode(code);
     if (success) {
@@ -432,6 +553,47 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       showToast('Could not revoke code', 'error');
     }
   }, [revokeInviteCode, generatedCode, showToast]);
+
+  // ─── Handle Resend Partial ────────────────────────────────────────────
+  const handleResendPartial = useCallback(async (code: string) => {
+    try {
+      // Get partial info
+      const partialInfo = await getPartialSignupInfo(code);
+      if (!partialInfo.exists) {
+        showToast('No partial signup found for this code', 'error');
+        return;
+      }
+
+      // Generate share message with ALL partial info
+      const roleLabel = ROLE_META[role]?.label || 'Family Member';
+      const babyName = currentBaby?.name || 'our baby';
+      
+      let message = `📱 You started signing up for LittleLoom but didn't finish!\n\n`;
+      message += `👶 Baby: ${babyName}\n`;
+      message += `🎫 Code: ${code}\n`;
+      message += `👤 Role: ${roleLabel}\n\n`;
+      message += `🔗 Continue here: https://littleloom.app/join?code=${code}\n\n`;
+      
+      // ─── Include ALL user info ──────────────────────────────────────
+      if (partialInfo.name) {
+        message += `👤 Your name: ${partialInfo.name}\n`;
+      }
+      if (partialInfo.email) {
+        message += `📧 Your email: ${partialInfo.email}\n`;
+      }
+      if (partialInfo.phone) {
+        message += `📱 Your phone: ${partialInfo.phone}\n`;
+      }
+      
+      message += `\nComplete your registration to join the family! 🎉`;
+      
+      await Share.share({ message, title: 'Complete Your Sign-Up' });
+      showToast('Share sent with all user info!');
+    } catch (error) {
+      console.error('Error resending partial:', error);
+      showToast('Could not resend invite', 'error');
+    }
+  }, [currentBaby, role, getPartialSignupInfo, showToast]);
 
   const handleSkip = useCallback(async () => {
     triggerHaptic('light');
@@ -503,6 +665,29 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
 
   const getStatusLabel = (status: string) => {
     return STATUS_CONFIG[status]?.label || status;
+  };
+
+  // ─── Render Status Badge ──────────────────────────────────────────────
+  const renderStatusBadge = (status: string) => {
+    const config = STATUS_CONFIG[status];
+    if (!config) return null;
+    return (
+      <View style={[styles.activeStatusBadge, { backgroundColor: config.color + '15' }]}>
+        <Ionicons name={config.icon} size={12} color={config.color} />
+        <Text style={[styles.activeStatusText, { color: config.color }]}>
+          {config.label}
+        </Text>
+      </View>
+    );
+  };
+
+  // ─── Render Partial User Info in List ─────────────────────────────────
+  const renderPartialUserInfo = (code: any) => {
+    const parts: string[] = [];
+    if (code.used_by_name) parts.push(`👤 ${code.used_by_name}`);
+    if (code.used_by_email) parts.push(`📧 ${code.used_by_email}`);
+    if (code.used_by_phone) parts.push(`📱 ${code.used_by_phone}`);
+    return parts.length > 0 ? parts.join(' • ') : null;
   };
 
   return (
@@ -725,9 +910,11 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
                 <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>
                   All Codes ({activeCodes.length})
                 </Text>
-                <TouchableOpacity onPress={loadActiveCodes} disabled={isLoadingCodes} style={{ padding: 4 }}>
-                  <Ionicons name="refresh" size={18} color={dynamicPrimary} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity onPress={loadActiveCodes} disabled={isLoadingCodes} style={{ padding: 4 }}>
+                    <Ionicons name="refresh" size={18} color={dynamicPrimary} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {isLoadingCodes ? (
@@ -748,12 +935,18 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
                 activeCodes.map((code, index) => {
                   const statusConfig = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
                   const roleMeta = ROLE_META[code.role as RoleKey];
+                  const isPartial = code.status === 'partial';
+                  const partialUserInfo = renderPartialUserInfo(code);
                   
                   return (
                     <Animated.View
                       key={code.code}
                       entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 60)}
-                      style={[styles.activeCodeRow, isDark && styles.activeCodeRowDark]}
+                      style={[
+                        styles.activeCodeRow, 
+                        isDark && styles.activeCodeRowDark,
+                        isPartial && styles.activeCodeRowPartial,
+                      ]}
                     >
                       <TouchableOpacity
                         style={styles.activeCodeTouchable}
@@ -767,17 +960,25 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
                               <Text style={[styles.activeCodeText, isDark && styles.textDark, { letterSpacing: 2 }]}>
                                 {code.code}
                               </Text>
-                              <View style={[styles.activeStatusBadge, { backgroundColor: getStatusColor(code.status) + '15' }]}>
-                                <Ionicons name={statusConfig.icon} size={12} color={getStatusColor(code.status)} />
-                                <Text style={[styles.activeStatusText, { color: getStatusColor(code.status) }]}>
-                                  {statusConfig.label}
-                                </Text>
-                              </View>
+                              {renderStatusBadge(code.status)}
                             </View>
                             <Text style={[styles.activeCodeMeta, isDark && { color: '#94a3b8' }]}>
-                              {roleMeta?.label || code.role} • {code.relationship || 'Family'} 
+                              {roleMeta?.label || code.role} • {code.relationship || 'Family'}
                               {code.status === 'used' && code.used_by && ` • Used by: ${code.used_by}`}
                             </Text>
+                            
+                            {/* ─── Display Partial User Info ─── */}
+                            {isPartial && partialUserInfo && (
+                              <Text style={[styles.activeCodeUserInfo, { color: '#f59e0b' }]}>
+                                {partialUserInfo}
+                              </Text>
+                            )}
+                            
+                            {isPartial && (
+                              <Text style={[styles.activeCodePartial, { color: '#f59e0b' }]}>
+                                ⚠️ Partial sign-up - user didn't complete registration
+                              </Text>
+                            )}
                             {code.status === 'active' && (
                               <Text style={[styles.activeCodeExpiry, { color: '#f59e0b' }]}>
                                 Expires: {new Date(code.expiresAt).toLocaleDateString()}
@@ -788,14 +989,24 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
                         </View>
                       </TouchableOpacity>
                       
-                      {code.status === 'active' && (
-                        <TouchableOpacity 
-                          style={[styles.revokeBtnSmall, { backgroundColor: '#ef444415' }]} 
-                          onPress={() => handleRevoke(code.code)}
-                        >
-                          <Ionicons name="close" size={16} color="#ef4444" />
-                        </TouchableOpacity>
-                      )}
+                      <View style={styles.activeCodeActions}>
+                        {isPartial && (
+                          <TouchableOpacity 
+                            style={[styles.resendBtnSmall, { backgroundColor: '#f59e0b15' }]} 
+                            onPress={() => handleResendPartial(code.code)}
+                          >
+                            <Ionicons name="refresh-outline" size={16} color="#f59e0b" />
+                          </TouchableOpacity>
+                        )}
+                        {code.status === 'active' && (
+                          <TouchableOpacity 
+                            style={[styles.revokeBtnSmall, { backgroundColor: '#ef444415' }]} 
+                            onPress={() => handleRevoke(code.code)}
+                          >
+                            <Ionicons name="close" size={16} color="#ef4444" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </Animated.View>
                   );
                 })
@@ -851,6 +1062,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
         }}
         isDark={isDark}
         primaryColor={dynamicPrimary}
+        onResendPartial={handleResendPartial}
       />
     </View>
   );
@@ -1010,12 +1222,18 @@ const styles = StyleSheet.create({
   resetBtn: { marginTop: 8, padding: 8 },
   resetText: { fontSize: 13, fontWeight: '800' },
 
-  /* Active Codes List - Updated */
+  /* Active Codes List */
   activeCodeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
+    borderRadius: 14,
+  },
+  activeCodeRowPartial: {
+    backgroundColor: 'rgba(245,158,11,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.15)',
   },
   activeCodeTouchable: {
     flex: 1,
@@ -1068,12 +1286,34 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     marginTop: 2,
   },
+  activeCodeUserInfo: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  activeCodePartial: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 1,
+  },
   activeCodeExpiry: {
     fontSize: 11,
     fontWeight: '500',
     marginTop: 1,
   },
+  activeCodeActions: {
+    flexDirection: 'row',
+    gap: 4,
+  },
   revokeBtnSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  resendBtnSmall: {
     width: 32,
     height: 32,
     borderRadius: 10,
@@ -1255,5 +1495,46 @@ const styles = StyleSheet.create({
   modalActionText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  /* ─── Partial Modal Warning ─── */
+  partialModalWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  partialModalWarningText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  partialModalSubtext: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 1,
+  },
+  partialUserInfo: {
+    marginTop: 8,
+    paddingLeft: 4,
+  },
+  partialUserInfoLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  partialInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  partialInfoText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
 });
