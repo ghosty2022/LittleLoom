@@ -1,5 +1,5 @@
-// src/screens/baby/BabyProfileCreateScreen.tsx - UPDATED WITH UNIFIED UI
-// Streamlined with centered modals matching BabyFamilyCenterScreen
+// src/screens/baby/BabyProfileCreateScreen.tsx - COMPLETE FIXED
+// Fixed navigation when creating first baby
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -359,6 +359,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const isMounted = useRef(true);
   const scrollViewRef = useRef<Animated.ScrollView>(null);
   const nameInputRef = useRef<TextInput>(null);
+  const navigationAttemptedRef = useRef(false);
 
   const ageDisplay = useMemo(() => calculateAge(birthDate.toISOString()), [birthDate, calculateAge]);
 
@@ -376,6 +377,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   // ─── LIFECYCLE ──────────────────────────────────────────────────────────
   useEffect(() => {
     isMounted.current = true;
+    navigationAttemptedRef.current = false;
     return () => {
       isMounted.current = false;
       imagePickerLock.current = false;
@@ -526,6 +528,35 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     }
   }, [currentStep, navigation, triggerHaptic]);
 
+  // ─── SAFE NAVIGATION HELPER ───────────────────────────────────────────
+  const safeNavigate = useCallback((screen: string, params?: any) => {
+    if (navigationAttemptedRef.current) {
+      console.log('[BabyProfile] Navigation already attempted, skipping');
+      return;
+    }
+    navigationAttemptedRef.current = true;
+    
+    // Use setTimeout to ensure state updates are complete
+    setTimeout(() => {
+      try {
+        console.log('[BabyProfile] Navigating to:', screen);
+        navigation.replace(screen as any, params);
+      } catch (e) {
+        console.error('[BabyProfile] Navigation error:', e);
+        // Fallback: try reset navigation
+        try {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: screen as any, params }],
+          });
+        } catch (e2) {
+          console.error('[BabyProfile] Fallback navigation failed:', e2);
+        }
+      }
+    }, 300);
+  }, [navigation]);
+
+  // ─── HANDLE CREATE PROFILE ────────────────────────────────────────────
   const handleCreateProfile = useCallback(async (andContinue = false) => {
     if (isCreatingRef.current) {
       toast('A profile is already being created', 'warning');
@@ -538,7 +569,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
     if (userError || !user) {
       toast('Please sign in again to create a baby profile', 'error');
-      navigation.replace('Login');
+      safeNavigate('Login');
       return;
     }
 
@@ -559,9 +590,9 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       await completeSetup('baby');
       const { hasParent2 } = await wasSetupCompleted();
       if (hasParent2 === false) {
-        navigation.replace('CoParentInviteScreen');
+        safeNavigate('CoParentInviteScreen');
       } else {
-        navigation.replace('Main');
+        safeNavigate('Main');
       }
       return;
     }
@@ -667,9 +698,16 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
       // ─── FORCE LOAD BABIES BEFORE NAVIGATION ──────────────────────────
       try {
+        // Clear any cached data
+        await AsyncStorage.removeItem('@littleloom_babies_cache');
+        await AsyncStorage.removeItem('@littleloom_current_baby_id');
+        
+        // Force reload babies from Supabase
+        console.log('[BabyProfile] Force reloading babies...');
         await loadBabies(true);
         console.log('[BabyProfile] Babies reloaded');
 
+        // Verify the baby exists
         const refreshedBabies = await getAllBabiesFromDb();
         console.log('[BabyProfile] Refreshed babies count:', refreshedBabies.length);
         
@@ -682,6 +720,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           return;
         }
 
+        // Switch to the new baby
         try {
           await switchBaby(babyId);
           console.log('[BabyProfile] Switched to new baby');
@@ -690,25 +729,29 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
           await setAppSetting('current_baby_id', babyId);
         }
 
+        // Mark setup as complete
         await completeSetup('baby');
 
+        // Check if we need to invite co-parent
         const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
         
         console.log('[BabyProfile] Setup status:', { hasParent2, isSetupComplete });
 
+        // ─── NAVIGATE ──────────────────────────────────────────────────────
+        // CRITICAL FIX: Use replace to navigate away from CreateBabyProfile
         if (isSetupComplete) {
           console.log('[BabyProfile] Setup complete, navigating to Main');
-          navigation.replace('Main');
+          safeNavigate('Main');
         } else if (hasParent2 === false) {
           console.log('[BabyProfile] Need to invite co-parent');
-          navigation.replace('CoParentInviteScreen');
+          safeNavigate('CoParentInviteScreen');
         } else if (hasParent2 === 'skipped') {
           console.log('[BabyProfile] Co-parent skipped, completing and going to Main');
           await completeSetup('parent2');
-          navigation.replace('Main');
+          safeNavigate('Main');
         } else {
           console.log('[BabyProfile] Default navigation to Main');
-          navigation.replace('Main');
+          safeNavigate('Main');
         }
         
       } catch (navError) {
@@ -716,10 +759,20 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         if (isMounted.current) {
           toast('Could not finalize setup. Please try again.', 'error');
         }
+        // Fallback: try to navigate to Main
         try {
-          navigation.replace('Main');
+          safeNavigate('Main');
         } catch (e) {
           console.error('[BabyProfile] Fallback navigation failed:', e);
+          // Emergency fallback: reset navigation stack
+          try {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Main' }],
+            });
+          } catch (e2) {
+            console.error('[BabyProfile] Emergency navigation failed:', e2);
+          }
         }
       }
     } catch (error) {
@@ -770,6 +823,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     wasSetupCompleted,
     completeSetup,
     userProfile,
+    safeNavigate,
   ]);
 
   // ─── RENDER DATE PICKER ──────────────────────────────────────────────
