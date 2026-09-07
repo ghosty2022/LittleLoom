@@ -218,7 +218,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     return true;
   };
 
-  const handleGenerate = useCallback(async () => {
+const handleGenerate = useCallback(async () => {
     if (!validate()) return;
     if (!currentBaby?.id) {
       showToast('Add a baby profile first to generate invites', 'info');
@@ -232,22 +232,9 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       const result = await generateInviteCode(role, relationship.trim(), fullName.trim() || undefined, email.trim() || undefined, phone.trim() || undefined);
 
       if (result.success && result.code) {
-        // ─── FIX: Ensure the code is exactly 6 characters ─────────────
-        // The generateInviteCode function creates 8-character codes (timestamp + random)
-        // We need to trim it to 6 characters to match the join screen validation
-        let code = result.code;
-        if (code.length > 6) {
-          // Take the last 6 characters or first 6, whichever is more consistent
-          // We'll use the last 6 for better randomness
-          code = code.slice(-6);
-        } else if (code.length < 6) {
-          // Pad with random characters if too short
-          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-          while (code.length < 6) {
-            code += chars[Math.floor(Math.random() * chars.length)];
-          }
-        }
-        
+        // ─── FIX: Use the code as-is (already 6 characters) ─────────────
+        // The generateInviteCode function now returns a proper 6-character code
+        const code = result.code;
         setGeneratedCode(code);
         triggerHaptic('success');
         triggerSuccessAnim();
@@ -263,7 +250,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       setIsGenerating(false);
     }
   }, [relationship, fullName, email, phone, currentBaby, userProfile, role, triggerHaptic, showToast, triggerSuccessAnim, generateInviteCode]);
-
+  
   const handleShare = useCallback(async (method: 'copy' | 'whatsapp' | 'sms' | 'email' | 'native') => {
     if (!generatedCode) return;
     const roleLabel = ROLE_META[role].label;

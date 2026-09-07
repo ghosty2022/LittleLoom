@@ -1230,13 +1230,18 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   // ─── FIXED: Confirm disable biometric ───────────────────────────
   const confirmDisableBiometric = useCallback(async () => {
     setShowBiometricModal(false);
-    const success = await toggleBiometric(false);
-    if (success) {
-      // Force refresh the biometric status after toggle
-      await refreshBiometricStatus();
-      sweetAlert.success('Biometric Disabled', 'Biometric authentication has been turned off.');
-    } else {
-      sweetAlert.error('Error', 'Could not disable biometric authentication.');
+    try {
+      const success = await toggleBiometric(false);
+      if (success) {
+        // Force refresh the biometric status after toggle
+        await refreshBiometricStatus();
+        sweetAlert.success('Biometric Disabled', 'Biometric authentication has been turned off.');
+      } else {
+        sweetAlert.error('Error', 'Could not disable biometric authentication.');
+      }
+    } catch (error) {
+      console.error('Disable biometric error:', error);
+      sweetAlert.error('Error', 'An error occurred while disabling biometric authentication.');
     }
   }, [toggleBiometric, refreshBiometricStatus, sweetAlert]);
 
@@ -1244,7 +1249,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
   }, [navigation]);
 
-  // ─── FIXED: Handle Lock Now - properly checks security methods ──
+  // ─── FIXED: Handle Lock Now - properly locks and navigates ──────
   const handleLockNow = useCallback(async () => {
     // Check if ANY security method is available (PIN, Biometric, or App Lock)
     const hasAnySecurity = securitySettings.isPinEnabled || 
@@ -1257,14 +1262,19 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       return;
     }
     
-    // Lock the app
-    await lockApp();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    sweetAlert.success('🔒 App Locked', 'LittleLoom has been secured.');
-    
-    // Navigate to the lock screen
-    navigation.navigate('SecurityLock');
+    try {
+      // Lock the app
+      await lockApp();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      sweetAlert.success('🔒 App Locked', 'LittleLoom has been secured.');
+      
+      // ✅ FIXED: Navigate to the lock screen after locking
+      navigation.navigate('SecurityLock');
+    } catch (error) {
+      console.error('Lock error:', error);
+      sweetAlert.error('Error', 'Could not lock the app. Please try again.');
+    }
   }, [
     securitySettings.isPinEnabled, 
     securitySettings.isAppLockEnabled,

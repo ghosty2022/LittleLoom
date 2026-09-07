@@ -42,9 +42,21 @@ interface FamilyContextType extends FamilyState {
   revokeInviteCode: (code: string) => Promise<boolean>;
   getCurrentBaby: () => any;
   getBabyId: () => string | null;
+  validateInviteCode: (code: string) => Promise<{ valid: boolean; data: any; message: string }>;
 }
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
+
+// ─── FIX: Generate a proper 6-character invite code ──────────────────────
+const generateInviteCodeString = (): string => {
+  // Use only uppercase letters and numbers, exclude confusing characters
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
 
 const generateId = (): string => {
   const timestamp = Date.now().toString(36);
@@ -558,7 +570,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await loadFamily();
   }, [loadFamily]);
 
-  // ─── Generate Invite Code ─────────────────────────────────────────────
+  // ─── FIXED: Generate Invite Code ───────────────────────────────────────
   const generateInviteCode = useCallback(async (
     role: 'parent2' | 'guardian' | 'viewer',
     relationship?: string,
@@ -571,7 +583,39 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      const code = generateId().substring(0, 8).toUpperCase();
+      // ─── FIX: Generate a proper 6-character code ──────────────────────
+      let code = generateInviteCodeString();
+      
+      // Ensure code is unique
+      let isUnique = false;
+      let attempts = 0;
+      while (!isUnique && attempts < 10) {
+        const { data: existing, error } = await supabase
+          .from('invite_codes')
+          .select('code')
+          .eq('code', code)
+          .maybeSingle();
+        
+        if (!existing) {
+          isUnique = true;
+        } else {
+          code = generateInviteCodeString();
+          attempts++;
+        }
+      }
+
+      if (!isUnique) {
+        // Fallback: use timestamp-based code
+        const timestamp = Date.now().toString(36).toUpperCase();
+        code = timestamp.slice(-6);
+        if (code.length < 6) {
+          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          while (code.length < 6) {
+            code += chars[Math.floor(Math.random() * chars.length)];
+          }
+        }
+      }
+
       const now = Date.now();
       const expiresInDays = 7;
 
@@ -597,11 +641,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (error) {
         console.error('Error generating invite code:', error);
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        const array = new Uint32Array(6);
-        crypto.getRandomValues(array);
-        const fallbackCode = Array.from(array, n => chars[n % chars.length]).join('');
-        return { code: fallbackCode, success: true, message: 'Invite code generated successfully' };
+        // Fallback: generate code without DB insertion
+        const fallbackCode = generateInviteCodeString();
+        return { code: fallbackCode, success: true, message: 'Invite code generated (local only)' };
       }
 
       return { code: data.code, success: true, message: 'Invite code generated successfully' };
@@ -611,7 +653,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [isOwner, authProfile, currentBaby]);
 
-  // ─── Get Active Invite Codes ──────────────────────────────────────────
+  // ─── FIXED: Get Active Invite Codes ──────────────────────────────────
   const getActiveInviteCodes = useCallback(async () => {
     if (!currentBaby?.id) return [];
 
@@ -623,7 +665,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('family_id', currentBaby.id)
         .eq('used', false)
         .eq('revoked', false)
-        .filter('created_at', 'gt', now - 7 * 24 * 60 * 60 * 1000);
+        .gt('created_at', now - 7 * 24 * 60 * 60 * 1000);
 
       if (error) {
         console.error('Error fetching invite codes:', error);
@@ -665,6 +707,48 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [isOwner, currentBaby]);
 
+  // ─── FIXED: Validate Invite Code ──────────────────────────────────────
+  const validateInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; data: any; message: string }> => {
+    if (!code || code.length < 4) {
+      return { valid: false, data: null, message: 'Invalid invite code format' };
+    }
+
+    try {
+      // Trim and uppercase the code
+      const trimmedCode = code.trim().toUpperCase();
+      
+      // Query the invite code
+      const { data, error } = await supabase
+        .from('invite_codes')
+        .select('*')
+        .eq('code', trimmedCode)
+        .eq('used', false)
+        .eq('revoked', false)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error validating invite code:', error);
+        return { valid: false, data: null, message: 'Error validating code' };
+      }
+
+      if (!data) {
+        return { valid: false, data: null, message: 'Invalid or expired invite code' };
+      }
+
+      // Check if expired
+      const now = Date.now();
+      const expiresAt = data.created_at + (data.expires_in_days || 7) * 24 * 60 * 60 * 1000;
+      if (now > expiresAt) {
+        return { valid: false, data: null, message: 'Invite code has expired' };
+      }
+
+      return { valid: true, data, message: 'Invite code is valid' };
+    } catch (error) {
+      console.error('Error validating invite code:', error);
+      return { valid: false, data: null, message: 'Error validating code' };
+    }
+  }, []);
+
   // ─── Get Effective Permissions ────────────────────────────────────────
   const getEffectivePermissions = useCallback((userId?: string): Permission => {
     const targetId = userId || authProfile?.id;
@@ -693,10 +777,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     revokeInviteCode,
     getCurrentBaby,
     getBabyId,
+    validateInviteCode,
   }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, 
       updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, 
       refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode,
-      getCurrentBaby, getBabyId]);
+      getCurrentBaby, getBabyId, validateInviteCode]);
 
   return (
     <FamilyContext.Provider value={value}>

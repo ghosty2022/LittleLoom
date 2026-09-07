@@ -1,5 +1,5 @@
 // src/context/BabyContext.tsx - COMPLETE FIXED VERSION
-// FIX: Properly syncs babies from Supabase and handles RLS policies
+// FIX: Properly syncs babies from Supabase and displays them
 // FIX: Hard delete baby from Supabase
 // FIX: Ensure baby is properly persisted after creation
 
@@ -506,167 +506,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [calculateAge]);
 
-  // ─── Sync babies from Supabase to local DB ──────────────────────────
-  const syncBabiesFromSupabase = useCallback(async (userId: string): Promise<{ synced: boolean; count: number }> => {
-    try {
-      console.log('[BabyContext] Syncing babies from Supabase for user:', userId);
-
-      // Get all babies where user is parent1 or parent2
-      let allBabies: any[] = [];
-
-      // Try parent1_id first with is_active filter
-      const { data: parent1Data, error: parent1Error } = await supabase
-        .from('babies')
-        .select('*')
-        .eq('parent1_id', userId)
-        .eq('is_active', true);
-
-      if (!parent1Error && parent1Data) {
-        allBabies = parent1Data;
-        console.log(`[BabyContext] Found ${allBabies.length} active babies as parent1`);
-      }
-
-      // If no active babies as parent1, try parent2_id
-      if (allBabies.length === 0) {
-        const { data: parent2Data, error: parent2Error } = await supabase
-          .from('babies')
-          .select('*')
-          .eq('parent2_id', userId)
-          .eq('is_active', true);
-
-        if (!parent2Error && parent2Data) {
-          allBabies = parent2Data;
-          console.log(`[BabyContext] Found ${allBabies.length} active babies as parent2`);
-        }
-      }
-
-      // If RLS is blocking, try without is_active filter but filter manually
-      if (allBabies.length === 0) {
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('babies')
-          .select('*')
-          .eq('parent1_id', userId);
-
-        if (!fallbackError && fallbackData) {
-          allBabies = fallbackData.filter((b: any) => b.is_active !== false);
-          console.log(`[BabyContext] Found ${allBabies.length} active babies (fallback query)`);
-        }
-
-        if (allBabies.length === 0) {
-          const { data: fallbackData2, error: fallbackError2 } = await supabase
-            .from('babies')
-            .select('*')
-            .eq('parent2_id', userId);
-
-          if (!fallbackError2 && fallbackData2) {
-            allBabies = fallbackData2.filter((b: any) => b.is_active !== false);
-            console.log(`[BabyContext] Found ${allBabies.length} active babies (fallback query parent2)`);
-          }
-        }
-      }
-
-      if (allBabies.length === 0) {
-        console.log('[BabyContext] No active babies found in Supabase for user');
-        return { synced: false, count: 0 };
-      }
-
-      console.log(`[BabyContext] Found ${allBabies.length} active babies in Supabase, importing...`);
-
-      // Import each baby into the local state
-      let importedCount = 0;
-      const newBabies: BabyProfile[] = [];
-
-      for (const baby of allBabies) {
-        try {
-          // Check if baby already exists in local state
-          const exists = state.babies.some(b => b.id === baby.id);
-          if (!exists) {
-            const newBaby: BabyProfile = {
-              id: baby.id,
-              name: baby.name,
-              birthDate: baby.date_of_birth,
-              age: calculateAge(baby.date_of_birth),
-              gender: baby.gender === 'male' ? 'boy' : baby.gender === 'female' ? 'girl' : 'other',
-              skinTone: baby.skin_tone ?? 0,
-              avatar: baby.avatar || baby.avatar_url || '👶',
-              avatar_url: baby.avatar_url || baby.avatar || '',
-              parent1Id: baby.parent1_id || userId,
-              parent2Id: baby.parent2_id || undefined,
-              bloodType: baby.blood_type || undefined,
-              medicalNotes: baby.medical_notes || undefined,
-              allergies: baby.allergies || undefined,
-              weight: baby.current_weight_kg ? String(baby.current_weight_kg) : undefined,
-              height: baby.current_height_cm ? String(baby.current_height_cm) : undefined,
-              birthTime: baby.birth_time || undefined,
-              birthWeight: baby.birth_weight_kg ? String(baby.birth_weight_kg) : undefined,
-              birthHeight: baby.birth_height_cm ? String(baby.birth_height_cm) : undefined,
-              birthHeadCircumference: baby.birth_head_circumference ? String(baby.birth_head_circumference) : undefined,
-              deliveryType: baby.delivery_type || undefined,
-              gestationalWeeks: baby.gestational_weeks ? String(baby.gestational_weeks) : undefined,
-              apgar1Min: baby.apgar_1min ? String(baby.apgar_1min) : undefined,
-              apgar5Min: baby.apgar_5min ? String(baby.apgar_5min) : undefined,
-              birthPlace: baby.birth_place || undefined,
-              birthAttendant: baby.birth_attendant || undefined,
-              multipleBirth: baby.multiple_birth || false,
-              birthOrder: baby.birth_order ? String(baby.birth_order) : undefined,
-              feedingPlan: baby.feeding_plan || undefined,
-              emergencyContact: baby.emergency_contact || undefined,
-              pediatrician: baby.pediatrician || undefined,
-              notificationsEnabled: baby.notifications_enabled !== false,
-              streak: baby.streak || 0,
-              milestones: baby.milestones_count || 0,
-              photos: baby.photos_count || 0,
-              createdAt: baby.created_at || new Date().toISOString(),
-              lastUpdated: baby.updated_at,
-            };
-            newBabies.push(newBaby);
-            importedCount++;
-            console.log(`[BabyContext] Imported baby: ${baby.name} (${baby.id})`);
-          }
-        } catch (importError) {
-          console.error(`[BabyContext] Error importing baby ${baby.name}:`, importError);
-        }
-      }
-
-      // Add all new babies to state at once
-      if (newBabies.length > 0) {
-        setState(prev => ({
-          ...prev,
-          babies: [...prev.babies, ...newBabies],
-        }));
-      }
-
-      // Set current baby if none set and we have babies
-      if (allBabies.length > 0) {
-        const currentId = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_BABY_ID);
-        if (!currentId) {
-          const firstBaby = allBabies[0];
-          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, firstBaby.id);
-          setState(prev => ({
-            ...prev,
-            currentBabyId: firstBaby.id,
-            currentBaby: prev.babies.find(b => b.id === firstBaby.id) || null,
-          }));
-          broadcastBabyChange(firstBaby.id);
-        }
-      }
-
-      // Cache the babies
-      try {
-        await AsyncStorage.setItem(STORAGE_KEYS.BABIES_CACHE_KEY, JSON.stringify(state.babies));
-        await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC_KEY, Date.now().toString());
-      } catch (cacheError) {
-        console.warn('[BabyContext] Failed to cache babies:', cacheError);
-      }
-
-      console.log(`[BabyContext] Successfully imported ${importedCount} babies`);
-      return { synced: importedCount > 0, count: importedCount };
-    } catch (error) {
-      console.error('[BabyContext] Sync error:', error);
-      return { synced: false, count: 0 };
-    }
-  }, [state.babies, calculateAge, broadcastBabyChange]);
-
   // ─── Load babies from Supabase ────────────────────────────────────────
   const loadBabies = useCallback(async (force = false) => {
     if (loadInProgressRef.current && !force) {
@@ -693,52 +532,218 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('[BabyContext] Loading babies for user ID (UUID):', userId);
 
-      // Try to sync from Supabase first
-      const syncResult = await syncBabiesFromSupabase(userId);
+      let allBabies: any[] = [];
+
+      // ─── Query parent1_id ──────────────────────────────────────────
+      try {
+        const { data, error } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('parent1_id', userId)
+          .eq('is_active', true);
+
+        if (error) {
+          console.error('[BabyContext] Parent1 query error:', error.message);
+          
+          if (error.message?.includes('permission denied') || error.message?.includes('policy')) {
+            const { data: fallbackData, error: fallbackError } = await supabase
+              .from('babies')
+              .select('*')
+              .eq('parent1_id', userId);
+            
+            if (!fallbackError && fallbackData) {
+              allBabies = fallbackData.filter((b: any) => b.is_active !== false);
+              console.log(`[BabyContext] Found ${allBabies.length} babies (fallback query)`);
+            }
+          }
+        } else if (data) {
+          allBabies = data;
+          console.log(`[BabyContext] Found ${allBabies.length} babies (parent1 query)`);
+        }
+      } catch (e) {
+        console.warn('[BabyContext] Parent1 query failed:', e);
+      }
+
+      // ─── If no babies as parent1, try parent2 ──────────────────────
+      if (allBabies.length === 0) {
+        try {
+          const { data, error } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('parent2_id', userId)
+            .eq('is_active', true);
+
+          if (error) {
+            console.error('[BabyContext] Parent2 query error:', error.message);
+            
+            if (error.message?.includes('permission denied') || error.message?.includes('policy')) {
+              const { data: fallbackData, error: fallbackError } = await supabase
+                .from('babies')
+                .select('*')
+                .eq('parent2_id', userId);
+              
+              if (!fallbackError && fallbackData) {
+                allBabies = fallbackData.filter((b: any) => b.is_active !== false);
+                console.log(`[BabyContext] Found ${allBabies.length} babies (parent2 fallback)`);
+              }
+            }
+          } else if (data) {
+            allBabies = data;
+            console.log(`[BabyContext] Found ${allBabies.length} babies (parent2 query)`);
+          }
+        } catch (e) {
+          console.warn('[BabyContext] Parent2 query failed:', e);
+        }
+      }
+
+      console.log(`[BabyContext] Total babies found: ${allBabies.length}`);
+
+      // ─── MAP TO PROFILES ─────────────────────────────────────────────
+      const babies: BabyProfile[] = allBabies.map(mapBabyRowToProfile);
+
+      // ─── CACHE BABIES ─────────────────────────────────────────────────
+      if (babies.length > 0) {
+        try {
+          await AsyncStorage.setItem(STORAGE_KEYS.BABIES_CACHE_KEY, JSON.stringify(babies));
+          await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC_KEY, Date.now().toString());
+        } catch (cacheError) {
+          console.warn('[BabyContext] Failed to cache babies:', cacheError);
+        }
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+      }
+
+      // ─── DETERMINE CURRENT BABY ID ───────────────────────────────────
+      let currentId: string | null = null;
       
-      if (syncResult.synced && syncResult.count > 0) {
-        console.log(`[BabyContext] Synced ${syncResult.count} babies from Supabase`);
-        setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
+      if (babies.length > 0) {
+        // First try to get from app_settings
+        try {
+          const { data: settingsData } = await supabase
+            .from('app_settings')
+            .select('value')
+            .eq('key', 'current_baby_id')
+            .eq('user_id', userId)
+            .maybeSingle();
+          currentId = settingsData?.value || null;
+          console.log('[BabyContext] Current baby ID from app_settings:', currentId);
+        } catch (e) {
+          console.warn('[BabyContext] Failed to get current_baby_id:', e);
+        }
+        
+        // Validate and correct currentId
+        const isValidCurrent = currentId && babies.some(b => b.id === currentId);
+        
+        if (!isValidCurrent) {
+          currentId = babies[0].id;
+          console.log(`[BabyContext] Setting current baby to first: ${currentId} (${babies[0].name})`);
+          
+          try {
+            await supabase
+              .from('app_settings')
+              .upsert({
+                key: 'current_baby_id',
+                value: currentId,
+                user_id: userId,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'key, user_id' });
+          } catch (e) {
+            console.warn('[BabyContext] Failed to save current_baby_id:', e);
+          }
+        }
+      } else {
+        currentId = null;
+        console.log('[BabyContext] No babies found for user');
+        
+        await supabase
+          .from('app_settings')
+          .delete()
+          .eq('key', 'current_baby_id')
+          .eq('user_id', userId);
+        
+        await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_BABY_ID);
+      }
+
+      // Store in AsyncStorage
+      if (currentId) {
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
+      }
+
+      // Find the baby object
+      const babyToSet = currentId ? babies.find(b => b.id === currentId) || null : null;
+
+      // ─── CHECK IF BABY WAS SKIPPED ──────────────────────────────────
+      let hasSkippedBaby = false;
+      try {
+        const { data: skipData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'has_skipped_baby')
+          .eq('user_id', userId)
+          .maybeSingle();
+        hasSkippedBaby = skipData?.value === 'true';
+      } catch (e) {
+        console.warn('[BabyContext] Failed to get has_skipped_baby:', e);
+      }
+
+      if (!isMounted.current) {
         loadInProgressRef.current = false;
         return;
       }
 
-      // If no babies in state after sync, try to load from cache
-      if (state.babies.length === 0) {
-        try {
-          const cached = await AsyncStorage.getItem(STORAGE_KEYS.BABIES_CACHE_KEY);
-          if (cached) {
-            const cachedBabies = JSON.parse(cached);
-            if (cachedBabies && cachedBabies.length > 0) {
-              console.log(`[BabyContext] Loaded ${cachedBabies.length} babies from cache`);
-              setState(prev => ({
-                ...prev,
-                babies: cachedBabies,
-                currentBaby: cachedBabies.find((b: any) => b.id === prev.currentBabyId) || cachedBabies[0] || null,
-              }));
-            }
-          }
-        } catch (cacheError) {
-          console.warn('[BabyContext] Failed to load from cache:', cacheError);
-        }
-      }
-
-      // Update state
+      // ─── UPDATE STATE ─────────────────────────────────────────────────
+      console.log(`[BabyContext] Setting state: ${babies.length} babies, current: ${currentId}`);
+      
       setState(prev => ({
         ...prev,
         isLoading: false,
+        babies,
+        currentBabyId: currentId,
+        currentBaby: babyToSet,
+        hasSkippedBaby,
+        lastSyncTime: Date.now(),
         isInitialized: true,
       }));
+
+      // ─── BROADCAST CHANGE ──────────────────────────────────────────
+      setTimeout(() => {
+        broadcastBabyChange(currentId);
+      }, 100);
 
       console.log('[BabyContext] loadBabies completed successfully');
 
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
-      setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
+      
+      // ─── TRY TO LOAD FROM CACHE ──────────────────────────────────────
+      try {
+        const cached = await AsyncStorage.getItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+        if (cached) {
+          const cachedBabies = JSON.parse(cached);
+          console.log(`[BabyContext] Loaded ${cachedBabies.length} babies from cache`);
+          if (isMounted.current && cachedBabies.length > 0) {
+            const cachedBaby = cachedBabies.find((b: any) => b.id === state.currentBabyId) || cachedBabies[0] || null;
+            setState(prev => ({
+              ...prev,
+              isLoading: false,
+              babies: cachedBabies,
+              currentBaby: cachedBaby,
+              currentBabyId: cachedBaby?.id || null,
+              isInitialized: true,
+            }));
+          }
+        }
+      } catch (cacheError) {
+        console.warn('[BabyContext] Failed to load from cache:', cacheError);
+      }
+      
+      if (isMounted.current) {
+        setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
+      }
     } finally {
       loadInProgressRef.current = false;
     }
-  }, [syncBabiesFromSupabase, getCurrentUserId, state.babies.length, state.currentBabyId]);
+  }, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
 
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
@@ -1045,7 +1050,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const newCurrentId = result.id;
 
-      // ─── FIX: Immediately update state ──────────────────────────────
+      // ─── Immediately update state ──────────────────────────────────
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1056,10 +1061,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
-      // ─── FIX: Save to AsyncStorage immediately ──────────────────────
+      // ─── Save to AsyncStorage immediately ──────────────────────────
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
       
-      // ─── FIX: Update app_settings in Supabase ────────────────────────
+      // ─── Update app_settings in Supabase ────────────────────────────
       try {
         await supabase
           .from('app_settings')
@@ -1074,7 +1079,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to set current_baby_id:', e);
       }
 
-      // ─── FIX: Clear skip baby ────────────────────────────────────────
+      // ─── Clear skip baby ────────────────────────────────────────────
       try {
         await supabase
           .from('app_settings')
@@ -1085,12 +1090,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to clear skip baby:', e);
       }
 
-      // ─── FIX: Broadcast change immediately ──────────────────────────
+      // ─── Broadcast change immediately ──────────────────────────────
       setTimeout(() => {
         broadcastBabyChange(newCurrentId);
       }, 50);
 
-      // ─── FIX: Clear cache ────────────────────────────────────────────
+      // ─── Clear cache ────────────────────────────────────────────────
       await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -1205,7 +1210,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ─── Delete baby ──────────────────────────────────────────────────────
   const deleteBaby = useCallback(async (id: string): Promise<boolean> => {
     try {
-      // ─── FIX: Hard delete from Supabase ──────────────────────────────
       const { error } = await supabase
         .from('babies')
         .delete()
@@ -1219,14 +1223,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('[BabyContext] Baby deleted from Supabase:', id);
 
-      // ─── Clear related data ──────────────────────────────────────────
       const userId = await getCurrentUserId();
       
-      // Remove from local state
       const updatedBabies = state.babies.filter(b => b.id !== id);
       const newCurrentId = updatedBabies.length > 0 ? updatedBabies[0].id : null;
 
-      // ─── Clear app settings ──────────────────────────────────────────
       if (userId) {
         await supabase
           .from('app_settings')
@@ -1241,12 +1242,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .eq('user_id', userId);
       }
 
-      // ─── Clear AsyncStorage cache ────────────────────────────────────
       await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
       await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_BABY_ID);
       await AsyncStorage.removeItem(STORAGE_KEYS.LAST_SYNC_KEY);
 
-      // ─── Update state ────────────────────────────────────────────────
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1256,10 +1255,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
 
-      // ─── Broadcast change ────────────────────────────────────────────
       broadcastBabyChange(newCurrentId);
 
-      // ─── Force a reload to sync state ────────────────────────────────
       setTimeout(() => {
         loadBabies(true);
       }, 500);
