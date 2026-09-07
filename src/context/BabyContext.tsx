@@ -20,9 +20,6 @@ export const STORAGE_KEYS = {
   BABY_SYNC_VERSION: '@littleloom_baby_sync_version',
 } as const;
 
-const ACTIVITY_CONTEXT_KEY = '@littleloom_activities_v3';
-const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
-
 // ─── TYPES ──────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl' | 'other';
 
@@ -145,7 +142,7 @@ export interface MedicationLog {
 export interface ActivityEntry {
   id: string;
   babyId: string;
-  type: ActivityType;
+  type: string;
   timestamp: number;
   title: string;
   details?: string;
@@ -153,93 +150,13 @@ export interface ActivityEntry {
   loggedBy: string;
   loggedByName: string;
   loggedByRole?: string;
-  pottyType?: PottyLog['type'];
-  successful?: boolean;
-  feedType?: FeedingLog['type'];
-  amount?: string;
-  duration?: string;
-  side?: string;
-  food?: string;
-  sleepType?: 'nap' | 'night' | 'wake';
-  quality?: number;
-  location?: string;
-  measurementType?: GrowthMeasurement['type'];
-  value?: string;
-  unit?: string;
-  percentile?: number;
-  medName?: string;
-  dosage?: string;
-  medType?: string;
-  reason?: string;
-  givenBy?: string;
-  milestoneType?: string;
-  firstTime?: boolean;
-  description?: string;
-  symptomType?: string;
-  severity?: number;
-  tempValue?: number;
-  tempUnit?: 'celsius' | 'fahrenheit';
-  method?: string;
-  symptoms?: string[];
-  playType?: string;
-  engagement?: number;
-  tummyTime?: string;
-  readingDuration?: string;
-  musicType?: string;
-  outdoorActivity?: string;
-  sensoryType?: string;
-  speechWord?: string;
-  moodType?: string;
-  attachmentType?: string;
-  socialType?: string;
-  cryingDuration?: string;
-  soothingMethod?: string;
-  nailCareType?: string;
-  hairCareType?: string;
-  skinCareType?: string;
-  sunscreenSpf?: string;
-  repellentType?: string;
-  oralCareType?: string;
-  earCareType?: string;
-  noseCareType?: string;
-  solidFoodType?: string;
-  waterAmount?: string;
-  vitaminName?: string;
-  allergenType?: string;
-  reactionType?: string;
-  breastfeedingDuration?: string;
-  accidentType?: string;
-  injuryType?: string;
-  chokingResponse?: string;
-  carSeatType?: string;
-  babyproofingArea?: string;
-  wakeTime?: string;
-  bedtimeRoutine?: string;
-  napDuration?: string;
-  screenTimeDuration?: string;
-  outdoorTimeDuration?: string;
-  content?: string;
-  photoUri?: string;
-  videoUri?: string;
-  voiceMemoUri?: string;
-  journalEntry?: string;
-  tripDestination?: string;
-  travelMode?: string;
-  daycareNotes?: string;
-  babysitterName?: string;
-  refluxSeverity?: string;
-  colicDuration?: string;
-  gasRelief?: string;
-  constipationRelief?: string;
-  diarrheaFrequency?: string;
-  eczemaSeverity?: string;
-  cradleCapTreatment?: string;
   notes?: string;
   photo?: string;
   tags?: string[];
   notificationId?: string;
   reminderScheduled?: boolean;
   syncedAt?: string;
+  [key: string]: unknown;
 }
 
 export type ActivityType = string;
@@ -314,7 +231,7 @@ interface BabyContextType extends BabyState {
 
   addActivity: (entry: Omit<ActivityEntry, 'id'>) => Promise<boolean>;
   getRecentActivities: (limit?: number) => ActivityEntry[];
-  getActivitiesByType: (type: ActivityType) => ActivityEntry[];
+  getActivitiesByType: (type: string) => ActivityEntry[];
   deleteActivity: (id: string) => Promise<boolean>;
   getBabyStats: () => { streak: number; milestones: number; photos: number; entries: number };
   updateBabyStats: (updates: Partial<BabyProfile>) => Promise<void>;
@@ -345,28 +262,8 @@ const generateId = (): string => {
   return `${timestamp}-${random}`;
 };
 
-const getStartOfDay = (date = new Date()): Date => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
-
-const getDateKey = (date: Date | string): string => {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
 type BabyChangeCallback = (babyId: string | null) => void;
 let babyChangeSubscribers: BabyChangeCallback[] = [];
-
-const getNotificationService = async () => {
-  try {
-    const { notificationService } = await import('@/services/NotificationService');
-    return notificationService;
-  } catch {
-    return null;
-  }
-};
 
 // ─── PROVIDER ────────────────────────────────────────────────────────────
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -392,16 +289,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
 
-  const ageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initRef = useRef(false);
   const isMounted = useRef(true);
   const isCreatingRef = useRef(false);
   const loadInProgressRef = useRef(false);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const authLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appStateListenerRef = useRef<any>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const loadAttemptsRef = useRef(0);
   const maxLoadAttempts = 5;
   const currentUserIdRef = useRef<string | null>(null);
   const authStateListenerRef = useRef<any>(null);
@@ -528,7 +422,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ─── Load babies from Supabase - OPTIMIZED for ALL users ────────────
   const loadBabies = useCallback(async (force = false) => {
-    // ─── Prevent duplicate concurrent loads ────────────────────────────
     if (loadInProgressRef.current && !force) {
       console.log('[BabyContext] Load already in progress, skipping');
       return;
@@ -629,7 +522,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else if (familyMembers && familyMembers.length > 0) {
           console.log(`[BabyContext] Found ${familyMembers.length} family memberships for user`);
 
-          // Get unique baby IDs
           const uniqueBabyIds = [...new Set(
             familyMembers
               .filter((fm: any) => fm.baby_id && fm.baby_id.trim().length > 0)
@@ -639,7 +531,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log(`[BabyContext] Unique baby IDs from family_members:`, uniqueBabyIds);
           
           if (uniqueBabyIds.length > 0) {
-            // Query babies by ID - RLS policy handles security
             const { data: babyData, error: babyError } = await supabase
               .from('babies')
               .select('*')
@@ -659,6 +550,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   const role = member?.role || 'viewer';
                   userRoles[baby.id] = role;
                   
+                  // CRITICAL FIX: Set view: true for ALL family members
                   userPermissions[baby.id] = {
                     view: true,
                     edit: role === 'parent1' || role === 'parent2' || role === 'guardian',
@@ -667,6 +559,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     invite: role === 'parent1' || role === 'parent2',
                     export: role === 'parent1' || role === 'parent2',
                   };
+                  
+                  console.log(`[BabyContext] Set view=true for baby ${baby.id} (role: ${role})`);
                 }
               });
             }
@@ -743,7 +637,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let currentId: string | null = null;
       
       if (babies.length > 0) {
-        // First try to get from app_settings
         try {
           const { data: settingsData } = await supabase
             .from('app_settings')
@@ -757,11 +650,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.warn('[BabyContext] Failed to get current_baby_id:', e);
         }
         
-        // Validate and correct currentId
         const isValidCurrent = currentId && babies.some(b => b.id === currentId);
         
         if (!isValidCurrent) {
-          // Prefer babies where user has higher role (parent1 > parent2 > guardian > viewer)
           const prioritizedBabies = [...babies].sort((a, b) => {
             const priority = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
             return (priority[a.role as keyof typeof priority] || 3) - (priority[b.role as keyof typeof priority] || 3);
@@ -845,7 +736,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('[BabyContext] Error loading babies:', error);
       
-      // ─── TRY TO LOAD FROM CACHE ──────────────────────────────────────
       try {
         const cached = await AsyncStorage.getItem(STORAGE_KEYS.BABIES_CACHE_KEY);
         if (cached) {
@@ -976,9 +866,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
-      if (authLoadTimerRef.current) {
-        clearTimeout(authLoadTimerRef.current);
-      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -1062,15 +949,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     updateAges();
-    if (ageIntervalRef.current) {
-      clearInterval(ageIntervalRef.current);
-    }
-    ageIntervalRef.current = setInterval(updateAges, 60 * 60 * 1000);
+    const ageIntervalRef = setInterval(updateAges, 60 * 60 * 1000);
 
     return () => {
-      if (ageIntervalRef.current) {
-        clearInterval(ageIntervalRef.current);
-        ageIntervalRef.current = null;
+      if (ageIntervalRef) {
+        clearInterval(ageIntervalRef);
       }
     };
   }, [state.babies.length, calculateAge]);
@@ -1114,12 +997,20 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return perms?.manage || perms?.delete || false;
   }, [state.currentBabyId, state.userPermissions]);
 
+  // ─── FIXED: canViewBaby - permissive check ──────────────────────────
   const canViewBaby = useCallback((babyId?: string): boolean => {
     const id = babyId || state.currentBabyId;
     if (!id) return false;
+    
+    // If the baby exists in state.babies, the user can view it
+    // This is the most permissive check - if we loaded it, they can see it
+    const babyExists = state.babies.some(b => b.id === id);
+    if (babyExists) return true;
+    
+    // Fallback: check permissions
     const perms = state.userPermissions[id];
     return perms?.view || false;
-  }, [state.currentBabyId, state.userPermissions]);
+  }, [state.currentBabyId, state.userPermissions, state.babies]);
 
   const canEditBaby = useCallback((babyId?: string): boolean => {
     const id = babyId || state.currentBabyId;
@@ -1240,8 +1131,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updated_at: now.toISOString(),
       };
 
-      console.log('[BabyContext] Inserting baby with data:', JSON.stringify(babyData, null, 2));
-
       const { data: result, error } = await supabase
         .from('babies')
         .insert(babyData)
@@ -1303,7 +1192,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             user_id: userId,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'key, user_id' });
-        console.log('[BabyContext] Set current baby to newly created:', newCurrentId);
       } catch (e) {
         console.warn('[BabyContext] Failed to set current_baby_id:', e);
       }
@@ -1359,52 +1247,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.medicalNotes !== undefined) remoteUpdates.medical_notes = updates.medicalNotes;
       if (updates.allergies !== undefined) remoteUpdates.allergies = updates.allergies;
       if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
-      
-      if (updates.weight !== undefined) {
-        remoteUpdates.current_weight_kg = updates.weight ? parseFloat(updates.weight) : null;
-      }
-      if (updates.height !== undefined) {
-        remoteUpdates.current_height_cm = updates.height ? parseFloat(updates.height) : null;
-      }
-      
-      if (updates.birthTime !== undefined) remoteUpdates.birth_time = updates.birthTime;
-      if (updates.birthWeight !== undefined) {
-        remoteUpdates.birth_weight_kg = updates.birthWeight ? parseFloat(updates.birthWeight) : null;
-      }
-      if (updates.birthHeight !== undefined) {
-        remoteUpdates.birth_height_cm = updates.birthHeight ? parseFloat(updates.birthHeight) : null;
-      }
-      if (updates.birthHeadCircumference !== undefined) {
-        remoteUpdates.birth_head_circumference = updates.birthHeadCircumference ? parseFloat(updates.birthHeadCircumference) : null;
-      }
-      if (updates.deliveryType !== undefined) {
-        remoteUpdates.delivery_type = updates.deliveryType ? updates.deliveryType.toLowerCase().replace(/ /g, '_') : null;
-      }
-      if (updates.gestationalWeeks !== undefined) {
-        remoteUpdates.gestational_weeks = updates.gestationalWeeks ? parseInt(updates.gestationalWeeks) : null;
-      }
-      if (updates.apgar1Min !== undefined) {
-        remoteUpdates.apgar_1min = updates.apgar1Min ? parseInt(updates.apgar1Min) : null;
-      }
-      if (updates.apgar5Min !== undefined) {
-        remoteUpdates.apgar_5min = updates.apgar5Min ? parseInt(updates.apgar5Min) : null;
-      }
-      if (updates.birthPlace !== undefined) remoteUpdates.birth_place = updates.birthPlace;
-      if (updates.birthAttendant !== undefined) {
-        remoteUpdates.birth_attendant = updates.birthAttendant ? updates.birthAttendant.toLowerCase().replace(/ /g, '_') : null;
-      }
-      if (updates.multipleBirth !== undefined) remoteUpdates.multiple_birth = updates.multipleBirth;
-      if (updates.birthOrder !== undefined) {
-        remoteUpdates.birth_order = updates.birthOrder ? parseInt(updates.birthOrder) : null;
-      }
-      if (updates.feedingPlan !== undefined) {
-        remoteUpdates.feeding_plan = updates.feedingPlan ? updates.feedingPlan.toLowerCase() : null;
-      }
-      
-      if (updates.emergencyContact !== undefined) remoteUpdates.emergency_contact = updates.emergencyContact;
-      if (updates.pediatrician !== undefined) remoteUpdates.pediatrician = updates.pediatrician;
-      if (updates.notificationsEnabled !== undefined) remoteUpdates.notifications_enabled = updates.notificationsEnabled;
-      if (updates.skinTone !== undefined) remoteUpdates.skin_tone = updates.skinTone;
       if (updates.streak !== undefined) remoteUpdates.streak = updates.streak;
       if (updates.milestones !== undefined) remoteUpdates.milestones_count = updates.milestones;
       if (updates.photos !== undefined) remoteUpdates.photos_count = updates.photos;
@@ -1456,8 +1298,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         Alert.alert('Error', 'Failed to delete baby profile: ' + error.message);
         return false;
       }
-
-      console.log('[BabyContext] Baby deleted from Supabase:', id);
 
       const userId = await getCurrentUserId();
       
@@ -1521,6 +1361,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
+      // Use the permissive canViewBaby check
       if (!canViewBaby(id)) {
         Alert.alert('Permission Denied', 'You do not have permission to view this baby');
         return false;

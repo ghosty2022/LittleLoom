@@ -9,10 +9,8 @@ import {
   updateEntryInDb,
   softDeleteEntryInDb,
   getEntriesByBabyFromDb,
-  getAppSetting,
-  setAppSetting,
 } from '@/database/dbHelpers';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/utils/supabase';
 import { useBaby } from './BabyContext';
 
 export type ActivityType = 
@@ -41,59 +39,13 @@ export interface ActivityEntry {
   icon?: string;
   loggedBy: string;
   loggedByName: string;
-
-  // Potty specific
-  pottyType?: 'pee' | 'poop' | 'both' | 'accident' | 'attempt';
-  location?: 'potty' | 'toilet' | 'floor' | 'diaper';
-  successful?: boolean;
-
-  // Feed specific
-  feedType?: 'breast' | 'bottle' | 'solid' | 'snack';
-  amount?: string;
-  duration?: string;
-  side?: 'left' | 'right' | 'both';
-  food?: string;
-
-  // Sleep specific
-  sleepType?: 'nap' | 'night' | 'wake';
-  quality?: number;
-
-  // Growth specific
-  measurementType?: 'weight' | 'height' | 'head';
-  value?: string;
-  unit?: 'kg' | 'lb' | 'oz' | 'cm' | 'in';
-  percentile?: number;
-
-  // Medication specific
-  medName?: string;
-  dosage?: string;
-  reason?: string;
-  givenBy?: 'parent1' | 'parent2' | 'doctor' | 'other';
-
-  // Milestone specific
-  milestoneType?: 'motor' | 'cognitive' | 'social' | 'language' | 'other';
-  description?: string;
-  firstTime?: boolean;
-
-  // Diaper specific
-  diaperType?: 'wet' | 'dirty' | 'both' | 'dry';
-  rash?: boolean;
-  cream?: 'none' | 'zinc' | 'petroleum' | 'other';
-
-  // General
-  content?: string;
-  mood?: 'happy' | 'neutral' | 'sad' | 'excited' | 'tired';
-
   notes?: string;
   photo?: string;
   tags?: string[];
-
-  // System fields
   notificationId?: string;
   reminderScheduled?: boolean;
   syncedAt?: string;
   deletedAt?: string | null;
-
   [key: string]: unknown;
 }
 
@@ -134,7 +86,6 @@ interface ActivityContextType {
   syncWithBabyContext: (babyId: string) => Promise<void>;
   getEntriesForNotification: () => ActivityEntry[];
   
-  // Supabase-specific methods
   syncWithSupabase: () => Promise<void>;
   pushToSupabase: (entry: ActivityEntry) => Promise<void>;
   pullFromSupabase: (babyId: string) => Promise<void>;
@@ -144,7 +95,6 @@ interface ActivityContextType {
 
 const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
 
-const STORAGE_KEY = '@littleloom_activities_v3';
 const NOTIFICATION_PREFIX = '@littleloom_activity_notif_';
 
 const getNotificationService = async () => {
@@ -249,25 +199,20 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   const isMountedRef = useRef(true);
 
   // ─── Subscribe to baby changes from BabyContext ─────────────────────
-  // FIXED: Proper cleanup and loop prevention
   useEffect(() => {
-    // Clean up previous subscription
     if (subscriptionRef.current) {
       subscriptionRef.current();
       subscriptionRef.current = null;
     }
 
-    // Create new subscription
     const unsubscribe = subscribeToBabyChanges((babyId) => {
       if (!isMountedRef.current) return;
       
       console.log('[ActivityContext] Baby changed to:', babyId);
       
-      // Only update if baby actually changed and we're not already refreshing
       if (babyId !== currentBabyIdRef.current && !isRefreshingRef.current) {
         currentBabyIdRef.current = babyId;
         
-        // Use requestAnimationFrame to break the render cycle
         requestAnimationFrame(() => {
           if (!isMountedRef.current) return;
           if (babyId) {
@@ -281,13 +226,11 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
     subscriptionRef.current = unsubscribe;
 
-    // Initial sync - get the current baby once
     const initialBabyId = getBabyIdFromContext();
     if (initialBabyId && !currentBabyIdRef.current) {
       currentBabyIdRef.current = initialBabyId;
     }
 
-    // Cleanup on unmount
     return () => {
       isMountedRef.current = false;
       if (subscriptionRef.current) {
@@ -295,7 +238,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         subscriptionRef.current = null;
       }
     };
-  }, []); // Empty deps - only run once on mount
+  }, []);
 
   // ─── Get current baby ID ─────────────────────────────────────────────
   const getCurrentBabyId = useCallback((): string | null => {
@@ -399,7 +342,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         loggedByName: entry.loggedByName,
       });
 
-      // Try to sync with Supabase if online
       try {
         await pushToSupabase(newEntry);
       } catch (syncError) {
@@ -436,7 +378,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
         tags: updates.tags,
       });
 
-      // Try to sync with Supabase if online
       const updatedEntry = entries.find(e => e.id === id);
       if (updatedEntry) {
         const updated = { ...updatedEntry, ...updates };
@@ -473,7 +414,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
       await softDeleteEntryInDb(id);
 
-      // Try to sync deletion with Supabase if online
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
@@ -589,7 +529,6 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
           } as ActivityEntry;
         });
 
-        // Merge with local entries, preferring Supabase data
         const existingIds = new Set(entries.map(e => e.id));
         const newEntries = parsedEntries.filter(e => !existingIds.has(e.id));
         const updatedEntries = parsedEntries.filter(e => existingIds.has(e.id));
@@ -796,14 +735,12 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   // ─── Sync with BabyContext ───────────────────────────────────────────
   const syncWithBabyContext = useCallback(async (babyId: string) => {
     try {
-      // First try to pull from Supabase
       try {
         await pullFromSupabase(babyId);
       } catch (supabaseError) {
         console.log('Supabase pull failed, falling back to local DB:', supabaseError);
       }
 
-      // Then load from local DB
       const rows = await getEntriesByBabyFromDb(babyId);
       const existingIds = new Set(entries.map(e => e.id));
       const newActivities: ActivityEntry[] = [];

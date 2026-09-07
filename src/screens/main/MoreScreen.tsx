@@ -1,4 +1,6 @@
-// screens/main/MoreScreen.tsx - COMPLETE FIXED with proper biometric sync
+// screens/main/MoreScreen.tsx - INSTANT LOADING
+// No skeleton loader, renders immediately with available data
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -950,26 +952,6 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
   );
 });
 
-// ─── Skeleton Loader ──────────────────────────────────────────────
-
-const SkeletonLoader = React.memo(({ isDark }: { isDark: boolean }) => (
-  <View style={styles.skeletonContainer}>
-    {[1, 2, 3, 4].map((i) => (
-      <Animated.View
-        key={i}
-        entering={FadeInUp.delay(i * 80)}
-        style={[styles.skeletonCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}
-      >
-        <View style={[styles.skeletonAvatar, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]} />
-        <View style={styles.skeletonText}>
-          <View style={[styles.skeletonLine, { width: '60%', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
-          <View style={[styles.skeletonLine, { width: '40%', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }]} />
-        </View>
-      </Animated.View>
-    ))}
-  </View>
-));
-
 // ─── Main Component ───────────────────────────────────────────────
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
@@ -1178,7 +1160,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         setSyncStatus('success');
         triggerHaptic('success');
         
-        // Create a backup in the background
         try {
           const backupResult = await createBackup({ 
             encrypted: false,
@@ -1205,13 +1186,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [isSyncing, sync, triggerHaptic, sweetAlert]);
 
-  // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
+  // ─── Handle Biometric Toggle ────────────────────────────────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
-      // Check if biometric is available
       await refreshBiometricStatus();
       
-      // Double-check hardware and enrollment
       const hasHardware = isBiometricHardwareAvailable;
       const isEnrolled = isBiometricEnrolled;
       
@@ -1223,21 +1202,18 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         return;
       }
       
-      // Navigate to setup screen
       navigation.navigate('BiometricSetup');
     } else {
-      // Disable biometric - show confirmation
       setShowBiometricModal(true);
     }
   }, [isBiometricHardwareAvailable, isBiometricEnrolled, navigation, refreshBiometricStatus, sweetAlert]);
 
-  // ─── FIXED: Confirm disable biometric ───────────────────────────
+  // ─── Confirm disable biometric ──────────────────────────────────
   const confirmDisableBiometric = useCallback(async () => {
     setShowBiometricModal(false);
     try {
       const success = await toggleBiometric(false);
       if (success) {
-        // Force refresh the biometric status after toggle
         await refreshBiometricStatus();
         sweetAlert.success('Biometric Disabled', 'Biometric authentication has been turned off.');
       } else {
@@ -1253,27 +1229,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
   }, [navigation]);
 
-  // ─── FIXED: Handle Lock Now - properly locks and navigates ──────
+  // ─── Handle Lock Now ─────────────────────────────────────────────
   const handleLockNow = useCallback(async () => {
-    // Check if ANY security method is available (PIN, Biometric, or App Lock)
     const hasAnySecurity = securitySettings.isPinEnabled || 
                            (isBiometricEnabled && isBiometricHardwareAvailable && isBiometricEnrolled) || 
                            securitySettings.isAppLockEnabled;
     
     if (!hasAnySecurity) {
-      // Show the "No Security" modal with options
       setShowSecurityModal(true);
       return;
     }
     
     try {
-      // Lock the app
       await lockApp();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
       sweetAlert.success('🔒 App Locked', 'LittleLoom has been secured.');
       
-      // Navigate to the lock screen after locking
       navigation.navigate('SecurityLock');
     } catch (error) {
       console.error('Lock error:', error);
@@ -1326,7 +1298,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Effects ────────────────────────────────────────────────────
 
-  // Refresh biometric status on mount and on focus
+  // Refresh biometric status on mount
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
@@ -1349,7 +1321,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
         loadBabies();
         loadEntries?.();
-        // Refresh biometric status on focus
         refreshBiometricStatus();
       }, 300);
       
@@ -1768,33 +1739,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     );
   }, [expandedSections, secondary, isDark, toggleSection, navigation]);
 
-  // ─── Loading State ─────────────────────────────────────────────
-
-  const [forceShowContent, setForceShowContent] = useState(false);
-  
-  useEffect(() => {
-    if (authLoading || (babyLoading && safeBabies.length === 0)) {
-      const timeout = setTimeout(() => {
-        console.warn('⚠️ [MoreScreen] Loading timeout - forcing content display');
-        setForceShowContent(true);
-      }, 5000);
-      return () => clearTimeout(timeout);
-    } else {
-      setForceShowContent(false);
-    }
-  }, [authLoading, babyLoading, safeBabies.length]);
-
-  const isInitialLoading = (authLoading || (babyLoading && safeBabies.length === 0)) && !forceShowContent;
-
-  if (isInitialLoading) {
-    return (
-      <LinearGradient colors={bgColors} style={styles.container}>
-        <SkeletonLoader isDark={isDark} />
-      </LinearGradient>
-    );
-  }
-
-  // ─── Render ────────────────────────────────────────────────────
+  // ─── INSTANT LOADING: No skeleton, always render ────────────────
 
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
@@ -2911,32 +2856,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
-  },
-
-  // ─── Skeleton ──────────────────────────────────────────────────
-  skeletonContainer: {
-    padding: 20,
-    gap: 12,
-  },
-  skeletonCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    gap: 14,
-  },
-  skeletonAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-  },
-  skeletonText: {
-    flex: 1,
-    gap: 8,
-  },
-  skeletonLine: {
-    height: 14,
-    borderRadius: 7,
   },
 });
 
