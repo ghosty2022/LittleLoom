@@ -191,6 +191,132 @@ const getDateKey = (date: Date | string | number): string => {
 const DISMISSED_INSIGHTS_KEY = '@littleloom_dismissed_tracker_insights';
 const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1';
 
+/* ─── TRACKER TYPE MAPPING ──────────────────────────────────────────────── */
+
+// Map tracker IDs to the allowed tracker_type values in the database
+const TRACKER_TYPE_MAP: Record<string, string> = {
+  // Essential
+  'feed': 'feed',
+  'sleep': 'sleep',
+  'diaper': 'potty', // Diaper changes go under potty type
+  'potty': 'potty',
+  'bath': 'custom',
+  'pumping': 'custom',
+  'dream_feed': 'feed',
+  'burp': 'custom',
+  
+  // Health
+  'growth': 'growth',
+  'temperature': 'custom',
+  'medication': 'medication',
+  'symptom': 'custom',
+  'vaccine': 'custom',
+  'doctor_visit': 'custom',
+  'teething': 'custom',
+  'allergy': 'custom',
+  'skin_condition': 'custom',
+  'immunization': 'custom',
+  'jaundice': 'custom',
+  'tongue_tie': 'custom',
+  'dental_visit': 'custom',
+  'feeding_pain': 'custom',
+  
+  // Development
+  'milestone': 'milestone',
+  'play': 'custom',
+  'tummy_time': 'custom',
+  'reading': 'custom',
+  'music': 'custom',
+  'outdoor': 'custom',
+  'sensory': 'custom',
+  'speech': 'custom',
+  'school': 'custom',
+  'fine_motor': 'custom',
+  'gross_motor': 'custom',
+  'pretend_play': 'custom',
+  
+  // Emotional
+  'mood': 'custom',
+  'attachment': 'custom',
+  'social': 'custom',
+  'crying': 'custom',
+  'soothing': 'custom',
+  'tantrum': 'custom',
+  'time_out': 'custom',
+  'sibling_interaction': 'custom',
+  
+  // Physical
+  'nail_care': 'custom',
+  'hair_care': 'custom',
+  'skin_care': 'custom',
+  'sunscreen': 'custom',
+  'insect_repellent': 'custom',
+  'oral_hygiene': 'custom',
+  'ear_care': 'custom',
+  'nose_care': 'custom',
+  
+  // Nutrition
+  'solid_food': 'custom',
+  'water': 'custom',
+  'vitamin': 'custom',
+  'allergen_intro': 'custom',
+  'feeding_reaction': 'custom',
+  'breastfeeding': 'feed',
+  'snack': 'custom',
+  'meal_plan': 'custom',
+  'bottle_weaning': 'custom',
+  
+  // Safety
+  'accident': 'custom',
+  'injury': 'custom',
+  'choking': 'custom',
+  'car_seat': 'custom',
+  'babyproofing': 'custom',
+  'swim_lessons': 'custom',
+  'fire_drill': 'custom',
+  
+  // Schedule
+  'wake_time': 'custom',
+  'bedtime': 'custom',
+  'nap': 'sleep',
+  'screen_time': 'custom',
+  'outdoor_time': 'custom',
+  
+  // Parental
+  'note': 'custom',
+  'photo': 'custom',
+  'video': 'custom',
+  'voice_memo': 'custom',
+  'journal': 'custom',
+  'postpartum_recovery': 'custom',
+  
+  // Travel
+  'trip': 'custom',
+  'travel': 'custom',
+  'daycare': 'custom',
+  'babysitter': 'custom',
+  
+  // Special Needs
+  'reflux': 'custom',
+  'colic': 'custom',
+  'gas': 'custom',
+  'constipation': 'custom',
+  'diarrhea': 'custom',
+  'eczema': 'custom',
+  'cradle_cap': 'custom',
+  'therapy': 'custom',
+  
+  // Household
+  'supply_inventory': 'custom',
+  'pumping_inventory': 'custom',
+  'expenses': 'custom',
+  'cleaning': 'custom',
+};
+
+const getTrackerType = (trackerId: string): string => {
+  return TRACKER_TYPE_MAP[trackerId] || 'custom';
+};
+
 /* ─── STREAK CALCULATION ───────────────────────────────────────────── */
 
 const calculateStreak = (
@@ -418,23 +544,18 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const subscriptionRef = useRef<(() => void) | null>(null);
 
   // ─── Subscribe to baby changes from BabyContext ─────────────────────
-  // FIXED: Proper cleanup and loop prevention using requestAnimationFrame
   useEffect(() => {
-    // Clean up previous subscription
     if (subscriptionRef.current) {
       subscriptionRef.current();
       subscriptionRef.current = null;
     }
 
-    // Create new subscription
     const unsubscribe = subscribeToBabyChanges((babyId) => {
       console.log('[TrackerContext] Baby changed to:', babyId);
       
-      // Only update if baby actually changed
       if (babyId !== currentBabyIdRef.current) {
         currentBabyIdRef.current = babyId;
         
-        // Use requestAnimationFrame to break the render cycle and prevent infinite loops
         requestAnimationFrame(() => {
           if (babyId && !isRefreshingRef.current) {
             refreshEntriesInternal();
@@ -451,20 +572,18 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     subscriptionRef.current = unsubscribe;
 
-    // Initial sync - get the current baby once
     const initialBabyId = getBabyIdFromContext();
     if (initialBabyId && !currentBabyIdRef.current) {
       currentBabyIdRef.current = initialBabyId;
     }
 
-    // Cleanup on unmount
     return () => {
       if (subscriptionRef.current) {
         subscriptionRef.current();
         subscriptionRef.current = null;
       }
     };
-  }, []); // Empty deps - only run once on mount
+  }, []);
 
   // ─── Detect initial baby ────────────────────────────────────────────
   const getCurrentBabyId = useCallback((): string | null => {
@@ -889,129 +1008,131 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   /* ─── Entry CRUD ──────────────────────────────────────────────────── */
 
-const handleAddEntry = useCallback(async (
-  trackerId: string,
-  data: Record<string, unknown>,
-  options?: {
-    title?: string;
-    notes?: string;
-    photoUris?: string[];
-    tags?: string[];
-  }
-): Promise<TrackerEntry | null> => {
-  const babyId = getCurrentBabyId();
-  if (!babyId) {
-    sweetAlert('Error', 'No baby profile selected. Please select a baby first.', 'warning');
-    return null;
-  }
+  const handleAddEntry = useCallback(async (
+    trackerId: string,
+    data: Record<string, unknown>,
+    options?: {
+      title?: string;
+      notes?: string;
+      photoUris?: string[];
+      tags?: string[];
+    }
+  ): Promise<TrackerEntry | null> => {
+    const babyId = getCurrentBabyId();
+    if (!babyId) {
+      sweetAlert('Error', 'No baby profile selected. Please select a baby first.', 'warning');
+      return null;
+    }
 
-  if (!canCreateEntry(trackerId)) {
-    sweetAlert('Permission Denied', 'You do not have permission to add entries to this tracker', 'warning');
-    return null;
-  }
+    if (!canCreateEntry(trackerId)) {
+      sweetAlert('Permission Denied', 'You do not have permission to add entries to this tracker', 'warning');
+      return null;
+    }
 
-  const tracker = getTracker(trackerId);
-  if (!tracker) {
-    sweetAlert('Error', 'Tracker not found', 'warning');
-    return null;
-  }
+    const tracker = getTracker(trackerId);
+    if (!tracker) {
+      sweetAlert('Error', 'Tracker not found', 'warning');
+      return null;
+    }
 
-  const missingFields = tracker.fields
-    .filter(f => f.required && (data[f.id] === undefined || data[f.id] === '' || data[f.id] === null))
-    .map(f => f.label);
+    const missingFields = tracker.fields
+      .filter(f => f.required && (data[f.id] === undefined || data[f.id] === '' || data[f.id] === null))
+      .map(f => f.label);
 
-  if (missingFields.length > 0) {
-    Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
-    return null;
-  }
+    if (missingFields.length > 0) {
+      Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}`);
+      return null;
+    }
 
-  try {
-    const newId = generateId();
-    const now = new Date().toISOString();
-    const timestamp = Date.now(); // Keep as number for the entry object
-    
-    const newEntry: TrackerEntry = {
-      id: newId,
-      babyId: babyId,
-      trackerId,
-      timestamp: timestamp, // Number for internal use
-      title: options?.title || `${tracker.emoji} ${tracker.name}`,
-      data,
-      loggedBy: userProfile?.id || 'unknown',
-      loggedByName: userProfile?.fullName || 'Unknown',
-      loggedByRole: (myRole as any) || 'parent1',
-      notes: options?.notes,
-      photoUris: options?.photoUris,
-      tags: options?.tags,
-      linkedEntries: [],
-      isDeleted: false,
-    };
-
-    // Convert timestamp to ISO string for Supabase
-    const timestampISO = new Date(timestamp).toISOString();
-
-    const { error } = await supabase
-      .from('tracker_entries')
-      .insert({
+    try {
+      const newId = generateId();
+      const now = new Date().toISOString();
+      const timestamp = Date.now();
+      
+      const newEntry: TrackerEntry = {
         id: newId,
-        tracker_id: trackerId,
-        baby_id: babyId,
-        timestamp: timestampISO, // Use ISO string here
+        babyId: babyId,
+        trackerId,
+        timestamp: timestamp,
         title: options?.title || `${tracker.emoji} ${tracker.name}`,
-        data: data,
-        notes: options?.notes || null,
-        photo_uris: options?.photoUris || null,
-        tags: options?.tags || null,
-        logged_by: userProfile?.id || 'unknown',
-        logged_by_name: userProfile?.fullName || 'Unknown',
-        logged_by_role: (myRole as any) || 'parent1',
-        created_at: now,
-        updated_at: now,
-        is_deleted: false,
-      });
+        data,
+        loggedBy: userProfile?.id || 'unknown',
+        loggedByName: userProfile?.fullName || 'Unknown',
+        loggedByRole: (myRole as any) || 'parent1',
+        notes: options?.notes,
+        photoUris: options?.photoUris,
+        tags: options?.tags,
+        linkedEntries: [],
+        isDeleted: false,
+      };
 
-    if (error) {
+      // Get the tracker_type from the mapping
+      const trackerType = getTrackerType(trackerId);
+      const timestampISO = new Date(timestamp).toISOString();
+
+      const { error } = await supabase
+        .from('tracker_entries')
+        .insert({
+          id: newId,
+          tracker_id: trackerId,
+          tracker_type: trackerType, // ← FIXED: Added required tracker_type
+          baby_id: babyId,
+          timestamp: timestampISO,
+          title: options?.title || `${tracker.emoji} ${tracker.name}`,
+          data: data,
+          notes: options?.notes || null,
+          photo_uris: options?.photoUris || null,
+          tags: options?.tags || null,
+          logged_by: userProfile?.id || 'unknown',
+          logged_by_name: userProfile?.fullName || 'Unknown',
+          logged_by_role: (myRole as any) || 'parent1',
+          created_at: now,
+          updated_at: now,
+          is_deleted: false,
+        });
+
+      if (error) {
+        console.error('Failed to add entry:', error);
+        sweetAlert('Error', 'Failed to save entry', 'warning');
+        return null;
+      }
+
+      const updatedEntries = [newEntry, ...state.entries];
+
+      const updatedEntriesByTracker = { ...state.entriesByTracker };
+      if (!updatedEntriesByTracker[trackerId]) {
+        updatedEntriesByTracker[trackerId] = [];
+      }
+      updatedEntriesByTracker[trackerId] = [newEntry, ...updatedEntriesByTracker[trackerId]];
+
+      await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.LAST_TRACKER, trackerId);
+
+      setState(prev => ({
+        ...prev,
+        entries: updatedEntries,
+        entriesByTracker: updatedEntriesByTracker,
+        lastTrackerId: trackerId,
+      }));
+
+      if (babyId) {
+        const streak = calculateStreak(trackerId, updatedEntries, babyId);
+        if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
+          triggerHaptic('success');
+          success(
+            `${streak.currentStreak} Day Streak!`,
+            `You've been consistently tracking ${tracker.name} for ${streak.currentStreak} days! 🎉`
+          );
+        }
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      return newEntry;
+    } catch (error) {
       console.error('Failed to add entry:', error);
       sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
     }
-
-    const updatedEntries = [newEntry, ...state.entries];
-
-    const updatedEntriesByTracker = { ...state.entriesByTracker };
-    if (!updatedEntriesByTracker[trackerId]) {
-      updatedEntriesByTracker[trackerId] = [];
-    }
-    updatedEntriesByTracker[trackerId] = [newEntry, ...updatedEntriesByTracker[trackerId]];
-
-    await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.LAST_TRACKER, trackerId);
-
-    setState(prev => ({
-      ...prev,
-      entries: updatedEntries,
-      entriesByTracker: updatedEntriesByTracker,
-      lastTrackerId: trackerId,
-    }));
-
-    if (babyId) {
-      const streak = calculateStreak(trackerId, updatedEntries, babyId);
-      if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
-        triggerHaptic('success');
-        success(
-          `${streak.currentStreak} Day Streak!`,
-          `You've been consistently tracking ${tracker.name} for ${streak.currentStreak} days! 🎉`
-        );
-      }
-    }
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    return newEntry;
-  } catch (error) {
-    console.error('Failed to add entry:', error);
-    sweetAlert('Error', 'Failed to save entry', 'warning');
-    return null;
-  }
-}, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert]);
+  }, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert]);
 
   const handleUpdateEntry = useCallback(async (
     entryId: string,
@@ -1026,7 +1147,6 @@ const handleAddEntry = useCallback(async (
     }
 
     try {
-      // Save edit history to AsyncStorage
       try {
         const rawHistory = await AsyncStorage.getItem(EDIT_HISTORY_KEY);
         const historyStore: Record<string, unknown[]> = rawHistory ? JSON.parse(rawHistory) : {};
@@ -1057,7 +1177,7 @@ const handleAddEntry = useCallback(async (
       if (updates.notes !== undefined) remoteUpdates.notes = updates.notes;
       if (updates.photoUris !== undefined) remoteUpdates.photo_uris = updates.photoUris;
       if (updates.tags !== undefined) remoteUpdates.tags = updates.tags;
-      if (updates.timestamp !== undefined) remoteUpdates.timestamp = updates.timestamp;
+      if (updates.timestamp !== undefined) remoteUpdates.timestamp = new Date(updates.timestamp).toISOString();
 
       const { error } = await supabase
         .from('tracker_entries')
