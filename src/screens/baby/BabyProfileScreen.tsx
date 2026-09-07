@@ -1,4 +1,7 @@
-// src/screens/BabyFamilyCenterScreen.tsx
+// src/screens/BabyFamilyCenterScreen.tsx - COMPLETE UPDATED VERSION
+// FIX: Birth details can be edited even if not entered during creation
+// Streamlined UX with better edit mode handling
+
 import {
   StyleSheet,
   ActionSheetIOS,
@@ -17,15 +20,15 @@ import {
   Text,
   LayoutAnimation,
   UIManager,
+  Alert,
 } from 'react-native';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, differenceInDays, differenceInMonths } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-// IMPORTANT: Use legacy API to avoid deprecation warnings
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -49,27 +52,54 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { useActivity } from '../../context/ActivityContext';
 import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
-import { UniversalSpinner, InlineSpinner } from '../../components/UniversalSpinner';
+import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useCustomization } from '../../hooks/useCustomization';
 import { supabase } from '@/utils/supabase';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────
+const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const DELIVERY_TYPES = ['Vaginal', 'C-Section', 'VBAC', 'Other'];
+const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', 'Other'];
+const FEEDING_PLANS = ['Breastfeeding', 'Formula', 'Combination', 'Pumping'];
+
+const GENDER_OPTIONS = [
+  { value: 'boy', label: 'Boy', icon: 'male', color: '#6366f1', gradient: ['#6366f1', '#8b5cf6'] as [string, string] },
+  { value: 'girl', label: 'Girl', icon: 'female', color: '#ec4899', gradient: ['#ec4899', '#f43f5e'] as [string, string] },
+  { value: 'other', label: 'Other', icon: 'ellipse', color: '#06b6d4', gradient: ['#06b6d4', '#10b981'] as [string, string] },
+];
+
+const MILESTONE_CATEGORIES = [
+  { id: 'physical', label: 'Physical', icon: 'walk-outline', color: '#6366f1' },
+  { id: 'cognitive', label: 'Cognitive', icon: 'bulb-outline', color: '#f59e0b' },
+  { id: 'social', label: 'Social', icon: 'people-outline', color: '#10b981' },
+  { id: 'language', label: 'Language', icon: 'chatbubble-outline', color: '#8b5cf6' },
+  { id: 'emotional', label: 'Emotional', icon: 'heart-outline', color: '#ef4444' },
+];
+
+const EMOJI_OPTIONS = ['👶', '👧', '👦', '🧒', '👼', '🤱', '🍼', '🧸', '🎈', '🌟', '🦁', '🐯', '🐻', '🐨', '🐼', '🐸', '🦄', '🌈', '⭐', '🔆'];
+
+type BabyFamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
+type ProfileTab = 'overview' | 'milestones' | 'health' | 'danger';
 
 // ─── UPLOAD IMAGE TO SUPABASE ────────────────────────────────────────────
 const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
   try {
-    // Read the file as base64 using legacy API
     const base64 = await FileSystem.readAsStringAsync(localUri, { 
       encoding: FileSystem.EncodingType.Base64 
     });
     
-    // Create file path
     const fileExt = localUri.split('.').pop()?.toLowerCase() || 'jpg';
     const fileName = `${babyId}_${Date.now()}.${fileExt}`;
     const filePath = `baby_avatars/${fileName}`;
     
-    // Convert base64 to ArrayBuffer
     const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
     
-    // Upload to Supabase Storage
     const { data, error } = await supabase.storage
       .from('baby_avatars')
       .upload(filePath, arrayBuffer, {
@@ -83,7 +113,6 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
       return null;
     }
     
-    // Get public URL
     const { data: urlData } = supabase.storage
       .from('baby_avatars')
       .getPublicUrl(filePath);
@@ -95,17 +124,7 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
   }
 };
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
-};
-
+// ─── HELPER FUNCTIONS ─────────────────────────────────────────────────────
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
   return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:') || value.startsWith('ph://') || value.startsWith('assets-library://');
@@ -141,79 +160,9 @@ const safeDiffDays = (a: Date | string, b: Date | string): number => {
   } catch { return 0; }
 };
 
-const GENDER_OPTIONS = [
-  { value: 'boy', label: 'Boy', icon: 'male', color: '#6366f1', gradient: ['#6366f1', '#8b5cf6'] as [string, string] },
-  { value: 'girl', label: 'Girl', icon: 'female', color: '#ec4899', gradient: ['#ec4899', '#f43f5e'] as [string, string] },
-  { value: 'other', label: 'Other', icon: 'ellipse', color: '#06b6d4', gradient: ['#06b6d4', '#10b981'] as [string, string] },
-];
+// ─── STREAMLINED COMPONENTS ──────────────────────────────────────────────
 
-const MILESTONE_CATEGORIES = [
-  { id: 'physical', label: 'Physical', icon: 'walk-outline', color: '#6366f1' },
-  { id: 'cognitive', label: 'Cognitive', icon: 'bulb-outline', color: '#f59e0b' },
-  { id: 'social', label: 'Social', icon: 'people-outline', color: '#10b981' },
-  { id: 'language', label: 'Language', icon: 'chatbubble-outline', color: '#8b5cf6' },
-  { id: 'emotional', label: 'Emotional', icon: 'heart-outline', color: '#ef4444' },
-];
-
-const ACTIVITY_CONFIG: Record<string, { icon: string; color: string; emoji: string; label: string }> = {
-  potty: { icon: 'water-outline', color: '#06b6d4', emoji: '🚽', label: 'Potty' },
-  feed: { icon: 'restaurant-outline', color: '#f59e0b', emoji: '🍼', label: 'Feeding' },
-  sleep: { icon: 'moon-outline', color: '#3b82f6', emoji: '😴', label: 'Sleep' },
-  growth: { icon: 'trending-up-outline', color: '#10b981', emoji: '📏', label: 'Growth' },
-  medication: { icon: 'medical-outline', color: '#ef4444', emoji: '💊', label: 'Medication' },
-  milestone: { icon: 'trophy-outline', color: '#f97316', emoji: '🌟', label: 'Milestone' },
-  diaper: { icon: 'layers-outline', color: '#06b6d4', emoji: '🧷', label: 'Diaper' },
-  note: { icon: 'document-text-outline', color: '#6b7280', emoji: '📝', label: 'Note' },
-  default: { icon: 'ellipse-outline', color: '#9ca3af', emoji: '✨', label: 'Activity' },
-};
-
-const EMOJI_OPTIONS = ['👶', '👧', '👦', '🧒', '👼', '🤱', '🍼', '🧸', '🎈', '🌟', '🦁', '🐯', '🐻', '🐨', '🐼', '🐸', '🦄', '🌈', '⭐', '🔆'];
-
-type BabyFamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
-type ProfileTab = 'overview' | 'milestones' | 'health' | 'danger';
-
-interface HealthInsight {
-  id: string;
-  type: 'growth' | 'sleep' | 'nutrition' | 'milestone' | 'alert' | 'tip';
-  title: string;
-  description: string;
-  emoji: string;
-  color: string;
-  priority: 'high' | 'medium' | 'low';
-  action?: { label: string; screen: string; params?: any };
-}
-
-interface DevelopmentStage {
-  stage: string;
-  ageRange: string;
-  description: string;
-  emoji: string;
-  color: string;
-  progress: number;
-}
-
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: { 
-  children: React.ReactNode; 
-  style?: any; 
-  onPress?: () => void; 
-  active?: boolean;
-  delay?: number;
-  isDark?: boolean;
-  colors?: any;
-}) => {
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const Wrapper = onPress ? TouchableOpacity : View;
-  return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors?.primary || '#6366f1', borderWidth: 2 }, style]}>
-      <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-        <View style={styles.glassBorder} />
-        <View style={styles.glassContent}>{children}</View>
-      </Wrapper>
-    </Animated.View>
-  );
-});
-
+// ─── Section Header ──────────────────────────────────────────────────────
 const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark, colors }: { 
   title: string; 
   subtitle?: string; 
@@ -239,6 +188,7 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark
   );
 });
 
+// ─── Tab Bar ──────────────────────────────────────────────────────────────
 const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: { 
   tabs: { key: ProfileTab; label: string; icon: string }[]; 
   activeTab: ProfileTab; 
@@ -283,22 +233,30 @@ const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: {
   );
 });
 
-const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark, colors }: any) => {
+// ─── Glass Card ──────────────────────────────────────────────────────────
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: { 
+  children: React.ReactNode; 
+  style?: any; 
+  onPress?: () => void; 
+  active?: boolean;
+  delay?: number;
+  isDark?: boolean;
+  colors?: any;
+}) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
-      <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-      <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
-        <Text style={styles.kpiPillEmoji}>{icon}</Text>
-      </View>
-      <View style={styles.kpiPillBody}>
-        <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
-        <Text style={styles.kpiPillLabel}>{label}</Text>
-      </View>
-    </TouchableOpacity>
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors?.primary || '#6366f1', borderWidth: 2 }, style]}>
+      <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
+        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={styles.glassBorder} />
+        <View style={styles.glassContent}>{children}</View>
+      </Wrapper>
+    </Animated.View>
   );
 });
 
+// ─── Safe Baby Avatar ──────────────────────────────────────────────────
 const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEditButton = false, onEdit, isDark, colors }: any) => {
   const hasImage = isImageUri(avatar);
   const hasEmoji = isEmoji(avatar);
@@ -341,512 +299,53 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
   );
 });
 
-const DevelopmentStageTracker = React.memo(({ baby, isDark, colors }: { baby: any; isDark?: boolean; colors?: any }) => {
-  const ageMonths = safeDiffMonths(new Date(), baby?.birthDate);
-
-  const stages = useMemo((): DevelopmentStage[] => {
-    const allStages: DevelopmentStage[] = [
-      { stage: 'Newborn', ageRange: '0-1 month', description: 'Reflexes, feeding, bonding', emoji: '👶', color: '#6366f1', progress: 100 },
-      { stage: 'Infant', ageRange: '1-6 months', description: 'Head control, smiling, cooing', emoji: '😊', color: '#ec4899', progress: 100 },
-      { stage: 'Sitter', ageRange: '6-9 months', description: 'Sitting, babbling, grasping', emoji: '🪑', color: '#f59e0b', progress: 0 },
-      { stage: 'Crawler', ageRange: '9-12 months', description: 'Crawling, first words, waving', emoji: '🐛', color: '#10b981', progress: 0 },
-      { stage: 'Toddler', ageRange: '12-24 months', description: 'Walking, talking, independence', emoji: '🚶', color: '#06b6d4', progress: 0 },
-      { stage: 'Preschooler', ageRange: '2-4 years', description: 'Running, sentences, imagination', emoji: '🏃', color: '#8b5cf6', progress: 0 },
-    ];
-
-    return allStages.map((s, i) => {
-      const [minAge] = s.ageRange.split('-').map(x => parseInt(x));
-      let progress = 0;
-      if (ageMonths >= minAge) {
-        const nextStage = allStages[i + 1];
-        const nextMin = nextStage ? parseInt(nextStage.ageRange.split('-')[0]) : minAge + 12;
-        progress = Math.min(100, ((ageMonths - minAge) / (nextMin - minAge)) * 100);
-      }
-      return { ...s, progress };
-    });
-  }, [ageMonths]);
-
-  const currentStage = stages.find(s => s.progress > 0 && s.progress < 100) || stages.filter(s => s.progress === 100).pop() || stages[0];
-
+// ─── KPI Pill ────────────────────────────────────────────────────────────
+const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <GlassCard isDark={isDark} colors={colors}>
-        <View style={styles.stageHeader}>
-          <View style={[styles.stageIconBg, { backgroundColor: `${currentStage.color}15` }]}>
-            <Text style={styles.stageEmoji}>{currentStage.emoji}</Text>
-          </View>
-          <View style={styles.stageTitleWrap}>
-            <Text style={styles.stageTitle}>{currentStage.stage} Stage</Text>
-            <Text style={styles.stageSubtitle}>{currentStage.description}</Text>
-          </View>
-          <View style={[styles.stageBadge, { backgroundColor: `${currentStage.color}15` }]}>
-            <Text style={[styles.stageBadgeText, { color: currentStage.color }]}>{Math.round(currentStage.progress)}%</Text>
-          </View>
-        </View>
-
-        <View style={styles.stageProgressBar}>
-          <View style={[styles.stageProgressBg, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-            <View style={[styles.stageProgressFill, { width: `${currentStage.progress}%`, backgroundColor: currentStage.color }]} />
-          </View>
-        </View>
-
-        <View style={styles.stageTimeline}>
-          {stages.slice(0, 4).map((stage, i) => (
-            <View key={i} style={styles.stageTimelineItem}>
-              <View style={[styles.stageDot, { 
-                backgroundColor: stage.progress === 100 ? stage.color : stage.progress > 0 ? `${stage.color}50` : 'rgba(255,255,255,0.1)',
-                borderColor: stage.progress > 0 ? stage.color : 'transparent',
-              }]} />
-              <Text style={[styles.stageTimelineLabel, stage.progress > 0 && { color: stage.color, fontWeight: '700' }]}>
-                {stage.stage}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-const SmartHealthInsights = React.memo(({ baby, stats, recentActivities, isDark, colors }: { baby: any; stats: any; recentActivities: any[]; isDark?: boolean; colors?: any }) => {
-  const insights = useMemo((): HealthInsight[] => {
-    const items: HealthInsight[] = [];
-    const ageMonths = safeDiffMonths(new Date(), baby?.birthDate);
-
-    if (stats?.height?.change) {
-      const change = parseFloat(stats.height.change);
-      items.push({
-        id: 'growth-velocity',
-        type: 'growth',
-        title: change > 0 ? 'Growing Strong!' : 'Growth Check Needed',
-        description: change > 0 
-          ? `Height increased by ${change}cm since last measurement.` 
-          : 'Height decreased. Please verify the measurement.',
-        emoji: change > 0 ? '📈' : '⚠️',
-        color: change > 0 ? '#10b981' : '#ef4444',
-        priority: change > 0 ? 'low' : 'high',
-      });
-    }
-
-    const lastActivity = recentActivities[0];
-    if (lastActivity) {
-      const daysSince = safeDiffDays(new Date(), new Date(lastActivity.timestamp));
-      if (daysSince > 2) {
-        items.push({
-          id: 'activity-streak',
-          type: 'tip',
-          title: 'Keep the Streak Alive!',
-          description: `No activity logged in ${daysSince} days. Log something to maintain tracking.`,
-          emoji: '🔥',
-          color: '#f59e0b',
-          priority: 'medium',
-          action: { label: 'Log Now', screen: 'AddEntry', params: {} },
-        });
-      }
-    }
-
-    const milestoneTips: Record<number, { title: string; desc: string; emoji: string }> = {
-      0: { title: 'Tummy Time', desc: 'Start with 3-5 minutes of supervised tummy time daily.', emoji: '👶' },
-      3: { title: 'Reach & Grasp', desc: 'Place toys within reach to encourage hand-eye coordination.', emoji: '👋' },
-      6: { title: 'Sitting Practice', desc: 'Support baby in sitting position to strengthen core.', emoji: '🪑' },
-      9: { title: 'Crawl Space', desc: 'Create a safe crawling area with interesting toys.', emoji: '🐛' },
-      12: { title: 'First Words', desc: 'Read books and talk to baby to encourage language.', emoji: '🗣️' },
-    };
-
-    const tipKey = Object.keys(milestoneTips).map(Number).filter(k => k <= ageMonths).pop();
-    if (tipKey !== undefined) {
-      const tip = milestoneTips[tipKey];
-      items.push({
-        id: 'milestone-tip',
-        type: 'tip',
-        title: tip.title,
-        description: tip.desc,
-        emoji: tip.emoji,
-        color: '#6366f1',
-        priority: 'low',
-      });
-    }
-
-    if (stats?.bmi?.status?.label === 'Underweight' || stats?.bmi?.status?.label === 'Overweight') {
-      items.push({
-        id: 'bmi-alert',
-        type: 'alert',
-        title: `BMI: ${stats.bmi.status.label}`,
-        description: `Current BMI is ${stats.bmi.value}. Consider consulting your pediatrician.`,
-        emoji: '🩺',
-        color: '#ef4444',
-        priority: 'high',
-      });
-    }
-
-    return items.slice(0, 3);
-  }, [baby, stats, recentActivities]);
-
-  if (insights.length === 0) return null;
-
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  return (
-    <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <SectionHeader title="AI Insights" subtitle="Intelligence-powered analysis" isDark={isDark} colors={colors} />
-      <View style={styles.insightsList}>
-        {insights.map((insight, i) => (
-          <TouchableOpacity key={insight.id} activeOpacity={0.85} style={[styles.insightRow, { borderLeftColor: insight.color }]}>
-            <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}12` }]}>
-              <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-            </View>
-            <View style={styles.insightContent}>
-              <View style={styles.insightHeader}>
-                <Text style={styles.insightTitle}>{insight.title}</Text>
-                {insight.action && (
-                  <View style={[styles.insightActionBadge, { backgroundColor: '#6366f115' }]}>
-                    <Text style={styles.insightActionText}>{insight.action.label} →</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.insightDesc}>{insight.description}</Text>
-            </View>
-            <View style={[styles.insightPriority, { backgroundColor: insight.color }]} />
-          </TouchableOpacity>
-        ))}
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
+      <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
+        <Text style={styles.kpiPillEmoji}>{icon}</Text>
       </View>
-    </Animated.View>
-  );
-});
-
-const ActivitySparkline = React.memo(({ activities, isDark, colors }: { activities: any[]; isDark?: boolean; colors?: any }) => {
-  const data = useMemo(() => {
-    const days: Record<string, number> = {};
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) { 
-      const d = new Date(now); 
-      d.setDate(d.getDate() - i); 
-      days[d.toISOString().split('T')[0]] = 0; 
-    }
-    activities.forEach(a => { 
-      const d = new Date(a.timestamp).toISOString().split('T')[0]; 
-      if (days[d] !== undefined) days[d]++; 
-    });
-    return Object.values(days);
-  }, [activities]);
-
-  const maxVal = Math.max(...data, 1);
-  const total = data.reduce((a, b) => a + b, 0);
-
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  return (
-    <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard isDark={isDark} colors={colors}>
-        <View style={styles.sparklineHeader}>
-          <View>
-            <Text style={styles.sparklineTitle}>Activity This Week</Text>
-            <Text style={styles.sparklineSubtitle}>Daily entry count</Text>
-          </View>
-          <View style={styles.sparklineTotal}>
-            <Text style={styles.sparklineTotalValue}>{total}</Text>
-            <Text style={styles.sparklineTotalLabel}>entries</Text>
-          </View>
-        </View>
-        <View style={styles.sparklineChart}>
-          {data.map((val, i) => {
-            const height = Math.max(4, (val / maxVal) * 60);
-            const isToday = i === data.length - 1;
-            return (
-              <View key={i} style={{ alignItems: 'center', gap: 4 }}>
-                <View style={[styles.sparklineBar, { height, backgroundColor: isToday ? '#6366f1' : val > 0 ? '#8b5cf6' : '#334155' }]} />
-                <Text style={[styles.sparklineDay, isToday && { color: '#6366f1', fontWeight: '700' }]}>{['M','T','W','T','F','S','S'][i]}</Text>
-              </View>
-            );
-          })}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-const NextMilestoneCountdown = React.memo(({ baby, milestones, isDark, colors }: { baby: any; milestones: any[]; isDark?: boolean; colors?: any }) => {
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const ageMonths = safeDiffMonths(new Date(), baby?.birthDate);
-
-  const nextMilestone = useMemo(() => {
-    const achieved = new Set(milestones.map(m => m.title?.toLowerCase()));
-    const allMilestones = [
-      { title: 'Rolling Over', typicalAge: 4, emoji: '🔄', category: 'Physical' },
-      { title: 'Sitting Up', typicalAge: 6, emoji: '🪑', category: 'Physical' },
-      { title: 'Crawling', typicalAge: 9, emoji: '🐛', category: 'Physical' },
-      { title: 'First Steps', typicalAge: 12, emoji: '👣', category: 'Physical' },
-      { title: 'First Words', typicalAge: 12, emoji: '🗣️', category: 'Cognitive' },
-      { title: 'Waving Bye', typicalAge: 9, emoji: '👋', category: 'Social' },
-      { title: 'Clapping', typicalAge: 9, emoji: '👏', category: 'Social' },
-      { title: 'Pointing', typicalAge: 12, emoji: '👉', category: 'Cognitive' },
-    ];
-
-    return allMilestones.find(m => !achieved.has(m.title.toLowerCase()) && m.typicalAge >= ageMonths) || null;
-  }, [milestones, ageMonths]);
-
-  if (!nextMilestone) return null;
-
-  const monthsUntil = nextMilestone.typicalAge - ageMonths;
-  const progressPercent = Math.max(0, Math.min(100, (ageMonths / nextMilestone.typicalAge) * 100));
-
-  return (
-    <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <GlassCard isDark={isDark} colors={colors}>
-        <View style={styles.countdownRow}>
-          <View style={[styles.countdownIconBg, { backgroundColor: '#6366f115' }]}>
-            <Text style={styles.countdownEmoji}>{nextMilestone.emoji}</Text>
-          </View>
-          <View style={styles.countdownContent}>
-            <Text style={styles.countdownTitle}>Next: {nextMilestone.title}</Text>
-            <Text style={styles.countdownSubtitle}>{nextMilestone.category} • Expected around {nextMilestone.typicalAge} months</Text>
-          </View>
-          <View style={styles.countdownBadge}>
-            <Text style={styles.countdownBadgeValue}>{monthsUntil}</Text>
-            <Text style={styles.countdownBadgeLabel}>mo</Text>
-          </View>
-        </View>
-        <View style={styles.countdownProgress}>
-          <View style={[styles.countdownProgressBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-            <View style={[styles.countdownProgressFill, { width: `${progressPercent}%`, backgroundColor: '#6366f1' }]} />
-          </View>
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-const FamilyConnectionHub = React.memo(({ members, onManage, babyName, isDark, colors }: { members: FamilyMember[]; onManage: () => void; babyName?: string; isDark?: boolean; colors?: any }) => {
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  
-  const isPending = (m: FamilyMember) => (m as any).status === 'pending' || !m.lastActive || m.fullName === 'Pending Invitation';
-  
-  const parents = members.filter(m => m.role === 'parent1' || m.role === 'parent2');
-  const confirmedParents = parents.filter(m => !isPending(m));
-  const pendingParents = parents.filter(m => isPending(m));
-  const others = members.filter(m => !parents.find(p => p.id === m.id));
-  const confirmedOthers = others.filter(m => !isPending(m));
-  const pendingOthers = others.filter(m => isPending(m));
-  
-  const renderAvatar = (member: FamilyMember, size: number = 48, pending: boolean = false) => {
-    const hasImage = member.avatar && (member.avatar.startsWith('http') || member.avatar.startsWith('file://') || member.avatar.startsWith('data:') || member.avatar.startsWith('ph://'));
-    return (
-      <View style={[styles.familyHubAvatar, { width: size, height: size, borderRadius: size/2, backgroundColor: hasImage ? 'transparent' : '#6366f1', borderColor: pending ? '#94a3b8' : '#1a1a2e', borderWidth: 2, opacity: pending ? 0.5 : 1 }]}>
-        {hasImage ? (
-          <Image source={{ uri: member.avatar }} style={{ width: size, height: size, borderRadius: size/2 }} resizeMode="cover" />
-        ) : (
-          <Text style={[styles.familyHubAvatarText, { fontSize: size * 0.4 }]}>{member.fullName?.charAt(0) || '?'}</Text>
-        )}
+      <View style={styles.kpiPillBody}>
+        <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
+        <Text style={styles.kpiPillLabel}>{label}</Text>
       </View>
-    );
-  };
-
-  const renderStatusBadge = (text: string, color: string = '#94a3b8') => (
-    <View style={{ backgroundColor: `${color}20`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 2 }}>
-      <Text style={{ fontSize: 9, fontWeight: '700', color }}>{text}</Text>
-    </View>
-  );
-
-  return (
-    <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <SectionHeader title="Family Tree" subtitle={`${confirmedParents.length + confirmedOthers.length} active · ${pendingParents.length + pendingOthers.length} pending`} action={onManage} actionLabel="Manage" isDark={isDark} colors={colors} />
-      <GlassCard onPress={onManage} isDark={isDark} colors={colors}>
-        <View style={{ padding: 16, alignItems: 'center' }}>
-          {/* Parents Row */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
-            {parents.map((parent) => {
-              const pending = isPending(parent);
-              return (
-                <View key={parent.id} style={{ alignItems: 'center', gap: 6, opacity: pending ? 0.55 : 1 }}>
-                  {renderAvatar(parent, 56, pending)}
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{parent.fullName || 'Parent'}</Text>
-                  <View style={{ backgroundColor: pending ? 'rgba(148,163,184,0.15)' : 'rgba(99,102,241,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: pending ? '#94a3b8' : '#6366f1' }}>{parent.relationship || 'Parent'}</Text>
-                  </View>
-                  {pending && renderStatusBadge('Invited', '#94a3b8')}
-                </View>
-              );
-            })}
-            {confirmedParents.length < 2 && pendingParents.length === 0 && (
-              <TouchableOpacity onPress={onManage} style={{ alignItems: 'center', gap: 6, opacity: 0.6 }}>
-                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' }}>
-                  <Ionicons name="add" size={24} color="#94a3b8" />
-                </View>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>Add Co-Parent</Text>
-              </TouchableOpacity>
-            )}
-            {pendingParents.length > 0 && confirmedParents.length < 2 && (
-              <View style={{ alignItems: 'center', gap: 6, opacity: 0.45 }}>
-                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' }}>
-                  <Ionicons name="time-outline" size={24} color="#94a3b8" />
-                </View>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>Awaiting Response</Text>
-              </View>
-            )}
-          </View>
-          
-          {/* Connector */}
-          <View style={{ width: 2, height: 20, backgroundColor: 'rgba(99,102,241,0.4)', marginVertical: 4 }} />
-          
-          {/* Baby Node */}
-          <View style={{ alignItems: 'center', marginBottom: 12 }}>
-            <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' }}>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: '#6366f1' }}>👶 {babyName || 'Baby'}</Text>
-            </View>
-          </View>
-          
-          {/* Connector down */}
-          {(confirmedOthers.length > 0 || pendingOthers.length > 0) && <View style={{ width: 2, height: 16, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 8 }} />}
-          
-          {/* Guardians / Others — Confirmed */}
-          {confirmedOthers.length > 0 && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: pendingOthers.length > 0 ? 10 : 0 }}>
-              {confirmedOthers.map((member) => (
-                <View key={member.id} style={{ alignItems: 'center', gap: 4 }}>
-                  {renderAvatar(member, 40, false)}
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>{member.fullName?.split(' ')[0] || 'Member'}</Text>
-                  <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                    <Text style={{ fontSize: 9, fontWeight: '700', color: '#6366f1' }}>{member.relationship || 'Guardian'}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-          
-          {/* Guardians / Others — Pending (dimmed) */}
-          {pendingOthers.length > 0 && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
-              {pendingOthers.map((member) => (
-                <View key={member.id} style={{ alignItems: 'center', gap: 4, opacity: 0.45 }}>
-                  {renderAvatar(member, 40, true)}
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>{member.fullName?.split(' ')[0] || 'Invited'}</Text>
-                  {renderStatusBadge('Invited', '#94a3b8')}
-                </View>
-              ))}
-            </View>
-          )}
-          
-          {/* Empty guardian slot CTA */}
-          {confirmedOthers.length === 0 && pendingOthers.length === 0 && (
-            <TouchableOpacity onPress={onManage} style={{ alignItems: 'center', gap: 6, opacity: 0.5, marginTop: 4 }}>
-              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' }}>
-                <Ionicons name="add" size={20} color="#94a3b8" />
-              </View>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>Add Guardian</Text>
-            </TouchableOpacity>
-          )}
-          
-          {/* Manage CTA */}
-          <TouchableOpacity onPress={onManage} style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(99,102,241,0.1)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
-            <Ionicons name="people-outline" size={16} color="#6366f1" />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#6366f1' }}>Manage Family Access</Text>
-          </TouchableOpacity>
-        </View>
-      </GlassCard>
-    </Animated.View>
+    </TouchableOpacity>
   );
 });
 
-const QuickActionDock = React.memo(({ onAction, isDark, colors }: { onAction: (screen: string, params?: any) => void; isDark?: boolean; colors?: any }) => {
-  const actions = [
-    { icon: '📏', label: 'Measure', screen: 'GrowthDashboard', color: '#6366f1', gradient: ['#6366f1', '#8b5cf6'] as [string, string] },
-    { icon: '🍼', label: 'Feed', screen: 'AddEntry', params: { trackerId: 'feed' }, color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'] as [string, string] },
-    { icon: '😴', label: 'Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' }, color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'] as [string, string] },
-    { icon: '💊', label: 'Med', screen: 'AddEntry', params: { trackerId: 'medication' }, color: '#ef4444', gradient: ['#ef4444', '#f87171'] as [string, string] },
-    { icon: '🌟', label: 'Milestone', screen: 'AddEntry', params: { trackerId: 'milestone' }, color: '#10b981', gradient: ['#10b981', '#34d399'] as [string, string] },
-  ];
-
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  return (
-    <Animated.View entering={FadeInUp.delay(450).springify()} style={styles.dockContainer}>
-      <View style={styles.dock}>
-        {actions.map((action, i) => (
-          <TouchableOpacity 
-            key={i} 
-            onPress={() => onAction(action.screen, action.params)} 
-            style={styles.dockItem}
-            activeOpacity={0.8}
-          >
-            <LinearGradient colors={action.gradient} style={styles.dockGradient}>
-              <Text style={styles.dockIcon}>{action.icon}</Text>
-            </LinearGradient>
-            <Text style={styles.dockLabel}>{action.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </Animated.View>
-  );
-});
-
-const BabyHealthScore = React.memo(({ baby, stats, recentActivities, isDark, colors }: { baby: any; stats: any; recentActivities: any[]; isDark?: boolean; colors?: any }) => {
-  const health = useMemo(() => {
-    const ageMonths = safeDiffMonths(new Date(), baby?.birthDate);
-
-    const frequency = Math.min(100, (recentActivities.length / 10) * 100);
-    const lastActivity = recentActivities[0];
-    const recency = lastActivity ? Math.max(0, 100 - (safeDiffDays(new Date(), new Date(lastActivity.timestamp)) / 7) * 100) : 0;
-    const diversity = new Set(recentActivities.map(a => a.type)).size;
-    const diversityScore = Math.min(100, (diversity / 5) * 100);
-
-    const score = Math.round((frequency * 0.3) + (recency * 0.35) + (diversityScore * 0.35));
-
-    let status = { label: 'Excellent', color: '#10b981', emoji: '💚' };
-    if (score < 40) status = { label: 'Needs Attention', color: '#ef4444', emoji: '⚠️' };
-    else if (score < 70) status = { label: 'Good', color: '#f59e0b', emoji: '💛' };
-    else if (score < 90) status = { label: 'Great', color: '#6366f1', emoji: '💙' };
-
-    return { score, status, frequency, recency, diversityScore };
-  }, [baby, stats, recentActivities]);
-
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  return (
-    <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <GlassCard isDark={isDark} colors={colors}>
-        <View style={styles.healthContainer}>
-          <View style={styles.healthLeft}>
-            <Text style={styles.healthTitle}>Tracking Health</Text>
-            <Text style={styles.healthSubtitle}>Activity & wellness score</Text>
-            <View style={styles.healthMetrics}>
-              <View style={styles.healthMetric}>
-                <Text style={styles.healthMetricValue}>{Math.round(health.frequency)}%</Text>
-                <Text style={styles.healthMetricLabel}>Frequency</Text>
-              </View>
-              <View style={styles.healthMetric}>
-                <Text style={styles.healthMetricValue}>{Math.round(health.recency)}%</Text>
-                <Text style={styles.healthMetricLabel}>Recency</Text>
-              </View>
-              <View style={styles.healthMetric}>
-                <Text style={styles.healthMetricValue}>{Math.round(health.diversityScore)}%</Text>
-                <Text style={styles.healthMetricLabel}>Diversity</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.healthRingContainer}>
-            <View style={styles.healthRing}>
-              <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
-                <Text style={styles.healthRingEmoji}>{health.status.emoji}</Text>
-                <Text style={[styles.healthRingScore, { color: health.status.color }]}>{health.score}</Text>
-                <Text style={styles.healthRingLabel}>{health.status.label}</Text>
-              </View>
-              <View style={[styles.healthRingBg, { borderColor: 'rgba(255,255,255,0.06)' }]} />
-              <View style={[styles.healthRingFill, { borderColor: health.status.color, transform: [{ rotate: `${(health.score / 100) * 360}deg` }] }]} />
-            </View>
-          </View>
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-const ActionModal = React.memo(({ visible, onClose, title, children, isDark = true, colors }: any) => {
+// ─── Picker Modal ──────────────────────────────────────────────────────
+const PickerModal = React.memo(({ 
+  visible, 
+  onClose, 
+  onSelect, 
+  options, 
+  selectedValue, 
+  title, 
+  isDark, 
+  colors 
+}: { 
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (value: string) => void;
+  options: string[];
+  selectedValue: string;
+  title: string;
+  isDark?: boolean;
+  colors?: any;
+}) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
+  
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
-          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { maxHeight: '60%' }]}>
+          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
           <View style={styles.modalDragHandle}>
             <View style={styles.dragIndicator} />
           </View>
@@ -856,13 +355,36 @@ const ActionModal = React.memo(({ visible, onClose, title, children, isDark = tr
               <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
             </TouchableOpacity>
           </View>
-          {children}
+          <View style={styles.pickerList}>
+            {options.map((item) => (
+              <TouchableOpacity
+                key={item}
+                style={[
+                  styles.pickerItem,
+                  selectedValue === item && { backgroundColor: 'rgba(99,102,241,0.1)' },
+                ]}
+                onPress={() => { onSelect(item); onClose(); }}
+              >
+                <Text style={[
+                  styles.pickerItemText,
+                  { color: isDark ? '#fff' : '#1e293b' },
+                  selectedValue === item && { color: '#6366f1', fontWeight: '700' }
+                ]}>
+                  {item}
+                </Text>
+                {selectedValue === item && (
+                  <Ionicons name="checkmark-circle" size={20} color="#6366f1" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
         </Animated.View>
       </View>
     </Modal>
   );
 });
 
+// ─── Emoji Picker Modal ────────────────────────────────────────────────
 const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, colors }: { visible: boolean; onClose: () => void; onSelect: (emoji: string) => void; isDark?: boolean; colors?: any }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
@@ -899,6 +421,7 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, color
   );
 });
 
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────
 export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamilyCenterScreenProps) {
   const { mode = 'baby', babyId } = route.params || { mode: 'baby' };
   const { isDark, colors: appColors } = useApp();
@@ -922,6 +445,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     return currentBaby;
   }, [isBabyMode, babyId, babies, currentBaby]);
 
+  // ─── STATE ──────────────────────────────────────────────────────────────
   const [babyName, setBabyName] = useState('');
   const [selectedSkin, setSelectedSkin] = useState(2);
   const [selectedGender, setSelectedGender] = useState('boy');
@@ -936,6 +460,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
 
+  // ─── Health State ──────────────────────────────────────────────────────
   const [bloodType, setBloodType] = useState('');
   const [allergies, setAllergies] = useState('');
   const [medicalNotes, setMedicalNotes] = useState('');
@@ -945,7 +470,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const [pediatrician, setPediatrician] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  // Birth details state for editing
+  // ─── Birth Details State ──────────────────────────────────────────────
   const [birthWeight, setBirthWeight] = useState('');
   const [birthHeight, setBirthHeight] = useState('');
   const [birthHeadCircumference, setBirthHeadCircumference] = useState('');
@@ -960,8 +485,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const [feedingPlan, setFeedingPlan] = useState('');
   const [birthTime, setBirthTime] = useState('');
 
+  // ─── Picker State ──────────────────────────────────────────────────────
+  const [pickerState, setPickerState] = useState<{
+    visible: boolean;
+    type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
+  }>({ visible: false, type: null });
+
+  // ─── Refs ──────────────────────────────────────────────────────────────
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
+  const hasLoadedRef = useRef(false);
 
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolation.CLAMP),
@@ -972,53 +505,66 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } 
   });
 
+  // ─── LOAD DATA ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (currentBabyData) {
-      setBabyName(currentBabyData.name || '');
-      setSelectedSkin(typeof currentBabyData.skinTone === 'number' ? currentBabyData.skinTone : 2);
-      setSelectedGender(currentBabyData.gender || 'boy');
-      setBirthDate(new Date(currentBabyData.birthDate));
-      setBabyPhoto(currentBabyData.avatar || null);
-      setBloodType(currentBabyData.bloodType || '');
-      setAllergies(currentBabyData.allergies?.join(', ') || '');
-      setMedicalNotes(currentBabyData.medicalNotes || '');
-      setWeight(currentBabyData.weight || '');
-      setHeight(currentBabyData.height || '');
-      setEmergencyContact(currentBabyData.emergencyContact || '');
-      setPediatrician(currentBabyData.pediatrician || '');
-      setNotificationsEnabled(currentBabyData.notificationsEnabled !== false);
-      
-      // Birth details
-      setBirthWeight(currentBabyData.birthWeight || '');
-      setBirthHeight(currentBabyData.birthHeight || '');
-      setBirthHeadCircumference(currentBabyData.birthHeadCircumference || '');
-      setGestationalWeeks(currentBabyData.gestationalWeeks || '');
-      setApgar1Min(currentBabyData.apgar1Min || '');
-      setApgar5Min(currentBabyData.apgar5Min || '');
-      setDeliveryType(currentBabyData.deliveryType || '');
-      setBirthAttendant(currentBabyData.birthAttendant || '');
-      setBirthPlace(currentBabyData.birthPlace || '');
-      setMultipleBirth(currentBabyData.multipleBirth || false);
-      setBirthOrder(currentBabyData.birthOrder || '');
-      setFeedingPlan(currentBabyData.feedingPlan || '');
-      setBirthTime(currentBabyData.birthTime || '');
-      
-      setIsEditing(false);
+    if (currentBabyData && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      loadDataFromBaby(currentBabyData);
     }
   }, [currentBabyData?.id]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await Promise.all([loadBabies(), loadFamily()]);
-    setRefreshing(false);
-  }, [loadBabies, loadFamily]);
+  const loadDataFromBaby = useCallback((baby: any) => {
+    if (!baby) return;
+    
+    setBabyName(baby.name || '');
+    setSelectedSkin(typeof baby.skinTone === 'number' ? baby.skinTone : 2);
+    setSelectedGender(baby.gender || 'boy');
+    setBirthDate(new Date(baby.birthDate));
+    setBabyPhoto(baby.avatar || null);
+    setBloodType(baby.bloodType || '');
+    setAllergies(baby.allergies?.join(', ') || '');
+    setMedicalNotes(baby.medicalNotes || '');
+    setWeight(baby.weight || '');
+    setHeight(baby.height || '');
+    setEmergencyContact(baby.emergencyContact || '');
+    setPediatrician(baby.pediatrician || '');
+    setNotificationsEnabled(baby.notificationsEnabled !== false);
+    
+    // ─── Birth Details ──────────────────────────────────────────────────
+    setBirthWeight(baby.birthWeight || '');
+    setBirthHeight(baby.birthHeight || '');
+    setBirthHeadCircumference(baby.birthHeadCircumference || '');
+    setGestationalWeeks(baby.gestationalWeeks || '');
+    setApgar1Min(baby.apgar1Min || '');
+    setApgar5Min(baby.apgar5Min || '');
+    setDeliveryType(baby.deliveryType ? formatDeliveryType(baby.deliveryType) : '');
+    setBirthAttendant(baby.birthAttendant ? formatBirthAttendant(baby.birthAttendant) : '');
+    setBirthPlace(baby.birthPlace || '');
+    setMultipleBirth(baby.multipleBirth || false);
+    setBirthOrder(baby.birthOrder || '');
+    setFeedingPlan(baby.feedingPlan ? formatFeedingPlan(baby.feedingPlan) : '');
+    setBirthTime(baby.birthTime || '');
+    
+    setIsEditing(false);
+  }, []);
 
-  const getPermanentImagePath = (babyId: string, isAvatar: boolean = true) => {
-    const dir = FileSystem.documentDirectory + 'baby_images/';
-    return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
+  // ─── FORMAT HELPERS ────────────────────────────────────────────────────
+  const formatDeliveryType = (value: string): string => {
+    if (!value) return '';
+    return value.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
-  // ─── FIXED: ensureDirExists using legacy API ──────────────────────────
+  const formatBirthAttendant = (value: string): string => {
+    if (!value) return '';
+    return value.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
+  const formatFeedingPlan = (value: string): string => {
+    if (!value) return '';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
+
+  // ─── IMAGE HANDLING ────────────────────────────────────────────────────
   const ensureDirExists = async () => {
     const dir = FileSystem.documentDirectory + 'baby_images/';
     try {
@@ -1031,13 +577,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  // ─── FIXED: persistPickedImage helper ─────────────────────────────────
+  const getPermanentImagePath = (babyId: string, isAvatar: boolean = true) => {
+    const dir = FileSystem.documentDirectory + 'baby_images/';
+    return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
+  };
+
   const persistPickedImage = async (sourceUri: string, babyId: string): Promise<string | null> => {
     try {
       await ensureDirExists();
       const permanentUri = getPermanentImagePath(babyId, 'avatar');
       
-      // Handle different URI types with legacy API
       if (sourceUri.startsWith('content://')) {
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -1052,10 +601,8 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         await FileSystem.copyAsync({ from: sourceUri, to: permanentUri });
       }
 
-      // Verify file exists
       const fileInfo = await FileSystem.getInfoAsync(permanentUri);
       if (!fileInfo.exists) {
-        console.error('[persistPickedImage] File not found after write:', permanentUri);
         return null;
       }
 
@@ -1066,7 +613,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  // ─── FIXED: handleTakePhoto with proper image persistence ─────────────
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -1098,7 +644,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  // ─── FIXED: handlePickImage with proper image persistence ─────────────
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -1157,34 +702,17 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  const recentActivities = useMemo(() => {
-    if (!currentBabyData?.id) return [];
-    return getEntriesByBaby(currentBabyData.id).sort((a, b) => b.timestamp - a.timestamp).slice(0, 30);
-  }, [allActivities, currentBabyData?.id, getEntriesByBaby]);
-
-  const babyMilestones = useMemo(() => {
-    if (!currentBabyData?.id) return [];
-    return milestones.filter(m => m.babyId === currentBabyData.id).sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime());
-  }, [milestones, currentBabyData?.id]);
-
-  const babyStats = useMemo(() => {
-    if (!currentBabyData) return null;
-    return { 
-      streak: currentBabyData.streak || 0, 
-      milestones: babyMilestones.length, 
-      photos: currentBabyData.photos || 0, 
-      entries: recentActivities.length 
-    };
-  }, [currentBabyData, babyMilestones.length, recentActivities.length]);
-
-  const familyMembers = useMemo(() => members, [members]);
-
+  // ─── SAVE HANDLING ──────────────────────────────────────────────────────
   const checkForChanges = useCallback(() => {
     if (!currentBabyData) return [];
     const changes: string[] = [];
+    
+    // Basic info
     if (babyName !== currentBabyData.name) changes.push(`Name: ${babyName}`);
     if (selectedGender !== currentBabyData.gender) changes.push(`Gender: ${GENDER_OPTIONS.find(g => g.value === selectedGender)?.label}`);
     if (babyPhoto !== currentBabyData.avatar) changes.push('Profile Photo');
+    
+    // Health info
     if (bloodType !== (currentBabyData.bloodType || '')) changes.push(`Blood Type: ${bloodType}`);
     if (allergies !== (currentBabyData.allergies?.join(', ') || '')) changes.push('Allergies updated');
     if (medicalNotes !== (currentBabyData.medicalNotes || '')) changes.push('Medical Notes updated');
@@ -1200,12 +728,12 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     if (gestationalWeeks !== (currentBabyData.gestationalWeeks || '')) changes.push('Gestational Weeks updated');
     if (apgar1Min !== (currentBabyData.apgar1Min || '')) changes.push('Apgar 1min updated');
     if (apgar5Min !== (currentBabyData.apgar5Min || '')) changes.push('Apgar 5min updated');
-    if (deliveryType !== (currentBabyData.deliveryType || '')) changes.push('Delivery Type updated');
-    if (birthAttendant !== (currentBabyData.birthAttendant || '')) changes.push('Birth Attendant updated');
+    if (deliveryType !== formatDeliveryType(currentBabyData.deliveryType || '')) changes.push('Delivery Type updated');
+    if (birthAttendant !== formatBirthAttendant(currentBabyData.birthAttendant || '')) changes.push('Birth Attendant updated');
     if (birthPlace !== (currentBabyData.birthPlace || '')) changes.push('Birth Place updated');
     if (multipleBirth !== (currentBabyData.multipleBirth || false)) changes.push('Multiple Birth updated');
     if (birthOrder !== (currentBabyData.birthOrder || '')) changes.push('Birth Order updated');
-    if (feedingPlan !== (currentBabyData.feedingPlan || '')) changes.push('Feeding Plan updated');
+    if (feedingPlan !== formatFeedingPlan(currentBabyData.feedingPlan || '')) changes.push('Feeding Plan updated');
     if (birthTime !== (currentBabyData.birthTime || '')) changes.push('Birth Time updated');
     
     return changes;
@@ -1222,127 +750,101 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }, () => {}, 'Save', 'Cancel');
   };
 
-// ─── FIXED: handleSave with proper avatar handling ──────────────────────
-const handleSave = async () => {
-  try {
-    if (!currentBabyData) return;
-    setIsSaving(true);
-    
-    // ─── CHECK IF AVATAR HAS CHANGED ──────────────────────────────────
-    let avatarUrl = currentBabyData.avatar_url || currentBabyData.avatar;
-    let avatarUpdated = false;
-    const currentAvatar = currentBabyData.avatar || currentBabyData.avatar_url || '';
-    
-    console.log('[BabyProfile] Current avatar:', currentAvatar);
-    console.log('[BabyProfile] New babyPhoto:', babyPhoto);
-    
-    // If a new photo was selected (and it's a file URI, not an emoji)
-    if (babyPhoto && babyPhoto !== currentAvatar && 
-        (babyPhoto.startsWith('file://') || babyPhoto.startsWith('content://') || babyPhoto.startsWith('http'))) {
-      console.log('[BabyProfile] Avatar changed, uploading...');
+  const handleSave = async () => {
+    try {
+      if (!currentBabyData) return;
+      setIsSaving(true);
       
-      // If it's already a URL, use it directly
-      if (babyPhoto.startsWith('http')) {
-        avatarUrl = babyPhoto;
-        avatarUpdated = true;
-        console.log('[BabyProfile] Using existing URL:', avatarUrl);
-      } else {
-        try {
-          // ─── UPLOAD TO SUPABASE STORAGE ──────────────────────────────
-          const uploadedUrl = await uploadImageToSupabase(babyPhoto, currentBabyData.id);
-          if (uploadedUrl) {
-            avatarUrl = uploadedUrl;
-            avatarUpdated = true;
-            console.log('[BabyProfile] Avatar uploaded to Supabase:', avatarUrl);
-          } else {
-            // ─── FALLBACK: SAVE LOCALLY ──────────────────────────────────
+      let avatarUrl = currentBabyData.avatar_url || currentBabyData.avatar;
+      let avatarUpdated = false;
+      const currentAvatar = currentBabyData.avatar || currentBabyData.avatar_url || '';
+      
+      if (babyPhoto && babyPhoto !== currentAvatar && 
+          (babyPhoto.startsWith('file://') || babyPhoto.startsWith('content://') || babyPhoto.startsWith('http'))) {
+        
+        if (babyPhoto.startsWith('http')) {
+          avatarUrl = babyPhoto;
+          avatarUpdated = true;
+        } else {
+          try {
+            const uploadedUrl = await uploadImageToSupabase(babyPhoto, currentBabyData.id);
+            if (uploadedUrl) {
+              avatarUrl = uploadedUrl;
+              avatarUpdated = true;
+            } else {
+              const permanentUri = await persistPickedImage(babyPhoto, currentBabyData.id);
+              if (permanentUri) {
+                avatarUrl = permanentUri;
+                avatarUpdated = true;
+              }
+            }
+          } catch (uploadError) {
             const permanentUri = await persistPickedImage(babyPhoto, currentBabyData.id);
             if (permanentUri) {
               avatarUrl = permanentUri;
               avatarUpdated = true;
-              console.log('[BabyProfile] Avatar saved locally:', avatarUrl);
             }
           }
-        } catch (uploadError) {
-          console.error('[BabyProfile] Avatar upload error:', uploadError);
-          // ─── FALLBACK: SAVE LOCALLY ──────────────────────────────────
-          const permanentUri = await persistPickedImage(babyPhoto, currentBabyData.id);
-          if (permanentUri) {
-            avatarUrl = permanentUri;
-            avatarUpdated = true;
-            console.log('[BabyProfile] Avatar saved locally (fallback):', avatarUrl);
-          }
         }
+      } else if (babyPhoto && !babyPhoto.startsWith('file://') && !babyPhoto.startsWith('content://') && !babyPhoto.startsWith('http')) {
+        avatarUrl = babyPhoto;
+        avatarUpdated = true;
       }
-    } else if (babyPhoto && !babyPhoto.startsWith('file://') && !babyPhoto.startsWith('content://') && !babyPhoto.startsWith('http')) {
-      // It's an emoji or other non-file value
-      avatarUrl = babyPhoto;
-      avatarUpdated = true;
-      console.log('[BabyProfile] Using emoji avatar:', avatarUrl);
-    }
-    
-    // ─── BUILD UPDATE OBJECT ───────────────────────────────────────────
-    const babyUpdates: any = {
-      name: babyName,
-      skinTone: selectedSkin,
-      gender: selectedGender,
-      birthDate: birthDate.toISOString(),
-      bloodType,
-      allergies: allergies.split(',').map(a => a.trim()).filter(Boolean),
-      medicalNotes,
-      weight,
-      height,
-      emergencyContact,
-      pediatrician,
-      notificationsEnabled,
       
-      // Birth details
-      birthWeight: birthWeight,
-      birthHeight: birthHeight,
-      birthHeadCircumference: birthHeadCircumference,
-      gestationalWeeks: gestationalWeeks,
-      apgar1Min: apgar1Min,
-      apgar5Min: apgar5Min,
-      deliveryType: deliveryType,
-      birthAttendant: birthAttendant,
-      birthPlace: birthPlace,
-      multipleBirth: multipleBirth,
-      birthOrder: birthOrder,
-      feedingPlan: feedingPlan,
-      birthTime: birthTime,
+      const babyUpdates: any = {
+        name: babyName,
+        skinTone: selectedSkin,
+        gender: selectedGender,
+        birthDate: birthDate.toISOString(),
+        bloodType: bloodType || null,
+        allergies: allergies ? allergies.split(',').map(a => a.trim()).filter(Boolean) : [],
+        medicalNotes: medicalNotes || null,
+        weight: weight || null,
+        height: height || null,
+        emergencyContact: emergencyContact || null,
+        pediatrician: pediatrician || null,
+        notificationsEnabled: notificationsEnabled,
+        birthWeight: birthWeight || null,
+        birthHeight: birthHeight || null,
+        birthHeadCircumference: birthHeadCircumference || null,
+        gestationalWeeks: gestationalWeeks || null,
+        apgar1Min: apgar1Min || null,
+        apgar5Min: apgar5Min || null,
+        deliveryType: deliveryType ? deliveryType.toLowerCase().replace(/ /g, '_') : null,
+        birthAttendant: birthAttendant ? birthAttendant.toLowerCase().replace(/ /g, '_') : null,
+        birthPlace: birthPlace || null,
+        multipleBirth: multipleBirth,
+        birthOrder: birthOrder || null,
+        feedingPlan: feedingPlan ? feedingPlan.toLowerCase() : null,
+        birthTime: birthTime || null,
+        lastUpdated: new Date().toISOString(),
+      };
       
-      lastUpdated: new Date().toISOString(),
-    };
-    
-    // ─── ONLY UPDATE AVATAR IF CHANGED ─────────────────────────────────
-    if (avatarUpdated) {
-      babyUpdates.avatar = avatarUrl;
-      babyUpdates.avatar_url = avatarUrl;
+      if (avatarUpdated) {
+        babyUpdates.avatar = avatarUrl;
+        babyUpdates.avatar_url = avatarUrl;
+      }
+      
+      await updateBaby(currentBabyData.id, babyUpdates);
+      setIsEditing(false);
+      
+      if (avatarUpdated) {
+        setBabyPhoto(avatarUrl);
+      }
+      
+      await loadBabies(true);
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated successfully.`);
+    } catch (error) {
+      console.error('[BabyProfile] Save error:', error);
+      sweetAlert.error('Error', 'Failed to update profile');
+    } finally {
+      setIsSaving(false);
     }
-    
-    console.log('[BabyProfile] Saving updates:', babyUpdates);
-    
-    await updateBaby(currentBabyData.id, babyUpdates);
-    setIsEditing(false);
-    
-    // ─── UPDATE LOCAL STATE WITH NEW AVATAR ───────────────────────────
-    if (avatarUpdated) {
-      setBabyPhoto(avatarUrl);
-    }
-    
-    // ─── FORCE REFRESH BABIES ──────────────────────────────────────────
-    await loadBabies(true);
-    
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated successfully.`);
-  } catch (error) {
-    console.error('[BabyProfile] Save error:', error);
-    sweetAlert.error('Error', 'Failed to update profile');
-  } finally {
-    setIsSaving(false);
-  }
-};
+  };
 
+  // ─── MILESTONE HANDLING ──────────────────────────────────────────────
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({
     title: '', category: 'physical' as Milestone['category'], description: '', achievedAt: new Date().toISOString().split('T')[0],
@@ -1373,6 +875,7 @@ const handleSave = async () => {
     }, () => {}, 'Delete', 'Cancel');
   };
 
+  // ─── DELETE BABY ────────────────────────────────────────────────────────
   const { verifyPassword } = useAuth();
 
   const handleDeleteBaby = useCallback(async () => {
@@ -1417,22 +920,117 @@ const handleSave = async () => {
     );
   }, [currentBabyData, deleteBaby, navigation, sweetAlert, verifyPassword]);
 
+  // ─── DATE PICKER ──────────────────────────────────────────────────────
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) { setBirthDate(selectedDate); setIsEditing(true); }
   };
 
+  // ─── TAB CHANGE ────────────────────────────────────────────────────────
   const handleTabChange = useCallback((tab: ProfileTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  const handleQuickAction = useCallback((screen: string, params?: any) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate(screen as never, params as never);
-  }, [navigation]);
+  // ─── REFRESH ────────────────────────────────────────────────────────────
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadBabies(true), loadFamily()]);
+    setRefreshing(false);
+  }, [loadBabies, loadFamily]);
 
+  // ─── COMPUTED VALUES ──────────────────────────────────────────────────
+  const recentActivities = useMemo(() => {
+    if (!currentBabyData?.id) return [];
+    return getEntriesByBaby(currentBabyData.id).sort((a, b) => b.timestamp - a.timestamp).slice(0, 30);
+  }, [allActivities, currentBabyData?.id, getEntriesByBaby]);
+
+  const babyMilestones = useMemo(() => {
+    if (!currentBabyData?.id) return [];
+    return milestones.filter(m => m.babyId === currentBabyData.id).sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime());
+  }, [milestones, currentBabyData?.id]);
+
+  const babyStats = useMemo(() => {
+    if (!currentBabyData) return null;
+    return { 
+      streak: currentBabyData.streak || 0, 
+      milestones: babyMilestones.length, 
+      photos: currentBabyData.photos || 0, 
+      entries: recentActivities.length 
+    };
+  }, [currentBabyData, babyMilestones.length, recentActivities.length]);
+
+  const familyMembers = useMemo(() => members, [members]);
+
+  const genderOption = GENDER_OPTIONS.find(g => g.value === selectedGender);
+  const ageMonths = safeDiffMonths(new Date(), currentBabyData?.birthDate || new Date());
+  const ageDisplay = calculateAge(currentBabyData?.birthDate || new Date().toISOString());
+
+  // ─── TABS ───────────────────────────────────────────────────────────────
+  const tabs = [
+    { key: 'overview' as ProfileTab, label: 'Overview', icon: 'grid-outline' },
+    { key: 'milestones' as ProfileTab, label: 'Milestones', icon: 'trophy-outline' },
+    { key: 'health' as ProfileTab, label: 'Health', icon: 'medical-outline' },
+    { key: 'danger' as ProfileTab, label: 'Danger', icon: 'warning-outline' },
+  ];
+
+  // ─── RENDER PICKER ─────────────────────────────────────────────────────
+  const renderPickerModal = () => {
+    const type = pickerState.type;
+    if (!type || !pickerState.visible) return null;
+
+    let options: string[] = [];
+    let title = '';
+    let value = '';
+
+    switch (type) {
+      case 'bloodType':
+        options = BLOOD_TYPES;
+        title = 'Select Blood Type';
+        value = bloodType;
+        break;
+      case 'deliveryType':
+        options = DELIVERY_TYPES;
+        title = 'Select Delivery Type';
+        value = deliveryType;
+        break;
+      case 'birthAttendant':
+        options = BIRTH_ATTENDANTS;
+        title = 'Select Birth Attendant';
+        value = birthAttendant;
+        break;
+      case 'feedingPlan':
+        options = FEEDING_PLANS;
+        title = 'Select Feeding Plan';
+        value = feedingPlan;
+        break;
+    }
+
+    return (
+      <PickerModal
+        visible={true}
+        onClose={() => setPickerState({ visible: false, type: null })}
+        onSelect={(val) => {
+          switch (type) {
+            case 'bloodType': setBloodType(val); break;
+            case 'deliveryType': setDeliveryType(val); break;
+            case 'birthAttendant': setBirthAttendant(val); break;
+            case 'feedingPlan': setFeedingPlan(val); break;
+          }
+          setIsEditing(true);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }}
+        options={options}
+        selectedValue={value}
+        title={title}
+        isDark={isDark}
+        colors={themeColors}
+      />
+    );
+  };
+
+  // ─── LOADING STATE ──────────────────────────────────────────────────
   if (!currentBabyData) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -1443,16 +1041,7 @@ const handleSave = async () => {
     );
   }
 
-  const genderOption = GENDER_OPTIONS.find(g => g.value === selectedGender);
-  const ageMonths = safeDiffMonths(new Date(), currentBabyData.birthDate);
-
-  const tabs = [
-    { key: 'overview' as ProfileTab, label: 'Overview', icon: 'grid-outline' },
-    { key: 'milestones' as ProfileTab, label: 'Milestones', icon: 'trophy-outline' },
-    { key: 'health' as ProfileTab, label: 'Health', icon: 'medical-outline' },
-    { key: 'danger' as ProfileTab, label: 'Danger', icon: 'warning-outline' },
-  ];
-
+  // ─── RENDER ──────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
@@ -1462,7 +1051,7 @@ const handleSave = async () => {
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <Text style={styles.stickyTitle}>{currentBabyData.name}</Text>
-        <Text style={styles.stickySubtitle}>{ageMonths} months • {genderOption?.label}</Text>
+        <Text style={styles.stickySubtitle}>{ageDisplay} • {genderOption?.label}</Text>
       </Animated.View>
 
       {/* Main Scroll */}
@@ -1508,7 +1097,7 @@ const handleSave = async () => {
 
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{currentBabyData.name}</Text>
-            <Text style={styles.profileMeta}>{ageMonths} months • {genderOption?.label}</Text>
+            <Text style={styles.profileMeta}>{ageDisplay} • {genderOption?.label}</Text>
             <View style={styles.profileTags}>
               <View style={[styles.profileTag, { backgroundColor: `${medicalNotes || allergies ? '#f59e0b' : '#10b981'}20` }]}>
                 <Ionicons name={medicalNotes || allergies ? 'medical-outline' : 'checkmark-circle'} size={12} color={medicalNotes || allergies ? '#f59e0b' : '#10b981'} />
@@ -1526,8 +1115,46 @@ const handleSave = async () => {
           </View>
         </Animated.View>
 
-        {/* Quick Actions Dock */}
-        <QuickActionDock onAction={handleQuickAction} isDark={isDark} colors={themeColors} />
+        {/* Quick Action Dock */}
+        <Animated.View entering={FadeInUp.delay(150).springify()} style={styles.dockContainer}>
+          <View style={styles.dock}>
+            {[
+              { icon: '📏', label: 'Measure', color: '#6366f1' },
+              { icon: '🍼', label: 'Feed', color: '#f59e0b' },
+              { icon: '😴', label: 'Sleep', color: '#3b82f6' },
+              { icon: '💊', label: 'Med', color: '#ef4444' },
+              { icon: '🌟', label: 'Milestone', color: '#10b981' },
+            ].map((action, i) => (
+              <TouchableOpacity 
+                key={i} 
+                style={styles.dockItem}
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  const screenMap: Record<string, string> = {
+                    'Measure': 'GrowthDashboard',
+                    'Feed': 'AddEntry',
+                    'Sleep': 'AddEntry',
+                    'Med': 'AddEntry',
+                    'Milestone': 'AddEntry',
+                  };
+                  const paramsMap: Record<string, any> = {
+                    'Feed': { trackerId: 'feed' },
+                    'Sleep': { trackerId: 'sleep' },
+                    'Med': { trackerId: 'medication' },
+                    'Milestone': { trackerId: 'milestone' },
+                  };
+                  navigation.navigate(screenMap[action.label] as never, paramsMap[action.label] as never);
+                }}
+              >
+                <LinearGradient colors={[action.color, action.color + 'cc']} style={styles.dockGradient}>
+                  <Text style={styles.dockIcon}>{action.icon}</Text>
+                </LinearGradient>
+                <Text style={styles.dockLabel}>{action.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
 
         {/* Tab Bar */}
         <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={themeColors} />
@@ -1551,112 +1178,56 @@ const handleSave = async () => {
               <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
             </TouchableOpacity>
 
-            {/* Birth Details Section */}
+            {/* Birth Details Section - Always visible, shows "Not recorded" for empty fields */}
             <Animated.View entering={FadeInUp.delay(250).springify()}>
               <SectionHeader title="Birth Details" subtitle="Information from birth" isDark={isDark} colors={themeColors} />
               <GlassCard isDark={isDark} colors={themeColors}>
                 <View style={styles.birthDetailsGrid}>
-                  {birthWeight && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Birth Weight</Text>
-                      <Text style={styles.birthDetailValue}>{birthWeight} kg</Text>
-                    </View>
-                  )}
-                  {birthHeight && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Birth Height</Text>
-                      <Text style={styles.birthDetailValue}>{birthHeight} cm</Text>
-                    </View>
-                  )}
-                  {birthHeadCircumference && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Head Circumference</Text>
-                      <Text style={styles.birthDetailValue}>{birthHeadCircumference} cm</Text>
-                    </View>
-                  )}
-                  {gestationalWeeks && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Gestational Weeks</Text>
-                      <Text style={styles.birthDetailValue}>{gestationalWeeks} weeks</Text>
-                    </View>
-                  )}
-                  {apgar1Min && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Apgar (1 min)</Text>
-                      <Text style={styles.birthDetailValue}>{apgar1Min}</Text>
-                    </View>
-                  )}
-                  {apgar5Min && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Apgar (5 min)</Text>
-                      <Text style={styles.birthDetailValue}>{apgar5Min}</Text>
-                    </View>
-                  )}
-                  {deliveryType && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Delivery Type</Text>
-                      <Text style={styles.birthDetailValue}>{deliveryType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</Text>
-                    </View>
-                  )}
-                  {birthAttendant && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Birth Attendant</Text>
-                      <Text style={styles.birthDetailValue}>{birthAttendant.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</Text>
-                    </View>
-                  )}
-                  {birthPlace && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Birth Place</Text>
-                      <Text style={styles.birthDetailValue}>{birthPlace}</Text>
-                    </View>
-                  )}
-                  {feedingPlan && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Feeding Plan</Text>
-                      <Text style={styles.birthDetailValue}>{feedingPlan.charAt(0).toUpperCase() + feedingPlan.slice(1)}</Text>
-                    </View>
-                  )}
-                  {multipleBirth && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Multiple Birth</Text>
-                      <Text style={styles.birthDetailValue}>Yes</Text>
-                    </View>
-                  )}
-                  {birthOrder && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Birth Order</Text>
-                      <Text style={styles.birthDetailValue}>#{birthOrder}</Text>
-                    </View>
-                  )}
-                  {bloodType && (
-                    <View style={styles.birthDetailItem}>
-                      <Text style={styles.birthDetailLabel}>Blood Type</Text>
-                      <Text style={styles.birthDetailValue}>{bloodType}</Text>
-                    </View>
-                  )}
+                  {[
+                    { label: 'Birth Weight', value: birthWeight, suffix: ' kg', key: 'birthWeight' },
+                    { label: 'Birth Height', value: birthHeight, suffix: ' cm', key: 'birthHeight' },
+                    { label: 'Head Circumference', value: birthHeadCircumference, suffix: ' cm', key: 'headCirc' },
+                    { label: 'Gestational Weeks', value: gestationalWeeks, suffix: ' weeks', key: 'gestWeeks' },
+                    { label: 'Apgar (1 min)', value: apgar1Min, suffix: '', key: 'apgar1' },
+                    { label: 'Apgar (5 min)', value: apgar5Min, suffix: '', key: 'apgar5' },
+                    { label: 'Delivery Type', value: deliveryType, suffix: '', key: 'delivery' },
+                    { label: 'Birth Attendant', value: birthAttendant, suffix: '', key: 'attendant' },
+                    { label: 'Birth Place', value: birthPlace, suffix: '', key: 'place' },
+                    { label: 'Feeding Plan', value: feedingPlan, suffix: '', key: 'feeding' },
+                    { label: 'Blood Type', value: bloodType, suffix: '', key: 'bloodType' },
+                    { label: 'Birth Order', value: birthOrder, suffix: '', key: 'order' },
+                    { label: 'Multiple Birth', value: multipleBirth ? 'Yes' : (birthOrder ? 'No' : ''), suffix: '', key: 'multiple' },
+                  ].map((item, index) => {
+                    const hasValue = item.value && item.value !== '';
+                    return (
+                      <View key={index} style={[styles.birthDetailItem, !hasValue && styles.birthDetailItemEmpty]}>
+                        <Text style={styles.birthDetailLabel}>{item.label}</Text>
+                        <Text style={[styles.birthDetailValue, !hasValue && styles.birthDetailValueEmpty]}>
+                          {hasValue ? `${item.value}${item.suffix}` : '— Not recorded —'}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
                 {!birthWeight && !birthHeight && !birthHeadCircumference && !gestationalWeeks && !apgar1Min && !deliveryType && !feedingPlan && !bloodType && (
                   <View style={styles.emptyBirthDetails}>
                     <Text style={styles.emptyBirthDetailsText}>No birth details recorded yet</Text>
-                    <Text style={styles.emptyBirthDetailsSubtext}>Add birth information in the Health tab</Text>
+                    <Text style={styles.emptyBirthDetailsSubtext}>Tap the Health tab to add birth information</Text>
                   </View>
+                )}
+                {(!birthWeight || !birthHeight || !birthHeadCircumference) && (
+                  <TouchableOpacity 
+                    style={[styles.addBirthDetailsBtn, { backgroundColor: 'rgba(99,102,241,0.1)' }]}
+                    onPress={() => { setActiveTab('health'); setIsEditing(true); }}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color="#6366f1" />
+                    <Text style={styles.addBirthDetailsText}>Add Missing Birth Details</Text>
+                  </TouchableOpacity>
                 )}
               </GlassCard>
             </Animated.View>
 
-            <SmartHealthInsights baby={currentBabyData} stats={babyStats} recentActivities={recentActivities} isDark={isDark} colors={themeColors} />
-            <ActivitySparkline activities={recentActivities} isDark={isDark} colors={themeColors} />
-            <BabyHealthScore baby={currentBabyData} stats={babyStats} recentActivities={recentActivities} isDark={isDark} colors={themeColors} />
-            <DevelopmentStageTracker baby={currentBabyData} isDark={isDark} colors={themeColors} />
-            <NextMilestoneCountdown baby={currentBabyData} milestones={babyMilestones} isDark={isDark} colors={themeColors} />
-            <FamilyConnectionHub 
-              members={familyMembers} 
-              onManage={() => navigation.navigate('FamilySharing' as never)} 
-              babyName={currentBabyData?.name}
-              isDark={isDark}
-              colors={themeColors}
-            />
-
+            {/* Recent Activity */}
             <Animated.View entering={FadeInUp.delay(500).springify()}>
               <SectionHeader 
                 title="Recent Activity" 
@@ -1676,28 +1247,20 @@ const handleSave = async () => {
                 </GlassCard>
               ) : (
                 <View style={styles.activitiesList}>
-                  {recentActivities.slice(0, 5).map((activity, index) => {
-                    const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.default;
-                    return (
-                      <Animated.View key={activity.id || index} entering={FadeInUp.delay(index * 60).springify()}>
-                        <GlassCard style={styles.activityCard} delay={index * 60} isDark={isDark} colors={themeColors}>
-                          <View style={styles.activityRow}>
-                            <View style={[styles.activityIcon, { backgroundColor: `${config.color}18` }]}>
-                              <Text style={styles.activityEmoji}>{config.emoji}</Text>
-                            </View>
-                            <View style={styles.activityContent}>
-                              <Text style={styles.activityTitle}>{activity.title || config.label}</Text>
-                              {activity.details && <Text style={styles.activityDetails} numberOfLines={2}>{activity.details}</Text>}
-                              <Text style={styles.activityTime}>{format(activity.timestamp, 'MMM d, h:mm a')}</Text>
-                            </View>
-                            <View style={[styles.activityTypeBadge, { backgroundColor: `${config.color}15` }]}>
-                              <Text style={[styles.activityTypeText, { color: config.color }]}>{config.label}</Text>
-                            </View>
-                          </View>
-                        </GlassCard>
-                      </Animated.View>
-                    );
-                  })}
+                  {recentActivities.slice(0, 5).map((activity, index) => (
+                    <GlassCard key={activity.id || index} style={styles.activityCard} delay={index * 60} isDark={isDark} colors={themeColors}>
+                      <View style={styles.activityRow}>
+                        <View style={[styles.activityIcon, { backgroundColor: `${activity.color || '#6366f1'}18` }]}>
+                          <Text style={styles.activityEmoji}>{activity.icon || '📝'}</Text>
+                        </View>
+                        <View style={styles.activityContent}>
+                          <Text style={styles.activityTitle}>{activity.title || 'Activity'}</Text>
+                          {activity.details && <Text style={styles.activityDetails} numberOfLines={2}>{activity.details}</Text>}
+                          <Text style={styles.activityTime}>{format(activity.timestamp, 'MMM d, h:mm a')}</Text>
+                        </View>
+                      </View>
+                    </GlassCard>
+                  ))}
                 </View>
               )}
             </Animated.View>
@@ -1752,9 +1315,10 @@ const handleSave = async () => {
           </>
         )}
 
-        {/* TAB: HEALTH - Updated with Birth Details fields */}
+        {/* TAB: HEALTH - All fields editable */}
         {activeTab === 'health' && (
           <>
+            {/* Health Information */}
             <GlassCard style={styles.formCard} delay={100} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Health Information</Text>
@@ -1771,18 +1335,17 @@ const handleSave = async () => {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Blood Type</Text>
-                <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                <TouchableOpacity
+                  style={[styles.inputContainer, !isEditing && styles.inputDisabled]}
+                  onPress={() => isEditing && setPickerState({ visible: true, type: 'bloodType' })}
+                  disabled={!isEditing}
+                >
                   <Ionicons name="water-outline" size={20} color="#6366f1" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.inputField}
-                    value={bloodType}
-                    onChangeText={(text) => { setBloodType(text); setIsEditing(true); }}
-                    placeholder="e.g., O+"
-                    placeholderTextColor="#666"
-                    editable={isEditing}
-                    selectionColor="#6366f1"
-                  />
-                </View>
+                  <Text style={[styles.inputFieldText, !bloodType && styles.placeholderText]}>
+                    {bloodType || 'Select blood type'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color={isEditing ? '#6366f1' : '#64748b'} />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.inputGroup}>
@@ -1851,7 +1414,7 @@ const handleSave = async () => {
               </View>
             </GlassCard>
 
-            {/* Birth Details Card - New */}
+            {/* Birth Details - Always editable when in edit mode */}
             <GlassCard style={styles.formCard} delay={150} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Birth Details</Text>
@@ -1974,33 +1537,31 @@ const handleSave = async () => {
               <View style={styles.rowContainer}>
                 <View style={[styles.halfWidth, { marginRight: 8 }]}>
                   <Text style={styles.inputLabel}>Delivery Type</Text>
-                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                  <TouchableOpacity
+                    style={[styles.inputContainer, !isEditing && styles.inputDisabled]}
+                    onPress={() => isEditing && setPickerState({ visible: true, type: 'deliveryType' })}
+                    disabled={!isEditing}
+                  >
                     <Ionicons name="medkit-outline" size={20} color="#6366f1" style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.inputField}
-                      value={deliveryType}
-                      onChangeText={(text) => { setDeliveryType(text); setIsEditing(true); }}
-                      placeholder="Vaginal, C-Section, etc."
-                      placeholderTextColor="#666"
-                      editable={isEditing}
-                      selectionColor="#6366f1"
-                    />
-                  </View>
+                    <Text style={[styles.inputFieldText, !deliveryType && styles.placeholderText]}>
+                      {deliveryType || 'Select delivery type'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color={isEditing ? '#6366f1' : '#64748b'} />
+                  </TouchableOpacity>
                 </View>
                 <View style={[styles.halfWidth, { marginLeft: 8 }]}>
                   <Text style={styles.inputLabel}>Birth Attendant</Text>
-                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                  <TouchableOpacity
+                    style={[styles.inputContainer, !isEditing && styles.inputDisabled]}
+                    onPress={() => isEditing && setPickerState({ visible: true, type: 'birthAttendant' })}
+                    disabled={!isEditing}
+                  >
                     <Ionicons name="people-outline" size={20} color="#6366f1" style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.inputField}
-                      value={birthAttendant}
-                      onChangeText={(text) => { setBirthAttendant(text); setIsEditing(true); }}
-                      placeholder="Obstetrician, Midwife, etc."
-                      placeholderTextColor="#666"
-                      editable={isEditing}
-                      selectionColor="#6366f1"
-                    />
-                  </View>
+                    <Text style={[styles.inputFieldText, !birthAttendant && styles.placeholderText]}>
+                      {birthAttendant || 'Select attendant'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color={isEditing ? '#6366f1' : '#64748b'} />
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -2022,18 +1583,17 @@ const handleSave = async () => {
                 </View>
                 <View style={[styles.halfWidth, { marginLeft: 8 }]}>
                   <Text style={styles.inputLabel}>Feeding Plan</Text>
-                  <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+                  <TouchableOpacity
+                    style={[styles.inputContainer, !isEditing && styles.inputDisabled]}
+                    onPress={() => isEditing && setPickerState({ visible: true, type: 'feedingPlan' })}
+                    disabled={!isEditing}
+                  >
                     <Ionicons name="nutrition-outline" size={20} color="#6366f1" style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.inputField}
-                      value={feedingPlan}
-                      onChangeText={(text) => { setFeedingPlan(text); setIsEditing(true); }}
-                      placeholder="Breastfeeding, Formula, etc."
-                      placeholderTextColor="#666"
-                      editable={isEditing}
-                      selectionColor="#6366f1"
-                    />
-                  </View>
+                    <Text style={[styles.inputFieldText, !feedingPlan && styles.placeholderText]}>
+                      {feedingPlan || 'Select feeding plan'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color={isEditing ? '#6366f1' : '#64748b'} />
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -2056,7 +1616,7 @@ const handleSave = async () => {
                 </View>
                 <View style={[styles.halfWidth, { marginLeft: 8 }]}>
                   <Text style={styles.inputLabel}>Multiple Birth</Text>
-                  <View style={styles.multipleBirthContainer}>
+                  <View style={[styles.multipleBirthContainer, !isEditing && styles.inputDisabled]}>
                     <TouchableOpacity
                       style={[
                         styles.multipleBirthButton,
@@ -2064,7 +1624,6 @@ const handleSave = async () => {
                           borderColor: '#6366f1',
                           backgroundColor: 'rgba(99,102,241,0.15)',
                         },
-                        !isEditing && styles.inputDisabled,
                       ]}
                       onPress={() => { if (isEditing) { setMultipleBirth(true); setIsEditing(true); } }}
                       disabled={!isEditing}
@@ -2078,7 +1637,6 @@ const handleSave = async () => {
                           borderColor: '#6366f1',
                           backgroundColor: 'rgba(99,102,241,0.15)',
                         },
-                        !isEditing && styles.inputDisabled,
                       ]}
                       onPress={() => { if (isEditing) { setMultipleBirth(false); setIsEditing(true); } }}
                       disabled={!isEditing}
@@ -2106,6 +1664,7 @@ const handleSave = async () => {
               </View>
             </GlassCard>
 
+            {/* Emergency & Pediatrician */}
             <GlassCard style={styles.formCard} delay={200} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Emergency & Pediatrician</Text>
@@ -2145,6 +1704,7 @@ const handleSave = async () => {
               </View>
             </GlassCard>
 
+            {/* Preferences */}
             <GlassCard style={styles.formCard} delay={300} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Preferences</Text>
@@ -2168,6 +1728,7 @@ const handleSave = async () => {
               </View>
             </GlassCard>
 
+            {/* Save Button - Always visible in edit mode */}
             {isEditing && (
               <TouchableOpacity onPress={handleSavePress} style={styles.saveButton}>
                 <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.saveButtonGradient}>
@@ -2230,74 +1791,109 @@ const handleSave = async () => {
       {/* Modals */}
       <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />
 
-      <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo" isDark={isDark} colors={themeColors}>
-        <View style={styles.imagePickerOptions}>
-          <TouchableOpacity style={styles.imagePickerOption} onPress={handlePickImage}>
-            <View style={[styles.imagePickerIcon, { backgroundColor: '#6366f120' }]}>
-              <Ionicons name="images-outline" size={28} color="#6366f1" />
+      {/* Image Picker Modal */}
+      <Modal visible={showImagePicker} transparent animationType="fade" onRequestClose={() => setShowImagePicker(false)} statusBarTranslucent presentationStyle="overFullScreen">
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowImagePicker(false)} activeOpacity={1} />
+          <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
+            <LinearGradient colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+            <View style={styles.modalDragHandle}>
+              <View style={styles.dragIndicator} />
             </View>
-            <Text style={styles.imagePickerLabel}>Choose from Library</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.imagePickerOption} onPress={handleTakePhoto}>
-            <View style={[styles.imagePickerIcon, { backgroundColor: '#10b98120' }]}>
-              <Ionicons name="camera-outline" size={28} color="#10b981" />
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Change Profile Photo</Text>
+              <TouchableOpacity onPress={() => setShowImagePicker(false)} style={styles.modalClose}>
+                <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
+              </TouchableOpacity>
             </View>
-            <Text style={styles.imagePickerLabel}>Take Photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.imagePickerOption} onPress={() => { setShowImagePicker(false); setShowEmojiPicker(true); }}>
-            <View style={[styles.imagePickerIcon, { backgroundColor: '#f59e0b20' }]}>
-              <Ionicons name="happy-outline" size={28} color="#f59e0b" />
+            <View style={styles.imagePickerOptions}>
+              <TouchableOpacity style={styles.imagePickerOption} onPress={handlePickImage}>
+                <View style={[styles.imagePickerIcon, { backgroundColor: '#6366f120' }]}>
+                  <Ionicons name="images-outline" size={28} color="#6366f1" />
+                </View>
+                <Text style={styles.imagePickerLabel}>Choose from Library</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.imagePickerOption} onPress={handleTakePhoto}>
+                <View style={[styles.imagePickerIcon, { backgroundColor: '#10b98120' }]}>
+                  <Ionicons name="camera-outline" size={28} color="#10b981" />
+                </View>
+                <Text style={styles.imagePickerLabel}>Take Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.imagePickerOption} onPress={() => { setShowImagePicker(false); setShowEmojiPicker(true); }}>
+                <View style={[styles.imagePickerIcon, { backgroundColor: '#f59e0b20' }]}>
+                  <Ionicons name="happy-outline" size={28} color="#f59e0b" />
+                </View>
+                <Text style={styles.imagePickerLabel}>Pick Emoji</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={styles.imagePickerLabel}>Pick Emoji</Text>
-          </TouchableOpacity>
+          </Animated.View>
         </View>
-      </ActionModal>
+      </Modal>
 
-      <ActionModal visible={showAddMilestone} onClose={() => setShowAddMilestone(false)} title="Record Milestone" isDark={isDark} colors={themeColors}>
-        <View style={{ gap: 16 }}>
-          <View>
-            <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Title</Text>
-            <TextInput
-              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, height: 52, color: themeColors.text, fontWeight: '600', fontSize: 16 }}
-              value={newMilestone.title}
-              onChangeText={(text) => setNewMilestone(prev => ({ ...prev, title: text }))}
-              placeholder="e.g., First Steps"
-              placeholderTextColor="#666"
-            />
-          </View>
-          <View>
-            <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {MILESTONE_CATEGORIES.map(cat => (
-                <TouchableOpacity
-                  key={cat.id}
-                  onPress={() => setNewMilestone(prev => ({ ...prev, category: cat.id as Milestone['category'] }))}
-                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: newMilestone.category === cat.id ? `${cat.color}20` : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: newMilestone.category === cat.id ? cat.color : 'transparent' }}
-                >
-                  <Text style={{ color: newMilestone.category === cat.id ? cat.color : themeColors.text, fontWeight: '700', fontSize: 13 }}>{cat.label}</Text>
-                </TouchableOpacity>
-              ))}
+      {/* Add Milestone Modal */}
+      <Modal visible={showAddMilestone} transparent animationType="fade" onRequestClose={() => setShowAddMilestone(false)} statusBarTranslucent presentationStyle="overFullScreen">
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowAddMilestone(false)} activeOpacity={1} />
+          <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
+            <LinearGradient colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+            <View style={styles.modalDragHandle}>
+              <View style={styles.dragIndicator} />
             </View>
-          </View>
-          <View>
-            <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Description</Text>
-            <TextInput
-              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, paddingTop: 14, height: 80, color: themeColors.text, fontWeight: '500', fontSize: 16, textAlignVertical: 'top' }}
-              value={newMilestone.description}
-              onChangeText={(text) => setNewMilestone(prev => ({ ...prev, description: text }))}
-              placeholder="Optional details..."
-              placeholderTextColor="#666"
-              multiline
-            />
-          </View>
-          <TouchableOpacity onPress={handleAddMilestone} style={{ borderRadius: 14, overflow: 'hidden', marginTop: 8 }}>
-            <LinearGradient colors={['#f59e0b', '#f97316']} style={{ paddingVertical: 16, alignItems: 'center' }}>
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>Save Milestone</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Record Milestone</Text>
+              <TouchableOpacity onPress={() => setShowAddMilestone(false)} style={styles.modalClose}>
+                <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ gap: 16 }}>
+              <View>
+                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Title</Text>
+                <TextInput
+                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, height: 52, color: themeColors.text, fontWeight: '600', fontSize: 16 }}
+                  value={newMilestone.title}
+                  onChangeText={(text) => setNewMilestone(prev => ({ ...prev, title: text }))}
+                  placeholder="e.g., First Steps"
+                  placeholderTextColor="#666"
+                />
+              </View>
+              <View>
+                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {MILESTONE_CATEGORIES.map(cat => (
+                    <TouchableOpacity
+                      key={cat.id}
+                      onPress={() => setNewMilestone(prev => ({ ...prev, category: cat.id as Milestone['category'] }))}
+                      style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: newMilestone.category === cat.id ? `${cat.color}20` : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: newMilestone.category === cat.id ? cat.color : 'transparent' }}
+                    >
+                      <Text style={{ color: newMilestone.category === cat.id ? cat.color : themeColors.text, fontWeight: '700', fontSize: 13 }}>{cat.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View>
+                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Description</Text>
+                <TextInput
+                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, paddingTop: 14, height: 80, color: themeColors.text, fontWeight: '500', fontSize: 16, textAlignVertical: 'top' }}
+                  value={newMilestone.description}
+                  onChangeText={(text) => setNewMilestone(prev => ({ ...prev, description: text }))}
+                  placeholder="Optional details..."
+                  placeholderTextColor="#666"
+                  multiline
+                />
+              </View>
+              <TouchableOpacity onPress={handleAddMilestone} style={{ borderRadius: 14, overflow: 'hidden', marginTop: 8 }}>
+                <LinearGradient colors={['#f59e0b', '#f97316']} style={{ paddingVertical: 16, alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>Save Milestone</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
         </View>
-      </ActionModal>
+      </Modal>
 
+      {/* Emoji Picker Modal */}
       <EmojiPickerModal 
         visible={showEmojiPicker} 
         onClose={() => setShowEmojiPicker(false)} 
@@ -2306,6 +1902,10 @@ const handleSave = async () => {
         colors={themeColors}
       />
 
+      {/* Picker Modal */}
+      {renderPickerModal()}
+
+      {/* Date Picker */}
       {showDatePicker && (
         <DateTimePicker
           value={birthDate}
@@ -2319,6 +1919,7 @@ const handleSave = async () => {
   );
 }
 
+// ─── STYLES ──────────────────────────────────────────────────────────────
 const getStyles = (isDarkMode: boolean, colors: any) => {
   if (!colors) colors = {};
   return StyleSheet.create({
@@ -2449,31 +2050,40 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     birthDetailsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      padding: 16,
-      gap: 12,
+      padding: 12,
+      gap: 8,
     },
     birthDetailItem: {
       flex: 1,
-      minWidth: '45%',
-      backgroundColor: 'rgba(255,255,255,0.05)',
-      borderRadius: 12,
-      padding: 12,
+      minWidth: '30%',
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 10,
+      padding: 10,
+    },
+    birthDetailItemEmpty: {
+      opacity: 0.6,
     },
     birthDetailLabel: {
-      fontSize: 11,
+      fontSize: 10,
       fontWeight: '700',
       color: colors.textSecondary || '#94a3b8',
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.3,
     },
     birthDetailValue: {
-      fontSize: 15,
-      fontWeight: '700',
+      fontSize: 13,
+      fontWeight: '600',
       color: colors.text || '#fff',
       marginTop: 2,
     },
+    birthDetailValueEmpty: {
+      color: colors.textMuted || '#64748b',
+      fontStyle: 'italic',
+      fontWeight: '400',
+      fontSize: 12,
+    },
     emptyBirthDetails: {
-      padding: 24,
+      padding: 20,
       alignItems: 'center',
     },
     emptyBirthDetailsText: {
@@ -2486,8 +2096,24 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       color: colors.textMuted || '#64748b',
       marginTop: 4,
     },
+    addBirthDetailsBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      marginHorizontal: 16,
+      marginBottom: 12,
+      borderRadius: 12,
+    },
+    addBirthDetailsText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: '#6366f1',
+    },
 
-    // Quick Actions Dock
+    // Dock
     dockContainer: { marginHorizontal: 16, marginBottom: 20 },
     dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
     dockItem: { alignItems: 'center', gap: 6, flex: 1 },
@@ -2524,12 +2150,12 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
 
     // Glass Card
     glassCard: { 
-      borderRadius: DESIGN.radius.lg, 
+      borderRadius: 16, 
       overflow: 'hidden', 
       borderWidth: 1, 
       borderColor: colors.border || 'rgba(255,255,255,0.06)', 
       marginHorizontal: 16, 
-      marginBottom: DESIGN.spacing.lg 
+      marginBottom: 12 
     },
     glassBorder: { 
       position: 'absolute', 
@@ -2547,10 +2173,10 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       justifyContent: 'space-between', 
       alignItems: 'flex-start', 
       marginHorizontal: 16, 
-      marginBottom: 12, 
-      marginTop: 8 
+      marginBottom: 10, 
+      marginTop: 6 
     },
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
+    sectionTitle: { fontSize: 17, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
     sectionSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#94a3b8', marginTop: 2 },
     sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
@@ -2566,272 +2192,113 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       alignItems: 'center', 
       gap: 10 
     },
-    kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    kpiPillEmoji: { fontSize: 20 },
+    kpiPillIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    kpiPillEmoji: { fontSize: 18 },
     kpiPillBody: { flex: 1 },
-    kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+    kpiPillValue: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
     kpiPillLabel: { 
-      fontSize: 11, 
+      fontSize: 10, 
       fontWeight: '600', 
       color: colors.textSecondary || '#94a3b8', 
       textTransform: 'uppercase', 
       letterSpacing: 0.5 
     },
 
-    // AI Insights
-    insightsList: { marginHorizontal: 0, gap: 8, marginBottom: 16 },
-    insightRow: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      padding: 14, 
-      borderRadius: 16, 
-      backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)', 
-      borderLeftWidth: 3 
-    },
-    insightIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    insightEmoji: { fontSize: 20 },
-    insightContent: { flex: 1, gap: 3 },
-    insightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    insightTitle: { fontSize: 14, fontWeight: '700', color: colors.text || '#fff' },
-    insightDesc: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: colors.textSecondary || '#94a3b8' },
-    insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 4 },
-    insightActionText: { fontSize: 11, fontWeight: '700', color: '#6366f1' },
-    insightPriority: { width: 4, height: 36, borderRadius: 2 },
-
-    // Sparkline
-    sparklineHeader: { 
-      flexDirection: 'row', 
-      justifyContent: 'space-between', 
-      alignItems: 'flex-start', 
-      padding: 16, 
-      paddingBottom: 12 
-    },
-    sparklineTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#fff' },
-    sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#94a3b8', marginTop: 2 },
-    sparklineTotal: { alignItems: 'flex-end' },
-    sparklineTotalValue: { fontSize: 24, fontWeight: '800', color: '#6366f1' },
-    sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#94a3b8' },
-    sparklineChart: { 
-      flexDirection: 'row', 
-      justifyContent: 'space-around', 
-      alignItems: 'flex-end', 
-      paddingHorizontal: 16, 
-      paddingBottom: 16, 
-      height: 100 
-    },
-    sparklineBar: { width: 8, borderRadius: 4 },
-    sparklineDay: { fontSize: 10, fontWeight: '600', color: colors.textMuted || '#64748b' },
-
-    // Health Score
-    healthContainer: { flexDirection: 'row', padding: 16, gap: 16 },
-    healthLeft: { flex: 1, gap: 4 },
-    healthTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#fff' },
-    healthSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#94a3b8', marginBottom: 8 },
-    healthMetrics: { flexDirection: 'row', gap: 16, marginTop: 4 },
-    healthMetric: { alignItems: 'center', gap: 2 },
-    healthMetricValue: { fontSize: 18, fontWeight: '800', color: colors.text || '#fff' },
-    healthMetricLabel: { 
-      fontSize: 10, 
-      fontWeight: '600', 
-      color: colors.textMuted || '#64748b', 
-      textTransform: 'uppercase', 
-      letterSpacing: 0.5 
-    },
-    healthRingContainer: { justifyContent: 'center', alignItems: 'center' },
-    healthRing: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
-    healthRingBg: { 
-      position: 'absolute', 
-      width: 80, 
-      height: 80, 
-      borderRadius: 40, 
-      borderWidth: 4, 
-      borderColor: 'rgba(255,255,255,0.06)' 
-    },
-    healthRingFill: { 
-      position: 'absolute', 
-      width: 80, 
-      height: 80, 
-      borderRadius: 40, 
-      borderWidth: 4, 
-      borderTopColor: 'transparent', 
-      borderRightColor: 'transparent', 
-      borderLeftColor: 'transparent' 
-    },
-    healthRingEmoji: { fontSize: 16 },
-    healthRingScore: { fontSize: 20, fontWeight: '800' },
-    healthRingLabel: { fontSize: 9, fontWeight: '600', color: colors.textSecondary || '#94a3b8' },
-
-    // Development Stage
-    stageHeader: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 12, 
-      padding: 16, 
-      paddingBottom: 12 
-    },
-    stageIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    stageEmoji: { fontSize: 22 },
-    stageTitleWrap: { flex: 1 },
-    stageTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#fff' },
-    stageSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#94a3b8', marginTop: 2 },
-    stageBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
-    stageBadgeText: { fontSize: 12, fontWeight: '800' },
-    stageProgressBar: { paddingHorizontal: 16, paddingBottom: 12 },
-    stageProgressBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-    stageProgressFill: { height: '100%', borderRadius: 3 },
-    stageTimeline: { 
-      flexDirection: 'row', 
-      justifyContent: 'space-between', 
-      paddingHorizontal: 16, 
-      paddingBottom: 16 
-    },
-    stageTimelineItem: { alignItems: 'center', gap: 6 },
-    stageDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
-    stageTimelineLabel: { fontSize: 10, fontWeight: '600', color: colors.textMuted || '#64748b' },
-
-    // Next Milestone Countdown
-    countdownRow: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 12, 
-      padding: 16, 
-      paddingBottom: 8 
-    },
-    countdownIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-    countdownEmoji: { fontSize: 22 },
-    countdownContent: { flex: 1 },
-    countdownTitle: { fontSize: 15, fontWeight: '800', color: colors.text || '#fff' },
-    countdownSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#94a3b8', marginTop: 1 },
-    countdownBadge: { 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      backgroundColor: '#6366f1', 
-      width: 48, 
-      height: 48, 
-      borderRadius: 14 
-    },
-    countdownBadgeValue: { fontSize: 18, fontWeight: '800', color: '#fff' },
-    countdownBadgeLabel: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
-    countdownProgress: { paddingHorizontal: 16, paddingBottom: 16 },
-    countdownProgressBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-    countdownProgressFill: { height: '100%', borderRadius: 3 },
-
-    // Family Hub
-    familyHubRow: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
-    familyHubAvatars: { flexDirection: 'row' },
-    familyHubAvatar: { 
-      width: 40, 
-      height: 40, 
-      borderRadius: 20, 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      borderWidth: 2, 
-      overflow: 'hidden' 
-    },
-    familyHubAvatarText: { color: colors.text || '#fff', fontSize: 14, fontWeight: '800' },
-    familyHubAvatarMore: { backgroundColor: colors.textMuted || '#64748b' },
-    familyHubAvatarMoreText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-    familyHubContent: { flex: 1 },
-    familyHubTitle: { fontSize: 15, fontWeight: '800', color: colors.text || '#fff' },
-    familyHubSubtitle: { fontSize: 12, color: colors.textSecondary || '#94a3b8', fontWeight: '500', marginTop: 1 },
-
-    // Activity Tab
+    // Activities
     activitiesList: { gap: 8, marginHorizontal: 0 },
     activityCard: { padding: 0 },
-    activityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-    activityIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    activityEmoji: { fontSize: 20 },
-    activityContent: { flex: 1, gap: 2 },
-    activityTitle: { fontSize: 15, fontWeight: '700', color: colors.text || '#fff' },
-    activityDetails: { fontSize: 13, color: colors.textSecondary || '#94a3b8', marginTop: 2, lineHeight: 18 },
-    activityTime: { fontSize: 12, color: colors.textMuted || '#64748b', marginTop: 4, fontWeight: '500' },
-    activityTypeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginLeft: 8 },
-    activityTypeText: { fontSize: 11, fontWeight: '700' },
+    activityRow: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
+    activityIcon: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    activityEmoji: { fontSize: 18 },
+    activityContent: { flex: 1, gap: 1 },
+    activityTitle: { fontSize: 14, fontWeight: '700', color: colors.text || '#fff' },
+    activityDetails: { fontSize: 12, color: colors.textSecondary || '#94a3b8', lineHeight: 16 },
+    activityTime: { fontSize: 11, color: colors.textMuted || '#64748b', fontWeight: '500' },
 
     // Empty States
     emptyCard: { 
-      padding: 40, 
+      padding: 32, 
       alignItems: 'center', 
       justifyContent: 'center', 
-      borderRadius: 20, 
+      borderRadius: 16, 
       overflow: 'hidden' 
     },
     emptyStateIcon: { 
-      width: 64, 
-      height: 64, 
-      borderRadius: 20, 
+      width: 56, 
+      height: 56, 
+      borderRadius: 16, 
       backgroundColor: 'rgba(99,102,241,0.1)', 
       alignItems: 'center', 
       justifyContent: 'center', 
-      marginBottom: 16 
+      marginBottom: 12 
     },
-    emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#fff', textAlign: 'center', marginBottom: 8 },
-    emptyText: { fontSize: 14, color: colors.textMuted || '#64748b', textAlign: 'center', lineHeight: 20 },
+    emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#fff', textAlign: 'center', marginBottom: 6 },
+    emptyText: { fontSize: 13, color: colors.textMuted || '#64748b', textAlign: 'center', lineHeight: 18 },
 
     // Milestones
-    addMilestoneBtn: { borderRadius: 18, overflow: 'hidden', marginBottom: 8, marginHorizontal: 16 },
+    addMilestoneBtn: { borderRadius: 16, overflow: 'hidden', marginBottom: 8, marginHorizontal: 16 },
     addMilestoneGradient: { 
       flexDirection: 'row', 
       alignItems: 'center', 
       justifyContent: 'center', 
-      paddingVertical: 16, 
-      gap: 10 
+      paddingVertical: 14, 
+      gap: 8 
     },
-    addMilestoneText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-    milestoneCard: { padding: 0, marginBottom: 12, borderRadius: 20 },
-    milestoneRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
-    milestoneIcon: { width: 50, height: 50, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+    addMilestoneText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    milestoneCard: { padding: 0, marginBottom: 10, borderRadius: 16 },
+    milestoneRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+    milestoneIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
     milestoneContent: { flex: 1 },
-    milestoneTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#fff', marginBottom: 3 },
-    milestoneCategory: { fontSize: 13, fontWeight: '700', textTransform: 'capitalize', marginBottom: 3 },
-    milestoneDate: { fontSize: 13, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
+    milestoneTitle: { fontSize: 15, fontWeight: '700', color: colors.text || '#fff', marginBottom: 2 },
+    milestoneCategory: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize', marginBottom: 2 },
+    milestoneDate: { fontSize: 12, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
     milestoneDescription: { 
-      fontSize: 14, 
+      fontSize: 13, 
       color: colors.textMuted || '#64748b', 
-      marginTop: 10, 
-      lineHeight: 20, 
+      marginTop: 8, 
+      lineHeight: 18, 
       fontWeight: '500', 
-      paddingHorizontal: 16, 
-      paddingBottom: 16 
+      paddingHorizontal: 12, 
+      paddingBottom: 12 
     },
     deleteEntryBtn: { 
       padding: 6, 
-      width: 36, 
-      height: 36, 
-      borderRadius: 18, 
+      width: 32, 
+      height: 32, 
+      borderRadius: 16, 
       backgroundColor: 'rgba(239,68,68,0.1)', 
       alignItems: 'center', 
       justifyContent: 'center' 
     },
 
     // Health Form
-    formCard: { padding: 0, marginBottom: 16 },
+    formCard: { padding: 0, marginBottom: 12 },
     sectionHeaderWithEdit: { 
       flexDirection: 'row', 
       justifyContent: 'space-between', 
       alignItems: 'center', 
-      paddingHorizontal: 20, 
-      paddingTop: 20, 
-      marginBottom: 16 
+      paddingHorizontal: 16, 
+      paddingTop: 16, 
+      marginBottom: 12 
     },
-    sectionLabel: { fontSize: 20, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
+    sectionLabel: { fontSize: 18, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
     editIconBtn: { 
-      width: 40, 
-      height: 40, 
-      borderRadius: 12, 
+      width: 36, 
+      height: 36, 
+      borderRadius: 10, 
       backgroundColor: 'rgba(99,102,241,0.1)', 
       alignItems: 'center', 
       justifyContent: 'center' 
     },
-    editingBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-    editingBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+    editingBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+    editingBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
-    inputGroup: { marginBottom: 20, paddingHorizontal: 20 },
+    inputGroup: { marginBottom: 14, paddingHorizontal: 16 },
     inputLabel: { 
-      fontSize: 13, 
+      fontSize: 12, 
       fontWeight: '700', 
       color: colors.textSecondary || '#94a3b8', 
-      marginBottom: 10, 
+      marginBottom: 6, 
       textTransform: 'uppercase', 
       letterSpacing: 0.5 
     },
@@ -2839,33 +2306,36 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       flexDirection: 'row', 
       alignItems: 'center', 
       backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', 
-      borderRadius: 14, 
-      paddingHorizontal: 16, 
-      height: 52, 
+      borderRadius: 12, 
+      paddingHorizontal: 14, 
+      height: 48, 
       borderWidth: 1, 
-      borderColor: 'rgba(255,255,255,0.04)' 
+      borderColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
     },
     inputDisabled: { opacity: 0.5 },
-    inputIcon: { marginRight: 12 },
-    inputField: { flex: 1, fontSize: 16, color: colors.text || '#fff', fontWeight: '600' },
+    inputIcon: { marginRight: 10 },
+    inputField: { flex: 1, fontSize: 15, color: colors.text || '#fff', fontWeight: '500', paddingVertical: 8 },
+    inputFieldText: { flex: 1, fontSize: 15, color: colors.text || '#fff', fontWeight: '500' },
+    placeholderText: { color: colors.textMuted || '#64748b', fontWeight: '400' },
     textArea: { 
-      height: 110, 
+      height: 100, 
       textAlignVertical: 'top', 
-      paddingTop: 18, 
+      paddingTop: 14, 
       backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', 
-      borderRadius: 14, 
-      paddingHorizontal: 16, 
-      fontSize: 16, 
+      borderRadius: 12, 
+      paddingHorizontal: 14, 
+      fontSize: 15, 
       color: colors.text || '#fff', 
       fontWeight: '500', 
       borderWidth: 1, 
-      borderColor: 'rgba(255,255,255,0.04)' 
+      borderColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+      marginHorizontal: 16,
     },
 
     rowContainer: {
       flexDirection: 'row',
-      paddingHorizontal: 20,
-      gap: 10,
+      paddingHorizontal: 16,
+      gap: 8,
     },
     halfWidth: {
       flex: 1,
@@ -2873,129 +2343,144 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
 
     multipleBirthContainer: {
       flexDirection: 'row',
-      gap: 10,
-      marginTop: 4,
+      gap: 8,
+      marginTop: 2,
     },
     multipleBirthButton: {
       flex: 1,
       alignItems: 'center',
-      paddingVertical: 12,
-      borderRadius: 12,
+      paddingVertical: 10,
+      borderRadius: 10,
       borderWidth: 2,
-      borderColor: 'rgba(99,102,241,0.15)',
-      backgroundColor: 'rgba(255,255,255,0.6)',
+      borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.6)',
     },
     multipleBirthText: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: '600',
-      color: '#666',
+      color: colors.textSecondary || '#94a3b8',
     },
 
     preferenceRow: { 
       flexDirection: 'row', 
       alignItems: 'center', 
       justifyContent: 'space-between', 
-      paddingHorizontal: 20, 
-      paddingVertical: 16 
+      paddingHorizontal: 16, 
+      paddingVertical: 14 
     },
-    preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
-    preferenceText: { gap: 2 },
-    preferenceTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#fff' },
-    preferenceDesc: { fontSize: 13, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
+    preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+    preferenceText: { gap: 1 },
+    preferenceTitle: { fontSize: 15, fontWeight: '700', color: colors.text || '#fff' },
+    preferenceDesc: { fontSize: 12, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
 
-    saveButton: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
-    saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
+    saveButton: { marginHorizontal: 16, marginTop: 8, marginBottom: 12, borderRadius: 14, overflow: 'hidden' },
+    saveButtonGradient: { paddingVertical: 14, alignItems: 'center' },
     saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
     // Danger Zone
     dangerCard: { 
-      padding: 24, 
+      padding: 20, 
       alignItems: 'center', 
       borderColor: '#ef4444', 
       borderWidth: 2, 
-      borderRadius: 24 
+      borderRadius: 20 
     },
-    dangerIconContainer: { marginBottom: 16 },
-    dangerIcon: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
-    dangerTitle: { fontSize: 24, fontWeight: '800', color: '#ef4444', marginBottom: 8 },
+    dangerIconContainer: { marginBottom: 12 },
+    dangerIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+    dangerTitle: { fontSize: 20, fontWeight: '800', color: '#ef4444', marginBottom: 6 },
     dangerDescription: { 
-      fontSize: 15, 
+      fontSize: 14, 
       color: colors.textSecondary || '#94a3b8', 
       textAlign: 'center', 
-      lineHeight: 22, 
-      marginBottom: 20 
+      lineHeight: 20, 
+      marginBottom: 16 
     },
-    dangerStats: { flexDirection: 'row', gap: 20, marginBottom: 24 },
-    dangerStat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    dangerStatText: { fontSize: 14, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
-    deleteButton: { width: '100%', borderRadius: 16, overflow: 'hidden' },
+    dangerStats: { flexDirection: 'row', gap: 16, marginBottom: 18 },
+    dangerStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    dangerStatText: { fontSize: 13, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
+    deleteButton: { width: '100%', borderRadius: 14, overflow: 'hidden' },
     deleteGradient: { 
       flexDirection: 'row', 
       alignItems: 'center', 
       justifyContent: 'center', 
-      paddingVertical: 16, 
-      gap: 8 
+      paddingVertical: 14, 
+      gap: 6 
     },
-    deleteButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+    deleteButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
     dangerNote: { 
       flexDirection: 'row', 
       alignItems: 'center', 
       justifyContent: 'center', 
-      marginTop: 16, 
-      gap: 6 
+      marginTop: 12, 
+      gap: 4 
     },
-    dangerNoteText: { fontSize: 13, color: colors.textSecondary || '#94a3b8' },
+    dangerNoteText: { fontSize: 12, color: colors.textSecondary || '#94a3b8' },
 
     // Tab Panel
-    tabPanel: { marginTop: 4, gap: 16 },
+    tabPanel: { marginTop: 4, gap: 12 },
 
     // Modals
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-    modalContent: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 24, overflow: 'hidden' },
-    modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 8 },
+    modalContent: { width: '100%', maxWidth: 400, borderRadius: 20, padding: 20, overflow: 'hidden' },
+    modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 4 },
     dragIndicator: { 
-      width: 40, 
+      width: 36, 
       height: 4, 
       borderRadius: 2, 
       backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)' 
     },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 20, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
     modalClose: { 
-      width: 36, 
-      height: 36, 
-      borderRadius: 10, 
+      width: 32, 
+      height: 32, 
+      borderRadius: 8, 
       backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', 
       justifyContent: 'center', 
       alignItems: 'center' 
     },
 
-    imagePickerOptions: { padding: 8 },
-    imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
+    // Image Picker
+    imagePickerOptions: { padding: 4 },
+    imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 4 },
     imagePickerIcon: { 
-      width: 48, 
-      height: 48, 
-      borderRadius: 14, 
+      width: 44, 
+      height: 44, 
+      borderRadius: 12, 
       alignItems: 'center', 
       justifyContent: 'center', 
-      marginRight: 14 
+      marginRight: 12 
     },
-    imagePickerLabel: { fontSize: 16, fontWeight: '600', color: colors.text || '#fff', flex: 1 },
+    imagePickerLabel: { fontSize: 15, fontWeight: '600', color: colors.text || '#fff', flex: 1 },
+
+    // Picker
+    pickerList: { paddingVertical: 4 },
+    pickerItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+    },
+    pickerItemText: { fontSize: 15, fontWeight: '500' },
 
     // Emoji Picker
     emojiPickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
     emojiPickerSheet: { 
       width: '100%', 
       maxWidth: 400, 
-      borderRadius: 24, 
-      padding: 20, 
-      paddingBottom: 40, 
+      borderRadius: 20, 
+      padding: 16, 
+      paddingBottom: 32, 
       overflow: 'hidden' 
     },
-    emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-    emojiPickerTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#fff' },
-    emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-    emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    emojiButtonText: { fontSize: 28 },
+    emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    emojiPickerTitle: { fontSize: 17, fontWeight: '800', color: colors.text || '#fff' },
+    emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+    emojiButton: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    emojiButtonText: { fontSize: 26 },
   });
 };

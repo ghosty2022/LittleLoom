@@ -41,7 +41,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+// IMPORTANT: Use legacy API to avoid deprecation warnings
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
@@ -123,7 +124,7 @@ const COMMUNITY_AVATARS_BUCKET = 'community_avatars';
 // ─── HELPERS ────────────────────────────────────────────────────────────
 const isEmojiAvatar = (avatar: string | undefined): boolean => {
   if (!avatar) return false;
-  const emojiRegex = /[\u{1F000}-\u{1FFFF}]|[\u2600-\u27BF]|[\u{2700}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{1FB00}-\u{1FBFF}]|[\u{1FC00}-\u{1FCFF}]|[\u{1FD00}-\u{1FDFF}]|[\u{1FE00}-\u{1FEFF}]|[\u{1FF00}-\u{1FFFF}]/u;
+  const emojiRegex = /[\u{1F000}-\u{1FFFF}]|[\u2600-\u{27BF}]|[\u{2700}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{1FB00}-\u{1FBFF}]|[\u{1FC00}-\u{1FCFF}]|[\u{1FD00}-\u{1FDFF}]|[\u{1FE00}-\u{1FEFF}]|[\u{1FF00}-\u{1FFFF}]/u;
   return avatar.length <= 2 && (emojiRegex.test(avatar) || /^[\u{1F000}-\u{1FFFF}]$/u.test(avatar));
 };
 
@@ -745,7 +746,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     try {
       setAvatarUploading(true);
       
-      // Read file as base64
+      // Read file as base64 using legacy API
       const fileData = await FileSystem.readAsStringAsync(localUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -808,8 +809,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   // ═══════════════════════════════════════════════════════════════════
   const COMMUNITY_IMAGES_DIR = FileSystem.documentDirectory + 'community_images/';
 
+  // ─── FIXED: persistCommunityImage using legacy API ──────────────────
   const persistCommunityImage = async (sourceUri: string): Promise<string | null> => {
     try {
+      // Ensure directory exists
       const dirInfo = await FileSystem.getInfoAsync(COMMUNITY_IMAGES_DIR);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(COMMUNITY_IMAGES_DIR, { intermediates: true });
@@ -818,6 +821,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const processedUri = `${COMMUNITY_IMAGES_DIR}${Date.now()}.${safeExt}`;
 
+      // Handle different URI types with legacy API
       if (sourceUri.startsWith('content://')) {
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -832,8 +836,14 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         await FileSystem.copyAsync({ from: sourceUri, to: processedUri });
       }
 
+      // Verify file exists
       const fileInfo = await FileSystem.getInfoAsync(processedUri);
-      return fileInfo.exists ? processedUri : null;
+      if (!fileInfo.exists) {
+        console.error('[persistCommunityImage] File not found:', processedUri);
+        return null;
+      }
+
+      return processedUri;
     } catch (error) {
       console.error('[persistCommunityImage] Failed:', error);
       return null;
