@@ -1,7 +1,10 @@
-// src/screens/BabyFamilyCenterScreen.tsx - COMPLETE UPDATED VERSION
+// src/screens/BabyFamilyCenterScreen.tsx - COMPLETE FIXED VERSION
 // FIX: Auto-refresh without double reloading
 // FIX: Birth details can be edited even if not entered during creation
 // FIX: Streamlined UX with better edit mode handling
+// FIX: Fixed refreshBabyData undefined error
+// FIX: Fixed delete profile double prompt
+// FIX: Fixed syntax error with getStyles
 
 import {
   StyleSheet,
@@ -267,7 +270,6 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
 
 // ─── Safe Baby Avatar ──────────────────────────────────────────────────
 const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEditButton = false, onEdit, isDark, colors }: any) => {
-  // Normalize avatar - handle array, string, or null
   const normalizedAvatar = useMemo(() => {
     if (!avatar) return null;
     if (Array.isArray(avatar)) {
@@ -457,7 +459,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const sweetAlert = useSweetAlert();
   const {
     babies, updateBaby, currentBaby, currentBabyId, addMilestone, deleteMilestone,
-    loadBabies, switchBaby, deleteBaby, milestones, calculateAge, refreshBabyData,
+    loadBabies, switchBaby, deleteBaby, milestones, calculateAge,
   } = useBaby();
   const { entries: allActivities, getEntriesByBaby, refreshEntries } = useActivity();
   const { members, loadFamily } = useFamily();
@@ -554,7 +556,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     setPediatrician(baby.pediatrician || '');
     setNotificationsEnabled(baby.notificationsEnabled !== false);
     
-    // ─── Birth Details ──────────────────────────────────────────────────
     setBirthWeight(baby.birthWeight || '');
     setBirthHeight(baby.birthHeight || '');
     setBirthHeadCircumference(baby.birthHeadCircumference || '');
@@ -588,22 +589,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     return value.charAt(0).toUpperCase() + value.slice(1);
   };
 
-  // ─── REFRESH BABY DATA (light refresh without full reload) ───────────
+  // ─── REFRESH BABY DATA ────────────────────────────────────────────────
   const refreshBabyDataLight = useCallback(async () => {
     if (isLoadingRef.current || !currentBabyData) return;
     isLoadingRef.current = true;
     
     try {
-      // Refresh baby data from context
-      await refreshBabyData(currentBabyData.id);
-      
-      // Refresh entries
+      await loadBabies(true);
       await refreshEntries();
-      
-      // Refresh family
       await loadFamily();
       
-      // Reload the baby data into the form
       const updatedBaby = babies.find(b => b.id === currentBabyData.id);
       if (updatedBaby && isMountedRef.current) {
         loadDataFromBaby(updatedBaby);
@@ -613,7 +608,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     } finally {
       isLoadingRef.current = false;
     }
-  }, [currentBabyData, refreshBabyData, refreshEntries, loadFamily, babies, loadDataFromBaby]);
+  }, [currentBabyData, loadBabies, refreshEntries, loadFamily, babies, loadDataFromBaby]);
 
   // ─── LOAD FULL DATA ────────────────────────────────────────────────────
   const loadFullData = useCallback(async () => {
@@ -649,11 +644,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     };
   }, [currentBabyData?.id]);
 
-  // ─── FOCUS EFFECT - Auto-refresh on focus ─────────────────────────────
+  // ─── FOCUS EFFECT ──────────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
       if (currentBabyData && !isLoadingRef.current) {
-        // Use a small delay to prevent double loading
         if (refreshTimerRef.current) {
           clearTimeout(refreshTimerRef.current);
         }
@@ -669,54 +663,54 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }, [currentBabyData, refreshBabyDataLight])
   );
 
-// ─── IMAGE HANDLING ────────────────────────────────────────────────────
-const ensureDirExists = async () => {
-  const dir = FileSystem.documentDirectory + 'baby_images/';
-  try {
-    const dirInfo = await FileSystem.getInfoAsync(dir);
-    if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-    }
-  } catch (error) {
-    console.warn('[BabyProfile] ensureDirExists error:', error);
-  }
-};
-
-const getPermanentImagePath = (babyId: string, isAvatar: boolean = true) => {
-  const dir = FileSystem.documentDirectory + 'baby_images/';
-  return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
-};
-
-const persistPickedImage = async (sourceUri: string, babyId: string): Promise<string | null> => {
-  try {
-    await ensureDirExists();
-    const permanentUri = getPermanentImagePath(babyId, 'avatar');
-    
-    if (sourceUri.startsWith('content://')) {
-      const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
-      await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-    } else if (sourceUri.startsWith('data:')) {
-      const base64Data = sourceUri.split(',')[1];
-      if (base64Data) {
-        await FileSystem.writeAsStringAsync(permanentUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
-      } else {
-        throw new Error('Invalid data URI');
+  // ─── IMAGE HANDLING ────────────────────────────────────────────────────
+  const ensureDirExists = async () => {
+    const dir = FileSystem.documentDirectory + 'baby_images/';
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(dir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
       }
-    } else {
-      await FileSystem.copyAsync({ from: sourceUri, to: permanentUri });
+    } catch (error) {
+      console.warn('[BabyProfile] ensureDirExists error:', error);
     }
+  };
 
-    const fileInfo = await FileSystem.getInfoAsync(permanentUri);
-    if (!fileInfo.exists) {
+  const getPermanentImagePath = (babyId: string, isAvatar: boolean = true) => {
+    const dir = FileSystem.documentDirectory + 'baby_images/';
+    return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
+  };
+
+  const persistPickedImage = async (sourceUri: string, babyId: string): Promise<string | null> => {
+    try {
+      await ensureDirExists();
+      const permanentUri = getPermanentImagePath(babyId, 'avatar');
+      
+      if (sourceUri.startsWith('content://')) {
+        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      } else if (sourceUri.startsWith('data:')) {
+        const base64Data = sourceUri.split(',')[1];
+        if (base64Data) {
+          await FileSystem.writeAsStringAsync(permanentUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+        } else {
+          throw new Error('Invalid data URI');
+        }
+      } else {
+        await FileSystem.copyAsync({ from: sourceUri, to: permanentUri });
+      }
+
+      const fileInfo = await FileSystem.getInfoAsync(permanentUri);
+      if (!fileInfo.exists) {
+        return null;
+      }
+
+      return permanentUri;
+    } catch (error) {
+      console.error('[persistPickedImage] Failed:', error);
       return null;
     }
-
-    return permanentUri;
-  } catch (error) {
-    console.error('[persistPickedImage] Failed:', error);
-    return null;
-  }
-};
+  };
 
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -812,12 +806,9 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
     if (!currentBabyData) return [];
     const changes: string[] = [];
     
-    // Basic info
     if (babyName !== currentBabyData.name) changes.push(`Name: ${babyName}`);
     if (selectedGender !== currentBabyData.gender) changes.push(`Gender: ${GENDER_OPTIONS.find(g => g.value === selectedGender)?.label}`);
     if (babyPhoto !== currentBabyData.avatar) changes.push('Profile Photo');
-    
-    // Health info
     if (bloodType !== (currentBabyData.bloodType || '')) changes.push(`Blood Type: ${bloodType}`);
     if (allergies !== (currentBabyData.allergies?.join(', ') || '')) changes.push('Allergies updated');
     if (medicalNotes !== (currentBabyData.medicalNotes || '')) changes.push('Medical Notes updated');
@@ -825,8 +816,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
     if (height !== (currentBabyData.height || '')) changes.push('Height updated');
     if (emergencyContact !== (currentBabyData.emergencyContact || '')) changes.push('Emergency Contact updated');
     if (pediatrician !== (currentBabyData.pediatrician || '')) changes.push('Pediatrician updated');
-    
-    // Birth details
     if (birthWeight !== (currentBabyData.birthWeight || '')) changes.push('Birth Weight updated');
     if (birthHeight !== (currentBabyData.birthHeight || '')) changes.push('Birth Height updated');
     if (birthHeadCircumference !== (currentBabyData.birthHeadCircumference || '')) changes.push('Head Circumference updated');
@@ -937,7 +926,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
         setBabyPhoto(avatarUrl);
       }
       
-      // Light refresh after save
       await refreshBabyDataLight();
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -970,7 +958,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
       setNewMilestone({ title: '', category: 'physical', description: '', achievedAt: new Date().toISOString().split('T')[0] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       sweetAlert.success('Milestone Recorded!', 'Another amazing achievement!');
-      // Light refresh after milestone
       await refreshBabyDataLight();
     }
   };
@@ -986,48 +973,71 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
 
   // ─── DELETE BABY ────────────────────────────────────────────────────────
   const { verifyPassword } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleDeleteBaby = useCallback(async () => {
+  const handleDeleteBaby = useCallback(() => {
+    if (isDeleting) return;
+    
+    // First confirmation - "Are you sure?"
     sweetAlert.confirm(
       'Delete Profile?',
       `⚠️ This will permanently delete ${currentBabyData?.name}'s profile and all associated data. This action cannot be undone.`,
-      async () => {
-        sweetAlert.prompt(
-          'Confirm Password',
-          'Enter your password to confirm deletion:',
-          'secure-text',
-          async (password) => {
-            if (!password) {
-              sweetAlert.error('Error', 'Password is required');
-              return;
-            }
-            
-            const isValid = await verifyPassword(password);
-            if (!isValid) {
-              sweetAlert.error('Error', 'Incorrect password. Please try again.');
-              return;
-            }
-            
-            if (currentBabyData) {
+      () => {
+        // Dismiss the first modal before showing the password prompt
+        sweetAlert.hide();
+        
+        // Small delay to ensure first modal is dismissed
+        setTimeout(() => {
+          // Second confirmation - Password prompt
+          sweetAlert.securePrompt(
+            'Confirm Password',
+            `Enter your password to permanently delete ${currentBabyData?.name}'s profile:`,
+            async (password: string) => {
+              if (!password) {
+                sweetAlert.error('Error', 'Password is required');
+                setIsDeleting(false);
+                return;
+              }
+              
+              if (isDeleting) return;
+              setIsDeleting(true);
+              
               try {
-                await deleteBaby(currentBabyData.id);
-                sweetAlert.success('Profile Deleted', `${currentBabyData.name}'s profile has been removed.`);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setTimeout(() => navigation.goBack(), 1500);
+                const isValid = await verifyPassword(password);
+                if (!isValid) {
+                  sweetAlert.error('Error', 'Incorrect password. Please try again.');
+                  setIsDeleting(false);
+                  return;
+                }
+                
+                if (currentBabyData) {
+                  await deleteBaby(currentBabyData.id);
+                  sweetAlert.success('Profile Deleted', `${currentBabyData.name}'s profile has been removed.`);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  setIsDeleting(false);
+                  setTimeout(() => navigation.goBack(), 1500);
+                }
               } catch (error) {
                 sweetAlert.error('Error', 'Failed to delete profile');
+                setIsDeleting(false);
               }
-            }
-          },
-          'Delete',
-          'Cancel'
-        );
+            },
+            () => {
+              setIsDeleting(false);
+            },
+            'Delete',
+            'Cancel'
+          );
+        }, 300);
       },
-      () => {},
+      () => {
+        // Cancel callback - do nothing
+        setIsDeleting(false);
+      },
       'Delete',
       'Cancel'
     );
-  }, [currentBabyData, deleteBaby, navigation, sweetAlert, verifyPassword]);
+  }, [currentBabyData, deleteBaby, navigation, sweetAlert, verifyPassword, isDeleting]);
 
   // ─── DATE PICKER ──────────────────────────────────────────────────────
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
@@ -1161,14 +1171,12 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: themeColors.background }]} />
 
-      {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <Text style={styles.stickyTitle}>{currentBabyData.name}</Text>
         <Text style={styles.stickySubtitle}>{ageDisplay} • {genderOption?.label}</Text>
       </Animated.View>
 
-      {/* Main Scroll */}
       <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
@@ -1176,7 +1184,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366f1" colors={['#6366f1', '#8b5cf6']} />}
       >
-        {/* Top Header Row */}
         <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -1190,7 +1197,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Profile Hero */}
         <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
           <View style={styles.avatarSection}>
             <SafeBabyAvatar 
@@ -1229,7 +1235,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
           </View>
         </Animated.View>
 
-        {/* Quick Action Dock */}
         <Animated.View entering={FadeInUp.delay(150).springify()} style={styles.dockContainer}>
           <View style={styles.dock}>
             {[
@@ -1270,7 +1275,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
           </View>
         </Animated.View>
 
-        {/* Tab Bar */}
         <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={themeColors} />
 
         {/* TAB: OVERVIEW */}
@@ -1292,7 +1296,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
               <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
             </TouchableOpacity>
 
-            {/* Birth Details Section - Always visible, shows "Not recorded" for empty fields */}
             <Animated.View entering={FadeInUp.delay(250).springify()}>
               <SectionHeader title="Birth Details" subtitle="Information from birth" isDark={isDark} colors={themeColors} />
               <GlassCard isDark={isDark} colors={themeColors}>
@@ -1341,7 +1344,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
               </GlassCard>
             </Animated.View>
 
-            {/* Recent Activity */}
             <Animated.View entering={FadeInUp.delay(500).springify()}>
               <SectionHeader 
                 title="Recent Activity" 
@@ -1429,10 +1431,9 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
           </>
         )}
 
-        {/* TAB: HEALTH - All fields editable */}
+        {/* TAB: HEALTH */}
         {activeTab === 'health' && (
           <>
-            {/* Health Information */}
             <GlassCard style={styles.formCard} delay={100} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Health Information</Text>
@@ -1528,7 +1529,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
               </View>
             </GlassCard>
 
-            {/* Birth Details - Always editable when in edit mode */}
             <GlassCard style={styles.formCard} delay={150} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Birth Details</Text>
@@ -1778,7 +1778,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
               </View>
             </GlassCard>
 
-            {/* Emergency & Pediatrician */}
             <GlassCard style={styles.formCard} delay={200} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Emergency & Pediatrician</Text>
@@ -1818,7 +1817,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
               </View>
             </GlassCard>
 
-            {/* Preferences */}
             <GlassCard style={styles.formCard} delay={300} isDark={isDark} colors={themeColors}>
               <View style={styles.sectionHeaderWithEdit}>
                 <Text style={styles.sectionLabel}>Preferences</Text>
@@ -1842,7 +1840,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
               </View>
             </GlassCard>
 
-            {/* Save Button - Always visible in edit mode */}
             {isEditing && (
               <TouchableOpacity onPress={handleSavePress} style={styles.saveButton}>
                 <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.saveButtonGradient}>
@@ -1905,7 +1902,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
       {/* Modals */}
       <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />
 
-      {/* Image Picker Modal */}
       <Modal visible={showImagePicker} transparent animationType="fade" onRequestClose={() => setShowImagePicker(false)} statusBarTranslucent presentationStyle="overFullScreen">
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowImagePicker(false)} activeOpacity={1} />
@@ -1945,7 +1941,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
         </View>
       </Modal>
 
-      {/* Add Milestone Modal */}
       <Modal visible={showAddMilestone} transparent animationType="fade" onRequestClose={() => setShowAddMilestone(false)} statusBarTranslucent presentationStyle="overFullScreen">
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowAddMilestone(false)} activeOpacity={1} />
@@ -2007,7 +2002,6 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
         </View>
       </Modal>
 
-      {/* Emoji Picker Modal */}
       <EmojiPickerModal 
         visible={showEmojiPicker} 
         onClose={() => setShowEmojiPicker(false)} 
@@ -2016,10 +2010,8 @@ const persistPickedImage = async (sourceUri: string, babyId: string): Promise<st
         colors={themeColors}
       />
 
-      {/* Picker Modal */}
       {renderPickerModal()}
 
-      {/* Date Picker */}
       {showDatePicker && (
         <DateTimePicker
           value={birthDate}
@@ -2041,7 +2033,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     centered: { justifyContent: 'center', alignItems: 'center' },
     scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
 
-    // Sticky Header
     stickyHeader: { 
       position: 'absolute', 
       top: 0, 
@@ -2055,7 +2046,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     stickyTitle: { fontSize: 17, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
     stickySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || 'rgba(255,255,255,0.7)', marginTop: 2 },
 
-    // Top Header
     topHeader: { 
       flexDirection: 'row', 
       alignItems: 'center', 
@@ -2081,7 +2071,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       backgroundColor: 'rgba(255,255,255,0.08)' 
     },
 
-    // Profile Hero
     profileHero: { 
       flexDirection: 'row', 
       alignItems: 'center', 
@@ -2112,7 +2101,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     profileTagText: { fontSize: 12, fontWeight: '700' },
     editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
 
-    // Avatar
     avatarWrapper: { position: 'relative' },
     avatarGradient: { alignItems: 'center', justifyContent: 'center' },
     avatarEmoji: {},
@@ -2127,7 +2115,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     },
     editAvatarGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
-    // Birth Date Card
     birthDateCard: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2160,7 +2147,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       marginTop: 2,
     },
 
-    // Birth Details Grid
     birthDetailsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -2227,7 +2213,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       color: '#6366f1',
     },
 
-    // Dock
     dockContainer: { marginHorizontal: 16, marginBottom: 20 },
     dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
     dockItem: { alignItems: 'center', gap: 6, flex: 1 },
@@ -2241,7 +2226,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     dockIcon: { fontSize: 24 },
     dockLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#94a3b8' },
 
-    // Tab Bar
     tabBar: { 
       flexDirection: 'row', 
       marginHorizontal: 16, 
@@ -2262,7 +2246,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     },
     tabLabel: { fontSize: 12, fontWeight: '600' },
 
-    // Glass Card
     glassCard: { 
       borderRadius: 16, 
       overflow: 'hidden', 
@@ -2281,7 +2264,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     },
     glassContent: { flex: 1 },
 
-    // Section Header
     sectionHeader: { 
       flexDirection: 'row', 
       justifyContent: 'space-between', 
@@ -2295,7 +2277,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
-    // KPI Pills
     kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
     kpiPill: { 
       flex: 1, 
@@ -2318,7 +2299,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       letterSpacing: 0.5 
     },
 
-    // Activities
     activitiesList: { gap: 8, marginHorizontal: 0 },
     activityCard: { padding: 0 },
     activityRow: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
@@ -2329,7 +2309,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     activityDetails: { fontSize: 12, color: colors.textSecondary || '#94a3b8', lineHeight: 16 },
     activityTime: { fontSize: 11, color: colors.textMuted || '#64748b', fontWeight: '500' },
 
-    // Empty States
     emptyCard: { 
       padding: 32, 
       alignItems: 'center', 
@@ -2349,7 +2328,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#fff', textAlign: 'center', marginBottom: 6 },
     emptyText: { fontSize: 13, color: colors.textMuted || '#64748b', textAlign: 'center', lineHeight: 18 },
 
-    // Milestones
     addMilestoneBtn: { borderRadius: 16, overflow: 'hidden', marginBottom: 8, marginHorizontal: 16 },
     addMilestoneGradient: { 
       flexDirection: 'row', 
@@ -2385,7 +2363,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       justifyContent: 'center' 
     },
 
-    // Health Form
     formCard: { padding: 0, marginBottom: 12 },
     sectionHeaderWithEdit: { 
       flexDirection: 'row', 
@@ -2491,7 +2468,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     saveButtonGradient: { paddingVertical: 14, alignItems: 'center' },
     saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-    // Danger Zone
     dangerCard: { 
       padding: 20, 
       alignItems: 'center', 
@@ -2530,10 +2506,8 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     },
     dangerNoteText: { fontSize: 12, color: colors.textSecondary || '#94a3b8' },
 
-    // Tab Panel
     tabPanel: { marginTop: 4, gap: 12 },
 
-    // Modals
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
     modalContent: { width: '100%', maxWidth: 400, borderRadius: 20, padding: 20, overflow: 'hidden' },
     modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 4 },
@@ -2554,7 +2528,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       alignItems: 'center' 
     },
 
-    // Image Picker
     imagePickerOptions: { padding: 4 },
     imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 4 },
     imagePickerIcon: { 
@@ -2567,7 +2540,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     },
     imagePickerLabel: { fontSize: 15, fontWeight: '600', color: colors.text || '#fff', flex: 1 },
 
-    // Picker
     pickerList: { paddingVertical: 4 },
     pickerItem: {
       flexDirection: 'row',
@@ -2581,7 +2553,6 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     },
     pickerItemText: { fontSize: 15, fontWeight: '500' },
 
-    // Emoji Picker
     emojiPickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
     emojiPickerSheet: { 
       width: '100%', 

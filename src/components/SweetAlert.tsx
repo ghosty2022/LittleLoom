@@ -164,6 +164,8 @@ const emitShow = (config: SweetAlertConfig) => {
 };
 
 const emitHide = () => {
+  // Clear all pending queues
+  pendingQueue.length = 0;
   hideListeners.forEach(listener => listener());
 };
 
@@ -933,7 +935,11 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
 
     const handleShow: AlertListener = (config) => sweetAlert(config);
     const handleHide: HideListener = () => {
-      setModalQueue([]);
+      // Clear all queues
+      setModalQueue(prev => {
+        // If there are items, dismiss them
+        return [];
+      });
       setToastQueue([]);
       setSheetQueue([]);
       setPromptQueue([]);
@@ -1161,6 +1167,7 @@ export const useSweetAlert = () => {
   }, []);
 
   const hide = useCallback(() => {
+    // This will dismiss all active alerts
     hideSweetAlert();
   }, []);
 
