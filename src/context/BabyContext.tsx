@@ -796,43 +796,87 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // ─── QUERY 7: Ultimate fallback - get baby from invite_codes ────
-      if (allBabies.length === 0) {
-        console.log('[BabyContext] No babies found, trying invite_codes fallback...');
-        const { data: inviteData, error: inviteError } = await supabase
-          .from('invite_codes')
-          .select('family_id, code')
-          .eq('used_by', userId)
-          .eq('used', true)
-          .maybeSingle();
-        
-        if (!inviteError && inviteData?.family_id) {
-          console.log(`[BabyContext] Found family_id from invite_codes: ${inviteData.family_id}`);
-          const { data: babyData, error: babyError } = await supabase
-            .from('babies')
-            .select('*')
-            .eq('id', inviteData.family_id);
-          
-          if (!babyError && babyData && babyData.length > 0) {
-            console.log(`[BabyContext] Found baby via invite_codes family_id: ${babyData[0].name}`);
-            babyData.forEach((baby: any) => {
-              if (!allBabies.some(b => b.id === baby.id)) {
-                allBabies.push(baby);
-                userRoles[baby.id] = 'viewer';
-                userPermissions[baby.id] = {
-                  view: true,
-                  edit: false,
-                  delete: false,
-                  manage: false,
-                  invite: false,
-                  export: false,
-                };
-              }
-            });
-          }
-        }
+// ─── QUERY 7: Ultimate fallback - get baby from invite_codes ────────
+if (allBabies.length === 0) {
+  console.log('[BabyContext] No babies found, trying invite_codes fallback...');
+  
+  // Try to get family_id from invite_codes
+  const { data: inviteData, error: inviteError } = await supabase
+    .from('invite_codes')
+    .select('family_id, code')
+    .eq('used_by', userId)
+    .eq('used', true)
+    .maybeSingle();
+  
+  if (!inviteError && inviteData?.family_id) {
+    console.log(`[BabyContext] Found family_id from invite_codes: ${inviteData.family_id}`);
+    
+    // ─── CRITICAL FIX: Try multiple approaches to find the baby ──────
+    let babyFound = false;
+    
+    // Approach A: Direct query by id
+    const { data: babyData1, error: babyError1 } = await supabase
+      .from('babies')
+      .select('*')
+      .eq('id', inviteData.family_id);
+    
+    if (!babyError1 && babyData1 && babyData1.length > 0) {
+      console.log(`[BabyContext] Found baby via direct id query: ${babyData1[0].name}`);
+      allBabies = babyData1;
+      babyFound = true;
+    }
+    
+    // Approach B: If not found, try without is_active filter
+    if (!babyFound) {
+      console.log('[BabyContext] Direct query failed, trying without is_active filter...');
+      const { data: babyData2, error: babyError2 } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('id', inviteData.family_id);
+      
+      if (!babyError2 && babyData2 && babyData2.length > 0) {
+        console.log(`[BabyContext] Found baby without is_active filter: ${babyData2[0].name}`);
+        allBabies = babyData2;
+        babyFound = true;
       }
-
+    }
+    
+    // Approach C: Try using ilike with text comparison
+    if (!babyFound) {
+      console.log('[BabyContext] Direct query failed, trying ilike...');
+      const { data: babyData3, error: babyError3 } = await supabase
+        .from('babies')
+        .select('*')
+        .ilike('id', inviteData.family_id);
+      
+      if (!babyError3 && babyData3 && babyData3.length > 0) {
+        console.log(`[BabyContext] Found baby via ilike: ${babyData3[0].name}`);
+        allBabies = babyData3;
+        babyFound = true;
+      }
+    }
+    
+    if (babyFound && allBabies.length > 0) {
+      allBabies.forEach((baby: any) => {
+        if (!allBabies.some(b => b.id === baby.id)) {
+          // Ensure we don't lose the baby
+          userRoles[baby.id] = 'viewer';
+          userPermissions[baby.id] = {
+            view: true,
+            edit: false,
+            delete: false,
+            manage: false,
+            invite: false,
+            export: false,
+          };
+        }
+      });
+      console.log(`[BabyContext] Total babies found via invite_codes: ${allBabies.length}`);
+    } else {
+      console.log('[BabyContext] No baby found via invite_codes fallback');
+    }
+  }
+}
       console.log(`[BabyContext] Total babies found: ${allBabies.length}`);
 
       // ─── MAP TO PROFILES ─────────────────────────────────────────────
