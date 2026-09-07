@@ -92,101 +92,125 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }, [userProfile]);
 
   // ─── CHECK AND NAVIGATE ─────────────────────────────────────────────
-const checkAndNavigate = useCallback(async () => {
-  if (navigationAttemptedRef.current) {
-    console.log('[BabyOnboarding] Navigation already attempted, skipping');
-    return false;
-  }
-  if (!isMountedRef.current) return false;
-  
-  try {
-    // ─── FIX: First check if babies exist in context ──────────────
-    if (babies && babies.length > 0) {
-      console.log(`[BabyOnboarding] Found ${babies.length} babies in context`);
-      setHasBabies(true);
-      setRemoteBabies(babies);
-      
-      // If we have a current baby or we have babies, complete setup and navigate
-      const babyId = currentBabyId || babies[0]?.id;
-      if (babyId) {
-        // Make sure current baby is set
-        if (!currentBabyId) {
-          await switchBaby(babyId);
-        }
-        await completeSetup('baby');
-        navigationAttemptedRef.current = true;
-        console.log('[BabyOnboarding] Baby found, navigating to Main');
-        navigation.replace('Main');
-        return true;
-      }
-      return true;
+  const checkAndNavigate = useCallback(async () => {
+    if (navigationAttemptedRef.current) {
+      console.log('[BabyOnboarding] Navigation already attempted, skipping');
+      return false;
     }
-
-    // ─── FIX: Check local DB ─────────────────────────────────────────
-    const localBabies = await getAllBabiesFromDb();
-    if (localBabies && localBabies.length > 0) {
-      console.log(`[BabyOnboarding] Found ${localBabies.length} babies in local DB`);
-      setHasBabies(true);
-      setRemoteBabies(localBabies);
-      
-      // Auto-select first baby if none selected
-      const babyId = currentBabyId || localBabies[0]?.id;
-      if (babyId) {
-        if (!currentBabyId) {
-          await switchBaby(babyId);
-        }
-        await completeSetup('baby');
-        navigationAttemptedRef.current = true;
-        console.log('[BabyOnboarding] Local baby found, navigating to Main');
-        navigation.replace('Main');
-        return true;
-      }
-    }
+    if (!isMountedRef.current) return false;
     
-    // ─── FIX: Check if user is parent2 via family_members ──────────
-    // If no babies found, but user might be a parent2 or guardian
-    const userId = await getUserId();
-    if (userId) {
-      const { data: familyData, error: fmError } = await supabase
-        .from('family_members')
-        .select('baby_id, role')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .is('deleted_at', null);
+    try {
+      // ─── FIX: First check if babies exist in context ──────────────
+      if (babies && babies.length > 0) {
+        console.log(`[BabyOnboarding] Found ${babies.length} babies in context`);
+        setHasBabies(true);
+        setRemoteBabies(babies);
+        
+        const babyId = currentBabyId || babies[0]?.id;
+        if (babyId) {
+          if (!currentBabyId) {
+            await switchBaby(babyId);
+          }
+          await completeSetup('baby');
+          navigationAttemptedRef.current = true;
+          console.log('[BabyOnboarding] Baby found, navigating to Main');
+          navigation.replace('Main');
+          return true;
+        }
+        return true;
+      }
+
+      // ─── FIX: Check local DB ─────────────────────────────────────────
+      const localBabies = await getAllBabiesFromDb();
+      if (localBabies && localBabies.length > 0) {
+        console.log(`[BabyOnboarding] Found ${localBabies.length} babies in local DB`);
+        setHasBabies(true);
+        setRemoteBabies(localBabies);
+        
+        const babyId = currentBabyId || localBabies[0]?.id;
+        if (babyId) {
+          if (!currentBabyId) {
+            await switchBaby(babyId);
+          }
+          await completeSetup('baby');
+          navigationAttemptedRef.current = true;
+          console.log('[BabyOnboarding] Local baby found, navigating to Main');
+          navigation.replace('Main');
+          return true;
+        }
+      }
       
-      if (!fmError && familyData && familyData.length > 0) {
-        console.log(`[BabyOnboarding] Found ${familyData.length} family memberships`);
-        const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
-        if (babyIds.length > 0) {
-          const { data: remoteBabiesData } = await supabase
-            .from('babies')
-            .select('*')
-            .in('id', babyIds)
-            .eq('is_active', true);
-          
-          if (remoteBabiesData && remoteBabiesData.length > 0) {
-            console.log(`[BabyOnboarding] Found ${remoteBabiesData.length} remote babies via family_members`);
-            setHasBabies(true);
-            setRemoteBabies(remoteBabiesData);
-            // Auto-select first baby
-            if (remoteBabiesData[0]) {
-              await switchBaby(remoteBabiesData[0].id);
-              await completeSetup('baby');
-              navigationAttemptedRef.current = true;
-              navigation.replace('Main');
-              return true;
+      // ─── FIX: Check if user is in family_members ──────────────────
+      const userId = await getUserId();
+      if (userId) {
+        const { data: familyData, error: fmError } = await supabase
+          .from('family_members')
+          .select('baby_id, role')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .is('deleted_at', null);
+        
+        if (!fmError && familyData && familyData.length > 0) {
+          console.log(`[BabyOnboarding] Found ${familyData.length} family memberships`);
+          const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
+          if (babyIds.length > 0) {
+            const { data: remoteBabiesData } = await supabase
+              .from('babies')
+              .select('*')
+              .in('id', babyIds);
+            
+            if (remoteBabiesData && remoteBabiesData.length > 0) {
+              console.log(`[BabyOnboarding] Found ${remoteBabiesData.length} remote babies via family_members`);
+              setHasBabies(true);
+              setRemoteBabies(remoteBabiesData);
+              if (remoteBabiesData[0]) {
+                await switchBaby(remoteBabiesData[0].id);
+                await completeSetup('baby');
+                navigationAttemptedRef.current = true;
+                navigation.replace('Main');
+                return true;
+              }
             }
           }
         }
+
+        // ─── CRITICAL FIX: Check if user used an invite code ──────────
+        // This is the ULTIMATE FALLBACK - if user used an invite code,
+        // we can find the baby from the invite_codes table
+        const { data: inviteData, error: inviteError } = await supabase
+          .from('invite_codes')
+          .select('family_id, code')
+          .eq('used_by', userId)
+          .eq('used', true)
+          .maybeSingle();
+        
+        if (!inviteError && inviteData?.family_id) {
+          console.log(`[BabyOnboarding] Found family_id from invite: ${inviteData.family_id}`);
+          const { data: babyData } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('id', inviteData.family_id);
+          
+          if (babyData && babyData.length > 0) {
+            console.log(`[BabyOnboarding] Found baby via invite code: ${babyData[0].name}`);
+            setHasBabies(true);
+            setRemoteBabies(babyData);
+            await switchBaby(babyData[0].id);
+            await completeSetup('baby');
+            navigationAttemptedRef.current = true;
+            navigation.replace('Main');
+            return true;
+          }
+        }
       }
+      
+      return false;
+    } catch (error) {
+      console.warn('[BabyOnboarding] Check navigate error:', error);
+      return false;
     }
-    
-    return false;
-  } catch (error) {
-    console.warn('[BabyOnboarding] Check navigate error:', error);
-    return false;
-  }
-}, [navigation, wasSetupCompleted, completeSetup, babies, switchBaby, currentBabyId, getUserId]);
+  }, [navigation, wasSetupCompleted, completeSetup, babies, switchBaby, currentBabyId, getUserId]);
+
   // ─── SYNC BABIES FROM SUPABASE ──────────────────────────────────────
   const syncBabiesFromSupabase = useCallback(async (userId: string): Promise<boolean> => {
     if (syncInProgress) return false;
@@ -196,140 +220,91 @@ const checkAndNavigate = useCallback(async () => {
       console.log('[BabyOnboarding] Syncing babies from Supabase for user:', userId);
       
       let allBabies: any[] = [];
-
-      // ─── FIX: Try direct query without RLS filters first ────────────
-      // Many RLS policies cause recursion issues with is_active filter
-      // ─── FIX: Try direct query - check parent1_id, parent2_id, and family_members ──
-try {
-  let allFoundBabies: any[] = [];
-  
-  // Check parent1_id
-  const { data: parent1Data, error: p1Error } = await supabase
-    .from('babies')
-    .select('*')
-    .eq('parent1_id', userId);
-  
-  if (!p1Error && parent1Data && parent1Data.length > 0) {
-    allFoundBabies = [...allFoundBabies, ...parent1Data];
-    console.log(`[BabyOnboarding] Found ${parent1Data.length} babies via parent1_id`);
-  }
-  
-  // Check parent2_id
-  const { data: parent2Data, error: p2Error } = await supabase
-    .from('babies')
-    .select('*')
-    .eq('parent2_id', userId);
-  
-  if (!p2Error && parent2Data && parent2Data.length > 0) {
-    // Avoid duplicates
-    const existingIds = new Set(allFoundBabies.map(b => b.id));
-    parent2Data.forEach(b => {
-      if (!existingIds.has(b.id)) {
-        allFoundBabies.push(b);
-        existingIds.add(b.id);
+      let allFoundBabies: any[] = [];
+      
+      // ─── Check parent1_id ────────────────────────────────────────────
+      const { data: parent1Data, error: p1Error } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent1_id', userId);
+      
+      if (!p1Error && parent1Data && parent1Data.length > 0) {
+        allFoundBabies = [...allFoundBabies, ...parent1Data];
+        console.log(`[BabyOnboarding] Found ${parent1Data.length} babies via parent1_id`);
       }
-    });
-    console.log(`[BabyOnboarding] Found ${parent2Data.length} babies via parent2_id`);
-  }
-  
-  // Check family_members as fallback
-  if (allFoundBabies.length === 0) {
-    const { data: familyData, error: fmError } = await supabase
-      .from('family_members')
-      .select('baby_id')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .is('deleted_at', null);
-    
-    if (!fmError && familyData && familyData.length > 0) {
-      const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
-      if (babyIds.length > 0) {
-        const { data: babyData, error: bError } = await supabase
-          .from('babies')
-          .select('*')
-          .in('id', babyIds)
-          .eq('is_active', true);
-        
-        if (!bError && babyData && babyData.length > 0) {
-          allFoundBabies = babyData;
-          console.log(`[BabyOnboarding] Found ${babyData.length} babies via family_members`);
-        }
+      
+      // ─── Check parent2_id ────────────────────────────────────────────
+      const { data: parent2Data, error: p2Error } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('parent2_id', userId);
+      
+      if (!p2Error && parent2Data && parent2Data.length > 0) {
+        const existingIds = new Set(allFoundBabies.map(b => b.id));
+        parent2Data.forEach(b => {
+          if (!existingIds.has(b.id)) {
+            allFoundBabies.push(b);
+            existingIds.add(b.id);
+          }
+        });
+        console.log(`[BabyOnboarding] Found ${parent2Data.length} babies via parent2_id`);
       }
-    }
-  }
-  
-  if (allFoundBabies.length > 0) {
-    allBabies = allFoundBabies;
-  }
-        if (error) {
-          console.error('[BabyOnboarding] Direct query error:', error.message);
+      
+      // ─── Check family_members ────────────────────────────────────────
+      const { data: familyData, error: fmError } = await supabase
+        .from('family_members')
+        .select('baby_id')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .is('deleted_at', null);
+      
+      if (!fmError && familyData && familyData.length > 0) {
+        const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
+        if (babyIds.length > 0) {
+          const { data: babyData, error: bError } = await supabase
+            .from('babies')
+            .select('*')
+            .in('id', babyIds);
           
-          // ─── FIX: If RLS error, try using a simpler approach ────────
-          if (error.message?.includes('infinite recursion') || error.message?.includes('policy')) {
-            console.log('[BabyOnboarding] RLS error detected, trying alternative approach...');
-            
-            // Try using the authenticated user's ID directly
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-              // Try querying without any filters that might cause RLS recursion
-              const { data: altData, error: altError } = await supabase
-                .from('babies')
-                .select('*')
-                .eq('parent1_id', user.id);
-              
-              if (!altError && altData && altData.length > 0) {
-                allBabies = altData;
-                console.log(`[BabyOnboarding] Alternative query found ${allBabies.length} babies`);
-              } else {
-                // Try with parent2_id as fallback
-                const { data: altData2, error: altError2 } = await supabase
-                  .from('babies')
-                  .select('*')
-                  .eq('parent2_id', user.id);
-                
-                if (!altError2 && altData2 && altData2.length > 0) {
-                  allBabies = altData2;
-                  console.log(`[BabyOnboarding] Parent2 query found ${allBabies.length} babies`);
-                }
+          if (!bError && babyData && babyData.length > 0) {
+            const existingIds = new Set(allFoundBabies.map(b => b.id));
+            babyData.forEach(b => {
+              if (!existingIds.has(b.id)) {
+                allFoundBabies.push(b);
+                existingIds.add(b.id);
               }
-            }
+            });
+            console.log(`[BabyOnboarding] Found ${babyData.length} babies via family_members`);
           }
-        } else if (babiesData && babiesData.length > 0) {
-          allBabies = babiesData;
-          console.log(`[BabyOnboarding] Direct query found ${allBabies.length} babies`);
         }
-      } catch (e) {
-        console.warn('[BabyOnboarding] Query error:', e);
       }
-
-      // ─── FIX: If no babies found, try a different approach ──────────
-      if (allBabies.length === 0) {
-        console.log('[BabyOnboarding] No babies found in primary query, trying fallback...');
+      
+      // ─── CRITICAL FALLBACK: Check invite_codes ──────────────────────
+      // If user used an invite code, the baby exists in invite_codes
+      if (allFoundBabies.length === 0) {
+        console.log('[BabyOnboarding] No babies found, checking invite_codes...');
+        const { data: inviteData, error: inviteError } = await supabase
+          .from('invite_codes')
+          .select('family_id')
+          .eq('used_by', userId)
+          .eq('used', true)
+          .maybeSingle();
         
-        try {
-          // Try using the profiles table to get babies
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('id', userId)
-            .single();
+        if (!inviteError && inviteData?.family_id) {
+          console.log(`[BabyOnboarding] Found family_id from invite_codes: ${inviteData.family_id}`);
+          const { data: babyData } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('id', inviteData.family_id);
           
-          if (!profileError && profileData) {
-            // Try to get babies using a different method
-            const { data: babyData, error: babyError } = await supabase
-              .from('babies')
-              .select('*')
-              .eq('parent_id', userId);
-            
-            if (!babyError && babyData && babyData.length > 0) {
-              allBabies = babyData;
-              console.log(`[BabyOnboarding] Fallback query found ${allBabies.length} babies`);
-            }
+          if (babyData && babyData.length > 0) {
+            allFoundBabies = babyData;
+            console.log(`[BabyOnboarding] Found ${babyData.length} babies via invite_codes`);
           }
-        } catch (e) {
-          console.warn('[BabyOnboarding] Fallback query error:', e);
         }
       }
+      
+      allBabies = allFoundBabies;
 
       if (!allBabies || allBabies.length === 0) {
         console.log('[BabyOnboarding] No babies found in Supabase for user');
@@ -365,10 +340,10 @@ try {
 
       console.log(`[BabyOnboarding] Synced ${syncedCount} new babies`);
 
-      // ─── FIX: Force load babies after sync ──────────────────────────
+      // ─── Force load babies after sync ──────────────────────────────
       await loadBabies(true);
       
-      // ─── FIX: Set current baby if none set ──────────────────────────
+      // ─── Set current baby if none set ──────────────────────────────
       const currentId = await getAppSetting('current_baby_id');
       if (!currentId && allBabies[0]) {
         await setCurrentBabyInDb(allBabies[0].id);
@@ -403,7 +378,7 @@ try {
 
       console.log('[BabyOnboarding] Checking for babies with userId:', userId);
 
-      // ─── FIX: First check context ────────────────────────────────────
+      // ─── First check context ────────────────────────────────────────
       if (babies && babies.length > 0) {
         setHasBabies(true);
         setRemoteBabies(babies);
@@ -413,7 +388,7 @@ try {
         return;
       }
 
-      // ─── FIX: Check local DB ─────────────────────────────────────────
+      // ─── Check local DB ─────────────────────────────────────────────
       const localBabies = await getAllBabiesFromDb();
       console.log(`[BabyOnboarding] Local babies count: ${localBabies.length}`);
 
@@ -426,12 +401,11 @@ try {
         return;
       }
 
-      // ─── FIX: Sync from Supabase ─────────────────────────────────────
+      // ─── Sync from Supabase ─────────────────────────────────────────
       console.log('[BabyOnboarding] No local babies, syncing from Supabase...');
       const synced = await syncBabiesFromSupabase(userId);
       
       if (synced) {
-        // Force a fresh load of babies
         await loadBabies(true);
         const updatedLocalBabies = await getAllBabiesFromDb();
         if (updatedLocalBabies && updatedLocalBabies.length > 0) {
@@ -441,11 +415,10 @@ try {
           await checkAndNavigate();
         }
       } else {
-        // ─── FIX: Check if there are remote babies for import ──────────
+        // ─── Check if there are remote babies for import ──────────────
         try {
           let remoteData: any[] = [];
           
-          // Try to fetch any babies (without RLS-heavy filters)
           const { data: remoteData1, error: error1 } = await supabase
             .from('babies')
             .select('*')
@@ -466,15 +439,26 @@ try {
             }
           }
           
-          // ─── FIX: Also check parent_id column ────────────────────────
+          // ─── CRITICAL FALLBACK: Check invite_codes ──────────────────
           if (remoteData.length === 0) {
-            const { data: remoteData3, error: error3 } = await supabase
-              .from('babies')
-              .select('*')
-              .eq('parent_id', userId);
+            console.log('[BabyOnboarding] No babies found in standard queries, checking invite_codes...');
+            const { data: inviteData } = await supabase
+              .from('invite_codes')
+              .select('family_id')
+              .eq('used_by', userId)
+              .eq('used', true)
+              .maybeSingle();
             
-            if (!error3 && remoteData3 && remoteData3.length > 0) {
-              remoteData = remoteData3;
+            if (inviteData?.family_id) {
+              const { data: babyData } = await supabase
+                .from('babies')
+                .select('*')
+                .eq('id', inviteData.family_id);
+              
+              if (babyData && babyData.length > 0) {
+                remoteData = babyData;
+                console.log(`[BabyOnboarding] Found ${babyData.length} babies via invite_codes`);
+              }
             }
           }
           
@@ -610,7 +594,6 @@ try {
       });
 
       await setCurrentBabyInDb(baby.id);
-      // Force a fresh load
       await loadBabies(true);
       await switchBaby(baby.id);
       await completeSetup('baby');
@@ -679,22 +662,15 @@ try {
     triggerHaptic('medium');
     setIsProcessing(true);
     try {
-      // First, force a fresh load of babies to ensure we have the latest data
       await loadBabies(true);
-      
-      // Then switch to the selected baby
       await switchBaby(babyId);
-      
-      // Complete the setup
       await completeSetup('baby');
       
-      // Check setup status
       const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
       
       console.log('[BabyOnboarding] Setup status:', { hasParent2, isSetupComplete });
       
       if (isSetupComplete) {
-        // Force a final refresh before navigating
         await loadBabies(true);
         console.log('[BabyOnboarding] Setup complete, navigating to Main');
         navigation.replace('Main');
