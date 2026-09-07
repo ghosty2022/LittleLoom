@@ -1,5 +1,6 @@
-// screens/main/MoreScreen.tsx - FIXED BIOMETRIC TOGGLE
+// screens/main/MoreScreen.tsx - COMPLETE FIXED BIOMETRIC TOGGLE
 // No skeleton loader, renders immediately with available data
+// Biometric toggle properly synced with SecurityContext
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1034,10 +1035,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const biometricIcon = getBiometricIcon();
   
   // ✅ FIXED: Use isBiometricEnabled from security context directly
-  // The context value is the source of truth
   const bioEnabled = isBiometricEnabled || false;
   const hasHardware = isBiometricHardwareAvailable || false;
   const isEnrolled = isBiometricEnrolled || false;
+  // ✅ FIXED: Properly compute biometric availability
+  const biometricAvailable = hasHardware && isEnrolled;
 
   const babyStats = currentBaby ? getBabyStats() : { streak: 0, milestones: 0, photos: 0, entries: 0 };
   const activityStats = {
@@ -1192,15 +1194,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
   const handleBiometricToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
-      // Try to enable - check if hardware and enrollment are available
+      // Trying to enable biometric - first check if hardware is available
       await refreshBiometricStatus();
       
       const hasHardwareNow = isBiometricHardwareAvailable;
       const isEnrolledNow = isBiometricEnrolled;
       
-      if (!hasHardwareNow || !isEnrolledNow) {
-        sweetAlert.confirm(
+      if (!hasHardwareNow) {
+        sweetAlert.warning(
           'Biometric Not Available',
+          'This device does not support biometric authentication. You can use PIN instead.'
+        );
+        return;
+      }
+      
+      if (!isEnrolledNow) {
+        sweetAlert.confirm(
+          'Biometric Not Enrolled',
           'Please set up biometrics in your device settings first, or continue to setup.',
           () => {
             navigation.navigate('BiometricSetup');
@@ -1245,7 +1255,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   // ─── Handle Lock Now ─────────────────────────────────────────────
   const handleLockNow = useCallback(async () => {
     const hasAnySecurity = securitySettings.isPinEnabled || 
-                           (isBiometricEnabled && isBiometricHardwareAvailable && isBiometricEnrolled) || 
+                           (isBiometricEnabled && biometricAvailable) || 
                            securitySettings.isAppLockEnabled;
     
     if (!hasAnySecurity) {
@@ -1268,8 +1278,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     securitySettings.isPinEnabled, 
     securitySettings.isAppLockEnabled,
     isBiometricEnabled, 
-    isBiometricHardwareAvailable, 
-    isBiometricEnrolled,
+    biometricAvailable,
     lockApp, 
     navigation, 
     sweetAlert
@@ -1356,7 +1365,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   const renderSecuritySection = useCallback(() => {
     const isExpanded = expandedSections.has('security');
-    const bioAvailable = isBiometricHardwareAvailable && isBiometricEnrolled;
+    const bioAvailable = biometricAvailable;
     const bioEnabled = isBiometricEnabled || false;
     
     return (
@@ -1433,8 +1442,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     securitySettings,
     biometricTypeName,
     biometricIcon,
-    isBiometricHardwareAvailable,
-    isBiometricEnrolled,
+    biometricAvailable,
     isBiometricEnabled,
     primary,
     secondary,

@@ -1,4 +1,6 @@
-// screens/security/SecurityLockScreen.tsx - COMPLETE FIXED with Login Screen UI
+// screens/security/SecurityLockScreen.tsx - COMPLETE FIXED
+// Properly checks biometric enabled state from context
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -94,8 +96,13 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     refreshBiometricStatus,
     getBiometricTypeName,
     getBiometricIcon,
+    toggleBiometric,
   } = useSecurity();
 
+  // ✅ FIXED: Properly compute if biometric should be available
+  // Biometric is available if:
+  // 1. Hardware is available AND enrolled AND enabled in settings
+  const biometricAvailable = isBiometricHardwareAvailable && isBiometricEnrolled && isBiometricEnabled;
   const effectiveBiometricEnabled = isBiometricEnabled ?? false;
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
@@ -104,7 +111,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const sweetAlert = useSweetAlert();
 
   const availableMethods = getAvailableAuthMethods();
-  const hasBiometric = availableMethods.hasBiometric || isBiometricHardwareAvailable;
+  const hasBiometric = availableMethods.hasBiometric || (isBiometricHardwareAvailable && isBiometricEnrolled && isBiometricEnabled);
   const hasPin = availableMethods.hasPin;
 
   const userName = userProfile?.fullName || 'Welcome Back';
@@ -243,7 +250,11 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   // ─── Auto-prompt biometric ──────────────────────────────────────
   useEffect(() => {
-    if (!effectiveBiometricEnabled) return;
+    // ✅ FIXED: Use biometricAvailable instead of effectiveBiometricEnabled
+    if (!biometricAvailable) {
+      console.log('[SecurityLock] Biometric not available - skipping auto-prompt');
+      return;
+    }
     if (!isBiometricHardwareAvailable) return;
     if (isLockedOut) return;
     if (unlockInProgress.current) return;
@@ -277,7 +288,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       }
     };
   }, [
-    effectiveBiometricEnabled,
+    biometricAvailable,
     isBiometricHardwareAvailable,
     isLockedOut,
     navigation,
@@ -399,13 +410,22 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const handleBiometricAuth = useCallback(async () => {
     if (!isBiometricHardwareAvailable) {
       console.log('[SecurityLock] No biometric hardware');
+      sweetAlert.warning(
+        'Biometric Not Available',
+        'This device does not support biometric authentication.'
+      );
       return;
     }
 
     await refreshBiometricStatus();
 
-    if (!effectiveBiometricEnabled) {
-      console.log('[SecurityLock] Biometric not enabled');
+    // ✅ FIXED: Check if biometric is actually enabled
+    if (!isBiometricEnabled) {
+      console.log('[SecurityLock] Biometric not enabled in settings');
+      sweetAlert.warning(
+        'Biometric Not Enabled',
+        'Please enable biometric unlock in Settings first.'
+      );
       return;
     }
 
@@ -486,7 +506,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   }, [
     isBiometricHardwareAvailable,
-    effectiveBiometricEnabled,
+    isBiometricEnabled,
     isBiometricEnrolled,
     isLockedOut,
     isLoading,
@@ -739,7 +759,15 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                   ? `Use ${biometricInfo.name} or enter PIN`
                   : hasPin
                     ? 'Enter your PIN to continue'
-                    : `Use ${biometricInfo.name} to unlock`}
+                    : hasBiometric
+                      ? `Use ${biometricInfo.name} to unlock`
+                      : 'No security method available'}
+              </Text>
+            )}
+
+            {!hasBiometric && !hasPin && !isLockedOut && !showForgotPin && (
+              <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.6)', marginTop: 4 }]}>
+                Please set up security in Settings
               </Text>
             )}
 

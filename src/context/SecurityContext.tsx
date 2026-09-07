@@ -7,7 +7,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Crypto from 'expo-crypto';
-import { supabase } from '@/utils/supabase';
 
 const SECURE_KEYS = {
   PIN_HASH: 'littleloom_pin_hash',
@@ -114,6 +113,7 @@ interface SecurityContextType extends SecurityState {
   refreshBiometricStatus: () => Promise<void>;
   getBiometricHardwareAvailable: () => boolean;
   getBiometricEnrolled: () => boolean;
+  getBiometricEnabled: () => boolean;
 }
 
 const SecurityContext = createContext<SecurityContextType | null>(null);
@@ -254,7 +254,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const checkedThisCycleRef = useRef<boolean>(false);
   const biometricCheckInProgressRef = useRef<boolean>(false);
   const lastBiometricCheckRef = useRef<number>(0);
-  const BIOMETRIC_CHECK_DEBOUNCE = 5000;
+  const BIOMETRIC_CHECK_DEBOUNCE = 3000;
   const biometricCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateSubscriptionRef = useRef<any>(null);
@@ -706,7 +706,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
-      // Also clear the main biometric enabled flag
       await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'false');
       if (isMounted.current) {
         setState(prev => ({
@@ -720,39 +719,18 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   // ─── FIXED: Toggle biometric with proper persistence ──────────────
   const toggleBiometric = useCallback(async (enabled: boolean): Promise<boolean> => {
     console.log('[Security] toggleBiometric called with:', enabled);
+    console.log('[Security] Current state:', state.settings.isBiometricEnabled);
     
     if (enabled) {
       // First check if biometric is available
-      lastBiometricCheckRef.current = 0;
-      if (biometricCheckTimerRef.current) {
-        clearTimeout(biometricCheckTimerRef.current);
-        biometricCheckTimerRef.current = null;
-      }
-      biometricCheckInProgressRef.current = false;
-      await checkBiometricCapabilities();
+      await refreshBiometricStatus();
       
-      // Double-check enrollment status
-      let isEnrolled = state.isBiometricEnrolled;
-      if (!isEnrolled && Platform.OS === 'android') {
-        try {
-          isEnrolled = await LocalAuthentication.isEnrolledAsync();
-          if (!isEnrolled) {
-            const testAuth = await LocalAuthentication.authenticateAsync({
-              promptMessage: 'Verify biometric setup',
-              disableDeviceFallback: true,
-              cancelLabel: 'Cancel',
-            });
-            if (testAuth.success || testAuth.error === 'user_cancel' || testAuth.error === 'system_cancel') {
-              isEnrolled = true;
-            }
-          }
-        } catch (e) {
-          console.warn('[Security] Enrollment re-check failed:', e);
-        }
-      }
+      // Double-check enrollment status after refresh
+      const hasHardware = state.isBiometricHardwareAvailable;
+      const isEnrolled = state.isBiometricEnrolled;
       
-      if (!state.isBiometricHardwareAvailable || !isEnrolled) {
-        console.warn('[Security] Biometric not available');
+      if (!hasHardware || !isEnrolled) {
+        console.warn('[Security] Biometric not available - hardware:', hasHardware, 'enrolled:', isEnrolled);
         return false;
       }
       
@@ -767,7 +745,10 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         if (isMounted.current) {
           setState(prev => ({ 
             ...prev, 
-            settings: { ...prev.settings, isBiometricEnabled: true },
+            settings: { 
+              ...prev.settings, 
+              isBiometricEnabled: true 
+            },
             isBiometricEnrolled: true,
           }));
         }
@@ -785,14 +766,17 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       if (isMounted.current) {
         setState(prev => ({ 
           ...prev, 
-          settings: { ...prev.settings, isBiometricEnabled: false } 
+          settings: { 
+            ...prev.settings, 
+            isBiometricEnabled: false 
+          } 
         }));
       }
       await refreshBiometricStatus();
       console.log('[Security] ❌ Biometric disabled');
       return true;
     }
-  }, [authenticateWithBiometric, state.isBiometricHardwareAvailable, state.isBiometricEnrolled, checkBiometricCapabilities, refreshBiometricStatus]);
+  }, [authenticateWithBiometric, state.isBiometricHardwareAvailable, state.isBiometricEnrolled, state.settings.isBiometricEnabled, refreshBiometricStatus]);
 
   const toggleAppLock = useCallback(async (enabled: boolean) => {
     await AsyncStorage.setItem(ASYNC_KEYS.APP_LOCK_ENABLED, enabled ? 'true' : 'false');
@@ -833,15 +817,14 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     let isValid = false;
     try {
       if (method === 'biometric') {
-        lastBiometricCheckRef.current = 0;
-        if (biometricCheckTimerRef.current) {
-          clearTimeout(biometricCheckTimerRef.current);
-          biometricCheckTimerRef.current = null;
-        }
-        biometricCheckInProgressRef.current = false;
-        await checkBiometricCapabilities();
+        await refreshBiometricStatus();
         if (!state.isBiometricHardwareAvailable) {
           console.log('[Security] Biometric hardware not available');
+          return false;
+        }
+        // Check if biometric is actually enabled
+        if (!state.settings.isBiometricEnabled) {
+          console.log('[Security] Biometric not enabled in settings');
           return false;
         }
         const result = await authenticateWithBiometric();
@@ -874,7 +857,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } finally {
       setTimeout(() => { unlockInProgressRef.current = false; }, 300);
     }
-  }, [authenticateWithBiometric, verifyPin, checkBiometricCapabilities, state.isBiometricHardwareAvailable]);
+  }, [authenticateWithBiometric, verifyPin, state.isBiometricHardwareAvailable, state.settings.isBiometricEnabled, refreshBiometricStatus]);
 
   const forceUnlock = useCallback(async () => {
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'false');
@@ -1031,6 +1014,10 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const getBiometricEnrolled = useCallback(() => {
     return state.isBiometricEnrolled;
   }, [state.isBiometricEnrolled]);
+
+  const getBiometricEnabled = useCallback(() => {
+    return state.settings.isBiometricEnabled;
+  }, [state.settings.isBiometricEnabled]);
 
   const setSharingActive = useCallback(async (active: boolean) => {
     sharingActiveRef.current = active;
@@ -1195,6 +1182,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     refreshBiometricStatus,
     getBiometricHardwareAvailable,
     getBiometricEnrolled,
+    getBiometricEnabled,
     isAppLocked: state.isSecurityLocked,
   }), [
     state,
@@ -1230,6 +1218,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     refreshBiometricStatus,
     getBiometricHardwareAvailable,
     getBiometricEnrolled,
+    getBiometricEnabled,
   ]);
 
   return (
