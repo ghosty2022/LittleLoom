@@ -2009,22 +2009,22 @@ const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentB
     }
   }, [loadBabies, refreshCurrentBaby]);
 
-  if (babyLoading && !currentBaby) {
-    return (
-      <View style={[styles.container, {
-        backgroundColor: fullThemeColors?.background || '#f8faff',
-        justifyContent: 'center',
-        alignItems: 'center',
-      }]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <ActivityIndicator size="large" color={themeColors?.primary || '#667eea'} />
-        <Text style={{ marginTop: 16, color: fullThemeColors?.textSecondary || '#64748b', fontSize: 16 }}>
-          Loading baby profile...
-        </Text>
-      </View>
-    );
-  }
-
+// In UniversalTrackerHubScreen.tsx, lines ~1990-2000
+if (babyLoading && !currentBaby) {
+  return (
+    <View style={[styles.container, {
+      backgroundColor: fullThemeColors?.background || '#f8faff',
+      justifyContent: 'center',
+      alignItems: 'center',
+    }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <ActivityIndicator size="large" color={themeColors?.primary || '#667eea'} />
+      <Text style={{ marginTop: 16, color: fullThemeColors?.textSecondary || '#64748b', fontSize: 16 }}>
+        Loading baby profile...
+      </Text>
+    </View>
+  );
+}
   return (
     <View style={[styles.container, { backgroundColor: fullThemeColors?.background || '#f8faff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
