@@ -193,22 +193,30 @@ const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1';
 
 /* ─── TRACKER TYPE MAPPING ──────────────────────────────────────────────── */
 
-// Map tracker IDs to the allowed tracker_type values in the database
+// Database allowed values: 'feed', 'sleep', 'potty', 'milestone', 'custom', 'growth', 'medication'
 const TRACKER_TYPE_MAP: Record<string, string> = {
-  // Essential
+  // Essential - map to appropriate types
   'feed': 'feed',
+  'dream_feed': 'feed',
+  'breastfeeding': 'feed',
+  
   'sleep': 'sleep',
-  'diaper': 'potty', // Diaper changes go under potty type
+  'nap': 'sleep',
+  
+  'diaper': 'potty',
   'potty': 'potty',
+  
+  'milestone': 'milestone',
+  
+  'growth': 'growth',
+  
+  'medication': 'medication',
+  
+  // All others map to 'custom'
   'bath': 'custom',
   'pumping': 'custom',
-  'dream_feed': 'feed',
   'burp': 'custom',
-  
-  // Health
-  'growth': 'growth',
   'temperature': 'custom',
-  'medication': 'medication',
   'symptom': 'custom',
   'vaccine': 'custom',
   'doctor_visit': 'custom',
@@ -220,9 +228,6 @@ const TRACKER_TYPE_MAP: Record<string, string> = {
   'tongue_tie': 'custom',
   'dental_visit': 'custom',
   'feeding_pain': 'custom',
-  
-  // Development
-  'milestone': 'milestone',
   'play': 'custom',
   'tummy_time': 'custom',
   'reading': 'custom',
@@ -234,8 +239,6 @@ const TRACKER_TYPE_MAP: Record<string, string> = {
   'fine_motor': 'custom',
   'gross_motor': 'custom',
   'pretend_play': 'custom',
-  
-  // Emotional
   'mood': 'custom',
   'attachment': 'custom',
   'social': 'custom',
@@ -244,8 +247,6 @@ const TRACKER_TYPE_MAP: Record<string, string> = {
   'tantrum': 'custom',
   'time_out': 'custom',
   'sibling_interaction': 'custom',
-  
-  // Physical
   'nail_care': 'custom',
   'hair_care': 'custom',
   'skin_care': 'custom',
@@ -254,19 +255,14 @@ const TRACKER_TYPE_MAP: Record<string, string> = {
   'oral_hygiene': 'custom',
   'ear_care': 'custom',
   'nose_care': 'custom',
-  
-  // Nutrition
   'solid_food': 'custom',
   'water': 'custom',
   'vitamin': 'custom',
   'allergen_intro': 'custom',
   'feeding_reaction': 'custom',
-  'breastfeeding': 'feed',
   'snack': 'custom',
   'meal_plan': 'custom',
   'bottle_weaning': 'custom',
-  
-  // Safety
   'accident': 'custom',
   'injury': 'custom',
   'choking': 'custom',
@@ -274,29 +270,20 @@ const TRACKER_TYPE_MAP: Record<string, string> = {
   'babyproofing': 'custom',
   'swim_lessons': 'custom',
   'fire_drill': 'custom',
-  
-  // Schedule
   'wake_time': 'custom',
   'bedtime': 'custom',
-  'nap': 'sleep',
   'screen_time': 'custom',
   'outdoor_time': 'custom',
-  
-  // Parental
   'note': 'custom',
   'photo': 'custom',
   'video': 'custom',
   'voice_memo': 'custom',
   'journal': 'custom',
   'postpartum_recovery': 'custom',
-  
-  // Travel
   'trip': 'custom',
   'travel': 'custom',
   'daycare': 'custom',
   'babysitter': 'custom',
-  
-  // Special Needs
   'reflux': 'custom',
   'colic': 'custom',
   'gas': 'custom',
@@ -305,8 +292,6 @@ const TRACKER_TYPE_MAP: Record<string, string> = {
   'eczema': 'custom',
   'cradle_cap': 'custom',
   'therapy': 'custom',
-  
-  // Household
   'supply_inventory': 'custom',
   'pumping_inventory': 'custom',
   'expenses': 'custom',
@@ -1075,7 +1060,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .insert({
           id: newId,
           tracker_id: trackerId,
-          tracker_type: trackerType, // ← FIXED: Added required tracker_type
+          tracker_type: trackerType,
           baby_id: babyId,
           timestamp: timestampISO,
           title: options?.title || `${tracker.emoji} ${tracker.name}`,
@@ -1093,7 +1078,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       if (error) {
         console.error('Failed to add entry:', error);
-        sweetAlert('Error', 'Failed to save entry', 'warning');
+        sweetAlert('Error', `Failed to save entry: ${error.message}`, 'warning');
         return null;
       }
 
