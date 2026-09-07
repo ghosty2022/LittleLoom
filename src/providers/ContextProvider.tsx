@@ -1,4 +1,4 @@
-// src/providers/ContextProvider.tsx
+// src/providers/ContextProvider.tsx - COMPLETE FIXED
 import React, { useEffect, useRef, useMemo, useContext, useState } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { UserProvider } from '@/context/UserContext';
@@ -78,12 +78,25 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
     syncWithBabyContext(babyId);
   }, [babyId, syncWithBabyContext]);
 
-  // Poll for baby ID changes
+  // Poll for baby ID changes - FIXED: use refs to avoid re-renders
   useEffect(() => {
+    let isMounted = true;
+    
     const interval = setInterval(() => {
+      if (!isMounted) return;
+      
       try {
-        const baby = useBaby();
-        const newId = baby.getCurrentBabyId();
+        // Try to get the baby context safely
+        let baby: any = null;
+        try {
+          const babyContext = useBaby();
+          baby = babyContext;
+        } catch {
+          // BabyContext not ready
+          return;
+        }
+        
+        const newId = baby.getCurrentBabyId ? baby.getCurrentBabyId() : null;
         if (newId !== babyIdRef.current && newId) {
           console.log('[ActivitySyncBridge] Poll detected baby change:', newId);
           babyIdRef.current = newId;
@@ -92,17 +105,24 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
             syncWithBabyContext(newId);
           }
         }
-      } catch {
+      } catch (e) {
         // Ignore
       }
-    }, 2000);
+    }, 3000);
     
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [syncWithBabyContext]);
 
   useEffect(() => {
     const init = async () => {
-      await notificationService.initialize();
+      try {
+        await notificationService.initialize();
+      } catch (e) {
+        console.warn('[ActivitySyncBridge] Notification init error:', e);
+      }
     };
     init();
   }, []);
@@ -115,6 +135,7 @@ const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const trackerContext = useContext(TrackerContext);
   const initRef = useRef(false);
   const currentBabyIdRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
   
   // Get baby data - with retry if not ready
   let babyId: string | null = null;
@@ -141,14 +162,18 @@ const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   }, [loadBabies, babyId]);
 
-  // Subscribe to baby changes
+  // Subscribe to baby changes - FIXED: prevent infinite loops
   useEffect(() => {
-    if (!trackerContext || !subscribeToBabyChanges) return;
+    if (!trackerContext || !subscribeToBabyChanges) {
+      return;
+    }
     
     console.log('[TrackerBabySync] Setting up subscription to BabyContext');
     
     // Subscribe to baby changes from BabyContext
     const unsubscribe = subscribeToBabyChanges((newBabyId) => {
+      if (!isMountedRef.current) return;
+      
       console.log('[TrackerBabySync] Baby changed to:', newBabyId);
       currentBabyIdRef.current = newBabyId;
       
@@ -157,7 +182,12 @@ const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) 
       }
       
       if (trackerContext && trackerContext.refreshEntries && newBabyId) {
-        trackerContext.refreshEntries();
+        // Use requestAnimationFrame to prevent render cycles
+        requestAnimationFrame(() => {
+          if (isMountedRef.current) {
+            trackerContext.refreshEntries();
+          }
+        });
       }
     });
 
@@ -181,25 +211,41 @@ const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   }, [trackerContext, babyId]);
 
-  // Poll for baby ID changes
+  // Poll for baby ID changes - FIXED: use refs to avoid re-renders
   useEffect(() => {
+    let isMounted = true;
+    isMountedRef.current = true;
+    
     const interval = setInterval(() => {
+      if (!isMounted) return;
+      
       try {
-        const baby = useBaby();
-        const newId = baby.getCurrentBabyId();
-        if (newId !== currentBabyIdRef.current) {
+        let baby: any = null;
+        try {
+          const babyContext = useBaby();
+          baby = babyContext;
+        } catch {
+          return;
+        }
+        
+        const newId = baby.getCurrentBabyId ? baby.getCurrentBabyId() : null;
+        if (newId !== currentBabyIdRef.current && newId) {
           console.log('[TrackerBabySync] Poll detected baby change:', newId);
           currentBabyIdRef.current = newId;
           if (trackerContext && trackerContext.setCurrentBabyId) {
             trackerContext.setCurrentBabyId(newId);
           }
         }
-      } catch {
+      } catch (e) {
         // Ignore
       }
     }, 2000);
     
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      isMountedRef.current = false;
+      clearInterval(interval);
+    };
   }, [trackerContext]);
 
   return <>{children}</>;
@@ -265,7 +311,6 @@ export default function ContextProvider({ children }: ContextProviderProps) {
               <FamilyProvider>
                 <ActivityProvider>
                   {/* AudioProvider must be OUTSIDE ActivitySyncBridge but INSIDE ActivityProvider */}
-                  {/* It must also wrap SweetAlertWrapper and all other children */}
                   <AudioProvider>
                     <ActivitySyncBridge>
                       <MediaProvider>

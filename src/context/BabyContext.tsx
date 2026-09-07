@@ -860,52 +860,34 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to get current_baby_id:', e);
       }
       
-      // ─── IMPORTANT: Validate currentId exists in babies list ─────────
-      if (currentId && !babies.some(b => b.id === currentId)) {
-        console.log(`[BabyContext] Current ID ${currentId} not found in babies list, resetting`);
+      // ─── FIX: Validate and correct currentId ──────────────────────────
+      // If currentId is invalid OR we have babies but no currentId, use first baby
+      if (babies.length > 0) {
+        const isValidCurrent = currentId && babies.some(b => b.id === currentId);
+        
+        if (!isValidCurrent) {
+          // Use the first baby as the current one
+          currentId = babies[0].id;
+          console.log(`[BabyContext] Setting current baby to first: ${currentId}`);
+          
+          // Persist to Supabase
+          try {
+            await supabase
+              .from('app_settings')
+              .upsert({
+                key: 'current_baby_id',
+                value: currentId,
+                user_id: userId,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'key, user_id' });
+            console.log('[BabyContext] Saved current_baby_id to Supabase:', currentId);
+          } catch (e) {
+            console.warn('[BabyContext] Failed to save current_baby_id:', e);
+          }
+        }
+      } else {
+        // No babies found
         currentId = null;
-      }
-      
-      // ─── FIX: If no current ID but we have babies, use the FIRST baby ───
-      if (!currentId && babies.length > 0) {
-        console.log(`[BabyContext] No current ID set, using first baby: ${babies[0].id}`);
-        currentId = babies[0].id;
-        
-        // Persist the new current baby ID to Supabase
-        try {
-          await supabase
-            .from('app_settings')
-            .upsert({
-              key: 'current_baby_id',
-              value: currentId,
-              user_id: userId,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'key, user_id' });
-          console.log('[BabyContext] Saved current_baby_id to Supabase:', currentId);
-        } catch (e) {
-          console.warn('[BabyContext] Failed to set current_baby_id:', e);
-        }
-      }
-
-      // ─── FIX: If we have a currentId but it doesn't match a baby, use first baby ───
-      if (currentId && babies.length > 0 && !babies.some(b => b.id === currentId)) {
-        console.log(`[BabyContext] Current ID ${currentId} invalid, using first baby`);
-        currentId = babies[0].id;
-        
-        // Persist the correct current baby ID
-        try {
-          await supabase
-            .from('app_settings')
-            .upsert({
-              key: 'current_baby_id',
-              value: currentId,
-              user_id: userId,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'key, user_id' });
-          console.log('[BabyContext] Corrected current_baby_id in Supabase:', currentId);
-        } catch (e) {
-          console.warn('[BabyContext] Failed to set current_baby_id:', e);
-        }
       }
 
       // Store in AsyncStorage
@@ -913,33 +895,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, currentId);
       }
 
-      // ─── FIX: Find the baby object - properly find the baby ──────────
-      let babyToSet = null;
-      if (currentId) {
-        babyToSet = babies.find(b => b.id === currentId) || null;
-      }
-      
-      // ─── FIX: If babyToSet is null but we have babies, use first ─────
-      if (!babyToSet && babies.length > 0) {
-        babyToSet = babies[0];
-        currentId = babies[0].id;
-        console.log('[BabyContext] Using fallback first baby:', currentId);
-        
-        // Persist the fallback current baby ID
-        try {
-          await supabase
-            .from('app_settings')
-            .upsert({
-              key: 'current_baby_id',
-              value: currentId,
-              user_id: userId,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'key, user_id' });
-          console.log('[BabyContext] Saved fallback current_baby_id to Supabase:', currentId);
-        } catch (e) {
-          console.warn('[BabyContext] Failed to set current_baby_id:', e);
-        }
-      }
+      // Find the baby object
+      const babyToSet = currentId ? babies.find(b => b.id === currentId) || null : null;
 
       // ─── CHECK IF BABY WAS SKIPPED ──────────────────────────────────
       let hasSkippedBaby = false;
@@ -972,10 +929,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isInitialized: true,
       }));
 
-      // ─── BROADCAST CHANGE ────────────────────────────────────────────
+      // ─── BROADCAST CHANGE (with delay to prevent cascade) ──────────
       setTimeout(() => {
         broadcastBabyChange(currentId);
-      }, 50);
+      }, 100);
 
       // ─── LOAD TRACKER DATA FOR CURRENT BABY ─────────────────────────
       if (currentId) {
@@ -1016,7 +973,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       loadInProgressRef.current = false;
     }
-  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange, state.currentBabyId]);
+  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange]);
 
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
@@ -1386,7 +1343,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
-      broadcastBabyChange(newCurrentId);
 
       // ─── CLEAR SKIP BABY ──────────────────────────────────────────────
       try {
@@ -1419,7 +1375,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // ─── BROADCAST CHANGE ─────────────────────────────────────────────
       setTimeout(() => {
         broadcastBabyChange(newCurrentId);
-      }, 50);
+      }, 100);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
@@ -1608,7 +1564,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setTimeout(() => {
         broadcastBabyChange(newCurrentId);
-      }, 50);
+      }, 100);
 
       return true;
     } catch (error) {
@@ -1663,7 +1619,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setTimeout(() => {
         broadcastBabyChange(id);
-      }, 50);
+      }, 100);
 
       await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
 
