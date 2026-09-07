@@ -762,7 +762,51 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      const userId = await getCurrentUserId();
+      // ─── FIX: Get user ID directly from Supabase first ──────────────
+      let userId: string | null = null;
+      
+      // Try session first (most reliable for existing sessions)
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          userId = session.user.id;
+          console.log('[BabyContext] Got user ID from session:', userId);
+        }
+      } catch (e) {
+        console.warn('[BabyContext] Session check failed:', e);
+      }
+      
+      // If no session, try getUser
+      if (!userId) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user?.id) {
+            userId = user.id;
+            console.log('[BabyContext] Got user ID from getUser:', userId);
+          }
+        } catch (e) {
+          console.warn('[BabyContext] getUser failed:', e);
+        }
+      }
+      
+      // Fallback to authProfile
+      if (!userId && authProfile?.id) {
+        userId = authProfile.id;
+        console.log('[BabyContext] Got user ID from authProfile:', userId);
+      }
+      
+      // Last resort - try refresh
+      if (!userId) {
+        try {
+          const { data: refreshData } = await supabase.auth.refreshSession();
+          if (refreshData?.session?.user?.id) {
+            userId = refreshData.session.user.id;
+            console.log('[BabyContext] Got user ID from refreshSession:', userId);
+          }
+        } catch (e) {
+          console.warn('[BabyContext] refreshSession failed:', e);
+        }
+      }
 
       if (!userId) {
         console.warn('[BabyContext] No authenticated user');
@@ -975,19 +1019,39 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       loadInProgressRef.current = false;
     }
-  }, [mapBabyRowToProfile, loadAllBabyData, getCurrentUserId, broadcastBabyChange]);
+  }, [mapBabyRowToProfile, loadAllBabyData, authProfile]);
 
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
     await loadBabies(true);
   }, [loadBabies]);
 
-  // ─── FIXED: Initial load - wait for auth to be ready ──────────────────
+  // ─── FIXED: Initial load - with retry for existing sessions ──────────
   useEffect(() => {
     if (initRef.current) return;
     
     const initialize = async () => {
-      // Wait for auth to be ready
+      // Check if we have a session directly
+      let hasSession = false;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          hasSession = true;
+          console.log('[BabyContext] Found existing session on init');
+        }
+      } catch (e) {
+        console.warn('[BabyContext] Session check on init failed:', e);
+      }
+      
+      // If we have a session or are authenticated, load babies immediately
+      if (hasSession || isAuthenticated) {
+        console.log('[BabyContext] Loading babies on init (session or auth)');
+        initRef.current = true;
+        loadBabies();
+        return;
+      }
+      
+      // Otherwise wait for auth to be ready
       let attempts = 0;
       while (!isAuthenticated && attempts < maxLoadAttempts) {
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -1017,7 +1081,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isAuthenticated, loadBabies]);
 
-  // ─── FIXED: Watch for auth changes with proper delay ──────────────────
+  // ─── FIXED: Watch for auth changes ──────────────────────────────────
   useEffect(() => {
     if (!isAuthenticated) {
       // User signed out, clear state
