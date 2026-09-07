@@ -1,5 +1,5 @@
 // src/screens/auth/SignUpScreen.tsx - COMPLETE FIXED VERSION
-// FIX: Invite code validation and user isolation
+// FIX: Invite code validation, partial sign-up handling, and user isolation
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Animated, {
@@ -81,13 +81,22 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [joinFullName, setJoinFullName] = useState('');
   const [joinEmail, setJoinEmail] = useState('');
+  const [joinPhone, setJoinPhone] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
   const [joinConfirmPassword, setJoinConfirmPassword] = useState('');
   const [showJoinPassword, setShowJoinPassword] = useState(false);
   const [showJoinConfirmPassword, setShowJoinConfirmPassword] = useState(false);
   const [codeValidated, setCodeValidated] = useState(false);
-  const [codeInfo, setCodeInfo] = useState<{ role: string; relationship?: string } | null>(null);
+  const [codeInfo, setCodeInfo] = useState<{ 
+    role: string; 
+    relationship?: string;
+    isPartial?: boolean;
+    partialEmail?: string;
+    partialPhone?: string;
+    partialName?: string;
+  } | null>(null);
   const [isValidatingCode, setIsValidatingCode] = useState(false);
+  const [showPartialRecovery, setShowPartialRecovery] = useState(false);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSplash, setShowSplash] = useState(false);
@@ -99,10 +108,16 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     isLoading: authLoading,
     isAuthenticated,
     findUserByEmail,
+    userProfile,
   } = useAuth();
 
   // ─── FIX: Use FamilyContext for invite validation ─────────────────────
-  const { validateInviteCode: validateInviteCodeFromFamily } = useFamily();
+  const { 
+    validateInviteCode: validateInviteCodeFromFamily,
+    getPartialSignupInfo,
+    recoverPartialSignup,
+    markSignupComplete,
+  } = useFamily();
 
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
@@ -351,15 +366,51 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     if (trimmed.length !== 6) {
       setCodeValidated(false);
       setCodeInfo(null);
+      setShowPartialRecovery(false);
       return;
     }
 
     console.log('[SignUp] 🔍 Validating invite code:', trimmed);
     setIsValidatingCode(true);
+    setShowPartialRecovery(false);
     
     codeDebounceTimer.current = setTimeout(async () => {
       try {
-        // ─── FIX: Use FamilyContext validateInviteCode ──────────────────
+        // ─── First check for partial signup info ────────────────────
+        const partialInfo = await getPartialSignupInfo(trimmed);
+        console.log('[SignUp] 📊 Partial signup info:', partialInfo);
+
+        if (partialInfo.exists) {
+          console.log('[SignUp] ⚠️ Partial sign-up detected for code:', trimmed);
+          
+          if (isMounted.current) {
+            setCodeValidated(true);
+            setCodeInfo({
+              role: 'partial',
+              isPartial: true,
+              partialEmail: partialInfo.email,
+              partialPhone: partialInfo.phone,
+              partialName: partialInfo.name,
+            });
+            setShowPartialRecovery(true);
+            
+            // Pre-fill fields with partial data if available
+            if (partialInfo.email) setJoinEmail(partialInfo.email);
+            if (partialInfo.phone) setJoinPhone(partialInfo.phone);
+            if (partialInfo.name) setJoinFullName(partialInfo.name);
+            
+            showInfo(
+              'Resume Sign-up', 
+              partialInfo.email 
+                ? `Continue signing up with ${partialInfo.email}`
+                : 'Complete your registration'
+            );
+            setIsValidatingCode(false);
+          }
+          return;
+        }
+
+        // ─── Use FamilyContext validateInviteCode ──────────────────
         const result = await validateInviteCodeFromFamily(trimmed);
 
         console.log('[SignUp] 📊 Validation result:', result);
@@ -370,6 +421,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
             setCodeInfo({
               role: result.data.role,
               relationship: result.data.relationship,
+              isPartial: result.data.isPartial || false,
             });
             showInfo('Valid Code!', `You'll join as ${result.data.role === 'parent2' ? 'Parent 2' : result.data.role === 'guardian' ? 'Guardian' : 'Viewer'}`);
           } else {
@@ -387,7 +439,116 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         if (isMounted.current) setIsValidatingCode(false);
       }
     }, 500);
-  }, [inviteCode, activeTab, validateInviteCodeFromFamily]);
+  }, [inviteCode, activeTab, validateInviteCodeFromFamily, getPartialSignupInfo]);
+
+  // ─── HANDLE PARTIAL SIGNUP RECOVERY ──────────────────────────────────
+  const handlePartialSignupRecovery = useCallback(async () => {
+    if (isProcessing || authLoading) return;
+    
+    const trimmedCode = inviteCode.trim();
+    if (trimmedCode.length !== 6) {
+      showError('Invalid Code', 'Please enter a valid invite code');
+      return;
+    }
+
+    if (!joinEmail.trim()) {
+      showError('Missing Email', 'Please enter your email address');
+      return;
+    }
+    if (!isValidEmail(joinEmail)) {
+      showError('Invalid Email', 'Please enter a valid email address');
+      return;
+    }
+    if (!joinFullName.trim()) {
+      showError('Missing Name', 'Please enter your full name');
+      return;
+    }
+    if (!joinPassword) {
+      showError('Missing Password', 'Please enter a password');
+      return;
+    }
+    if (joinPassword.length < 8) {
+      showError('Weak Password', 'Password must be at least 8 characters');
+      return;
+    }
+    if (joinPassword !== joinConfirmPassword) {
+      showError('Password Mismatch', 'Passwords do not match');
+      return;
+    }
+
+    // Check if user already exists
+    try {
+      const existingUser = await findUserByEmail(joinEmail.trim());
+      if (existingUser) {
+        // User exists - try to recover the partial signup
+        showInfo('Account Found', 'You already have an account. Would you like to sign in instead?');
+        navigation.navigate('Login', { email: joinEmail.trim() });
+        return;
+      }
+    } catch (e) {
+      console.warn('[SignUp] Error checking existing user:', e);
+    }
+
+    setIsProcessing(true);
+    Keyboard.dismiss();
+    triggerHaptic('medium');
+
+    try {
+      // ─── First, create the account via signUp ──────────────────────
+      const signUpResult = await signUp(
+        joinFullName.trim(), 
+        joinEmail.trim(), 
+        joinPassword
+      );
+
+      if (signUpResult.success && isMounted.current) {
+        // ─── Now mark the partial signup as complete ──────────────────
+        const recoveryResult = await recoverPartialSignup(
+          trimmedCode,
+          userProfile?.id || '',
+          joinEmail.trim(),
+          joinPhone.trim() || undefined,
+          joinFullName.trim()
+        );
+
+        if (recoveryResult.success) {
+          showSuccess('Welcome to the family!', recoveryResult.message);
+          navigation.replace('BabyOptional');
+        } else {
+          // Even if recovery fails, the user is signed up
+          showSuccess('Account Created!', 'Your account has been created. Please complete your family setup.');
+          navigation.replace('BabyOptional');
+        }
+      } else {
+        showError('Failed', signUpResult.message || 'Could not create account. Please try again.');
+        joinAttempted.current = false;
+      }
+    } catch (error) {
+      console.error('[SignUp] Partial signup recovery error:', error);
+      showError('Error', 'Failed to complete signup. Please try again.');
+      joinAttempted.current = false;
+    } finally {
+      if (isMounted.current) setIsProcessing(false);
+    }
+  }, [
+    inviteCode,
+    joinEmail,
+    joinPhone,
+    joinFullName,
+    joinPassword,
+    joinConfirmPassword,
+    signUp,
+    recoverPartialSignup,
+    findUserByEmail,
+    userProfile,
+    isProcessing,
+    authLoading,
+    triggerHaptic,
+    showError,
+    showSuccess,
+    showInfo,
+    navigation,
+  ]);
 
   // ─── CREATE ACCOUNT HANDLER ─────────────────────────────────────────
   const handleSignUp = useCallback(async () => {
@@ -430,7 +591,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       if (existingUser) {
         showInfo('Account Exists', 'An account with this email already exists. Redirecting to sign in...');
         setTimeout(() => {
-          if (isMounted.current) navigation.navigate('Login');
+          if (isMounted.current) navigation.navigate('Login', { email: email.trim() });
         }, 1500);
         return;
       }
@@ -456,7 +617,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           if (existing) {
             showInfo('Account Exists', 'An account with this email already exists. Redirecting to sign in...');
             setTimeout(() => {
-              if (isMounted.current) navigation.navigate('Login');
+              if (isMounted.current) navigation.navigate('Login', { email: email.trim() });
             }, 1500);
           } else {
             showError('Sign Up Failed', 'Could not create account. Please try again.');
@@ -541,7 +702,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       if (existingUser) {
         showInfo('Account Exists', 'You already have an account. Redirecting to sign in...');
         setTimeout(() => {
-          if (isMounted.current) navigation.navigate('Login');
+          if (isMounted.current) navigation.navigate('Login', { email: joinEmail.trim() });
         }, 1500);
         return;
       }
@@ -563,7 +724,13 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       );
 
       if (result.success && isMounted.current) {
+        // ─── If this was a partial signup, mark it as complete ──────
+        if (codeInfo?.isPartial && userProfile?.id) {
+          await markSignupComplete(trimmedCode, userProfile.id);
+        }
+        
         showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
+        navigation.replace('BabyOptional');
       } else {
         showError('Join Failed', result.message || 'Could not join family. Please try again.');
         joinAttempted.current = false;
@@ -577,12 +744,15 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   }, [
     inviteCode,
     codeValidated,
+    codeInfo,
     joinFullName,
     joinEmail,
     joinPassword,
     joinConfirmPassword,
     signUpWithInviteCode,
     findUserByEmail,
+    markSignupComplete,
+    userProfile,
     isProcessing,
     authLoading,
     triggerHaptic,
@@ -856,13 +1026,50 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                     </Text>
                   </View>
 
+                  {/* ─── QR SCAN BUTTON ─── */}
+                  <TouchableOpacity
+                    style={[styles.qrButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(102,126,234,0.05)' }]}
+                    onPress={() => navigation.navigate('QRScanner' as never)}
+                    disabled={isLoading}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="qr-code-outline" size={22} color="#667eea" />
+                    <Text style={[styles.qrButtonText, { color: isDark ? '#fff' : '#1e293b' }]}>Scan QR Code Instead</Text>
+                  </TouchableOpacity>
+
+                  {/* ─── Partial Sign-up Warning ─── */}
+                  {codeInfo?.isPartial && showPartialRecovery && (
+                    <View style={[styles.partialWarning, { backgroundColor: '#f59e0b15', borderColor: '#f59e0b30' }]}>
+                      <Ionicons name="warning" size={18} color="#f59e0b" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.partialWarningText, { color: '#f59e0b' }]}>
+                          Resume your sign-up
+                        </Text>
+                        {codeInfo.partialEmail && (
+                          <Text style={[styles.partialWarningSubtext, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                            Email: {codeInfo.partialEmail}
+                          </Text>
+                        )}
+                        {codeInfo.partialPhone && (
+                          <Text style={[styles.partialWarningSubtext, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                            Phone: {codeInfo.partialPhone}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
                   <View style={[
                     styles.inputContainer,
                     isDark && styles.inputContainerDark,
-                    codeValidated && styles.inputContainerSuccess,
+                    codeValidated && !codeInfo?.isPartial && styles.inputContainerSuccess,
+                    codeInfo?.isPartial && styles.inputContainerPartial,
                     !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
                   ]}>
-                    <Ionicons name="key-outline" size={20} color={codeValidated ? '#22c55e' : '#667eea'} style={styles.inputIcon} />
+                    <Ionicons name="key-outline" size={20} color={
+                      codeInfo?.isPartial ? '#f59e0b' : 
+                      codeValidated ? '#22c55e' : '#667eea'
+                    } style={styles.inputIcon} />
                     <TextInput
                       style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 3, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
                       placeholder="Enter 6-digit code"
@@ -876,19 +1083,15 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                       maxLength={6}
                     />
                     {isValidatingCode && <ActivityIndicator size="small" color="#667eea" style={{ marginLeft: 8 }} />}
-                    {codeValidated && !isValidatingCode && <Ionicons name="checkmark-circle" size={22} color="#22c55e" />}
+                    {codeValidated && !isValidatingCode && !codeInfo?.isPartial && (
+                      <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+                    )}
+                    {codeInfo?.isPartial && !isValidatingCode && (
+                      <Ionicons name="warning" size={22} color="#f59e0b" />
+                    )}
                   </View>
 
-                  <TouchableOpacity
-                    style={styles.qrButton}
-                    onPress={() => navigation.navigate('QRScanner' as never)}
-                    disabled={isLoading}
-                  >
-                    <Ionicons name="qr-code-outline" size={22} color="#667eea" />
-                    <Text style={[styles.qrButtonText, { color: isDark ? '#fff' : '#1e293b' }]}>Scan QR Code Instead</Text>
-                  </TouchableOpacity>
-
-                  {codeValidated && codeInfo && (
+                  {codeValidated && codeInfo && !codeInfo.isPartial && (
                     <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }]}>
                       <Ionicons name="shield-checkmark" size={18} color="#22c55e" />
                       <Text style={[styles.codeInfoText, { color: isDark ? '#86efac' : '#15803d' }]}>
@@ -905,7 +1108,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                     </View>
                   )}
 
-                  {codeValidated && (
+                  {codeValidated && !codeInfo?.isPartial && (
                     <>
                       <View style={styles.divider}>
                         <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
@@ -943,6 +1146,22 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                           editable={!isLoading}
                           returnKeyType="next"
                           textContentType="emailAddress"
+                        />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="call-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Phone number (optional)"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinPhone}
+                          onChangeText={setJoinPhone}
+                          keyboardType="phone-pad"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="telephoneNumber"
                         />
                       </View>
 
@@ -1009,6 +1228,156 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                         </LinearGradient>
                       </TouchableOpacity>
                     </>
+                  )}
+
+                  {/* ─── Partial Sign-up Completion Form ─── */}
+                  {codeInfo?.isPartial && showPartialRecovery && (
+                    <>
+                      <View style={styles.divider}>
+                        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                        <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          complete your registration
+                        </Text>
+                        <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="person-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Full name"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinFullName}
+                          onChangeText={setJoinFullName}
+                          autoCapitalize="words"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="name"
+                        />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="mail-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Email address"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinEmail}
+                          onChangeText={setJoinEmail}
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="emailAddress"
+                        />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="call-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Phone number (optional)"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinPhone}
+                          onChangeText={setJoinPhone}
+                          keyboardType="phone-pad"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="telephoneNumber"
+                        />
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="lock-closed-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Password (min 8 characters)"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinPassword}
+                          onChangeText={setJoinPassword}
+                          secureTextEntry={!showJoinPassword}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          textContentType="newPassword"
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowJoinPassword(!showJoinPassword)}
+                          style={styles.eyeButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          disabled={isLoading}
+                        >
+                          <Ionicons name={showJoinPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color="#f59e0b" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                        <Ionicons name="shield-checkmark-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          placeholder="Confirm password"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          value={joinConfirmPassword}
+                          onChangeText={setJoinConfirmPassword}
+                          secureTextEntry={!showJoinConfirmPassword}
+                          editable={!isLoading}
+                          returnKeyType="done"
+                          onSubmitEditing={handlePartialSignupRecovery}
+                          textContentType="newPassword"
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowJoinConfirmPassword(!showJoinConfirmPassword)}
+                          style={styles.eyeButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          disabled={isLoading}
+                        >
+                          <Ionicons name={showJoinConfirmPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color="#f59e0b" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                        onPress={handlePartialSignupRecovery}
+                        disabled={isLoading}
+                        activeOpacity={0.8}
+                      >
+                        <LinearGradient
+                          colors={['#f59e0b', '#d97706']}
+                          style={styles.loginGradient}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                        >
+                          {isLoading ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.loginText}>Complete Sign-up</Text>}
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      {/* ─── Already have an account? ─── */}
+                      <View style={styles.signupLinkContainer}>
+                        <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          Already have an account?
+                        </Text>
+                        <TouchableOpacity 
+                          onPress={() => navigation.navigate('Login', { email: joinEmail })} 
+                          disabled={isLoading}
+                        >
+                          <Text style={[styles.signupLink, { color: '#f59e0b' }]}>Sign In</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+
+                  {/* ─── SHOW SIGN UP LINK EVEN WITHOUT CODE ─── */}
+                  {!codeValidated && inviteCode.length < 6 && (
+                    <View style={styles.signupLinkContainer}>
+                      <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                        Don't have an invite code?
+                      </Text>
+                      <TouchableOpacity onPress={() => setActiveTab('create')} disabled={isLoading}>
+                        <Text style={[styles.signupLink, { color: '#22c55e' }]}>Sign Up Instead</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </>
               )}
@@ -1146,6 +1515,10 @@ const styles = StyleSheet.create({
     borderColor: '#ef4444',
     backgroundColor: 'rgba(239,68,68,0.05)',
   },
+  inputContainerPartial: {
+    borderColor: '#f59e0b',
+    backgroundColor: 'rgba(245,158,11,0.05)',
+  },
   socialIconsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -1263,11 +1636,46 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(102,126,234,0.15)',
     backgroundColor: 'rgba(102,126,234,0.05)',
-    marginTop: 8,
+    marginBottom: 16,
     gap: 8,
   },
   qrButtonText: {
     fontWeight: '600',
     fontSize: 15,
+  },
+  signupLinkContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 16,
+  },
+  signupLinkText: {
+    fontSize: 14,
+  },
+  signupLink: {
+    color: '#667eea',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  // ─── Partial Sign-up Styles ───
+  partialWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  partialWarningText: {
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 18,
+  },
+  partialWarningSubtext: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
   },
 });

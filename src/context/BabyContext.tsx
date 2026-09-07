@@ -3,6 +3,7 @@
 // FIX: Hard delete baby from Supabase
 // FIX: Ensure baby is properly persisted after creation
 // FIX: User isolation to prevent cross-device conflicts
+// FIX: Proper auth session handling to prevent "No authenticated user found"
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Alert, Platform } from 'react-native';
@@ -391,6 +392,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadAttemptsRef = useRef(0);
   const maxLoadAttempts = 5;
   const currentUserIdRef = useRef<string | null>(null);
+  const authStateListenerRef = useRef<any>(null);
 
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     babyChangeSubscribers.forEach(callback => {
@@ -405,6 +407,32 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       babyChangeSubscribers = babyChangeSubscribers.filter(cb => cb !== callback);
     };
   }, [state.currentBabyId]);
+
+  // ─── Helper: get current user ID as UUID ─────────────────────────────
+  const getCurrentUserId = useCallback(async (): Promise<string | null> => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (!error && session?.user?.id) {
+        currentUserIdRef.current = session.user.id;
+        return session.user.id;
+      }
+    } catch (e) {
+      console.warn('[BabyContext] Session check failed:', e);
+    }
+
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (!error && user?.id) {
+        currentUserIdRef.current = user.id;
+        return user.id;
+      }
+    } catch (e) {
+      console.warn('[BabyContext] getUser failed:', e);
+    }
+
+    console.warn('[BabyContext] Could not get user ID from any method');
+    return null;
+  }, []);
 
   // ─── Age calculation ──────────────────────────────────────────────────
   const calculateAge = useCallback((birthDate: string): string => {
@@ -441,32 +469,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const baby = state.babies.find(b => b.id === id);
     return baby?.age || '';
   }, [state.babies, state.currentBabyId]);
-
-  // ─── Helper: get current user ID as UUID ─────────────────────────────
-  const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (!error && session?.user?.id) {
-        currentUserIdRef.current = session.user.id;
-        return session.user.id;
-      }
-    } catch (e) {
-      console.warn('[BabyContext] Session check failed:', e);
-    }
-
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (!error && user?.id) {
-        currentUserIdRef.current = user.id;
-        return user.id;
-      }
-    } catch (e) {
-      console.warn('[BabyContext] getUser failed:', e);
-    }
-
-    console.warn('[BabyContext] Could not get user ID from any method');
-    return null;
-  }, []);
 
   // ─── Map database row to BabyProfile ─────────────────────────────────
   const mapBabyRowToProfile = useCallback((row: any): BabyProfile => {
@@ -534,7 +536,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // ─── FIX: Only load babies for the current user ──────────────────
       console.log('[BabyContext] Loading babies for user ID (UUID):', userId);
       currentUserIdRef.current = userId;
 
@@ -756,6 +757,44 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadBabies(true);
   }, [loadBabies]);
 
+  // ─── Auth state listener ──────────────────────────────────────────────
+  useEffect(() => {
+    // Subscribe to auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[BabyContext] Auth state changed:', event);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        console.log('[BabyContext] User signed in, loading babies');
+        currentUserIdRef.current = session.user.id;
+        // Load babies after a short delay to allow auth to fully settle
+        setTimeout(() => {
+          if (isMounted.current) {
+            loadBabies(true);
+          }
+        }, 500);
+      } else if (event === 'SIGNED_OUT') {
+        console.log('[BabyContext] User signed out, resetting state');
+        currentUserIdRef.current = null;
+        setState(prev => ({ 
+          ...prev, 
+          babies: [],
+          currentBabyId: null,
+          currentBaby: null,
+          isInitialized: false,
+        }));
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        console.log('[BabyContext] Token refreshed');
+        currentUserIdRef.current = session.user.id;
+      }
+    });
+
+    authStateListenerRef.current = authListener;
+
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
+  }, [loadBabies]);
+
   // ─── Initial load ──────────────────────────────────────────────────────
   useEffect(() => {
     if (initRef.current) return;
@@ -820,6 +859,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
+      }
+      if (authStateListenerRef.current) {
+        authStateListenerRef.current?.subscription.unsubscribe();
       }
     };
   }, [loadBabies]);

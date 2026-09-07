@@ -44,10 +44,12 @@ interface FamilyContextType extends FamilyState {
   getBabyId: () => string | null;
   validateInviteCode: (code: string) => Promise<{ valid: boolean; data: any; message: string }>;
   useInviteCode: (code: string, userId?: string) => Promise<{ success: boolean; message: string }>;
-  // ─── NEW: Mark signup as completed ──────────────────────────────────
   markSignupComplete: (code: string, userId: string) => Promise<{ success: boolean; message: string }>;
-  // ─── NEW: Get invite code by ID ────────────────────────────────────
   getInviteCodeById: (code: string) => Promise<any>;
+  // ─── NEW: Recover partial sign-up ──────────────────────────────────
+  recoverPartialSignup: (code: string, userId: string, email?: string, phone?: string, name?: string) => Promise<{ success: boolean; message: string }>;
+  // ─── NEW: Get partial signup info ──────────────────────────────────
+  getPartialSignupInfo: (code: string) => Promise<{ exists: boolean; email?: string; phone?: string; name?: string; usedBy?: string; usedAt?: number }>;
 }
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
@@ -636,7 +638,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // ─── Ensure code is exactly 6 characters ──────────────────
       const finalCode = code.padStart(6, '0').slice(0, 6);
 
-      // ─── Log the insert attempt ─────────────────────────────────
       console.log('[FamilyContext] Inserting invite code:', {
         code: finalCode,
         family_id: currentBaby.id,
@@ -719,7 +720,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const now = Date.now();
-      // ─── Get ALL codes for this baby ──────────────────────────────
       const { data, error } = await supabase
         .from('invite_codes')
         .select('*')
@@ -731,12 +731,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return [];
       }
 
-      // ─── Add computed fields for each code ──────────────────────────
       return (data || []).map(item => {
         const expiresAt = item.created_at + (item.expires_in_days || 7) * 24 * 60 * 60 * 1000;
         const isExpired = now > expiresAt;
         
-        // ─── FIX: Determine status with partial sign-up support ──────
         let status = 'active';
         if (item.used) {
           status = item.signup_completed ? 'used' : 'partial';
@@ -793,6 +791,143 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
+  // ─── NEW: Get Partial Signup Info ─────────────────────────────────────
+  const getPartialSignupInfo = useCallback(async (code: string): Promise<{ exists: boolean; email?: string; phone?: string; name?: string; usedBy?: string; usedAt?: number }> => {
+    if (!code) return { exists: false };
+
+    try {
+      const trimmedCode = code.trim().toUpperCase();
+      
+      // First check if the code exists and is in partial state
+      const { data, error } = await supabase
+        .from('invite_codes')
+        .select('used, signup_completed, used_by, used_by_email, used_by_phone, used_by_name, used_at')
+        .eq('code', trimmedCode)
+        .maybeSingle();
+
+      if (error || !data) {
+        return { exists: false };
+      }
+
+      // Check if it's a partial signup
+      if (data.used && !data.signup_completed) {
+        return {
+          exists: true,
+          email: data.used_by_email || undefined,
+          phone: data.used_by_phone || undefined,
+          name: data.used_by_name || undefined,
+          usedBy: data.used_by || undefined,
+          usedAt: data.used_at || undefined,
+        };
+      }
+
+      return { exists: false };
+    } catch (error) {
+      console.error('Error getting partial signup info:', error);
+      return { exists: false };
+    }
+  }, []);
+
+  // ─── NEW: Recover Partial Signup ──────────────────────────────────────
+  const recoverPartialSignup = useCallback(async (
+    code: string,
+    userId: string,
+    email?: string,
+    phone?: string,
+    name?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!code || !userId) {
+      return { success: false, message: 'Missing code or user ID' };
+    }
+
+    try {
+      const trimmedCode = code.trim().toUpperCase();
+      const now = Date.now();
+
+      // First verify this is a partial signup
+      const { data: existing, error: fetchError } = await supabase
+        .from('invite_codes')
+        .select('*')
+        .eq('code', trimmedCode)
+        .maybeSingle();
+
+      if (fetchError || !existing) {
+        return { success: false, message: 'Invite code not found' };
+      }
+
+      if (!existing.used) {
+        return { success: false, message: 'This code has not been used yet. Please use it first.' };
+      }
+
+      if (existing.signup_completed) {
+        return { success: false, message: 'This signup is already completed.' };
+      }
+
+      // Check if the user ID matches or if we should update it
+      const updates: any = {
+        signup_completed: true,
+        updated_at: now,
+      };
+
+      // If userId doesn't match but we have a new user, update it
+      if (existing.used_by !== userId) {
+        updates.used_by = userId;
+      }
+
+      // Update with provided email/phone/name if they weren't stored before
+      if (email && !existing.used_by_email) {
+        updates.used_by_email = email;
+      }
+      if (phone && !existing.used_by_phone) {
+        updates.used_by_phone = phone;
+      }
+      if (name && !existing.used_by_name) {
+        updates.used_by_name = name;
+      }
+
+      const { error: updateError } = await supabase
+        .from('invite_codes')
+        .update(updates)
+        .eq('code', trimmedCode);
+
+      if (updateError) {
+        console.error('Error recovering partial signup:', updateError);
+        return { success: false, message: 'Failed to complete signup: ' + updateError.message };
+      }
+
+      // ─── Also update the family_members table if needed ──────────────
+      if (existing.family_id) {
+        const { data: familyMember } = await supabase
+          .from('family_members')
+          .select('id, user_id, email, full_name, phone_number')
+          .eq('baby_id', existing.family_id)
+          .eq('email', existing.used_by_email || email || '')
+          .maybeSingle();
+
+        if (familyMember) {
+          const memberUpdates: any = {
+            user_id: userId,
+            status: 'active',
+            updated_at: new Date().toISOString(),
+          };
+          if (name) memberUpdates.full_name = name;
+          if (email) memberUpdates.email = email;
+          if (phone) memberUpdates.phone_number = phone;
+
+          await supabase
+            .from('family_members')
+            .update(memberUpdates)
+            .eq('id', familyMember.id);
+        }
+      }
+
+      return { success: true, message: 'Signup completed successfully!' };
+    } catch (error) {
+      console.error('Error recovering partial signup:', error);
+      return { success: false, message: 'Failed to complete signup' };
+    }
+  }, []);
+
   // ─── Mark Signup as Complete ──────────────────────────────────────────
   const markSignupComplete = useCallback(async (code: string, userId: string): Promise<{ success: boolean; message: string }> => {
     if (!code || !userId) {
@@ -807,9 +942,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .from('invite_codes')
         .update({
           signup_completed: true,
-          used: true,
-          used_by: userId,
-          used_at: now,
           updated_at: now,
         })
         .eq('code', trimmedCode);
@@ -906,9 +1038,22 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
 
         if (relaxedData) {
-          // Check if already used or revoked
+          // Check if already used and completed
           if (relaxedData.used && relaxedData.signup_completed) {
             return { valid: false, data: null, message: 'This invite code has already been used' };
+          }
+          // ─── NEW: Check if it's a partial signup ────────────────────
+          if (relaxedData.used && !relaxedData.signup_completed) {
+            // This is a partial signup - allow continuing
+            return { 
+              valid: true, 
+              data: { 
+                ...relaxedData, 
+                isPartial: true,
+                message: 'This code was used for a partial signup. Please complete your registration.' 
+              }, 
+              message: 'Partial signup detected - continue registration' 
+            };
           }
           if (relaxedData.revoked) {
             return { valid: false, data: null, message: 'This invite code has been revoked' };
@@ -937,6 +1082,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           
           if (caseInsensitiveData.used && caseInsensitiveData.signup_completed) {
             return { valid: false, data: null, message: 'This invite code has already been used' };
+          }
+          if (caseInsensitiveData.used && !caseInsensitiveData.signup_completed) {
+            return { 
+              valid: true, 
+              data: { ...caseInsensitiveData, isPartial: true }, 
+              message: 'Partial signup detected - continue registration' 
+            };
           }
           if (caseInsensitiveData.revoked) {
             return { valid: false, data: null, message: 'This invite code has been revoked' };
@@ -1042,11 +1194,15 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     useInviteCode,
     markSignupComplete,
     getInviteCodeById,
+    // ─── NEW ──────────────────────────────────────────────────────────
+    recoverPartialSignup,
+    getPartialSignupInfo,
   }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, 
       updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, 
       refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode,
       getCurrentBaby, getBabyId, validateInviteCode, useInviteCode,
-      markSignupComplete, getInviteCodeById]);
+      markSignupComplete, getInviteCodeById,
+      recoverPartialSignup, getPartialSignupInfo]);
 
   return (
     <FamilyContext.Provider value={value}>
