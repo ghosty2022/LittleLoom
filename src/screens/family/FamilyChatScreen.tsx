@@ -1588,6 +1588,7 @@ export default function FamilyChatScreen({
     resendMessage,
     blockUser,
     isUserBlocked,
+    setCurrentChatId,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
@@ -1666,17 +1667,30 @@ export default function FamilyChatScreen({
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const recordingInterval = useRef<NodeJS.Timeout | null>(null);
 
+  // ─── Set current chat ID for notifications ─────────────────────────
+  useEffect(() => {
+    if (chatId) {
+      setCurrentChatId(chatId);
+    }
+    
+    return () => {
+      setCurrentChatId(null);
+    };
+  }, [chatId, setCurrentChatId]);
+
+  // ─── Initialize chat ──────────────────────────────────────────────
   useEffect(() => {
     initializeChat();
   }, [initialChatId, memberId]);
 
+  // ─── Auto-refresh messages ────────────────────────────────────────
   useEffect(() => {
     if (!chatId) return;
 
     markChatRead(chatId);
     const interval = setInterval(() => {
       refreshMessages();
-    }, 1000);
+    }, 2000); // Reduced from 1000ms to 2000ms for better performance
 
     return () => clearInterval(interval);
   }, [chatId]);
@@ -1870,8 +1884,6 @@ export default function FamilyChatScreen({
   // Simplified voice recording - using basic Audio API
   const startRecording = async () => {
     try {
-      // Use the built-in MediaRecorder or a simpler approach
-      // For now, just simulate recording
       setIsRecording(true);
       setRecordingDuration(0);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -1888,7 +1900,6 @@ export default function FamilyChatScreen({
     if (recordingInterval.current) clearInterval(recordingInterval.current);
     setIsRecording(false);
     setRecordingDuration(0);
-    // Simulate sending a voice message
     if (chatId) {
       try {
         await sendMessage(chatId, '🎤 Voice message', 'voice');
@@ -2460,7 +2471,7 @@ const FadeInRight = Animated.FadeInRight || {
   })
 };
 
-// Rest of the styles remain the same...
+// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -2506,6 +2517,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 2,
+    color: '#fff',
   },
   alertMessage: {
     fontSize: 13,

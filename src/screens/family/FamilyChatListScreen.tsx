@@ -994,9 +994,11 @@ export default function FamilyChatListScreen({
   };
 
   const handleMemberPress = async (member: FamilyMember) => {
+    // Check if the member is the current user
+    const memberUserId = member.userId || member.id;
     if (
-      member.id === userProfile?.id ||
-      member.userId === userProfile?.id
+      memberUserId === userProfile?.id ||
+      member.id === userProfile?.id
     ) {
       showSweetAlert(
         'warning',
@@ -1010,15 +1012,24 @@ export default function FamilyChatListScreen({
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Pass the member ID (which could be custom format like fm_xxx)
     const chatId = await getOrCreateDirectChat(member.id, member);
 
-    navigation.navigate('FamilyChat', {
-      chatId,
-      memberId: member.id,
-      memberName: member.fullName,
-      memberAvatar: member.avatar,
-      memberRole: member.role,
-    });
+    if (chatId) {
+      navigation.navigate('FamilyChat', {
+        chatId,
+        memberId: member.id,
+        memberName: member.fullName,
+        memberAvatar: member.avatar,
+        memberRole: member.role,
+      });
+    } else {
+      showSweetAlert(
+        'error',
+        'Error',
+        'Failed to create chat. Please try again.'
+      );
+    }
   };
 
   const handleLongPress = (chat: FamilyChat) => {

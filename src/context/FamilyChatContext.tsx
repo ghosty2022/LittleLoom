@@ -869,36 +869,76 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const getOrCreateDirectChat = useCallback(async (memberId: string, memberInfo?: Partial<FamilyMember>): Promise<string> => {
     if (!state.familyCode || !userProfile) return '';
 
-    // Check if chat already exists
+    // Get the actual user IDs - memberId might be a family_members.id (custom format)
+    // We need to find the actual user_id from the family_members table
+    let actualUserId = memberId;
+    let memberName = '';
+    let memberAvatar = '👤';
+    let memberRole = 'guardian';
+
+    // Check if memberId is a UUID or a custom ID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId);
+    
+    if (!isUUID) {
+      // It's a custom ID (like fm_xxx), try to find the actual user_id
+      const { data: memberData } = await supabase
+        .from('family_members')
+        .select('user_id, full_name, avatar, role')
+        .eq('id', memberId)
+        .maybeSingle();
+
+      if (memberData?.user_id) {
+        actualUserId = memberData.user_id;
+        memberName = memberData.full_name || '';
+        memberAvatar = memberData.avatar || '👤';
+        memberRole = memberData.role || 'guardian';
+      } else {
+        // Try to find by memberInfo or in members list
+        const foundMember = members.find(m => m.id === memberId);
+        if (foundMember) {
+          actualUserId = foundMember.userId || foundMember.id;
+          memberName = foundMember.fullName;
+          memberAvatar = foundMember.avatar || '👤';
+          memberRole = foundMember.role || 'guardian';
+        }
+      }
+    } else {
+      // It's a UUID, find in members
+      const foundMember = members.find(m => m.id === memberId || m.userId === memberId);
+      if (foundMember) {
+        memberName = foundMember.fullName;
+        memberAvatar = foundMember.avatar || '👤';
+        memberRole = foundMember.role || 'guardian';
+      }
+    }
+
+    // Check if chat already exists using the actual user IDs
     const { data: existing } = await supabase
       .from('family_chats')
       .select('*')
       .eq('family_code', state.familyCode)
       .eq('type', 'direct')
-      .contains('participants', [userProfile.id, memberId])
+      .contains('participants', [userProfile.id, actualUserId])
       .maybeSingle();
 
     if (existing) {
       return existing.id;
     }
 
-    const member = members.find(m => m.id === memberId) || memberInfo;
-    if (!member) return '';
-
-    const chatId = `direct_${[userProfile.id, memberId].sort().join('_')}`;
+    const chatId = `direct_${[userProfile.id, actualUserId].sort().join('_')}`;
     const now = new Date().toISOString();
 
     const participantRoles: Record<string, string> = {
       [userProfile.id]: userProfile.role || 'parent1',
-      [memberId]: member.role || 'guardian',
+      [actualUserId]: memberRole,
     };
     const participantNames: Record<string, string> = {
       [userProfile.id]: userProfile.fullName,
-      [memberId]: member.fullName || 'Unknown',
+      [actualUserId]: memberName || 'Family Member',
     };
     const participantAvatars: Record<string, string> = {
       [userProfile.id]: userProfile.avatar || '👤',
-      [memberId]: member.avatar || '👤',
+      [actualUserId]: memberAvatar,
     };
 
     const { error } = await supabase
@@ -906,15 +946,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .insert({
         id: chatId,
         type: 'direct',
-        name: member.fullName || 'Unknown',
-        participants: [userProfile.id, memberId],
+        name: memberName || 'Family Member',
+        participants: [userProfile.id, actualUserId],
         participant_roles: participantRoles,
         participant_names: participantNames,
         participant_avatars: participantAvatars,
         unread_count: 0,
         created_at: now,
         updated_at: now,
-        avatar: member.avatar || '👤',
+        avatar: memberAvatar,
         is_muted: false,
         family_code: state.familyCode,
         is_pinned: false,
@@ -922,22 +962,22 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (error) {
       console.error('[FamilyChat] Create direct chat error:', error);
-      sweetAlert.alert('Error', 'Failed to create chat', 'error');
+      sweetAlert.alert('Error', 'Failed to create chat: ' + error.message, 'error');
       return '';
     }
 
     const newChat: FamilyChat = {
       id: chatId,
       type: 'direct',
-      name: member.fullName || 'Unknown',
-      participants: [userProfile.id, memberId],
+      name: memberName || 'Family Member',
+      participants: [userProfile.id, actualUserId],
       participantRoles,
       participantNames,
       participantAvatars,
       unreadCount: 0,
       createdAt: now,
       updatedAt: now,
-      avatar: member.avatar || '👤',
+      avatar: memberAvatar,
       isMuted: false,
       familyCode: state.familyCode,
       isPinned: false,

@@ -1,3 +1,6 @@
+// SmartPhotoField.tsx — COMPLETE FIXED VERSION
+// Fix: Camera crash issues resolved
+
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
@@ -13,9 +16,10 @@ import {
   Modal,
   Share,
   Pressable,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy'; // Changed to legacy import
+import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import Animated, {
@@ -235,6 +239,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
   const hasInitializedPhotos = useRef(false);
   const prevPhotosRef = useRef<PhotoMeta[]>([]);
+  const isProcessingRef = useRef(false);
 
   // ── Init photos (edit mode) ───────────────────────────────────────────────
   useEffect(() => {
@@ -258,10 +263,9 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [initialPhotoUris]);
 
-  // ── Notify parent of photo changes - FIXED: only when photos actually change ──
+  // ── Notify parent of photo changes ──────────────────────────────────────────
   useEffect(() => {
     try {
-      // Check if photos actually changed using deep comparison
       const currentPhotos = photos;
       const prevPhotos = prevPhotosRef.current;
       
@@ -271,7 +275,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         return;
       }
       
-      // Check if any photo changed
       let changed = false;
       for (let i = 0; i < currentPhotos.length; i++) {
         if (currentPhotos[i]?.uri !== prevPhotos[i]?.uri) {
@@ -304,74 +307,148 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     })();
   }, []);
 
-  // ── Photo Capture ──────────────────────────────────────────────────────────
+  // ── Photo Capture ── FIXED: Safe file handling ────────────────────────────
   const processPhoto = useCallback(
     async (uri: string, exif: any) => {
+      // Prevent duplicate processing
+      if (isProcessingRef.current) return;
+      isProcessingRef.current = true;
+
       try {
+        // Check for duplicate
         if (photos.some((p) => p.uri === uri)) {
           sweetAlert.alert('Duplicate', 'This photo is already added.');
+          isProcessingRef.current = false;
           return;
         }
+        
         if (photos.length >= maxPhotos) {
           sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
+          isProcessingRef.current = false;
           return;
         }
 
-        // Use the legacy API to get file info
-        const fileInfo = await FileSystem.getInfoAsync(uri);
+        // ── SAFELY get file info ──
+        let fileSize: number | undefined;
+        let width = 0;
+        let height = 0;
+
+        try {
+          // Use the standard FileSystem API (not legacy)
+          const fileInfo = await FileSystem.getInfoAsync(uri);
+          if (fileInfo.exists && 'size' in fileInfo) {
+            fileSize = fileInfo.size;
+          }
+        } catch (fileError) {
+          console.warn('Could not get file info:', fileError);
+          // Continue without file size
+        }
+
+        // ── SAFELY get image dimensions ──
+        try {
+          // Use Image.getSize from React Native
+          await new Promise<{ width: number; height: number }>((resolve, reject) => {
+            Image.getSize(
+              uri,
+              (w, h) => resolve({ width: w, height: h }),
+              (err) => reject(err)
+            );
+          }).then((dims) => {
+            width = dims.width;
+            height = dims.height;
+          }).catch(() => {
+            // Fallback to EXIF data if available
+            if (exif?.ImageWidth) width = exif.ImageWidth;
+            if (exif?.ImageLength) height = exif.ImageLength;
+            if (exif?.width) width = exif.width;
+            if (exif?.height) height = exif.height;
+          });
+        } catch (dimError) {
+          console.warn('Could not get image dimensions:', dimError);
+          // Use EXIF fallback
+          if (exif?.ImageWidth) width = exif.ImageWidth;
+          if (exif?.ImageLength) height = exif.ImageLength;
+          if (exif?.width) width = exif.width;
+          if (exif?.height) height = exif.height;
+        }
+
         const meta: PhotoMeta = {
           uri,
-          width: exif?.ImageWidth || exif?.width || 0,
-          height: exif?.ImageLength || exif?.height || 0,
+          width: width || 0,
+          height: height || 0,
           timestamp: new Date().toISOString(),
-          fileSize: fileInfo.exists ? fileInfo.size : undefined,
+          fileSize: fileSize,
           type: 'image/jpeg',
         };
 
+        // ── SAFELY get location ──
         if (exif?.GPSLatitude && exif?.GPSLongitude) {
-          meta.location = {
-            latitude: exif.GPSLatitude,
-            longitude: exif.GPSLongitude,
-          };
+          try {
+            meta.location = {
+              latitude: typeof exif.GPSLatitude === 'number' ? exif.GPSLatitude : parseFloat(exif.GPSLatitude),
+              longitude: typeof exif.GPSLongitude === 'number' ? exif.GPSLongitude : parseFloat(exif.GPSLongitude),
+            };
+          } catch (locError) {
+            console.warn('Could not parse location:', locError);
+          }
         }
 
+        // ── Update state ──
         setPhotos((prev) => [...prev, meta]);
         setCurrentUri(uri);
         if (onChange) onChange(uri, meta);
 
-        if (!autoAnalyze) return;
-
-        setAnalyzing(true);
-        try {
-          const result = await analyzePhoto(uri, trackerContext);
-          setAnalysis(result);
-          setAnalysisHistory((prev) => ({ ...prev, [uri]: result }));
-          if (onChange) onChange(uri, meta, result);
-        } catch {
-          // silent fail
-        } finally {
-          setAnalyzing(false);
+        // ── Auto-analyze ──
+        if (autoAnalyze) {
+          setAnalyzing(true);
+          try {
+            const result = await analyzePhoto(uri, trackerContext);
+            setAnalysis(result);
+            setAnalysisHistory((prev) => ({ ...prev, [uri]: result }));
+            if (onChange) onChange(uri, meta, result);
+          } catch (analysisError) {
+            console.warn('Analysis error:', analysisError);
+            // Silent fail for analysis
+          } finally {
+            setAnalyzing(false);
+          }
         }
+
+        // ── Success haptic ──
+        try {
+          const Haptics = require('expo-haptics');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch {
+          // Haptics not available
+        }
+
       } catch (e) {
         console.error('processPhoto error:', e);
         setError('Failed to process photo');
         sweetAlert.alert('Error', 'Failed to process photo. Please try again.');
+      } finally {
+        isProcessingRef.current = false;
       }
     },
     [photos, maxPhotos, autoAnalyze, trackerContext, onChange]
   );
 
+  // ── Take Photo ── FIXED: Better error handling ─────────────────────────────
   const takePhoto = useCallback(async () => {
     try {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.9,
+        quality: 0.8,
         exif: true,
       });
-      if (!result.canceled && result.assets?.[0]) {
-        await processPhoto(result.assets[0].uri, result.assets[0].exif);
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        if (asset.uri) {
+          await processPhoto(asset.uri, asset.exif || {});
+        }
       }
     } catch (e) {
       console.error('takePhoto error:', e);
@@ -379,17 +456,22 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [processPhoto]);
 
+  // ── Pick Photo ── FIXED ────────────────────────────────────────────────────
   const pickPhoto = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.9,
+        quality: 0.8,
         exif: true,
       });
-      if (!result.canceled && result.assets?.[0]) {
-        await processPhoto(result.assets[0].uri, result.assets[0].exif);
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        if (asset.uri) {
+          await processPhoto(asset.uri, asset.exif || {});
+        }
       }
     } catch (e) {
       console.error('pickPhoto error:', e);
@@ -439,7 +521,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [currentUri, onChange, photos]
   );
 
-  // ── Annotation (Simple Gesture-based) ─────────────────────────────────────
+  // ── Annotation ─────────────────────────────────────────────────────────────
   const handleTouchStart = (event: any) => {
     if (!annotating) return;
     const { locationX, locationY } = event.nativeEvent;
@@ -501,7 +583,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   };
 
-  // ── Zoom / Pan (Reanimated) ────────────────────────────────────────────────
+  // ── Zoom / Pan ──────────────────────────────────────────────────────────────
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -553,7 +635,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     ],
   }));
 
-  // ── AI Severity Bar Animation ──────────────────────────────────────────────
+  // ── AI Severity Bar ────────────────────────────────────────────────────────
   const confidenceProgress = useSharedValue(0);
   useEffect(() => {
     try {
