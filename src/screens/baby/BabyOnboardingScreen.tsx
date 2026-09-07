@@ -100,7 +100,82 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     if (!isMountedRef.current) return false;
     
     try {
-      // ─── FIX: First check if babies exist in context ──────────────
+      // ─── CRITICAL FIX: First check if user has family memberships ──────────
+      // This MUST run before checking context because context might not have babies yet
+      const userId = await getUserId();
+      if (userId) {
+        console.log('[BabyOnboarding] Checking family_members for user:', userId);
+        
+        const { data: familyData, error: fmError } = await supabase
+          .from('family_members')
+          .select('baby_id, role')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .is('deleted_at', null);
+        
+        if (!fmError && familyData && familyData.length > 0) {
+          console.log(`[BabyOnboarding] Found ${familyData.length} family memberships`);
+          const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
+          
+          if (babyIds.length > 0) {
+            const { data: remoteBabiesData, error: babyError } = await supabase
+              .from('babies')
+              .select('*')
+              .in('id', babyIds);
+            
+            if (!babyError && remoteBabiesData && remoteBabiesData.length > 0) {
+              console.log(`[BabyOnboarding] Found ${remoteBabiesData.length} babies via family_members`);
+              setHasBabies(true);
+              setRemoteBabies(remoteBabiesData);
+              
+              // Find the first baby with the highest role
+              const rolePriority = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
+              const sortedBabies = [...remoteBabiesData].sort((a, b) => {
+                const roleA = familyData.find(fm => fm.baby_id === a.id)?.role || 'viewer';
+                const roleB = familyData.find(fm => fm.baby_id === b.id)?.role || 'viewer';
+                return (rolePriority[roleA as keyof typeof rolePriority] || 3) - (rolePriority[roleB as keyof typeof rolePriority] || 3);
+              });
+              
+              if (sortedBabies[0]) {
+                await switchBaby(sortedBabies[0].id);
+                await completeSetup('baby');
+                navigationAttemptedRef.current = true;
+                navigation.replace('Main');
+                return true;
+              }
+            }
+          }
+        }
+
+        // ─── Check if user used an invite code (FALLBACK) ──────────────
+        const { data: inviteData, error: inviteError } = await supabase
+          .from('invite_codes')
+          .select('family_id, code, role')
+          .eq('used_by', userId)
+          .eq('used', true)
+          .maybeSingle();
+        
+        if (!inviteError && inviteData?.family_id) {
+          console.log(`[BabyOnboarding] Found family_id from invite: ${inviteData.family_id}`);
+          const { data: babyData } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('id', inviteData.family_id);
+          
+          if (babyData && babyData.length > 0) {
+            console.log(`[BabyOnboarding] Found baby via invite code: ${babyData[0].name}`);
+            setHasBabies(true);
+            setRemoteBabies(babyData);
+            await switchBaby(babyData[0].id);
+            await completeSetup('baby');
+            navigationAttemptedRef.current = true;
+            navigation.replace('Main');
+            return true;
+          }
+        }
+      }
+
+      // ─── FIX: Check if babies exist in context ──────────────────────
       if (babies && babies.length > 0) {
         console.log(`[BabyOnboarding] Found ${babies.length} babies in context`);
         setHasBabies(true);
@@ -137,70 +212,6 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
           console.log('[BabyOnboarding] Local baby found, navigating to Main');
           navigation.replace('Main');
           return true;
-        }
-      }
-      
-      // ─── FIX: Check if user is in family_members ──────────────────
-      const userId = await getUserId();
-      if (userId) {
-        const { data: familyData, error: fmError } = await supabase
-          .from('family_members')
-          .select('baby_id, role')
-          .eq('user_id', userId)
-          .eq('status', 'active')
-          .is('deleted_at', null);
-        
-        if (!fmError && familyData && familyData.length > 0) {
-          console.log(`[BabyOnboarding] Found ${familyData.length} family memberships`);
-          const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
-          if (babyIds.length > 0) {
-            const { data: remoteBabiesData } = await supabase
-              .from('babies')
-              .select('*')
-              .in('id', babyIds);
-            
-            if (remoteBabiesData && remoteBabiesData.length > 0) {
-              console.log(`[BabyOnboarding] Found ${remoteBabiesData.length} remote babies via family_members`);
-              setHasBabies(true);
-              setRemoteBabies(remoteBabiesData);
-              if (remoteBabiesData[0]) {
-                await switchBaby(remoteBabiesData[0].id);
-                await completeSetup('baby');
-                navigationAttemptedRef.current = true;
-                navigation.replace('Main');
-                return true;
-              }
-            }
-          }
-        }
-
-        // ─── CRITICAL FIX: Check if user used an invite code ──────────
-        // This is the ULTIMATE FALLBACK - if user used an invite code,
-        // we can find the baby from the invite_codes table
-        const { data: inviteData, error: inviteError } = await supabase
-          .from('invite_codes')
-          .select('family_id, code')
-          .eq('used_by', userId)
-          .eq('used', true)
-          .maybeSingle();
-        
-        if (!inviteError && inviteData?.family_id) {
-          console.log(`[BabyOnboarding] Found family_id from invite: ${inviteData.family_id}`);
-          const { data: babyData } = await supabase
-            .from('babies')
-            .select('*')
-            .eq('id', inviteData.family_id);
-          
-          if (babyData && babyData.length > 0) {
-            console.log(`[BabyOnboarding] Found baby via invite code: ${babyData[0].name}`);
-            setHasBabies(true);
-            setRemoteBabies(babyData);
-            await switchBaby(babyData[0].id);
-            await completeSetup('baby');
-            navigationAttemptedRef.current = true;
-            navigation.replace('Main');
-            return true;
-          }
         }
       }
       
