@@ -43,13 +43,13 @@ interface FamilyContextType extends FamilyState {
   getCurrentBaby: () => any;
   getBabyId: () => string | null;
   validateInviteCode: (code: string) => Promise<{ valid: boolean; data: any; message: string }>;
+  useInviteCode: (code: string, userId?: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
 
 // ─── FIX: Generate a proper 6-character invite code ──────────────────────
 const generateInviteCodeString = (): string => {
-  // Use only uppercase letters and numbers, exclude confusing characters
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) {
@@ -75,7 +75,6 @@ const showAlert = (title: string, message: string) => {
 export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile: authProfile, session } = useAuth();
   
-  // ─── Baby state ──────────────────────────────────────────────────────────
   const [currentBaby, setCurrentBaby] = useState<any>(null);
   const [babies, setBabies] = useState<any[]>([]);
   const [babyLoading, setBabyLoading] = useState(true);
@@ -93,7 +92,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const familyLoadInProgress = useRef(false);
   const loadingRef = useRef(false);
 
-  // ─── Load baby data from Supabase ──────────────────────────────────────
   const loadBabyData = useCallback(async () => {
     if (!authProfile?.id) return;
 
@@ -137,12 +135,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [authProfile?.id]);
 
-  // ─── FIXED: Initial baby load with proper dependencies ──────────────────
   useEffect(() => {
     if (authProfile?.id) {
       loadBabyData();
     }
-  }, [authProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authProfile?.id]);
 
   const isOwner = useMemo(() => {
     const effectiveProfile = authProfile;
@@ -152,7 +149,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return currentBaby.parent1_id === effectiveProfile.id;
   }, [authProfile, currentBaby]);
 
-  // ─── FIXED: Load family members with proper dependency management ──────
   const loadFamily = useCallback(async () => {
     if (!currentBaby?.id) {
       setState({
@@ -265,7 +261,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentBaby, authProfile]);
 
-  // ─── FIXED: Trigger load when baby changes with proper cleanup ─────────
   useEffect(() => {
     if (babyLoading || !authProfile) return;
 
@@ -282,9 +277,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
-    // Only load if not already loaded or baby changed
     if (initRef.current && state.members.length > 0) {
-      // Baby might have changed, reload
       loadFamily();
       return;
     }
@@ -293,7 +286,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       initRef.current = true;
       loadFamily();
     }
-  }, [currentBaby?.id, babyLoading, authProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentBaby?.id, babyLoading, authProfile]);
 
   // ─── Update Parent 2 Profile ───────────────────────────────────────────
   const updateParent2Profile = useCallback(async (
@@ -570,7 +563,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await loadFamily();
   }, [loadFamily]);
 
-  // ─── FIXED: Generate Invite Code ───────────────────────────────────────
+  // ─── Generate Invite Code ─────────────────────────────────────────────
   const generateInviteCode = useCallback(async (
     role: 'parent2' | 'guardian' | 'viewer',
     relationship?: string,
@@ -583,10 +576,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
-      // ─── FIX: Generate a proper 6-character code ──────────────────────
       let code = generateInviteCodeString();
       
-      // Ensure code is unique
       let isUnique = false;
       let attempts = 0;
       while (!isUnique && attempts < 10) {
@@ -605,7 +596,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (!isUnique) {
-        // Fallback: use timestamp-based code
         const timestamp = Date.now().toString(36).toUpperCase();
         code = timestamp.slice(-6);
         if (code.length < 6) {
@@ -641,7 +631,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (error) {
         console.error('Error generating invite code:', error);
-        // Fallback: generate code without DB insertion
         const fallbackCode = generateInviteCodeString();
         return { code: fallbackCode, success: true, message: 'Invite code generated (local only)' };
       }
@@ -653,7 +642,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [isOwner, authProfile, currentBaby]);
 
-  // ─── FIXED: Get Active Invite Codes ──────────────────────────────────
+  // ─── Get Active Invite Codes ──────────────────────────────────────────
   const getActiveInviteCodes = useCallback(async () => {
     if (!currentBaby?.id) return [];
 
@@ -707,17 +696,15 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [isOwner, currentBaby]);
 
-  // ─── FIXED: Validate Invite Code ──────────────────────────────────────
+  // ─── Validate Invite Code ─────────────────────────────────────────────
   const validateInviteCode = useCallback(async (code: string): Promise<{ valid: boolean; data: any; message: string }> => {
     if (!code || code.length < 4) {
       return { valid: false, data: null, message: 'Invalid invite code format' };
     }
 
     try {
-      // Trim and uppercase the code
       const trimmedCode = code.trim().toUpperCase();
       
-      // Query the invite code
       const { data, error } = await supabase
         .from('invite_codes')
         .select('*')
@@ -735,7 +722,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { valid: false, data: null, message: 'Invalid or expired invite code' };
       }
 
-      // Check if expired
       const now = Date.now();
       const expiresAt = data.created_at + (data.expires_in_days || 7) * 24 * 60 * 60 * 1000;
       if (now > expiresAt) {
@@ -748,6 +734,45 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return { valid: false, data: null, message: 'Error validating code' };
     }
   }, []);
+
+  // ─── Mark Invite Code as Used ─────────────────────────────────────────
+  const useInviteCode = useCallback(async (code: string, userId?: string): Promise<{ success: boolean; message: string }> => {
+    if (!code) {
+      return { success: false, message: 'No invite code provided' };
+    }
+
+    try {
+      const trimmedCode = code.trim().toUpperCase();
+      
+      // First validate the code
+      const validation = await validateInviteCode(trimmedCode);
+      if (!validation.valid) {
+        return { success: false, message: validation.message };
+      }
+
+      // Mark it as used
+      const { error } = await supabase
+        .from('invite_codes')
+        .update({
+          used: true,
+          used_by: userId || null,
+          used_at: Date.now(),
+        })
+        .eq('code', trimmedCode)
+        .eq('used', false)
+        .eq('revoked', false);
+
+      if (error) {
+        console.error('Error using invite code:', error);
+        return { success: false, message: 'Failed to use invite code' };
+      }
+
+      return { success: true, message: 'Invite code used successfully' };
+    } catch (error) {
+      console.error('Error using invite code:', error);
+      return { success: false, message: 'Failed to use invite code' };
+    }
+  }, [validateInviteCode]);
 
   // ─── Get Effective Permissions ────────────────────────────────────────
   const getEffectivePermissions = useCallback((userId?: string): Permission => {
@@ -778,10 +803,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     getCurrentBaby,
     getBabyId,
     validateInviteCode,
+    useInviteCode,
   }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, 
       updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, 
       refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode,
-      getCurrentBaby, getBabyId, validateInviteCode]);
+      getCurrentBaby, getBabyId, validateInviteCode, useInviteCode]);
 
   return (
     <FamilyContext.Provider value={value}>

@@ -1401,16 +1401,151 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, message: 'Account deletion requires additional verification. Please contact support.' };
   }, []);
 
-  // ─── SIGN UP WITH INVITE CODE ─────────────────────────────────────────
-
+  // ─── FIXED: SIGN UP WITH INVITE CODE ──────────────────────────────────
+  
   const signUpWithInviteCode = useCallback(async (
     code: string,
     fullName: string,
     email: string,
     password: string
   ): Promise<{ success: boolean; message: string }> => {
-    const result = await signUp(fullName, email, password);
-    return result;
+    try {
+      const trimmedCode = code.trim().toUpperCase();
+      
+      // ─── 1. Validate the invite code from the database ──────────────
+      const { data: inviteData, error: inviteError } = await supabase
+        .from('invite_codes')
+        .select('*')
+        .eq('code', trimmedCode)
+        .eq('used', false)
+        .eq('revoked', false)
+        .maybeSingle();
+
+      if (inviteError) {
+        console.error('[Auth] Invite code validation error:', inviteError);
+        return { success: false, message: 'Error validating invite code' };
+      }
+
+      if (!inviteData) {
+        return { success: false, message: 'Invalid or expired invite code' };
+      }
+
+      // ─── 2. Check if expired ─────────────────────────────────────────
+      const now = Date.now();
+      const expiresAt = inviteData.created_at + (inviteData.expires_in_days || 7) * 24 * 60 * 60 * 1000;
+      if (now > expiresAt) {
+        return { success: false, message: 'Invite code has expired' };
+      }
+
+      // ─── 3. Check if user already exists ─────────────────────────────
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (existingUser) {
+        return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
+      }
+
+      // ─── 4. Proceed with signup ──────────────────────────────────────
+      const signUpResult = await signUp(fullName, email, password);
+      
+      if (!signUpResult.success) {
+        return signUpResult;
+      }
+
+      // ─── 5. Get the newly created user ──────────────────────────────
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // ─── 6. Mark the invite code as used ──────────────────────────
+        const { error: updateError } = await supabase
+          .from('invite_codes')
+          .update({
+            used: true,
+            used_by: user.id,
+            used_at: Date.now(),
+          })
+          .eq('code', trimmedCode);
+
+        if (updateError) {
+          console.error('[Auth] Failed to mark invite code as used:', updateError);
+          // Don't fail the signup, just log the error
+        }
+
+        // ─── 7. Create family member entry ─────────────────────────────
+        const familyMemberId = `fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const { error: familyError } = await supabase
+          .from('family_members')
+          .insert({
+            id: familyMemberId,
+            baby_id: inviteData.family_id,
+            user_id: user.id,
+            email: email.trim().toLowerCase(),
+            full_name: fullName.trim(),
+            role: inviteData.role,
+            relationship: inviteData.relationship || 'Family Member',
+            permissions: {},
+            added_at: new Date().toISOString(),
+            added_by: inviteData.creator_id,
+            can_be_removed: true,
+            notifications_enabled: true,
+            status: 'active',
+            updated_at: new Date().toISOString(),
+            is_deleted: false,
+          });
+
+        if (familyError) {
+          console.error('[Auth] Failed to create family member:', familyError);
+          // Don't fail the signup, but log the error
+        }
+
+        // ─── 8. Update baby's guardian_ids if needed ──────────────────
+        if (inviteData.role !== 'parent2') {
+          const { data: babyData } = await supabase
+            .from('babies')
+            .select('guardian_ids')
+            .eq('id', inviteData.family_id)
+            .maybeSingle();
+
+          if (babyData) {
+            const currentGuardians = babyData.guardian_ids || [];
+            if (!currentGuardians.includes(familyMemberId)) {
+              await supabase
+                .from('babies')
+                .update({
+                  guardian_ids: [...currentGuardians, familyMemberId],
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', inviteData.family_id);
+            }
+          }
+        } else {
+          // If role is parent2, update the baby's parent2_id
+          await supabase
+            .from('babies')
+            .update({
+              parent2_id: user.id,
+              parent2_name: fullName.trim(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', inviteData.family_id);
+        }
+      }
+
+      const roleDisplay = inviteData.role === 'parent2' ? 'Parent 2' 
+        : inviteData.role === 'guardian' ? 'Guardian' 
+        : 'Viewer';
+
+      return { 
+        success: true, 
+        message: `Welcome to the family! You've joined as ${roleDisplay}` 
+      };
+    } catch (error) {
+      console.error('[Auth] Sign up with invite code error:', error);
+      return { success: false, message: 'Failed to join family. Please try again.' };
+    }
   }, [signUp]);
 
   // ─── FIND USER FUNCTIONS (Supabase only) ─────────────────────────────
