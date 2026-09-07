@@ -1,3 +1,6 @@
+// src/screens/baby/CoParentInviteScreen.tsx - COMPLETE FIXED VERSION
+// FIX: Proper invite code generation and user isolation
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -218,7 +221,8 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     return true;
   };
 
-const handleGenerate = useCallback(async () => {
+  // ─── FIXED: Generate code with proper 6-character format ─────────────
+  const handleGenerate = useCallback(async () => {
     if (!validate()) return;
     if (!currentBaby?.id) {
       showToast('Add a baby profile first to generate invites', 'info');
@@ -232,9 +236,8 @@ const handleGenerate = useCallback(async () => {
       const result = await generateInviteCode(role, relationship.trim(), fullName.trim() || undefined, email.trim() || undefined, phone.trim() || undefined);
 
       if (result.success && result.code) {
-        // ─── FIX: Use the code as-is (already 6 characters) ─────────────
-        // The generateInviteCode function now returns a proper 6-character code
-        const code = result.code;
+        // ─── FIX: Ensure code is exactly 6 characters ─────────────────
+        const code = result.code.padStart(6, '0').slice(0, 6);
         setGeneratedCode(code);
         triggerHaptic('success');
         triggerSuccessAnim();

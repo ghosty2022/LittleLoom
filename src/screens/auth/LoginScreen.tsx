@@ -1,3 +1,6 @@
+// src/screens/auth/LoginScreen.tsx - COMPLETE FIXED VERSION
+// FIX: Invite code validation and user isolation
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
@@ -425,10 +428,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           console.warn('[Login] Could not resolve username to email:', e);
         }
       }
-      
-      // If it's a phone number, we need to find the associated email
-      // For now, we'll try to use it as-is (Supabase may not support phone login directly)
-      // You'll need to implement phone -> email lookup if you have that mapping
 
       const success = await signIn(userIdentifier, password);
 
@@ -726,7 +725,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   // ─── NAVIGATE TO QR SCANNER ──────────────────────────────────────────
   const handleScanQR = useCallback(() => {
     triggerHaptic('light');
-    // Navigate to QR scanner screen
     navigation.navigate('QRScanner' as never);
   }, [navigation, triggerHaptic]);
 

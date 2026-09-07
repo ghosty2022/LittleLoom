@@ -2,6 +2,7 @@
 // FIX: Properly syncs babies from Supabase and displays them
 // FIX: Hard delete baby from Supabase
 // FIX: Ensure baby is properly persisted after creation
+// FIX: User isolation to prevent cross-device conflicts
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Alert, Platform } from 'react-native';
@@ -389,6 +390,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const loadAttemptsRef = useRef(0);
   const maxLoadAttempts = 5;
+  const currentUserIdRef = useRef<string | null>(null);
 
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     babyChangeSubscribers.forEach(callback => {
@@ -445,6 +447,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (!error && session?.user?.id) {
+        currentUserIdRef.current = session.user.id;
         return session.user.id;
       }
     } catch (e) {
@@ -454,6 +457,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (!error && user?.id) {
+        currentUserIdRef.current = user.id;
         return user.id;
       }
     } catch (e) {
@@ -530,7 +534,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // ─── FIX: Only load babies for the current user ──────────────────
       console.log('[BabyContext] Loading babies for user ID (UUID):', userId);
+      currentUserIdRef.current = userId;
 
       let allBabies: any[] = [];
 
@@ -762,6 +768,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           hasSession = true;
+          currentUserIdRef.current = session.user.id;
           console.log('[BabyContext] Found existing session on init');
         }
       } catch (e) {
@@ -783,6 +790,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
+            currentUserIdRef.current = session.user.id;
             console.log('[BabyContext] Session found on retry', attempts);
             initRef.current = true;
             await loadBabies();

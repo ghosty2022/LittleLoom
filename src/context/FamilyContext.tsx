@@ -1,5 +1,5 @@
 // src/context/FamilyContext.tsx
-// Full Supabase-compatible family management
+// COMPLETE FIXED VERSION - Invite codes and user isolation
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
@@ -91,6 +91,14 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const initRef = useRef(false);
   const familyLoadInProgress = useRef(false);
   const loadingRef = useRef(false);
+  const currentUserIdRef = useRef<string | null>(null);
+
+  // ─── UPDATE: Track current user to prevent cross-device conflicts ────
+  useEffect(() => {
+    if (authProfile?.id) {
+      currentUserIdRef.current = authProfile.id;
+    }
+  }, [authProfile?.id]);
 
   const loadBabyData = useCallback(async () => {
     if (!authProfile?.id) return;
@@ -112,6 +120,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .from('babies')
           .select('*')
           .eq('id', currentBabyId)
+          .eq('is_active', true)
           .maybeSingle();
 
         if (!babyError && babyData) {
@@ -123,6 +132,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .from('babies')
         .select('*')
         .eq('parent1_id', authProfile.id)
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
 
       if (!allError && allBabies) {
@@ -149,6 +159,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return currentBaby.parent1_id === effectiveProfile.id;
   }, [authProfile, currentBaby]);
 
+  // ─── FIXED: Load family with user isolation ──────────────────────────
   const loadFamily = useCallback(async () => {
     if (!currentBaby?.id) {
       setState({
@@ -160,6 +171,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         pendingInvites: [],
       });
       return;
+    }
+
+    // ─── FIX: Only load if the current user is part of this baby ────
+    if (authProfile?.id && currentBaby.parent1_id !== authProfile.id && currentBaby.parent2_id !== authProfile.id) {
+      // Check if user is a guardian
+      const guardianIds = currentBaby.guardian_ids || [];
+      if (!guardianIds.includes(authProfile.id)) {
+        console.log('[FamilyContext] User not associated with this baby, skipping load');
+        return;
+      }
     }
 
     if (familyLoadInProgress.current) return;
@@ -609,10 +630,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const now = Date.now();
       const expiresInDays = 7;
 
+      // ─── FIX: Ensure code is exactly 6 characters ──────────────────
+      const finalCode = code.padStart(6, '0').slice(0, 6);
+
       const { data, error } = await supabase
         .from('invite_codes')
         .insert({
-          code: code,
+          code: finalCode,
           family_id: currentBaby.id,
           baby_name: currentBaby.name,
           baby_dob: currentBaby.date_of_birth,
@@ -706,6 +730,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const trimmedCode = code.trim().toUpperCase();
       console.log('[FamilyContext] Validating invite code:', trimmedCode);
       
+      // ─── FIX: Use correct table and filters ─────────────────────────
       const { data, error } = await supabase
         .from('invite_codes')
         .select('*')
@@ -714,7 +739,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('revoked', false)
         .maybeSingle();
 
-      console.log('[FamilyContext] Query result:', { data: data ? 'found' : 'not found', error: error?.message });
+      console.log('[FamilyContext] Query result:', { 
+        found: !!data, 
+        error: error?.message,
+        data: data ? { id: data.id, role: data.role, family_id: data.family_id } : null
+      });
 
       if (error) {
         console.error('Error validating invite code:', error);
@@ -726,6 +755,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { valid: false, data: null, message: 'Invalid or expired invite code' };
       }
 
+      // ─── FIX: Check expiration properly ─────────────────────────────
       const now = Date.now();
       const expiresAt = data.created_at + (data.expires_in_days || 7) * 24 * 60 * 60 * 1000;
       console.log('[FamilyContext] Expires at:', new Date(expiresAt).toISOString(), 'Now:', new Date(now).toISOString());

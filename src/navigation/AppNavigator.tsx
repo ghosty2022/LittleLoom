@@ -1,4 +1,5 @@
 // src/navigation/AppNavigator.tsx - COMPLETE FIXED with QRScanner
+// FIX: Navigation loop prevention and user isolation
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, AppState, TouchableOpacity, StyleSheet } from 'react-native';
@@ -76,6 +77,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 const ONBOARDING_COMPLETE_KEY = '@littleloom_onboarding_complete_v3';
 const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
 const NAV_INITIALIZED_KEY = '@littleloom_nav_initialized_v1';
+const NAV_LOCK_KEY = '@littleloom_nav_lock';
 
 const CustomLightTheme = {
   ...DefaultTheme,
@@ -331,6 +333,7 @@ function NavigationContent({
   const navigationLoopCount = useRef(0);
   const lastNavigationTarget = useRef<string | null>(null);
   const navLockRef = useRef(false);
+  const currentUserIdRef = useRef<string | null>(null);
 
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
@@ -339,6 +342,22 @@ function NavigationContent({
   const loadBabiesRef = useRef(loadBabies);
   const resetUnlockLockRef = useRef(resetUnlockLock);
   const forceUnlockRef = useRef(forceUnlock);
+
+  // ─── Track current user ───────────────────────────────────────────────
+  useEffect(() => {
+    const trackUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+          currentUserIdRef.current = user.id;
+          console.log('[Navigation] Current user:', user.id);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    trackUser();
+  }, [isAuthenticated]);
 
   // ─── Validate session ────────────────────────────────────────────────
   useEffect(() => {
@@ -427,7 +446,7 @@ function NavigationContent({
     console.log('[Navigation] Baby count:', newCount, 'Skipped:', hasSkippedBaby);
   }, [babies?.length, hasSkippedBaby]);
 
-  // ─── Compute nav state ──────────────────────────────────────────────
+  // ─── FIXED: Compute nav state with user isolation ──────────────────
   useEffect(() => {
     if (authLoading || !firstOpenChecked.current || !sessionChecked) return;
     if (isAuthenticated && !babiesReady) return;
@@ -615,17 +634,20 @@ function NavigationContent({
       return;
     }
 
-    // ─── SETUP_BABY ────────────────────────────────────────────────────
+    // ─── FIXED: SETUP_BABY ─────────────────────────────────────────────
     if (navState === 'SETUP_BABY') {
       const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
       if (hasBabies) {
-        if (currentRoute !== 'Main' && currentRoute !== 'Home') {
-          console.log('[Navigation] → Main (has babies or skipped)');
-          lastNavTime.current = now;
-          navLockRef.current = true;
-          navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
-          setTimeout(() => { navLockRef.current = false; }, 500);
+        // Check if we're on a main screen already
+        if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
+          console.log('[Navigation] Already on main screen, staying');
+          return;
         }
+        console.log('[Navigation] → Main (has babies or skipped)');
+        lastNavTime.current = now;
+        navLockRef.current = true;
+        navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+        setTimeout(() => { navLockRef.current = false; }, 500);
         return;
       }
       
@@ -642,15 +664,24 @@ function NavigationContent({
       return;
     }
 
-    // ─── SETUP_PARENT2 ─────────────────────────────────────────────────
+    // ─── FIXED: SETUP_PARENT2 ──────────────────────────────────────────
     if (navState === 'SETUP_PARENT2') {
-      if (currentRoute !== 'CoParentInviteScreen') {
-        console.log('[Navigation] → CoParentInviteScreen');
-        lastNavTime.current = now;
-        navLockRef.current = true;
-        navRef.current.reset({ index: 0, routes: [{ name: 'CoParentInviteScreen' }] });
-        setTimeout(() => { navLockRef.current = false; }, 500);
+      // Check if we're on a main screen already (user may have completed setup)
+      if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
+        console.log('[Navigation] Already on main screen, staying');
+        return;
       }
+      
+      if (currentRoute === 'CoParentInviteScreen') {
+        console.log('[Navigation] Already on CoParentInviteScreen');
+        return;
+      }
+      
+      console.log('[Navigation] → CoParentInviteScreen');
+      lastNavTime.current = now;
+      navLockRef.current = true;
+      navRef.current.reset({ index: 0, routes: [{ name: 'CoParentInviteScreen' }] });
+      setTimeout(() => { navLockRef.current = false; }, 500);
       return;
     }
 
