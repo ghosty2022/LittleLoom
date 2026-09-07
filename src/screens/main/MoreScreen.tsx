@@ -130,7 +130,7 @@ const PressableScale = React.memo<PressableScaleProps>(({
   );
 });
 
-// ─── Custom Modal Components (like HomeScreen) ────────────────────
+// ─── Custom Modal Components ──────────────────────────────────────
 
 interface CustomModalProps {
   visible: boolean;
@@ -1344,6 +1344,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Effects ────────────────────────────────────────────────────
 
+  // ✅ FIXED: Only check biometrics once on mount, not on every focus
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
@@ -1353,9 +1354,12 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       }
     };
     
-    checkBiometrics();
+    // Initial check with delay to avoid startup congestion
+    const timer = setTimeout(checkBiometrics, 1000);
+    return () => clearTimeout(timer);
   }, [checkBiometricCapabilities]);
 
+  // ✅ FIXED: Debounced focus loading
   useFocusEffect(
     useCallback(() => {
       if (focusLoadTimeout.current) {
@@ -1365,7 +1369,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
         loadBabies();
         loadEntries?.();
-        checkBiometricCapabilities();
+        // Don't check biometrics on focus - only refresh status
       }, 300);
       
       return () => {
@@ -1373,7 +1377,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           clearTimeout(focusLoadTimeout.current);
         }
       };
-    }, [loadBabies, loadEntries, checkBiometricCapabilities])
+    }, [loadBabies, loadEntries])
   );
 
   useEffect(() => {
@@ -2058,7 +2062,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         primaryColor={primary}
       />
 
-      {/* ─── Custom Modals (like HomeScreen) ────────────────────── */}
+      {/* ─── Custom Modals ───────────────────────────────────────── */}
 
       {/* Logout Confirmation Modal */}
       <CustomModal

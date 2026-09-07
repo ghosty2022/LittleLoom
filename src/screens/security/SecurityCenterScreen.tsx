@@ -174,7 +174,22 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
   const [selectedTimeout, setSelectedTimeout] = useState(securitySettings.autoLockTimeout);
 
-  // ─── Alert helpers (using React Native Alert) ───────────────────
+  const isMounted = useRef(true);
+  const biometricCheckTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // ─── Cleanup ──────────────────────────────────────────────────────
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      if (biometricCheckTimer.current) {
+        clearTimeout(biometricCheckTimer.current);
+        biometricCheckTimer.current = null;
+      }
+    };
+  }, []);
+
+  // ─── Alert helpers ───────────────────────────────────────────────
   const showToast = useCallback((title: string, message?: string) => {
     Alert.alert(title, message || '');
   }, []);
@@ -205,26 +220,47 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   }, []);
 
-  // ─── FIXED: Force biometric check on mount and focus ───────────
+  // ─── FIXED: Biometric check with proper debounce ────────────────
   const [forceUpdate, setForceUpdate] = useState(false);
 
+  // Only check biometrics on mount with a delay, not on every focus
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
+        // Only check if not already checked recently
         await checkBiometricCapabilities();
         setForceUpdate(prev => !prev);
       } catch (error) {
         console.error('Error checking biometrics:', error);
       }
     };
-    checkBiometrics();
 
+    // Initial check with delay
+    if (biometricCheckTimer.current) {
+      clearTimeout(biometricCheckTimer.current);
+    }
+    biometricCheckTimer.current = setTimeout(() => {
+      if (isMounted.current) {
+        checkBiometrics();
+      }
+    }, 500);
+
+    // Only check on focus if the screen is actually visible and not already checking
     const unsubscribe = navigation.addListener('focus', () => {
-      checkBiometrics();
+      if (isMounted.current) {
+        // Refresh status but don't force a full check
+        refreshBiometricStatus();
+      }
     });
 
-    return unsubscribe;
-  }, [navigation, checkBiometricCapabilities]);
+    return () => {
+      unsubscribe();
+      if (biometricCheckTimer.current) {
+        clearTimeout(biometricCheckTimer.current);
+        biometricCheckTimer.current = null;
+      }
+    };
+  }, [navigation, checkBiometricCapabilities, refreshBiometricStatus]);
 
   useEffect(() => {
     resetUnlockLock();
@@ -464,17 +500,18 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
+  // ─── FIXED: Toggle biometric with proper state management ──────
   const handleToggleBiometric = useCallback(async () => {
+    if (biometricLoading) return;
     setBiometricLoading(true);
     try {
-      // First refresh biometric status to get latest state
-      await checkBiometricCapabilities();
+      // Refresh biometric status first
+      await refreshBiometricStatus();
 
       const result = await toggleBiometric(!isBiometricEnabled);
       if (result) {
-        // Force refresh biometric status after toggle
+        // Only refresh if the toggle succeeded
         await refreshBiometricStatus();
-        setForceUpdate(prev => !prev);
         showSuccess(
           isBiometricEnabled ? 'Biometric Off' : 'Biometric On',
           isBiometricEnabled ? 'Biometric unlock disabled' : 'Biometric unlock enabled'
@@ -488,21 +525,16 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     } finally {
       setBiometricLoading(false);
     }
-  }, [isBiometricEnabled, toggleBiometric, checkBiometricCapabilities, refreshBiometricStatus, showSuccess, showError]);
+  }, [isBiometricEnabled, toggleBiometric, refreshBiometricStatus, showSuccess, showError, biometricLoading]);
 
-  // Force refresh biometric status after toggle
+  // ─── FIXED: Only refresh biometrics when toggle completes ──────
   useEffect(() => {
     if (biometricLoading) return;
-    const refreshBiometrics = async () => {
-      try {
-        await checkBiometricCapabilities();
-        setForceUpdate(prev => !prev);
-      } catch (error) {
-        console.error('Error refreshing biometrics:', error);
-      }
-    };
-    refreshBiometrics();
-  }, [isBiometricEnabled, biometricLoading, checkBiometricCapabilities]);
+    // Only refresh if we're on this screen and not loading
+    if (activeSection === 'biometric' || activeSection === 'dashboard') {
+      refreshBiometricStatus();
+    }
+  }, [activeSection, biometricLoading, refreshBiometricStatus]);
 
   const handleTimeoutChange = async (minutes: number) => {
     setSelectedTimeout(minutes);
