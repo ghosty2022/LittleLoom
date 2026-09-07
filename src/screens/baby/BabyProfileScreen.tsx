@@ -25,7 +25,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, differenceInDays, differenceInMonths } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as FileSystem from 'expo-file-system';
+// IMPORTANT: Use legacy API to avoid deprecation warnings
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -55,7 +56,7 @@ import { supabase } from '@/utils/supabase';
 // ─── UPLOAD IMAGE TO SUPABASE ────────────────────────────────────────────
 const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
   try {
-    // Read the file as base64
+    // Read the file as base64 using legacy API
     const base64 = await FileSystem.readAsStringAsync(localUri, { 
       encoding: FileSystem.EncodingType.Base64 
     });
@@ -1017,12 +1018,55 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
   };
 
+  // ─── FIXED: ensureDirExists using legacy API ──────────────────────────
   const ensureDirExists = async () => {
     const dir = FileSystem.documentDirectory + 'baby_images/';
-    const dirInfo = await FileSystem.getInfoAsync(dir);
-    if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(dir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      }
+    } catch (error) {
+      console.warn('[BabyProfile] ensureDirExists error:', error);
+    }
   };
 
+  // ─── FIXED: persistPickedImage helper ─────────────────────────────────
+  const persistPickedImage = async (sourceUri: string, babyId: string): Promise<string | null> => {
+    try {
+      await ensureDirExists();
+      const permanentUri = getPermanentImagePath(babyId, 'avatar');
+      
+      // Handle different URI types with legacy API
+      if (sourceUri.startsWith('content://')) {
+        const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      } else if (sourceUri.startsWith('data:')) {
+        const base64Data = sourceUri.split(',')[1];
+        if (base64Data) {
+          await FileSystem.writeAsStringAsync(permanentUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+        } else {
+          throw new Error('Invalid data URI');
+        }
+      } else {
+        await FileSystem.copyAsync({ from: sourceUri, to: permanentUri });
+      }
+
+      // Verify file exists
+      const fileInfo = await FileSystem.getInfoAsync(permanentUri);
+      if (!fileInfo.exists) {
+        console.error('[persistPickedImage] File not found after write:', permanentUri);
+        return null;
+      }
+
+      return permanentUri;
+    } catch (error) {
+      console.error('[persistPickedImage] Failed:', error);
+      return null;
+    }
+  };
+
+  // ─── FIXED: handleTakePhoto with proper image persistence ─────────────
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -1031,30 +1075,30 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
     try {
       const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-      if (!result.canceled && result.assets[0].uri) {
+      if (!result.canceled && result.assets[0]?.uri) {
         setIsUploading(true);
-        await ensureDirExists();
-        const permanentUri = getPermanentImagePath(currentBabyData?.id || 'temp');
         const rawUri = result.assets[0].uri;
+        const babyId = currentBabyData?.id || 'temp';
+        const permanentUri = await persistPickedImage(rawUri, babyId);
         
-        if (rawUri.startsWith('content://')) {
-          const base64 = await FileSystem.readAsStringAsync(rawUri, { encoding: FileSystem.EncodingType.Base64 });
-          await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        if (permanentUri) {
+          setBabyPhoto(permanentUri);
+          setIsEditing(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          sweetAlert.success('Photo Saved!', 'Profile picture updated.');
         } else {
-          await FileSystem.copyAsync({ from: rawUri, to: permanentUri });
+          sweetAlert.error('Error', 'Failed to save photo');
         }
-        setBabyPhoto(permanentUri);
-        setIsEditing(true);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setIsUploading(false);
-        sweetAlert.success('Photo Saved!', 'Profile picture updated.');
       }
     } catch (error) {
+      console.error('[BabyProfile] handleTakePhoto error:', error);
       setIsUploading(false);
       sweetAlert.error('Error', 'Failed to save photo');
     }
   };
 
+  // ─── FIXED: handlePickImage with proper image persistence ─────────────
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -1062,26 +1106,30 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       return;
     }
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-      if (!result.canceled && result.assets[0].uri) {
+      const result = await ImagePicker.launchImageLibraryAsync({ 
+        mediaTypes: ['images'], 
+        allowsEditing: true, 
+        aspect: [1, 1], 
+        quality: 0.8 
+      });
+      if (!result.canceled && result.assets[0]?.uri) {
         setIsUploading(true);
-        await ensureDirExists();
-        const permanentUri = getPermanentImagePath(currentBabyData?.id || 'temp');
         const rawUri = result.assets[0].uri;
+        const babyId = currentBabyData?.id || 'temp';
+        const permanentUri = await persistPickedImage(rawUri, babyId);
         
-        if (rawUri.startsWith('content://')) {
-          const base64 = await FileSystem.readAsStringAsync(rawUri, { encoding: FileSystem.EncodingType.Base64 });
-          await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        if (permanentUri) {
+          setBabyPhoto(permanentUri);
+          setIsEditing(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          sweetAlert.success('Photo Saved!', 'Profile picture updated.');
         } else {
-          await FileSystem.copyAsync({ from: rawUri, to: permanentUri });
+          sweetAlert.error('Error', 'Failed to save photo');
         }
-        setBabyPhoto(permanentUri);
-        setIsEditing(true);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setIsUploading(false);
-        sweetAlert.success('Photo Saved!', 'Profile picture updated.');
       }
     } catch (error) {
+      console.error('[BabyProfile] handlePickImage error:', error);
       setIsUploading(false);
       sweetAlert.error('Error', 'Failed to save photo');
     }
@@ -1174,8 +1222,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }, () => {}, 'Save', 'Cancel');
   };
 
-// FIND AND REPLACE handleSave function in BabyFamilyCenterScreen.tsx
-
+// ─── FIXED: handleSave with proper avatar handling ──────────────────────
 const handleSave = async () => {
   try {
     if (!currentBabyData) return;
@@ -1209,22 +1256,22 @@ const handleSave = async () => {
             console.log('[BabyProfile] Avatar uploaded to Supabase:', avatarUrl);
           } else {
             // ─── FALLBACK: SAVE LOCALLY ──────────────────────────────────
-            await ensureDirExists();
-            const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
-            await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
-            avatarUrl = permanentUri;
-            avatarUpdated = true;
-            console.log('[BabyProfile] Avatar saved locally:', avatarUrl);
+            const permanentUri = await persistPickedImage(babyPhoto, currentBabyData.id);
+            if (permanentUri) {
+              avatarUrl = permanentUri;
+              avatarUpdated = true;
+              console.log('[BabyProfile] Avatar saved locally:', avatarUrl);
+            }
           }
         } catch (uploadError) {
           console.error('[BabyProfile] Avatar upload error:', uploadError);
           // ─── FALLBACK: SAVE LOCALLY ──────────────────────────────────
-          await ensureDirExists();
-          const permanentUri = getPermanentImagePath(currentBabyData.id, 'avatar');
-          await FileSystem.copyAsync({ from: babyPhoto, to: permanentUri });
-          avatarUrl = permanentUri;
-          avatarUpdated = true;
-          console.log('[BabyProfile] Avatar saved locally (fallback):', avatarUrl);
+          const permanentUri = await persistPickedImage(babyPhoto, currentBabyData.id);
+          if (permanentUri) {
+            avatarUrl = permanentUri;
+            avatarUpdated = true;
+            console.log('[BabyProfile] Avatar saved locally (fallback):', avatarUrl);
+          }
         }
       }
     } else if (babyPhoto && !babyPhoto.startsWith('file://') && !babyPhoto.startsWith('content://') && !babyPhoto.startsWith('http')) {
