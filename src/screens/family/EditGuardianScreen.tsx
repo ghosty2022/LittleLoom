@@ -1169,14 +1169,19 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   // ─── REFRESH MEMBER DATA (light refresh) ─────────────────────────────
   const refreshMemberData = useCallback(async () => {
     if (isLoadingRef.current || !member) {
-      console.log('Skipping refresh: isLoadingRef.current =', isLoadingRef.current, 'member =', !!member);
       return;
     }
     isLoadingRef.current = true;
     
     try {
-      await refreshFamily();
-      await refreshBabyData(currentBaby?.id || '');
+      // Call refresh functions only if they exist
+      if (typeof refreshFamily === 'function') {
+        await refreshFamily();
+      }
+      
+      if (typeof refreshBabyData === 'function' && currentBaby?.id) {
+        await refreshBabyData(currentBaby.id);
+      }
       
       const updatedMember = members.find(m => m.id === member.id);
       if (updatedMember && isMountedRef.current) {
@@ -1539,7 +1544,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     setRefreshing(true);
     try {
       await loadFamily();
-      await refreshBabyData(currentBaby?.id || '');
+      if (typeof refreshBabyData === 'function' && currentBaby?.id) {
+        await refreshBabyData(currentBaby.id);
+      }
       if (member) await loadMemberActivities(member.id, member.userId, member.fullName);
     } catch (error) {
       console.error('Refresh error:', error);

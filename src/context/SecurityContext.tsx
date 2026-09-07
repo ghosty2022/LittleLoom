@@ -1,6 +1,6 @@
 // src/context/SecurityContext.tsx
 // Full Supabase-compatible security with biometrics and PIN - FIXED FOR ALL ANDROID DEVICES
-// Fixed: Biometric check race conditions, proper debouncing, cleanup
+// Fixed: Biometric check race conditions, proper debouncing, cleanup, AND AUTO-LOCK TIMEOUT
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
@@ -256,8 +256,11 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   const biometricCheckPromise = useRef<Promise<void> | null>(null);
   const biometricCheckInProgressRef = useRef<boolean>(false);
   const lastBiometricCheckRef = useRef<number>(0);
-  const BIOMETRIC_CHECK_DEBOUNCE = 5000; // Increased to 5 seconds
+  const BIOMETRIC_CHECK_DEBOUNCE = 5000;
   const biometricCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // ✅ FIXED: App state check timer for auto-lock
+  const appStateCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -268,6 +271,10 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       if (biometricCheckTimerRef.current) {
         clearTimeout(biometricCheckTimerRef.current);
         biometricCheckTimerRef.current = null;
+      }
+      if (appStateCheckTimerRef.current) {
+        clearTimeout(appStateCheckTimerRef.current);
+        appStateCheckTimerRef.current = null;
       }
     };
   }, []);
@@ -348,7 +355,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         setState(prev => ({ ...prev, ...loadedState }));
       }
 
-      // Initial biometric check with delay to avoid startup congestion
       if (biometricCheckTimerRef.current) {
         clearTimeout(biometricCheckTimerRef.current);
       }
@@ -362,7 +368,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     init();
   }, [isAuthenticated, loadSecurityState]);
 
-  // App state listener - properly cleaned up
+  // ✅ FIXED: App state listener with proper auto-lock check
   useEffect(() => {
     let isSubscribed = true;
     
@@ -371,6 +377,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       
       const previousState = appState.current;
 
+      // App went to background
       if (nextAppState.match(/inactive|background/) && previousState === 'active') {
         backgroundTimeRef.current = Date.now();
         lastActiveRef.current = Date.now();
@@ -378,13 +385,24 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, lastActiveRef.current.toString());
       }
 
+      // App came to foreground - CHECK AUTO-LOCK TIMEOUT
       if (previousState.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('[Security] App resumed, checking auto-lock...');
         checkedThisCycleRef.current = false;
-        setTimeout(() => {
+        
+        // Clear any pending timer
+        if (appStateCheckTimerRef.current) {
+          clearTimeout(appStateCheckTimerRef.current);
+          appStateCheckTimerRef.current = null;
+        }
+        
+        // Small delay to let the app settle
+        appStateCheckTimerRef.current = setTimeout(() => {
           if (isSubscribed) {
             checkSecurityOnResume();
           }
-        }, 600);
+          appStateCheckTimerRef.current = null;
+        }, 500);
       }
 
       appState.current = nextAppState;
@@ -395,25 +413,26 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     return () => {
       isSubscribed = false;
       subscription.remove();
+      if (appStateCheckTimerRef.current) {
+        clearTimeout(appStateCheckTimerRef.current);
+        appStateCheckTimerRef.current = null;
+      }
     };
   }, []);
 
   // ✅ FIXED: Enhanced biometric detection with proper debounce
   const checkBiometricCapabilities = useCallback(async () => {
-    // Prevent concurrent checks
     if (biometricCheckInProgressRef.current) {
       console.log('[Security] Biometric check already in progress, skipping');
       return;
     }
 
-    // Debounce: prevent too frequent checks
     const now = Date.now();
     if (now - lastBiometricCheckRef.current < BIOMETRIC_CHECK_DEBOUNCE) {
       console.log('[Security] Biometric check debounced, skipping');
       return;
     }
 
-    // Clear any pending timer
     if (biometricCheckTimerRef.current) {
       clearTimeout(biometricCheckTimerRef.current);
       biometricCheckTimerRef.current = null;
@@ -457,7 +476,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
           console.warn('[Security] isEnrolledAsync failed:', e);
         }
 
-        // For Android devices that return false even when enrolled
         if (!isEnrolled && Platform.OS === 'android') {
           console.log('[Security] Standard enrollment check returned false, trying direct auth verification...');
           try {
@@ -541,7 +559,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     }
   }, []);
 
-  // ─── Biometric authentication with better Android support ──
+  // ─── Biometric authentication ──
   const authenticateWithBiometric = useCallback(async (promptMessage?: string) => {
     if (biometricPromptInProgressRef.current) {
       console.log('[Security] Biometric prompt already in progress');
@@ -600,9 +618,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   // ─── Force refresh biometric status ──────────────────────────
   const refreshBiometricStatus = useCallback(async () => {
-    // Reset the debounce timer to force a fresh check
     lastBiometricCheckRef.current = 0;
-    // Clear any pending timer
     if (biometricCheckTimerRef.current) {
       clearTimeout(biometricCheckTimerRef.current);
       biometricCheckTimerRef.current = null;
@@ -696,7 +712,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const toggleBiometric = useCallback(async (enabled: boolean): Promise<boolean> => {
     if (enabled) {
-      // Check if biometrics are available (with debounce reset)
       lastBiometricCheckRef.current = 0;
       if (biometricCheckTimerRef.current) {
         clearTimeout(biometricCheckTimerRef.current);
@@ -739,7 +754,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
             isBiometricEnrolled: true,
           }));
         }
-        // Force refresh to ensure UI updates
         await refreshBiometricStatus();
         return true;
       }
@@ -796,7 +810,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     let isValid = false;
     try {
       if (method === 'biometric') {
-        // Check if biometrics are available before attempting
         lastBiometricCheckRef.current = 0;
         if (biometricCheckTimerRef.current) {
           clearTimeout(biometricCheckTimerRef.current);
@@ -860,6 +873,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     console.log('🔓 Reset all security locks');
   }, []);
 
+  // ✅ FIXED: Check security on resume with proper timeout handling
   const checkSecurityOnResume = useCallback(async () => {
     if (securityCheckLockRef.current) {
       console.log('⚠️ Security check already in progress');
@@ -898,7 +912,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         return;
       }
 
+      // ✅ If already locked, keep it locked
       if (isLocked === 'true') {
+        console.log('[Security] App is already locked');
         if (isMounted.current) {
           setState(prev => ({ ...prev, isSecurityLocked: true }));
         }
@@ -906,14 +922,19 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         return;
       }
 
+      // ✅ Check if auto-lock timeout has been exceeded
       const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : lastActiveRef.current;
-      const timeout = state.settings.autoLockTimeout * 60 * 1000;
+      const timeoutMs = state.settings.autoLockTimeout * 60 * 1000;
       const timeSinceLastActive = Date.now() - lastActive;
 
-      if (timeSinceLastActive > timeout) {
-        console.log('🔒 Timeout exceeded, locking app');
+      console.log('[Security] Time since last active:', timeSinceLastActive, 'ms');
+      console.log('[Security] Timeout:', timeoutMs, 'ms');
+
+      if (timeSinceLastActive > timeoutMs) {
+        console.log('🔒 Auto-lock timeout exceeded, locking app');
         await lockApp();
       } else {
+        // Update last active time
         const now = Date.now();
         lastActiveRef.current = now;
         await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, now.toString());
