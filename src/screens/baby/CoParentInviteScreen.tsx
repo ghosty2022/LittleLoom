@@ -40,10 +40,11 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useFamily } from '../../context/FamilyContext';
-import QRCode from 'react-native-qrcode-svg'; // ADD THIS
+import QRCode from 'react-native-qrcode-svg';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CoParentInviteScreen'>;
 const { width: SCREEN_W } = Dimensions.get('window');
+
 /* ═══════════════════════════════════════════════════════════════════════════
    ROLE CONFIGURATION
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -132,7 +133,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { isDark, colors } = useApp();
   const { themeColors, shouldReduceMotion, triggerHaptic, avatar } = useCustomization();
-   const { userProfile, skipSetup, completeSetup, setupComplete } = useAuth();
+  const { userProfile, skipSetup, completeSetup, setupComplete } = useAuth();
   const { currentBaby } = useBaby();
   const { generateInviteCode, getActiveInviteCodes, revokeInviteCode } = useFamily();
 
@@ -153,25 +154,20 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const [isLoadingCodes, setIsLoadingCodes] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' as const });
 
-  // REPLACE
-  // In onboarding whenever account setup isn't finished yet — not a
-  // navigation-stack heuristic, which breaks once this screen is pushed
-  // (not reset) during setup.
   const isOnboarding = useMemo(() => !setupComplete, [setupComplete]);
 
   // ── Animated rings ──
-// In CoParentInviteScreen.tsx, replace the ring animation with:
+  const ringProgress = useSharedValue(0);
 
-const ringProgress = useSharedValue(0);
+  useEffect(() => {
+    if (!shouldReduceMotion) {
+      ringProgress.value = withRepeat(withTiming(1, { duration: 3000 }), -1, false);
+    }
+    return () => {
+      ringProgress.value = 0;
+    };
+  }, [shouldReduceMotion]);
 
-useEffect(() => {
-  if (!shouldReduceMotion) {
-    ringProgress.value = withRepeat(withTiming(1, { duration: 3000 }), -1, false);
-  }
-  return () => {
-    ringProgress.value = 0;
-  };
-}, [shouldReduceMotion]);
   const ring1Style = useAnimatedStyle(() => ({
     opacity: interpolate(ringProgress.value, [0, 0.5, 1], [0.4, 0.2, 0]),
     transform: [{ scale: interpolate(ringProgress.value, [0, 1], [1, 1.6]) }],
@@ -236,7 +232,23 @@ useEffect(() => {
       const result = await generateInviteCode(role, relationship.trim(), fullName.trim() || undefined, email.trim() || undefined, phone.trim() || undefined);
 
       if (result.success && result.code) {
-        setGeneratedCode(result.code);
+        // ─── FIX: Ensure the code is exactly 6 characters ─────────────
+        // The generateInviteCode function creates 8-character codes (timestamp + random)
+        // We need to trim it to 6 characters to match the join screen validation
+        let code = result.code;
+        if (code.length > 6) {
+          // Take the last 6 characters or first 6, whichever is more consistent
+          // We'll use the last 6 for better randomness
+          code = code.slice(-6);
+        } else if (code.length < 6) {
+          // Pad with random characters if too short
+          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          while (code.length < 6) {
+            code += chars[Math.floor(Math.random() * chars.length)];
+          }
+        }
+        
+        setGeneratedCode(code);
         triggerHaptic('success');
         triggerSuccessAnim();
         showToast('Invite code generated!');
@@ -289,63 +301,59 @@ useEffect(() => {
     }
   }, [revokeInviteCode, generatedCode, showToast]);
 
-const handleSkip = useCallback(async () => {
-  triggerHaptic('light');
-  setIsLoading(true);
-  try {
-    await skipSetup('parent2');
-    showToast('Skipped for now - you can add later in Family settings', 'info');
-    // ─── FIX: Navigate to Main with reset to ensure clean state ──────
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main' as never }],
-    });
-  } catch (error) {
-    console.error('handleSkip error:', error);
-    showToast('Could not skip', 'error');
-    // ─── FIX: Even on error, try to navigate to Main ─────────────────
+  const handleSkip = useCallback(async () => {
+    triggerHaptic('light');
+    setIsLoading(true);
     try {
+      await skipSetup('parent2');
+      showToast('Skipped for now - you can add later in Family settings', 'info');
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main' as never }],
       });
-    } catch (e) {
-      console.error('Fallback navigation failed:', e);
-      navigation.replace('Main' as never);
+    } catch (error) {
+      console.error('handleSkip error:', error);
+      showToast('Could not skip', 'error');
+      try {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main' as never }],
+        });
+      } catch (e) {
+        console.error('Fallback navigation failed:', e);
+        navigation.replace('Main' as never);
+      }
+    } finally {
+      setIsLoading(false);
     }
-  } finally {
-    setIsLoading(false);
-  }
-}, [skipSetup, triggerHaptic, showToast, navigation]);
+  }, [skipSetup, triggerHaptic, showToast, navigation]);
 
-const handleContinue = useCallback(async () => {
-  triggerHaptic('medium');
-  setIsLoading(true);
-  try {
-    await completeSetup('parent2');
-    showToast('Setup complete! Welcome to the family', 'success');
-    // ─── FIX: Navigate to Main with reset to ensure clean state ──────
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main' as never }],
-    });
-  } catch (error) {
-    console.error('handleContinue error:', error);
-    showToast('Could not save progress', 'error');
-    // ─── FIX: Even on error, try to navigate to Main ─────────────────
+  const handleContinue = useCallback(async () => {
+    triggerHaptic('medium');
+    setIsLoading(true);
     try {
+      await completeSetup('parent2');
+      showToast('Setup complete! Welcome to the family', 'success');
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main' as never }],
       });
-    } catch (e) {
-      console.error('Fallback navigation failed:', e);
-      navigation.replace('Main' as never);
+    } catch (error) {
+      console.error('handleContinue error:', error);
+      showToast('Could not save progress', 'error');
+      try {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main' as never }],
+        });
+      } catch (e) {
+        console.error('Fallback navigation failed:', e);
+        navigation.replace('Main' as never);
+      }
+    } finally {
+      setIsLoading(false);
     }
-  } finally {
-    setIsLoading(false);
-  }
-}, [completeSetup, triggerHaptic, showToast, navigation]);
+  }, [completeSetup, triggerHaptic, showToast, navigation]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
@@ -513,21 +521,21 @@ const handleContinue = useCallback(async () => {
                   <Text style={[styles.codeText, { color: dynamicPrimary }]}>{generatedCode}</Text>
 
                   <View style={[styles.qrWrap, isDark && styles.qrWrapDark]}>
-  <TouchableOpacity 
-    onPress={() => handleShare('native')}
-    activeOpacity={0.8}
-  >
-    <QRCode
-      value={generatedCode}
-      size={130}
-      color={isDark ? '#ffffff' : '#1a1a1a'}
-      backgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
-      logo={require('../../../assets/icon.png')}
-      logoSize={24}
-      logoBackgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
-    />
-  </TouchableOpacity>
-</View>
+                    <TouchableOpacity 
+                      onPress={() => handleShare('native')}
+                      activeOpacity={0.8}
+                    >
+                      <QRCode
+                        value={generatedCode}
+                        size={130}
+                        color={isDark ? '#ffffff' : '#1a1a1a'}
+                        backgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
+                        logo={require('../../../assets/icon.png')}
+                        logoSize={24}
+                        logoBackgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
+                      />
+                    </TouchableOpacity>
+                  </View>
 
                   <Text style={[styles.codeSub, isDark && { color: '#94a3b8' }]}>
                     Valid for 7 days • One-time use • {ROLE_META[role].label}
@@ -778,20 +786,19 @@ const styles = StyleSheet.create({
   codeLabel: { fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 2, marginTop: 4 },
   codeText: { fontSize: 34, fontWeight: '900', letterSpacing: 8, textAlign: 'center' },
   qrWrap: { 
-  padding: 12, 
-  borderRadius: 16, 
-  backgroundColor: '#fff', 
-  borderWidth: 1, 
-  borderColor: 'rgba(0,0,0,0.06)', 
-  marginVertical: 4,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-qrWrapDark: { 
-  backgroundColor: '#1a1a2e', 
-  borderColor: 'rgba(255,255,255,0.08)' 
-},
-// Remove qrContainer and qrLogo as they're no longer needed
+    padding: 12, 
+    borderRadius: 16, 
+    backgroundColor: '#fff', 
+    borderWidth: 1, 
+    borderColor: 'rgba(0,0,0,0.06)', 
+    marginVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrWrapDark: { 
+    backgroundColor: '#1a1a2e', 
+    borderColor: 'rgba(255,255,255,0.08)' 
+  },
   codeSub: { fontSize: 12, fontWeight: '600', color: '#94a3b8', textAlign: 'center' },
   shareGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 8, width: '100%' },
   shareBtn: { alignItems: 'center', gap: 6, minWidth: 64 },
