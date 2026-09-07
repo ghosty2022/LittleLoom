@@ -1405,8 +1405,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
 // src/context/AuthContext.tsx - Updated signUpWithInviteCode function
 
-// src/context/AuthContext.tsx - Update the signUpWithInviteCode function
-
+// ─── FIXED: SIGN UP WITH INVITE CODE ──────────────────────────────────
 const signUpWithInviteCode = useCallback(async (
   code: string,
   fullName: string,
@@ -1416,7 +1415,7 @@ const signUpWithInviteCode = useCallback(async (
   try {
     const trimmedCode = code.trim().toUpperCase();
     
-    // ─── 1. Validate the invite code ──────────────────────────────
+    // ─── 1. Validate the invite code from the database ──────────────
     const { data: inviteData, error: inviteError } = await supabase
       .from('invite_codes')
       .select('*')
@@ -1431,6 +1430,7 @@ const signUpWithInviteCode = useCallback(async (
     }
 
     if (!inviteData) {
+      // ─── Check if this is a partial signup ──────────────────────────
       const { data: partialData, error: partialError } = await supabase
         .from('invite_codes')
         .select('*')
@@ -1441,18 +1441,22 @@ const signUpWithInviteCode = useCallback(async (
         .maybeSingle();
 
       if (!partialError && partialData) {
+        // This is a partial signup - allow continuing
         console.log('[Auth] Continuing partial signup for code:', trimmedCode);
+        // Proceed with signup but don't mark as used again
       } else {
         return { success: false, message: 'Invalid or expired invite code' };
       }
     }
 
+    // ─── 2. Check if expired ─────────────────────────────────────────
     const now = Date.now();
     const expiresAt = (inviteData?.created_at || 0) + (inviteData?.expires_in_days || 7) * 24 * 60 * 60 * 1000;
     if (inviteData && now > expiresAt) {
       return { success: false, message: 'Invite code has expired' };
     }
 
+    // ─── 3. Check if user already exists ─────────────────────────────
     const { data: existingUser } = await supabase
       .from('profiles')
       .select('id')
@@ -1470,6 +1474,7 @@ const signUpWithInviteCode = useCallback(async (
       return signUpResult;
     }
 
+    // ─── 5. Get the newly created user ──────────────────────────────
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
@@ -1492,6 +1497,7 @@ const signUpWithInviteCode = useCallback(async (
           console.error('[Auth] Failed to mark invite code as used:', updateError);
         }
       } else {
+        // For partial signup, just mark as completed
         const { error: updateError } = await supabase
           .from('invite_codes')
           .update({
@@ -1509,9 +1515,11 @@ const signUpWithInviteCode = useCallback(async (
       }
 
       // ─── 7. Create family member entry ─────────────────────────────
+      // This is how guardians are tracked (NOT via guardian_ids)
       const familyMemberId = `fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       
       try {
+        // Determine the role from the invite
         const role = inviteData?.role || 'viewer';
         const relationship = inviteData?.relationship || 'Family Member';
         const creatorId = inviteData?.creator_id || user.id;
@@ -1533,7 +1541,7 @@ const signUpWithInviteCode = useCallback(async (
           full_name: fullName.trim(),
           role: role,
           relationship: relationship,
-          permissions: { view: true },
+          permissions: {},
           added_at: new Date().toISOString(),
           added_by: creatorId,
           can_be_removed: true,
@@ -1545,6 +1553,7 @@ const signUpWithInviteCode = useCallback(async (
 
         console.log('[Auth] Creating family member:', JSON.stringify(familyMemberData, null, 2));
 
+        // ─── CRITICAL: Insert into family_members ──────────────────────
         const { error: familyError } = await supabase
           .from('family_members')
           .insert(familyMemberData);
@@ -1552,6 +1561,7 @@ const signUpWithInviteCode = useCallback(async (
         if (familyError) {
           console.error('[Auth] Failed to create family member:', familyError);
           
+          // ─── Try with minimal fields if full insert fails ────────────
           try {
             const minimalData = {
               id: familyMemberId,
@@ -1561,7 +1571,7 @@ const signUpWithInviteCode = useCallback(async (
               full_name: fullName.trim(),
               role: role,
               relationship: relationship,
-              permissions: { view: true },
+              permissions: {},
               added_at: new Date().toISOString(),
               added_by: creatorId,
               can_be_removed: true,
@@ -1584,6 +1594,7 @@ const signUpWithInviteCode = useCallback(async (
           console.log('[Auth] Family member created successfully:', familyMemberId);
         }
 
+        // ─── 8. If role is parent2, update baby's parent2_id ──────────
         if (role === 'parent2') {
           try {
             const { error: updateBabyError } = await supabase
@@ -1602,42 +1613,12 @@ const signUpWithInviteCode = useCallback(async (
           }
         }
         
-        // CRITICAL FIX: Also update the baby's guardian_ids if role is guardian or viewer
-        if (role === 'guardian' || role === 'viewer') {
-          try {
-            // Get current baby
-            const { data: babyData, error: babyFetchError } = await supabase
-              .from('babies')
-              .select('guardian_ids')
-              .eq('id', babyId)
-              .single();
-            
-            if (!babyFetchError && babyData) {
-              const currentGuardians = babyData.guardian_ids || [];
-              if (!currentGuardians.includes(user.id)) {
-                const updatedGuardians = [...currentGuardians, user.id];
-                const { error: updateGuardianError } = await supabase
-                  .from('babies')
-                  .update({
-                    guardian_ids: updatedGuardians,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', babyId);
-                  
-                if (updateGuardianError) {
-                  console.error('[Auth] Failed to update guardian_ids:', updateGuardianError);
-                } else {
-                  console.log('[Auth] Added user to guardian_ids for baby:', babyId);
-                }
-              }
-            }
-          } catch (guardianUpdateError) {
-            console.error('[Auth] Guardian update error:', guardianUpdateError);
-          }
-        }
+        // ─── 9. If role is guardian or viewer, no extra updates needed ──
+        // They are already in family_members, which BabyContext queries
 
       } catch (familyInsertError) {
         console.error('[Auth] Family member insertion error:', familyInsertError);
+        // Don't fail the signup, continue
       }
     }
 
