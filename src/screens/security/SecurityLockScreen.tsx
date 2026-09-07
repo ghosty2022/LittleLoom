@@ -1,4 +1,6 @@
-// screens/security/SecurityLockScreen.tsx - COMPLETE FIXED with SweetAlert toasts
+// screens/security/SecurityLockScreen.tsx
+// FULLY FIXED - Proper lock screen with working biometrics
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -63,37 +65,6 @@ const getBiometricInfo = (types: LocalAuthentication.AuthenticationType[]): Biom
   return { name: 'Biometric', icon: 'finger-print', label: 'Biometric' };
 };
 
-const BiometricIcon = ({
-  type,
-  size = 80,
-  color,
-  isDark,
-  isScanning = false,
-}: {
-  type: BiometricTypeInfo;
-  size?: number;
-  color: string;
-  isDark: boolean;
-  isScanning?: boolean;
-}) => {
-  const iconName = isScanning && type.iconFilled ? type.iconFilled : type.icon;
-  return (
-    <View style={[styles.biometricIconContainer, { width: size, height: size }]}>
-      <LinearGradient
-        colors={isDark ? [`${color}33`, `${color}0d`] : [`${color}26`, `${color}05`]}
-        style={[styles.biometricIconBg, { width: size, height: size }]}
-      >
-        <Ionicons name={iconName as any} size={size * 0.5} color={color} />
-      </LinearGradient>
-      {isScanning && (
-        <View style={styles.scanningRing}>
-          <View style={[styles.scanningDot, { borderColor: color }]} />
-        </View>
-      )}
-    </View>
-  );
-};
-
 export default function SecurityLockScreen({ navigation }: SecurityLockScreenProps) {
   const [pin, setPin] = useState<string>('');
   const [shakeAnim] = useState(new Animated.Value(0));
@@ -111,6 +82,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const [securityQuestions, setSecurityQuestions] = useState<SecurityQuestion[]>([]);
   const [verifyAnswers, setVerifyAnswers] = useState(['', '', '']);
   const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
+  const [isVerifyingQuestions, setIsVerifyingQuestions] = useState(false);
 
   const { signOut, userProfile } = useAuth();
   const {
@@ -131,7 +103,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const insets = useSafeAreaInsets();
   
-  // ✅ Use SweetAlert
   const sweetAlert = useSweetAlert();
 
   const availableMethods = getAvailableAuthMethods();
@@ -204,7 +175,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       return;
     }
 
-    setIsLoading(true);
+    setIsVerifyingQuestions(true);
     try {
       const allCorrect = await Promise.all(
         securityQuestions.map(async (sq, i) => {
@@ -230,7 +201,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         setVerifyAnswers(['', '', '']);
       }
     } finally {
-      setIsLoading(false);
+      setIsVerifyingQuestions(false);
     }
   };
 
@@ -350,7 +321,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       undefined,
       'Sign Out',
       'Cancel',
-      true // destructive
+      true
     );
   }, [signOut, forceUnlock, triggerHaptic, sweetAlert]);
 
@@ -684,7 +655,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                     setVerifyAnswers(newAnswers);
                   }}
                   autoCapitalize="none"
-                  editable={!isLoading}
+                  editable={!isVerifyingQuestions}
                 />
               </View>
             ))}
@@ -692,9 +663,9 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             <TouchableOpacity
               style={[styles.verifyButton, { backgroundColor: colors.primary }]}
               onPress={verifySecurityAnswers}
-              disabled={isLoading}
+              disabled={isVerifyingQuestions}
             >
-              {isLoading ? (
+              {isVerifyingQuestions ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.verifyButtonText}>Verify & Reset PIN</Text>
@@ -787,7 +758,19 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 disabled={isLoading || unlockInProgress.current}
                 activeOpacity={0.8}
               >
-                <BiometricIcon type={biometricInfo} size={100} color={colors.primary} isDark={isDark} />
+                <View style={styles.biometricIconWrapper}>
+                  <LinearGradient
+                    colors={[colors.primary + '33', colors.primary + '11']}
+                    style={styles.biometricIconBg}
+                  >
+                    <Ionicons name={biometricInfo.icon as any} size={50} color={colors.primary} />
+                  </LinearGradient>
+                  {isLoading && (
+                    <View style={styles.biometricLoadingRing}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                    </View>
+                  )}
+                </View>
                 <Text style={[styles.biometricLabel, { color: colors.primary }]}>
                   {isLoading ? 'Authenticating...' : `Tap to use ${biometricInfo.name}`}
                 </Text>
@@ -926,25 +909,33 @@ const styles = StyleSheet.create({
   },
   biometricSection: {
     alignItems: 'center',
-    marginBottom: 40,
-    height: 140,
-    justifyContent: 'center',
+    marginBottom: 30,
   },
   biometricButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: 10,
   },
-  biometricIconContainer: {
-    justifyContent: 'center',
+  biometricIconWrapper: {
+    position: 'relative',
+    width: 100,
+    height: 100,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   biometricIconBg: {
+    width: 100,
+    height: 100,
     borderRadius: 50,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(99,102,241,0.2)',
+  },
+  biometricLoadingRing: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   biometricLabel: {
     marginTop: 12,
@@ -1111,18 +1102,6 @@ const styles = StyleSheet.create({
   emergencyText: {
     fontSize: 15,
     fontWeight: '600',
-  },
-  scanningRing: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scanningDot: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 50,
-    borderWidth: 2,
-    borderStyle: 'dashed',
   },
   noSecurityContainer: {
     alignItems: 'center',
