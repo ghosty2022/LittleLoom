@@ -1,6 +1,7 @@
 // src/screens/BabyFamilyCenterScreen.tsx - COMPLETE UPDATED VERSION
+// FIX: Auto-refresh without double reloading
 // FIX: Birth details can be edited even if not entered during creation
-// Streamlined UX with better edit mode handling
+// FIX: Streamlined UX with better edit mode handling
 
 import {
   StyleSheet,
@@ -44,6 +45,7 @@ import Animated, {
   Extrapolation,
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
+import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { FamilyMember, useFamily } from '../../context/FamilyContext';
@@ -125,17 +127,24 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
 };
 
 // ─── HELPER FUNCTIONS ─────────────────────────────────────────────────────
-const isImageUri = (value: string | undefined | null): boolean => {
+const isImageUri = (value: string | undefined | null | any[]): boolean => {
+  if (!value) return false;
+  if (Array.isArray(value)) {
+    value = value.length > 0 ? value[0] : null;
+  }
   if (!value || typeof value !== 'string') return false;
   return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:') || value.startsWith('ph://') || value.startsWith('assets-library://');
 };
 
-const isEmoji = (value: string | undefined | null): boolean => {
+const isEmoji = (value: string | undefined | null | any[]): boolean => {
+  if (!value) return false;
+  if (Array.isArray(value)) {
+    value = value.length > 0 ? value[0] : null;
+  }
   if (!value || typeof value !== 'string') return false;
   if (value.length > 4) return false;
   return /\p{Emoji}/u.test(value);
 };
-
 const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
   if (!d) return '—';
   try {
@@ -258,20 +267,35 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
 
 // ─── Safe Baby Avatar ──────────────────────────────────────────────────
 const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEditButton = false, onEdit, isDark, colors }: any) => {
-  const hasImage = isImageUri(avatar);
-  const hasEmoji = isEmoji(avatar);
+  // Normalize avatar - handle array, string, or null
+  const normalizedAvatar = useMemo(() => {
+    if (!avatar) return null;
+    if (Array.isArray(avatar)) {
+      return avatar.length > 0 ? avatar[0] : null;
+    }
+    if (typeof avatar === 'string') return avatar;
+    return null;
+  }, [avatar]);
+
+  const hasImage = isImageUri(normalizedAvatar);
+  const hasEmoji = isEmoji(normalizedAvatar);
   const genderOption = GENDER_OPTIONS.find(g => g.value === gender);
   const gradientColors = genderOption?.gradient || ['#6366f1', '#8b5cf6'];
 
   const imageSource = useMemo(() => {
-    if (!avatar) return null;
-    if (avatar.startsWith('http') || avatar.startsWith('file://') || avatar.startsWith('ph://') || avatar.startsWith('assets-library://')) {
-      return { uri: avatar };
+    if (!normalizedAvatar) return null;
+    if (typeof normalizedAvatar === 'string' && 
+        (normalizedAvatar.startsWith('http') || 
+         normalizedAvatar.startsWith('file://') || 
+         normalizedAvatar.startsWith('ph://') || 
+         normalizedAvatar.startsWith('assets-library://'))) {
+      return { uri: normalizedAvatar };
     }
     return null;
-  }, [avatar]);
+  }, [normalizedAvatar]);
 
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  
   return (
     <View style={[styles.avatarWrapper, { width: size, height: size }]}>
       <LinearGradient
@@ -283,7 +307,7 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
             <Image source={imageSource} style={{ width: size, height: size }} resizeMode="cover" />
           </View>
         ) : hasEmoji ? (
-          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{avatar}</Text>
+          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{normalizedAvatar}</Text>
         ) : (
           <Ionicons name={genderOption?.icon as any || 'ellipse'} size={size * 0.4} color="#fff" />
         )}
@@ -433,12 +457,20 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const sweetAlert = useSweetAlert();
   const {
     babies, updateBaby, currentBaby, currentBabyId, addMilestone, deleteMilestone,
-    loadBabies, switchBaby, deleteBaby, milestones, calculateAge,
+    loadBabies, switchBaby, deleteBaby, milestones, calculateAge, refreshBabyData,
   } = useBaby();
-  const { entries: allActivities, getEntriesByBaby } = useActivity();
-  const { members, loadFamily, parent2, guardians } = useFamily();
+  const { entries: allActivities, getEntriesByBaby, refreshEntries } = useActivity();
+  const { members, loadFamily } = useFamily();
 
   const isBabyMode = mode === 'baby';
+  
+  // ─── REFS ──────────────────────────────────────────────────────────────
+  const isLoadingRef = useRef(false);
+  const initialLoadDone = useRef(false);
+  const isMountedRef = useRef(true);
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ─── COMPUTED CURRENT BABY ────────────────────────────────────────────
   const currentBabyData = useMemo(() => {
     if (!isBabyMode) return null;
     if (babyId) return babies.find(b => b.id === babyId) || currentBaby;
@@ -494,7 +526,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   // ─── Refs ──────────────────────────────────────────────────────────────
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
-  const hasLoadedRef = useRef(false);
 
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolation.CLAMP),
@@ -506,13 +537,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   });
 
   // ─── LOAD DATA ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (currentBabyData && !hasLoadedRef.current) {
-      hasLoadedRef.current = true;
-      loadDataFromBaby(currentBabyData);
-    }
-  }, [currentBabyData?.id]);
-
   const loadDataFromBaby = useCallback((baby: any) => {
     if (!baby) return;
     
@@ -563,6 +587,87 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     if (!value) return '';
     return value.charAt(0).toUpperCase() + value.slice(1);
   };
+
+  // ─── REFRESH BABY DATA (light refresh without full reload) ───────────
+  const refreshBabyDataLight = useCallback(async () => {
+    if (isLoadingRef.current || !currentBabyData) return;
+    isLoadingRef.current = true;
+    
+    try {
+      // Refresh baby data from context
+      await refreshBabyData(currentBabyData.id);
+      
+      // Refresh entries
+      await refreshEntries();
+      
+      // Refresh family
+      await loadFamily();
+      
+      // Reload the baby data into the form
+      const updatedBaby = babies.find(b => b.id === currentBabyData.id);
+      if (updatedBaby && isMountedRef.current) {
+        loadDataFromBaby(updatedBaby);
+      }
+    } catch (error) {
+      console.error('Error refreshing baby data:', error);
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, [currentBabyData, refreshBabyData, refreshEntries, loadFamily, babies, loadDataFromBaby]);
+
+  // ─── LOAD FULL DATA ────────────────────────────────────────────────────
+  const loadFullData = useCallback(async () => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    
+    try {
+      await loadBabies(true);
+      await loadFamily();
+      await refreshEntries();
+      
+      if (currentBabyData && isMountedRef.current) {
+        loadDataFromBaby(currentBabyData);
+      }
+    } catch (error) {
+      console.error('Error loading full data:', error);
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, [loadBabies, loadFamily, refreshEntries, currentBabyData, loadDataFromBaby]);
+
+  // ─── INITIAL LOAD ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (currentBabyData && !initialLoadDone.current && !isLoadingRef.current) {
+      loadDataFromBaby(currentBabyData);
+      initialLoadDone.current = true;
+    }
+    return () => {
+      isMountedRef.current = false;
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+      }
+    };
+  }, [currentBabyData?.id]);
+
+  // ─── FOCUS EFFECT - Auto-refresh on focus ─────────────────────────────
+  useFocusEffect(
+    useCallback(() => {
+      if (currentBabyData && !isLoadingRef.current) {
+        // Use a small delay to prevent double loading
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+        }
+        refreshTimerRef.current = setTimeout(() => {
+          refreshBabyDataLight();
+        }, 300);
+      }
+      return () => {
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+        }
+      };
+    }, [currentBabyData, refreshBabyDataLight])
+  );
 
   // ─── IMAGE HANDLING ────────────────────────────────────────────────────
   const ensureDirExists = async () => {
@@ -832,7 +937,8 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         setBabyPhoto(avatarUrl);
       }
       
-      await loadBabies(true);
+      // Light refresh after save
+      await refreshBabyDataLight();
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated successfully.`);
@@ -864,6 +970,8 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       setNewMilestone({ title: '', category: 'physical', description: '', achievedAt: new Date().toISOString().split('T')[0] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       sweetAlert.success('Milestone Recorded!', 'Another amazing achievement!');
+      // Light refresh after milestone
+      await refreshBabyDataLight();
     }
   };
 
@@ -872,6 +980,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       await deleteMilestone(milestoneId);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       sweetAlert.success('Deleted', 'Milestone has been removed.');
+      await refreshBabyDataLight();
     }, () => {}, 'Delete', 'Cancel');
   };
 
@@ -936,9 +1045,14 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   // ─── REFRESH ────────────────────────────────────────────────────────────
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadBabies(true), loadFamily()]);
-    setRefreshing(false);
-  }, [loadBabies, loadFamily]);
+    try {
+      await loadFullData();
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadFullData]);
 
   // ─── COMPUTED VALUES ──────────────────────────────────────────────────
   const recentActivities = useMemo(() => {
