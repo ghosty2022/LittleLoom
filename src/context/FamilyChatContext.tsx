@@ -1,5 +1,5 @@
 // src/context/FamilyChatContext.tsx
-// Full Supabase real-time implementation with notifications
+// Full Supabase real-time implementation with instant messaging
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import * as Crypto from 'expo-crypto';
@@ -138,6 +138,7 @@ interface FamilyChatContextType extends FamilyChatState {
   blockUser: (userId: string) => Promise<void>;
   isUserBlocked: (userId: string) => boolean;
   forceSync: () => Promise<void>;
+  setCurrentChatId: (chatId: string | null) => void;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -235,7 +236,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await loadFamilyCode();
       
       // Initialize notification service
-      await notificationService.initialize();
+      try {
+        await notificationService.initialize();
+      } catch (error) {
+        console.warn('[FamilyChat] Notification init error:', error);
+      }
     })();
   }, []);
 
@@ -279,13 +284,32 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const newMessage = payload.new as Record<string, unknown>;
         if (!newMessage) return;
 
-        // Check if message is from this device
-        if (newMessage.device_id === deviceIdRef.current) {
-          console.log('[FamilyChat] Message from this device, ignoring');
-          return;
-        }
+        // Don't ignore messages from this device - we want to show them too
+        // But we need to check if it's already in the state
+        const isFromThisDevice = newMessage.device_id === deviceIdRef.current;
 
         try {
+          // Parse reactions safely
+          let reactions = [];
+          try {
+            reactions = newMessage.reactions ? JSON.parse(newMessage.reactions as string) : [];
+          } catch (e) {
+            console.warn('[FamilyChat] Failed to parse reactions:', e);
+            reactions = [];
+          }
+
+          // Parse file metadata safely
+          let fileMetadata = undefined;
+          try {
+            if (newMessage.file_metadata) {
+              fileMetadata = typeof newMessage.file_metadata === 'string' 
+                ? JSON.parse(newMessage.file_metadata as string) 
+                : newMessage.file_metadata;
+            }
+          } catch (e) {
+            console.warn('[FamilyChat] Failed to parse file metadata:', e);
+          }
+
           const message: FamilyMessage = {
             id: newMessage.id as string,
             syncId: newMessage.sync_id as string,
@@ -302,12 +326,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             imageUrl: newMessage.image_url as string || undefined,
             fileUrl: newMessage.file_url as string || undefined,
             voiceUrl: newMessage.voice_url as string || undefined,
-            fileMetadata: newMessage.file_metadata ? JSON.parse(newMessage.file_metadata as string) : undefined,
+            fileMetadata: fileMetadata,
             timestamp: newMessage.timestamp as string,
             read: newMessage.read as boolean || false,
             readBy: newMessage.read_by as string[] || [],
             familyCode: newMessage.family_code as string,
-            reactions: newMessage.reactions ? JSON.parse(newMessage.reactions as string) : [],
+            reactions: reactions,
             replyTo: newMessage.reply_to as string || undefined,
             replyToPreview: newMessage.reply_to_preview as string || undefined,
             isEdited: newMessage.is_edited as boolean || false,
@@ -315,7 +339,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             deliveryStatus: 'sent',
           };
 
-          console.log('[FamilyChat] Processing new message:', message.id, 'from:', message.senderName);
+          console.log('[FamilyChat] Processing new message:', message.id, 'from:', message.senderName, 'isFromThisDevice:', isFromThisDevice);
 
           // Check if chat is muted
           const chat = state.chats.find(c => c.id === message.chatId);
@@ -323,7 +347,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
           setState(prev => {
             const chatMessages = prev.messages[message.chatId] || [];
-            // Check if message already exists
+            // Check if message already exists by ID or syncId
             const exists = chatMessages.some(m => m.id === message.id || m.syncId === message.syncId);
             if (exists) {
               console.log('[FamilyChat] Message already exists, skipping');
@@ -342,7 +366,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   ...chat,
                   lastMessage: message,
                   updatedAt: message.timestamp,
-                  unreadCount: (chat.unreadCount || 0) + 1,
+                  // Only increment unread count if message is not from this device and not read
+                  unreadCount: isFromThisDevice 
+                    ? chat.unreadCount 
+                    : (chat.unreadCount || 0) + 1,
                 };
               }
               return chat;
@@ -359,16 +386,13 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
           // ─── SEND NOTIFICATION ──────────────────────────────────────
           // Only send notification if:
-          // 1. Not in the current chat
-          // 2. Chat is not muted
-          // 3. Not from this device (already checked)
+          // 1. Not from this device
+          // 2. Not in the current chat
+          // 3. Chat is not muted
           // 4. Not a system message
           const currentChatId = currentChatIdRef.current;
-          if (currentChatId !== message.chatId && !isChatMuted && message.type !== 'system') {
+          if (!isFromThisDevice && currentChatId !== message.chatId && !isChatMuted && message.type !== 'system') {
             console.log('[FamilyChat] Sending notification for message from:', message.senderName);
-            
-            // Get the chat name for the notification
-            const chatName = chat?.name || 'Family Chat';
             
             // Send notification using the notification service
             notificationService.sendChatNotification(
@@ -381,8 +405,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             ).catch(error => {
               console.warn('[FamilyChat] Failed to send notification:', error);
             });
-          } else if (isChatMuted) {
-            console.log('[FamilyChat] Chat is muted, not sending notification');
           }
 
         } catch (error) {
@@ -408,6 +430,14 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const messageId = updatedData.id as string;
         const chatId = updatedData.chat_id as string;
 
+        // Parse reactions safely
+        let reactions = [];
+        try {
+          reactions = updatedData.reactions ? JSON.parse(updatedData.reactions as string) : [];
+        } catch (e) {
+          console.warn('[FamilyChat] Failed to parse reactions in update:', e);
+        }
+
         setState(prev => {
           const chatMessages = prev.messages[chatId] || [];
           const updatedMessages = chatMessages.map(msg => {
@@ -416,7 +446,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 ...msg,
                 read: updatedData.read as boolean || false,
                 readBy: updatedData.read_by as string[] || [],
-                reactions: updatedData.reactions ? JSON.parse(updatedData.reactions as string) : msg.reactions,
+                reactions: reactions.length > 0 ? reactions : msg.reactions,
                 content: updatedData.content as string || msg.content,
                 isEdited: updatedData.is_edited as boolean || msg.isEdited,
                 editedAt: updatedData.edited_at as string || msg.editedAt,
@@ -612,34 +642,56 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             .limit(100);
 
           if (!msgError && msgData) {
-            messages[chat.id] = msgData.map((row: any) => ({
-              id: row.id,
-              syncId: row.sync_id,
-              deviceId: row.device_id,
-              version: row.version || 1,
-              chatId: row.chat_id,
-              senderId: row.sender_id,
-              senderName: row.sender_name,
-              senderRole: row.sender_role,
-              senderAvatar: row.sender_avatar || undefined,
-              receiverId: row.receiver_id || undefined,
-              content: row.content,
-              type: row.type || 'text',
-              imageUrl: row.image_url || undefined,
-              fileUrl: row.file_url || undefined,
-              voiceUrl: row.voice_url || undefined,
-              fileMetadata: row.file_metadata ? JSON.parse(row.file_metadata) : undefined,
-              timestamp: row.timestamp,
-              read: row.read || false,
-              readBy: row.read_by || [],
-              familyCode: row.family_code,
-              reactions: row.reactions ? JSON.parse(row.reactions) : [],
-              replyTo: row.reply_to || undefined,
-              replyToPreview: row.reply_to_preview || undefined,
-              isEdited: row.is_edited || false,
-              editedAt: row.edited_at || undefined,
-              deliveryStatus: 'sent',
-            }));
+            messages[chat.id] = msgData.map((row: any) => {
+              // Parse reactions safely
+              let reactions = [];
+              try {
+                reactions = row.reactions ? JSON.parse(row.reactions) : [];
+              } catch (e) {
+                console.warn('[FamilyChat] Failed to parse reactions:', e);
+              }
+              
+              // Parse file metadata safely
+              let fileMetadata = undefined;
+              try {
+                if (row.file_metadata) {
+                  fileMetadata = typeof row.file_metadata === 'string' 
+                    ? JSON.parse(row.file_metadata) 
+                    : row.file_metadata;
+                }
+              } catch (e) {
+                console.warn('[FamilyChat] Failed to parse file metadata:', e);
+              }
+
+              return {
+                id: row.id,
+                syncId: row.sync_id,
+                deviceId: row.device_id,
+                version: row.version || 1,
+                chatId: row.chat_id,
+                senderId: row.sender_id,
+                senderName: row.sender_name,
+                senderRole: row.sender_role,
+                senderAvatar: row.sender_avatar || undefined,
+                receiverId: row.receiver_id || undefined,
+                content: row.content,
+                type: row.type || 'text',
+                imageUrl: row.image_url || undefined,
+                fileUrl: row.file_url || undefined,
+                voiceUrl: row.voice_url || undefined,
+                fileMetadata: fileMetadata,
+                timestamp: row.timestamp,
+                read: row.read || false,
+                readBy: row.read_by || [],
+                familyCode: row.family_code,
+                reactions: reactions,
+                replyTo: row.reply_to || undefined,
+                replyToPreview: row.reply_to_preview || undefined,
+                isEdited: row.is_edited || false,
+                editedAt: row.edited_at || undefined,
+                deliveryStatus: 'sent',
+              };
+            });
 
             // Set last message
             if (msgData.length > 0) {
@@ -692,6 +744,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         reconnectTimeoutRef.current = null;
       }
     };
+  }, []);
+
+  /* ─── Set Current Chat ID ────────────────────────────────────────── */
+  const setCurrentChatId = useCallback((chatId: string | null) => {
+    setState(prev => ({ ...prev, currentChatId: chatId }));
   }, []);
 
   /* ─── Chat Management ────────────────────────────────────────────── */
@@ -961,7 +1018,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       deliveryStatus: 'sending',
     };
 
-    // Add to local state immediately
+    // Add to local state immediately - this makes it appear instantly
     setState(prev => {
       const updatedChats = prev.chats.map(c => {
         if (c.id === chatId) {
@@ -1032,6 +1089,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (error) {
         console.error('[FamilyChat] Send message error:', error);
+        // Update message as failed
         setState(prev => ({
           ...prev,
           messages: {
@@ -1056,7 +1114,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         })
         .eq('id', chatId);
 
-      // Update local state
+      // Update local state - mark as sent
       setState(prev => ({
         ...prev,
         messages: {
@@ -1900,6 +1958,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     blockUser,
     isUserBlocked,
     forceSync,
+    setCurrentChatId,
   }), [
     state,
     createFamilyGroup,
@@ -1936,6 +1995,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     blockUser,
     isUserBlocked,
     forceSync,
+    setCurrentChatId,
   ]);
 
   return (
