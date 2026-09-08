@@ -1,5 +1,4 @@
-// UniversalTrackerHubScreen.tsx — INSTANT LOADING WITH WORKING FAB
-// No loading screens, renders immediately with available data
+// UniversalTrackerHubScreen.tsx — REDESIGNED with Better UI Hierarchy
 
 import React, {
   useCallback,
@@ -9,7 +8,6 @@ import React, {
   useState,
 } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   Modal,
   Pressable,
@@ -17,13 +15,10 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
-  LayoutAnimation,
-  UIManager,
-  Platform,
   RefreshControl,
+  Switch,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -31,13 +26,11 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeInUp,
-  FadeIn,
   FadeInDown,
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withTiming,
-  SlideInRight,
   interpolate,
   Extrapolation,
   useAnimatedScrollHandler,
@@ -51,15 +44,12 @@ import {
   differenceInDays,
   differenceInMonths,
   differenceInYears,
-  addHours,
-  isAfter,
   startOfDay,
 } from 'date-fns';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks';
 import { useBaby, type BabyProfile } from '../../context/BabyContext';
-import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -77,11 +67,9 @@ const RADIUS = {
 
 const SHADOW = {
   none: { shadowOpacity: 0, elevation: 0 },
-  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
   sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
   md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
   lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
-  xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
 };
 
 type HubNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -102,33 +90,6 @@ interface TrackerConfig {
   category: 'essential' | 'health' | 'development' | 'care';
   subActions: TrackerSubAction[];
 }
-
-interface SmartInsight {
-  id: string;
-  type: 'pattern' | 'alert' | 'tip' | 'milestone' | 'streak' | 'prediction';
-  title: string;
-  description: string;
-  emoji: string;
-  color: string;
-  priority: 'high' | 'medium' | 'low';
-  action?: { label: string; screen: keyof RootStackParamList; params?: any };
-  timestamp: number;
-}
-
-interface DailyGoal {
-  id: string;
-  label: string;
-  icon: string;
-  target: number;
-  current: number;
-  color: string;
-  unit: string;
-}
-
-const SPRING_CONFIG = { damping: 15, stiffness: 300 };
-const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
 const TRACKER_CONFIGS: Record<string, TrackerConfig> = {
   feed: {
@@ -252,26 +213,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   custom: '#667eea',
 };
 
-const safeNum = (val: unknown, fallback = 0): number => {
-  if (val === undefined || val === null) return fallback;
-  const num = Number(val);
-  if (Number.isNaN(num) || !Number.isFinite(num)) return fallback;
-  return num;
-};
-
 const safeStr = (val: unknown, fallback = ''): string => {
   if (val === undefined || val === null) return fallback;
   return String(val);
-};
-
-const formatDistanceToNow = (timestamp: number): string => {
-  const diff = Date.now() - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 };
 
 const getBabyAge = (birthDate?: string | Date) => {
@@ -289,10 +233,14 @@ const getBabyAge = (birthDate?: string | Date) => {
   return { display, shortDisplay: months > 0 ? `${months}m` : `${days}d`, months: years * 12 + months };
 };
 
+const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+// ─── THEME ──────────────────────────────────────────────────────────────
+
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
-
-  const theme = useMemo(() => ({
+  return useMemo(() => ({
     primary: colors?.primary || '#667eea',
     secondary: colors?.secondary || '#764ba2',
     isDark: !!isDark,
@@ -310,11 +258,9 @@ const useHubTheme = () => {
       border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
     },
   }), [isDark, colors, fullThemeColors]);
-
-  return theme;
 };
 
-// ─── GLASS CARD ─────────────────────────────────────────────────────────────
+// ─── GLASS CARD ──────────────────────────────────────────────────────────
 
 const GlassCard = React.memo(({ 
   children, 
@@ -403,551 +349,124 @@ const SectionHeader = React.memo(({
 });
 SectionHeader.displayName = 'SectionHeader';
 
-// ─── WELLNESS SCORE CARD ──────────────────────────────────────────────────
+// ─── BABY SWITCHER PILL ──────────────────────────────────────────────────
 
-const WellnessScoreCard = React.memo(({ entries, onPress }: { entries: any[]; onPress: () => void }) => {
-  const theme = useHubTheme();
+const BabySwitcherPill = React.memo(({ baby, onPress }: { baby: BabyProfile | null; onPress: () => void }) => {
+  const { isDark } = useCustomization();
+  const age = useMemo(() => getBabyAge(baby?.birthDate), [baby?.birthDate]);
 
-  const score = useMemo(() => {
-    const today = startOfDay(new Date()).getTime();
-    const todayEntries = entries.filter((e: any) => e?.timestamp >= today);
-
-    const feedCount = todayEntries.filter((e: any) => e.trackerId === 'feed').length;
-    const sleepMins = todayEntries.filter((e: any) => e.trackerId === 'sleep').reduce((sum: number, e: any) => sum + (e.duration || 0), 0);
-    const diaperCount = todayEntries.filter((e: any) => e.trackerId === 'diaper').length;
-    const milestoneCount = todayEntries.filter((e: any) => e.trackerId === 'milestone').length;
-
-    return {
-      overall: Math.min(100, Math.round((feedCount / 8) * 25 + (sleepMins / 840) * 25 + (diaperCount / 6) * 25 + (milestoneCount / 1) * 25)),
-      nutrition: Math.min(100, Math.round((feedCount / 8) * 100)),
-      sleep: Math.min(100, Math.round((sleepMins / 840) * 100)),
-      activity: Math.min(100, Math.round((milestoneCount / 3) * 100)),
-      hydration: Math.min(100, Math.round((diaperCount / 6) * 100)),
-    };
-  }, [entries]);
-
-  const scoreColor = score.overall >= 80 ? '#10b981' : score.overall >= 60 ? theme.primary : score.overall >= 40 ? '#f59e0b' : '#ef4444';
-  const scoreLabel = score.overall >= 80 ? 'Excellent' : score.overall >= 60 ? 'Good' : score.overall >= 40 ? 'Fair' : 'Needs Attention';
+  if (!baby) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
+        <LinearGradient colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={[styles.babyPillNoBabyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
+          <Ionicons name="add-circle" size={28} color={isDark ? '#a3bffa' : '#667eea'} />
+        </View>
+        <View style={styles.babyPillText}>
+          <Text style={[styles.babyPillName, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
+          <Text style={[styles.babyPillAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={isDark ? '#94a3b8' : '#64748b'} />
+      </TouchableOpacity>
+    );
+  }
 
   return (
-    <Animated.View entering={FadeInUp.delay(80).springify()}>
-      <GlassCard onPress={onPress} shadow="lg" style={styles.wellnessCard}>
-        <View style={styles.wellnessTop}>
-          <View style={styles.wellnessLeft}>
-            <Text style={[styles.wellnessLabel, { color: theme.text.muted }]}>Today's Wellness</Text>
-            <Text style={[styles.wellnessScore, { color: scoreColor }]}>{score.overall}</Text>
-            <Text style={[styles.wellnessScoreLabel, { color: theme.text.secondary }]}>{scoreLabel}</Text>
-          </View>
-          <View style={styles.wellnessRingWrap}>
-            <View style={styles.wellnessRing}>
-              <View style={[styles.wellnessRingBg, { borderColor: `${scoreColor}20` }]} />
-              <View style={[styles.wellnessRingProgress, { borderColor: scoreColor, transform: [{ rotate: `${-90 + (score.overall / 100) * 360}deg` }] }]} />
-              <View style={styles.wellnessRingInner}>
-                <Ionicons name={score.overall >= 80 ? "heart" : "heart-outline"} size={24} color={scoreColor} />
-              </View>
-            </View>
-          </View>
-        </View>
-        <View style={styles.wellnessBreakdown}>
-          {[
-            { label: 'Nutrition', value: score.nutrition, color: '#fa709a', icon: '🍼' },
-            { label: 'Sleep', value: score.sleep, color: '#11998e', icon: '🌙' },
-            { label: 'Activity', value: score.activity, color: '#ffd700', icon: '🏆' },
-            { label: 'Hydration', value: score.hydration, color: '#3b82f6', icon: '💧' },
-          ].map((item) => (
-            <View key={item.label} style={styles.wellnessBreakdownItem}>
-              <Text style={styles.wellnessBreakdownIcon}>{item.icon}</Text>
-              <View style={styles.wellnessBreakdownBarWrap}>
-                <View style={[styles.wellnessBreakdownBarBg, { backgroundColor: `${item.color}12` }]}>
-                  <View style={[styles.wellnessBreakdownBarFill, { width: `${item.value}%`, backgroundColor: item.color }]} />
-                </View>
-              </View>
-              <Text style={[styles.wellnessBreakdownValue, { color: theme.text.primary }]}>{item.value}%</Text>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
+      <LinearGradient colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <SafeBabyAvatar avatar={baby?.avatar} gender={baby?.gender} size={36} showBadge={false} />
+      <View style={styles.babyPillText}>
+        <Text style={[styles.babyPillName, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>{safeStr(baby?.name, 'Baby')}</Text>
+        <Text style={[styles.babyPillAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>{age.shortDisplay}</Text>
+      </View>
+      <Ionicons name="chevron-down" size={16} color={isDark ? '#94a3b8' : '#64748b'} />
+    </TouchableOpacity>
   );
 });
-WellnessScoreCard.displayName = 'WellnessScoreCard';
+BabySwitcherPill.displayName = 'BabySwitcherPill';
 
-// ─── SLEEP QUALITY ANALYZER ──────────────────────────────────────────────
+// ─── QUICK LOG STRIP ─────────────────────────────────────────────────────
 
-const SleepQualityAnalyzer = React.memo(({ entries, onPress }: { entries: any[]; onPress: () => void }) => {
+const QuickLogStrip = React.memo(({ onQuickLog }: { onQuickLog: (trackerId: string, subActionId: string) => void }) => {
   const theme = useHubTheme();
 
-  const sleepData = useMemo(() => {
-    const sleepEntries = entries.filter((e: any) => e.trackerId === 'sleep').sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 7);
-    if (sleepEntries.length === 0) return null;
-
-    const totalHours = sleepEntries.reduce((sum: number, e: any) => sum + (e.duration || 0), 0) / 60;
-    const durations = sleepEntries.map((e: any) => e.duration || 0);
-    const longestStretch = Math.max(...durations) / 60;
-    const avgDuration = totalHours / sleepEntries.length;
-    const wakeCount = sleepEntries.filter((e: any) => e.presetData?.status === 'ended').length;
-
-    const recent = durations.slice(0, 3).reduce((a: number, b: number) => a + b, 0) / 3;
-    const older = durations.slice(3, 6).reduce((a: number, b: number) => a + b, 0) / Math.min(3, durations.length - 3);
-    const trend = recent > older * 1.1 ? 'up' : recent < older * 0.9 ? 'down' : 'stable';
-
-    const score = Math.min(100, Math.round((avgDuration / 14) * 40 + (longestStretch / 6) * 30 + (1 - Math.min(wakeCount / 5, 1)) * 30));
-
-    return { score, totalHours: Math.round(totalHours * 10) / 10, longestStretch: Math.round(longestStretch * 10) / 10, wakeCount, trend };
-  }, [entries]);
-
-  if (!sleepData) return null;
-
-  const scoreColor = sleepData.score >= 70 ? '#10b981' : sleepData.score >= 50 ? '#f59e0b' : '#ef4444';
-
-  return (
-    <Animated.View entering={FadeInUp.delay(120).springify()}>
-      <SectionHeader title="Sleep Quality" subtitle="Last 7 days analysis" icon="moon-outline" />
-      <GlassCard onPress={onPress} shadow="md">
-        <View style={styles.sleepCard}>
-          <View style={styles.sleepScoreRing}>
-            <View style={[styles.sleepScoreValue, { borderColor: `${scoreColor}30` }]}>
-              <Text style={[styles.sleepScoreNum, { color: scoreColor }]}>{sleepData.score}</Text>
-              <Text style={[styles.sleepScoreLabel, { color: theme.text.muted }]}>Score</Text>
-            </View>
-          </View>
-          <View style={styles.sleepMetrics}>
-            <View style={styles.sleepMetric}>
-              <Ionicons name="time-outline" size={18} color={theme.text.secondary} />
-              <Text style={[styles.sleepMetricValue, { color: theme.text.primary }]}>{sleepData.totalHours}h</Text>
-              <Text style={[styles.sleepMetricLabel, { color: theme.text.muted }]}>Total</Text>
-            </View>
-            <View style={[styles.sleepMetricDivider, { backgroundColor: theme.surface.border }]} />
-            <View style={styles.sleepMetric}>
-              <Ionicons name="trending-up-outline" size={18} color={theme.text.secondary} />
-              <Text style={[styles.sleepMetricValue, { color: theme.text.primary }]}>{sleepData.longestStretch}h</Text>
-              <Text style={[styles.sleepMetricLabel, { color: theme.text.muted }]}>Best</Text>
-            </View>
-            <View style={[styles.sleepMetricDivider, { backgroundColor: theme.surface.border }]} />
-            <View style={styles.sleepMetric}>
-              <Ionicons name="alarm-outline" size={18} color={theme.text.secondary} />
-              <Text style={[styles.sleepMetricValue, { color: theme.text.primary }]}>{sleepData.wakeCount}</Text>
-              <Text style={[styles.sleepMetricLabel, { color: theme.text.muted }]}>Wakes</Text>
-            </View>
-          </View>
-          <View style={styles.sleepTrend}>
-            <Ionicons name={sleepData.trend === 'up' ? 'arrow-up-circle' : sleepData.trend === 'down' ? 'arrow-down-circle' : 'remove-circle'} size={16} color={sleepData.trend === 'up' ? '#10b981' : sleepData.trend === 'down' ? '#ef4444' : '#94a3b8'} />
-            <Text style={[styles.sleepTrendText, { color: sleepData.trend === 'up' ? '#10b981' : sleepData.trend === 'down' ? '#ef4444' : '#94a3b8' }]}>
-              {sleepData.trend === 'up' ? 'Improving' : sleepData.trend === 'down' ? 'Declining' : 'Stable'}
-            </Text>
-          </View>
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-SleepQualityAnalyzer.displayName = 'SleepQualityAnalyzer';
-
-// ─── FEEDING PATTERN CARD ─────────────────────────────────────────────────
-
-const FeedingPatternCard = React.memo(({ entries, onPress }: { entries: any[]; onPress: () => void }) => {
-  const theme = useHubTheme();
-
-  const pattern = useMemo(() => {
-    // ✅ Filter out entries without valid timestamps
-    const feedEntries = entries
-      .filter((e: any) => e.trackerId === 'feed' && e.timestamp && typeof e.timestamp === 'number' && !isNaN(e.timestamp))
-      .sort((a: any, b: any) => b.timestamp - a.timestamp)
-      .slice(0, 10);
-      
-    if (feedEntries.length < 2) return null;
-
-    const intervals: number[] = [];
-    for (let i = 0; i < feedEntries.length - 1; i++) {
-      const diff = (feedEntries[i].timestamp - feedEntries[i + 1].timestamp) / 3600000;
-      if (diff > 0 && diff < 12) intervals.push(diff);
-    }
-
-    const avgInterval = intervals.length > 0 
-      ? Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length * 10) / 10 
-      : 3;
-    const totalVolume = feedEntries.reduce((sum: number, e: any) => sum + (e.amount || e.value || 120), 0);
-
-    const lastEntry = feedEntries[0];
-    
-    // ✅ Additional guard for lastEntry
-    if (!lastEntry) return null;
-
-    const lastSide = lastEntry?.presetData?.side === 'left' ? 'left' 
-      : lastEntry?.presetData?.side === 'right' ? 'right' 
-      : lastEntry?.presetData?.feedType === 'bottle' ? 'bottle' 
-      : lastEntry?.presetData?.feedType === 'solid' ? 'solid' 
-      : 'left';
-
-    // ✅ Safe date creation with validation
-    const nextFeedTime = lastEntry.timestamp + avgInterval * 3600000;
-    const nextFeed = new Date(nextFeedTime);
-    
-    let nextFeedEstimate = '--:--';
-    try {
-      if (!isNaN(nextFeed.getTime())) {
-        nextFeedEstimate = format(nextFeed, 'h:mm a');
-      } else {
-        // Fallback: estimate based on current time
-        const fallbackTime = Date.now() + avgInterval * 3600000;
-        const fallbackDate = new Date(fallbackTime);
-        if (!isNaN(fallbackDate.getTime())) {
-          nextFeedEstimate = format(fallbackDate, 'h:mm a');
-        }
-      }
-    } catch (e) {
-      nextFeedEstimate = '--:--';
-    }
-
-    return { avgInterval, totalVolume, lastSide, nextFeedEstimate };
-  }, [entries]);
-
-  if (!pattern) return null;
-
-  const sideEmoji: Record<string, string> = { left: '⬅️', right: '➡️', both: '↔️', bottle: '🍼', solid: '🥣' };
-  const sideLabel: Record<string, string> = { left: 'Left', right: 'Right', both: 'Both', bottle: 'Bottle', solid: 'Solids' };
-
-  return (
-    <Animated.View entering={FadeInUp.delay(160).springify()}>
-      <SectionHeader title="Feeding Pattern" subtitle="Smart insights" icon="restaurant-outline" />
-      <GlassCard onPress={onPress} shadow="md">
-        <View style={styles.feedingCard}>
-          <View style={styles.feedingTop}>
-            <View style={[styles.feedingLastBadge, { backgroundColor: `${theme.primary}12` }]}>
-              <Text style={styles.feedingLastEmoji}>{sideEmoji[pattern.lastSide] || '🍼'}</Text>
-              <View>
-                <Text style={[styles.feedingLastLabel, { color: theme.text.primary }]}>Last Feed</Text>
-                <Text style={[styles.feedingLastValue, { color: theme.primary }]}>{sideLabel[pattern.lastSide] || 'Unknown'}</Text>
-              </View>
-            </View>
-            <View style={styles.feedingNextBadge}>
-              <Ionicons name="time-outline" size={16} color={theme.primary} />
-              <Text style={[styles.feedingNextText, { color: theme.primary }]}>Next ~{pattern.nextFeedEstimate}</Text>
-            </View>
-          </View>
-          <View style={styles.feedingStats}>
-            <View style={styles.feedingStat}>
-              <Text style={[styles.feedingStatValue, { color: theme.text.primary }]}>{pattern.avgInterval}h</Text>
-              <Text style={[styles.feedingStatLabel, { color: theme.text.muted }]}>Avg Interval</Text>
-            </View>
-            <View style={[styles.feedingStatDivider, { backgroundColor: theme.surface.border }]} />
-            <View style={styles.feedingStat}>
-              <Text style={[styles.feedingStatValue, { color: theme.text.primary }]}>{pattern.totalVolume}ml</Text>
-              <Text style={[styles.feedingStatLabel, { color: theme.text.muted }]}>Total (10 feeds)</Text>
-            </View>
-          </View>
-          <View style={[styles.feedingBarBg, { backgroundColor: `${theme.primary}08` }]}>
-            <View style={[styles.feedingBarFill, { width: '60%', backgroundColor: theme.primary }]} />
-          </View>
-          <Text style={[styles.feedingBarLabel, { color: theme.text.muted }]}>Feeding consistency: Good</Text>
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-FeedingPatternCard.displayName = 'FeedingPatternCard';
-
-// ─── WEEKLY SUMMARY STRIP ─────────────────────────────────────────────────
-
-const WeeklySummaryStrip = React.memo(({ entries, onDayPress }: { entries: any[]; onDayPress: (day: string) => void }) => {
-  const theme = useHubTheme();
-
-  const weekData = useMemo(() => {
-    const days = [];
-    const today = new Date();
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dayStart = startOfDay(date).getTime();
-      const dayEnd = dayStart + 86400000;
-
-      const dayEntries = entries.filter((e: any) => e?.timestamp >= dayStart && e?.timestamp < dayEnd);
-      const counts: Record<string, number> = {};
-      dayEntries.forEach((e: any) => { counts[e.trackerId] = (counts[e.trackerId] || 0) + 1; });
-
-      days.push({ day: dayNames[date.getDay()], date: date.getDate(), isToday: i === 0, counts, total: dayEntries.length });
-    }
-    return days;
-  }, [entries]);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <SectionHeader title="This Week" subtitle="Activity overview" icon="calendar-outline" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekScroll}>
-        {weekData.map((day, i) => (
-          <TouchableOpacity key={i} onPress={() => onDayPress(day.day)} style={[styles.weekDay, day.isToday && { backgroundColor: `${theme.primary}15`, borderColor: theme.primary, borderWidth: 1.5 }]} activeOpacity={0.8}>
-            <Text style={[styles.weekDayName, { color: day.isToday ? theme.primary : theme.text.muted }]}>{day.day}</Text>
-            <Text style={[styles.weekDayNum, { color: day.isToday ? theme.primary : theme.text.primary }]}>{day.date}</Text>
-            <View style={styles.weekDots}>
-              {Object.entries(day.counts).slice(0, 3).map(([trackerId, count]: [string, any], j) => {
-                const config = TRACKER_CONFIGS[trackerId];
-                return <View key={j} style={[styles.weekDot, { backgroundColor: config?.color || theme.primary }]}><Text style={styles.weekDotText}>{config?.emoji || '📋'}</Text></View>;
-              })}
-              {day.total === 0 && <View style={[styles.weekDot, { backgroundColor: `${theme.text.muted}30` }]}><Text style={styles.weekDotText}>—</Text></View>}
-            </View>
-            <Text style={[styles.weekTotal, { color: day.isToday ? theme.primary : theme.text.muted }]}>{day.total} logs</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </Animated.View>
-  );
-});
-WeeklySummaryStrip.displayName = 'WeeklySummaryStrip';
-
-// ─── EMERGENCY QUICK ACTIONS ─────────────────────────────────────────────
-
-const EmergencyQuickActions = React.memo(({ onEmergencyPress }: { onEmergencyPress: (type: string) => void }) => {
-  const theme = useHubTheme();
-
-  const actions = [
-    { id: 'fever', label: 'Log Fever', icon: 'thermometer-outline', color: '#ef4444', bgColor: '#fef2f2' },
-    { id: 'medicine', label: 'Medicine', icon: 'medical-outline', color: '#f59e0b', bgColor: '#fffbeb' },
-    { id: 'symptom', label: 'Symptom', icon: 'alert-circle-outline', color: '#8b5cf6', bgColor: '#f5f3ff' },
-    { id: 'doctor', label: 'Call Dr.', icon: 'call-outline', color: '#10b981', bgColor: '#ecfdf5' },
+  const shortcuts = [
+    { trackerId: 'feed', subActionId: 'breast_left', label: 'Feed L', icon: 'arrow-back-outline' as const, color: '#f472b6' },
+    { trackerId: 'feed', subActionId: 'breast_right', label: 'Feed R', icon: 'arrow-forward-outline' as const, color: '#f472b6' },
+    { trackerId: 'sleep', subActionId: 'nap', label: 'Nap', icon: 'sunny-outline' as const, color: '#10b981' },
+    { trackerId: 'diaper', subActionId: 'wet', label: 'Wet', icon: 'water-outline' as const, color: '#3b82f6' },
+    { trackerId: 'diaper', subActionId: 'dirty', label: 'Dirty', icon: 'flame-outline' as const, color: '#8B4513' },
+    { trackerId: 'pumping', subActionId: 'both', label: 'Pump', icon: 'swap-horizontal-outline' as const, color: '#ec4899' },
   ];
 
   return (
-    <Animated.View entering={FadeInUp.delay(240).springify()}>
-      <SectionHeader title="Quick Actions" subtitle="One-tap logging" icon="flash-outline" />
-      <View style={styles.emergencyGrid}>
-        {actions.map((action) => (
-          <TouchableOpacity key={action.id} onPress={() => onEmergencyPress(action.id)} style={[styles.emergencyBtn, { backgroundColor: action.bgColor }]} activeOpacity={0.8}>
-            <View style={[styles.emergencyIconWrap, { backgroundColor: `${action.color}15` }]}>
-              <Ionicons name={action.icon as any} size={22} color={action.color} />
-            </View>
-            <Text style={[styles.emergencyLabel, { color: action.color }]}>{action.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </Animated.View>
-  );
-});
-EmergencyQuickActions.displayName='EmergencyQuickActions';
-
-// ─── AI NEXT EVENT PREDICTOR ────────────────────────────────────────────
-
-const NextEventPredictor = React.memo(({ entries, onEventPress }: { entries: any[]; onEventPress: (trackerId: string, action: TrackerSubAction) => void }) => {
-  const theme = useHubTheme();
-
-  const predictions = useMemo(() => {
-    const now = Date.now();
-    const result: any[] = [];
-
-    const feedEntries = entries.filter(e => e.trackerId === 'feed').sort((a, b) => b.timestamp - a.timestamp);
-    if (feedEntries.length >= 2) {
-      const avgGap = (feedEntries[0].timestamp - feedEntries[Math.min(3, feedEntries.length - 1)].timestamp) / Math.min(3, feedEntries.length - 1);
-      const nextFeed = feedEntries[0].timestamp + avgGap;
-      const dueIn = Math.max(0, Math.floor((nextFeed - now) / 60000));
-      if (dueIn < 180) {
-        result.push({ id: 'next-feed', trackerId: 'feed', label: 'Next Feed', emoji: '🍼', color: '#fa709a', dueInMinutes: dueIn, predictedTime: format(new Date(nextFeed), 'h:mm a'), confidence: Math.min(95, 60 + feedEntries.length * 5) });
-      }
-    }
-
-    const sleepEntries = entries.filter(e => e.trackerId === 'sleep').sort((a, b) => b.timestamp - a.timestamp);
-    if (sleepEntries.length >= 2) {
-      const lastSleep = sleepEntries[0];
-      const avgWakeWindow = 3 * 60;
-      const nextSleep = lastSleep.timestamp + (lastSleep.duration || avgWakeWindow) * 60000;
-      const dueIn = Math.max(0, Math.floor((nextSleep - now) / 60000));
-      if (dueIn < 240) {
-        result.push({ id: 'next-sleep', trackerId: 'sleep', label: 'Next Sleep', emoji: '🌙', color: '#11998e', dueInMinutes: dueIn, predictedTime: format(new Date(nextSleep), 'h:mm a'), confidence: Math.min(90, 50 + sleepEntries.length * 4) });
-      }
-    }
-
-    const diaperEntries = entries.filter(e => e.trackerId === 'diaper').sort((a, b) => b.timestamp - a.timestamp);
-    if (diaperEntries.length >= 2) {
-      const avgGap = (diaperEntries[0].timestamp - diaperEntries[Math.min(5, diaperEntries.length - 1)].timestamp) / Math.min(5, diaperEntries.length - 1);
-      const nextDiaper = diaperEntries[0].timestamp + avgGap;
-      const dueIn = Math.max(0, Math.floor((nextDiaper - now) / 60000));
-      if (dueIn < 120) {
-        result.push({ id: 'next-diaper', trackerId: 'diaper', label: 'Next Diaper', emoji: '👶', color: '#8B5CF6', dueInMinutes: dueIn, predictedTime: format(new Date(nextDiaper), 'h:mm a'), confidence: Math.min(85, 55 + diaperEntries.length * 3) });
-      }
-    }
-
-    return result.sort((a, b) => a.dueInMinutes - b.dueInMinutes).slice(0, 3);
-  }, [entries]);
-
-  if (predictions.length === 0) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(100).springify()}>
-      <SectionHeader title="Up Next" subtitle="AI predictions based on patterns" icon="time-outline" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.predictorScroll}>
-        {predictions.map((pred) => (
-          <TouchableOpacity key={pred.id} onPress={() => { const config = TRACKER_CONFIGS[pred.trackerId]; const action = config?.subActions[0]; if (action) onEventPress(pred.trackerId, action); }} style={[styles.predictorCard, { borderColor: `${pred.color}25` }]} activeOpacity={0.85}>
-            <LinearGradient colors={[`${pred.color}08`, `${pred.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-            <View style={styles.predictorTop}>
-              <Text style={styles.predictorEmoji}>{pred.emoji}</Text>
-              <View style={[styles.predictorConfidenceBadge, { backgroundColor: `${pred.color}12` }]}>
-                <Text style={[styles.predictorConfidenceText, { color: pred.color }]}>{pred.confidence}%</Text>
-              </View>
-            </View>
-            <Text style={[styles.predictorLabel, { color: theme.text.primary }]}>{pred.label}</Text>
-            <Text style={[styles.predictorTime, { color: pred.color }]}>{pred.dueInMinutes === 0 ? 'Due now!' : pred.dueInMinutes < 60 ? `In ${pred.dueInMinutes}m` : `In ${Math.floor(pred.dueInMinutes / 60)}h ${pred.dueInMinutes % 60}m`}</Text>
-            <Text style={[styles.predictorPredicted, { color: theme.text.muted }]}>~{pred.predictedTime}</Text>
-            <View style={[styles.predictorBarBg, { backgroundColor: `${pred.color}08` }]}>
-              <View style={[styles.predictorBarFill, { width: `${pred.confidence}%`, backgroundColor: pred.color }]} />
-            </View>
+    <Animated.View entering={FadeInUp.delay(200).springify()}>
+      <SectionHeader title="Quick Log" subtitle="One-tap actions" icon="flash-outline" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickLogScroll}>
+        {shortcuts.map((shortcut) => (
+          <TouchableOpacity 
+            key={`${shortcut.trackerId}-${shortcut.subActionId}`} 
+            onPress={() => {
+              HAPTIC_LIGHT();
+              onQuickLog(shortcut.trackerId, shortcut.subActionId);
+            }} 
+            style={[styles.quickLogChip, { borderColor: `${shortcut.color}25` }]} 
+            activeOpacity={0.85}
+          >
+            <LinearGradient colors={[`${shortcut.color}10`, `${shortcut.color}03`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <Ionicons name={shortcut.icon} size={18} color={shortcut.color} />
+            <Text style={[styles.quickLogLabel, { color: shortcut.color }]}>{shortcut.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
     </Animated.View>
   );
 });
-NextEventPredictor.displayName = 'NextEventPredictor';
-
-// ─── SMART DAILY GOALS ───────────────────────────────────────────────────
-
-const SmartDailyGoals = React.memo(({ entries, onGoalPress }: { entries: any[]; onGoalPress: (trackerId: string) => void }) => {
-  const theme = useHubTheme();
-  const today = useMemo(() => startOfDay(new Date()).getTime(), []);
-
-  const goals = useMemo((): DailyGoal[] => {
-    const todayEntries = entries.filter(e => e?.timestamp >= today);
-
-    return [
-      { id: 'feed-goal', label: 'Feeds', icon: '🍼', target: 8, current: todayEntries.filter(e => e.trackerId === 'feed').length, color: '#fa709a', unit: 'feeds' },
-      { id: 'sleep-goal', label: 'Sleep', icon: '🌙', target: 14, current: Math.floor(todayEntries.filter(e => e.trackerId === 'sleep').reduce((sum, e) => sum + (e.duration || 0), 0) / 60), color: '#11998e', unit: 'hrs' },
-      { id: 'diaper-goal', label: 'Diapers', icon: '👶', target: 6, current: todayEntries.filter(e => e.trackerId === 'diaper').length, color: '#8B5CF6', unit: 'changes' },
-      { id: 'milestone-goal', label: 'Moments', icon: '🏆', target: 1, current: todayEntries.filter(e => e.trackerId === 'milestone').length, color: '#ffd700', unit: 'logs' },
-    ];
-  }, [entries, today]);
-
-  const completedCount = goals.filter(g => g.current >= g.target).length;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(280).springify()}>
-      <SectionHeader title="Daily Goals" subtitle={`${completedCount}/${goals.length} completed`} icon="trophy-outline" />
-      <View style={styles.goalsGrid}>
-        {goals.map((goal) => {
-          const progress = Math.min(goal.current / goal.target, 1);
-          const isComplete = goal.current >= goal.target;
-          return (
-            <TouchableOpacity key={goal.id} onPress={() => onGoalPress(goal.id.split('-')[0])} style={[styles.goalCard, { borderColor: `${goal.color}18` }]} activeOpacity={0.85}>
-              <LinearGradient colors={[`${goal.color}06`, `${goal.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-              <View style={styles.goalTop}>
-                <Text style={styles.goalIcon}>{goal.icon}</Text>
-                {isComplete && <View style={[styles.goalCompleteBadge, { backgroundColor: '#10b98112' }]}><Ionicons name="checkmark-circle" size={14} color="#10b981" /></View>}
-              </View>
-              <View style={styles.goalNumbers}>
-                <Text style={[styles.goalCurrent, { color: theme.text.primary }]}>{goal.current}</Text>
-                <Text style={[styles.goalTarget, { color: theme.text.muted }]}>/{goal.target}</Text>
-              </View>
-              <Text style={[styles.goalLabel, { color: theme.text.muted }]}>{goal.label}</Text>
-              <View style={styles.goalBarWrap}>
-                <View style={[styles.goalBarBg, { backgroundColor: `${goal.color}10` }]}>
-                  <View style={[styles.goalBarFill, { width: `${progress * 100}%`, backgroundColor: isComplete ? '#10b981' : goal.color }]} />
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </Animated.View>
-  );
-});
-SmartDailyGoals.displayName = 'SmartDailyGoals';
-
-// ─── SMART INSIGHTS CAROUSEL ─────────────────────────────────────────────
-
-const SmartInsightsCarousel = React.memo(({ entries, baby, onInsightPress }: { entries: any[]; baby: BabyProfile | null; onInsightPress: (insight: SmartInsight) => void }) => {
-  const theme = useHubTheme();
-
-  const insights = useMemo((): SmartInsight[] => {
-    if (!baby) return [];
-    const items: SmartInsight[] = [];
-    const now = Date.now();
-    const today = startOfDay(new Date()).getTime();
-    const todayEntries = entries.filter((e: any) => e?.timestamp >= today);
-
-    const feedEntries = entries.filter((e: any) => e.trackerId === 'feed').sort((a: any, b: any) => b.timestamp - a.timestamp);
-    if (feedEntries.length >= 2) {
-      const gap = (feedEntries[0].timestamp - feedEntries[1].timestamp) / 3600000;
-      if (gap > 4) {
-        items.push({ id: 'feed-gap', type: 'alert', title: 'Long Gap Between Feeds', description: `It's been ${Math.floor(gap)} hours since the last feed. Consider offering a feed soon.`, emoji: '⏰', color: '#f59e0b', priority: 'medium', action: { label: 'Log Feed', screen: 'AddEntry', params: { trackerId: 'feed' } }, timestamp: now });
-      }
-    }
-
-    const sleepMins = todayEntries.filter((e: any) => e.trackerId === 'sleep').reduce((sum: number, e: any) => sum + (e.duration || 0), 0);
-    const ageMonths = differenceInMonths(new Date(), new Date(baby.birthDate));
-    const expectedSleep = ageMonths < 3 ? 16 : ageMonths < 6 ? 14 : ageMonths < 12 ? 13 : 12;
-    if (sleepMins > 0 && sleepMins / 60 < expectedSleep * 0.7) {
-      items.push({ id: 'low-sleep', type: 'alert', title: 'Sleep Total Low Today', description: `Only ${Math.floor(sleepMins / 60)}h logged. Aim for ~${expectedSleep}h for ${ageMonths}mo.`, emoji: '😴', color: '#6366f1', priority: 'medium', action: { label: 'Track Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' } }, timestamp: now });
-    }
-
-    const uniqueDays = new Set(entries.map((e: any) => format(new Date(e.timestamp), 'yyyy-MM-dd'))).size;
-    if (uniqueDays >= 7) {
-      items.push({ id: 'tracking-streak', type: 'streak', title: `${uniqueDays}-Day Tracking Streak!`, description: 'Great consistency! Your data is getting richer and predictions more accurate.', emoji: '🔥', color: '#f59e0b', priority: 'low', action: { label: 'View Stats', screen: 'Timeline' }, timestamp: now });
-    }
-
-    const growthEntries = entries.filter((e: any) => e.trackerId === 'growth');
-    if (growthEntries.length > 0) {
-      const lastGrowth = Math.max(...growthEntries.map((e: any) => e.timestamp));
-      const daysSince = differenceInDays(new Date(), new Date(lastGrowth));
-      if (daysSince > 14) {
-        items.push({ id: 'growth-check', type: 'prediction', title: 'Growth Check Due', description: `Last measurement was ${daysSince} days ago. Time for a new measurement!`, emoji: '📏', color: '#43e97b', priority: 'low', action: { label: 'Measure', screen: 'AddEntry', params: { trackerId: 'growth' } }, timestamp: now });
-      }
-    }
-
-    const milestoneEntries = entries.filter((e: any) => e.trackerId === 'milestone');
-    if (milestoneEntries.length === 0 && ageMonths >= 3) {
-      items.push({ id: 'first-milestone', type: 'tip', title: 'Log First Milestone', description: 'At this age, babies start reaching exciting milestones. Log them to track progress!', emoji: '🏆', color: '#ffd700', priority: 'low', action: { label: 'Log Milestone', screen: 'AddEntry', params: { trackerId: 'milestone' } }, timestamp: now });
-    }
-
-    return items.sort((a, b) => { const order = { high: 0, medium: 1, low: 2 }; return order[a.priority] - order[b.priority]; }).slice(0, 4);
-  }, [entries, baby]);
-
-  if (insights.length === 0) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(320).springify()}>
-      <SectionHeader title="Smart Insights" subtitle={`${insights.filter(i => i.priority === 'high').length} need attention`} icon="sparkles-outline" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.insightsScroll}>
-        {insights.map((insight) => (
-          <TouchableOpacity key={insight.id} onPress={() => onInsightPress(insight)} style={[styles.insightCard, { borderLeftColor: insight.color, borderLeftWidth: 3 }]} activeOpacity={0.85}>
-            <LinearGradient colors={[`${insight.color}08`, `${insight.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-            <View style={styles.insightTop}>
-              <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-              <View style={[styles.insightPriorityDot, { backgroundColor: insight.color }]} />
-            </View>
-            <Text style={[styles.insightTitle, { color: theme.text.primary }]} numberOfLines={1}>{insight.title}</Text>
-            <Text style={[styles.insightDesc, { color: theme.text.secondary }]} numberOfLines={2}>{insight.description}</Text>
-            {insight.action && (
-              <View style={[styles.insightActionBadge, { backgroundColor: `${theme.primary}10` }]}>
-                <Text style={[styles.insightActionText, { color: theme.primary }]}>{insight.action.label} →</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </Animated.View>
-  );
-});
-SmartInsightsCarousel.displayName = 'SmartInsightsCarousel';
+QuickLogStrip.displayName = 'QuickLogStrip';
 
 // ─── TRACKER CARDS GRID ──────────────────────────────────────────────────
 
 const TrackerCardsGrid = React.memo(({ 
-  trackerCards, pinnedIds, hiddenIds, onTrackerPress, onCustomPress, onPinToggle, onBrowseAll,
+  trackerCards, pinnedIds, hiddenIds, onTrackerPress, onCustomPress, onPinToggle, onBrowseAll, onShowHidden,
 }: { 
   trackerCards: any[]; pinnedIds: string[]; hiddenIds: string[];
   onTrackerPress: (id: string, hasSub: boolean) => void; onCustomPress: () => void;
-  onPinToggle: (id: string) => void; onBrowseAll: () => void;
+  onPinToggle: (id: string) => void; onBrowseAll: () => void; onShowHidden: () => void;
 }) => {
   const theme = useHubTheme();
 
   const visibleTrackers = useMemo(() => trackerCards.filter(t => !hiddenIds.includes(t.id)), [trackerCards, hiddenIds]);
   const pinned = useMemo(() => visibleTrackers.filter(t => pinnedIds.includes(t.id)), [visibleTrackers, pinnedIds]);
+  const hasHidden = hiddenIds.length > 0;
   const categories = useMemo(() => {
     const cats = [...new Set(visibleTrackers.map(t => t.category))];
     return cats.filter(c => visibleTrackers.some(t => t.category === c && !pinnedIds.includes(t.id)));
   }, [visibleTrackers, pinnedIds]);
 
   return (
-    <Animated.View entering={FadeInUp.delay(360).springify()}>
-      <SectionHeader title="Trackers" subtitle={`${visibleTrackers.length} active`} icon="grid-outline" action={onBrowseAll} actionLabel="Browse All" />
+    <Animated.View entering={FadeInUp.delay(300).springify()}>
+      <SectionHeader 
+        title="Trackers" 
+        subtitle={`${visibleTrackers.length} active${hasHidden ? `, ${hiddenIds.length} hidden` : ''}`} 
+        icon="grid-outline" 
+        action={onBrowseAll} 
+        actionLabel="Browse All" 
+      />
+
+      {/* Hidden Trackers Banner */}
+      {hasHidden && (
+        <TouchableOpacity 
+          onPress={onShowHidden} 
+          style={[styles.hiddenBanner, { backgroundColor: `${theme.primary}10`, borderRadius: RADIUS.md }]}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="eye-off-outline" size={16} color={theme.primary} />
+          <Text style={[styles.hiddenBannerText, { color: theme.primary }]}>
+            {hiddenIds.length} tracker{hiddenIds.length > 1 ? 's' : ''} hidden — tap to manage
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.primary} />
+        </TouchableOpacity>
+      )}
 
       {pinned.length > 0 && (
         <View style={{ marginBottom: SPACING.lg }}>
@@ -957,14 +476,19 @@ const TrackerCardsGrid = React.memo(({
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trackerScroll}>
             {pinned.map((tracker) => (
-              <TouchableOpacity key={tracker.id} onPress={() => onTrackerPress(tracker.id, tracker.hasSubActions)} onLongPress={() => onPinToggle(tracker.id)} style={styles.trackerFabCard} activeOpacity={0.85}>
+              <TouchableOpacity 
+                key={tracker.id} 
+                onPress={() => onTrackerPress(tracker.id, tracker.hasSubActions)} 
+                onLongPress={() => onPinToggle(tracker.id)} 
+                style={styles.trackerFabCard} 
+                activeOpacity={0.85}
+              >
                 <LinearGradient colors={tracker.gradient} style={[StyleSheet.absoluteFill, { borderRadius: RADIUS.lg }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
                 <View style={styles.trackerFabContent}>
                   <Text style={styles.trackerFabEmoji}>{tracker.emoji}</Text>
                   <Text style={styles.trackerFabTitle}>{tracker.title}</Text>
                   <View style={styles.trackerFabMeta}>
-                    <Text style={styles.trackerFabCount}>{tracker.count}</Text>
-                    {tracker.lastEntry && <Text style={styles.trackerFabLast}>{tracker.lastEntry}</Text>}
+                    <Text style={styles.trackerFabCount}>{tracker.count} logs</Text>
                   </View>
                 </View>
                 <View style={[styles.trackerFabArrow, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
@@ -987,14 +511,19 @@ const TrackerCardsGrid = React.memo(({
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trackerScroll}>
               {catTrackers.map((tracker) => (
-                <TouchableOpacity key={tracker.id} onPress={() => onTrackerPress(tracker.id, tracker.hasSubActions)} onLongPress={() => onPinToggle(tracker.id)} style={styles.trackerFabCard} activeOpacity={0.85}>
+                <TouchableOpacity 
+                  key={tracker.id} 
+                  onPress={() => onTrackerPress(tracker.id, tracker.hasSubActions)} 
+                  onLongPress={() => onPinToggle(tracker.id)} 
+                  style={styles.trackerFabCard} 
+                  activeOpacity={0.85}
+                >
                   <LinearGradient colors={tracker.gradient} style={[StyleSheet.absoluteFill, { borderRadius: RADIUS.lg }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
                   <View style={styles.trackerFabContent}>
                     <Text style={styles.trackerFabEmoji}>{tracker.emoji}</Text>
                     <Text style={styles.trackerFabTitle}>{tracker.title}</Text>
                     <View style={styles.trackerFabMeta}>
-                      <Text style={styles.trackerFabCount}>{tracker.count}</Text>
-                      {tracker.lastEntry && <Text style={styles.trackerFabLast}>{tracker.lastEntry}</Text>}
+                      <Text style={styles.trackerFabCount}>{tracker.count} logs</Text>
                     </View>
                   </View>
                   <View style={styles.trackerFabArrow}>
@@ -1019,74 +548,98 @@ const TrackerCardsGrid = React.memo(({
 });
 TrackerCardsGrid.displayName = 'TrackerCardsGrid';
 
-// ─── QUICK LOG STRIP ─────────────────────────────────────────────────────
+// ─── HIDDEN TRACKERS MODAL ──────────────────────────────────────────────
 
-const QuickLogStrip = React.memo(({ onQuickLog }: { onQuickLog: (trackerId: string, subActionId: string) => void }) => {
-  const theme = useHubTheme();
+const HiddenTrackersModal = React.memo(({
+  visible,
+  hiddenTrackers,
+  onClose,
+  onUnhide,
+  theme,
+}: {
+  visible: boolean;
+  hiddenTrackers: any[];
+  onClose: () => void;
+  onUnhide: (id: string) => void;
+  theme: any;
+}) => {
+  const scale = useSharedValue(0.95);
+  const opacity = useSharedValue(0);
 
-  const shortcuts = [
-    { trackerId: 'feed', subActionId: 'breast_left', label: 'Feed L', icon: 'arrow-back-outline' as const, color: '#f472b6' },
-    { trackerId: 'feed', subActionId: 'breast_right', label: 'Feed R', icon: 'arrow-forward-outline' as const, color: '#f472b6' },
-    { trackerId: 'sleep', subActionId: 'nap', label: 'Nap', icon: 'sunny-outline' as const, color: '#10b981' },
-    { trackerId: 'diaper', subActionId: 'wet', label: 'Wet', icon: 'water-outline' as const, color: '#3b82f6' },
-    { trackerId: 'diaper', subActionId: 'dirty', label: 'Dirty', icon: 'flame-outline' as const, color: '#8B4513' },
-    { trackerId: 'pumping', subActionId: 'both', label: 'Pump', icon: 'swap-horizontal-outline' as const, color: '#ec4899' },
-  ];
+  useEffect(() => {
+    if (visible) { 
+      scale.value = withSpring(1, { damping: 12, stiffness: 200, mass: 0.8 }); 
+      opacity.value = withTiming(1, { duration: 280 }); 
+    } else { 
+      scale.value = withTiming(0.95, { duration: 200 }); 
+      opacity.value = withTiming(0, { duration: 200 }); 
+    }
+  }, [visible, scale, opacity]);
 
-  return (
-    <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <SectionHeader title="Quick Log" subtitle="One-tap actions" icon="flash-outline" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickLogScroll}>
-        {shortcuts.map((shortcut) => (
-          <TouchableOpacity key={`${shortcut.trackerId}-${shortcut.subActionId}`} onPress={() => onQuickLog(shortcut.trackerId, shortcut.subActionId)} style={[styles.quickLogChip, { borderColor: `${shortcut.color}25` }]} activeOpacity={0.85}>
-            <LinearGradient colors={[`${shortcut.color}10`, `${shortcut.color}03`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-            <Ionicons name={shortcut.icon} size={18} color={shortcut.color} />
-            <Text style={[styles.quickLogLabel, { color: shortcut.color }]}>{shortcut.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </Animated.View>
-  );
-});
-QuickLogStrip.displayName = 'QuickLogStrip';
+  const animStyle = useAnimatedStyle(() => ({ 
+    transform: [{ scale: scale.value }], 
+    opacity: opacity.value 
+  }));
 
-// ─── RECENT ACTIVITY LIST ───────────────────────────────────────────────
-
-const RecentActivityList = React.memo(({ entries, onViewAll, onEntryPress }: { entries: any[]; onViewAll: () => void; onEntryPress: (entry: any) => void }) => {
-  const theme = useHubTheme();
-
-  const recent = useMemo(() => [...entries].sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 8), [entries]);
-
-  if (recent.length === 0) return null;
+  if (!visible) return null;
 
   return (
-    <Animated.View entering={FadeInUp.delay(440).springify()}>
-      <SectionHeader title="Recent Activity" subtitle="Latest logs" icon="time-outline" action={onViewAll} actionLabel="Timeline" />
-      <GlassCard style={styles.historyCard}>
-        {recent.map((entry: any, index: number) => {
-          const config = TRACKER_CONFIGS[entry.trackerId];
-          const isLast = index === recent.length - 1;
-
-          return (
-            <TouchableOpacity key={entry.id || `entry-${index}`} onPress={() => onEntryPress(entry)} style={[styles.historyRow, !isLast && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]} activeOpacity={0.8}>
-              <View style={[styles.historyIcon, { backgroundColor: `${config?.color || theme.primary}10` }]}><Text style={{ fontSize: 18 }}>{config?.emoji || '📋'}</Text></View>
-              <View style={styles.historyInfo}>
-                <Text style={[styles.historyType, { color: theme.text.primary }]}>{safeStr(entry.title, config?.description || 'Entry')}</Text>
-                <Text style={[styles.historyDate, { color: theme.text.muted }]}>{format(new Date(entry.timestamp), 'MMM d, h:mm a')}</Text>
-              </View>
-              <View style={styles.historyRight}>
-                {entry.duration && <Text style={[styles.historyValue, { color: theme.primary }]}>{Math.floor(entry.duration / 60)}h {entry.duration % 60}m</Text>}
-                {entry.amount && <Text style={[styles.historyValue, { color: theme.primary }]}>{entry.amount}ml</Text>}
-                <Text style={[styles.historyTime, { color: theme.text.muted }]}>{formatDistanceToNow(entry.timestamp)}</Text>
-              </View>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Animated.View style={[styles.hiddenModalContent, animStyle, { backgroundColor: theme.isDark ? '#1a1a2e' : '#ffffff' }]}>
+          <View style={styles.hiddenModalHeader}>
+            <Text style={[styles.hiddenModalTitle, { color: theme.text.primary }]}>Hidden Trackers</Text>
+            <Text style={[styles.hiddenModalSubtitle, { color: theme.text.secondary }]}>
+              {hiddenTrackers.length} tracker{hiddenTrackers.length > 1 ? 's' : ''} hidden
+            </Text>
+            <TouchableOpacity style={styles.hiddenModalClose} onPress={onClose}>
+              <Ionicons name="close" size={24} color={theme.text.secondary} />
             </TouchableOpacity>
-          );
-        })}
-      </GlassCard>
-    </Animated.View>
+          </View>
+
+          <ScrollView style={styles.hiddenModalList} showsVerticalScrollIndicator={false}>
+            {hiddenTrackers.length === 0 ? (
+              <View style={styles.hiddenEmptyState}>
+                <Ionicons name="eye-off-outline" size={48} color={theme.text.muted} />
+                <Text style={[styles.hiddenEmptyText, { color: theme.text.secondary }]}>No hidden trackers</Text>
+              </View>
+            ) : (
+              hiddenTrackers.map((tracker) => (
+                <View key={tracker.id} style={[styles.hiddenTrackerItem, { borderBottomColor: theme.surface.border }]}>
+                  <View style={styles.hiddenTrackerLeft}>
+                    <Text style={styles.hiddenTrackerEmoji}>{tracker.emoji}</Text>
+                    <View>
+                      <Text style={[styles.hiddenTrackerName, { color: theme.text.primary }]}>{tracker.title}</Text>
+                      <Text style={[styles.hiddenTrackerDesc, { color: theme.text.muted }]}>{tracker.category}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity 
+                    onPress={() => onUnhide(tracker.id)} 
+                    style={[styles.hiddenUnhideBtn, { backgroundColor: `${theme.primary}15` }]}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="eye-outline" size={16} color={theme.primary} />
+                    <Text style={[styles.hiddenUnhideText, { color: theme.primary }]}>Unhide</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          <TouchableOpacity 
+            onPress={onClose} 
+            style={[styles.hiddenModalDone, { backgroundColor: theme.primary }]}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.hiddenModalDoneText}>Done</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 });
-RecentActivityList.displayName = 'RecentActivityList';
+HiddenTrackersModal.displayName = 'HiddenTrackersModal';
 
 // ─── TRACKER ACTION MODAL ───────────────────────────────────────────────
 
@@ -1156,90 +709,12 @@ const TrackerActionModal = React.memo(({
 });
 TrackerActionModal.displayName = 'TrackerActionModal';
 
-// ─── BABY SWITCHER PILL ──────────────────────────────────────────────────
-
-const BabySwitcherPill = React.memo(({ baby, onPress }: { baby: BabyProfile | null; onPress: () => void }) => {
-  const { isDark } = useCustomization();
-  const age = useMemo(() => getBabyAge(baby?.birthDate), [baby?.birthDate]);
-
-  if (!baby) {
-    return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
-        <LinearGradient colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-        <View style={[styles.babyPillNoBabyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
-          <Ionicons name="add-circle" size={28} color={isDark ? '#a3bffa' : '#667eea'} />
-        </View>
-        <View style={styles.babyPillText}>
-          <Text style={[styles.babyPillName, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
-          <Text style={[styles.babyPillAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={isDark ? '#94a3b8' : '#64748b'} />
-      </TouchableOpacity>
-    );
-  }
-
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
-      <LinearGradient colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-      <SafeBabyAvatar avatar={baby?.avatar} gender={baby?.gender} size={36} showBadge={false} />
-      <View style={styles.babyPillText}>
-        <Text style={[styles.babyPillName, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>{safeStr(baby?.name, 'Baby')}</Text>
-        <Text style={[styles.babyPillAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>{age.shortDisplay}</Text>
-      </View>
-      <Ionicons name="chevron-down" size={16} color={isDark ? '#94a3b8' : '#64748b'} />
-    </TouchableOpacity>
-  );
-});
-BabySwitcherPill.displayName = 'BabySwitcherPill';
-
-// ─── TODAY SUMMARY BAR ──────────────────────────────────────────────────
-
-const TodaySummaryBar = React.memo(({ todayCount, entries }: any) => {
-  const theme = useHubTheme();
-
-  const today = useMemo(() => startOfDay(new Date()).getTime(), []);
-  const todayEntries = useMemo(() => entries.filter((e: any) => e?.timestamp >= today), [entries, today]);
-  const lastEntry = todayEntries[0];
-  const timeSinceLast = lastEntry ? formatDistanceToNow(lastEntry.timestamp) : null;
-
-  const trackerCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    todayEntries.forEach((e: any) => { counts[e.trackerId] = (counts[e.trackerId] || 0) + 1; });
-    return Object.entries(counts).sort(([, a]: any, [, b]: any) => b - a).slice(0, 3);
-  }, [todayEntries]);
-
-  return (
-    <GlassCard style={styles.todayBar} shadow="sm">
-      <View style={styles.todayBarLeft}>
-        <View style={[styles.todayBarIcon, { backgroundColor: `${theme.primary}20` }]}>
-          <Ionicons name="today-outline" size={18} color={theme.primary} />
-        </View>
-        <View>
-          <Text style={[styles.todayBarCount, { color: theme.text.primary }]}>
-            {safeNum(todayCount, 0)} <Text style={{ fontSize: 13, fontWeight: '600', color: theme.text.muted }}>entries today</Text>
-          </Text>
-          {timeSinceLast && <Text style={[styles.todayBarLast, { color: theme.text.muted }]}>Last: {timeSinceLast}</Text>}
-        </View>
-      </View>
-      <View style={styles.todayBarDots}>
-        {trackerCounts.map(([trackerId, count]: any) => {
-          const config = TRACKER_CONFIGS[trackerId];
-          return <View key={trackerId} style={[styles.todayBarDot, { backgroundColor: config?.color || theme.primary }]}><Text style={styles.todayBarDotText}>{config?.emoji || '📋'} {count}</Text></View>;
-        })}
-      </View>
-    </GlassCard>
-  );
-});
-TodaySummaryBar.displayName = 'TodaySummaryBar';
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN SCREEN — INSTANT LOADING (NO LOADING SCREEN)
-// ═══════════════════════════════════════════════════════════════════════════
+// ─── MAIN SCREEN ──────────────────────────────────────────────────────────
 
 export default function UniversalTrackerHubScreen() {
   const navigation = useNavigation<HubNavigationProp>();
   const insets = useSafeAreaInsets();
-  const { fullThemeColors, themeColors, isDark, borderRadiusValue, triggerHaptic } = useCustomization();
+  const { fullThemeColors, themeColors, isDark, borderRadiusValue } = useCustomization();
   const tracker = useTracker();
   const { entries, getEntries, trackers } = tracker;
   const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
@@ -1250,8 +725,10 @@ export default function UniversalTrackerHubScreen() {
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showTimelinePicker, setShowTimelinePicker] = useState(false);
+  const [showHiddenModal, setShowHiddenModal] = useState(false);
   const [pinnedTrackerIds, setPinnedTrackerIds] = useState<string[]>([]);
   const [hiddenTrackerIds, setHiddenTrackerIds] = useState<string[]>([]);
+
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; },
@@ -1267,6 +744,8 @@ export default function UniversalTrackerHubScreen() {
   const currentBabyRef = useRef(currentBaby);
   currentBabyRef.current = currentBaby;
 
+  const theme = useHubTheme();
+
   useEffect(() => { return () => { isMountedRef.current = false; }; }, []);
 
   useEffect(() => {
@@ -1276,6 +755,7 @@ export default function UniversalTrackerHubScreen() {
     }
   }, [babyLoading, currentBaby]);
 
+  // ─── Load pinned/hidden from storage ─────────────────────────────────
   useEffect(() => {
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
@@ -1299,6 +779,7 @@ export default function UniversalTrackerHubScreen() {
     init();
   }, []);
 
+  // ─── Persist pinned/hidden ──────────────────────────────────────────
   useEffect(() => {
     AsyncStorage.setItem('@littleloom_pinned_trackers', JSON.stringify(pinnedTrackerIds)).catch(() => {});
   }, [pinnedTrackerIds]);
@@ -1351,6 +832,8 @@ export default function UniversalTrackerHubScreen() {
     });
   }, [trackers, getEntries]);
 
+  // ─── Handlers ─────────────────────────────────────────────────────────
+
   const handleTrackerPress = useCallback((trackerId: string, hasSubActions: boolean) => {
     HAPTIC_LIGHT();
     if (hasSubActions) { setSelectedTrackerId(trackerId); setShowActionModal(true); } 
@@ -1380,76 +863,35 @@ export default function UniversalTrackerHubScreen() {
   }, [babies.length, navigation, showConfirm]);
 
   const handleViewTimeline = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('Timeline'); }, [navigation]);
-  const handleViewAchievements = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('Achievements'); }, [navigation]);
   const handleCreateCustom = useCallback(() => { HAPTIC_MEDIUM(); navigation.navigate('CreateCustomTracker'); }, [navigation]);
-
-  const handleEntryPress = useCallback((entry: any) => {
-    if (!entry?.id) return;
-    navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId });
-  }, [navigation]);
-
-  const handleInsightPress = useCallback((insight: SmartInsight) => {
-    HAPTIC_LIGHT();
-    if (insight.action?.screen) navigation.navigate(insight.action.screen, insight.action.params);
-  }, [navigation]);
-
-  const handleGoalPress = useCallback((trackerId: string) => {
-    HAPTIC_LIGHT();
-    handleTrackerPress(trackerId, true);
-  }, [handleTrackerPress]);
-
-  const handleEmergencyPress = useCallback((type: string) => {
-    HAPTIC_MEDIUM();
-    switch (type) {
-      case 'fever': navigation.navigate('AddEntry', { trackerId: 'medication', presetData: { type: 'temperature' } }); break;
-      case 'medicine': navigation.navigate('AddEntry', { trackerId: 'medication', presetData: { type: 'medicine' } }); break;
-      case 'symptom': navigation.navigate('AddEntry', { trackerId: 'medication', presetData: { type: 'symptom' } }); break;
-      case 'doctor': break;
-    }
-  }, [navigation]);
-
-  const handleWellnessPress = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('GrowthDashboard'); }, [navigation]);
-  const handleSleepPress = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('Timeline', { type: 'sleep' }); }, [navigation]);
-  const handleFeedingPress = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('Timeline', { type: 'feed' }); }, [navigation]);
-  const handleGrowthPress = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('GrowthDashboard'); }, [navigation]);
-  const handleDayPress = useCallback((day: string) => { HAPTIC_LIGHT(); navigation.navigate('Timeline'); }, [navigation]);
+  const handleBrowseAll = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('AllTrackers'); }, [navigation]);
 
   const handlePinToggle = useCallback((id: string) => {
     HAPTIC_LIGHT();
     setPinnedTrackerIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }, []);
 
-  const handleBrowseAll = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('AllTrackers'); }, [navigation]);
+  const handleUnhideTracker = useCallback((id: string) => {
+    HAPTIC_LIGHT();
+    setHiddenTrackerIds(prev => prev.filter(x => x !== id));
+    showSuccess('Tracker Unhidden', 'The tracker has been restored to your list.');
+  }, [showSuccess]);
+
+  const handleShowHidden = useCallback(() => {
+    HAPTIC_LIGHT();
+    setShowHiddenModal(true);
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try { await loadBabies(); await refreshCurrentBaby(); } catch (e) { console.warn('Refresh failed', e); } finally { setIsRefreshing(false); }
   }, [loadBabies, refreshCurrentBaby]);
 
-  // ─── FAB HANDLER ──────────────────────────────────────────────────────
-  const handleFabPress = useCallback(() => {
-    HAPTIC_MEDIUM();
-    setShowTimelinePicker(true);
-  }, []);
+  const hiddenTrackers = useMemo(() => {
+    return trackerCards.filter(t => hiddenTrackerIds.includes(t.id));
+  }, [trackerCards, hiddenTrackerIds]);
 
-  // ─── TIMELINE PICKER HANDLER ────────────────────────────────────────
-  const handleTimelineSelect = useCallback((trackerId: string) => {
-    setShowTimelinePicker(false);
-    // Check if the tracker has sub-actions
-    const config = TRACKER_CONFIGS[trackerId];
-    if (config?.subActions && config.subActions.length > 0) {
-      // Show the action modal
-      setSelectedTrackerId(trackerId);
-      setShowActionModal(true);
-    } else {
-      // Navigate directly to AddEntry
-      setTimeout(() => {
-        navigation.navigate('AddEntry', { trackerId });
-      }, 100);
-    }
-  }, [navigation]);
-
-  // ─── NO LOADING SCREEN — ALWAYS RENDER ──────────────────────────────────
+  // ─── RENDER ────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.container, { backgroundColor: fullThemeColors?.background || '#f8faff' }]}>
@@ -1471,30 +913,44 @@ export default function UniversalTrackerHubScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={themeColors?.primary || '#667eea'} colors={[themeColors?.primary || '#667eea', themeColors?.secondary || '#764ba2']} />}
       >
+        {/* ─── HEADER ─────────────────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-          <TouchableOpacity style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} onPress={() => { HAPTIC_LIGHT(); navigation.navigate('Timeline'); }} activeOpacity={0.8}>
-            <Ionicons name="time-outline" size={22} color={fullThemeColors?.textSecondary || '#64748b'} />
-          </TouchableOpacity>
           <BabySwitcherPill baby={currentBaby} onPress={handleSwitchBaby} />
-          <TouchableOpacity style={[styles.addBtn, { backgroundColor: themeColors?.primary || '#667eea' }]} onPress={handleCreateCustom}>
-            <Ionicons name="add" size={24} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} 
+              onPress={handleViewTimeline} 
+              activeOpacity={0.8}
+            >
+              <Ionicons name="time-outline" size={22} color={fullThemeColors?.textSecondary || '#64748b'} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.addBtn, { backgroundColor: themeColors?.primary || '#667eea' }]} 
+              onPress={handleCreateCustom}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </Animated.View>
 
-        <TodaySummaryBar todayCount={todayCount} entries={entries} />
-        <WellnessScoreCard entries={entries} onPress={handleWellnessPress} />
-        <SleepQualityAnalyzer entries={entries} onPress={handleSleepPress} />
-        <FeedingPatternCard entries={entries} onPress={handleFeedingPress} />
-        <WeeklySummaryStrip entries={entries} onDayPress={handleDayPress} />
-        <EmergencyQuickActions onEmergencyPress={handleEmergencyPress} />
-        <NextEventPredictor entries={entries} onEventPress={handleSubActionSelect} />
-        <SmartDailyGoals entries={entries} onGoalPress={handleGoalPress} />
-        <SmartInsightsCarousel entries={entries} baby={currentBaby} onInsightPress={handleInsightPress} />
-        <TrackerCardsGrid trackerCards={trackerCards} pinnedIds={pinnedTrackerIds} hiddenIds={hiddenTrackerIds} onTrackerPress={handleTrackerPress} onCustomPress={handleCreateCustom} onPinToggle={handlePinToggle} onBrowseAll={handleBrowseAll} />
+        {/* ─── QUICK LOG ─────────────────────────────────────────────────── */}
         <QuickLogStrip onQuickLog={handleQuickLog} />
-        <RecentActivityList entries={entries} onViewAll={handleViewTimeline} onEntryPress={handleEntryPress} />
 
-        <Animated.View entering={FadeInUp.delay(480).springify()} style={{ marginHorizontal: SPACING.lg, marginBottom: SPACING.xl }}>
+        {/* ─── TRACKERS ──────────────────────────────────────────────────── */}
+        <TrackerCardsGrid 
+          trackerCards={trackerCards} 
+          pinnedIds={pinnedTrackerIds} 
+          hiddenIds={hiddenTrackerIds} 
+          onTrackerPress={handleTrackerPress} 
+          onCustomPress={handleCreateCustom} 
+          onPinToggle={handlePinToggle} 
+          onBrowseAll={handleBrowseAll}
+          onShowHidden={handleShowHidden}
+        />
+
+        {/* ─── QUICK LINKS ───────────────────────────────────────────────── */}
+        <Animated.View entering={FadeInUp.delay(400).springify()} style={{ marginHorizontal: SPACING.lg, marginBottom: SPACING.xl }}>
           <SectionHeader title="Quick Links" icon="link-outline" />
           <View style={styles.quickLinksGrid}>
             {[
@@ -1504,7 +960,12 @@ export default function UniversalTrackerHubScreen() {
               { label: 'Report', icon: 'document-text-outline', screen: 'PediatricianPDFExport' as const, color: '#ef4444' },
               { label: 'Settings', icon: 'settings-outline', screen: 'BackupRestore' as const, color: '#64748b' },
             ].map((link) => (
-              <TouchableOpacity key={link.label} onPress={() => { HAPTIC_LIGHT(); navigation.navigate(link.screen); }} style={[styles.quickLinkBtn, { borderColor: `${link.color}25` }]} activeOpacity={0.8}>
+              <TouchableOpacity 
+                key={link.label} 
+                onPress={() => { HAPTIC_LIGHT(); navigation.navigate(link.screen); }} 
+                style={[styles.quickLinkBtn, { borderColor: `${link.color}25` }]} 
+                activeOpacity={0.8}
+              >
                 <LinearGradient colors={[`${link.color}08`, `${link.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
                 <Ionicons name={link.icon as any} size={20} color={link.color} />
                 <Text style={[styles.quickLinkText, { color: link.color }]}>{link.label}</Text>
@@ -1516,45 +977,18 @@ export default function UniversalTrackerHubScreen() {
         <View style={{ height: insets.bottom + 20 }} />
       </Animated.ScrollView>
 
+      {/* ─── MODALS ──────────────────────────────────────────────────────── */}
       <TrackerActionModal visible={showActionModal} trackerId={selectedTrackerId} onClose={() => setShowActionModal(false)} onSelect={handleSubActionSelect} />
 
-      {/* ─── TIMELINE PICKER MODAL ──────────────────────────────────────────── */}
-      <TimelinePicker 
-        visible={showTimelinePicker} 
-        onClose={() => setShowTimelinePicker(false)} 
-        onSelect={handleTimelineSelect}
-        currentBabyName={currentBaby?.name} 
-        currentBabyAvatar={currentBaby?.avatar} 
+      <HiddenTrackersModal 
+        visible={showHiddenModal} 
+        hiddenTrackers={hiddenTrackers} 
+        onClose={() => setShowHiddenModal(false)} 
+        onUnhide={handleUnhideTracker}
+        theme={theme}
       />
 
-      {/* ─── FAB ──────────────────────────────────────────────────────────── */}
-      <Animated.View
-        entering={FadeInUp.delay(600).springify()}
-        style={[styles.fabContainer, { bottom: insets.bottom + 100, right: 20 }]}
-      >
-        <TouchableOpacity
-          style={[styles.fab, { backgroundColor: themeColors?.primary || '#667eea' }]}
-          onPress={handleFabPress}
-          activeOpacity={0.85}
-        >
-          <LinearGradient
-            colors={[themeColors?.primary || '#667eea', themeColors?.secondary || '#764ba2']}
-            style={[StyleSheet.absoluteFill, { borderRadius: 30 }]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          <View style={styles.fabInner}>
-            <Ionicons name="add" size={28} color="#fff" />
-            <View style={styles.fabDateBadge}>
-              <Text style={styles.fabDateText}>{format(new Date(), 'MMM d')}</Text>
-            </View>
-          </View>
-          <View style={styles.fabPulse}>
-            <View style={[styles.fabPulseRing, { borderColor: themeColors?.primary || '#667eea' }]} />
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-
+      {/* ─── BABY REQUIRED MODAL ───────────────────────────────────────── */}
       <Modal visible={showBabyRequiredModal} transparent animationType="fade" onRequestClose={() => setShowBabyRequiredModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowBabyRequiredModal(false)}>
           <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
@@ -1584,11 +1018,27 @@ export default function UniversalTrackerHubScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  glassCard: { borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', marginHorizontal: SPACING.lg, marginBottom: SPACING.lg },
+  // ── Glass Card ──────────────────────────────────────────────────────
+  glassCard: { 
+    borderRadius: RADIUS.lg, 
+    overflow: 'hidden', 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.1)', 
+    marginHorizontal: SPACING.lg, 
+    marginBottom: SPACING.lg 
+  },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
   glassContent: { flex: 1 },
 
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: SPACING.lg, marginBottom: SPACING.md, marginTop: SPACING.md },
+  // ── Section Header ──────────────────────────────────────────────────
+  sectionHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginHorizontal: SPACING.lg, 
+    marginBottom: SPACING.md, 
+    marginTop: SPACING.md 
+  },
   sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   sectionHeaderIcon: { width: 32, height: 32, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
   sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
@@ -1596,127 +1046,66 @@ const styles = StyleSheet.create({
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700' },
 
-  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: SPACING.xl, paddingBottom: SPACING.sm },
+  // ── Sticky Header ──────────────────────────────────────────────────
+  stickyHeader: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    zIndex: 100, 
+    alignItems: 'center', 
+    paddingHorizontal: SPACING.xl, 
+    paddingBottom: SPACING.sm 
+  },
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
-  topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: SPACING.lg, marginBottom: SPACING.lg },
+  // ── Top Header ─────────────────────────────────────────────────────
+  topHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
+    marginHorizontal: SPACING.lg, 
+    marginBottom: SPACING.lg 
+  },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerIconBtn: { width: 40, height: 40, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
   addBtn: { width: 44, height: 44, borderRadius: RADIUS.md, justifyContent: 'center', alignItems: 'center' },
 
-  babyPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: 10, borderRadius: RADIUS.full, alignSelf: 'flex-start', gap: 10, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(102,126,234,0.15)', flex: 1 },
+  // ── Baby Pill ──────────────────────────────────────────────────────
+  babyPill: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: SPACING.md, 
+    paddingVertical: 10, 
+    borderRadius: RADIUS.full, 
+    alignSelf: 'flex-start', 
+    gap: 10, 
+    overflow: 'hidden', 
+    borderWidth: StyleSheet.hairlineWidth, 
+    borderColor: 'rgba(102,126,234,0.15)', 
+    flex: 1 
+  },
   babyPillText: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 },
   babyPillName: { fontSize: 15, fontWeight: '700', maxWidth: 140 },
   babyPillAge: { fontSize: 12, fontWeight: '600' },
   babyPillNoBabyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  todayBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACING.md, borderRadius: RADIUS.md, marginBottom: SPACING.lg },
-  todayBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  todayBarIcon: { width: 36, height: 36, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
-  todayBarCount: { fontSize: 15, fontWeight: '700' },
-  todayBarLast: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  todayBarDots: { flexDirection: 'row', gap: 6 },
-  todayBarDot: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.xs },
-  todayBarDotText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  // ── Quick Log ──────────────────────────────────────────────────────
+  quickLogScroll: { paddingHorizontal: SPACING.lg, gap: 8, paddingBottom: 4 },
+  quickLogChip: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6, 
+    paddingHorizontal: SPACING.md, 
+    paddingVertical: 10, 
+    borderRadius: RADIUS.md, 
+    borderWidth: 1.5, 
+    overflow: 'hidden' 
+  },
+  quickLogLabel: { fontWeight: '700', fontSize: 12 },
 
-  wellnessCard: { padding: SPACING.lg, marginBottom: SPACING.lg },
-  wellnessTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg },
-  wellnessLeft: { flex: 1 },
-  wellnessLabel: { fontSize: 13, fontWeight: '600', marginBottom: 4 },
-  wellnessScore: { fontSize: 42, fontWeight: '800', letterSpacing: -1 },
-  wellnessScoreLabel: { fontSize: 13, fontWeight: '600' },
-  wellnessRingWrap: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center' },
-  wellnessRing: { width: 80, height: 80, justifyContent: 'center', alignItems: 'center' },
-  wellnessRingBg: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 6 },
-  wellnessRingProgress: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 6, borderTopColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: 'transparent' },
-  wellnessRingInner: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
-  wellnessBreakdown: { gap: SPACING.sm },
-  wellnessBreakdownItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  wellnessBreakdownIcon: { fontSize: 16, width: 24 },
-  wellnessBreakdownBarWrap: { flex: 1 },
-  wellnessBreakdownBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  wellnessBreakdownBarFill: { height: '100%', borderRadius: 3 },
-  wellnessBreakdownValue: { fontSize: 12, fontWeight: '700', width: 36, textAlign: 'right' },
-
-  sleepCard: { padding: SPACING.lg, alignItems: 'center' },
-  sleepScoreRing: { marginBottom: SPACING.lg },
-  sleepScoreValue: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, justifyContent: 'center', alignItems: 'center' },
-  sleepScoreNum: { fontSize: 28, fontWeight: '800' },
-  sleepScoreLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  sleepMetrics: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.lg, marginBottom: SPACING.md },
-  sleepMetric: { alignItems: 'center', gap: 4 },
-  sleepMetricValue: { fontSize: 18, fontWeight: '800' },
-  sleepMetricLabel: { fontSize: 11, fontWeight: '600' },
-  sleepMetricDivider: { width: 1, height: 40, backgroundColor: 'rgba(0,0,0,0.06)' },
-  sleepTrend: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.sm },
-  sleepTrendText: { fontSize: 13, fontWeight: '700' },
-
-  feedingCard: { padding: SPACING.lg },
-  feedingTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md },
-  feedingLastBadge: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.md },
-  feedingLastEmoji: { fontSize: 20 },
-  feedingLastLabel: { fontSize: 11, fontWeight: '600' },
-  feedingLastValue: { fontSize: 14, fontWeight: '800' },
-  feedingNextBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  feedingNextText: { fontSize: 12, fontWeight: '700' },
-  feedingStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xl, marginBottom: SPACING.md },
-  feedingStat: { alignItems: 'center' },
-  feedingStatValue: { fontSize: 20, fontWeight: '800' },
-  feedingStatLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  feedingStatDivider: { width: 1, height: 30 },
-  feedingBarBg: { height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: SPACING.xs },
-  feedingBarFill: { height: '100%', borderRadius: 3 },
-  feedingBarLabel: { fontSize: 11, fontWeight: '500', textAlign: 'center' },
-
-  weekScroll: { paddingHorizontal: SPACING.lg, gap: SPACING.sm, paddingBottom: 4 },
-  weekDay: { width: 64, paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.md, alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.5)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
-  weekDayName: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  weekDayNum: { fontSize: 18, fontWeight: '800' },
-  weekDots: { flexDirection: 'row', gap: 2, marginTop: 2 },
-  weekDot: { width: 20, height: 20, borderRadius: RADIUS.xs, justifyContent: 'center', alignItems: 'center' },
-  weekDotText: { fontSize: 10 },
-  weekTotal: { fontSize: 10, fontWeight: '600', marginTop: 2 },
-
-  emergencyGrid: { flexDirection: 'row', marginHorizontal: SPACING.lg, gap: SPACING.sm, marginBottom: SPACING.lg },
-  emergencyBtn: { flex: 1, alignItems: 'center', paddingVertical: SPACING.md, borderRadius: RADIUS.md, gap: SPACING.sm },
-  emergencyIconWrap: { width: 44, height: 44, borderRadius: RADIUS.md, justifyContent: 'center', alignItems: 'center' },
-  emergencyLabel: { fontSize: 12, fontWeight: '700' },
-
-  predictorScroll: { paddingHorizontal: SPACING.lg, gap: 10, paddingBottom: 4 },
-  predictorCard: { width: 150, padding: SPACING.md, borderRadius: RADIUS.lg, borderWidth: 1.5, overflow: 'hidden' },
-  predictorTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  predictorEmoji: { fontSize: 24 },
-  predictorConfidenceBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.xs },
-  predictorConfidenceText: { fontSize: 10, fontWeight: '800' },
-  predictorLabel: { fontSize: 13, fontWeight: '700', marginBottom: 2 },
-  predictorTime: { fontSize: 14, fontWeight: '800', marginBottom: 2 },
-  predictorPredicted: { fontSize: 11, fontWeight: '500', marginBottom: 8 },
-  predictorBarBg: { height: 4, borderRadius: 2, overflow: 'hidden', width: '100%' },
-  predictorBarFill: { height: '100%', borderRadius: 2 },
-
-  goalsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginHorizontal: SPACING.lg, marginBottom: SPACING.lg },
-  goalCard: { width: (SCREEN_WIDTH - 56) / 2, padding: SPACING.md, borderRadius: RADIUS.lg, borderWidth: 1.5, overflow: 'hidden' },
-  goalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  goalIcon: { fontSize: 22 },
-  goalCompleteBadge: { padding: 4, borderRadius: RADIUS.sm },
-  goalNumbers: { flexDirection: 'row', alignItems: 'baseline', gap: 2, marginBottom: 4 },
-  goalCurrent: { fontSize: 26, fontWeight: '800' },
-  goalTarget: { fontSize: 14, fontWeight: '600' },
-  goalLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  goalBarWrap: { marginTop: 8 },
-  goalBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  goalBarFill: { height: '100%', borderRadius: 3 },
-
-  insightsScroll: { paddingHorizontal: SPACING.lg, gap: 10, paddingBottom: 4 },
-  insightCard: { width: 200, padding: SPACING.md, borderRadius: RADIUS.lg, overflow: 'hidden' },
-  insightTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  insightEmoji: { fontSize: 22 },
-  insightPriorityDot: { width: 8, height: 8, borderRadius: 4 },
-  insightTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  insightDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginBottom: 8 },
-  insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.sm },
-  insightActionText: { fontSize: 11, fontWeight: '700' },
-
+  // ── Tracker Cards ──────────────────────────────────────────────────
   trackerCategorySection: { marginBottom: SPACING.lg },
   trackerCategoryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: SPACING.xl, marginBottom: 10 },
   trackerCategoryDot: { width: 6, height: 6, borderRadius: 3 },
@@ -1730,30 +1119,80 @@ const styles = StyleSheet.create({
   trackerFabCount: { fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
   trackerFabLast: { fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
   trackerFabArrow: { position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.2)' },
-  customTrackerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: RADIUS.lg, gap: 8, borderWidth: 1.5, borderStyle: 'dashed', overflow: 'hidden' },
+  
+  // ── Custom Tracker ──────────────────────────────────────────────────
+  customTrackerBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginHorizontal: SPACING.lg, 
+    paddingVertical: SPACING.md, 
+    borderRadius: RADIUS.lg, 
+    gap: 8, 
+    borderWidth: 1.5, 
+    borderStyle: 'dashed', 
+    overflow: 'hidden' 
+  },
   customTrackerIcon: { width: 32, height: 32, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
   customTrackerText: { fontSize: 13, fontWeight: '700' },
 
-  quickLogScroll: { paddingHorizontal: SPACING.lg, gap: 8, paddingBottom: 4 },
-  quickLogChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SPACING.md, paddingVertical: 10, borderRadius: RADIUS.md, borderWidth: 1.5, overflow: 'hidden' },
-  quickLogLabel: { fontWeight: '700', fontSize: 12 },
+  // ── Hidden Banner ──────────────────────────────────────────────────
+  hiddenBanner: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: SPACING.md, 
+    paddingVertical: SPACING.sm, 
+    marginHorizontal: SPACING.lg, 
+    marginBottom: SPACING.md,
+    gap: 8 
+  },
+  hiddenBannerText: { fontSize: 13, fontWeight: '600', flex: 1 },
 
-  historyCard: { padding: 8 },
-  historyRow: { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 12 },
-  historyIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  historyInfo: { flex: 1, gap: 2 },
-  historyType: { fontSize: 14, fontWeight: '700' },
-  historyDate: { fontSize: 11, fontWeight: '500' },
-  historyRight: { alignItems: 'flex-end', gap: 4 },
-  historyValue: { fontSize: 16, fontWeight: '800' },
-  historyTime: { fontSize: 11, fontWeight: '600' },
-
+  // ── Quick Links ────────────────────────────────────────────────────
   quickLinksGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   quickLinkBtn: { width: (SCREEN_WIDTH - 56) / 2, paddingVertical: SPACING.md, borderRadius: RADIUS.md, alignItems: 'center', gap: 6, borderWidth: 1.5, overflow: 'hidden' },
   quickLinkText: { fontSize: 13, fontWeight: '700' },
 
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalContent: { width: SCREEN_WIDTH - 40, maxHeight: SCREEN_HEIGHT * 0.7, overflow: 'hidden', backgroundColor: '#fff' },
+  // ── Hidden Trackers Modal ──────────────────────────────────────────
+  hiddenModalContent: { 
+    width: SCREEN_WIDTH - 40, 
+    maxHeight: SCREEN_HEIGHT * 0.75, 
+    borderRadius: 28, 
+    overflow: 'hidden', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 20 }, 
+    shadowOpacity: 0.2, 
+    shadowRadius: 40, 
+    elevation: 20 
+  },
+  hiddenModalHeader: { padding: SPACING.lg, alignItems: 'center', position: 'relative' },
+  hiddenModalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
+  hiddenModalSubtitle: { fontSize: 14, fontWeight: '500' },
+  hiddenModalClose: { position: 'absolute', top: SPACING.md, right: SPACING.md, padding: 4 },
+  hiddenModalList: { paddingHorizontal: SPACING.lg, maxHeight: 400 },
+  hiddenTrackerItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingVertical: SPACING.md, 
+    borderBottomWidth: 1 
+  },
+  hiddenTrackerLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  hiddenTrackerEmoji: { fontSize: 24 },
+  hiddenTrackerName: { fontSize: 14, fontWeight: '700' },
+  hiddenTrackerDesc: { fontSize: 12, fontWeight: '500' },
+  hiddenUnhideBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm },
+  hiddenUnhideText: { fontSize: 13, fontWeight: '600' },
+  hiddenModalDone: { margin: SPACING.lg, paddingVertical: SPACING.md, borderRadius: RADIUS.md, alignItems: 'center' },
+  hiddenModalDoneText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  hiddenEmptyState: { alignItems: 'center', paddingVertical: SPACING.xxxl, gap: SPACING.md },
+  hiddenEmptyText: { fontSize: 16, fontWeight: '500' },
+
+  // ── Action Modal ──────────────────────────────────────────────────
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalContent: { width: SCREEN_WIDTH - 40, maxHeight: SCREEN_HEIGHT * 0.7, overflow: 'hidden' },
+  modalDragHandle: { paddingVertical: 12, alignItems: 'center' },
+  modalDragPill: { width: 40, height: 5, borderRadius: 3 },
   modalHeader: { padding: 20, paddingTop: 24, alignItems: 'center' },
   modalHeaderContent: { alignItems: 'center' },
   modalEmoji: { fontSize: 44, marginBottom: 6 },
@@ -1766,63 +1205,14 @@ const styles = StyleSheet.create({
   subActionCard: { alignItems: 'center', padding: 12, gap: 8, borderWidth: 1.5 },
   subActionIcon: { width: 44, height: 44, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
   subActionLabel: { fontWeight: '700', textAlign: 'center', fontSize: 13 },
-  fabContainer: {
-    position: 'absolute',
-    zIndex: 100,
-  },
-  fab: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  fabInner: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  fabDateBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -14,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  fabDateText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    letterSpacing: -0.2,
-  },
-  fabPulse: {
-    position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fabPulseRing: {
-    position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 2,
-    opacity: 0.3,
-  },
-  modalDragHandle: { paddingVertical: 12, alignItems: 'center' },
-  modalDragPill: { width: 40, height: 5, borderRadius: 3 },
+
+  // ── Baby Required Modal ────────────────────────────────────────────
+  modalIconWrap: { marginBottom: SPACING.lg },
+  modalIconGradient: { width: 64, height: 64, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  modalDesc: { fontSize: 15, textAlign: 'center', marginBottom: 24, lineHeight: 22 },
+  modalPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', paddingVertical: 16, borderRadius: 18, gap: 8, marginBottom: 12 },
+  modalPrimaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  modalSecondaryBtn: { width: '100%', paddingVertical: 14, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  modalSecondaryBtnText: { fontSize: 15, fontWeight: '600' },
 });
