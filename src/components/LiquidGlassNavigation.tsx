@@ -126,19 +126,31 @@ const TabButton = memo(({
 }) => {
   const scale = useSharedValue(1);
   const glowOpacity = useSharedValue(0);
+  const iconScale = useSharedValue(1);
+  const labelOpacity = useSharedValue(0.35);
 
   // Update animations more efficiently
   useEffect(() => {
-    scale.value = withSpring(isActive ? 1.05 : 1, { damping: 20, stiffness: 600, mass: 0.2 });
-    glowOpacity.value = withTiming(isActive ? 0.15 : 0, { duration: 150 });
+    scale.value = withSpring(isActive ? 1.08 : 1, { damping: 20, stiffness: 600, mass: 0.2 });
+    glowOpacity.value = withTiming(isActive ? 0.2 : 0, { duration: 200 });
+    iconScale.value = withSpring(isActive ? 1.1 : 1, { damping: 20, stiffness: 600, mass: 0.2 });
+    labelOpacity.value = withTiming(isActive ? 1 : 0.35, { duration: 200 });
   }, [isActive]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
+  const containerStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity: glowOpacity.value,
+  }));
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconScale.value }],
+  }));
+
+  const labelStyle = useAnimatedStyle(() => ({
+    opacity: labelOpacity.value,
   }));
 
   const inactiveColor = isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(100, 116, 139, 0.35)';
@@ -162,24 +174,21 @@ const TabButton = memo(({
         />
       </Animated.View>
 
-      {isActive && (
-        <Animated.View style={[styles.activeIndicator, { backgroundColor: tab.color }]} />
-      )}
-
-      <Animated.View style={[styles.iconContainer, animatedStyle]}>
+      <Animated.View style={[styles.iconContainer, iconStyle]}>
         <tab.Icon color={isActive ? tab.color : inactiveColor} />
       </Animated.View>
 
-      <Text
+      <Animated.Text
         style={[
           styles.tabLabel,
           { color: isActive ? activeLabelColor : inactiveColor },
           isActive && styles.activeLabel,
+          labelStyle,
         ]}
         numberOfLines={1}
       >
         {tab.name}
-      </Text>
+      </Animated.Text>
     </Pressable>
   );
 });
@@ -193,7 +202,8 @@ const ActiveColorWash = memo(({ activeIndex, isDark }: { activeIndex: number; is
   }, [activeIndex]);
 
   const washStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(washOpacity.value, [0, 1], [0, isDark ? 0.07 : 0.05], Extrapolation.CLAMP),
+    opacity: interpolate(washOpacity.value, [0, 1], [0, isDark ? 0.08 : 0.06], Extrapolation.CLAMP),
+    transform: [{ scale: interpolate(washOpacity.value, [0, 1], [0.8, 1], Extrapolation.CLAMP) }],
   }));
 
   return (
@@ -212,7 +222,7 @@ const ActiveColorWash = memo(({ activeIndex, isDark }: { activeIndex: number; is
       pointerEvents="none"
     >
       <LinearGradient
-        colors={[...TABS[activeIndex].gradient.map(c => c + '20'), 'transparent'] as any}
+        colors={[...TABS[activeIndex].gradient.map(c => c + '25'), 'transparent'] as any}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
@@ -324,7 +334,7 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
           <ActiveColorWash activeIndex={activeIndex} isDark={isDark} />
 
           <LinearGradient
-            colors={[isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.8)', 'transparent']}
+            colors={[isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.8)', 'transparent']}
             style={styles.topHighlight}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
@@ -426,11 +436,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '50%',
     left: '50%',
-    width: 40,
-    height: 40,
-    marginLeft: -20,
-    marginTop: -24,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    marginLeft: -22,
+    marginTop: -26,
+    borderRadius: 22,
     zIndex: 0,
     alignItems: 'center',
     justifyContent: 'center',
@@ -438,16 +448,8 @@ const styles = StyleSheet.create({
   glowDot: {
     width: '100%',
     height: '100%',
-    borderRadius: 20,
-    opacity: 0.12,
-  },
-  activeIndicator: {
-    position: 'absolute',
-    bottom: 4,
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    zIndex: 1,
+    borderRadius: 22,
+    opacity: 0.15,
   },
   tabLabel: {
     fontSize: 9,

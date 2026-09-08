@@ -1,6 +1,6 @@
-// PediatricianPDFExport.tsx — v2.0
-// Two modes: 1) Generate & Download Report | 2) Upload & Manage Doctor-Filled Reports
-// Uses new expo-file-system API with File and Directory classes
+// PediatricianPDFExport.tsx — v3.0
+// Professional PDF Template System with Fillable Sections
+// Two modes: 1) Generate Fillable Template | 2) Upload Completed Report
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
@@ -18,11 +18,14 @@ import {
   Alert,
   Modal,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { File, Directory, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/hooks/useSweetAlert';
 import { Ionicons } from '@expo/vector-icons';
@@ -74,12 +77,31 @@ interface DoctorReport {
   uploadedAt: string;
   status: 'pending' | 'reviewed' | 'approved' | 'rejected';
   doctorNotes?: string;
-  templateType?: 'visit' | 'full' | 'growth' | 'emergency' | 'development';
+  templateType?: 'visit' | 'full' | 'growth' | 'emergency' | 'development' | 'wellness';
   isDoctorFilled?: boolean;
+  templateId?: string;
 }
 
-type ReportTemplate = 'visit' | 'full' | 'growth' | 'emergency' | 'development';
-type ReportMode = 'generate' | 'upload';
+interface TemplateField {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'checkbox' | 'date' | 'number' | 'select';
+  placeholder?: string;
+  required?: boolean;
+  options?: string[];
+  value?: string;
+}
+
+interface ReportTemplate {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  sections: TemplateField[];
+}
+
+type ReportMode = 'generate' | 'upload' | 'templates';
 
 /* ═══════════════════════════════════════════════════════════════════════
    CLINICAL DATA — WHO/CDC Simplified Reference Curves
@@ -166,6 +188,112 @@ const getBabyAgeMonths = (birthDate?: string) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE DEFINITIONS
+   ═══════════════════════════════════════════════════════════════════════ */
+const REPORT_TEMPLATES: ReportTemplate[] = [
+  {
+    id: 'wellness',
+    name: 'Wellness Visit',
+    description: 'Comprehensive checkup template with all sections',
+    icon: 'heart',
+    color: '#10b981',
+    sections: [
+      { id: 'visit_date', label: 'Visit Date', type: 'date', required: true },
+      { id: 'chief_complaint', label: 'Chief Complaint / Reason for Visit', type: 'textarea', placeholder: 'Describe the main reason for this visit...' },
+      { id: 'history', label: 'History of Present Illness', type: 'textarea', placeholder: 'Detailed history of the current condition...' },
+      { id: 'medications', label: 'Current Medications', type: 'textarea', placeholder: 'List all current medications, dosages, and frequency...' },
+      { id: 'allergies', label: 'Allergies', type: 'textarea', placeholder: 'List all known allergies and reactions...' },
+      { id: 'physical_exam', label: 'Physical Examination Findings', type: 'textarea', placeholder: 'Vital signs, general appearance, system-specific findings...' },
+      { id: 'growth_measurements', label: 'Growth Measurements', type: 'text', placeholder: 'Weight, height, head circumference with percentiles...' },
+      { id: 'assessment', label: 'Assessment / Diagnosis', type: 'textarea', placeholder: 'Clinical assessment and diagnoses...' },
+      { id: 'plan', label: 'Treatment Plan', type: 'textarea', placeholder: 'Medications, referrals, follow-up plan...' },
+      { id: 'instructions', label: 'Parent/Caregiver Instructions', type: 'textarea', placeholder: 'Instructions provided to family...' },
+      { id: 'next_visit', label: 'Next Visit / Follow-up', type: 'date', placeholder: 'Recommended follow-up date' },
+      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+      { id: 'doctor_signature', label: 'Doctor\'s Signature', type: 'text', placeholder: 'Electronically signed by...' },
+    ],
+  },
+  {
+    id: 'growth',
+    name: 'Growth & Development',
+    description: 'Focused on growth tracking and milestones',
+    icon: 'trending-up',
+    color: '#667eea',
+    sections: [
+      { id: 'visit_date', label: 'Visit Date', type: 'date', required: true },
+      { id: 'weight', label: 'Weight (kg/lbs)', type: 'text', placeholder: 'Enter weight with percentile' },
+      { id: 'height', label: 'Height/Length (cm/in)', type: 'text', placeholder: 'Enter height with percentile' },
+      { id: 'head_circumference', label: 'Head Circumference (cm/in)', type: 'text', placeholder: 'Enter head circumference with percentile' },
+      { id: 'bmi', label: 'BMI / BMI Percentile', type: 'text', placeholder: 'Enter BMI and percentile' },
+      { id: 'milestones_achieved', label: 'Milestones Achieved', type: 'textarea', placeholder: 'List developmental milestones achieved...' },
+      { id: 'milestones_concerns', label: 'Developmental Concerns', type: 'textarea', placeholder: 'Any concerns about development...' },
+      { id: 'growth_concerns', label: 'Growth Concerns', type: 'textarea', placeholder: 'Any concerns about growth trajectory...' },
+      { id: 'nutrition', label: 'Nutrition Assessment', type: 'textarea', placeholder: 'Feeding habits, diet, concerns...' },
+      { id: 'sleep', label: 'Sleep Assessment', type: 'textarea', placeholder: 'Sleep patterns, duration, quality...' },
+      { id: 'next_steps', label: 'Next Steps / Recommendations', type: 'textarea', placeholder: 'Follow-up plan, referrals...' },
+      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+    ],
+  },
+  {
+    id: 'emergency',
+    name: 'Emergency Visit',
+    description: 'For urgent care and emergency department visits',
+    icon: 'alert-circle',
+    color: '#ef4444',
+    sections: [
+      { id: 'visit_date', label: 'Visit Date & Time', type: 'date', required: true },
+      { id: 'arrival_mode', label: 'Mode of Arrival', type: 'select', options: ['Walk-in', 'Ambulance', 'Transferred', 'Other'], placeholder: 'Select mode of arrival...' },
+      { id: 'chief_complaint', label: 'Chief Complaint', type: 'textarea', required: true, placeholder: 'Primary reason for emergency visit...' },
+      { id: 'triage_notes', label: 'Triage Notes', type: 'textarea', placeholder: 'Triage assessment and acuity level...' },
+      { id: 'history', label: 'History of Present Illness', type: 'textarea', placeholder: 'Detailed history of the current emergency...' },
+      { id: 'physical_exam', label: 'Physical Examination', type: 'textarea', placeholder: 'Emergency department physical exam findings...' },
+      { id: 'diagnostics', label: 'Diagnostics Performed', type: 'textarea', placeholder: 'Lab work, imaging, procedures...' },
+      { id: 'diagnosis', label: 'Diagnosis', type: 'textarea', required: true, placeholder: 'Final diagnosis...' },
+      { id: 'treatment', label: 'Treatment Provided', type: 'textarea', placeholder: 'Medications, interventions, procedures...' },
+      { id: 'disposition', label: 'Disposition', type: 'select', options: ['Discharged Home', 'Admitted', 'Transferred', 'Observation', 'Other'], placeholder: 'Select disposition...' },
+      { id: 'instructions', label: 'Discharge Instructions', type: 'textarea', placeholder: 'Instructions for home care, medications, follow-up...' },
+      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+    ],
+  },
+  {
+    id: 'vaccine',
+    name: 'Vaccination Record',
+    description: 'Immunization history and schedule',
+    icon: 'medical',
+    color: '#3b82f6',
+    sections: [
+      { id: 'visit_date', label: 'Visit Date', type: 'date', required: true },
+      { id: 'vaccines_given', label: 'Vaccines Given Today', type: 'textarea', placeholder: 'List vaccines administered with lot numbers...' },
+      { id: 'reactions', label: 'Reactions / Side Effects', type: 'textarea', placeholder: 'Any immediate reactions or concerns...' },
+      { id: 'next_vaccines', label: 'Next Vaccines Due', type: 'textarea', placeholder: 'Upcoming vaccines with due dates...' },
+      { id: 'vaccine_history', label: 'Vaccine History Review', type: 'textarea', placeholder: 'Review of previous vaccinations...' },
+      { id: 'parent_questions', label: 'Parent Questions Addressed', type: 'textarea', placeholder: 'Questions answered regarding vaccination...' },
+      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+    ],
+  },
+  {
+    id: 'development',
+    name: 'Developmental Assessment',
+    description: 'Focused on developmental screening and milestones',
+    icon: 'brain',
+    color: '#8b5cf6',
+    sections: [
+      { id: 'visit_date', label: 'Visit Date', type: 'date', required: true },
+      { id: 'developmental_history', label: 'Developmental History', type: 'textarea', placeholder: 'Previous development, concerns, milestones...' },
+      { id: 'milestones_current', label: 'Current Milestones', type: 'textarea', placeholder: 'Recent milestones achieved...' },
+      { id: 'milestones_concerns', label: 'Milestone Concerns', type: 'textarea', placeholder: 'Any delayed milestones or concerns...' },
+      { id: 'behavioral_observations', label: 'Behavioral Observations', type: 'textarea', placeholder: 'Behavior, social interaction, communication...' },
+      { id: 'developmental_screening', label: 'Developmental Screening Results', type: 'textarea', placeholder: 'Screening tools used and results...' },
+      { id: 'speech_language', label: 'Speech & Language Assessment', type: 'textarea', placeholder: 'Speech and language evaluation...' },
+      { id: 'motor_skills', label: 'Motor Skills Assessment', type: 'textarea', placeholder: 'Gross and fine motor skills...' },
+      { id: 'social_emotional', label: 'Social-Emotional Assessment', type: 'textarea', placeholder: 'Social skills, emotional regulation...' },
+      { id: 'recommendations', label: 'Recommendations & Next Steps', type: 'textarea', placeholder: 'Therapies, interventions, follow-up...' },
+      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+    ],
+  },
+];
+
+/* ═══════════════════════════════════════════════════════════════════════
    THEME
    ═══════════════════════════════════════════════════════════════════════ */
 const useReportTheme = () => {
@@ -220,7 +348,7 @@ const Badge = ({ text, color, bg }: any) => (
 );
 
 /* ═══════════════════════════════════════════════════════════════════════
-   BABY PROFILE HEADER — With Avatar
+   BABY PROFILE HEADER
    ═══════════════════════════════════════════════════════════════════════ */
 const BabyProfileHeader = ({ baby }: { baby: any }) => {
   const theme = useReportTheme();
@@ -265,7 +393,7 @@ const BabyProfileHeader = ({ baby }: { baby: any }) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURES — All 6 from original
+   INTELLIGENCE FEATURES
    ═══════════════════════════════════════════════════════════════════════ */
 
 // Feature 1: Growth Percentiles
@@ -606,7 +734,116 @@ const PredictiveForecastCard = ({ entries, baby }: { entries: TrackerEntry[]; ba
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — Two Modes: Generate & Upload
+   TEMPLATE FIELD COMPONENT — For in-app form filling
+   ═══════════════════════════════════════════════════════════════════════ */
+const TemplateFieldComponent = ({ 
+  field, 
+  value, 
+  onChange, 
+  theme 
+}: { 
+  field: TemplateField; 
+  value: string; 
+  onChange: (id: string, value: string) => void;
+  theme: any;
+}) => {
+  const [isFocused, setIsFocused] = useState(false);
+
+  const renderField = () => {
+    switch (field.type) {
+      case 'textarea':
+        return (
+          <TextInput
+            style={[styles.templateTextArea, { 
+              color: theme.text.primary,
+              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+              borderColor: isFocused ? theme.primary : theme.border,
+            }]}
+            placeholder={field.placeholder || ''}
+            placeholderTextColor={theme.text.muted}
+            value={value}
+            onChangeText={(text) => onChange(field.id, text)}
+            multiline
+            numberOfLines={4}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            textAlignVertical="top"
+          />
+        );
+      
+      case 'select':
+        return (
+          <View style={[styles.templateSelectContainer, { 
+            borderColor: isFocused ? theme.primary : theme.border,
+            backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+          }]}>
+            <TextInput
+              style={[styles.templateSelect, { color: theme.text.primary }]}
+              placeholder={field.placeholder || 'Select option...'}
+              placeholderTextColor={theme.text.muted}
+              value={value}
+              onChangeText={(text) => onChange(field.id, text)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+            />
+            <Ionicons name="chevron-down" size={18} color={theme.text.muted} style={{ position: 'absolute', right: 12, top: 14 }} />
+          </View>
+        );
+      
+      case 'date':
+        return (
+          <TouchableOpacity
+            style={[styles.templateDateInput, { 
+              borderColor: isFocused ? theme.primary : theme.border,
+              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+            }]}
+            onPress={() => {
+              // Open date picker
+              const today = new Date().toISOString().split('T')[0];
+              onChange(field.id, today);
+            }}
+          >
+            <Text style={[styles.templateDateText, { color: value ? theme.text.primary : theme.text.muted }]}>
+              {value || field.placeholder || 'Select date...'}
+            </Text>
+            <Ionicons name="calendar-outline" size={18} color={theme.text.muted} />
+          </TouchableOpacity>
+        );
+      
+      default:
+        return (
+          <TextInput
+            style={[styles.templateInput, { 
+              color: theme.text.primary,
+              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+              borderColor: isFocused ? theme.primary : theme.border,
+            }]}
+            placeholder={field.placeholder || ''}
+            placeholderTextColor={theme.text.muted}
+            value={value}
+            onChangeText={(text) => onChange(field.id, text)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+          />
+        );
+    }
+  };
+
+  return (
+    <View style={styles.templateFieldContainer}>
+      <View style={styles.templateFieldLabel}>
+        <Text style={[styles.templateFieldLabelText, { color: theme.text.secondary }]}>
+          {field.label}
+          {field.required && <Text style={{ color: '#ef4444' }}> *</Text>}
+        </Text>
+      </View>
+      {renderField()}
+    </View>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MAIN SCREEN — Three Modes
    ═══════════════════════════════════════════════════════════════════════ */
 export const PediatricianPDFExport: React.FC = () => {
   const theme = useReportTheme();
@@ -627,6 +864,11 @@ export const PediatricianPDFExport: React.FC = () => {
   const [reportHistory, setReportHistory] = useState<DoctorReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<DoctorReport | null>(null);
   const [showReportDetail, setShowReportDetail] = useState(false);
+  
+  // ─── Template Form State ───────────────────────────────────────────────
+  const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
+  const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
 
   const [sections, setSections] = useState<ReportSection[]>([
     { id: 'summary', label: 'Visit Summary', emoji: '📋', enabled: true, description: 'Overview of recent visits and stats' },
@@ -738,8 +980,155 @@ export const PediatricianPDFExport: React.FC = () => {
     return { total: filteredEntries.length, today: todayEntries.length, trackers: new Set(filteredEntries.map((e: TrackerEntry) => e.trackerId)).size };
   }, [filteredEntries]);
 
-  // ─── Generate HTML ────────────────────────────────────────────────────
-  const generateHTML = useCallback(() => {
+  // ─── Template Handlers ─────────────────────────────────────────────────
+  const handleTemplateSelect = (template: ReportTemplate) => {
+    setSelectedTemplate(template);
+    const initialValues: Record<string, string> = {};
+    template.sections.forEach(field => {
+      initialValues[field.id] = '';
+    });
+    setTemplateValues(initialValues);
+    setShowTemplateForm(true);
+  };
+
+  const handleTemplateFieldChange = (id: string, value: string) => {
+    setTemplateValues(prev => ({ ...prev, [id]: value }));
+  };
+
+  const handleGenerateTemplatePDF = async () => {
+    if (!selectedTemplate) return;
+    if (!currentBaby) {
+      sweetAlert?.alert?.('No Baby', 'Select a baby profile first.');
+      return;
+    }
+
+    // Check required fields
+    const missing = selectedTemplate.sections
+      .filter(f => f.required && !templateValues[f.id]?.trim())
+      .map(f => f.label);
+    
+    if (missing.length > 0) {
+      sweetAlert?.alert?.('Missing Fields', `Please fill in: ${missing.join(', ')}`);
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const html = generateTemplateHTML(selectedTemplate, templateValues);
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      
+      const fileName = `${(currentBaby.name || 'Baby').replace(/\s+/g, '_')}_${selectedTemplate.name.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.pdf`;
+      const reportsDir = new Directory(Paths.document, 'DoctorReports');
+      if (!reportsDir.exists) reportsDir.create();
+      
+      const sourceFile = new File(uri);
+      const destFile = new File(reportsDir, fileName);
+      sourceFile.move(destFile);
+
+      const report: DoctorReport = {
+        id: `template_${Date.now()}`,
+        name: fileName,
+        uri: destFile.uri,
+        mimeType: 'application/pdf',
+        size: destFile.size,
+        uploadedAt: new Date().toISOString(),
+        status: 'pending',
+        templateType: selectedTemplate.id as any,
+        isDoctorFilled: true,
+        templateId: selectedTemplate.id,
+        doctorNotes: 'Template-filled report generated',
+      };
+
+      await saveReport(report);
+      setShowTemplateForm(false);
+      sweetAlert?.success('Template Generated!', `${selectedTemplate.name} report created successfully.`);
+    } catch (err) { 
+      console.error(err); 
+      sweetAlert?.alert?.('Failed', 'Could not generate template PDF. Please try again.'); 
+    } finally { 
+      setGenerating(false); 
+    }
+  };
+
+  // ─── Generate Template HTML ───────────────────────────────────────────
+  const generateTemplateHTML = (template: ReportTemplate, values: Record<string, string>) => {
+    const baby = currentBaby;
+    const babyName = baby?.name || 'Baby';
+    const babyDob = baby?.birthDate ? format(new Date(baby.birthDate), 'MMM d, yyyy') : 'N/A';
+    const ageMo = getBabyAgeMonths(baby?.birthDate);
+    const ageText = baby?.birthDate ? (() => {
+      const y = Math.floor(ageMo / 12); const m = ageMo % 12;
+      return y > 0 ? `${y}y ${m}m` : `${m} months`;
+    })() : 'N/A';
+
+    const fieldsHTML = template.sections.map(field => {
+      const value = values[field.id] || '';
+      return `
+        <div class="template-field">
+          <div class="template-field-label">${field.label}${field.required ? ' <span style="color:#ef4444;">*</span>' : ''}</div>
+          <div class="template-field-value">${escapeHtml(value) || '—'}</div>
+        </div>
+      `;
+    }).join('');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(babyName)} - ${escapeHtml(template.name)}</title>
+  <style>
+    @page { margin: 30px; size: auto; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; line-height: 1.6; max-width: 850px; margin: 0 auto; padding: 24px; background: #fff; }
+    .header { text-align: center; padding-bottom: 20px; border-bottom: 3px solid ${template.color}; margin-bottom: 28px; }
+    .header h1 { margin: 0; font-size: 26px; color: ${template.color}; letter-spacing: -0.5px; }
+    .header .subtitle { color: #64748b; font-size: 13px; margin-top: 4px; }
+    .header .baby-info { display: flex; justify-content: center; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
+    .header .baby-info span { font-size: 13px; color: #64748b; }
+    .header .baby-info strong { color: #1e293b; }
+    .template-section { margin-bottom: 24px; }
+    .template-section h2 { font-size: 18px; color: ${template.color}; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px; font-weight: 800; }
+    .template-field { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9; }
+    .template-field-label { font-weight: 700; color: #475569; font-size: 13px; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
+    .template-field-value { font-size: 15px; color: #1e293b; padding: 4px 0; min-height: 28px; white-space: pre-wrap; }
+    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+    .disclaimer { background: #f8fafc; padding: 12px; border-radius: 8px; margin-top: 16px; font-size: 12px; color: #64748b; border-left: 4px solid ${template.color}; }
+    @media print { body { padding: 0; } .template-section { page-break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🏥 ${escapeHtml(template.name)}</h1>
+    <div class="subtitle">Generated by LittleLoom on ${format(new Date(), 'MMMM d, yyyy')}</div>
+    <div class="baby-info">
+      <span><strong>Patient:</strong> ${escapeHtml(babyName)}</span>
+      <span><strong>DOB:</strong> ${babyDob}</span>
+      <span><strong>Age:</strong> ${ageText}</span>
+      ${baby?.gender ? `<span><strong>Gender:</strong> ${escapeHtml(baby.gender)}</span>` : ''}
+    </div>
+  </div>
+
+  <div class="template-section">
+    <h2>📋 Visit Details</h2>
+    ${fieldsHTML}
+  </div>
+
+  <div class="disclaimer">
+    <strong>Disclaimer:</strong> This is a clinical document for medical record-keeping. 
+    All information should be verified by the attending physician. 
+    This document is not a substitute for professional medical advice.
+  </div>
+
+  <div class="footer">
+    <p>Generated from LittleLoom tracking data • ${format(new Date(), 'MMM d, yyyy h:mm a')}</p>
+    <p>Not a substitute for professional medical advice. Always consult your pediatrician.</p>
+  </div>
+</body>
+</html>`;
+  };
+
+  // ─── Generate Full Report HTML ────────────────────────────────────────
+  const generateFullReportHTML = useCallback(() => {
     const baby = currentBaby;
     const babyName = baby?.name || 'Baby';
     const babyDob = baby?.birthDate ? format(new Date(baby.birthDate), 'MMM d, yyyy') : 'N/A';
@@ -989,18 +1378,17 @@ export const PediatricianPDFExport: React.FC = () => {
 </html>`;
   }, [currentBaby, filteredEntries, sections, dateRange, customNotes, parent1, parent2, guardians]);
 
-  // ─── Generate PDF ──────────────────────────────────────────────────────
-  const generatePDF = useCallback(async () => {
+  // ─── Generate Full Report PDF ─────────────────────────────────────────
+  const generateFullReportPDF = useCallback(async () => {
     const enabledCount = sections.filter(s => s.enabled).length;
     if (!enabledCount) { sweetAlert?.alert?.('No Sections', 'Enable at least one section.'); return; }
     if (!currentBaby) { sweetAlert?.alert?.('No Baby', 'Select a baby profile first.'); return; }
 
     setGenerating(true);
     try {
-      const html = generateHTML();
+      const html = generateFullReportHTML();
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       
-      // Use new File API to move the file
       const fileName = `${(currentBaby.name || 'Baby').replace(/\s+/g, '_')}_Report_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.pdf`;
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
       if (!reportsDir.exists) reportsDir.create();
@@ -1009,7 +1397,6 @@ export const PediatricianPDFExport: React.FC = () => {
       const destFile = new File(reportsDir, fileName);
       sourceFile.move(destFile);
 
-      // Save report metadata
       const report: DoctorReport = {
         id: `report_${Date.now()}`,
         name: fileName,
@@ -1025,7 +1412,6 @@ export const PediatricianPDFExport: React.FC = () => {
       await saveReport(report);
       sweetAlert?.success('Report Ready!', 'Your PDF report has been generated and saved.');
       
-      // Show share option
       sweetAlert?.confirm?.('Share Report?', 'Would you like to share this report with your pediatrician?',
         async () => {
           if (await Sharing.isAvailableAsync()) {
@@ -1040,7 +1426,7 @@ export const PediatricianPDFExport: React.FC = () => {
     } finally { 
       setGenerating(false); 
     }
-  }, [generateHTML, sections, currentBaby, sweetAlert, template]);
+  }, [generateFullReportHTML, sections, currentBaby, sweetAlert, template]);
 
   // ─── Upload Doctor-Filled Report ──────────────────────────────────────
   const uploadDoctorReport = useCallback(async () => {
@@ -1063,7 +1449,6 @@ export const PediatricianPDFExport: React.FC = () => {
 
       const asset = result.assets[0];
       
-      // Copy to app directory
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
       if (!reportsDir.exists) reportsDir.create();
       
@@ -1177,14 +1562,21 @@ export const PediatricianPDFExport: React.FC = () => {
               onPress={() => setMode('generate')}
             >
               <Ionicons name="create-outline" size={20} color={mode === 'generate' ? '#fff' : theme.text.primary} />
-              <Text style={[styles.modeBtnText, { color: mode === 'generate' ? '#fff' : theme.text.primary }]}>Generate Report</Text>
+              <Text style={[styles.modeBtnText, { color: mode === 'generate' ? '#fff' : theme.text.primary }]}>Full Report</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'templates' && { backgroundColor: theme.primary }]}
+              onPress={() => setMode('templates')}
+            >
+              <Ionicons name="document-text-outline" size={20} color={mode === 'templates' ? '#fff' : theme.text.primary} />
+              <Text style={[styles.modeBtnText, { color: mode === 'templates' ? '#fff' : theme.text.primary }]}>Templates</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'upload' && { backgroundColor: theme.primary }]}
               onPress={() => setMode('upload')}
             >
               <Ionicons name="cloud-upload-outline" size={20} color={mode === 'upload' ? '#fff' : theme.text.primary} />
-              <Text style={[styles.modeBtnText, { color: mode === 'upload' ? '#fff' : theme.text.primary }]}>Upload Report</Text>
+              <Text style={[styles.modeBtnText, { color: mode === 'upload' ? '#fff' : theme.text.primary }]}>Upload</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -1196,8 +1588,8 @@ export const PediatricianPDFExport: React.FC = () => {
               <GlassCard style={styles.heroCard}>
                 <LinearGradient colors={['#667eea', '#764ba2']} style={styles.heroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                   <Ionicons name="document-text" size={36} color="#fff" />
-                  <Text style={styles.heroTitle}>Generate Pediatric Report</Text>
-                  <Text style={styles.heroSub}>Create a professional PDF with clinical intelligence</Text>
+                  <Text style={styles.heroTitle}>Generate Full Report</Text>
+                  <Text style={styles.heroSub}>Create a comprehensive pediatric report with clinical intelligence</Text>
                   <View style={styles.heroStats}>
                     <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.total}</Text><Text style={styles.heroStatLabel}>Entries</Text></View>
                     <View style={styles.heroStatDivider} />
@@ -1285,7 +1677,7 @@ export const PediatricianPDFExport: React.FC = () => {
 
             {/* ─── Generate Button ──────────────────────────────────────── */}
             <Animated.View entering={FadeInUp.delay(160).springify()}>
-              <TouchableOpacity onPress={generatePDF} disabled={generating} style={[styles.generateBtn, { backgroundColor: generating ? theme.text.muted : theme.primary }]}>
+              <TouchableOpacity onPress={generateFullReportPDF} disabled={generating} style={[styles.generateBtn, { backgroundColor: generating ? theme.text.muted : theme.primary }]}>
                 {generating ? <ActivityIndicator color="#fff" /> : <><Ionicons name="download-outline" size={22} color="#fff" /><Text style={styles.generateBtnText}>Generate PDF Report</Text></>}
               </TouchableOpacity>
               <Text style={[styles.disclaimer, { color: theme.text.muted }]}>Reports are generated locally. No data leaves your device.</Text>
@@ -1318,6 +1710,42 @@ export const PediatricianPDFExport: React.FC = () => {
           </>
         )}
 
+        {/* ─── TEMPLATES MODE ───────────────────────────────────────────── */}
+        {mode === 'templates' && (
+          <>
+            <Animated.View entering={FadeInUp.delay(60).springify()}>
+              <GlassCard style={styles.uploadHeroCard}>
+                <LinearGradient colors={['#8b5cf6', '#6366f1']} style={styles.templateHeroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  <Ionicons name="document-text" size={36} color="#fff" />
+                  <Text style={styles.uploadHeroTitle}>Fillable Report Templates</Text>
+                  <Text style={styles.uploadHeroSub}>Choose a template, fill it out, and generate a professional PDF</Text>
+                </LinearGradient>
+              </GlassCard>
+            </Animated.View>
+
+            <View style={styles.templateGrid}>
+              {REPORT_TEMPLATES.map((t, index) => (
+                <Animated.View key={t.id} entering={FadeInUp.delay(80 + index * 60).springify()} style={styles.templateGridItem}>
+                  <TouchableOpacity
+                    style={[styles.templateCard, { borderColor: `${t.color}30` }]}
+                    onPress={() => handleTemplateSelect(t)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.templateCardIcon, { backgroundColor: `${t.color}15` }]}>
+                      <Ionicons name={t.icon as any} size={28} color={t.color} />
+                    </View>
+                    <Text style={[styles.templateCardName, { color: theme.text.primary }]}>{t.name}</Text>
+                    <Text style={[styles.templateCardDesc, { color: theme.text.muted }]}>{t.description}</Text>
+                    <View style={[styles.templateCardBadge, { backgroundColor: `${t.color}10` }]}>
+                      <Text style={[styles.templateCardBadgeText, { color: t.color }]}>{t.sections.length} fields</Text>
+                    </View>
+                  </TouchableOpacity>
+                </Animated.View>
+              ))}
+            </View>
+          </>
+        )}
+
         {/* ─── UPLOAD MODE ──────────────────────────────────────────────── */}
         {mode === 'upload' && (
           <>
@@ -1325,7 +1753,7 @@ export const PediatricianPDFExport: React.FC = () => {
               <GlassCard style={styles.uploadHeroCard}>
                 <LinearGradient colors={['#10b981', '#34d399']} style={styles.uploadHeroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                   <Ionicons name="cloud-upload" size={36} color="#fff" />
-                  <Text style={styles.uploadHeroTitle}>Upload Doctor-Filled Report</Text>
+                  <Text style={styles.uploadHeroTitle}>Upload Completed Report</Text>
                   <Text style={styles.uploadHeroSub}>Upload the PDF report filled out by your pediatrician</Text>
                   
                   <TouchableOpacity 
@@ -1375,7 +1803,7 @@ export const PediatricianPDFExport: React.FC = () => {
                           </Text>
                           <Text style={[styles.reportCardMeta, { color: theme.text.muted }]}>
                             {new Date(report.uploadedAt).toLocaleDateString()} • 
-                            {report.isDoctorFilled ? ' 👨‍⚕️ Doctor-filled' : ' 📄 Generated'}
+                            {report.isDoctorFilled ? ' 👨‍⚕️ Filled' : ' 📄 Generated'}
                           </Text>
                           <View style={styles.reportCardStatus}>
                             <View style={[styles.reportStatusDot, { 
@@ -1410,6 +1838,60 @@ export const PediatricianPDFExport: React.FC = () => {
 
         <View style={{ height: insets.bottom + 20 }} />
       </Animated.ScrollView>
+
+      {/* ─── Template Form Modal ────────────────────────────────────────── */}
+      <Modal visible={showTemplateForm} transparent animationType="slide" onRequestClose={() => setShowTemplateForm(false)}>
+        <KeyboardAvoidingView 
+          style={styles.templateFormOverlay} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.templateFormContent, { backgroundColor: theme.bg }]}>
+            <View style={styles.templateFormHeader}>
+              <Text style={[styles.templateFormTitle, { color: theme.text.primary }]}>
+                {selectedTemplate?.name || 'Template'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowTemplateForm(false)} style={styles.templateFormClose}>
+                <Ionicons name="close" size={24} color={theme.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.templateFormBody} showsVerticalScrollIndicator={false}>
+              {selectedTemplate && (
+                <>
+                  <Text style={[styles.templateFormDesc, { color: theme.text.muted }]}>
+                    {selectedTemplate.description}
+                  </Text>
+                  
+                  {selectedTemplate.sections.map((field) => (
+                    <TemplateFieldComponent
+                      key={field.id}
+                      field={field}
+                      value={templateValues[field.id] || ''}
+                      onChange={handleTemplateFieldChange}
+                      theme={theme}
+                    />
+                  ))}
+
+                  <TouchableOpacity
+                    style={[styles.templateFormSubmit, { backgroundColor: selectedTemplate.color }]}
+                    onPress={handleGenerateTemplatePDF}
+                    disabled={generating}
+                  >
+                    {generating ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="download-outline" size={20} color="#fff" />
+                        <Text style={styles.templateFormSubmitText}>Generate Template PDF</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* ─── Report Detail Modal ───────────────────────────────────────── */}
       <Modal visible={showReportDetail} transparent animationType="slide" onRequestClose={() => setShowReportDetail(false)}>
@@ -1491,7 +1973,6 @@ export const PediatricianPDFExport: React.FC = () => {
                     style={[styles.detailActionBtn, { backgroundColor: selectedReport.isDoctorFilled ? theme.secondary : '#667eea' }]} 
                     onPress={() => {
                       if (selectedReport) {
-                        // Open the file
                         Linking.openURL(selectedReport.uri);
                       }
                     }}
@@ -1545,9 +2026,9 @@ const styles = StyleSheet.create({
   sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
   /* Mode Selector */
-  modeSelector: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
-  modeBtnText: { fontSize: 14, fontWeight: '700' },
+  modeSelector: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 16 },
+  modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
+  modeBtnText: { fontSize: 13, fontWeight: '700' },
 
   /* Hero Cards */
   heroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
@@ -1559,6 +2040,9 @@ const styles = StyleSheet.create({
   heroStatNum: { fontSize: 22, fontWeight: '800', color: '#fff' },
   heroStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '600', marginTop: 2 },
   heroStatDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.3)' },
+
+  /* Template Hero */
+  templateHeroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
 
   /* Upload Hero */
   uploadHeroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
@@ -1573,6 +2057,38 @@ const styles = StyleSheet.create({
   templateChip: { width: 100, paddingVertical: 14, paddingHorizontal: 10, borderRadius: 14, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
   templateLabel: { fontSize: 12, fontWeight: '700', marginTop: 8 },
   templateDesc: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+
+  /* Template Grid */
+  templateGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginHorizontal: 16, marginBottom: 16 },
+  templateGridItem: { width: (SCREEN_W - 56) / 2 },
+  templateCard: { padding: 16, borderRadius: 16, borderWidth: 1.5, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.5)' },
+  templateCardIcon: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  templateCardName: { fontSize: 15, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
+  templateCardDesc: { fontSize: 11, fontWeight: '500', textAlign: 'center', marginBottom: 8, opacity: 0.7 },
+  templateCardBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  templateCardBadgeText: { fontSize: 10, fontWeight: '700' },
+
+  /* Template Form */
+  templateFormOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  templateFormContent: { width: '100%', maxHeight: '90%', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
+  templateFormHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+  templateFormTitle: { fontSize: 18, fontWeight: '800' },
+  templateFormClose: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
+  templateFormBody: { padding: 20 },
+  templateFormDesc: { fontSize: 14, fontWeight: '500', marginBottom: 20, opacity: 0.7 },
+  templateFormSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 14, marginTop: 12 },
+  templateFormSubmitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  /* Template Fields */
+  templateFieldContainer: { marginBottom: 16 },
+  templateFieldLabel: { marginBottom: 6 },
+  templateFieldLabelText: { fontSize: 13, fontWeight: '600' },
+  templateInput: { height: 48, borderRadius: 10, paddingHorizontal: 14, fontSize: 15, borderWidth: 1 },
+  templateTextArea: { height: 100, borderRadius: 10, paddingHorizontal: 14, paddingTop: 12, fontSize: 15, borderWidth: 1, textAlignVertical: 'top' },
+  templateSelectContainer: { height: 48, borderRadius: 10, paddingHorizontal: 14, borderWidth: 1, justifyContent: 'center' },
+  templateSelect: { fontSize: 15, paddingVertical: 12 },
+  templateDateInput: { height: 48, borderRadius: 10, paddingHorizontal: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  templateDateText: { fontSize: 15 },
 
   /* Date Range */
   rangeRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 16 },

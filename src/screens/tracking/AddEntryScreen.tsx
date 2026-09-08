@@ -3,6 +3,7 @@
 // 1. Photo URIs properly passed from SmartPhotoField to pendingOptions
 // 2. ConfirmModal correctly receives and displays photos
 // 3. No duplicate photo URIs in submission
+// 4. Photo URIs are sanitized before being sent to the database
 
 import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
@@ -603,12 +604,14 @@ const ConfirmModal = memo<ConfirmModalProps>(({
     [data]
   );
 
-  // Get photoUris from props or from data
+  // Get photoUris from props or from data - with deduplication
   const displayPhotoUris = useMemo(() => {
     const uris = photoUris.length > 0 
       ? photoUris 
       : (Array.isArray((data as any)?.photoUris) ? (data as any).photoUris : []);
-    return uris.filter((u: any) => typeof u === 'string' && u.length > 0);
+    // Filter and deduplicate
+    const filtered = uris.filter((u: any) => typeof u === 'string' && u.length > 0);
+    return [...new Set(filtered)];
   }, [photoUris, data]);
 
   const handleConfirm = useCallback(() => {
@@ -1298,15 +1301,53 @@ function TrackerContent({
     setShowConfirm(true);
   }, [setPendingData, setPendingOptions, setShowConfirm]);
 
+  // ─── REPLACED: handlePhotosChange (single source of truth, deduped) ───────
+
+  const handlePhotosChange = useCallback((photos: any[]) => {
+    try {
+      const uris = Array.isArray(photos)
+        ? photos
+            .map((p: any) => p?.uri)
+            .filter((u: any): u is string => typeof u === 'string' && u.length > 0)
+        : [];
+      // Dedupe while preserving order
+      const deduped = [...new Set(uris)];
+      setPendingOptions((prev: any) => {
+        const prevUris: string[] = Array.isArray(prev?.photoUris) ? prev.photoUris : [];
+        const same =
+          prevUris.length === deduped.length &&
+          prevUris.every((u, i) => u === deduped[i]);
+        if (same) return prev; // avoid useless re-renders
+        return { ...prev, photoUris: deduped };
+      });
+    } catch (e) {
+      console.error('handlePhotosChange error:', e);
+    }
+  }, [setPendingOptions]);
+
+  // ─── REPLACED: confirmSave (sanitized photoUris + null-safe options) ──────
+
   const confirmSave = useCallback(async () => {
     if (!tracker) return;
     try {
+      // Sanitize and deduplicate photo URIs before sending to the database
+      const safePhotoUris = [...new Set(
+        ((pendingOptions?.photoUris || []) as unknown[])
+          .filter((u): u is string => typeof u === 'string' && u.length > 0)
+      )];
+
+      // Ensure tags is always an array
+      const safeTags = Array.isArray(pendingOptions?.tags) 
+        ? pendingOptions.tags.filter((t): t is string => typeof t === 'string' && t.length > 0)
+        : [];
+
       const entry = await addEntry(tracker.id, pendingData, {
         title: buildTitle(pendingData),
-        notes: pendingOptions.notes,
-        tags: pendingOptions.tags,
-        photoUris: pendingOptions.photoUris || [],
+        notes: pendingOptions?.notes || '',
+        tags: safeTags,
+        photoUris: safePhotoUris,
       });
+
       if (entry) {
         triggerHaptic('success');
         setShowConfirm(false);
@@ -1369,14 +1410,6 @@ function TrackerContent({
   const handleInsightAction = useCallback((_insight: ContextInsight) => {
     HAPTIC_LIGHT();
   }, []);
-
-  // ─── Photo handling (single source of truth) ──────────────────
-  const handlePhotosChange = useCallback((photos: any[]) => {
-    const uris = Array.isArray(photos)
-      ? photos.map((p: any) => p?.uri).filter((u: any) => typeof u === 'string' && u.length > 0)
-      : [];
-    setPendingOptions((prev: any) => ({ ...prev, photoUris: uris }));
-  }, [setPendingOptions]);
 
   const progressiveState = useMemo(() => ({
     prefillData,
