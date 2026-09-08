@@ -1,5 +1,6 @@
 // EnhancedTimelineScreen.tsx — INSTANT LOADING
 // No loading screens, renders immediately with available data
+// UNIFIED THEMING v5.0 — Matches TrackerHub & GrowthDashboard
 
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 
@@ -26,7 +27,6 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/types/navigation';
 
-import { useUnifiedTrackerTheme } from '@/hooks/useUnifiedTrackerTheme';
 import { useTracker } from '@/context/TrackerContext';
 import { useBaby } from '@/context/BabyContext';
 import { TrackerEntry, UnifiedTrackerConfig } from '@/types/trackers';
@@ -55,15 +55,26 @@ interface SmartSection {
   component: React.ReactNode;
 }
 
-const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
-  shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
-  },
+// ─── DESIGN TOKENS — Unified with TrackerHub ──────────────────────────────
+
+const SPACING = {
+  xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
 };
+
+const RADIUS = {
+  xs: 6, sm: 10, md: 14, lg: 18, xl: 22, full: 999,
+};
+
+const SHADOW = {
+  none: { shadowOpacity: 0, elevation: 0 },
+  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
+  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
+  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
+  xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
+};
+
+// ─── SAFE HELPERS ───────────────────────────────────────────────────────────
 
 const safeArray = <T,>(arr: T[] | undefined | null): T[] => arr || [];
 const safeString = (s: string | undefined | null): string => s || '';
@@ -99,6 +110,33 @@ const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
   if (!p) return '—';
   try { return format(p, fmt); } catch { return '—'; }
 };
+
+// ─── THEME HOOK — Unified with TrackerHub ──────────────────────────────────
+
+const useHubTheme = () => {
+  const { isDark, colors, fullThemeColors } = useCustomization();
+
+  return useMemo(() => ({
+    primary: colors?.primary || '#667eea',
+    secondary: colors?.secondary || '#764ba2',
+    isDark: !!isDark,
+    bgColors: isDark ? ['#0a0a1a', '#12122a'] : ['#f8faff', '#eef2ff'],
+    statusBar: isDark ? 'light-content' : 'dark-content' as const,
+    blur: isDark ? 'dark' : 'light' as const,
+    text: {
+      primary: fullThemeColors?.text || (isDark ? '#ffffff' : '#1a1a1a'),
+      secondary: fullThemeColors?.textSecondary || (isDark ? '#94a3b8' : '#64748b'),
+      muted: fullThemeColors?.textMuted || (isDark ? '#64748b' : '#94a3b8'),
+    },
+    surface: {
+      bg: fullThemeColors?.surface || (isDark ? 'rgba(30,30,45,0.8)' : 'rgba(255,255,255,0.9)'),
+      card: fullThemeColors?.card || (isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)'),
+      border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+    },
+  }), [isDark, colors, fullThemeColors]);
+};
+
+// ─── HELPER FUNCTIONS ──────────────────────────────────────────────────────
 
 const getDateTitle = (timestamp: number): string => {
   const date = new Date(timestamp);
@@ -158,72 +196,124 @@ const getRarityGradient = (rarity: string): [string, string] => {
   }
 };
 
-const GlassCard = ({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
-  const theme = useUnifiedTrackerTheme();
+// ─── GLASS CARD — Matches TrackerHub exactly ──────────────────────────────
+
+const GlassCard = ({ children, style, onPress, active = false, shadow = 'md' }: { 
+  children: React.ReactNode; 
+  style?: any; 
+  onPress?: () => void; 
+  active?: boolean;
+  shadow?: keyof typeof SHADOW;
+}) => {
+  const theme = useHubTheme();
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
-      styles.glassCard,
-      active && { borderColor: theme.primary, borderWidth: 2 },
-      style
-    ]}>
+    <Wrapper 
+      onPress={onPress} 
+      activeOpacity={onPress ? 0.85 : 1} 
+      style={[
+        styles.glassCard,
+        SHADOW[shadow],
+        active && { borderColor: theme.primary, borderWidth: 2 },
+        style
+      ]}
+    >
       <LinearGradient
         colors={theme.isDark 
-          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] 
-          : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
+          ? ['rgba(45,45,60,0.9)', 'rgba(35,35,50,0.7)'] 
+          : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' }]} />
+      <View style={[styles.glassBorder, { 
+        backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' 
+      }]} />
       <View style={styles.glassContent}>{children}</View>
     </Wrapper>
   );
 };
 
-const SectionHeader = ({ title, subtitle, action, actionLabel, theme }: { title: string; subtitle?: string; action?: () => void; actionLabel?: string; theme: any }) => (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
-      {subtitle && <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>}
-    </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={[styles.sectionActionText, { color: theme.primary }]}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color={theme.primary} />
-      </TouchableOpacity>
-    )}
-  </View>
-);
+// ─── SECTION HEADER — Matches TrackerHub exactly ──────────────────────────
 
-const TabBar = ({ tabs, activeTab, onChange, theme }: { tabs: { key: TimelineTab; label: string; icon: string }[]; activeTab: TimelineTab; onChange: (t: TimelineTab) => void; theme: any }) => (
-  <View style={[styles.tabBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => onChange(tab.key)}
-          style={[
-            styles.tabItem,
-            isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff' }
-          ]}
-        >
-          <Ionicons name={tab.icon as any} size={16} color={isActive ? theme.primary : theme.text.muted} />
-          <Text style={[
-            styles.tabLabel,
-            { color: isActive ? theme.primary : theme.text.muted },
-            isActive && { fontWeight: '700' }
-          ]}>
-            {tab.label}
+const SectionHeader = ({ 
+  title, 
+  subtitle, 
+  action, 
+  actionLabel,
+  icon,
+}: { 
+  title: string; 
+  subtitle?: string; 
+  action?: () => void; 
+  actionLabel?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) => {
+  const theme = useHubTheme();
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderLeft}>
+        {icon && (
+          <View style={[styles.sectionHeaderIcon, { backgroundColor: `${theme.primary}12` }]}>
+            <Ionicons name={icon} size={16} color={theme.primary} />
+          </View>
+        )}
+        <View>
+          <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
+          {subtitle && (
+            <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>
+          )}
+        </View>
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction} activeOpacity={0.7}>
+          <Text style={[styles.sectionActionText, { color: theme.primary }]}>
+            {actionLabel || 'See All'}
           </Text>
+          <Ionicons name="chevron-forward" size={14} color={theme.primary} />
         </TouchableOpacity>
-      );
-    })}
-  </View>
-);
+      )}
+    </View>
+  );
+};
 
-// ─── AI Pattern Predictor ────────────────────────────────────────────────
+// ─── TAB BAR — Unified style ──────────────────────────────────────────────
+
+const TabBar = ({ tabs, activeTab, onChange }: { 
+  tabs: { key: TimelineTab; label: string; icon: keyof typeof Ionicons.glyphMap }[]; 
+  activeTab: TimelineTab; 
+  onChange: (t: TimelineTab) => void;
+}) => {
+  const theme = useHubTheme();
+  return (
+    <View style={[styles.tabBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            style={[
+              styles.tabItem,
+              isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...SHADOW.sm }
+            ]}
+          >
+            <Ionicons name={tab.icon} size={16} color={isActive ? theme.primary : theme.text.muted} />
+            <Text style={[
+              styles.tabLabel,
+              { color: isActive ? theme.primary : theme.text.muted },
+              isActive && { fontWeight: '700' }
+            ]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
+
+// ─── AI Pattern Predictor ──────────────────────────────────────────────────
 
 const AIPatternPredictor = ({ entries, theme, onPress }: { entries: TrackerEntry[]; theme: any; onPress: () => void }) => {
   const predictions = useMemo(() => {
@@ -274,7 +364,7 @@ const AIPatternPredictor = ({ entries, theme, onPress }: { entries: TrackerEntry
   );
 };
 
-// ─── Activity Balance Radar ──────────────────────────────────────────────
+// ─── Activity Balance Radar ────────────────────────────────────────────────
 
 const ActivityBalanceRadar = ({ entries, theme }: { entries: TrackerEntry[]; theme: any }) => {
   const dimensions = useMemo(() => {
@@ -336,7 +426,7 @@ const ActivityBalanceRadar = ({ entries, theme }: { entries: TrackerEntry[]; the
   );
 };
 
-// ─── Weekly Heatmap ──────────────────────────────────────────────────────
+// ─── Weekly Heatmap ────────────────────────────────────────────────────────
 
 const WeeklyHeatmap = ({ entries, theme }: { entries: TrackerEntry[]; theme: any }) => {
   const heatmapData = useMemo(() => {
@@ -384,7 +474,7 @@ const WeeklyHeatmap = ({ entries, theme }: { entries: TrackerEntry[]; theme: any
   );
 };
 
-// ─── Health Trend Correlation ────────────────────────────────────────────
+// ─── Health Trend Correlation ──────────────────────────────────────────────
 
 const HealthTrendCorrelation = ({ entries, theme }: { entries: TrackerEntry[]; theme: any }) => {
   const correlations = useMemo(() => {
@@ -431,7 +521,7 @@ const HealthTrendCorrelation = ({ entries, theme }: { entries: TrackerEntry[]; t
   );
 };
 
-// ─── Quick Action Suggestions ────────────────────────────────────────────
+// ─── Quick Action Suggestions ─────────────────────────────────────────────
 
 const QuickActionSuggestions = ({ theme, onPress, entries }: { theme: any; onPress: (action: string) => void; entries: TrackerEntry[] }) => {
   const getLastEntryTime = (trackerId: string): string => {
@@ -474,7 +564,7 @@ const QuickActionSuggestions = ({ theme, onPress, entries }: { theme: any; onPre
   );
 };
 
-// ─── Upcoming Events Timeline ────────────────────────────────────────────
+// ─── Upcoming Events Timeline ─────────────────────────────────────────────
 
 const UpcomingEventsTimeline = ({ reminders, theme, onPress }: { reminders: PredictiveReminder[]; theme: any; onPress: (r: PredictiveReminder) => void }) => {
   const upcoming = useMemo(() => safeArray(reminders).filter(r => r.suggestedTime && new Date(r.suggestedTime) >= new Date()).slice(0, 4), [reminders]);
@@ -482,7 +572,7 @@ const UpcomingEventsTimeline = ({ reminders, theme, onPress }: { reminders: Pred
 
   return (
     <Animated.View entering={FadeInUp.delay(450).springify()}>
-      <SectionHeader title="Upcoming Events" subtitle="Predicted from patterns" theme={theme} />
+      <SectionHeader title="Upcoming Events" subtitle="Predicted from patterns" icon="time-outline" />
       <View style={styles.calendarTimeline}>
         {upcoming.map((event, i) => (
           <TouchableOpacity key={event.id || i} onPress={() => onPress(event)} style={styles.calendarItem}>
@@ -515,7 +605,7 @@ const UpcomingEventsTimeline = ({ reminders, theme, onPress }: { reminders: Pred
   );
 };
 
-// ─── Smart Insight Card ──────────────────────────────────────────────────
+// ─── Smart Insight Card ────────────────────────────────────────────────────
 
 const SmartInsightCard: React.FC<{ insight: any; theme: any; onAction: (trackerId: string) => void; onDismiss: () => void; index: number; }> = ({ insight, theme, onAction, onDismiss, index }) => {
   const getInsightIcon = (type: string) => {
@@ -563,7 +653,7 @@ const SmartInsightCard: React.FC<{ insight: any; theme: any; onAction: (trackerI
   );
 };
 
-// ─── Smart Correlation Card ─────────────────────────────────────────────
+// ─── Smart Correlation Card ───────────────────────────────────────────────
 
 const SmartCorrelationCard: React.FC<{ correlation: TimelineCorrelation; theme: any; onNavigate: (trackerId: string) => void; index: number; }> = ({ correlation, theme, onNavigate, index }) => {
   const getCorrelationIcon = (type: string) => {
@@ -608,7 +698,7 @@ const SmartCorrelationCard: React.FC<{ correlation: TimelineCorrelation; theme: 
   );
 };
 
-// ─── Smart Reminder Card ─────────────────────────────────────────────────
+// ─── Smart Reminder Card ──────────────────────────────────────────────────
 
 const SmartReminderCard: React.FC<{ reminder: PredictiveReminder; theme: any; onApply: (reminder: PredictiveReminder) => void; onDismiss: (id: string) => void; index: number; }> = ({ reminder, theme, onApply, onDismiss, index }) => {
   const suggestedTime = reminder?.suggestedTime;
@@ -666,7 +756,7 @@ const SmartReminderCard: React.FC<{ reminder: PredictiveReminder; theme: any; on
   );
 };
 
-// ─── Growth Score Card ──────────────────────────────────────────────────
+// ─── Growth Score Card ────────────────────────────────────────────────────
 
 const GrowthScoreCard: React.FC<{ growthIndex: any; theme: any; onPress: () => void; }> = ({ growthIndex, theme, onPress }) => {
   if (!growthIndex) return null;
@@ -697,7 +787,7 @@ const GrowthScoreCard: React.FC<{ growthIndex: any; theme: any; onPress: () => v
   return (
     <Animated.View entering={FadeInUp.delay(50).springify()}>
       <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
-        <LinearGradient colors={[`${theme.primary}15`, `${theme.secondary}08`]} style={[styles.growthCard, { borderRadius: theme.borderRadiusValue || 20 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <LinearGradient colors={[`${theme.primary}15`, `${theme.secondary}08`]} style={styles.growthCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <View style={styles.growthHeader}>
             <View style={styles.growthTitleRow}>
               <Text style={styles.growthEmoji}>📊</Text>
@@ -738,7 +828,7 @@ const GrowthScoreCard: React.FC<{ growthIndex: any; theme: any; onPress: () => v
   );
 };
 
-// ─── Streak Banner ──────────────────────────────────────────────────────
+// ─── Streak Banner ────────────────────────────────────────────────────────
 
 const StreakBanner: React.FC<{ streak: any; theme: any; onAction: () => void; }> = ({ streak, theme, onAction }) => {
   if (!streak || streak.currentStreak === 0) return null;
@@ -778,7 +868,7 @@ export default function EnhancedTimelineScreen() {
   const navigation = useNavigation<TimelineScreenNavigationProp>();
   const route = useRoute<TimelineScreenRouteProp>();
   const insets = useSafeAreaInsets();
-  const theme = useUnifiedTrackerTheme();
+  const theme = useHubTheme();
   const { triggerHaptic, borderRadiusValue, shouldReduceMotion, fontSizeMultiplier } = useCustomization();
 
   const { currentBaby: babyFromContext, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
@@ -1046,11 +1136,6 @@ export default function EnhancedTimelineScreen() {
     return { opacity, transform: [{ translateY }] };
   });
 
-  const titleAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [0, 60], [1, 0], Extrapolation.CLAMP);
-    return { opacity };
-  });
-
   const handleTabChange = useCallback((tab: TimelineTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
@@ -1069,7 +1154,7 @@ export default function EnhancedTimelineScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bgColors[0] }]}>
-      <StatusBar barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle={theme.statusBar} />
 
       <LinearGradient colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={styles.backgroundGradient} />
 
@@ -1085,7 +1170,7 @@ export default function EnhancedTimelineScreen() {
         <LinearGradient colors={[`${theme.primary}15`, `${theme.secondary}08`, 'transparent']} style={styles.headerGradient} />
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerButton, { borderRadius: borderRadiusValue }]}>
-            <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
+            <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
             <Ionicons name="arrow-back" size={24} color={theme.text.primary} />
           </TouchableOpacity>
 
@@ -1109,19 +1194,19 @@ export default function EnhancedTimelineScreen() {
 
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={() => { triggerHaptic('light'); setCalendarMonth(selectedDate || new Date()); setShowCalendar(true); }} style={[styles.headerButton, { borderRadius: borderRadiusValue }]}>
-              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
+              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
               <Ionicons name="calendar-outline" size={22} color={selectedDate ? theme.primary : theme.text.primary} />
               {selectedDate && <View style={[styles.calendarActiveDot, { backgroundColor: theme.primary }]} />}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowSearch(!showSearch)} style={[styles.headerButton, { borderRadius: borderRadiusValue }]}>
-              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
+              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
               <Ionicons name={showSearch ? 'close' : 'search'} size={22} color={theme.text.primary} />
             </TouchableOpacity>
           </View>
         </View>
 
         <Animated.View style={[styles.stickyHeader, headerAnimatedStyle, { top: insets.top + 8 }]}>
-          <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.stickyBlur, { borderRadius: borderRadiusValue }]} tint={theme.isDark ? 'dark' : 'light'}>
+          <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.stickyBlur, { borderRadius: borderRadiusValue }]} tint={theme.blur}>
             <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby?.name ? `${currentBaby.name}` : '🗓️ Timeline'}</Text>
             <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>{stats.today} entries • {stats.achievements} achievements</Text>
           </BlurView>
@@ -1140,7 +1225,7 @@ export default function EnhancedTimelineScreen() {
         {/* Search Bar */}
         {showSearch && (
           <Animated.View entering={FadeInDown} style={styles.searchContainer}>
-            <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.searchBlur, { borderRadius: borderRadiusValue }]} tint={theme.isDark ? 'dark' : 'light'}>
+            <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.searchBlur, { borderRadius: borderRadiusValue }]} tint={theme.blur}>
               <Ionicons name="search" size={20} color={theme.text.secondary} />
               <TextInput style={[styles.searchInput, { color: theme.text.primary, fontSize: 16 * fontSizeMultiplier }]} placeholder="Search entries..." value={searchQuery} onChangeText={setSearchQuery} placeholderTextColor={theme.text.secondary} autoFocus />
               {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery('')}><Ionicons name="close-circle" size={20} color={theme.text.secondary} /></TouchableOpacity>}
@@ -1210,7 +1295,7 @@ export default function EnhancedTimelineScreen() {
         </Animated.View>
 
         {/* Tab Bar */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} theme={theme} />
+        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
 
         {/* Timeline Tab */}
         {activeTab === 'timeline' && (
@@ -1378,7 +1463,7 @@ export default function EnhancedTimelineScreen() {
         {activeTab === 'achievements' && (
           <>
             <View style={styles.section}>
-              <SectionHeader title="Achievements" subtitle={`${stats.achievements} unlocked`} theme={theme} />
+              <SectionHeader title="Achievements" subtitle={`${stats.achievements} unlocked`} icon="trophy-outline" />
               <GlassCard>
                 <View style={styles.achievementStats}>
                   <View style={styles.achievementStat}><Text style={[styles.achievementStatValue, { color: theme.primary }]}>{stats.achievements}</Text><Text style={[styles.achievementStatLabel, { color: theme.text.secondary }]}>Unlocked</Text></View>
@@ -1389,7 +1474,7 @@ export default function EnhancedTimelineScreen() {
             </View>
             {globalStreak?.currentStreak > 0 && <StreakBanner streak={globalStreak} theme={theme} onAction={() => setShowTimelinePicker(true)} />}
             <View style={styles.section}>
-              <SectionHeader title="Recent Achievements" theme={theme} />
+              <SectionHeader title="Recent Achievements" icon="trophy-outline" />
               {safeArray(achievements).slice(0, 6).map((achievement, i) => (
                 <Animated.View key={achievement?.id || i} entering={FadeInUp.delay(i * 60).springify()}>
                   <GlassCard style={styles.achievedCard}>
@@ -1416,7 +1501,7 @@ export default function EnhancedTimelineScreen() {
             <ActivityBalanceRadar entries={allEntries} theme={theme} />
             <WeeklyHeatmap entries={allEntries} theme={theme} />
             <View style={styles.section}>
-              <SectionHeader title="Entry Statistics" subtitle="Last 30 days" theme={theme} />
+              <SectionHeader title="Entry Statistics" subtitle="Last 30 days" icon="bar-chart-outline" />
               <GlassCard>
                 <View style={styles.analyticsGrid}>
                   {[
@@ -1568,12 +1653,72 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   backgroundGradient: { ...StyleSheet.absoluteFillObject },
 
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingGradient: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 16 },
-  loadingText: { fontSize: 32, fontWeight: '800', marginTop: 12 },
-  loadingDots: { flexDirection: 'row', gap: 8 },
-  dot: { width: 12, height: 12, borderRadius: 6 },
+  // ── Glass Card ──
+  glassCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    ...SHADOW.md,
+  },
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  glassContent: { flex: 1 },
 
+  // ── Section Header ──
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  sectionActionText: { fontSize: 13, fontWeight: '700' },
+
+  // ── Tab Bar ──
+  tabBar: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 4,
+    borderRadius: 16,
+    gap: 2,
+  },
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  tabLabel: { fontSize: 12, fontWeight: '600' },
+
+  // ── Header ──
   headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100 },
   headerGradient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16 },
@@ -1582,16 +1727,20 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5, marginTop: 4 },
   headerSubtitle: { fontSize: 13, marginTop: 2, fontWeight: '500' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerBabyPlaceholder: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
 
+  // ── Sticky Header ──
   stickyHeader: { position: 'absolute', left: 0, right: 0, alignItems: 'center', paddingHorizontal: 80 },
   stickyBlur: { paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center', minWidth: 200, overflow: 'hidden' },
   stickyTitle: { fontSize: 18, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '600' },
 
+  // ── Search ──
   searchContainer: { marginHorizontal: 20, marginBottom: 16, marginTop: 8 },
   searchBlur: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 4, overflow: 'hidden' },
   searchInput: { flex: 1, marginLeft: 10, paddingVertical: 12 },
 
+  // ── Stats ──
   statsContainer: { marginBottom: 16 },
   statsContent: { paddingHorizontal: 20, gap: 10 },
   kpiCard: { width: 120, padding: 14, borderWidth: 1, borderRadius: 16 },
@@ -1602,20 +1751,7 @@ const styles = StyleSheet.create({
   kpiLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   kpiSub: { fontSize: 10, fontWeight: '500', marginTop: 2 },
 
-  tabBar: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 16, padding: 4, borderRadius: 16, gap: 2 },
-  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
-  tabLabel: { fontSize: 12, fontWeight: '600' },
-
-  glassCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', marginHorizontal: 16, marginBottom: 16 },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
-  glassContent: { flex: 1 },
-
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginHorizontal: 20, marginBottom: 12, marginTop: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionActionText: { fontSize: 13, fontWeight: '700' },
-
+  // ── Smart Sections ──
   smartSectionsContainer: { marginHorizontal: 20, marginBottom: 20 },
   smartSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   smartSectionTitle: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -1623,6 +1759,7 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '700' },
   smartSectionItem: { marginBottom: 10 },
 
+  // ── Smart Card ──
   smartCard: { borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
   smartCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   smartIconContainer: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -1633,6 +1770,7 @@ const styles = StyleSheet.create({
   smartActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, alignSelf: 'flex-start' },
   smartActionText: { fontSize: 13, fontWeight: '600' },
 
+  // ── Correlation Card ──
   correlationCard: { borderRadius: 16, padding: 16, borderWidth: 1, overflow: 'hidden', marginBottom: 10 },
   correlationHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   correlationIcons: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1646,6 +1784,7 @@ const styles = StyleSheet.create({
   correlationAction: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   correlationActionText: { fontSize: 12, fontWeight: '600' },
 
+  // ── Reminder Card ──
   reminderCard: { borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
   reminderHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   reminderEmoji: { fontSize: 28 },
@@ -1665,7 +1804,8 @@ const styles = StyleSheet.create({
   basedOnChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   basedOnText: { fontSize: 10, fontWeight: '600' },
 
-  growthCard: { padding: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
+  // ── Growth Card ──
+  growthCard: { padding: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)', borderRadius: 20, overflow: 'hidden' },
   growthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   growthTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   growthEmoji: { fontSize: 24 },
@@ -1686,6 +1826,7 @@ const styles = StyleSheet.create({
   milestoneProgressFill: { height: '100%', borderRadius: 3 },
   milestoneText: { fontSize: 12, fontWeight: '600', width: 100, textAlign: 'right' },
 
+  // ── Streak Banner ──
   streakBanner: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10, gap: 12 },
   streakIconContainer: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   streakEmoji: { fontSize: 28 },
@@ -1697,6 +1838,7 @@ const styles = StyleSheet.create({
   streakProgressBg: { height: 4, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 2, marginTop: 4, overflow: 'hidden' },
   streakProgressFill: { height: '100%', borderRadius: 2 },
 
+  // ── Predictor ──
   predictorHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   predictorIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   predictorTitleWrap: { flex: 1 },
@@ -1714,6 +1856,7 @@ const styles = StyleSheet.create({
   predictorConfidence: { fontSize: 10, fontWeight: '600' },
   predictorAge: { fontSize: 12, fontWeight: '700' },
 
+  // ── Radar ──
   radarHeader: { padding: 16, paddingBottom: 8 },
   radarTitle: { fontSize: 16, fontWeight: '800' },
   radarSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
@@ -1728,6 +1871,7 @@ const styles = StyleSheet.create({
   radarLegendLabel: { fontSize: 12, fontWeight: '600', flex: 1 },
   radarLegendValue: { fontSize: 12, fontWeight: '700' },
 
+  // ── Heatmap ──
   heatmapHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   heatmapTitle: { fontSize: 16, fontWeight: '800' },
   heatmapLegend: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1740,6 +1884,7 @@ const styles = StyleSheet.create({
   heatmapWeek: { fontSize: 10, fontWeight: '600' },
   heatmapDate: { fontSize: 9, fontWeight: '500' },
 
+  // ── Correlation ──
   correlationHeader: { padding: 16, paddingBottom: 8 },
   correlationTitle: { fontSize: 16, fontWeight: '800' },
   correlationSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
@@ -1754,6 +1899,7 @@ const styles = StyleSheet.create({
   correlationBarFill: { height: '100%', borderRadius: 2 },
   correlationValue: { fontSize: 12, fontWeight: '700' },
 
+  // ── Suggestions ──
   suggestionsHeader: { marginHorizontal: 20, marginBottom: 10, marginTop: 4 },
   suggestionsTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
   suggestionsSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
@@ -1763,6 +1909,7 @@ const styles = StyleSheet.create({
   suggestionTitle: { fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: 2 },
   suggestionTime: { fontSize: 10, fontWeight: '500', textAlign: 'center' },
 
+  // ── Calendar ──
   calendarTimeline: { marginHorizontal: 16, gap: 0 },
   calendarItem: { flexDirection: 'row', gap: 12 },
   calendarLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
@@ -1778,66 +1925,6 @@ const styles = StyleSheet.create({
   calendarBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   calendarBadgeText: { fontSize: 10, fontWeight: '700' },
   calendarAge: { fontSize: 11, fontWeight: '600' },
-
-  filterContainer: { marginBottom: 16 },
-  filterContent: { paddingHorizontal: 20, gap: 8 },
-  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
-  filterText: { fontSize: 13, fontWeight: '600' },
-
-  scrollContent: { paddingBottom: 20 },
-  timelineContainer: { paddingHorizontal: 20 },
-  emptyState: { alignItems: 'center', marginTop: 40, paddingHorizontal: 20 },
-  emptyIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  emptyTitle: { fontWeight: '800', marginBottom: 8, textAlign: 'center' },
-  emptySubtitle: { fontWeight: '500', textAlign: 'center', lineHeight: 22 },
-  daySection: { marginBottom: 24 },
-  dateHeaderContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  dateHeader: { fontWeight: '800', letterSpacing: -0.5 },
-  dateBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  dateBadgeText: { fontSize: 12, fontWeight: '700' },
-  eventsContainer: { gap: 0 },
-  eventRow: { flexDirection: 'row', gap: 12 },
-  timeColumn: { width: 56, alignItems: 'flex-end', paddingTop: 16 },
-  timeText: { fontSize: 12, fontWeight: '700' },
-  timelineLine: { width: 2, flex: 1, marginTop: 4 },
-  eventCardContainer: { flex: 1, paddingBottom: 16 },
-
-  timelineEntryCard: { flex: 1, overflow: 'hidden', borderWidth: 1 },
-  timelineEntryContent: { padding: 14, gap: 8 },
-  timelineEntryHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  timelineEntryIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  timelineEntryEmoji: { fontSize: 18 },
-  timelineEntryInfo: { flex: 1, gap: 2 },
-  timelineEntryTitle: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
-  timelineEntryTime: { fontSize: 11, fontWeight: '500' },
-  timelineEntryTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  timelineEntryTypeText: { fontSize: 10, fontWeight: '700' },
-  timelineEntryNotes: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginLeft: 46 },
-  timelineEntryActions: { flexDirection: 'row', gap: 8, marginTop: 4, marginLeft: 46 },
-  timelineEntryActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  timelineEntryActionText: { fontSize: 11, fontWeight: '700' },
-
-  section: { marginBottom: 24 },
-  achievementStats: { flexDirection: 'row', padding: 16, gap: 16 },
-  achievementStat: { flex: 1, alignItems: 'center', gap: 4 },
-  achievementStatValue: { fontSize: 28, fontWeight: '800' },
-  achievementStatLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  achievedCard: { padding: 14, marginBottom: 8, marginHorizontal: 16 },
-  achievedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  achievedIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  achievedEmoji: { fontSize: 20 },
-  achievedContent: { flex: 1, gap: 2 },
-  achievedTitle: { fontSize: 14, fontWeight: '700' },
-  achievedDate: { fontSize: 11, fontWeight: '500' },
-  achievedBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  achievedBadgeText: { fontSize: 10, fontWeight: '700', color: '#fff' },
-
-  analyticsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 12 },
-  analyticsItem: { width: (SCREEN_W - 72) / 3, alignItems: 'center', gap: 6 },
-  analyticsIconBg: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  analyticsEmoji: { fontSize: 22 },
-  analyticsCount: { fontSize: 20, fontWeight: '800' },
-  analyticsLabel: { fontSize: 11, fontWeight: '600' },
 
   calendarActiveDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4 },
   dateFilterBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
@@ -1872,18 +1959,84 @@ const styles = StyleSheet.create({
   calendarDayViewRowTitle: { fontSize: 14, fontWeight: '700' },
   calendarDayViewRowMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
 
-  achievementInlineBadge: { position: 'absolute', top: 100, right: 20, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, zIndex: 50 },
-  achievementInlineText: { fontSize: 11, fontWeight: '700' },
-  headerBabyPlaceholder: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  // ── Filter ──
+  filterContainer: { marginBottom: 16 },
+  filterContent: { paddingHorizontal: 20, gap: 8 },
+  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
+  filterText: { fontSize: 13, fontWeight: '600' },
 
+  // ── Timeline ──
+  scrollContent: { paddingBottom: 20 },
+  timelineContainer: { paddingHorizontal: 20 },
+  emptyState: { alignItems: 'center', marginTop: 40, paddingHorizontal: 20 },
+  emptyIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  emptyTitle: { fontWeight: '800', marginBottom: 8, textAlign: 'center' },
+  emptySubtitle: { fontWeight: '500', textAlign: 'center', lineHeight: 22 },
+  daySection: { marginBottom: 24 },
+  dateHeaderContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  dateHeader: { fontWeight: '800', letterSpacing: -0.5 },
+  dateBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  dateBadgeText: { fontSize: 12, fontWeight: '700' },
+  eventsContainer: { gap: 0 },
+  eventRow: { flexDirection: 'row', gap: 12 },
+  timeColumn: { width: 56, alignItems: 'flex-end', paddingTop: 16 },
+  timeText: { fontSize: 12, fontWeight: '700' },
+  timelineLine: { width: 2, flex: 1, marginTop: 4 },
+  eventCardContainer: { flex: 1, paddingBottom: 16 },
+  timelineEntryCard: { flex: 1, overflow: 'hidden', borderWidth: 1 },
+  timelineEntryContent: { padding: 14, gap: 8 },
+  timelineEntryHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  timelineEntryIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  timelineEntryEmoji: { fontSize: 18 },
+  timelineEntryInfo: { flex: 1, gap: 2 },
+  timelineEntryTitle: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+  timelineEntryTime: { fontSize: 11, fontWeight: '500' },
+  timelineEntryTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  timelineEntryTypeText: { fontSize: 10, fontWeight: '700' },
+  timelineEntryNotes: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginLeft: 46 },
+  timelineEntryActions: { flexDirection: 'row', gap: 8, marginTop: 4, marginLeft: 46 },
+  timelineEntryActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  timelineEntryActionText: { fontSize: 11, fontWeight: '700' },
+
+  // ── Section ──
+  section: { marginBottom: 24 },
+  achievementStats: { flexDirection: 'row', padding: 16, gap: 16 },
+  achievementStat: { flex: 1, alignItems: 'center', gap: 4 },
+  achievementStatValue: { fontSize: 28, fontWeight: '800' },
+  achievementStatLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  achievedCard: { padding: 14, marginBottom: 8, marginHorizontal: 16 },
+  achievedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  achievedIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  achievedEmoji: { fontSize: 20 },
+  achievedContent: { flex: 1, gap: 2 },
+  achievedTitle: { fontSize: 14, fontWeight: '700' },
+  achievedDate: { fontSize: 11, fontWeight: '500' },
+  achievedBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  achievedBadgeText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+
+  // ── Analytics ──
+  analyticsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 12 },
+  analyticsItem: { width: (SCREEN_W - 72) / 3, alignItems: 'center', gap: 6 },
+  analyticsIconBg: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  analyticsEmoji: { fontSize: 22 },
+  analyticsCount: { fontSize: 20, fontWeight: '800' },
+  analyticsLabel: { fontSize: 11, fontWeight: '600' },
+
+  // ── Latest Entries ──
   latestEntryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1 },
   latestEntryIcon: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   latestEntryTitle: { fontSize: 13, fontWeight: '700' },
   latestEntryMeta: { fontSize: 10, fontWeight: '500', marginTop: 1 },
 
+  // ── FAB ──
   fabContainer: { position: 'absolute', zIndex: 100 },
   fab: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
 
+  // ── Achievement Inline Badge ──
+  achievementInlineBadge: { position: 'absolute', top: 100, right: 20, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, zIndex: 50 },
+  achievementInlineText: { fontSize: 11, fontWeight: '700' },
+
+  // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: { width: '100%', maxWidth: 360, borderRadius: 28, padding: 28, alignItems: 'center' },
   modalIconWrap: { width: 64, height: 64, borderRadius: 24, marginBottom: 16, overflow: 'hidden' },
