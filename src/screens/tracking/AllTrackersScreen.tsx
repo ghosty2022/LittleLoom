@@ -28,6 +28,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useTrackerProgressive } from '../../hooks';
 import { useBaby } from '../../context/BabyContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
+import { DEFAULT_TRACKERS, getDefaultTrackerIds } from '../../config/defaultTrackers';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -468,42 +469,37 @@ export default function AllTrackersScreen() {
     setRefreshing(false);
   }, [refreshEntries, refreshCurrentBaby, loadBabies]);
 
+  // ─── FIXED: Build tracker cards from ALL available trackers ──────────────
   const trackerCards = useMemo(() => {
     if (!currentBaby) return [];
     
-    // Use trackers from hook, or fallback to configs
-    const sourceTrackers = trackers && trackers.length > 0
-      ? trackers
-      : Object.keys(TRACKER_CONFIGS).map(id => ({
-          id,
-          name: id.charAt(0).toUpperCase() + id.slice(1),
-          emoji: TRACKER_CONFIGS[id].emoji,
-          color: TRACKER_CONFIGS[id].color,
-          gradient: TRACKER_CONFIGS[id].gradient,
-          category: TRACKER_CONFIGS[id].category,
-        }));
-
-    return sourceTrackers.map((tracker: any) => {
-      const id = tracker.id;
+    // Get all tracker IDs from DEFAULT_TRACKERS config
+    const allTrackerIds = DEFAULT_TRACKERS.map(t => t.id);
+    
+    // Build cards for ALL trackers, not just ones with entries
+    return allTrackerIds.map((id) => {
       const config = TRACKER_CONFIGS[id];
+      // If config doesn't exist, skip this tracker
+      if (!config) return null;
+      
       const entriesForTracker = typeof getEntries === 'function' ? getEntries(id) : [];
       const lastEntry = entriesForTracker && entriesForTracker.length > 0 ? entriesForTracker[0] : null;
       
       return {
         id,
-        title: tracker.name || tracker.title || id.charAt(0).toUpperCase() + id.slice(1),
-        emoji: tracker.emoji || config?.emoji || '📋',
-        color: tracker.color || config?.color || '#667eea',
-        gradient: (tracker.gradient || config?.gradient || ['#667eea', '#764ba2']) as [string, string],
-        category: config?.category || 'essential',
+        title: id.charAt(0).toUpperCase() + id.slice(1),
+        emoji: config.emoji,
+        color: config.color,
+        gradient: config.gradient,
+        category: config.category,
         count: entriesForTracker ? entriesForTracker.length : 0,
         lastEntry: lastEntry && lastEntry.timestamp
           ? new Date(lastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : undefined,
-        hasSubActions: !!(config?.subActions && config.subActions.length > 0),
+        hasSubActions: !!(config.subActions && config.subActions.length > 0),
       };
-    });
-  }, [trackers, getEntries, currentBaby]);
+    }).filter(Boolean) as any[];
+  }, [getEntries, currentBaby]);
 
   const categories = useMemo(() => {
     const cats = [...new Set(trackerCards.map(t => t.category))];
@@ -524,13 +520,14 @@ export default function AllTrackersScreen() {
     return res;
   }, [trackerCards, activeCategory, searchQuery, hiddenIds]);
 
-  // Sort pinned first, then by count
+  // Sort pinned first, then by count (with 0 count trackers at the end)
   const sortedFiltered = useMemo(() => {
     return [...filtered].sort((a: any, b: any) => {
       const aPinned = pinnedIds.includes(a.id);
       const bPinned = pinnedIds.includes(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
+      // If both pinned or both not pinned, sort by count (higher first)
       return b.count - a.count;
     });
   }, [filtered, pinnedIds]);

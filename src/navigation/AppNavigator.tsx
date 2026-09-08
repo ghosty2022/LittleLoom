@@ -1,4 +1,4 @@
-// src/navigation/AppNavigator.tsx - COMPLETE FIXED with QRScanner
+// src/navigation/AppNavigator.tsx - COMPLETE FIXED
 // FIX: Navigation loop prevention and user isolation
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
@@ -89,20 +89,31 @@ const CustomDarkTheme = {
   colors: { ...DarkTheme.colors, background: '#000000', card: '#0a0a0a', text: '#ffffff', border: '#1a1a1a', notification: '#a3bffa', primary: '#a3bffa' },
 };
 
+// ─── MAIN FLOW SCREENS - All screens that are part of the main app flow ───
 const MAIN_FLOW_SCREENS = new Set([
-  'Main', 'Home', 'Track', 'Grow', 'Connect', 'More',
-  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile', 'Chat', 'ChatList',
-  'Notifications', 'CommunityProfile', 'CommunityVerification', 'CommunityOnboarding',
-  'Followers', 'Following', 'Report', 'TopicMembers', 'SearchUsers', 'BlockedUsers',
-  'Timeline', 'PottyTracker', 'FeedTracker', 'SleepTracker',
+  // Tab Screens
+  'Main', 'Home', 'Track', 'Timeline', 'Grow', 'Connect', 'More',
+  // Community
+  'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile', 
+  'Chat', 'ChatList', 'Notifications', 'CommunityProfile', 'CommunityVerification', 
+  'CommunityOnboarding', 'Followers', 'Following', 'Report', 'TopicMembers', 
+  'SearchUsers', 'BlockedUsers',
+  // Tracking & Baby
+  'PottyTracker', 'FeedTracker', 'SleepTracker',
   'Profile', 'SwitchBaby', 'EditProfile', 'EditGuardian',
+  // Family
   'Gallery', 'FamilyChatList', 'FamilyChat',
-  'AddEntry', 'Achievements', 'GrowthDashboard', 'Insights', 'TrackerReminders', 'FamilySharing', 'SoundMixer', 'Customize',
-  'EntryDetail',
+  // Tracking Screens
+  'AddEntry', 'Achievements', 'GrowthDashboard', 'Insights', 'TrackerReminders', 
+  'FamilySharing', 'SoundMixer', 'Customize', 'EntryDetail',
+  // Security
   'BiometricSetup', 'SecurityCenter',
-  'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy', 'TermsOfService', 'About',
-  'LanguageSettings', 'UnitSettings',
-  'UniversalTrackerHub', 'CreateCustomTracker',
+  // Settings
+  'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy', 
+  'TermsOfService', 'About', 'LanguageSettings', 'UnitSettings',
+  // Tracker Hub & Related
+  'UniversalTrackerHub', 'CreateCustomTracker', 'AllTrackers',
+  // Health
   'VaccinationSchedule', 'SafetyCorner',
 ]);
 
@@ -638,7 +649,6 @@ function NavigationContent({
     if (navState === 'SETUP_BABY') {
       const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
       if (hasBabies) {
-        // Check if we're on a main screen already
         if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
           console.log('[Navigation] Already on main screen, staying');
           return;
@@ -666,7 +676,6 @@ function NavigationContent({
 
     // ─── FIXED: SETUP_PARENT2 ──────────────────────────────────────────
     if (navState === 'SETUP_PARENT2') {
-      // Check if we're on a main screen already (user may have completed setup)
       if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
         console.log('[Navigation] Already on main screen, staying');
         return;
@@ -687,6 +696,7 @@ function NavigationContent({
 
     // ─── MAIN ──────────────────────────────────────────────────────────
     if (navState === 'MAIN') {
+      // If we're on a setup screen, redirect to Main
       if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
         console.log('[Navigation] → Main (from setup)');
         lastNavTime.current = now;
@@ -696,6 +706,7 @@ function NavigationContent({
         return;
       }
       
+      // If we're on SecurityLock, force unlock
       if (currentRoute === 'SecurityLock') {
         console.log('[Navigation] Force unlocking from SecurityLock');
         forceUnlockRef.current();
@@ -706,15 +717,20 @@ function NavigationContent({
         return;
       }
       
+      // If we're on any main flow screen (tab or sub-screen), stay there
       if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
+        console.log('[Navigation] Already on main flow screen:', currentRoute);
         return;
       }
       
-      console.log('[Navigation] → Main');
-      lastNavTime.current = now;
-      navLockRef.current = true;
-      navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
-      setTimeout(() => { navLockRef.current = false; }, 500);
+      // Only redirect to Main if we're on an auth or setup screen
+      if (!currentRoute || AUTH_FLOW_SCREENS.has(currentRoute) || SETUP_FLOW_SCREENS.has(currentRoute) || currentRoute === 'SecurityLock') {
+        console.log('[Navigation] → Main (fallback)');
+        lastNavTime.current = now;
+        navLockRef.current = true;
+        navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+        setTimeout(() => { navLockRef.current = false; }, 500);
+      }
       return;
     }
 
@@ -771,7 +787,7 @@ function NavigationContent({
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </Stack.Group>
 
-          {/* QR SCANNER - Add this screen */}
+          {/* QR SCANNER */}
           <Stack.Screen 
             name="QRScanner" 
             component={QRScannerScreen}
@@ -792,7 +808,7 @@ function NavigationContent({
           {/* MAIN TAB */}
           <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade', gestureEnabled: false }} />
 
-          {/* MAIN SCREENS */}
+          {/* MAIN FLOW SCREENS - All screens accessible from main tabs */}
           <Stack.Screen name="Timeline" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="EntryDetail" component={EntryDetailScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="PottyTracker" component={TimelineScreen} options={{ animation: 'none' }} />
@@ -842,6 +858,7 @@ function NavigationContent({
             <Stack.Screen name="SecurityCenter" component={SecurityCenterScreen} />
           </Stack.Group>
 
+          {/* TRACKER HUB SCREENS */}
           <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
           <Stack.Screen name="AllTrackers" component={AllTrackersScreen} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
