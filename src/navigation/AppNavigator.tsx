@@ -23,7 +23,7 @@ import CoParentInviteScreen from '../screens/baby/CoParentInviteScreen';
 import BabyOnboardingScreen from '../screens/baby/BabyOnboardingScreen';
 import BabyProfileCreateScreen from '../screens/baby/BabyProfileCreateScreen';
 import HomeScreen from '../screens/main/HomeScreen';
-import TrackScreen from '../screens/main/TrackScreen';
+import AllTrackersScreen from '../screens/tracking/AllTrackersScreen';
 import MoreScreen from '../screens/main/MoreScreen';
 import SafetyCornerScreen from '../screens/safety/SafetyCornerScreen';
 import BackupRestoreScreen from '../screens/backup/BackupRestoreScreen';
@@ -843,7 +843,7 @@ function NavigationContent({
           </Stack.Group>
 
           <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
-          <Stack.Screen name="AllTrackers" component={TrackScreen} options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="AllTrackers" component={AllTrackersScreen} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
           <Stack.Screen name="More" component={MoreScreen} options={{ animation: 'none' }} />
         </Stack.Navigator>
