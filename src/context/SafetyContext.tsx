@@ -4,7 +4,7 @@
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
-import * as Contacts from 'expo-contacts';
+import { Contact } from 'expo-contacts';
 import React, {
   useCallback,
   useContext,
@@ -37,6 +37,7 @@ export type EmergencyType = 'emergency' | 'medical' | 'poison' | 'custom' | 'fam
 export type SafetyCategory = 'emergency' | 'prevention' | 'daily';
 export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
 export type FirstAidType = 'cpr' | 'choking' | 'burns' | 'bleeding' | 'allergic';
+export type ReportStatus = 'pending' | 'approved' | 'reviewed' | 'rejected';
 
 export interface SafetyTopic {
   id: string;
@@ -104,7 +105,9 @@ export interface DoctorReport {
   size: number;
   uploadedAt: string;
   approvedBy?: string;
-  status: 'pending' | 'approved' | 'reviewed';
+  status: ReportStatus;
+  templateType?: 'visit' | 'full' | 'growth' | 'emergency' | 'development';
+  notes?: string;
 }
 
 interface SafetyState {
@@ -181,6 +184,7 @@ interface SafetyContextType extends SafetyState {
   approveDoctorReport: (reportId: string, approvedBy: string) => Promise<void>;
   getDoctorReports: () => DoctorReport[];
   deleteDoctorReport: (reportId: string) => Promise<void>;
+  updateDoctorReport: (reportId: string, updates: Partial<DoctorReport>) => Promise<void>;
 
   scheduleSafetyReminder: (title: string, body: string, triggerDate: Date) => Promise<string | null>;
   cancelSafetyReminder: (identifier: string) => Promise<void>;
@@ -471,7 +475,6 @@ const defaultChecklists: SafetyChecklist[] = [
 ];
 
 // ─── SQL Emergency Numbers by Country ──────────────────────────────────────
-// This maps country codes to emergency numbers
 export const EMERGENCY_NUMBERS_BY_COUNTRY: Record<string, {
   police: string;
   ambulance: string;
@@ -707,8 +710,8 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     // Try to get country from location
     let countryCode = 'US';
     try {
-      const hasPermission = await Location.requestForegroundPermissionsAsync();
-      if (hasPermission.status === 'granted') {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
         const location = await Location.getCurrentPositionAsync({});
         const [address] = await Location.reverseGeocodeAsync({
           latitude: location.coords.latitude,
@@ -778,26 +781,37 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return contacts;
   }, []);
 
-  /* ── Import device contacts ── */
+  /* ── Import device contacts using new expo-contacts API ── */
   const importDeviceContacts = useCallback(async () => {
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted') {
-        sweetAlert.alert('Permission Denied', 'Please grant contacts permission to import emergency contacts.');
+      // Request permissions using the new API
+      const { status } = await Location.requestPermissionsAsync();
+      
+      // Use the new Contact class API
+      const hasContacts = await Contact.hasAny();
+      if (!hasContacts) {
+        sweetAlert.alert('No Contacts', 'No contacts found on your device.');
         return;
       }
 
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name, Contacts.Fields.Image],
+      // Get all contacts with phone numbers using the new API
+      const contacts = await Contact.getAllDetails([
+        'fullName',
+        'givenName',
+        'familyName',
+        'phoneNumbers',
+        'image',
+      ], {
+        limit: 50,
       });
 
-      if (data.length === 0) {
+      if (!contacts || contacts.length === 0) {
         sweetAlert.alert('No Contacts', 'No contacts found on your device.');
         return;
       }
 
       // Filter contacts with phone numbers
-      const contactsWithNumbers = data.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
+      const contactsWithNumbers = contacts.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
       
       if (contactsWithNumbers.length === 0) {
         sweetAlert.alert('No Phone Numbers', 'No contacts with phone numbers found.');
@@ -805,15 +819,19 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
 
       // Map to emergency contacts (limit to 10 to avoid overwhelming)
-      const newContacts: EmergencyContact[] = contactsWithNumbers.slice(0, 10).map((contact, index) => ({
-        id: `device_${contact.id || index}_${Date.now()}`,
-        label: contact.name || 'Unnamed Contact',
-        number: contact.phoneNumbers?.[0]?.number || '',
-        type: 'family' as EmergencyType,
-        icon: 'person',
-        color: '#8b5cf6',
-        avatar: contact.image?.uri,
-      })).filter(c => c.number);
+      const newContacts: EmergencyContact[] = contactsWithNumbers.slice(0, 10).map((contact, index) => {
+        const name = contact.fullName || contact.givenName || 'Unnamed Contact';
+        const phoneNumber = contact.phoneNumbers?.[0]?.number || '';
+        return {
+          id: `device_${contact.id || index}_${Date.now()}`,
+          label: name,
+          number: phoneNumber,
+          type: 'family' as EmergencyType,
+          icon: 'person',
+          color: '#8b5cf6',
+          avatar: contact.image?.uri,
+        };
+      }).filter(c => c.number);
 
       if (newContacts.length === 0) {
         sweetAlert.alert('No Valid Contacts', 'No contacts with valid phone numbers found.');
@@ -1555,6 +1573,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         ...report,
         id: `report_${Date.now()}`,
         uploadedAt: new Date().toISOString(),
+        status: report.status || 'pending',
       };
       setState((prev) => ({
         ...prev,
@@ -1603,6 +1622,25 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         await AsyncStorage.setItem(DOCTOR_REPORTS_KEY, JSON.stringify(updatedReports));
       } catch (e) {
         console.error('[SafetyContext] Failed to delete doctor report:', e);
+      }
+    },
+    [state.doctorReports]
+  );
+
+  const updateDoctorReport = useCallback(
+    async (reportId: string, updates: Partial<DoctorReport>) => {
+      setState((prev) => ({
+        ...prev,
+        doctorReports: prev.doctorReports.map((r) =>
+          r.id === reportId ? { ...r, ...updates } : r
+        ),
+      }));
+      try {
+        const data = JSON.stringify(state.doctorReports);
+        await setAppSetting(DOCTOR_REPORTS_KEY, data);
+        await AsyncStorage.setItem(DOCTOR_REPORTS_KEY, data);
+      } catch (e) {
+        console.error('[SafetyContext] Failed to update doctor report:', e);
       }
     },
     [state.doctorReports]
@@ -1691,6 +1729,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       approveDoctorReport,
       getDoctorReports,
       deleteDoctorReport,
+      updateDoctorReport,
       scheduleSafetyReminder,
       cancelSafetyReminder,
     }),
@@ -1735,6 +1774,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       approveDoctorReport,
       getDoctorReports,
       deleteDoctorReport,
+      updateDoctorReport,
       scheduleSafetyReminder,
       cancelSafetyReminder,
     ]
