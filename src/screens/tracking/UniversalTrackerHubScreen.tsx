@@ -44,6 +44,7 @@ import {
   differenceInMonths,
   differenceInYears,
   startOfDay,
+  isSameDay,
 } from 'date-fns';
 
 import { useCustomization } from '../../hooks/useCustomization';
@@ -114,6 +115,14 @@ interface DailyGoal {
 }
 
 const TRACKER_CONFIGS: Record<string, TrackerConfig> = {
+    default: {
+    emoji: '•',
+    color: '#94a3b8',
+    gradient: ['#94a3b8', '#cbd5e1'],
+    description: 'Activity',
+    category: 'care',
+    subActions: [{ id: 'default', label: 'View', icon: 'ellipse-outline' as const, color: '#94a3b8' }],
+  },
   feed: {
     emoji: '🍼',
     color: '#fa709a',
@@ -216,6 +225,57 @@ const TRACKER_CONFIGS: Record<string, TrackerConfig> = {
       { id: 'both', label: 'Both', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { side: 'both' } },
     ],
   },
+  bath: {
+    emoji: '🛁',
+    color: '#3b82f6',
+    gradient: ['#3b82f6', '#60a5fa'],
+    description: 'Bath time',
+    category: 'care',
+    subActions: [
+      { id: 'bath', label: 'Log Bath', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'bath' } },
+      { id: 'sponge', label: 'Sponge Bath', icon: 'cloud-outline', color: '#93c5fd', presetData: { type: 'sponge' } },
+    ],
+  },
+  tummy_time: {
+    emoji: '🤸',
+    color: '#10b981',
+    gradient: ['#10b981', '#34d399'],
+    description: 'Tummy time',
+    category: 'development',
+    subActions: [
+      { id: 'tummy_time', label: 'Log Tummy Time', icon: 'fitness-outline', color: '#10b981', presetData: { type: 'tummy_time' } },
+    ],
+  },
+  reading: {
+    emoji: '📚',
+    color: '#6366f1',
+    gradient: ['#6366f1', '#818cf8'],
+    description: 'Reading sessions',
+    category: 'development',
+    subActions: [
+      { id: 'reading', label: 'Log Reading', icon: 'book-outline', color: '#6366f1', presetData: { type: 'reading' } },
+    ],
+  },
+  walk: {
+    emoji: '🚶',
+    color: '#0ea5e9',
+    gradient: ['#0ea5e9', '#38bdf8'],
+    description: 'Outdoor walks',
+    category: 'care',
+    subActions: [
+      { id: 'walk', label: 'Log Walk', icon: 'walk-outline', color: '#0ea5e9', presetData: { type: 'walk' } },
+    ],
+  },
+  note: {
+    emoji: '📝',
+    color: '#64748b',
+    gradient: ['#64748b', '#94a3b8'],
+    description: 'Quick notes',
+    category: 'care',
+    subActions: [
+      { id: 'note', label: 'Add Note', icon: 'document-text-outline', color: '#64748b', presetData: { type: 'note' } },
+    ],
+  },
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -248,13 +308,33 @@ const safeStr = (val: unknown, fallback = ''): string => {
 };
 
 const formatDistanceToNow = (timestamp: number): string => {
-  const diff = Date.now() - timestamp;
+  if (!timestamp || typeof timestamp !== 'number' || isNaN(timestamp)) return 'just now';
+  const now = Date.now();
+  const diff = now - timestamp;
+  // If timestamp is in the future, return 'just now'
+  if (diff < 0) return 'just now';
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (days < 7) return `${days}d ago`;
+  return format(new Date(timestamp), 'MMM d');
+};
+
+const getDateTitle = (timestamp: number): string => {
+  if (!timestamp || typeof timestamp !== 'number' || isNaN(timestamp)) return 'Recent';
+  const date = new Date(timestamp);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date >= today) return 'Today';
+  if (date >= yesterday) return 'Yesterday';
+  const days = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (days < 7) return format(date, 'EEEE');
+  return format(date, 'MMM d, yyyy');
 };
 
 const getBabyAge = (birthDate?: string | Date) => {
@@ -916,9 +996,16 @@ const TrackerCardsGrid = React.memo(({
   const visibleTrackers = useMemo(() => trackerCards.filter(t => !hiddenIds.includes(t.id)), [trackerCards, hiddenIds]);
   const pinned = useMemo(() => visibleTrackers.filter(t => pinnedIds.includes(t.id)), [visibleTrackers, pinnedIds]);
   const hasHidden = hiddenIds.length > 0;
+  
+  // Only show categories that have trackers
   const categories = useMemo(() => {
-    const cats = [...new Set(visibleTrackers.map(t => t.category))];
-    return cats.filter(c => visibleTrackers.some(t => t.category === c && !pinnedIds.includes(t.id)));
+    const cats = new Set<string>();
+    visibleTrackers.forEach(t => {
+      if (!pinnedIds.includes(t.id) && t.category) {
+        cats.add(t.category);
+      }
+    });
+    return [...cats];
   }, [visibleTrackers, pinnedIds]);
 
   return (
@@ -1065,37 +1152,148 @@ QuickLogStrip.displayName = 'QuickLogStrip';
 
 // ─── RECENT ACTIVITY LIST ───────────────────────────────────────────────
 
+interface DayGroup {
+  title: string;
+  date: Date;
+  events: any[];
+}
+
 const RecentActivityList = React.memo(({ entries, onViewAll, onEntryPress }: { entries: any[]; onViewAll: () => void; onEntryPress: (entry: any) => void }) => {
   const theme = useHubTheme();
+  const { borderRadiusValue = 14 } = useCustomization();
 
-  const recent = useMemo(() => [...entries].sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 8), [entries]);
+  // Group entries by day - matching HomeScreen/Timeline style
+  const groups = useMemo((): DayGroup[] => {
+    const sorted = [...(entries || [])]
+      .filter((e: any) => e?.timestamp && typeof e.timestamp === 'number' && !isNaN(e.timestamp))
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 12);
 
-  if (recent.length === 0) return null;
+    const result: DayGroup[] = [];
+    let current: DayGroup | null = null;
+    sorted.forEach((event: any) => {
+      const eventDate = new Date(event.timestamp);
+      if (!current || !isSameDay(current.date, eventDate)) {
+        current = { title: getDateTitle(event.timestamp), date: eventDate, events: [] };
+        result.push(current);
+      }
+      (current as DayGroup).events.push(event);
+    });
+    return result;
+  }, [entries]);
+
+  if (groups.length === 0) {
+    return (
+      <Animated.View entering={FadeInUp.delay(440).springify()}>
+        <SectionHeader title="Recent Activity" subtitle="Latest logs" icon="time-outline" action={onViewAll} actionLabel="Timeline" />
+        <View style={[styles.emptyState, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderRadius: borderRadiusValue, padding: 32 }]}>
+          <View style={[styles.emptyIconCircle, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}>
+            <Ionicons name="time-outline" size={40} color={theme.text.muted} />
+          </View>
+          <Text style={[styles.emptyStateTitle, { color: theme.text.primary }]}>No activity yet</Text>
+          <Text style={[styles.emptyStateSubtitle, { color: theme.text.secondary }]}>
+            Your logged entries will appear here, just like on the Timeline.
+          </Text>
+          <TouchableOpacity
+            style={[styles.logFirstBtn, { backgroundColor: theme.primary, borderRadius: borderRadiusValue }]}
+            onPress={onViewAll}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="add-circle-outline" size={18} color="#fff" />
+            <Text style={styles.logFirstBtnText}>Log First Activity</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View entering={FadeInUp.delay(440).springify()}>
       <SectionHeader title="Recent Activity" subtitle="Latest logs" icon="time-outline" action={onViewAll} actionLabel="Timeline" />
-      <GlassCard style={styles.historyCard}>
-        {recent.map((entry: any, index: number) => {
-          const config = TRACKER_CONFIGS[entry.trackerId];
-          const isLast = index === recent.length - 1;
+      <View>
+        {groups.map((group, groupIndex) => (
+          <View key={`${group.title}-${groupIndex}`} style={styles.daySection}>
+            <Animated.View entering={FadeInUp.delay(groupIndex * 80).springify()}>
+              <View style={styles.dateHeaderContainer}>
+                <Text style={[styles.dateHeader, { color: theme.text.primary }]}>{group.title}</Text>
+                <View style={[styles.dateBadge, { backgroundColor: `${theme.primary}20` }]}>
+                  <Text style={[styles.dateBadgeText, { color: theme.primary }]}>{group.events.length}</Text>
+                </View>
+              </View>
 
-          return (
-            <TouchableOpacity key={entry.id || `entry-${index}`} onPress={() => onEntryPress(entry)} style={[styles.historyRow, !isLast && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]} activeOpacity={0.8}>
-              <View style={[styles.historyIcon, { backgroundColor: `${config?.color || theme.primary}10` }]}><Text style={{ fontSize: 18 }}>{config?.emoji || '📋'}</Text></View>
-              <View style={styles.historyInfo}>
-                <Text style={[styles.historyType, { color: theme.text.primary }]}>{safeStr(entry.title, config?.description || 'Entry')}</Text>
-                <Text style={[styles.historyDate, { color: theme.text.muted }]}>{format(new Date(entry.timestamp), 'MMM d, h:mm a')}</Text>
+              <View>
+                {group.events.map((event: any, eventIndex: number) => {
+                  const cfg = TRACKER_CONFIGS[event?.trackerId || event?.type] || TRACKER_CONFIGS.default;
+                  const isLast = eventIndex === group.events.length - 1;
+                  const time = event?.timestamp ? format(event.timestamp, 'h:mm a') : '';
+                  const fullDate = event?.timestamp ? format(event.timestamp, 'MMM d, h:mm a') : '';
+                  const title = event?.title || event?.name || cfg?.label || 'Activity';
+
+                  return (
+                    <Animated.View
+                      key={event?.id || `evt-${groupIndex}-${eventIndex}`}
+                      entering={FadeInUp.delay(groupIndex * 80 + eventIndex * 50).springify()}
+                    >
+                      <View style={styles.eventRow}>
+                        {/* Time column with tracker-colored line */}
+                        <View style={styles.timeColumn}>
+                          <Text style={[styles.timeText, { color: cfg?.color || theme.primary }]}>{time}</Text>
+                          {!isLast && <View style={[styles.timelineLine, { backgroundColor: `${cfg?.color || theme.primary}30` }]} />}
+                        </View>
+
+                        {/* Entry card — Timeline look, theme-aware text */}
+                        <TouchableOpacity
+                          style={styles.eventCardContainer}
+                          onPress={() => onEntryPress(event)}
+                          activeOpacity={0.85}
+                        >
+                          <View style={[styles.entryCard, { borderRadius: borderRadiusValue || 14, borderColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+                            <LinearGradient
+                              colors={theme.isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
+                              style={StyleSheet.absoluteFill}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 1 }}
+                            />
+                            <View style={styles.entryCardContent}>
+                              <View style={styles.entryCardHeader}>
+                                <View style={[styles.entryIconBg, { backgroundColor: `${cfg?.color || theme.primary}14` }]}>
+                                  <Text style={styles.entryEmoji}>{cfg?.emoji || '•'}</Text>
+                                </View>
+                                <View style={styles.entryInfo}>
+                                  <Text style={[styles.entryTitle, { color: theme.text.primary }]} numberOfLines={1}>
+                                    {title}
+                                  </Text>
+                                  <Text style={[styles.entryMeta, { color: theme.text.secondary }]} numberOfLines={1}>
+                                    {fullDate}
+                                    {event?.loggedByName ? ` • by ${event.loggedByName}` : ''}
+                                  </Text>
+                                </View>
+                                <View style={[styles.entryTypeBadge, { backgroundColor: `${cfg?.color || theme.primary}12` }]}>
+                                  <Text style={[styles.entryTypeText, { color: cfg?.color || theme.primary }]}>{cfg?.label || 'Activity'}</Text>
+                                </View>
+                              </View>
+                              {(event?.details || event?.notes) ? (
+                                <Text style={[styles.entryNotes, { color: theme.text.secondary }]} numberOfLines={2}>
+                                  {event?.details || event?.notes}
+                                </Text>
+                              ) : null}
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      </View>
+                    </Animated.View>
+                  );
+                })}
               </View>
-              <View style={styles.historyRight}>
-                {entry.duration && <Text style={[styles.historyValue, { color: theme.primary }]}>{Math.floor(entry.duration / 60)}h {entry.duration % 60}m</Text>}
-                {entry.amount && <Text style={[styles.historyValue, { color: theme.primary }]}>{entry.amount}ml</Text>}
-                <Text style={[styles.historyTime, { color: theme.text.muted }]}>{formatDistanceToNow(entry.timestamp)}</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </GlassCard>
+            </Animated.View>
+          </View>
+        ))}
+
+        <TouchableOpacity style={styles.viewAllButton} onPress={onViewAll} activeOpacity={0.7}>
+          <Text style={[styles.viewAllText, { color: theme.primary }]}>View Full Timeline</Text>
+          <Ionicons name="arrow-forward" size={14} color={theme.primary} />
+        </TouchableOpacity>
+      </View>
     </Animated.View>
   );
 });
@@ -2001,16 +2199,36 @@ const styles = StyleSheet.create({
   },
   quickLogLabel: { fontWeight: '700', fontSize: 12 },
 
-  // ── History Card ───────────────────────────────────────────────────
-  historyCard: { padding: 8 },
-  historyRow: { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 12 },
-  historyIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  historyInfo: { flex: 1, gap: 2 },
-  historyType: { fontSize: 14, fontWeight: '700' },
-  historyDate: { fontSize: 11, fontWeight: '500' },
-  historyRight: { alignItems: 'flex-end', gap: 4 },
-  historyValue: { fontSize: 16, fontWeight: '800' },
-  historyTime: { fontSize: 11, fontWeight: '600' },
+  // ── History Card (Timeline Style) ──────────────────────────────────────
+  daySection: { marginBottom: 20 },
+  dateHeaderContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  dateHeader: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
+  dateBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  dateBadgeText: { fontSize: 12, fontWeight: '700' },
+  eventRow: { flexDirection: 'row', gap: 12 },
+  timeColumn: { width: 58, alignItems: 'flex-end', paddingTop: 16 },
+  timeText: { fontSize: 12, fontWeight: '700' },
+  timelineLine: { width: 2, flex: 1, marginTop: 4, borderRadius: 1 },
+  eventCardContainer: { flex: 1, paddingBottom: 14 },
+  entryCard: { flex: 1, overflow: 'hidden', borderWidth: 1 },
+  entryCardContent: { padding: 14, gap: 8 },
+  entryCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  entryIconBg: { width: 38, height: 38, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+  entryEmoji: { fontSize: 19 },
+  entryInfo: { flex: 1, gap: 2 },
+  entryTitle: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+  entryMeta: { fontSize: 11, fontWeight: '500' },
+  entryTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  entryTypeText: { fontSize: 10, fontWeight: '700' },
+  entryNotes: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginLeft: 48 },
+  viewAllButton: { marginTop: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 },
+  viewAllText: { fontSize: 13, fontWeight: '700' },
+  emptyState: { alignItems: 'center', paddingVertical: 32 },
+  emptyIconCircle: { width: 96, height: 96, borderRadius: 48, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  emptyStateTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, marginBottom: 6 },
+  emptyStateSubtitle: { fontSize: 13, fontWeight: '500', textAlign: 'center', lineHeight: 19, paddingHorizontal: 24, marginBottom: 18 },
+  logFirstBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 12 },
+  logFirstBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   // ── Quick Links ────────────────────────────────────────────────────
   quickLinksGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
