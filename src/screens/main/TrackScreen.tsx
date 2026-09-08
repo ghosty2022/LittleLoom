@@ -334,7 +334,7 @@ export default function AllTrackersScreen() {
   const navigation = useNavigation<AllTrackersNavProp>();
   const insets = useSafeAreaInsets();
   const { isDark, fullThemeColors, colors, borderRadiusValue } = useCustomization();
-  const { entries, getEntries, trackers } = useTracker();
+  const { entries, getEntries, trackers } = useTrackerProgressive();
   const { currentBaby } = useBaby();
   const theme = useHubTheme();
 
