@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   UIManager,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { format } from 'date-fns';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
@@ -863,6 +864,44 @@ export default function AllTrackersScreen() {
           onSelect={handleSubActionSelect}
         />
       )}
+
+           {/* ─── FAB ──────────────────────────────────────────────────────────── */}
+      <Animated.View
+        entering={FadeInUp.delay(600).springify()}
+        style={[styles.fabContainer, { bottom: insets.bottom + 100, right: 20 }]}
+      >
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: theme.primary }]}
+          onPress={() => {
+            HAPTIC_MEDIUM();
+            const currentDate = new Date();
+            navigation.navigate('AddEntry', {
+              presetData: {
+                timestamp: currentDate.getTime(),
+                date: format(currentDate, 'yyyy-MM-dd'),
+                time: format(currentDate, 'HH:mm'),
+              }
+            });
+          }}
+          activeOpacity={0.85}
+        >
+          <LinearGradient
+            colors={[theme.primary, theme.secondary]}
+            style={[StyleSheet.absoluteFill, { borderRadius: 30 }]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <View style={styles.fabInner}>
+            <Ionicons name="add" size={28} color="#fff" />
+            <View style={styles.fabDateBadge}>
+              <Text style={styles.fabDateText}>{format(new Date(), 'MMM d')}</Text>
+            </View>
+          </View>
+          <View style={styles.fabPulse}>
+            <View style={[styles.fabPulseRing, { borderColor: theme.primary }]} />
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -1162,4 +1201,61 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   subActionLabel: { fontWeight: '700', textAlign: 'center', fontSize: 13 },
+    fabContainer: {
+    position: 'absolute',
+    zIndex: 100,
+  },
+  fab: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  fabInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  fabDateBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -14,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  fabDateText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    letterSpacing: -0.2,
+  },
+  fabPulse: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fabPulseRing: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 2,
+    opacity: 0.3,
+  },
 });

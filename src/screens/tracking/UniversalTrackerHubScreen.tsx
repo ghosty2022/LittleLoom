@@ -1497,6 +1497,44 @@ export default function UniversalTrackerHubScreen() {
 
       <TimelinePicker visible={showTimelinePicker} onClose={() => setShowTimelinePicker(false)} onSelect={(trackerId: string) => { setShowTimelinePicker(false); setTimeout(() => navigation.navigate('AddEntry', { trackerId }), 50); }} currentBabyName={currentBaby?.name} currentBabyAvatar={currentBaby?.avatar} />
 
+      {/* ─── FAB ──────────────────────────────────────────────────────────── */}
+      <Animated.View
+        entering={FadeInUp.delay(600).springify()}
+        style={[styles.fabContainer, { bottom: insets.bottom + 100, right: 20 }]}
+      >
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: themeColors?.primary || '#667eea' }]}
+          onPress={() => {
+            HAPTIC_MEDIUM();
+            const currentDate = new Date();
+            navigation.navigate('AddEntry', {
+              presetData: {
+                timestamp: currentDate.getTime(),
+                date: format(currentDate, 'yyyy-MM-dd'),
+                time: format(currentDate, 'HH:mm'),
+              }
+            });
+          }}
+          activeOpacity={0.85}
+        >
+          <LinearGradient
+            colors={[themeColors?.primary || '#667eea', themeColors?.secondary || '#764ba2']}
+            style={[StyleSheet.absoluteFill, { borderRadius: 30 }]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+                    <View style={styles.fabInner}>
+            <Ionicons name="add" size={28} color="#fff" />
+            <View style={styles.fabDateBadge}>
+              <Text style={styles.fabDateText}>{format(new Date(), 'MMM d')}</Text>
+            </View>
+          </View>
+          <View style={styles.fabPulse}>
+            <View style={[styles.fabPulseRing, { borderColor: themeColors?.primary || '#667eea' }]} />
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+
       <Modal visible={showBabyRequiredModal} transparent animationType="fade" onRequestClose={() => setShowBabyRequiredModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowBabyRequiredModal(false)}>
           <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
@@ -1708,7 +1746,63 @@ const styles = StyleSheet.create({
   subActionCard: { alignItems: 'center', padding: 12, gap: 8, borderWidth: 1.5 },
   subActionIcon: { width: 44, height: 44, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
   subActionLabel: { fontWeight: '700', textAlign: 'center', fontSize: 13 },
-
+  fabContainer: {
+    position: 'absolute',
+    zIndex: 100,
+  },
+  fab: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  fabInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  fabDateBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -14,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  fabDateText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    letterSpacing: -0.2,
+  },
+  fabPulse: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fabPulseRing: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 2,
+    opacity: 0.3,
+  },
   modalDragHandle: { paddingVertical: 12, alignItems: 'center' },
   modalDragPill: { width: 40, height: 5, borderRadius: 3 },
 });
