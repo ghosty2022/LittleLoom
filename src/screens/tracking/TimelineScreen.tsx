@@ -2,7 +2,7 @@
 // No loading screens, renders immediately with available data
 // UNIFIED THEMING v5.0 — Matches TrackerHub & GrowthDashboard
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { Dimensions, Modal, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
@@ -21,7 +21,7 @@ import Animated, {
   Layout,
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
-import { format, isSameDay, differenceInHours, differenceInDays, differenceInMonths, parseISO, isValid, addMonths } from 'date-fns';
+import { format, isSameDay, differenceInHours, differenceInDays, differenceInMonths, parseISO, isValid, addMonths, startOfDay } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -133,6 +133,7 @@ const useHubTheme = () => {
       card: fullThemeColors?.card || (isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)'),
       border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
     },
+    borderRadius: fullThemeColors?.borderRadius || 12,
   }), [isDark, colors, fullThemeColors]);
 };
 
@@ -689,7 +690,10 @@ const SmartCorrelationCard: React.FC<{ correlation: TimelineCorrelation; theme: 
       </View>
       <Text style={[styles.correlationInsight, { color: theme.text.primary }]}>{correlation?.insight || 'Pattern detected'}</Text>
       <View style={styles.correlationMeta}>
-        <Text style={[styles.correlationTime, { color: theme.text.muted }]}><Ionicons name="time-outline" size={12} /> {primaryTs ? format(primaryTs, 'MMM d, h:mm a') : 'Unknown time'}</Text>
+        <View style={styles.correlationTimeWrap}>
+          <Ionicons name="time-outline" size={12} color={theme.text.muted} />
+          <Text style={[styles.correlationTime, { color: theme.text.muted }]}>{primaryTs ? format(primaryTs, 'MMM d, h:mm a') : 'Unknown time'}</Text>
+        </View>
         <TouchableOpacity style={[styles.correlationAction, { backgroundColor: `${safeColor}15` }]} onPress={() => onNavigate(relatedId)}>
           <Text style={[styles.correlationActionText, { color: safeColor }]}>View {relatedId}</Text>
         </TouchableOpacity>
@@ -1051,7 +1055,7 @@ export default function EnhancedTimelineScreen() {
     if (!currentBaby) {
       return { today: 0, todayTrend: 0, total: 0, totalTrend: 0, weekTotal: 0, avgPerDay: 0, milestones: 0, achievements: 0, achievementTrend: 0, growthScore: 0, growthTrend: 0 };
     }
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = startOfDay(new Date());
     const todayStart = today.getTime();
     const yesterdayStart = todayStart - 86400000;
     const weekAgo = todayStart - 7 * 86400000;
@@ -1142,6 +1146,12 @@ export default function EnhancedTimelineScreen() {
     triggerHaptic('light');
   }, [triggerHaptic]);
 
+  // ─── QUICK LOG HANDLER ──────────────────────────────────────────────────
+  const handleQuickLog = useCallback((trackerId: string) => {
+    triggerHaptic('light');
+    navigation.navigate('AddEntry', { trackerId });
+  }, [navigation, triggerHaptic]);
+
   const tabs = [
     { key: 'timeline' as TimelineTab, label: 'Timeline', icon: 'time-outline' },
     { key: 'insights' as TimelineTab, label: 'Insights', icon: 'bulb-outline' },
@@ -1165,51 +1175,66 @@ export default function EnhancedTimelineScreen() {
         </View>
       )}
 
-      {/* Header */}
+      {/* Header - Matches TrackerHub style */}
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
         <LinearGradient colors={[`${theme.primary}15`, `${theme.secondary}08`, 'transparent']} style={styles.headerGradient} />
-        <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerButton, { borderRadius: borderRadiusValue }]}>
-            <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
-            <Ionicons name="arrow-back" size={24} color={theme.text.primary} />
+        
+        {/* Top Row - Like TrackerHub */}
+        <View style={styles.topHeader}>
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()} 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
           </TouchableOpacity>
 
-          <View style={styles.headerCenter}>
+          {/* Baby Switcher Pill - Like TrackerHub */}
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Timeline', returnLabel: 'Timeline' })} 
+            style={styles.babyPill}
+          >
+            <LinearGradient
+              colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
             {currentBaby ? (
               <>
-                <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={56} fallbackIcon="happy-outline" fallbackColor={theme.primary} />
-                <Text style={[styles.headerTitle, { color: theme.text.primary }]}>{currentBaby.name}</Text>
-                <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>{format(new Date(), 'EEEE, MMM d')} • {stats.today} entries</Text>
+                <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={36} fallbackIcon="happy-outline" fallbackColor={theme.primary} />
+                <View style={styles.babyPillText}>
+                  <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
+                  <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>{safeDiffMonths(new Date(), currentBaby.birthDate)}mo</Text>
+                </View>
+                <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
               </>
             ) : (
-              <TouchableOpacity onPress={() => navigation.navigate('CreateBabyProfile')} style={{ alignItems: 'center' }}>
-                <View style={[styles.headerBabyPlaceholder, { backgroundColor: `${theme.primary}15` }]}>
-                  <Ionicons name="add-circle" size={28} color={theme.primary} />
+              <>
+                <View style={[styles.babyPillNoBabyIcon, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
+                  <Ionicons name="add-circle" size={28} color={theme.isDark ? '#a3bffa' : '#667eea'} />
                 </View>
-                <Text style={[styles.headerTitle, { color: theme.text.primary }]}>Add Baby</Text>
-                <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>Tap to create profile</Text>
-              </TouchableOpacity>
+                <View style={styles.babyPillText}>
+                  <Text style={[styles.babyPillName, { color: theme.isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
+                  <Text style={[styles.babyPillAge, { color: theme.isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={theme.text.muted} />
+              </>
             )}
-          </View>
+          </TouchableOpacity>
 
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={() => { triggerHaptic('light'); setCalendarMonth(selectedDate || new Date()); setShowCalendar(true); }} style={[styles.headerButton, { borderRadius: borderRadiusValue }]}>
-              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
-              <Ionicons name="calendar-outline" size={22} color={selectedDate ? theme.primary : theme.text.primary} />
-              {selectedDate && <View style={[styles.calendarActiveDot, { backgroundColor: theme.primary }]} />}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowSearch(!showSearch)} style={[styles.headerButton, { borderRadius: borderRadiusValue }]}>
-              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
-              <Ionicons name={showSearch ? 'close' : 'search'} size={22} color={theme.text.primary} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity 
+            onPress={() => setShowSearch(!showSearch)} 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          >
+            <Ionicons name={showSearch ? 'close' : 'search'} size={22} color={theme.text.secondary} />
+          </TouchableOpacity>
         </View>
 
+        {/* Sticky Header - Like TrackerHub */}
         <Animated.View style={[styles.stickyHeader, headerAnimatedStyle, { top: insets.top + 8 }]}>
-          <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.stickyBlur, { borderRadius: borderRadiusValue }]} tint={theme.blur}>
-            <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby?.name ? `${currentBaby.name}` : '🗓️ Timeline'}</Text>
-            <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>{stats.today} entries • {stats.achievements} achievements</Text>
-          </BlurView>
+          <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
+          <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby?.name || 'Timeline'}</Text>
+          <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>{stats.today} entries • {stats.achievements} achievements</Text>
         </Animated.View>
       </View>
 
@@ -1227,8 +1252,19 @@ export default function EnhancedTimelineScreen() {
           <Animated.View entering={FadeInDown} style={styles.searchContainer}>
             <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.searchBlur, { borderRadius: borderRadiusValue }]} tint={theme.blur}>
               <Ionicons name="search" size={20} color={theme.text.secondary} />
-              <TextInput style={[styles.searchInput, { color: theme.text.primary, fontSize: 16 * fontSizeMultiplier }]} placeholder="Search entries..." value={searchQuery} onChangeText={setSearchQuery} placeholderTextColor={theme.text.secondary} autoFocus />
-              {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery('')}><Ionicons name="close-circle" size={20} color={theme.text.secondary} /></TouchableOpacity>}
+              <TextInput 
+                style={[styles.searchInput, { color: theme.text.primary, fontSize: 16 * fontSizeMultiplier }]} 
+                placeholder="Search entries..." 
+                value={searchQuery} 
+                onChangeText={setSearchQuery} 
+                placeholderTextColor={theme.text.secondary} 
+                autoFocus 
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={20} color={theme.text.secondary} />
+                </TouchableOpacity>
+              )}
             </BlurView>
           </Animated.View>
         )}
@@ -1300,7 +1336,7 @@ export default function EnhancedTimelineScreen() {
         {/* Timeline Tab */}
         {activeTab === 'timeline' && (
           <>
-            <QuickActionSuggestions theme={theme} entries={allEntries} onPress={(action) => navigation.navigate('AddEntry', { trackerId: action })} />
+            <QuickActionSuggestions theme={theme} entries={allEntries} onPress={handleQuickLog} />
 
             {allEntries.length > 0 && (
               <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250)} style={{ marginHorizontal: 20, marginBottom: 12 }}>
@@ -1313,7 +1349,9 @@ export default function EnhancedTimelineScreen() {
                   const c = t?.gradient?.[0] || t?.color || theme.primary;
                   return (
                     <TouchableOpacity key={entry?.id || idx} style={[styles.latestEntryRow, { borderBottomColor: theme.surface.border }, idx === 0 && { borderTopWidth: 1, borderTopColor: theme.surface.border }]} onPress={() => handleEventPress(entry)} activeOpacity={0.7}>
-                      <View style={[styles.latestEntryIcon, { backgroundColor: `${c}12` }]}><Text style={{ fontSize: 16 }}>{t?.emoji || '📋'}</Text></View>
+                      <View style={[styles.latestEntryIcon, { backgroundColor: `${c}12` }]}>
+                        <Text style={{ fontSize: 16 }}>{t?.emoji || '📋'}</Text>
+                      </View>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.latestEntryTitle, { color: theme.text.primary }]} numberOfLines={1}>{entry?.title || t?.name || 'Entry'}</Text>
                         <Text style={[styles.latestEntryMeta, { color: theme.text.muted }]}>{entry?.timestamp ? format(entry.timestamp, 'MMM d, h:mm a') : ''}</Text>
@@ -1329,7 +1367,15 @@ export default function EnhancedTimelineScreen() {
               <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
                 {filterChips.map((filter, index) => (
                   <Animated.View key={filter.id} entering={FadeIn.delay(index * 50)}>
-                    <TouchableOpacity onPress={() => { triggerHaptic('light'); setSelectedFilter(filter.id); }} style={[styles.filterChip, { borderRadius: borderRadiusValue, backgroundColor: selectedFilter === filter.id ? filter.color : theme.surface.card, borderColor: selectedFilter === filter.id ? filter.color : theme.surface.border }]} activeOpacity={0.8}>
+                    <TouchableOpacity 
+                      onPress={() => { triggerHaptic('light'); setSelectedFilter(filter.id); }} 
+                      style={[styles.filterChip, { 
+                        borderRadius: borderRadiusValue, 
+                        backgroundColor: selectedFilter === filter.id ? filter.color : theme.surface.card, 
+                        borderColor: selectedFilter === filter.id ? filter.color : theme.surface.border 
+                      }]} 
+                      activeOpacity={0.8}
+                    >
                       <Ionicons name={filter.icon as any} size={16} color={selectedFilter === filter.id ? '#fff' : filter.color} />
                       <Text style={[styles.filterText, selectedFilter === filter.id && { color: '#fff', fontWeight: '700' }]}>{filter.label}</Text>
                     </TouchableOpacity>
@@ -1365,7 +1411,9 @@ export default function EnhancedTimelineScreen() {
                     <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(groupIndex * 100)}>
                       <View style={styles.dateHeaderContainer}>
                         <Text style={[styles.dateHeader, { color: theme.text.primary, fontSize: 18 * fontSizeMultiplier }]}>{group.title}</Text>
-                        <View style={[styles.dateBadge, { backgroundColor: `${theme.primary}20` }]}><Text style={[styles.dateBadgeText, { color: theme.primary }]}>{group.events.length}</Text></View>
+                        <View style={[styles.dateBadge, { backgroundColor: `${theme.primary}20` }]}>
+                          <Text style={[styles.dateBadgeText, { color: theme.primary }]}>{group.events.length}</Text>
+                        </View>
                       </View>
                       <View style={styles.eventsContainer}>
                         {group.events.map((event, eventIndex) => {
@@ -1391,7 +1439,9 @@ export default function EnhancedTimelineScreen() {
                                     <LinearGradient colors={theme.isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
                                     <View style={styles.timelineEntryContent}>
                                       <View style={styles.timelineEntryHeader}>
-                                        <View style={[styles.timelineEntryIconBg, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}12` }]}><Text style={styles.timelineEntryEmoji}>{tracker.emoji}</Text></View>
+                                        <View style={[styles.timelineEntryIconBg, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}12` }]}>
+                                          <Text style={styles.timelineEntryEmoji}>{tracker.emoji}</Text>
+                                        </View>
                                         <View style={styles.timelineEntryInfo}>
                                           <Text style={[styles.timelineEntryTitle, { color: theme.text.primary }]} numberOfLines={1}>{event?.title || 'Entry'}</Text>
                                           <Text style={[styles.timelineEntryTime, { color: theme.text.secondary }]}>{event?.timestamp ? format(event.timestamp, 'MMM d, h:mm a') : ''}{event?.loggedByName ? ` • by ${event.loggedByName}` : ''}</Text>
@@ -1479,7 +1529,9 @@ export default function EnhancedTimelineScreen() {
                 <Animated.View key={achievement?.id || i} entering={FadeInUp.delay(i * 60).springify()}>
                   <GlassCard style={styles.achievedCard}>
                     <View style={styles.achievedRow}>
-                      <View style={[styles.achievedIconBg, { backgroundColor: `${getRarityGradient(achievement?.rarity || 'common')[0]}20` }]}><Text style={styles.achievedEmoji}>{achievement?.emoji || '🏆'}</Text></View>
+                      <View style={[styles.achievedIconBg, { backgroundColor: `${getRarityGradient(achievement?.rarity || 'common')[0]}20` }]}>
+                        <Text style={styles.achievedEmoji}>{achievement?.emoji || '🏆'}</Text>
+                      </View>
                       <View style={styles.achievedContent}>
                         <Text style={[styles.achievedTitle, { color: theme.text.primary }]}>{achievement?.title || 'Achievement'}</Text>
                         <Text style={[styles.achievedDate, { color: theme.text.muted }]}>{achievement?.description || ''}</Text>
@@ -1513,7 +1565,9 @@ export default function EnhancedTimelineScreen() {
                     { label: 'Medication', count: allEntries.filter(e => e.trackerId === 'medication').length, color: '#ef4444', icon: '💊' },
                   ].map((stat, i) => (
                     <View key={i} style={styles.analyticsItem}>
-                      <View style={[styles.analyticsIconBg, { backgroundColor: `${stat.color}15` }]}><Text style={styles.analyticsEmoji}>{stat.icon}</Text></View>
+                      <View style={[styles.analyticsIconBg, { backgroundColor: `${stat.color}15` }]}>
+                        <Text style={styles.analyticsEmoji}>{stat.icon}</Text>
+                      </View>
                       <Text style={[styles.analyticsCount, { color: theme.text.primary }]}>{stat.count}</Text>
                       <Text style={[styles.analyticsLabel, { color: theme.text.muted }]}>{stat.label}</Text>
                     </View>
@@ -1529,14 +1583,27 @@ export default function EnhancedTimelineScreen() {
 
       {/* Floating Action Button */}
       <Animated.View entering={FadeIn.delay(600)} style={[styles.fabContainer, { bottom: insets.bottom + 20, right: 20 }]}>
-        <TouchableOpacity style={[styles.fab, { backgroundColor: theme.primary, borderRadius: borderRadiusValue }]} onPress={() => setShowTimelinePicker(true)} activeOpacity={0.8}>
+        <TouchableOpacity 
+          style={[styles.fab, { backgroundColor: theme.primary, borderRadius: borderRadiusValue }]} 
+          onPress={() => setShowTimelinePicker(true)} 
+          activeOpacity={0.8}
+        >
           <LinearGradient colors={[theme.primary, theme.secondary]} style={[StyleSheet.absoluteFill, { borderRadius: borderRadiusValue }]} />
           <Ionicons name="add" size={28} color="#fff" />
         </TouchableOpacity>
       </Animated.View>
 
       {/* Timeline Picker Modal */}
-      <TimelinePicker visible={showTimelinePicker} onClose={() => setShowTimelinePicker(false)} onSelect={(trackerId: string) => { setShowTimelinePicker(false); setTimeout(() => navigation.navigate('AddEntry', { trackerId }), 50); }} currentBabyName={currentBaby?.name} currentBabyAvatar={currentBaby?.avatar} />
+      <TimelinePicker 
+        visible={showTimelinePicker} 
+        onClose={() => setShowTimelinePicker(false)} 
+        onSelect={(trackerId: string) => { 
+          setShowTimelinePicker(false); 
+          setTimeout(() => navigation.navigate('AddEntry', { trackerId }), 50); 
+        }} 
+        currentBabyName={currentBaby?.name} 
+        currentBabyAvatar={currentBaby?.avatar} 
+      />
 
       {/* Calendar Modal */}
       <Modal visible={showCalendar} transparent animationType="fade" onRequestClose={() => setShowCalendar(false)}>
@@ -1553,7 +1620,9 @@ export default function EnhancedTimelineScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.calendarWeekRow}>
-              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <Text key={`${d}-${i}`} style={[styles.calendarWeekLabel, { color: theme.text.muted }]}>{d}</Text>)}
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                <Text key={`${d}-${i}`} style={[styles.calendarWeekLabel, { color: theme.text.muted }]}>{d}</Text>
+              ))}
             </View>
             <View style={styles.calendarGrid}>
               {calendarCells.map((day, idx) => {
@@ -1563,11 +1632,41 @@ export default function EnhancedTimelineScreen() {
                 const isSelected = !!selectedDate && isSameDay(day, selectedDate);
                 const isToday = isSameDay(day, new Date());
                 const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                const isFuture = day > new Date();
+                
                 return (
-                  <TouchableOpacity key={key} style={styles.calendarCell} activeOpacity={0.7} onPress={() => { triggerHaptic('light'); setSelectedDate(day); }}>
-                    <View style={[styles.calendarDayCircle, isSelected && { backgroundColor: theme.primary }, !isSelected && isToday && { borderWidth: 2, borderColor: theme.primary, backgroundColor: `${theme.primary}10` }, !isSelected && !isToday && count > 0 && { backgroundColor: `${theme.primary}08` }]}>
-                      <Text style={[styles.calendarDayText, { color: isSelected ? '#fff' : isToday ? theme.primary : theme.text.primary }, isWeekend && !isSelected && !isToday && { color: theme.text.muted }]}>{day.getDate()}</Text>
-                      {count > 0 && (
+                  <TouchableOpacity 
+                    key={key} 
+                    style={styles.calendarCell} 
+                    activeOpacity={0.7} 
+                    onPress={() => { 
+                      if (!isFuture) {
+                        triggerHaptic('light'); 
+                        setSelectedDate(day);
+                      }
+                    }} 
+                    disabled={isFuture}
+                  >
+                    <View style={[
+                      styles.calendarDayCircle, 
+                      isSelected && { backgroundColor: theme.primary },
+                      !isSelected && isToday && { borderWidth: 2, borderColor: theme.primary, backgroundColor: `${theme.primary}10` },
+                      !isSelected && !isToday && count > 0 && { backgroundColor: `${theme.primary}08` },
+                      isFuture && { opacity: 0.4, borderWidth: 1, borderColor: theme.text.muted, borderStyle: 'dashed' }
+                    ]}>
+                      <Text style={[
+                        styles.calendarDayText, 
+                        { color: isSelected ? '#fff' : isToday ? theme.primary : theme.text.primary },
+                        isWeekend && !isSelected && !isToday && { color: theme.text.muted }
+                      ]}>
+                        {day.getDate()}
+                      </Text>
+                      {isFuture && (
+                        <View style={[styles.calendarFutureBadge, { backgroundColor: theme.text.muted + '30' }]}>
+                          <Text style={[styles.calendarFutureText, { color: theme.text.muted, fontSize: 7 }]}>✕</Text>
+                        </View>
+                      )}
+                      {!isFuture && count > 0 && (
                         <View style={styles.calendarEntryIndicator}>
                           <View style={[styles.calendarEntryDot, { backgroundColor: isSelected ? '#fff' : theme.primary }]} />
                           {count > 1 && <Text style={[styles.calendarEntryCount, { color: isSelected ? '#fff' : theme.primary }]}>{count}</Text>}
@@ -1582,11 +1681,21 @@ export default function EnhancedTimelineScreen() {
               <View style={styles.calendarDayViewHeader}>
                 <Ionicons name="list-outline" size={14} color={theme.primary} />
                 <Text style={[styles.calendarDayViewTitle, { color: theme.text.primary }]}>{selectedDate ? format(selectedDate, 'EEEE, MMM d') : 'Tap a day'}</Text>
-                {!!selectedDate && <View style={[styles.calendarDayViewCount, { backgroundColor: `${theme.primary}15` }]}><Text style={[styles.calendarDayViewCountText, { color: theme.primary }]}>{selectedDayEntries.length}</Text></View>}
+                {!!selectedDate && !(selectedDate > new Date()) && (
+                  <View style={[styles.calendarDayViewCount, { backgroundColor: `${theme.primary}15` }]}>
+                    <Text style={[styles.calendarDayViewCountText, { color: theme.primary }]}>{selectedDayEntries.length}</Text>
+                  </View>
+                )}
               </View>
               <ScrollView style={styles.calendarDayViewList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                 {!selectedDate ? (
                   <Text style={[styles.calendarDayViewEmpty, { color: theme.text.muted }]}>Pick a date above to preview that day's entries.</Text>
+                ) : selectedDate > new Date() ? (
+                  <View style={styles.calendarFutureMessage}>
+                    <Ionicons name="time-outline" size={32} color={theme.text.muted} />
+                    <Text style={[styles.calendarDayViewEmpty, { color: theme.text.muted, marginTop: 8 }]}>No entries in the future yet.</Text>
+                    <Text style={[styles.calendarDayViewEmpty, { color: theme.text.secondary, fontSize: 12 }]}>You can only log entries for today or past dates.</Text>
+                  </View>
                 ) : selectedDayEntries.length === 0 ? (
                   <Text style={[styles.calendarDayViewEmpty, { color: theme.text.muted }]}>No entries logged this day.</Text>
                 ) : (
@@ -1594,8 +1703,19 @@ export default function EnhancedTimelineScreen() {
                     const t = getTracker(e.trackerId);
                     const c = t?.gradient?.[0] || t?.color || theme.primary;
                     return (
-                      <TouchableOpacity key={e.id} style={styles.calendarDayViewRow} activeOpacity={0.75} onPress={() => { triggerHaptic('light'); setShowCalendar(false); setTimeout(() => navigation.navigate('EntryDetail', { entryId: e.id, trackerId: e.trackerId }), 60); }}>
-                        <View style={[styles.calendarDayViewEmoji, { backgroundColor: `${c}15` }]}><Text style={styles.calendarDayViewEmojiText}>{t?.emoji || '📋'}</Text></View>
+                      <TouchableOpacity 
+                        key={e.id} 
+                        style={styles.calendarDayViewRow} 
+                        activeOpacity={0.75} 
+                        onPress={() => { 
+                          triggerHaptic('light'); 
+                          setShowCalendar(false); 
+                          setTimeout(() => navigation.navigate('EntryDetail', { entryId: e.id, trackerId: e.trackerId }), 60); 
+                        }}
+                      >
+                        <View style={[styles.calendarDayViewEmoji, { backgroundColor: `${c}15` }]}>
+                          <Text style={styles.calendarDayViewEmojiText}>{t?.emoji || '📋'}</Text>
+                        </View>
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.calendarDayViewRowTitle, { color: theme.text.primary }]} numberOfLines={1}>{e.title || t?.name || 'Entry'}</Text>
                           <Text style={[styles.calendarDayViewRowMeta, { color: theme.text.muted }]}>{format(new Date(e.timestamp), 'h:mm a')}{e.loggedByName ? ` • ${e.loggedByName}` : ''}</Text>
@@ -1729,11 +1849,43 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerBabyPlaceholder: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
 
+  // ── Top Header ── (like TrackerHub)
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  babyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+    gap: 10,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(102,126,234,0.15)',
+    flex: 1,
+  },
+  babyPillText: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 },
+  babyPillName: { fontSize: 15, fontWeight: '700', maxWidth: 140 },
+  babyPillAge: { fontSize: 12, fontWeight: '600' },
+  babyPillNoBabyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+
   // ── Sticky Header ──
-  stickyHeader: { position: 'absolute', left: 0, right: 0, alignItems: 'center', paddingHorizontal: 80 },
-  stickyBlur: { paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center', minWidth: 200, overflow: 'hidden' },
-  stickyTitle: { fontSize: 18, fontWeight: '800' },
-  stickySubtitle: { fontSize: 12, fontWeight: '600' },
+  stickyHeader: { position: 'absolute', left: 0, right: 0, alignItems: 'center', paddingHorizontal: 80, paddingTop: 4, paddingBottom: 8 },
+  stickyTitle: { fontSize: 17, fontWeight: '800' },
+  stickySubtitle: { fontSize: 12, fontWeight: '500' },
 
   // ── Search ──
   searchContainer: { marginHorizontal: 20, marginBottom: 16, marginTop: 8 },
@@ -1779,7 +1931,7 @@ const styles = StyleSheet.create({
   confidenceBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
   confidenceText: { fontSize: 11, fontWeight: '700' },
   correlationInsight: { fontSize: 14, fontWeight: '600', lineHeight: 20, marginBottom: 10 },
-  correlationMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  correlationTimeWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   correlationTime: { fontSize: 12, fontWeight: '500' },
   correlationAction: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   correlationActionText: { fontSize: 12, fontWeight: '600' },
@@ -1943,6 +2095,9 @@ const styles = StyleSheet.create({
   calendarEntryIndicator: { position: 'absolute', bottom: 4, flexDirection: 'row', alignItems: 'center', gap: 2 },
   calendarEntryDot: { width: 4, height: 4, borderRadius: 2 },
   calendarEntryCount: { fontSize: 8, fontWeight: '700' },
+  calendarFutureBadge: { position: 'absolute', top: 2, right: 2, width: 14, height: 14, borderRadius: 7, justifyContent: 'center', alignItems: 'center' },
+  calendarFutureText: { fontSize: 7, fontWeight: '700' },
+  calendarFutureMessage: { paddingVertical: 20, alignItems: 'center' },
   calendarFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
   calendarFooterBtn: { paddingHorizontal: 18, paddingVertical: 10 },
   calendarFooterBtnText: { fontSize: 14, fontWeight: '700' },

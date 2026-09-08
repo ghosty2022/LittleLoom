@@ -59,7 +59,6 @@ import { useFamily } from '../../context/FamilyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -78,13 +77,24 @@ type SafetyCornerScreenProps = BottomTabScreenProps<MainTabParamList, 'SafetyCor
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Matching Growth Dashboard / TimelineScreen (NO SHADOWS)
+   DESIGN TOKENS — Unified with TrackerHub / GrowthDashboard / TimelineScreen
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
-  // NO SHADOWS — clean flat design matching TimelineScreen
+const SPACING = {
+  xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
+};
+
+const RADIUS = {
+  xs: 6, sm: 10, md: 14, lg: 18, xl: 22, full: 999,
+};
+
+const SHADOW = {
+  none: { shadowOpacity: 0, elevation: 0 },
+  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
+  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
+  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
+  xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
 };
 
 type SafetyTab = 'overview' | 'emergency' | 'topics' | 'checklists' | 'reports' | 'intelligence';
@@ -103,97 +113,169 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// ─── THEME HOOK — Unified with TrackerHub ──────────────────────────────────
+
+const useHubTheme = () => {
+  const { isDark, colors, fullThemeColors } = useCustomization();
+
+  return useMemo(() => ({
+    primary: colors?.primary || '#667eea',
+    secondary: colors?.secondary || '#764ba2',
+    isDark: !!isDark,
+    bgColors: isDark ? ['#0a0a1a', '#12122a'] : ['#f8faff', '#eef2ff'],
+    statusBar: isDark ? 'light-content' : 'dark-content' as const,
+    blur: isDark ? 'dark' : 'light' as const,
+    text: {
+      primary: fullThemeColors?.text || (isDark ? '#ffffff' : '#1a1a1a'),
+      secondary: fullThemeColors?.textSecondary || (isDark ? '#94a3b8' : '#64748b'),
+      muted: fullThemeColors?.textMuted || (isDark ? '#64748b' : '#94a3b8'),
+    },
+    surface: {
+      bg: fullThemeColors?.surface || (isDark ? 'rgba(30,30,45,0.8)' : 'rgba(255,255,255,0.9)'),
+      card: fullThemeColors?.card || (isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)'),
+      border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+    },
+  }), [isDark, colors, fullThemeColors]);
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════
-   GLASS CARD — Shadowless, borderless, matching TimelineScreen
+   GLASS CARD — Matches TrackerHub exactly
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard = memo(({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
-  const theme = useUnifiedTrackerTheme();
+const GlassCard = memo(({ children, style, onPress, active = false, shadow = 'md' }: { 
+  children: React.ReactNode; 
+  style?: any; 
+  onPress?: () => void; 
+  active?: boolean;
+  shadow?: keyof typeof SHADOW;
+}) => {
+  const theme = useHubTheme();
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
-      styles.glassCard,
-      {
-        borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-        backgroundColor: theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)',
-      },
-      active && { borderColor: theme.primary, borderWidth: 1.5 },
-      style
-    ]}>
+    <Wrapper 
+      onPress={onPress} 
+      activeOpacity={onPress ? 0.85 : 1} 
+      style={[
+        styles.glassCard,
+        SHADOW[shadow],
+        active && { borderColor: theme.primary, borderWidth: 2 },
+        style
+      ]}
+    >
       <LinearGradient
-        colors={theme.isDark ? ['rgba(45,45,60,0.9)', 'rgba(35,35,50,0.7)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.85)']}
+        colors={theme.isDark 
+          ? ['rgba(45,45,60,0.9)', 'rgba(35,35,50,0.7)'] 
+          : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.5)' }]} />
+      <View style={[styles.glassBorder, { 
+        backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' 
+      }]} />
       <View style={styles.glassContent}>{children}</View>
     </Wrapper>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER — Matching TimelineScreen
+   SECTION HEADER — Matches TrackerHub exactly
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SectionHeader = memo(({ title, subtitle, action, actionLabel, theme }: { title: string; subtitle?: string; action?: () => void; actionLabel?: string; theme: any }) => (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
-      {subtitle && <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>}
-    </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={[styles.sectionActionText, { color: theme.primary }]}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color={theme.primary} />
-      </TouchableOpacity>
-    )}
-  </View>
-));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   TAB BAR — Matching TimelineScreen
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const TabBar = memo(({ tabs, activeTab, onChange, theme }: { tabs: { key: SafetyTab; label: string; icon: string }[]; activeTab: SafetyTab; onChange: (t: SafetyTab) => void; theme: any }) => (
-  <View style={[styles.tabBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }]}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => onChange(tab.key)}
-          style={[
-            styles.tabItem,
-            isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : '#fff' }
-          ]}
-        >
-          <Ionicons name={tab.icon as any} size={16} color={isActive ? theme.primary : theme.text.muted} />
-          <Text style={[styles.tabLabel, { color: isActive ? theme.primary : theme.text.muted }, isActive && { fontWeight: '700' }]}>
-            {tab.label}
+const SectionHeader = memo(({ 
+  title, 
+  subtitle, 
+  action, 
+  actionLabel,
+  icon,
+}: { 
+  title: string; 
+  subtitle?: string; 
+  action?: () => void; 
+  actionLabel?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) => {
+  const theme = useHubTheme();
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderLeft}>
+        {icon && (
+          <View style={[styles.sectionHeaderIcon, { backgroundColor: `${theme.primary}12` }]}>
+            <Ionicons name={icon} size={16} color={theme.primary} />
+          </View>
+        )}
+        <View>
+          <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
+          {subtitle && (
+            <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>
+          )}
+        </View>
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction} activeOpacity={0.7}>
+          <Text style={[styles.sectionActionText, { color: theme.primary }]}>
+            {actionLabel || 'See All'}
           </Text>
+          <Ionicons name="chevron-forward" size={14} color={theme.primary} />
         </TouchableOpacity>
-      );
-    })}
-  </View>
-));
+      )}
+    </View>
+  );
+});
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   KPI CARD — Shadowless, matching TimelineScreen stats
+   TAB BAR — Unified with TimelineScreen
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const KpiCard = memo(({ title, value, icon, color, onPress, theme, size = 'normal' }: any) => {
+const TabBar = memo(({ tabs, activeTab, onChange }: { 
+  tabs: { key: SafetyTab; label: string; icon: keyof typeof Ionicons.glyphMap }[]; 
+  activeTab: SafetyTab; 
+  onChange: (t: SafetyTab) => void;
+}) => {
+  const theme = useHubTheme();
+  return (
+    <View style={[styles.tabBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            style={[
+              styles.tabItem,
+              isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...SHADOW.sm }
+            ]}
+          >
+            <Ionicons name={tab.icon} size={16} color={isActive ? theme.primary : theme.text.muted} />
+            <Text style={[
+              styles.tabLabel,
+              { color: isActive ? theme.primary : theme.text.muted },
+              isActive && { fontWeight: '700' }
+            ]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KPI CARD — Unified with GrowthDashboard
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const KpiCard = memo(({ title, value, icon, color, onPress, size = 'normal' }: any) => {
+  const theme = useHubTheme();
   const isLarge = size === 'large';
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[
       styles.kpiCard,
       isLarge && styles.kpiCardLarge,
-      {
-        backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(255,255,255,0.7)',
-        borderColor: `${color}25`,
-      }
+      { borderColor: `${color}25` }
     ]}>
       <LinearGradient colors={[`${color}06`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.5)' }]} />
       <View style={styles.kpiInner}>
         <View style={styles.kpiTop}>
           <View style={[styles.kpiIconBg, { backgroundColor: `${color}12` }]}>
@@ -228,7 +310,7 @@ const SafetyScoreRing = memo(({ score, theme, onPress }: { score: number; theme:
 
   return (
     <Animated.View entering={FadeInUp.delay(100).springify()}>
-      <GlassCard onPress={onPress} style={{ marginBottom: DESIGN.spacing.lg }}>
+      <GlassCard onPress={onPress} style={{ marginBottom: SPACING.lg }}>
         <View style={styles.scoreRingWrap}>
           <View style={[styles.scoreRingOuter, { borderColor: `${getColor()}25` }]}>
             <View style={[styles.scoreRingInner, { borderColor: getColor() }]}>
@@ -284,7 +366,7 @@ const EmergencyQuickDial = memo(({ contacts, onCall, onSOS, theme }: { contacts:
 
   return (
     <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <SectionHeader title="Emergency" subtitle="One-tap access to help" theme={theme} />
+      <SectionHeader title="Emergency" subtitle="One-tap access to help" icon="alert-circle-outline" />
 
       {/* SOS Button */}
       <Animated.View style={[pulseStyle, styles.sosWrap]}>
@@ -297,28 +379,20 @@ const EmergencyQuickDial = memo(({ contacts, onCall, onSOS, theme }: { contacts:
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Emergency Contacts Grid — NO SHADOWS */}
+      {/* Emergency Contacts Grid — Glass style */}
       <View style={styles.emergencyGrid}>
         {emergencyContacts.map(contact => (
-          <TouchableOpacity key={contact.id} onPress={() => onCall(contact)} style={[
-            styles.emergencyCard,
-            {
-              borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-              backgroundColor: theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)',
-            }
-          ]}>
-            <LinearGradient colors={[`${contact.color}10`, `${contact.color}03`]} style={StyleSheet.absoluteFill} />
-            <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.5)' }]} />
+          <GlassCard key={contact.id} onPress={() => onCall(contact)} shadow="sm" style={styles.emergencyCard}>
             <View style={[styles.emergencyIconBg, { backgroundColor: `${contact.color}15` }]}>
               <Ionicons name={contact.icon as any} size={22} color={contact.color} />
             </View>
             <Text style={[styles.emergencyLabel, { color: theme.text.primary }]}>{contact.label}</Text>
             <Text style={[styles.emergencyNumber, { color: theme.text.muted }]}>{contact.number}</Text>
-          </TouchableOpacity>
+          </GlassCard>
         ))}
       </View>
 
-      {/* Family Chips — NO SHADOWS */}
+      {/* Family Chips — Glass style */}
       {familyContacts.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.familyScroll}>
           {familyContacts.map(contact => (
@@ -346,7 +420,7 @@ const EmergencyQuickDial = memo(({ contacts, onCall, onSOS, theme }: { contacts:
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   FEATURE 3: Safety Topic Cards — Shadowless card grid
+   FEATURE 3: Safety Topic Cards — Glass card grid
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SafetyTopicGrid = memo(({ topics, onPress, theme }: { topics: SafetyTopic[]; onPress: (t: SafetyTopic) => void; theme: any }) => {
@@ -361,22 +435,18 @@ const SafetyTopicGrid = memo(({ topics, onPress, theme }: { topics: SafetyTopic[
 
   return (
     <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <SectionHeader title="Safety Topics" subtitle={`${topics.filter(t => t.completedAt).length}/${topics.length} completed`} theme={theme} />
+      <SectionHeader 
+        title="Safety Topics" 
+        subtitle={`${topics.filter(t => t.completedAt).length}/${topics.length} completed`} 
+        icon="shield-checkmark-outline"
+      />
       <View style={styles.topicGrid}>
         {topics.map((topic, i) => {
           const color = getCategoryColor(topic.category);
           const isCompleted = !!topic.completedAt;
           return (
             <Animated.View key={topic.id} entering={FadeInUp.delay(i * 60).springify()} style={styles.topicGridItem}>
-              <TouchableOpacity onPress={() => onPress(topic)} activeOpacity={0.85} style={[
-                styles.topicCard,
-                {
-                  backgroundColor: theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)',
-                  borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-                }
-              ]}>
-                <LinearGradient colors={[`${color}06`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-                <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.5)' }]} />
+              <GlassCard onPress={() => onPress(topic)} shadow="sm" style={{ marginBottom: 0 }}>
                 <View style={styles.topicCardInner}>
                   <View style={[styles.topicIconBg, { backgroundColor: `${color}12` }]}>
                     <Ionicons name={topic.icon as any} size={24} color={color} />
@@ -394,7 +464,7 @@ const SafetyTopicGrid = memo(({ topics, onPress, theme }: { topics: SafetyTopic[
                     </View>
                   )}
                 </View>
-              </TouchableOpacity>
+              </GlassCard>
             </Animated.View>
           );
         })}
@@ -412,7 +482,7 @@ const SafetyStreakCard = memo(({ streakDays, theme, onPress }: { streakDays: num
 
   return (
     <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard onPress={onPress}>
+      <GlassCard onPress={onPress} shadow="md">
         <View style={styles.streakWrap}>
           <View style={styles.streakLeft}>
             <View style={styles.streakIconBg}>
@@ -440,7 +510,7 @@ const SafetyStreakCard = memo(({ streakDays, theme, onPress }: { streakDays: num
 
 const QuickActionsBar = memo(({ actions, theme }: { actions: { icon: string; label: string; color: string; onPress: () => void }[]; theme: any }) => (
   <Animated.View entering={FadeInUp.delay(300).springify()}>
-    <SectionHeader title="Quick Actions" theme={theme} />
+    <SectionHeader title="Quick Actions" icon="flash-outline" />
     <View style={styles.quickActionsWrap}>
       {actions.map((action, i) => (
         <TouchableOpacity key={i} onPress={action.onPress} style={[styles.quickActionPill, { backgroundColor: `${action.color}10` }]}>
@@ -458,7 +528,7 @@ const QuickActionsBar = memo(({ actions, theme }: { actions: { icon: string; lab
 
 const LocationStatusCard = memo(({ isActive, theme, onToggle }: { isActive: boolean; theme: any; onToggle: () => void }) => (
   <Animated.View entering={FadeInUp.delay(350).springify()}>
-    <GlassCard>
+    <GlassCard shadow="sm">
       <View style={styles.locationWrap}>
         <View style={[styles.locationDot, { backgroundColor: isActive ? '#10b981' : '#ef4444' }]}>
           <View style={[styles.locationPulse, { backgroundColor: isActive ? '#10b98130' : '#ef444430' }]} />
@@ -529,9 +599,9 @@ const SafetyPatternPredictor = memo(({ checklists, topics, theme, onPress }: { c
 
   return (
     <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <GlassCard onPress={onPress}>
+      <GlassCard onPress={onPress} shadow="md">
         <View style={styles.predictorHeader}>
-          <View style={[styles.predictorIconBg, { backgroundColor: `${theme.primary}12` }]}>
+          <View style={[styles.predictorIconBg, { backgroundColor: `${theme.primary}15` }]}>
             <Ionicons name="sparkles" size={20} color={theme.primary} />
           </View>
           <View style={styles.predictorTitleWrap}>
@@ -542,7 +612,7 @@ const SafetyPatternPredictor = memo(({ checklists, topics, theme, onPress }: { c
 
         <View style={styles.predictorList}>
           {predictions.map((pred, i) => (
-            <View key={i} style={[styles.predictorItem, i < predictions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+            <View key={i} style={[styles.predictorItem, i < predictions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
               <View style={styles.predictorLeft}>
                 <Text style={styles.predictorEmoji}>{pred.emoji}</Text>
                 <View>
@@ -594,7 +664,7 @@ const SafetyBalanceRadar = memo(({ checklists, topics, theme }: { checklists: Sa
 
   return (
     <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard>
+      <GlassCard shadow="md">
         <View style={styles.radarHeader}>
           <Text style={[styles.radarTitle, { color: theme.text.primary }]}>Safety Coverage</Text>
           <Text style={[styles.radarSubtitle, { color: theme.text.muted }]}>Checklist & topic completion</Text>
@@ -609,7 +679,7 @@ const SafetyBalanceRadar = memo(({ checklists, topics, theme }: { checklists: Sa
                   width: radius * 2 * r,
                   height: radius * 2 * r,
                   borderRadius: radius * r,
-                  borderColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                  borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                   left: center - radius * r,
                   top: center - radius * r,
                 }
@@ -626,7 +696,7 @@ const SafetyBalanceRadar = memo(({ checklists, topics, theme }: { checklists: Sa
                     top: center,
                     width: radius,
                     transform: [{ rotate: `${angle * 180 / Math.PI}deg` }],
-                    backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                    backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                   }
                 ]} />
               );
@@ -698,7 +768,7 @@ const SafetyHeatmap = memo(({ checklists, topics, theme }: { checklists: SafetyC
 
   return (
     <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <GlassCard>
+      <GlassCard shadow="md">
         <View style={styles.heatmapHeader}>
           <Text style={[styles.heatmapTitle, { color: theme.text.primary }]}>Weekly Activity</Text>
           <View style={styles.heatmapLegend}>
@@ -718,7 +788,7 @@ const SafetyHeatmap = memo(({ checklists, topics, theme }: { checklists: SafetyC
                 styles.heatmapBlock,
                 { 
                   backgroundColor: `${theme.primary}${Math.round((day.count / maxCount) * 35 + 8).toString(16).padStart(2, '0')}`,
-                  borderColor: `${theme.primary}40`,
+                  borderColor: theme.primary,
                 }
               ]}>
                 <Text style={[styles.heatmapValue, { color: theme.text.primary }]}>{day.count}</Text>
@@ -770,7 +840,7 @@ const SafetyHealthCorrelation = memo(({ growthIndex, checklists, theme }: { grow
 
   return (
     <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <GlassCard>
+      <GlassCard shadow="md">
         <View style={styles.correlationHeader}>
           <Text style={[styles.correlationTitle, { color: theme.text.primary }]}>Safety ↔ Health Link</Text>
           <Text style={[styles.correlationSubtitle, { color: theme.text.muted }]}>How safety habits affect baby health</Text>
@@ -787,7 +857,7 @@ const SafetyHealthCorrelation = memo(({ growthIndex, checklists, theme }: { grow
                 </View>
               </View>
               <View style={styles.correlationRight}>
-                <View style={[styles.correlationBarBg, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                <View style={[styles.correlationBarBg, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
                   <View style={[styles.correlationBarFill, { width: `${corr.value}%`, backgroundColor: corr.color }]} />
                 </View>
                 <Text style={[styles.correlationValue, { color: corr.color }]}>{corr.value}%</Text>
@@ -843,7 +913,7 @@ const SafetyEventsTimeline = memo(({ checklists, topics, theme, onPress }: { che
       <SectionHeader 
         title="Safety Alerts" 
         subtitle="Items requiring attention"
-        theme={theme}
+        icon="alert-circle-outline"
       />
 
       <View style={styles.calendarTimeline}>
@@ -854,14 +924,14 @@ const SafetyEventsTimeline = memo(({ checklists, topics, theme, onPress }: { che
               <View style={[styles.calendarDot, { backgroundColor: event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary }]} />
               {i === upcoming.length - 1 && <View style={[styles.calendarLineEnd, { backgroundColor: 'transparent' }]} />}
             </View>
-            <View style={[styles.calendarCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)' }]}>
+            <View style={[styles.calendarCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
               <View style={styles.calendarHeader}>
                 <Text style={styles.calendarEmoji}>{event.emoji}</Text>
                 <View style={styles.calendarMeta}>
                   <Text style={[styles.calendarTitle, { color: theme.text.primary }]}>{event.title}</Text>
                   <Text style={[styles.calendarCategory, { color: theme.text.muted }]}>{event.description}</Text>
                 </View>
-                <View style={[styles.calendarBadge, { backgroundColor: `${event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary}12` }]}>
+                <View style={[styles.calendarBadge, { backgroundColor: `${event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary}15` }]}>
                   <Text style={[styles.calendarBadgeText, { color: event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary }]}>
                     {event.priority}
                   </Text>
@@ -907,7 +977,7 @@ const SafetyGrowthCard = memo(({ growthIndex, theme, onPress }: { growthIndex: a
     <Animated.View entering={FadeInUp.delay(50).springify()}>
       <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
         <LinearGradient
-          colors={[`${theme.primary}12`, `${theme.secondary}06`]}
+          colors={[`${theme.primary}15`, `${theme.secondary}08`]}
           style={[styles.growthCard, { borderRadius: 20 }]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -919,7 +989,7 @@ const SafetyGrowthCard = memo(({ growthIndex, theme, onPress }: { growthIndex: a
                 Growth Intelligence
               </Text>
             </View>
-            <View style={[styles.compositeBadge, { backgroundColor: `${getScoreColor(compositeIndex)}18` }]}>
+            <View style={[styles.compositeBadge, { backgroundColor: `${getScoreColor(compositeIndex)}20` }]}>
               <Text style={[styles.compositeText, { color: getScoreColor(compositeIndex) }]}>
                 {compositeIndex}
               </Text>
@@ -955,7 +1025,7 @@ const SafetyGrowthCard = memo(({ growthIndex, theme, onPress }: { growthIndex: a
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MODAL COMPONENTS — Redesigned with Glass aesthetic (NO SHADOWS)
+   MODAL COMPONENTS — Glass aesthetic
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const UnifiedModal = memo(({ visible, onClose, title, children, theme }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode; theme: any }) => {
@@ -983,7 +1053,7 @@ const UnifiedModal = memo(({ visible, onClose, title, children, theme }: { visib
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
       </Animated.View>
       <Animated.View style={[styles.modalSheet, sheetStyle]} pointerEvents={visible ? 'auto' : 'none'}>
-        <BlurView intensity={theme.isDark ? 60 : 90} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
+        <BlurView intensity={theme.isDark ? 60 : 90} style={StyleSheet.absoluteFill} tint={theme.blur} />
         <View style={styles.modalHandle} />
         <View style={styles.modalHeader}>
           <Text style={[styles.modalTitle, { color: theme.text.primary }]}>{title}</Text>
@@ -998,14 +1068,14 @@ const UnifiedModal = memo(({ visible, onClose, title, children, theme }: { visib
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — REDESIGNED WITH INTELLIGENCE + NO SHADOWS
+   MAIN SCREEN — REDESIGNED WITH INTELLIGENCE + UNIFIED THEMING
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenProps) {
-  const theme = useUnifiedTrackerTheme();
+  const theme = useHubTheme();
   const insets = useSafeAreaInsets();
   const { currentBaby } = useBaby();
-  const { triggerHaptic } = useCustomization();
+  const { triggerHaptic, borderRadiusValue, shouldReduceMotion, fontSizeMultiplier } = useCustomization();
   const sweetAlert = useSweetAlert();
 
   /* ── Safety Context ── */
@@ -1036,6 +1106,12 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const [activeTab, setActiveTab] = useState<SafetyTab>('overview');
   const [selectedTopic, setSelectedTopic] = useState<SafetyTopic | null>(null);
   const [showTopicModal, setShowTopicModal] = useState(false);
+  const [showChecklistModal, setShowChecklistModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [locationSharing, setLocationSharing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Refresh instantly every time this tab becomes active
   useFocusEffect(
@@ -1045,12 +1121,6 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
       // If those methods don't exist yet, wire them into your hooks/contexts.
     }, [])
   );
-  const [showChecklistModal, setShowChecklistModal] = useState(false);
-  const [showContactModal, setShowContactModal] = useState(false);
-  const [showReminderModal, setShowReminderModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [locationSharing, setLocationSharing] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -1124,7 +1194,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
       <StatusBar barStyle={theme.statusBar} />
       <LinearGradient colors={bgColors} style={StyleSheet.absoluteFill} />
 
-      {/* Sticky Header */}
+      {/* Sticky Header - Matches TrackerHub */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
         <BlurView intensity={theme.isDark ? 40 : 80} tint={theme.blur} style={StyleSheet.absoluteFill} />
         <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>Safety Corner</Text>
@@ -1141,10 +1211,13 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} />
         }
       >
-        {/* ── TOP HEADER ── */}
+        {/* ── TOP HEADER — Unified with TrackerHub ── */}
         <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, { backgroundColor: theme.surface.card }]}>
-            <Ionicons name="arrow-back" size={22} color={theme.text.primary} />
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()} 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
           </TouchableOpacity>
 
           <View style={styles.headerTitleWrap}>
@@ -1154,17 +1227,23 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
             </Text>
           </View>
 
-          <TouchableOpacity onPress={() => setShowChecklistModal(true)} style={[styles.iconBtn, { backgroundColor: `${theme.primary}12` }]}>
-            <Ionicons name="list" size={22} color={theme.primary} />
+          <TouchableOpacity 
+            onPress={() => setShowChecklistModal(true)} 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          >
+            <Ionicons name="list" size={22} color={theme.text.secondary} />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => navigation.navigate('PediatricianPDFExport')} style={[styles.iconBtn, { backgroundColor: `${theme.primary}12` }]}>
-            <Ionicons name="document-text" size={22} color={theme.primary} />
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('PediatricianPDFExport')} 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          >
+            <Ionicons name="document-text" size={22} color={theme.text.secondary} />
           </TouchableOpacity>
         </Animated.View>
 
         {/* ── TAB BAR ── */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} theme={theme} />
+        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
 
         {/* ═════════════════════════════════════════════════════════════════
             TAB: OVERVIEW
@@ -1174,7 +1253,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
             {/* ── SAFETY SCORE RING ── */}
             <SafetyScoreRing score={safetyScore} theme={theme} onPress={() => {}} />
 
-            {/* ── KPI GRID — NO SHADOWS ── */}
+            {/* ── KPI GRID ── */}
             <View style={styles.kpiGrid}>
               {[
                 { title: 'Completed', value: completedCount, icon: 'checkmark-circle', color: '#10b981', size: 'large' },
@@ -1199,16 +1278,15 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
 
             {/* ── RECENT TOPICS ── */}
             <View style={styles.section}>
-              <SectionHeader title="Recent Topics" subtitle={`${topics.filter(t => t.completedAt).length} completed`} action={() => setActiveTab('topics')} theme={theme} />
+              <SectionHeader 
+                title="Recent Topics" 
+                subtitle={`${topics.filter(t => t.completedAt).length} completed`} 
+                action={() => setActiveTab('topics')} 
+                icon="shield-checkmark-outline"
+              />
               {topics.slice(0, 3).map((topic, i) => (
                 <Animated.View key={topic.id} entering={FadeInUp.delay(i * 60).springify()}>
-                  <TouchableOpacity onPress={() => handleTopicPress(topic)} style={[
-                    styles.topicListItem,
-                    {
-                      backgroundColor: theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)',
-                      borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-                    }
-                  ]}>
+                  <GlassCard onPress={() => handleTopicPress(topic)} shadow="sm" style={styles.topicListItem}>
                     <View style={[styles.topicListIcon, { backgroundColor: `${topic.color}12` }]}>
                       <Ionicons name={topic.icon as any} size={20} color={topic.color} />
                     </View>
@@ -1217,7 +1295,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
                       <Text style={[styles.topicListDesc, { color: theme.text.muted }]} numberOfLines={1}>{topic.description}</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
-                  </TouchableOpacity>
+                  </GlassCard>
                 </Animated.View>
               ))}
             </View>
@@ -1225,7 +1303,11 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
             {/* ── GROWTH INTELLIGENCE CARD (from TimelineScreen) ── */}
             {growthIndex && (
               <View style={styles.section}>
-                <SectionHeader title="Baby Health" subtitle="From Growth Intelligence" theme={theme} />
+                <SectionHeader 
+                  title="Baby Health" 
+                  subtitle="From Growth Intelligence" 
+                  icon="trending-up-outline"
+                />
                 <SafetyGrowthCard 
                   growthIndex={growthIndex} 
                   theme={theme} 
@@ -1260,10 +1342,14 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'checklists' && (
           <View style={styles.section}>
-            <SectionHeader title="Safety Checklists" subtitle={`${checklists.length} checklists available`} theme={theme} />
+            <SectionHeader 
+              title="Safety Checklists" 
+              subtitle={`${checklists.length} checklists available`} 
+              icon="list-outline"
+            />
             {checklists.map((checklist, i) => (
               <Animated.View key={checklist.id} entering={FadeInUp.delay(i * 60).springify()}>
-                <GlassCard onPress={() => setShowChecklistModal(true)} style={{ marginBottom: DESIGN.spacing.md }}>
+                <GlassCard onPress={() => setShowChecklistModal(true)} shadow="sm" style={{ marginBottom: SPACING.md }}>
                   <View style={styles.checklistRow}>
                     <View style={[styles.checklistIcon, { backgroundColor: `${theme.primary}12` }]}>
                       <Ionicons name="list" size={22} color={theme.primary} />
@@ -1284,11 +1370,10 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
         )}
 
         {/* ═════════════════════════════════════════════════════════════════
-            TAB: INTELLIGENCE (NEW — from TimelineScreen patterns)
+            TAB: INTELLIGENCE
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'intelligence' && (
           <>
-            {/* AI Pattern Predictor */}
             <SafetyPatternPredictor 
               checklists={checklists} 
               topics={topics} 
@@ -1296,28 +1381,24 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
               onPress={() => {}} 
             />
 
-            {/* Activity Balance Radar */}
             <SafetyBalanceRadar 
               checklists={checklists} 
               topics={topics} 
               theme={theme} 
             />
 
-            {/* Weekly Heatmap */}
             <SafetyHeatmap 
               checklists={checklists} 
               topics={topics} 
               theme={theme} 
             />
 
-            {/* Health Trend Correlation */}
             <SafetyHealthCorrelation 
               growthIndex={growthIndex} 
               checklists={checklists} 
               theme={theme} 
             />
 
-            {/* Upcoming Safety Events */}
             <SafetyEventsTimeline 
               checklists={checklists} 
               topics={topics} 
@@ -1332,10 +1413,13 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
               }} 
             />
 
-            {/* Growth Intelligence */}
             {growthIndex && (
               <View style={{ marginTop: 16 }}>
-                <SectionHeader title="Growth Intelligence" subtitle="Baby health metrics" theme={theme} />
+                <SectionHeader 
+                  title="Growth Intelligence" 
+                  subtitle="Baby health metrics" 
+                  icon="trending-up-outline"
+                />
                 <SafetyGrowthCard 
                   growthIndex={growthIndex} 
                   theme={theme} 
@@ -1351,13 +1435,17 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'reports' && (
           <View style={styles.section}>
-            <SectionHeader title="Doctor Reports" subtitle="Upload and manage medical documents" theme={theme} />
-            <TouchableOpacity style={[styles.uploadBtn, { borderColor: theme.primary }]} onPress={() => setShowReportModal(true)}>
+            <SectionHeader 
+              title="Doctor Reports" 
+              subtitle="Upload and manage medical documents" 
+              icon="document-text-outline"
+            />
+            <GlassCard onPress={() => setShowReportModal(true)} style={styles.uploadBtn}>
               <LinearGradient colors={[theme.primary, theme.secondary]} style={styles.uploadGradient}>
                 <Ionicons name="cloud-upload" size={24} color="#fff" />
                 <Text style={styles.uploadText}>Upload PDF Report</Text>
               </LinearGradient>
-            </TouchableOpacity>
+            </GlassCard>
           </View>
         )}
 
@@ -1401,7 +1489,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned: NO SHADOWS, clean flat design
+   STYLES — Unified with TrackerHub / GrowthDashboard / TimelineScreen
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
@@ -1422,31 +1510,49 @@ const styles = StyleSheet.create({
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
-  // ── Top Header ──
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  // ── Glass Card ──
+  glassCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     marginHorizontal: 16,
     marginBottom: 16,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  glassContent: { flex: 1 },
+
+  // ── Section Header ──
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitleWrap: { flex: 1 },
-  headerTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 2 },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  sectionActionText: { fontSize: 13, fontWeight: '700' },
 
   // ── Tab Bar ──
   tabBar: {
@@ -1468,36 +1574,24 @@ const styles = StyleSheet.create({
   },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  // ── Glass Card — NO SHADOWS ──
-  glassCard: {
-    borderRadius: DESIGN.radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.lg,
-  },
-  glassBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  glassContent: { flex: 1 },
-
-  // ── Section Header ──
-  sectionHeader: {
+  // ── Top Header ──
+  topHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    marginTop: 8,
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
-  sectionTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionActionText: { fontSize: 13, fontWeight: '700' },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitleWrap: { flex: 1 },
+  headerTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 2 },
 
   // ── KPI Grid ──
   kpiGrid: {
@@ -1511,13 +1605,14 @@ const styles = StyleSheet.create({
   kpiGridItemLarge: { width: (SCREEN_W - 56) / 2, height: 140 },
   kpiGridItemNormal: { width: (SCREEN_W - 56) / 2, height: 120 },
 
-  // ── KPI Card — NO SHADOWS ──
+  // ── KPI Card ──
   kpiCard: {
     flex: 1,
     borderRadius: 20,
     overflow: 'hidden',
     padding: 14,
     borderWidth: 1,
+    ...SHADOW.sm,
   },
   kpiCardLarge: { padding: 16 },
   kpiInner: { flex: 1, justifyContent: 'space-between' },
@@ -1573,6 +1668,7 @@ const styles = StyleSheet.create({
   sosButton: {
     borderRadius: 20,
     overflow: 'hidden',
+    ...SHADOW.lg,
   },
   sosGradient: {
     paddingVertical: 20,
@@ -1590,10 +1686,8 @@ const styles = StyleSheet.create({
   },
   emergencyCard: {
     width: (SCREEN_W - 56) / 2,
-    borderRadius: 16,
     padding: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
+    marginBottom: 0,
   },
   emergencyIconBg: {
     width: 44,
@@ -1625,7 +1719,7 @@ const styles = StyleSheet.create({
   },
   familyName: { fontSize: 12, fontWeight: '600' },
 
-  // ── Safety Topic Grid — NO SHADOWS ──
+  // ── Safety Topic Grid ──
   topicGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1633,13 +1727,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   topicGridItem: { width: (SCREEN_W - 56) / 2 },
-  topicCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    padding: 14,
-    borderWidth: 1,
-  },
-  topicCardInner: { gap: 8 },
+  topicCardInner: { padding: 14, gap: 8 },
   topicIconBg: {
     width: 44,
     height: 44,
@@ -1671,16 +1759,13 @@ const styles = StyleSheet.create({
   },
   topicDoneText: { fontSize: 10, fontWeight: '700' },
 
-  // ── Topic List Item — NO SHADOWS ──
+  // ── Topic List Item ──
   topicListItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
-    borderRadius: 16,
-    marginHorizontal: 16,
     marginBottom: 8,
     gap: 12,
-    borderWidth: 1,
   },
   topicListIcon: {
     width: 44,
@@ -1786,20 +1871,21 @@ const styles = StyleSheet.create({
   // ── Upload Button ──
   uploadBtn: {
     marginHorizontal: 16,
-    borderRadius: 20,
     borderWidth: 2,
     borderStyle: 'dashed',
-    overflow: 'hidden',
+    borderColor: 'rgba(0,0,0,0.1)',
+    marginBottom: 0,
   },
   uploadGradient: {
     paddingVertical: 20,
     alignItems: 'center',
     gap: 8,
+    borderRadius: 20,
   },
   uploadText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
   // ── Section ──
-  section: { marginBottom: DESIGN.spacing.xl },
+  section: { marginBottom: SPACING.xl },
 
   // ── Modal ──
   modalSheet: {
@@ -1811,6 +1897,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32,
     overflow: 'hidden',
     maxHeight: SCREEN_H * 0.9,
+    ...SHADOW.xl,
   },
   modalHandle: {
     width: 40,
@@ -1881,7 +1968,7 @@ const styles = StyleSheet.create({
   },
   completeBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // ── Predictor (AI Pattern) ──
+  // ── Predictor ──
   predictorHeader: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -1911,12 +1998,12 @@ const styles = StyleSheet.create({
   predictorMilestone: { fontSize: 14, fontWeight: '700' },
   predictorCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
   predictorRight: { alignItems: 'flex-end', gap: 4 },
-  predictorBarBg: { width: 60, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.04)', overflow: 'hidden' },
+  predictorBarBg: { width: 60, height: 4, borderRadius: 2, overflow: 'hidden' },
   predictorBarFill: { height: '100%', borderRadius: 2 },
   predictorConfidence: { fontSize: 10, fontWeight: '600' },
   predictorAge: { fontSize: 12, fontWeight: '700' },
 
-  // ── Radar Chart ──
+  // ── Radar ──
   radarHeader: { padding: 16, paddingBottom: 8 },
   radarTitle: { fontSize: 16, fontWeight: '800' },
   radarSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
@@ -2038,6 +2125,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.03)',
+    ...SHADOW.sm,
   },
   calendarHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   calendarEmoji: { fontSize: 20 },
