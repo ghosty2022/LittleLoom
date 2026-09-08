@@ -1,9 +1,4 @@
-// SmartPhotoField.tsx — COMPLETE CRASH-FIXED V5 (NATIVE-LEVEL COMPRESSION)
-// ────────────────────────────────────────────────────────────────────────────
-// CRITICAL FIX: Camera photos now use native-level compression via
-// expo-image-manipulator BEFORE being loaded into JS memory.
-// This prevents the OOM crash on Android.
-// ────────────────────────────────────────────────────────────────────────────
+// SmartPhotoField.tsx — COMPLETE FIXED V6 (4 PHOTOS MAX)
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
@@ -47,11 +42,14 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_SIZE = SCREEN_W - 48;
 const MAX_ANNOTATION_POINTS = 1500;
 
+// CRITICAL: 4 photos max as requested
+const MAX_PHOTOS = 4;
+
 // MUCH smaller for camera to prevent OOM
 const MAX_IMAGE_DIMENSION = 1600;
-const CAMERA_MAX_DIMENSION = 900; // Smaller for camera
+const CAMERA_MAX_DIMENSION = 900;
 const IMAGE_COMPRESS = 0.7;
-const CAMERA_QUALITY = 0.4; // Lower quality for camera
+const CAMERA_QUALITY = 0.4;
 const GALLERY_QUALITY = 0.7;
 
 // ── Colors ─────────────────────────────────────────────────────────────────
@@ -129,7 +127,7 @@ try {
   Haptics = null;
 }
 
-// Works across SDK 48 → 54 (MediaTypeOptions removed in SDK 52+)
+// Works across SDK 48 → 54
 const MEDIA_IMAGES: any =
   (ImagePicker as any).MediaType?.Images ??
   (ImagePicker as any).MediaTypeOptions?.Images ??
@@ -276,7 +274,7 @@ const getImageDimensionsSafe = (
   });
 };
 
-// ── Native-level image optimization (OOM crash fix) ───────────────────────
+// ── Native-level image optimization ───────────────────────────────────────
 const optimizeImage = async (
   uri: string,
   maxDimension: number = MAX_IMAGE_DIMENSION,
@@ -288,7 +286,6 @@ const optimizeImage = async (
       return uri;
     }
 
-    // Check if image needs resizing
     const dims = await getImageDimensionsSafe(uri);
     const needsResize = dims.width > maxDimension || dims.height > maxDimension;
 
@@ -354,7 +351,8 @@ const uploadToSupabase = async (
   }
 };
 
-// ── Component ──────────────────────────────────────────────────────────────
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
+
 const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   value,
   onChange,
@@ -363,7 +361,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   allowAnnotation = true,
   allowCompare = true,
   allowShare = true,
-  maxPhotos = 5,
+  maxPhotos = MAX_PHOTOS,
   onPhotosChange,
   initialPhotoUris,
   autoAnalyze = true,
@@ -411,7 +409,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     } catch (e) {
       console.error('value sync error:', e);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   // ── Init photos (edit mode) ───────────────────────────────────────────
@@ -467,7 +464,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [photos, onPhotosChange]);
 
-  // ── Permissions (non-blocking, silent on failure) ─────────────────────
+  // ── Permissions ─────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
@@ -491,22 +488,22 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       try {
         if (!rawUri || typeof rawUri !== 'string') return;
 
-        // CRITICAL: Optimize at native level BEFORE any JS processing
+        // CRITICAL: Use maxPhotos limit
+        if (photos.length >= maxPhotos) {
+          sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
+          return;
+        }
+
+        // Optimize at native level
         const maxDim = isFromCamera ? CAMERA_MAX_DIMENSION : MAX_IMAGE_DIMENSION;
         const compress = isFromCamera ? CAMERA_QUALITY : IMAGE_COMPRESS;
 
-        // This runs at native level, preventing OOM
         const uri = await optimizeImage(rawUri, maxDim, compress);
         if (!mountedRef.current) return;
 
         // Duplicate check
         if (photos.some((p) => p.uri === uri)) {
           sweetAlert.alert('Duplicate', 'This photo is already added.');
-          return;
-        }
-
-        if (photos.length >= maxPhotos) {
-          sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
           return;
         }
 
@@ -595,30 +592,27 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId]
   );
 
-  // ─── Take Photo (CRITICAL FIX: Native-level compression) ──────────────
+  // ─── Take Photo ──────────────────────────────────────────────────────────
   const takePhoto = useCallback(async () => {
     try {
-      // Request permissions first
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
         sweetAlert.alert('Permission Denied', 'Camera access is required to take photos.');
         return;
       }
 
-      // IMPORTANT: Use the lowest possible settings to avoid OOM
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: MEDIA_IMAGES,
-        allowsEditing: false, // CRITICAL: Disable editing to reduce memory
+        allowsEditing: false,
         aspect: [4, 3],
-        quality: 0.3, // Very low quality for camera
+        quality: 0.3,
         base64: false,
-        exif: false, // Skip EXIF to reduce memory
+        exif: false,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         if (asset?.uri) {
-          // Pass true for isFromCamera - this triggers smaller max dimension
           await processPhoto(asset.uri, {}, true);
         }
       }
@@ -796,8 +790,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           savedScale.value = scale.value;
           if (scale.value < 1.1) runOnJS(closeZoom)();
         }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [closeZoom]
   );
 
   const panGesture = useMemo(
@@ -808,7 +801,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           translateY.value = e.translationY;
         }
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -824,7 +816,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
             savedScale.value = 2.5;
           }
         }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -876,7 +867,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     return COLORS.success;
   }, [analysis]);
 
-  const photoCountText = `${photos?.length || 0}/${maxPhotos || 5}`;
+  const photoCountText = `${photos?.length || 0}/${maxPhotos || MAX_PHOTOS}`;
 
   const currentPhotoIndex = useMemo(() => {
     try {
@@ -1361,11 +1352,11 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       <View style={styles.btnRow}>
         <TouchableOpacity
           onPress={takePhoto}
-          disabled={isProcessing || uploading}
+          disabled={isProcessing || uploading || photos.length >= maxPhotos}
           style={[
             styles.captureBtn,
             { backgroundColor: COLORS.primary, borderRadius: RADIUS.md },
-            (isProcessing || uploading) && { opacity: 0.6 },
+            (isProcessing || uploading || photos.length >= maxPhotos) && { opacity: 0.6 },
           ]}
         >
           <Ionicons name="camera" size={20} color="#FFF" />
@@ -1373,7 +1364,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         </TouchableOpacity>
         <TouchableOpacity
           onPress={pickPhoto}
-          disabled={isProcessing || uploading}
+          disabled={isProcessing || uploading || photos.length >= maxPhotos}
           style={[
             styles.captureBtn,
             {
@@ -1382,7 +1373,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
               borderWidth: 1,
               borderColor: GLASS.border,
             },
-            (isProcessing || uploading) && { opacity: 0.6 },
+            (isProcessing || uploading || photos.length >= maxPhotos) && { opacity: 0.6 },
           ]}
         >
           <Ionicons name="images" size={20} color={COLORS.primary} />
