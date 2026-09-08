@@ -1,4 +1,4 @@
-// App.tsx - FAST LOADING VERSION (WITHOUT Stripe)
+// App.tsx - WITHOUT Stripe (with SweetAlertProvider)
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -33,6 +33,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
 
 // ─── SweetAlert Provider ──────────────────────────────────────────────
+// Import from the fixed SweetAlert component
 import SweetAlertProvider from '@/components/SweetAlert';
 
 // ─── ImageUtils SweetAlert setter ─────────────────────────────────────
@@ -74,6 +75,7 @@ LogBox.ignoreLogs([
   'The provided Linking scheme',
   'JavaScript logs will be removed from Metro',
   'Navigation state from different app version',
+  // Ignore Reanimated warnings in development
   'Reanimated',
   'Worklets',
 ]);
@@ -116,9 +118,12 @@ const SPLASH_THEMES = {
   },
 };
 
-// ─── MINIMAL SPLASH SCREEN ──────────────────────────────────────────
-// Super fast, minimal splash that shows for < 100ms
-const MinimalSplash = React.memo<{ isDark: boolean; isTrueBlack: boolean }>(({ isDark, isTrueBlack }) => {
+interface CustomSplashScreenProps {
+  isDark: boolean;
+  isTrueBlack: boolean;
+}
+
+const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrueBlack }) => {
   const colors = isTrueBlack
     ? SPLASH_THEMES.trueBlack
     : isDark
@@ -145,6 +150,12 @@ const MinimalSplash = React.memo<{ isDark: boolean; isTrueBlack: boolean }>(({ i
         <Text style={[styles.splashBrand, { color: colors.text }]}>
           LittleLoom
         </Text>
+        <Text style={[styles.splashTagline, { color: colors.subtext }]}>
+          Gentle Care, Happy Baby
+        </Text>
+        <View style={{ marginTop: 32 }}>
+          <InlineSpinner size={28} color={colors.spinner} />
+        </View>
       </View>
     </View>
   );
@@ -161,8 +172,10 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
   const { isDark, themeColors } = useTheme();
   useAppLock();
   
+  // Get sweetAlert instance and set it for ImageUtils
   const sweetAlert = useSweetAlert();
   
+  // Set sweetAlert for ImageUtils on mount
   useEffect(() => {
     setSweetAlert(sweetAlert);
   }, [sweetAlert]);
@@ -188,7 +201,7 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
   );
 });
 
-// ─── Main App - FAST LOADING ──────────────────────────────────────────
+// ─── Main App ──────────────────────────────────────────────────────────
 
 export default function App(): JSX.Element | null {
   const systemScheme = useColorScheme();
@@ -209,9 +222,8 @@ export default function App(): JSX.Element | null {
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const splashHiddenRef = useRef(false);
   const notificationInitRef = useRef(false);
-  const appReadyRef = useRef(false);
 
-  // ─── Phase 0: Load theme from database instantly ──────────────────────
+  // Phase 0: Read theme from database immediately
   useEffect(() => {
     let mounted = true;
 
@@ -233,11 +245,7 @@ export default function App(): JSX.Element | null {
           isTrueBlack: false,
         });
       } finally {
-        if (mounted) {
-          setThemeLoaded(true);
-          // ✨ IMMEDIATELY hide splash after theme loads
-          hideSplashFast();
-        }
+        if (mounted) setThemeLoaded(true);
       }
     };
 
@@ -245,43 +253,45 @@ export default function App(): JSX.Element | null {
     return () => { mounted = false; };
   }, [systemScheme]);
 
-  // ─── Fast splash hide ──────────────────────────────────────────────────
-  const hideSplashFast = useCallback(async () => {
-    if (splashHiddenRef.current) return;
-    try {
-      await SplashScreen.hideAsync();
-      splashHiddenRef.current = true;
-      console.log('[App] Splash hidden fast');
-    } catch (e) {
-      // Ignore
-    }
-  }, []);
-
-  // ─── Phase 1: FAST initialization - show app immediately ──────────────
+  // Phase 1: Parallel initialization with aggressive timeout
   useEffect(() => {
     if (!themeLoaded || initStartedRef.current) return;
     initStartedRef.current = true;
 
     const init = async () => {
       try {
-        // ✨ Load Reanimated in background (non-blocking)
+        // Load Reanimated first (non-blocking)
         loadReanimated().catch(e => {
           console.warn('[App] Reanimated load failed:', e);
         });
 
-        // ✨ Only load essential fonts - non-blocking
-        Font.loadAsync(ESSENTIAL_FONTS).catch(e => {
-          console.warn('[App] Font loading failed:', e);
+        // Start all init tasks in parallel - don't await them all
+        const essentialTasks = Promise.all([
+          // Only essential font loading
+          Font.loadAsync(ESSENTIAL_FONTS).catch(e => {
+            console.warn('[App] Font loading failed:', e);
+            return null;
+          }),
+        ]);
+
+        // Wait for essential tasks with shorter timeout
+        await Promise.race([
+          essentialTasks,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Essential init timeout')), 2000)
+          )
+        ]).catch(e => {
+          console.warn('[App] Essential tasks timed out, continuing...', e);
         });
 
-        // ✨ HIDE SPLASH IMMEDIATELY - do not wait for anything
-        await hideSplashFast();
-
-        // ✨ Mark app as ready - show UI immediately
-        appReadyRef.current = true;
+        // CRITICAL FIX: Hide splash immediately after essential tasks
+        if (!splashHiddenRef.current) {
+          await SplashScreen.hideAsync();
+          splashHiddenRef.current = true;
+        }
         setReady(true);
 
-        // ✨ Run background tasks AFTER app shows
+        // Run non-essential tasks in background (don't await)
         runBackgroundTasks().catch(e => {
           console.warn('[App] Background tasks error:', e);
         });
@@ -289,12 +299,14 @@ export default function App(): JSX.Element | null {
       } catch (e) {
         console.error('[App] Critical init error:', e);
         setInitError('Failed to initialize app');
-        await hideSplashFast();
-        setReady(true);
+        if (!splashHiddenRef.current) {
+          await SplashScreen.hideAsync();
+          splashHiddenRef.current = true;
+        }
+        setReady(true); // Show app even with error
       }
     };
 
-    // ✨ START INITIALLY - no delay
     init();
 
     return () => {
@@ -302,12 +314,12 @@ export default function App(): JSX.Element | null {
         statePersistence.cleanup();
       }
     };
-  }, [themeLoaded, hideSplashFast]);
+  }, [themeLoaded]);
 
-  // ─── Background tasks that don't block startup ─────────────────────────
+  // Background tasks that don't block startup
   const runBackgroundTasks = async () => {
     try {
-      // ✨ Load additional fonts in background
+      // Load additional fonts in background
       const additionalFonts = {
         'MaterialIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
         'MaterialCommunityIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'),
@@ -317,15 +329,15 @@ export default function App(): JSX.Element | null {
         console.warn('[App] Additional fonts failed:', e);
       });
 
-      // ✨ Notification service - lazy loaded
+      // Notification service - lazy loaded with error handling
       await initNotificationService();
 
-      // ✨ Image directories (non-blocking)
+      // Image directories (non-blocking)
       if (ensureAllImageDirs && typeof ensureAllImageDirs === 'function') {
         await ensureAllImageDirs();
       }
 
-      // ✨ System UI (non-blocking)
+      // System UI (non-blocking)
       if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
         await SystemUI.setBackgroundColorAsync(
           initialTheme.isTrueBlack ? '#000000' : 
@@ -333,7 +345,7 @@ export default function App(): JSX.Element | null {
         );
       }
 
-      // ✨ Navigation state restoration (non-blocking)
+      // Navigation state restoration (non-blocking)
       await restoreNavigationState();
 
     } catch (e) {
@@ -341,7 +353,7 @@ export default function App(): JSX.Element | null {
     }
   };
 
-  // ─── Lazy load notification service ────────────────────────────────────
+  // Lazy load notification service
   const initNotificationService = async () => {
     if (notificationInitRef.current) return;
     notificationInitRef.current = true;
@@ -351,15 +363,19 @@ export default function App(): JSX.Element | null {
       if (service && typeof service.initialize === 'function') {
         await service.initialize();
         console.log('[App] Notification service initialized');
+      } else {
+        console.log('[App] Notification service not available');
       }
     } catch (error) {
       console.warn('[App] Notification service init failed:', error);
+      // Don't throw - allow app to continue
     }
   };
 
-  // ─── Navigation state restoration - non-blocking ──────────────────────
+  // Navigation state restoration - non-blocking
   const restoreNavigationState = async () => {
     try {
+      // Quick check for setup completion
       const [setupCompleteStr, hasParent2Str, hasBabyStr, wasLocked] = await Promise.all([
         AsyncStorage.getItem('littleloom_setup_complete'),
         AsyncStorage.getItem('littleloom_parent2_completed'),
@@ -394,7 +410,7 @@ export default function App(): JSX.Element | null {
     }
   };
 
-  // ─── Phase 2: Background state saving ──────────────────────────────────
+  // Phase 2: Background state saving
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       if (
@@ -463,10 +479,9 @@ export default function App(): JSX.Element | null {
     };
   }, []);
 
-  // ✨ SHOW MINIMAL SPLASH ONLY while loading - no text, just logo
   if (!themeLoaded || !ready) {
     return (
-      <MinimalSplash
+      <CustomSplashScreen
         isDark={initialTheme.isDark}
         isTrueBlack={initialTheme.isTrueBlack}
       />
@@ -524,6 +539,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
+  splashEmoji: {
+    fontSize: 56,
+  },
   splashLogoImage: {
     width: 72,
     height: 72,
@@ -535,6 +553,11 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.2)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
+  },
+  splashTagline: {
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: 1,
   },
   errorContainer: {
     flex: 1,

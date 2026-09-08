@@ -8,8 +8,12 @@ import {
   TextInput,
   Dimensions,
   StatusBar,
+  RefreshControl,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,12 +22,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTrackerProgressive } from '../../hooks';
 import { useBaby } from '../../context/BabyContext';
+import { SafeAvatar } from '../../components/SafeAvatar';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// ─── DESIGN TOKENS — Unified with TrackerHub ──────────────────────────────
 
 const SPACING = {
   xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
@@ -170,12 +178,17 @@ const CATEGORY_COLORS: Record<string, string> = {
 const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+// ─── THEME HOOK — Unified with TrackerHub ──────────────────────────────────
+
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
   return useMemo(() => ({
     primary: colors?.primary || '#667eea',
     secondary: colors?.secondary || '#764ba2',
     isDark: !!isDark,
+    bgColors: isDark ? ['#0a0a1a', '#12122a'] : ['#f8faff', '#eef2ff'],
+    statusBar: isDark ? 'light-content' : 'dark-content' as const,
+    blur: isDark ? 'dark' : 'light' as const,
     text: {
       primary: fullThemeColors?.text || (isDark ? '#ffffff' : '#1a1a1a'),
       secondary: fullThemeColors?.textSecondary || (isDark ? '#94a3b8' : '#64748b'),
@@ -183,10 +196,14 @@ const useHubTheme = () => {
     },
     surface: {
       bg: fullThemeColors?.surface || (isDark ? 'rgba(30,30,45,0.8)' : 'rgba(255,255,255,0.9)'),
+      card: fullThemeColors?.card || (isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)'),
       border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
     },
+    borderRadius: fullThemeColors?.borderRadius || 12,
   }), [isDark, colors, fullThemeColors]);
 };
+
+// ─── GLASS CARD — Matches EnhancedTimelineScreen ──────────────────────────
 
 const GlassCard = React.memo(({ 
   children, 
@@ -230,6 +247,51 @@ const GlassCard = React.memo(({
   );
 });
 GlassCard.displayName = 'GlassCard';
+
+// ─── SECTION HEADER — Matches EnhancedTimelineScreen ──────────────────────
+
+const SectionHeader = ({ 
+  title, 
+  subtitle, 
+  action, 
+  actionLabel,
+  icon,
+}: { 
+  title: string; 
+  subtitle?: string; 
+  action?: () => void; 
+  actionLabel?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) => {
+  const theme = useHubTheme();
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderLeft}>
+        {icon && (
+          <View style={[styles.sectionHeaderIcon, { backgroundColor: `${theme.primary}12` }]}>
+            <Ionicons name={icon} size={16} color={theme.primary} />
+          </View>
+        )}
+        <View>
+          <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
+          {subtitle && (
+            <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>
+          )}
+        </View>
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction} activeOpacity={0.7}>
+          <Text style={[styles.sectionActionText, { color: theme.primary }]}>
+            {actionLabel || 'See All'}
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
+// ─── SUB ACTION SHEET ──────────────────────────────────────────────────────
 
 const SubActionSheet = React.memo(({
   visible,
@@ -330,12 +392,20 @@ SubActionSheet.displayName = 'SubActionSheet';
 
 type AllTrackersNavProp = NativeStackNavigationProp<RootStackParamList>;
 
+// ─── MAIN SCREEN ──────────────────────────────────────────────────────────
+
 export default function AllTrackersScreen() {
   const navigation = useNavigation<AllTrackersNavProp>();
   const insets = useSafeAreaInsets();
-  const { isDark, fullThemeColors, colors, borderRadiusValue } = useCustomization();
-  const { entries, getEntries, trackers } = useTrackerProgressive();
-  const { currentBaby } = useBaby();
+  const { isDark, fullThemeColors, colors, borderRadiusValue, triggerHaptic, shouldReduceMotion } = useCustomization();
+  
+  // Safely use hooks with fallbacks
+  const trackerHook = useTrackerProgressive();
+  const { entries = [], getEntries = () => [], trackers = [], isLoading = false, refreshEntries = () => {} } = trackerHook || {};
+  
+  const babyHook = useBaby();
+  const { currentBaby = null, isLoading: babyLoading = false, refreshCurrentBaby = () => {}, loadBabies = () => {} } = babyHook || {};
+  
   const theme = useHubTheme();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -344,7 +414,9 @@ export default function AllTrackersScreen() {
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(null);
   const [showSubSheet, setShowSubSheet] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
+  // Load pinned/hidden from storage
   useEffect(() => {
     Promise.all([
       AsyncStorage.getItem('@littleloom_pinned_trackers'),
@@ -363,9 +435,44 @@ export default function AllTrackersScreen() {
     AsyncStorage.setItem('@littleloom_hidden_trackers', JSON.stringify(hiddenIds)).catch(() => {});
   }, [hiddenIds]);
 
+  // Refresh data on focus - with safe checks
+  useFocusEffect(
+    useCallback(() => {
+      if (typeof refreshEntries === 'function') {
+        refreshEntries();
+      }
+      if (typeof refreshCurrentBaby === 'function') {
+        refreshCurrentBaby();
+      }
+      if (typeof loadBabies === 'function') {
+        loadBabies();
+      }
+    }, [refreshEntries, refreshCurrentBaby, loadBabies])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      if (typeof refreshEntries === 'function') {
+        await refreshEntries();
+      }
+      if (typeof refreshCurrentBaby === 'function') {
+        await refreshCurrentBaby();
+      }
+      if (typeof loadBabies === 'function') {
+        await loadBabies();
+      }
+    } catch (error) {
+      console.warn('Refresh error:', error);
+    }
+    setRefreshing(false);
+  }, [refreshEntries, refreshCurrentBaby, loadBabies]);
+
   const trackerCards = useMemo(() => {
     if (!currentBaby) return [];
-    const sourceTrackers = trackers?.length > 0
+    
+    // Use trackers from hook, or fallback to configs
+    const sourceTrackers = trackers && trackers.length > 0
       ? trackers
       : Object.keys(TRACKER_CONFIGS).map(id => ({
           id,
@@ -379,8 +486,9 @@ export default function AllTrackersScreen() {
     return sourceTrackers.map((tracker: any) => {
       const id = tracker.id;
       const config = TRACKER_CONFIGS[id];
-      const entriesForTracker = getEntries(id);
-      const lastEntry = entriesForTracker[0];
+      const entriesForTracker = typeof getEntries === 'function' ? getEntries(id) : [];
+      const lastEntry = entriesForTracker && entriesForTracker.length > 0 ? entriesForTracker[0] : null;
+      
       return {
         id,
         title: tracker.name || tracker.title || id.charAt(0).toUpperCase() + id.slice(1),
@@ -388,11 +496,11 @@ export default function AllTrackersScreen() {
         color: tracker.color || config?.color || '#667eea',
         gradient: (tracker.gradient || config?.gradient || ['#667eea', '#764ba2']) as [string, string],
         category: config?.category || 'essential',
-        count: entriesForTracker.length,
-        lastEntry: lastEntry
+        count: entriesForTracker ? entriesForTracker.length : 0,
+        lastEntry: lastEntry && lastEntry.timestamp
           ? new Date(lastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : undefined,
-        hasSubActions: !!config?.subActions?.length,
+        hasSubActions: !!(config?.subActions && config.subActions.length > 0),
       };
     });
   }, [trackers, getEntries, currentBaby]);
@@ -415,6 +523,17 @@ export default function AllTrackersScreen() {
     }
     return res;
   }, [trackerCards, activeCategory, searchQuery, hiddenIds]);
+
+  // Sort pinned first, then by count
+  const sortedFiltered = useMemo(() => {
+    return [...filtered].sort((a: any, b: any) => {
+      const aPinned = pinnedIds.includes(a.id);
+      const bPinned = pinnedIds.includes(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return b.count - a.count;
+    });
+  }, [filtered, pinnedIds]);
 
   const handleTrackerPress = useCallback((trackerId: string, hasSubActions: boolean) => {
     HAPTIC_LIGHT();
@@ -450,175 +569,295 @@ export default function AllTrackersScreen() {
     navigation.navigate('CreateCustomTracker');
   }, [navigation]);
 
-  return (
-    <View style={[styles.container, { backgroundColor: fullThemeColors?.background || '#f8faff' }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <LinearGradient
-        colors={isDark
-          ? [fullThemeColors?.background || '#0a0a1a', fullThemeColors?.surface || '#12122a']
-          : ['#f8fafc', '#e2e8f0', '#dbeafe']
-        }
-        style={StyleSheet.absoluteFill}
-      />
+  // ─── RENDER ──────────────────────────────────────────────────────────────
 
-      <View style={[styles.header, { paddingTop: insets.top + 8, paddingHorizontal: SPACING.lg }]}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
-          style={[styles.headerBackBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
-        >
-          <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
-        </TouchableOpacity>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={[styles.headerTitle, { color: theme.text.primary }]}>All Trackers</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.text.muted }]}>
-            {filtered.length} active • {hiddenIds.length} hidden
-          </Text>
+  return (
+    <View style={[styles.container, { backgroundColor: theme.bgColors[0] }]}>
+      <StatusBar barStyle={theme.statusBar} />
+      
+      <LinearGradient colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={StyleSheet.absoluteFill} />
+
+      {/* Header - Like EnhancedTimelineScreen */}
+      <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
+        <LinearGradient colors={[`${theme.primary}15`, `${theme.secondary}08`, 'transparent']} style={styles.headerGradient} />
+        
+        {/* Top Row - Like TrackerHub */}
+        <View style={styles.topHeader}>
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()} 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
+          </TouchableOpacity>
+
+          {/* Baby Switcher Pill - Like TrackerHub */}
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'AllTrackers', returnLabel: 'All Trackers' })} 
+            style={styles.babyPill}
+          >
+            <LinearGradient
+              colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            {currentBaby ? (
+              <>
+                <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={36} fallbackIcon="happy-outline" fallbackColor={theme.primary} />
+                <View style={styles.babyPillText}>
+                  <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
+                  <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>
+                    {(() => {
+                      if (!currentBaby.birthDate) return '—';
+                      const diff = new Date().getTime() - new Date(currentBaby.birthDate).getTime();
+                      const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30.44));
+                      return `${months}mo`;
+                    })()}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
+              </>
+            ) : (
+              <>
+                <View style={[styles.babyPillNoBabyIcon, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
+                  <Ionicons name="add-circle" size={28} color={theme.isDark ? '#a3bffa' : '#667eea'} />
+                </View>
+                <View style={styles.babyPillText}>
+                  <Text style={[styles.babyPillName, { color: theme.isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
+                  <Text style={[styles.babyPillAge, { color: theme.isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={theme.text.muted} />
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            onPress={() => setSearchQuery(searchQuery ? '' : '')} 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          >
+            <Ionicons name={searchQuery ? 'close' : 'search'} size={22} color={theme.text.secondary} />
+          </TouchableOpacity>
         </View>
-        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView
+      <Animated.ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 120 }]}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-      >
-        <View style={[styles.searchWrap, { 
-          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-          marginHorizontal: SPACING.lg,
-          marginTop: SPACING.md,
-          marginBottom: SPACING.sm,
-        }]}>
-          <Ionicons name="search" size={18} color={theme.text.muted} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.text.primary }]}
-            placeholder="Search trackers..."
-            placeholderTextColor={theme.text.muted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor={theme.primary} 
+            colors={[theme.primary, theme.secondary]} 
+            progressViewOffset={insets.top + 120}
           />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color={theme.text.muted} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={styles.categoryScroll}
-        >
-          <TouchableOpacity
-            onPress={() => setActiveCategory(null)}
-            style={[
-              styles.categoryChip, 
-              activeCategory === null && { backgroundColor: theme.primary }
-            ]}
-          >
-            <Text style={[styles.categoryText, activeCategory === null && { color: '#fff' }]}>All</Text>
-          </TouchableOpacity>
-          {categories.map(cat => (
-            <TouchableOpacity
-              key={cat}
-              onPress={() => setActiveCategory(activeCategory === cat ? null : cat)}
-              style={[
-                styles.categoryChip,
-                activeCategory === cat && { backgroundColor: CATEGORY_COLORS[cat] || theme.primary }
-              ]}
-            >
-              <Text style={[styles.categoryText, activeCategory === cat && { color: '#fff' }]}>
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <View style={styles.grid}>
-          {filtered.map((tracker: any, index: number) => {
-            const isPinned = pinnedIds.includes(tracker.id);
-            return (
-              <Animated.View
-                key={tracker.id}
-                entering={FadeInUp.delay(index * 40).springify()}
-                style={styles.gridItem}
-              >
-                <TouchableOpacity
-                  onPress={() => handleTrackerPress(tracker.id, tracker.hasSubActions)}
-                  activeOpacity={0.85}
-                  style={{ flex: 1 }}
-                >
-                  <GlassCard shadow="md" style={styles.trackerCard}>
-                    <View style={[styles.trackerCardTop, { justifyContent: 'space-between' }]}>
-                      <View style={[styles.trackerCardIcon, { backgroundColor: `${tracker.color}12` }]}>
-                        <Text style={{ fontSize: 24 }}>{tracker.emoji}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 4 }}>
-                        <TouchableOpacity
-                          onPress={() => handlePinToggle(tracker.id)}
-                          style={[styles.actionBtn, isPinned && { backgroundColor: `${theme.primary}12` }]}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons name={isPinned ? 'pin' : 'pin-outline'} size={16} color={isPinned ? theme.primary : theme.text.muted} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleHideToggle(tracker.id)}
-                          style={styles.actionBtn}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons name="eye-off-outline" size={16} color={theme.text.muted} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                    <Text style={[styles.trackerCardTitle, { color: theme.text.primary }]} numberOfLines={1}>
-                      {tracker.title}
-                    </Text>
-                    <Text style={[styles.trackerCardDesc, { color: theme.text.muted }]} numberOfLines={1}>
-                      {TRACKER_CONFIGS[tracker.id]?.description || tracker.category}
-                    </Text>
-                    <View style={styles.trackerCardMeta}>
-                      <Text style={[styles.trackerCardCount, { color: tracker.color }]}>
-                        {tracker.count} logs
-                      </Text>
-                      {tracker.lastEntry && (
-                        <Text style={[styles.trackerCardLast, { color: theme.text.muted }]}>
-                          Last {tracker.lastEntry}
-                        </Text>
-                      )}
-                    </View>
-                  </GlassCard>
+        }
+      >
+        {/* Search Bar */}
+        {searchQuery && (
+          <Animated.View entering={FadeInUp.delay(50)} style={styles.searchContainer}>
+            <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.searchBlur, { borderRadius: theme.borderRadius }]} tint={theme.blur}>
+              <Ionicons name="search" size={20} color={theme.text.secondary} />
+              <TextInput 
+                style={[styles.searchInput, { color: theme.text.primary }]} 
+                placeholder="Search trackers..." 
+                value={searchQuery} 
+                onChangeText={setSearchQuery} 
+                placeholderTextColor={theme.text.secondary} 
+                autoFocus 
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={20} color={theme.text.secondary} />
                 </TouchableOpacity>
-              </Animated.View>
-            );
-          })}
-        </View>
-
-        {filtered.length === 0 && (
-          <View style={{ alignItems: 'center', padding: 40 }}>
-            <Ionicons name="search-outline" size={48} color={theme.text.muted} />
-            <Text style={{ color: theme.text.muted, marginTop: 16, fontWeight: '700', fontSize: 15 }}>
-              No trackers found
-            </Text>
-          </View>
+              )}
+            </BlurView>
+          </Animated.View>
         )}
 
-        <TouchableOpacity
-          onPress={handleCustomPress}
-          style={[styles.customBtn, { borderColor: theme.surface.border, marginHorizontal: SPACING.lg, marginTop: SPACING.md }]}
-        >
-          <LinearGradient
-            colors={[`${theme.primary}08`, `${theme.primary}02`]}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          <View style={[styles.customIcon, { backgroundColor: `${theme.primary}12` }]}>
-            <Ionicons name="add" size={22} color={theme.primary} />
-          </View>
-          <Text style={[styles.customText, { color: theme.primary }]}>Create Custom Tracker</Text>
-        </TouchableOpacity>
+        {/* Stats Overview - Like EnhancedTimelineScreen */}
+        {trackerCards.length > 0 && (
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)} style={styles.statsContainer}>
+            <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContent}>
+              <View style={[styles.kpiCard, { borderRadius: theme.borderRadius, borderColor: `${theme.primary}30`, backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(102,126,234,0.06)' }]}>
+                <View style={styles.kpiTop}>
+                  <Ionicons name="albums-outline" size={18} color={theme.primary} />
+                </View>
+                <Text style={[styles.kpiValue, { color: theme.text.primary }]}>{trackerCards.length}</Text>
+                <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Trackers</Text>
+                <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>{hiddenIds.length} hidden</Text>
+              </View>
 
-        <View style={{ height: insets.bottom + 20 }} />
-      </ScrollView>
+              <View style={[styles.kpiCard, { borderRadius: theme.borderRadius, borderColor: `${theme.secondary}30`, backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(250,112,154,0.06)' }]}>
+                <View style={styles.kpiTop}>
+                  <Ionicons name="pulse-outline" size={18} color={theme.secondary} />
+                </View>
+                <Text style={[styles.kpiValue, { color: theme.text.primary }]}>{entries ? entries.length : 0}</Text>
+                <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Total Logs</Text>
+                <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>All time</Text>
+              </View>
 
+              <View style={[styles.kpiCard, { borderRadius: theme.borderRadius, borderColor: 'rgba(245,158,11,0.3)', backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(245,158,11,0.06)' }]}>
+                <View style={styles.kpiTop}>
+                  <Ionicons name="pin-outline" size={18} color="#f59e0b" />
+                </View>
+                <Text style={[styles.kpiValue, { color: theme.text.primary }]}>{pinnedIds.length}</Text>
+                <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Pinned</Text>
+                <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>Quick access</Text>
+              </View>
+
+              <View style={[styles.kpiCard, { borderRadius: theme.borderRadius, borderColor: 'rgba(16,185,129,0.3)', backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(16,185,129,0.06)' }]}>
+                <View style={styles.kpiTop}>
+                  <Ionicons name="apps-outline" size={18} color="#10b981" />
+                </View>
+                <Text style={[styles.kpiValue, { color: theme.text.primary }]}>{categories.length}</Text>
+                <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Categories</Text>
+                <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>Filter by type</Text>
+              </View>
+            </Animated.ScrollView>
+          </Animated.View>
+        )}
+
+        {/* Category Filter */}
+        {categories.length > 0 && (
+          <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(150)}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              contentContainerStyle={styles.categoryScroll}
+            >
+              <TouchableOpacity
+                onPress={() => setActiveCategory(null)}
+                style={[
+                  styles.categoryChip, 
+                  activeCategory === null && { backgroundColor: theme.primary }
+                ]}
+              >
+                <Text style={[styles.categoryText, activeCategory === null && { color: '#fff' }]}>All</Text>
+              </TouchableOpacity>
+              {categories.map(cat => (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => setActiveCategory(activeCategory === cat ? null : cat)}
+                  style={[
+                    styles.categoryChip,
+                    activeCategory === cat && { backgroundColor: CATEGORY_COLORS[cat] || theme.primary }
+                  ]}
+                >
+                  <Text style={[styles.categoryText, activeCategory === cat && { color: '#fff' }]}>
+                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        )}
+
+        {/* Tracker Grid */}
+        <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)} style={styles.grid}>
+          {sortedFiltered.length > 0 ? (
+            sortedFiltered.map((tracker: any, index: number) => {
+              const isPinned = pinnedIds.includes(tracker.id);
+              const isHidden = hiddenIds.includes(tracker.id);
+              if (isHidden) return null;
+              
+              return (
+                <Animated.View
+                  key={tracker.id}
+                  entering={FadeInUp.delay(index * 40).springify()}
+                  style={styles.gridItem}
+                >
+                  <TouchableOpacity
+                    onPress={() => handleTrackerPress(tracker.id, tracker.hasSubActions)}
+                    activeOpacity={0.85}
+                    style={{ flex: 1 }}
+                  >
+                    <GlassCard shadow="md" style={[styles.trackerCard, isPinned && { borderColor: theme.primary, borderWidth: 2 }]}>
+                      <View style={[styles.trackerCardTop, { justifyContent: 'space-between' }]}>
+                        <View style={[styles.trackerCardIcon, { backgroundColor: `${tracker.color}12` }]}>
+                          <Text style={{ fontSize: 24 }}>{tracker.emoji}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                          <TouchableOpacity
+                            onPress={() => handlePinToggle(tracker.id)}
+                            style={[styles.actionBtn, isPinned && { backgroundColor: `${theme.primary}12` }]}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name={isPinned ? 'pin' : 'pin-outline'} size={16} color={isPinned ? theme.primary : theme.text.muted} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleHideToggle(tracker.id)}
+                            style={styles.actionBtn}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="eye-off-outline" size={16} color={theme.text.muted} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <Text style={[styles.trackerCardTitle, { color: theme.text.primary }]} numberOfLines={1}>
+                        {tracker.title}
+                      </Text>
+                      <Text style={[styles.trackerCardDesc, { color: theme.text.muted }]} numberOfLines={1}>
+                        {TRACKER_CONFIGS[tracker.id]?.description || tracker.category}
+                      </Text>
+                      <View style={styles.trackerCardMeta}>
+                        <Text style={[styles.trackerCardCount, { color: tracker.color }]}>
+                          {tracker.count} logs
+                        </Text>
+                        {tracker.lastEntry && (
+                          <Text style={[styles.trackerCardLast, { color: theme.text.muted }]}>
+                            Last {tracker.lastEntry}
+                          </Text>
+                        )}
+                      </View>
+                      {isPinned && (
+                        <View style={[styles.pinBadge, { backgroundColor: theme.primary }]}>
+                          <Ionicons name="pin" size={10} color="#fff" />
+                        </View>
+                      )}
+                    </GlassCard>
+                  </TouchableOpacity>
+                </Animated.View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={[styles.emptyIconContainer, { backgroundColor: theme.surface.card }]}>
+                <Ionicons name="search-outline" size={64} color={theme.text.muted} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text.primary }]}>
+                {searchQuery ? 'No matches found' : 'No trackers available'}
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: theme.text.secondary }]}>
+                {searchQuery ? 'Try adjusting your search' : 'Create your first tracker to get started'}
+              </Text>
+            </View>
+          )}
+        </Animated.View>
+
+        {/* Create Custom Tracker Button */}
+        <Animated.View entering={FadeInUp.delay(300).springify()}>
+          <TouchableOpacity
+            onPress={handleCustomPress}
+            style={[styles.customBtn, { borderColor: theme.surface.border, marginHorizontal: SPACING.lg, marginTop: SPACING.md }]}
+          >
+            <LinearGradient
+              colors={[`${theme.primary}08`, `${theme.primary}02`]}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <View style={[styles.customIcon, { backgroundColor: `${theme.primary}12` }]}>
+              <Ionicons name="add" size={22} color={theme.primary} />
+            </View>
+            <Text style={[styles.customText, { color: theme.primary }]}>Create Custom Tracker</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        <View style={{ height: insets.bottom + 40 }} />
+      </Animated.ScrollView>
+
+      {/* Sub Action Sheet */}
       {showSubSheet && (
         <SubActionSheet
           visible={showSubSheet}
@@ -631,39 +870,64 @@ export default function AllTrackersScreen() {
   );
 }
 
+// ─── STYLES ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  header: {
+  // ── Header ──
+  headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100 },
+  headerGradient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.sm,
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
-  headerBackBtn: {
+  headerIconBtn: {
     width: 40,
     height: 40,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
+    borderRadius: 8,
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  headerTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  headerSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-
-  searchWrap: {
+  babyPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: RADIUS.md,
-  },
-  searchInput: {
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+    gap: 10,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(102,126,234,0.15)',
     flex: 1,
-    fontSize: 15,
-    fontWeight: '500',
-    paddingVertical: 4,
   },
+  babyPillText: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 },
+  babyPillName: { fontSize: 15, fontWeight: '700', maxWidth: 140 },
+  babyPillAge: { fontSize: 12, fontWeight: '600' },
+  babyPillNoBabyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
+  // ── Scroll Content ──
+  scrollContent: { paddingBottom: 20 },
+
+  // ── Search ──
+  searchContainer: { marginHorizontal: 20, marginBottom: 16, marginTop: 8 },
+  searchBlur: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 4, overflow: 'hidden' },
+  searchInput: { flex: 1, marginLeft: 10, paddingVertical: 12, fontSize: 15 },
+
+  // ── Stats ──
+  statsContainer: { marginBottom: 16 },
+  statsContent: { paddingHorizontal: 20, gap: 10 },
+  kpiCard: { width: 120, padding: 14, borderWidth: 1, borderRadius: 16 },
+  kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  kpiValue: { fontSize: 28, fontWeight: '800', letterSpacing: -1, marginBottom: 2 },
+  kpiLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiSub: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+
+  // ── Category Filter ──
   categoryScroll: {
     paddingHorizontal: SPACING.lg,
     gap: 8,
@@ -682,6 +946,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
 
+  // ── Grid ──
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -693,6 +958,7 @@ const styles = StyleSheet.create({
     width: (SCREEN_WIDTH - 56) / 2,
   },
 
+  // ── Glass Card ──
   glassCard: {
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
@@ -708,9 +974,11 @@ const styles = StyleSheet.create({
   },
   glassContent: { flex: 1 },
 
+  // ── Tracker Card ──
   trackerCard: {
     padding: SPACING.md,
     minHeight: 140,
+    position: 'relative',
   },
   trackerCardTop: {
     flexDirection: 'row',
@@ -755,7 +1023,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
   },
+  pinBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
+  // ── Custom Button ──
   customBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -776,6 +1055,39 @@ const styles = StyleSheet.create({
   },
   customText: { fontSize: 13, fontWeight: '700' },
 
+  // ── Empty State ──
+  emptyState: { alignItems: 'center', padding: 40, width: '100%' },
+  emptyIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  emptyTitle: { fontWeight: '800', marginBottom: 8, textAlign: 'center', fontSize: 22 },
+  emptySubtitle: { fontWeight: '500', textAlign: 'center', lineHeight: 22, fontSize: 15 },
+
+  // ── Section Header ──
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  sectionActionText: { fontSize: 13, fontWeight: '700' },
+
+  // ── Sub Action Sheet ──
   sheetOverlay: {
     position: 'absolute',
     top: 0,
