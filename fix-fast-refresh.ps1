@@ -1,75 +1,100 @@
-#!/bin/bash
-# fix-fast-refresh.sh
-
-echo "═══════════════════════════════════════════════════════════"
-echo "  🔄 LITTLELOOM - FAST REFRESH FIX"
-echo "═══════════════════════════════════════════════════════════"
-echo ""
+# fix-fast-refresh.ps1
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "  🔄 LITTLELOOM - FAST REFRESH FIX" -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host ""
 
 # ─── Step 1: Clear all caches ──────────────────────────────────────
-echo "📦 Clearing caches..."
+Write-Host "📦 Clearing caches..." -ForegroundColor Yellow
 
 # Clear Expo cache
-rm -rf .expo 2>/dev/null && echo "  ✅ .expo cleared"
+if (Test-Path .expo) {
+    Remove-Item -Recurse -Force .expo -ErrorAction SilentlyContinue
+    Write-Host "  ✅ .expo cleared" -ForegroundColor Green
+}
 
 # Clear node_modules cache
-rm -rf node_modules/.cache 2>/dev/null && echo "  ✅ node_modules/.cache cleared"
+if (Test-Path node_modules/.cache) {
+    Remove-Item -Recurse -Force node_modules/.cache -ErrorAction SilentlyContinue
+    Write-Host "  ✅ node_modules/.cache cleared" -ForegroundColor Green
+}
 
 # Clear general cache
-rm -rf .cache 2>/dev/null && echo "  ✅ .cache cleared"
+if (Test-Path .cache) {
+    Remove-Item -Recurse -Force .cache -ErrorAction SilentlyContinue
+    Write-Host "  ✅ .cache cleared" -ForegroundColor Green
+}
 
 # Clear Metro cache
-rm -rf /tmp/metro-* 2>/dev/null && echo "  ✅ Metro cache cleared"
+$metroCachePaths = @(
+    "$env:TEMP\metro-*",
+    "$env:TEMP\react-*",
+    "$env:TEMP\expo-*",
+    "$env:TEMP\babel-*"
+)
+foreach ($path in $metroCachePaths) {
+    if (Test-Path $path) {
+        Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue
+    }
+}
+Write-Host "  ✅ Metro/Temp cache cleared" -ForegroundColor Green
 
 # Clear watchman (if installed)
-if command -v watchman &> /dev/null; then
-    watchman watch-del-all 2>/dev/null
-    echo "  ✅ Watchman cache cleared"
-else
-    echo "  ⚠️ Watchman not installed (skipping)"
-fi
+try {
+    $watchmanCheck = Get-Command watchman -ErrorAction SilentlyContinue
+    if ($watchmanCheck) {
+        & watchman watch-del-all 2>$null
+        Write-Host "  ✅ Watchman cache cleared" -ForegroundColor Green
+    } else {
+        Write-Host "  ⚠️ Watchman not installed (skipping)" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "  ⚠️ Watchman not available (skipping)" -ForegroundColor Yellow
+}
 
-echo "✅ All caches cleared!"
-echo ""
+Write-Host "✅ All caches cleared!" -ForegroundColor Green
+Write-Host ""
 
 # ─── Step 2: Set environment variables ─────────────────────────────
-echo "🌐 Setting environment variables..."
+Write-Host "🌐 Setting environment variables..." -ForegroundColor Yellow
 
-export REACT_NATIVE_PACKAGER_HOSTNAME="192.168.1.228"
-export EXPO_USE_FAST_RESOLVER="true"
-export EXPO_USE_METRO_WORKER="true"
-export NODE_OPTIONS="--max-old-space-size=8192"
-export EXPO_NO_TELEMETRY="true"
-export BABEL_ENV="development"
-export NODE_ENV="development"
-export EXPO_BUNDLE_USE_FAST_RESOLVER="true"
+$env:REACT_NATIVE_PACKAGER_HOSTNAME="192.168.1.228"
+$env:EXPO_USE_FAST_RESOLVER="true"
+$env:EXPO_USE_METRO_WORKER="true"
+$env:NODE_OPTIONS="--max-old-space-size=8192"
+$env:EXPO_NO_TELEMETRY="true"
+$env:BABEL_ENV="development"
+$env:NODE_ENV="development"
+$env:EXPO_BUNDLE_USE_FAST_RESOLVER="true"
+$env:EXPO_FAST_REFRESH="true"
 
-echo "  ✅ REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.228"
-echo "  ✅ EXPO_USE_FAST_RESOLVER=true"
-echo "  ✅ EXPO_USE_METRO_WORKER=true"
-echo "  ✅ NODE_OPTIONS=--max-old-space-size=8192"
-echo "  ✅ EXPO_NO_TELEMETRY=true"
+Write-Host "  ✅ REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.228" -ForegroundColor Gray
+Write-Host "  ✅ EXPO_USE_FAST_RESOLVER=true" -ForegroundColor Gray
+Write-Host "  ✅ EXPO_USE_METRO_WORKER=true" -ForegroundColor Gray
+Write-Host "  ✅ NODE_OPTIONS=--max-old-space-size=8192" -ForegroundColor Gray
+Write-Host "  ✅ EXPO_NO_TELEMETRY=true" -ForegroundColor Gray
+Write-Host "  ✅ EXPO_FAST_REFRESH=true" -ForegroundColor Gray
 
-echo "✅ Environment variables set!"
-echo ""
+Write-Host "✅ Environment variables set!" -ForegroundColor Green
+Write-Host ""
 
 # ─── Step 3: Start Expo with optimizations ──────────────────────────
-echo "🚀 Starting Expo with optimizations..."
-echo "   ═══════════════════════════════════════════════"
-echo "   • Max workers: 4"
-echo "   • Memory limit: 8GB"
-echo "   • Fast resolver: enabled"
-echo "   • Metro worker: enabled"
-echo "   • Cache: cleared"
-echo "   ═══════════════════════════════════════════════"
-echo ""
+Write-Host "🚀 Starting Expo with optimizations..." -ForegroundColor Yellow
+Write-Host "   ═══════════════════════════════════════════════" -ForegroundColor Gray
+Write-Host "   • Max workers: 4" -ForegroundColor Gray
+Write-Host "   • Memory limit: 8GB" -ForegroundColor Gray
+Write-Host "   • Fast resolver: enabled" -ForegroundColor Gray
+Write-Host "   • Metro worker: enabled" -ForegroundColor Gray
+Write-Host "   • Cache: cleared" -ForegroundColor Gray
+Write-Host "   ═══════════════════════════════════════════════" -ForegroundColor Gray
+Write-Host ""
 
-echo "💡 Press 'r' to reload, 'd' for developer menu"
-echo "💡 Press Ctrl+C to stop the server"
-echo ""
+Write-Host "💡 Press 'r' to reload, 'd' for developer menu" -ForegroundColor Magenta
+Write-Host "💡 Press Ctrl+C to stop the server" -ForegroundColor Magenta
+Write-Host ""
 
-# Start Expo with all optimizations (REMOVED --no-minify)
+# Start Expo with all optimizations (NO --no-minify - not supported in Expo 57)
 npx expo start --clear --dev-client --max-workers=4
 
-echo ""
-echo "✅ Server stopped."
+Write-Host ""
+Write-Host "✅ Server stopped." -ForegroundColor Cyan

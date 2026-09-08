@@ -13,7 +13,7 @@
     "test": "jest",
     "prebuild": "expo prebuild",
     "dev": "expo start --clear --max-workers=4 --dev-client",
-    "dev:fast": "expo start --clear --max-workers=4 --dev-client --no-minify",
+    "dev:fast": "expo start --clear --max-workers=4 --dev-client",
     "metro": "node --max-old-space-size=8192 node_modules/expo/start/metro/dev --reset-cache",
     "prebuild:clean": "expo prebuild --clean",
     "db:generate": "drizzle-kit generate --config=src/database/drizzle.config.ts",
@@ -23,7 +23,8 @@
     "build:dev": "node prebuild-check.js && eas build --platform android --profile development",
     "postinstall": "npx patch-package",
     "reset": "expo start --clear",
-    "clean": "npx rimraf .expo node_modules/.cache .cache"
+    "clean": "npx rimraf .expo node_modules/.cache .cache",
+    "fast": "expo start --clear --dev-client --max-workers=4"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.15",
