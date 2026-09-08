@@ -490,6 +490,7 @@ const UpcomingTimeline = React.memo(({ reminders, onPress, isDark }: { reminders
    NEW FEATURE 4: Daily Insights — Matching Achievements style
    ═══════════════════════════════════════════════════════════════ */
 
+// ✅ FIXED: All text properly wrapped in Text components
 const DailyInsights = memo(({ insights, isDark, onAction }: { insights: DailyInsight[]; isDark: boolean; onAction: (insight: DailyInsight) => void }) => {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -539,8 +540,12 @@ const DailyInsights = memo(({ insights, isDark, onAction }: { insights: DailyIns
                 <Text style={styles.insightEmoji}>{insight.emoji}</Text>
               </View>
               <View style={styles.insightContent}>
-                <Text style={[styles.insightTitle, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>{insight.title}</Text>
-                <Text style={[styles.insightMessage, { color: isDark ? '#94a3b8' : '#64748b' }]} numberOfLines={2}>{insight.message}</Text>
+                <Text style={[styles.insightTitle, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>
+                  {insight.title}
+                </Text>
+                <Text style={[styles.insightMessage, { color: isDark ? '#94a3b8' : '#64748b' }]} numberOfLines={2}>
+                  {insight.message}
+                </Text>
                 {insight.actionLabel && (
                   <View style={[styles.insightActionBadge, { backgroundColor: 'rgba(99,102,241,0.1)' }]}>
                     <Text style={[styles.insightActionText, { color: '#6366f1' }]}>{insight.actionLabel} →</Text>
