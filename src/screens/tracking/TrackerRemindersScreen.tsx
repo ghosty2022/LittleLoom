@@ -793,6 +793,184 @@ const QuickAddFAB = React.memo(({ onPress, themeColors }: { onPress: () => void;
 ));
 
 /* ═══════════════════════════════════════════════════════════════
+   INTELLIGENT REMINDER ENGINE
+   ═══════════════════════════════════════════════════════════════ */
+
+class IntelligentReminderEngine {
+  constructor(
+    private activities: any[],
+    private baby: any,
+    private milestones: any[],
+    private existingReminders: Reminder[]
+  ) {}
+
+  analyzePatterns(): SmartSuggestion[] {
+    const suggestions: SmartSuggestion[] = [];
+    if (!this.baby) return suggestions;
+
+    const babyActs = this.activities.filter((a) => a.babyId === this.baby.id);
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    const pottyActs = babyActs.filter((a) => a.type === 'potty');
+    if (pottyActs.length >= 3) {
+      const avgInterval = this.calculateAverageInterval(pottyActs);
+      const lastPotty = pottyActs[pottyActs.length - 1];
+      const hoursSince = lastPotty ? differenceInHours(now, new Date(lastPotty.timestamp)) : 999;
+      const nextPottyTime = lastPotty ? addMinutes(new Date(lastPotty.timestamp), avgInterval * 60) : null;
+
+      if (hoursSince > avgInterval * 0.8) {
+        suggestions.push({
+          id: 'potty_urgent',
+          type: 'potty',
+          title: 'Potty Break Soon',
+          description: `Last potty was ${hoursSince}h ago. Usual interval: ${Math.round(avgInterval)}h.`,
+          emoji: '🚽',
+          reason: 'Pattern detected from your logs',
+          optimalTime: nextPottyTime ? format(nextPottyTime, 'HH:mm') : format(addMinutes(now, 30), 'HH:mm'),
+          confidence: Math.min(95, 60 + hoursSince * 5),
+          basedOn: `${pottyActs.length} potty logs`,
+          action: 'Log potty now',
+          priority: hoursSince > avgInterval ? 'high' : 'medium',
+        });
+      }
+    }
+
+    const sleepActs = babyActs.filter((a) => a.type === 'sleep');
+    if (sleepActs.length >= 2) {
+      const bedtimes = sleepActs
+        .filter((a) => a.data?.sleepType === 'night' || a.data?.sleepType === 'nap')
+        .map((a) => new Date(a.timestamp).getHours());
+      if (bedtimes.length > 0) {
+        const avgBedtime = Math.round(bedtimes.reduce((a, b) => a + b, 0) / bedtimes.length);
+        const bedtimeStr = `${String(avgBedtime).padStart(2, '0')}:00`;
+        const isNearBedtime = currentHour >= avgBedtime - 1 && currentHour < avgBedtime + 1;
+
+        if (!this.hasReminderFor('sleep', bedtimeStr)) {
+          suggestions.push({
+            id: 'sleep_routine',
+            type: 'sleep',
+            title: 'Bedtime Routine',
+            description: `Start winding down around ${bedtimeStr} for better sleep.`,
+            emoji: '😴',
+            reason: 'Consistent bedtime improves sleep quality',
+            optimalTime: `${String(Math.max(0, avgBedtime - 1)).padStart(2, '0')}:30`,
+            confidence: 90,
+            basedOn: `${sleepActs.length} sleep sessions`,
+            action: 'Start bedtime routine',
+            priority: isNearBedtime ? 'high' : 'medium',
+          });
+        }
+      }
+    }
+
+    const feedActs = babyActs.filter((a) => a.type === 'feed');
+    if (feedActs.length >= 3) {
+      const avgInterval = this.calculateAverageInterval(feedActs);
+      const lastFeed = feedActs[feedActs.length - 1];
+      const hoursSince = lastFeed ? differenceInHours(now, new Date(lastFeed.timestamp)) : 999;
+
+      if (hoursSince > avgInterval * 0.7) {
+        suggestions.push({
+          id: 'feed_soon',
+          type: 'feed',
+          title: 'Feeding Time',
+          description: `Average gap: ${Math.round(avgInterval)}h. Last feed: ${hoursSince}h ago.`,
+          emoji: '🍼',
+          reason: 'Regular feeding schedule detected',
+          optimalTime: format(addMinutes(now, 15), 'HH:mm'),
+          confidence: Math.min(90, 50 + hoursSince * 8),
+          basedOn: `${feedActs.length} feeding logs`,
+          action: 'Prepare feeding',
+          priority: hoursSince > avgInterval ? 'high' : 'medium',
+        });
+      }
+    }
+
+    const streak = this.calculateStreak();
+    if (streak >= 3) {
+      const hasTodayActivity = babyActs.some((a) => isSameDay(new Date(a.timestamp), now));
+      if (!hasTodayActivity && currentHour >= 18) {
+        suggestions.push({
+          id: 'streak_protect',
+          type: 'custom',
+          title: `🔥 Protect ${streak}-Day Streak!`,
+          description: `${24 - currentHour} hours left to log something today.`,
+          emoji: '🔥',
+          reason: "Don't break your tracking streak",
+          optimalTime: `${String(currentHour + 1).padStart(2, '0')}:00`,
+          confidence: 95,
+          basedOn: `${streak} day activity streak`,
+          action: 'Quick log',
+          priority: 'high',
+        });
+      }
+    }
+
+    const growthActs = babyActs.filter((a) => a.type === 'growth');
+    const daysSinceGrowth = growthActs.length > 0
+      ? differenceInDays(now, new Date(growthActs[growthActs.length - 1].timestamp))
+      : 999;
+    if (daysSinceGrowth > 30) {
+      suggestions.push({
+        id: 'growth_check',
+        type: 'growth',
+        title: 'Monthly Growth Check',
+        description: `Last measurement was ${daysSinceGrowth} days ago.`,
+        emoji: '📏',
+        reason: 'Monthly growth tracking recommended',
+        optimalTime: '09:00',
+        confidence: 70,
+        basedOn: `${growthActs.length} growth measurements`,
+        action: 'Measure now',
+        priority: 'medium',
+      });
+    }
+
+    return suggestions.sort((a, b) => {
+      const priorityWeight = { high: 3, medium: 2, low: 1 };
+      return priorityWeight[b.priority] - priorityWeight[a.priority] || b.confidence - a.confidence;
+    });
+  }
+
+  private calculateAverageInterval(activities: any[]): number {
+    if (activities.length < 2) return 3;
+    let totalDiff = 0;
+    let count = 0;
+    for (let i = 1; i < activities.length; i++) {
+      const diff = differenceInHours(new Date(activities[i].timestamp), new Date(activities[i - 1].timestamp));
+      if (diff > 0 && diff < 24) {
+        totalDiff += diff;
+        count++;
+      }
+    }
+    return count > 0 ? totalDiff / count : 3;
+  }
+
+  private calculateStreak(): number {
+    const dailyActivities = this.activities.filter((a) => a.babyId === this.baby?.id);
+    let streak = 0;
+    let currentDate = new Date();
+    while (true) {
+      const hasActivity = dailyActivities.some((a) => isSameDay(new Date(a.timestamp), currentDate));
+      if (hasActivity) {
+        streak++;
+        currentDate = addDays(currentDate, -1);
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  private hasReminderFor(category: CategoryType, time: string): boolean {
+    return this.existingReminders.some(
+      (r) => r.category === category && r.time === time && r.enabled
+    );
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    MAIN SCREEN — COMPLETE REDESIGN with Achievements UI
    ═══════════════════════════════════════════════════════════════ */
 
@@ -1439,9 +1617,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
      ⚡ INSTANT LOADING: Show content immediately, no spinner
      ═══════════════════════════════════════════════════════════════ */
 
-  // ❌ No loading spinner - show content instantly even if data is loading
-  // Only show loading if truly nothing exists and still loading
-
   /* ---- No baby state (shown instantly) ---- */
   if (!baby && !isInitialLoad) {
     return (
@@ -1941,181 +2116,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
       <SweetAlert {...alert} onClose={() => setAlert({ ...alert, visible: false })} isDark={isDark} />
     </View>
   );
-}
-
-// IntelligentReminderEngine class (same as before)
-class IntelligentReminderEngine {
-  constructor(
-    private activities: any[],
-    private baby: any,
-    private milestones: any[],
-    private existingReminders: Reminder[]
-  ) {}
-
-  analyzePatterns(): SmartSuggestion[] {
-    const suggestions: SmartSuggestion[] = [];
-    if (!this.baby) return suggestions;
-
-    const babyActs = this.activities.filter((a) => a.babyId === this.baby.id);
-    const now = new Date();
-    const currentHour = now.getHours();
-
-    const pottyActs = babyActs.filter((a) => a.type === 'potty');
-    if (pottyActs.length >= 3) {
-      const avgInterval = this.calculateAverageInterval(pottyActs);
-      const lastPotty = pottyActs[pottyActs.length - 1];
-      const hoursSince = lastPotty ? differenceInHours(now, new Date(lastPotty.timestamp)) : 999;
-      const nextPottyTime = lastPotty ? addMinutes(new Date(lastPotty.timestamp), avgInterval * 60) : null;
-
-      if (hoursSince > avgInterval * 0.8) {
-        suggestions.push({
-          id: 'potty_urgent',
-          type: 'potty',
-          title: 'Potty Break Soon',
-          description: `Last potty was ${hoursSince}h ago. Usual interval: ${Math.round(avgInterval)}h.`,
-          emoji: '🚽',
-          reason: 'Pattern detected from your logs',
-          optimalTime: nextPottyTime ? format(nextPottyTime, 'HH:mm') : format(addMinutes(now, 30), 'HH:mm'),
-          confidence: Math.min(95, 60 + hoursSince * 5),
-          basedOn: `${pottyActs.length} potty logs`,
-          action: 'Log potty now',
-          priority: hoursSince > avgInterval ? 'high' : 'medium',
-        });
-      }
-    }
-
-    const sleepActs = babyActs.filter((a) => a.type === 'sleep');
-    if (sleepActs.length >= 2) {
-      const bedtimes = sleepActs
-        .filter((a) => a.data?.sleepType === 'night' || a.data?.sleepType === 'nap')
-        .map((a) => new Date(a.timestamp).getHours());
-      if (bedtimes.length > 0) {
-        const avgBedtime = Math.round(bedtimes.reduce((a, b) => a + b, 0) / bedtimes.length);
-        const bedtimeStr = `${String(avgBedtime).padStart(2, '0')}:00`;
-        const isNearBedtime = currentHour >= avgBedtime - 1 && currentHour < avgBedtime + 1;
-
-        if (!this.hasReminderFor('sleep', bedtimeStr)) {
-          suggestions.push({
-            id: 'sleep_routine',
-            type: 'sleep',
-            title: 'Bedtime Routine',
-            description: `Start winding down around ${bedtimeStr} for better sleep.`,
-            emoji: '😴',
-            reason: 'Consistent bedtime improves sleep quality',
-            optimalTime: `${String(Math.max(0, avgBedtime - 1)).padStart(2, '0')}:30`,
-            confidence: 90,
-            basedOn: `${sleepActs.length} sleep sessions`,
-            action: 'Start bedtime routine',
-            priority: isNearBedtime ? 'high' : 'medium',
-          });
-        }
-      }
-    }
-
-    const feedActs = babyActs.filter((a) => a.type === 'feed');
-    if (feedActs.length >= 3) {
-      const avgInterval = this.calculateAverageInterval(feedActs);
-      const lastFeed = feedActs[feedActs.length - 1];
-      const hoursSince = lastFeed ? differenceInHours(now, new Date(lastFeed.timestamp)) : 999;
-
-      if (hoursSince > avgInterval * 0.7) {
-        suggestions.push({
-          id: 'feed_soon',
-          type: 'feed',
-          title: 'Feeding Time',
-          description: `Average gap: ${Math.round(avgInterval)}h. Last feed: ${hoursSince}h ago.`,
-          emoji: '🍼',
-          reason: 'Regular feeding schedule detected',
-          optimalTime: format(addMinutes(now, 15), 'HH:mm'),
-          confidence: Math.min(90, 50 + hoursSince * 8),
-          basedOn: `${feedActs.length} feeding logs`,
-          action: 'Prepare feeding',
-          priority: hoursSince > avgInterval ? 'high' : 'medium',
-        });
-      }
-    }
-
-    const streak = this.calculateStreak();
-    if (streak >= 3) {
-      const hasTodayActivity = babyActs.some((a) => isSameDay(new Date(a.timestamp), now));
-      if (!hasTodayActivity && currentHour >= 18) {
-        suggestions.push({
-          id: 'streak_protect',
-          type: 'custom',
-          title: `🔥 Protect ${streak}-Day Streak!`,
-          description: `${24 - currentHour} hours left to log something today.`,
-          emoji: '🔥',
-          reason: "Don't break your tracking streak",
-          optimalTime: `${String(currentHour + 1).padStart(2, '0')}:00`,
-          confidence: 95,
-          basedOn: `${streak} day activity streak`,
-          action: 'Quick log',
-          priority: 'high',
-        });
-      }
-    }
-
-    const growthActs = babyActs.filter((a) => a.type === 'growth');
-    const daysSinceGrowth = growthActs.length > 0
-      ? differenceInDays(now, new Date(growthActs[growthActs.length - 1].timestamp))
-      : 999;
-    if (daysSinceGrowth > 30) {
-      suggestions.push({
-        id: 'growth_check',
-        type: 'growth',
-        title: 'Monthly Growth Check',
-        description: `Last measurement was ${daysSinceGrowth} days ago.`,
-        emoji: '📏',
-        reason: 'Monthly growth tracking recommended',
-        optimalTime: '09:00',
-        confidence: 70,
-        basedOn: `${growthActs.length} growth measurements`,
-        action: 'Measure now',
-        priority: 'medium',
-      });
-    }
-
-    return suggestions.sort((a, b) => {
-      const priorityWeight = { high: 3, medium: 2, low: 1 };
-      return priorityWeight[b.priority] - priorityWeight[a.priority] || b.confidence - a.confidence;
-    });
-  }
-
-  private calculateAverageInterval(activities: any[]): number {
-    if (activities.length < 2) return 3;
-    let totalDiff = 0;
-    let count = 0;
-    for (let i = 1; i < activities.length; i++) {
-      const diff = differenceInHours(new Date(activities[i].timestamp), new Date(activities[i - 1].timestamp));
-      if (diff > 0 && diff < 24) {
-        totalDiff += diff;
-        count++;
-      }
-    }
-    return count > 0 ? totalDiff / count : 3;
-  }
-
-  private calculateStreak(): number {
-    const dailyActivities = this.activities.filter((a) => a.babyId === this.baby?.id);
-    let streak = 0;
-    let currentDate = new Date();
-    while (true) {
-      const hasActivity = dailyActivities.some((a) => isSameDay(new Date(a.timestamp), currentDate));
-      if (hasActivity) {
-        streak++;
-        currentDate = addDays(currentDate, -1);
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
-  private hasReminderFor(category: CategoryType, time: string): boolean {
-    return this.existingReminders.some(
-      (r) => r.category === category && r.time === time && r.enabled
-    );
-  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
