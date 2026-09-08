@@ -549,7 +549,12 @@ const FeedingPatternCard = React.memo(({ entries, onPress }: { entries: any[]; o
   const theme = useHubTheme();
 
   const pattern = useMemo(() => {
-    const feedEntries = entries.filter((e: any) => e.trackerId === 'feed').sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 10);
+    // ✅ Filter out entries without valid timestamps
+    const feedEntries = entries
+      .filter((e: any) => e.trackerId === 'feed' && e.timestamp && typeof e.timestamp === 'number' && !isNaN(e.timestamp))
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 10);
+      
     if (feedEntries.length < 2) return null;
 
     const intervals: number[] = [];
@@ -558,25 +563,49 @@ const FeedingPatternCard = React.memo(({ entries, onPress }: { entries: any[]; o
       if (diff > 0 && diff < 12) intervals.push(diff);
     }
 
-    const avgInterval = intervals.length > 0 ? Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length * 10) / 10 : 3;
+    const avgInterval = intervals.length > 0 
+      ? Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length * 10) / 10 
+      : 3;
     const totalVolume = feedEntries.reduce((sum: number, e: any) => sum + (e.amount || e.value || 120), 0);
 
     const lastEntry = feedEntries[0];
+    
+    // ✅ Additional guard for lastEntry
+    if (!lastEntry) return null;
+
     const lastSide = lastEntry?.presetData?.side === 'left' ? 'left' 
       : lastEntry?.presetData?.side === 'right' ? 'right' 
       : lastEntry?.presetData?.feedType === 'bottle' ? 'bottle' 
       : lastEntry?.presetData?.feedType === 'solid' ? 'solid' 
       : 'left';
 
-    const nextFeed = new Date(lastEntry.timestamp + avgInterval * 3600000);
+    // ✅ Safe date creation with validation
+    const nextFeedTime = lastEntry.timestamp + avgInterval * 3600000;
+    const nextFeed = new Date(nextFeedTime);
+    
+    let nextFeedEstimate = '--:--';
+    try {
+      if (!isNaN(nextFeed.getTime())) {
+        nextFeedEstimate = format(nextFeed, 'h:mm a');
+      } else {
+        // Fallback: estimate based on current time
+        const fallbackTime = Date.now() + avgInterval * 3600000;
+        const fallbackDate = new Date(fallbackTime);
+        if (!isNaN(fallbackDate.getTime())) {
+          nextFeedEstimate = format(fallbackDate, 'h:mm a');
+        }
+      }
+    } catch (e) {
+      nextFeedEstimate = '--:--';
+    }
 
-    return { avgInterval, totalVolume, lastSide, nextFeedEstimate: format(nextFeed, 'h:mm a') };
+    return { avgInterval, totalVolume, lastSide, nextFeedEstimate };
   }, [entries]);
 
   if (!pattern) return null;
 
-  const sideEmoji = { left: '⬅️', right: '➡️', both: '↔️', bottle: '🍼', solid: '🥣' };
-  const sideLabel = { left: 'Left', right: 'Right', both: 'Both', bottle: 'Bottle', solid: 'Solids' };
+  const sideEmoji: Record<string, string> = { left: '⬅️', right: '➡️', both: '↔️', bottle: '🍼', solid: '🥣' };
+  const sideLabel: Record<string, string> = { left: 'Left', right: 'Right', both: 'Both', bottle: 'Bottle', solid: 'Solids' };
 
   return (
     <Animated.View entering={FadeInUp.delay(160).springify()}>
@@ -585,10 +614,10 @@ const FeedingPatternCard = React.memo(({ entries, onPress }: { entries: any[]; o
         <View style={styles.feedingCard}>
           <View style={styles.feedingTop}>
             <View style={[styles.feedingLastBadge, { backgroundColor: `${theme.primary}12` }]}>
-              <Text style={styles.feedingLastEmoji}>{sideEmoji[pattern.lastSide]}</Text>
+              <Text style={styles.feedingLastEmoji}>{sideEmoji[pattern.lastSide] || '🍼'}</Text>
               <View>
                 <Text style={[styles.feedingLastLabel, { color: theme.text.primary }]}>Last Feed</Text>
-                <Text style={[styles.feedingLastValue, { color: theme.primary }]}>{sideLabel[pattern.lastSide]}</Text>
+                <Text style={[styles.feedingLastValue, { color: theme.primary }]}>{sideLabel[pattern.lastSide] || 'Unknown'}</Text>
               </View>
             </View>
             <View style={styles.feedingNextBadge}>

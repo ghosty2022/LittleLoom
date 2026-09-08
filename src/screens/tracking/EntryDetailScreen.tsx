@@ -1,6 +1,7 @@
-// EntryDetailScreen.tsx — INTELLIGENCE EDITION v6.0
-// Unified with Timeline + GrowthDashboard aesthetics
-// No card shadows, glass surfaces, KPIs, trend sparklines, audit intelligence
+// EntryDetailScreen.tsx — INTELLIGENCE EDITION v7.0
+// Unified with AddEntryScreen theming approach
+// Uses useCustomization + useUnifiedTrackerTheme consistently
+// Glass cards, gradients, and design tokens unified
 
 import React, {
   useCallback,
@@ -39,7 +40,6 @@ import {
   isYesterday,
   isSameDay,
   formatDistanceToNow,
-  differenceInHours,
   differenceInDays,
   differenceInMonths,
   parseISO,
@@ -62,16 +62,16 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Unified with Timeline + GrowthDashboard
+   DESIGN TOKENS — Unified with AddEntryScreen
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
   shadow: {
-    none: { shadowOpacity: 0, elevation: 0 },
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+    sm: {},
+    md: {},
+    lg: {},
   },
 };
 
@@ -88,6 +88,11 @@ const ROLE_META: Record<string, { label: string; color: string }> = {
   viewer: { label: 'Viewer', color: '#64748b' },
   admin: { label: 'Admin', color: '#f59e0b' },
 };
+
+const SPRING_CONFIG = { damping: 15, stiffness: 300 };
+const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SAFE HELPERS
@@ -125,17 +130,6 @@ const safeDiffDays = (a: Date | string, b: Date | string): number => {
   if (!left || !right) return 0;
   return differenceInDays(left, right);
 };
-
-const safeDiffMonths = (a: Date | string, b: Date | string): number => {
-  const left = safeParseDate(typeof a === 'string' ? a : undefined) || (a instanceof Date ? a : null);
-  const right = safeParseDate(typeof b === 'string' ? b : undefined) || (b instanceof Date ? b : null);
-  if (!left || !right) return 0;
-  return Math.max(0, differenceInMonths(left, right));
-};
-
-const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    EDIT HISTORY
@@ -242,7 +236,7 @@ const formatValue = (
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   UNIFIED GLASS CARD — No shadows, clean borders
+   UNIFIED GLASS CARD — Matches AddEntryScreen
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const GlassCard = ({ children, style, onPress, active = false }: any) => {
@@ -275,11 +269,12 @@ const GlassCard = ({ children, style, onPress, active = false }: any) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER — Unified style
+   SECTION HEADER — Unified with AddEntryScreen
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SectionHeader = ({ title, subtitle, action, actionLabel, icon }: any) => {
   const theme = useUnifiedTrackerTheme();
+  const { fullThemeColors } = useCustomization();
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionHeaderLeft}>
@@ -289,9 +284,9 @@ const SectionHeader = ({ title, subtitle, action, actionLabel, icon }: any) => {
           </View>
         )}
         <View>
-          <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
+          <Text style={[styles.sectionTitle, { color: fullThemeColors.text }]}>{title}</Text>
           {subtitle && (
-            <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>
+            <Text style={[styles.sectionSubtitle, { color: fullThemeColors.textSecondary }]}>{subtitle}</Text>
           )}
         </View>
       </View>
@@ -312,20 +307,29 @@ const SectionHeader = ({ title, subtitle, action, actionLabel, icon }: any) => {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const KpiCard = ({ title, value, unit, change, changeLabel, icon, color, onPress }: any) => {
+  const { fullThemeColors } = useCustomization();
   const theme = useUnifiedTrackerTheme();
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiCard}>
+      <LinearGradient
+        colors={theme.isDark
+          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']
+          : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
       <View style={styles.kpiInner}>
         <View style={[styles.kpiIconBg, { backgroundColor: `${color}12` }]}>
           <Text style={styles.kpiIcon}>{icon}</Text>
         </View>
         <View style={styles.kpiBody}>
-          <Text style={[styles.kpiValue, { color: theme.text.primary }]} numberOfLines={1}>
+          <Text style={[styles.kpiValue, { color: fullThemeColors.text }]} numberOfLines={1}>
             {value}
           </Text>
           <Text style={[styles.kpiUnit, { color }]}>{unit}</Text>
         </View>
-        <Text style={[styles.kpiTitle, { color: theme.text.secondary }]}>{title}</Text>
+        <Text style={[styles.kpiTitle, { color: fullThemeColors.textSecondary }]}>{title}</Text>
         {change !== undefined && (
           <View style={styles.kpiFooter}>
             <View style={styles.kpiChangeRow}>
@@ -338,7 +342,7 @@ const KpiCard = ({ title, value, unit, change, changeLabel, icon, color, onPress
                 {change > 0 ? '+' : ''}{change}
               </Text>
               {changeLabel && (
-                <Text style={[styles.kpiChangeLabel, { color: theme.text.muted }]}>{changeLabel}</Text>
+                <Text style={[styles.kpiChangeLabel, { color: fullThemeColors.textMuted }]}>{changeLabel}</Text>
               )}
             </View>
           </View>
@@ -410,6 +414,7 @@ const Sparkline = ({ data, color, width = 80, height = 30 }: { data: number[]; c
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const ValueCell = ({ value, theme, accent }: { value: FieldValue; theme: any; accent: string }) => {
+  const { fullThemeColors } = useCustomization();
   if (value.kind === 'bool') {
     const on = value.bool;
     return (
@@ -426,7 +431,7 @@ const ValueCell = ({ value, theme, accent }: { value: FieldValue; theme: any; ac
             key={i}
             name={i <= value.rating ? 'star' : 'star-outline'}
             size={14}
-            color={i <= value.rating ? '#f59e0b' : theme.text.muted}
+            color={i <= value.rating ? '#f59e0b' : fullThemeColors.textMuted}
           />
         ))}
       </View>
@@ -444,19 +449,22 @@ const ValueCell = ({ value, theme, accent }: { value: FieldValue; theme: any; ac
     );
   }
   if (value.kind === 'duration') {
-    return <Text style={[styles.rowValue, { color: theme.text.primary }]}>{formatDurationMin(value.minutes)}</Text>;
+    return <Text style={[styles.rowValue, { color: fullThemeColors.text }]}>{formatDurationMin(value.minutes)}</Text>;
   }
   if (value.kind === 'measurement') {
-    return <Text style={[styles.rowValue, { color: theme.text.primary }]}>{value.value} {value.unit}</Text>;
+    return <Text style={[styles.rowValue, { color: fullThemeColors.text }]}>{value.value} {value.unit}</Text>;
   }
-  return <Text style={[styles.rowValue, { color: theme.text.primary }]}>{value.text}</Text>;
+  return <Text style={[styles.rowValue, { color: fullThemeColors.text }]}>{value.text}</Text>;
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
    INTELLIGENCE COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const EntryIntelligencePanel = ({ entry, tracker, allEntries, theme }: any) => {
+const EntryIntelligencePanel = ({ entry, tracker, allEntries }: any) => {
+  const { fullThemeColors } = useCustomization();
+  const theme = useUnifiedTrackerTheme();
+  
   const stats = useMemo(() => {
     if (!entry || !allEntries?.length) return null;
 
@@ -525,16 +533,16 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, theme }: any) => {
             <View style={[styles.intelIconBg, { backgroundColor: `${theme.primary}12` }]}>
               <Ionicons name="list-outline" size={18} color={theme.primary} />
             </View>
-            <Text style={[styles.intelValue, { color: theme.text.primary }]}>{stats.entryNumber}</Text>
-            <Text style={[styles.intelLabel, { color: theme.text.muted }]}>of {stats.totalInTracker} in {tracker?.name || 'tracker'}</Text>
+            <Text style={[styles.intelValue, { color: fullThemeColors.text }]}>{stats.entryNumber}</Text>
+            <Text style={[styles.intelLabel, { color: fullThemeColors.textSecondary }]}>of {stats.totalInTracker} in {tracker?.name || 'tracker'}</Text>
           </View>
 
           <View style={styles.intelTile}>
             <View style={[styles.intelIconBg, { backgroundColor: '#f59e0b12' }]}>
               <Ionicons name="calendar-number-outline" size={18} color="#f59e0b" />
             </View>
-            <Text style={[styles.intelValue, { color: theme.text.primary }]}>{stats.dayPosition}</Text>
-            <Text style={[styles.intelLabel, { color: theme.text.muted }]}>{stats.dayTotal} entries that day</Text>
+            <Text style={[styles.intelValue, { color: fullThemeColors.text }]}>{stats.dayPosition}</Text>
+            <Text style={[styles.intelLabel, { color: fullThemeColors.textSecondary }]}>{stats.dayTotal} entries that day</Text>
           </View>
 
           {stats.sincePrev && (
@@ -542,8 +550,8 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, theme }: any) => {
               <View style={[styles.intelIconBg, { backgroundColor: '#8b5cf612' }]}>
                 <Ionicons name="timer-outline" size={18} color="#8b5cf6" />
               </View>
-              <Text style={[styles.intelValue, { color: theme.text.primary }]}>{stats.sincePrev}</Text>
-              <Text style={[styles.intelLabel, { color: theme.text.muted }]}>since previous</Text>
+              <Text style={[styles.intelValue, { color: fullThemeColors.text }]}>{stats.sincePrev}</Text>
+              <Text style={[styles.intelLabel, { color: fullThemeColors.textSecondary }]}>since previous</Text>
             </View>
           )}
 
@@ -552,26 +560,26 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, theme }: any) => {
               <View style={[styles.intelIconBg, { backgroundColor: '#10b98112' }]}>
                 <Ionicons name="stats-chart-outline" size={18} color="#10b981" />
               </View>
-              <Text style={[styles.intelValue, { color: theme.text.primary }]}>{stats.avgGap}</Text>
-              <Text style={[styles.intelLabel, { color: theme.text.muted }]}>typical gap</Text>
+              <Text style={[styles.intelValue, { color: fullThemeColors.text }]}>{stats.avgGap}</Text>
+              <Text style={[styles.intelLabel, { color: fullThemeColors.textSecondary }]}>typical gap</Text>
             </View>
           )}
         </View>
 
         {stats.valueTrend.length >= 2 && (
-          <View style={[styles.trendRow, { borderTopColor: theme.surface.border }]}>
+          <View style={[styles.trendRow, { borderTopColor: fullThemeColors.border }]}>
             <View style={styles.trendLeft}>
-              <Text style={[styles.trendLabel, { color: theme.text.secondary }]}>Value Trend</Text>
-              <Text style={[styles.trendSub, { color: theme.text.muted }]}>Last {stats.valueTrend.length} entries</Text>
+              <Text style={[styles.trendLabel, { color: fullThemeColors.textSecondary }]}>Value Trend</Text>
+              <Text style={[styles.trendSub, { color: fullThemeColors.textMuted }]}>Last {stats.valueTrend.length} entries</Text>
             </View>
             <Sparkline data={stats.valueTrend} color={tracker?.gradient?.[0] || theme.primary} />
           </View>
         )}
 
-        <View style={[styles.trendRow, { borderTopColor: theme.surface.border }]}>
+        <View style={[styles.trendRow, { borderTopColor: fullThemeColors.border }]}>
           <View style={styles.trendLeft}>
-            <Text style={[styles.trendLabel, { color: theme.text.secondary }]}>This Week</Text>
-            <Text style={[styles.trendSub, { color: theme.text.muted }]}>{stats.thisWeek} entries</Text>
+            <Text style={[styles.trendLabel, { color: fullThemeColors.textSecondary }]}>This Week</Text>
+            <Text style={[styles.trendSub, { color: fullThemeColors.textMuted }]}>{stats.thisWeek} entries</Text>
           </View>
           <View style={styles.trendRight}>
             <View style={[styles.trendBadge, {
@@ -589,7 +597,10 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, theme }: any) => {
   );
 };
 
-const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, theme }: any) => {
+const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry }: any) => {
+  const { fullThemeColors } = useCustomization();
+  const theme = useUnifiedTrackerTheme();
+  
   const similar = useMemo(() => {
     if (!entry) return [];
     return allEntries
@@ -619,8 +630,8 @@ const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, theme
                     <Text style={styles.similarEmoji}>{t?.emoji || '📋'}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.similarTitle, { color: theme.text.primary }]} numberOfLines={1}>{e.title || t?.name || 'Entry'}</Text>
-                    <Text style={[styles.similarMeta, { color: theme.text.muted }]}>
+                    <Text style={[styles.similarTitle, { color: fullThemeColors.text }]} numberOfLines={1}>{e.title || t?.name || 'Entry'}</Text>
+                    <Text style={[styles.similarMeta, { color: fullThemeColors.textMuted }]}>
                       {safeFmt(e.timestamp, 'MMM d, h:mm a')}
                       {e.loggedByName ? ` • ${e.loggedByName}` : ''}
                     </Text>
@@ -630,7 +641,7 @@ const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, theme
                       {e.data?.value ?? e.data?.amount ?? '—'}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={14} color={theme.text.muted} />
+                  <Ionicons name="chevron-forward" size={14} color={fullThemeColors.textMuted} />
                 </View>
               </GlassCard>
             </TouchableOpacity>
@@ -650,7 +661,15 @@ export default function EntryDetailScreen() {
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
   const theme = useUnifiedTrackerTheme();
-  const { triggerHaptic, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion } = useCustomization();
+  const {
+    fullThemeColors,
+    themeColors,
+    isDark,
+    triggerHaptic,
+    borderRadiusValue,
+    fontSizeMultiplier,
+    shouldReduceMotion,
+  } = useCustomization();
   const {
     getEntryById, getTracker, getEntries, getEntriesByDate,
     addEntry, deleteEntry, canEditEntry, canDeleteEntry, canCreateEntry,
@@ -931,30 +950,30 @@ export default function EntryDetailScreen() {
   /* Missing entry fallback */
   if (!entry || !entryDate) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bgColors[0] }]}>
-        <StatusBar barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
+      <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
         <LinearGradient
-          colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0']}
+          colors={isDark ? [fullThemeColors.background, fullThemeColors.surface] : ['#f8fafc', '#e2e8f0']}
           style={styles.backgroundGradient}
         />
         <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
           <View style={styles.headerContent}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
-              <Ionicons name="arrow-back" size={22} color={theme.text.primary} />
+              <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+              <Ionicons name="arrow-back" size={22} color={fullThemeColors.text} />
             </TouchableOpacity>
             <View style={styles.headerTitleWrap}>
-              <Text style={[styles.headerTitle, { color: theme.text.primary }]}>Entry Details</Text>
+              <Text style={[styles.headerTitle, { color: fullThemeColors.text }]}>Entry Details</Text>
             </View>
             <View style={{ width: 42 }} />
           </View>
         </View>
         <View style={styles.emptyWrap}>
-          <View style={[styles.emptyIcon, { backgroundColor: theme.surface.card }]}>
-            <Ionicons name="search-outline" size={40} color={theme.text.muted} />
+          <View style={[styles.emptyIcon, { backgroundColor: fullThemeColors.surface }]}>
+            <Ionicons name="search-outline" size={40} color={fullThemeColors.textMuted} />
           </View>
-          <Text style={[styles.emptyTitle, { color: theme.text.primary }]}>Entry not found</Text>
-          <Text style={[styles.emptyText, { color: theme.text.secondary }]}>
+          <Text style={[styles.emptyTitle, { color: fullThemeColors.text }]}>Entry not found</Text>
+          <Text style={[styles.emptyText, { color: fullThemeColors.textSecondary }]}>
             This entry may have been deleted, or it belongs to a different baby profile.
           </Text>
           <TouchableOpacity style={[styles.emptyBtn, { backgroundColor: theme.primary }]} onPress={() => navigation.goBack()}>
@@ -966,10 +985,10 @@ export default function EntryDetailScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bgColors[0] }]}>
-      <StatusBar barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
+    <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <LinearGradient
-        colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0', '#dbeafe']}
+        colors={isDark ? [fullThemeColors.background, fullThemeColors.surface] : ['#f8fafc', '#e2e8f0', '#dbeafe']}
         style={styles.backgroundGradient}
       />
 
@@ -977,23 +996,23 @@ export default function EntryDetailScreen() {
       <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown} style={[styles.headerContainer, { paddingTop: insets.top }]}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-            <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
-            <Ionicons name="arrow-back" size={22} color={theme.text.primary} />
+            <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+            <Ionicons name="arrow-back" size={22} color={fullThemeColors.text} />
           </TouchableOpacity>
           <View style={styles.headerTitleWrap}>
-            <Text style={[styles.headerTitle, { color: theme.text.primary }]}>Entry Details</Text>
-            <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>
+            <Text style={[styles.headerTitle, { color: fullThemeColors.text }]}>Entry Details</Text>
+            <Text style={[styles.headerSubtitle, { color: fullThemeColors.textSecondary }]}>
               {tracker?.name || entry.trackerId}
             </Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
-              <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
-              <Ionicons name="share-social-outline" size={20} color={theme.text.primary} />
+              <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+              <Ionicons name="share-social-outline" size={20} color={fullThemeColors.text} />
             </TouchableOpacity>
             {canDelete && (
               <TouchableOpacity onPress={handleDelete} style={styles.headerButton}>
-                <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.isDark ? 'dark' : 'light'} />
+                <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
                 <Ionicons name="trash-outline" size={20} color="#ef4444" />
               </TouchableOpacity>
             )}
@@ -1091,7 +1110,6 @@ export default function EntryDetailScreen() {
           entry={entry}
           tracker={tracker}
           allEntries={allEntries}
-          theme={theme}
         />
 
         {/* ── PHOTOS ── */}
@@ -1103,7 +1121,7 @@ export default function EntryDetailScreen() {
                   <View style={[styles.cardHeaderIcon, { backgroundColor: `${accent}15` }]}>
                     <Ionicons name="images-outline" size={15} color={accent} />
                   </View>
-                  <Text style={[styles.cardTitle, { color: theme.text.primary }]}>Photos</Text>
+                  <Text style={[styles.cardTitle, { color: fullThemeColors.text }]}>Photos</Text>
                   <View style={[styles.countPill, { backgroundColor: `${accent}15` }]}>
                     <Text style={[styles.countPillText, { color: accent }]}>{photos.length}</Text>
                   </View>
@@ -1139,11 +1157,11 @@ export default function EntryDetailScreen() {
                   <View style={[styles.cardHeaderIcon, { backgroundColor: `${accent}15` }]}>
                     <Ionicons name="list-outline" size={15} color={accent} />
                   </View>
-                  <Text style={[styles.cardTitle, { color: theme.text.primary }]}>Details</Text>
+                  <Text style={[styles.cardTitle, { color: fullThemeColors.text }]}>Details</Text>
                 </View>
                 {detailRows.map((r, i) => (
-                  <View key={r.key} style={[styles.row, i > 0 && styles.rowBorder, i > 0 && { borderTopColor: theme.surface.border }]}>
-                    <Text style={[styles.rowLabel, { color: theme.text.secondary }]}>{r.label}</Text>
+                  <View key={r.key} style={[styles.row, i > 0 && styles.rowBorder, i > 0 && { borderTopColor: fullThemeColors.border }]}>
+                    <Text style={[styles.rowLabel, { color: fullThemeColors.textSecondary }]}>{r.label}</Text>
                     <View style={styles.rowValueWrap}>
                       <ValueCell value={r.value} theme={theme} accent={accent} />
                     </View>
@@ -1163,9 +1181,9 @@ export default function EntryDetailScreen() {
                   <View style={[styles.cardHeaderIcon, { backgroundColor: `${accent}15` }]}>
                     <Ionicons name="document-text-outline" size={15} color={accent} />
                   </View>
-                  <Text style={[styles.cardTitle, { color: theme.text.primary }]}>Notes</Text>
+                  <Text style={[styles.cardTitle, { color: fullThemeColors.text }]}>Notes</Text>
                 </View>
-                <Text style={[styles.notesText, { color: theme.text.primary }]}>{entry.notes}</Text>
+                <Text style={[styles.notesText, { color: fullThemeColors.text }]}>{entry.notes}</Text>
               </View>
             </GlassCard>
           </Animated.View>
@@ -1180,12 +1198,12 @@ export default function EntryDetailScreen() {
                   <View style={[styles.cardHeaderIcon, { backgroundColor: `${accent}15` }]}>
                     <Ionicons name="pricetags-outline" size={15} color={accent} />
                   </View>
-                  <Text style={[styles.cardTitle, { color: theme.text.primary }]}>Tags & Location</Text>
+                  <Text style={[styles.cardTitle, { color: fullThemeColors.text }]}>Tags & Location</Text>
                 </View>
                 {!!locationName && (
                   <View style={styles.auditSubRow}>
                     <Ionicons name="navigate-outline" size={14} color={accent} />
-                    <Text style={[styles.auditSubText, { color: theme.text.primary }]}>{locationName}</Text>
+                    <Text style={[styles.auditSubText, { color: fullThemeColors.text }]}>{locationName}</Text>
                   </View>
                 )}
                 {tags.length > 0 && (
@@ -1210,7 +1228,7 @@ export default function EntryDetailScreen() {
                 <View style={[styles.cardHeaderIcon, { backgroundColor: `${accent}15` }]}>
                   <Ionicons name="shield-checkmark-outline" size={15} color={accent} />
                 </View>
-                <Text style={[styles.cardTitle, { color: theme.text.primary }]}>Record Info</Text>
+                <Text style={[styles.cardTitle, { color: fullThemeColors.text }]}>Record Info</Text>
               </View>
               <View style={styles.auditRow}>
                 <View style={[styles.auditAvatar, { backgroundColor: roleMeta.color }]}>
@@ -1219,10 +1237,10 @@ export default function EntryDetailScreen() {
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.auditName, { color: theme.text.primary }]}>
+                  <Text style={[styles.auditName, { color: fullThemeColors.text }]}>
                     {loggedByDisplay.name}
                   </Text>
-                  <Text style={[styles.auditMeta, { color: theme.text.muted }]}>
+                  <Text style={[styles.auditMeta, { color: fullThemeColors.textMuted }]}>
                     Logged {format(entryDate, 'MMM d, yyyy • h:mm a')}
                   </Text>
                   <View style={[styles.rolePill, { backgroundColor: `${roleMeta.color}18` }]}>
@@ -1232,45 +1250,45 @@ export default function EntryDetailScreen() {
               </View>
               {!!entry.editedAt && (
                 <View style={styles.auditSubRow}>
-                  <Ionicons name="create-outline" size={13} color={theme.text.muted} />
-                  <Text style={[styles.auditSubText, { color: theme.text.muted }]}>
+                  <Ionicons name="create-outline" size={13} color={fullThemeColors.textMuted} />
+                  <Text style={[styles.auditSubText, { color: fullThemeColors.textMuted }]}>
                     Edited {format(new Date(entry.editedAt), 'MMM d, yyyy • h:mm a')}
                   </Text>
                 </View>
               )}
               {historyRows.length > 0 && (
-                <View style={[styles.historyWrap, { borderColor: theme.surface.border }]}>
+                <View style={[styles.historyWrap, { borderColor: fullThemeColors.border }]}>
                   <TouchableOpacity
                     style={styles.historyHeader}
                     activeOpacity={0.75}
                     onPress={() => { triggerHaptic('light'); setHistoryExpanded(prev => !prev); }}
                   >
                     <Ionicons name="time-outline" size={14} color={accent} />
-                    <Text style={[styles.historyHeaderText, { color: theme.text.primary }]}>
+                    <Text style={[styles.historyHeaderText, { color: fullThemeColors.text }]}>
                       Edit history · {historyRows.length} previous version{historyRows.length > 1 ? 's' : ''}
                     </Text>
-                    <Ionicons name={historyExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.text.muted} />
+                    <Ionicons name={historyExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={fullThemeColors.textMuted} />
                   </TouchableOpacity>
                   {historyExpanded && historyRows.map((row: any) => (
-                    <View key={row.key} style={[styles.historyVersion, { borderColor: theme.surface.border }]}>
+                    <View key={row.key} style={[styles.historyVersion, { borderColor: fullThemeColors.border }]}>
                       <View style={styles.historyVersionHeader}>
                         <View style={[styles.historyVersionBadge, { backgroundColor: `${accent}15` }]}>
                           <Text style={[styles.historyVersionBadgeText, { color: accent }]}>v{row.version}</Text>
                         </View>
-                        <Text style={[styles.historyVersionMeta, { color: theme.text.secondary }]} numberOfLines={1}>
+                        <Text style={[styles.historyVersionMeta, { color: fullThemeColors.textSecondary }]} numberOfLines={1}>
                           {row.editedByName} • {format(new Date(row.editedAt), 'MMM d, yyyy • h:mm a')}
                         </Text>
                       </View>
                       {row.changes.length === 0 ? (
-                        <Text style={[styles.historyChangeText, { color: theme.text.muted }]}>No field changes recorded</Text>
+                        <Text style={[styles.historyChangeText, { color: fullThemeColors.textMuted }]}>No field changes recorded</Text>
                       ) : (
                         row.changes.map((c: any, i: number) => (
                           <View key={`${row.key}-${i}`} style={styles.historyChangeRow}>
-                            <Text style={[styles.historyChangeLabel, { color: theme.text.muted }]}>{c.label}</Text>
-                            <Text style={[styles.historyChangeText, { color: theme.text.secondary }]} numberOfLines={2}>
-                              <Text style={{ textDecorationLine: 'line-through', color: theme.text.muted }}>{c.before}</Text>
+                            <Text style={[styles.historyChangeLabel, { color: fullThemeColors.textMuted }]}>{c.label}</Text>
+                            <Text style={[styles.historyChangeText, { color: fullThemeColors.textSecondary }]} numberOfLines={2}>
+                              <Text style={{ textDecorationLine: 'line-through', color: fullThemeColors.textMuted }}>{c.before}</Text>
                               {'  →  '}
-                              <Text style={{ color: theme.text.primary, fontWeight: '600' }}>{c.after}</Text>
+                              <Text style={{ color: fullThemeColors.text, fontWeight: '600' }}>{c.after}</Text>
                             </Text>
                           </View>
                         ))
@@ -1281,13 +1299,13 @@ export default function EntryDetailScreen() {
               )}
               {!!syncedLabel && (
                 <View style={styles.auditSubRow}>
-                  <Ionicons name="cloud-done-outline" size={13} color={theme.text.muted} />
-                  <Text style={[styles.auditSubText, { color: theme.text.muted }]}>Synced {syncedLabel}</Text>
+                  <Ionicons name="cloud-done-outline" size={13} color={fullThemeColors.textMuted} />
+                  <Text style={[styles.auditSubText, { color: fullThemeColors.textMuted }]}>Synced {syncedLabel}</Text>
                 </View>
               )}
               <View style={styles.auditSubRow}>
-                <Ionicons name="finger-print-outline" size={13} color={theme.text.muted} />
-                <Text style={[styles.auditSubText, { color: theme.text.muted }]}>ID …{entry.id.slice(-6)}</Text>
+                <Ionicons name="finger-print-outline" size={13} color={fullThemeColors.textMuted} />
+                <Text style={[styles.auditSubText, { color: fullThemeColors.textMuted }]}>ID …{entry.id.slice(-6)}</Text>
               </View>
             </View>
           </GlassCard>
@@ -1302,7 +1320,7 @@ export default function EntryDetailScreen() {
                   <View style={[styles.cardHeaderIcon, { backgroundColor: `${accent}15` }]}>
                     <Ionicons name="calendar-outline" size={15} color={accent} />
                   </View>
-                  <Text style={[styles.cardTitle, { color: theme.text.primary }]}>More from {dayLabel}</Text>
+                  <Text style={[styles.cardTitle, { color: fullThemeColors.text }]}>More from {dayLabel}</Text>
                   <View style={[styles.countPill, { backgroundColor: `${accent}15` }]}>
                     <Text style={[styles.countPillText, { color: accent }]}>{sameDayEntries.length}</Text>
                   </View>
@@ -1314,27 +1332,27 @@ export default function EntryDetailScreen() {
                     <TouchableOpacity
                       key={e.id}
                       onPress={() => openEntry(e)}
-                      style={[styles.dayRow, i > 0 && styles.rowBorder, i > 0 && { borderTopColor: theme.surface.border }]}
+                      style={[styles.dayRow, i > 0 && styles.rowBorder, i > 0 && { borderTopColor: fullThemeColors.border }]}
                       activeOpacity={0.75}
                     >
                       <View style={[styles.dayEmojiWrap, { backgroundColor: `${c}15` }]}>
                         <Text style={styles.dayEmoji}>{t?.emoji || '📋'}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.dayTitle, { color: theme.text.primary }]} numberOfLines={1}>
+                        <Text style={[styles.dayTitle, { color: fullThemeColors.text }]} numberOfLines={1}>
                           {e.title || t?.name || 'Entry'}
                         </Text>
-                        <Text style={[styles.dayMeta, { color: theme.text.muted }]}>
+                        <Text style={[styles.dayMeta, { color: fullThemeColors.textMuted }]}>
                           {format(new Date(e.timestamp), 'h:mm a')}
                           {e.loggedByName ? ` • ${e.loggedByName}` : ''}
                         </Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={16} color={theme.text.muted} />
+                      <Ionicons name="chevron-forward" size={16} color={fullThemeColors.textMuted} />
                     </TouchableOpacity>
                   );
                 })}
                 <TouchableOpacity
-                  style={[styles.dayFooter, { borderTopColor: theme.surface.border }]}
+                  style={[styles.dayFooter, { borderTopColor: fullThemeColors.border }]}
                   onPress={() => { triggerHaptic('light'); navigation.navigate('Timeline'); }}
                 >
                   <Text style={[styles.dayFooterText, { color: accent }]}>Open full day in Timeline</Text>
@@ -1351,7 +1369,6 @@ export default function EntryDetailScreen() {
           allEntries={allEntries}
           getTracker={getTracker}
           onOpenEntry={openEntry}
-          theme={theme}
         />
 
         {/* ── PREV / NEXT ── */}
@@ -1360,43 +1377,43 @@ export default function EntryDetailScreen() {
             <View style={styles.prevNextBar}>
               {trackerHistory.prev ? (
                 <TouchableOpacity
-                  style={[styles.prevNextBtn, { backgroundColor: theme.surface.card, borderColor: theme.surface.border }]}
+                  style={[styles.prevNextBtn, { backgroundColor: fullThemeColors.surface, borderColor: fullThemeColors.border }]}
                   onPress={() => openEntry(trackerHistory.prev!)}
                   activeOpacity={0.8}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Ionicons name="chevron-back" size={12} color={theme.text.muted} />
-                    <Text style={[styles.prevNextLabel, { color: theme.text.muted }]}>Older</Text>
+                    <Ionicons name="chevron-back" size={12} color={fullThemeColors.textMuted} />
+                    <Text style={[styles.prevNextLabel, { color: fullThemeColors.textMuted }]}>Older</Text>
                   </View>
-                  <Text style={[styles.prevNextTitle, { color: theme.text.primary }]} numberOfLines={1}>
+                  <Text style={[styles.prevNextTitle, { color: fullThemeColors.text }]} numberOfLines={1}>
                     {trackerHistory.prev.title || 'Entry'}
                   </Text>
-                  <Text style={[styles.dayMeta, { color: theme.text.muted }]}>
+                  <Text style={[styles.dayMeta, { color: fullThemeColors.textMuted }]}>
                     {format(new Date(trackerHistory.prev.timestamp), 'MMM d, h:mm a')}
                   </Text>
                 </TouchableOpacity>
               ) : <View style={{ flex: 1 }} />}
               {trackerHistory.next ? (
                 <TouchableOpacity
-                  style={[styles.prevNextBtn, { backgroundColor: theme.surface.card, borderColor: theme.surface.border, alignItems: 'flex-end' }]}
+                  style={[styles.prevNextBtn, { backgroundColor: fullThemeColors.surface, borderColor: fullThemeColors.border, alignItems: 'flex-end' }]}
                   onPress={() => openEntry(trackerHistory.next!)}
                   activeOpacity={0.8}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Text style={[styles.prevNextLabel, { color: theme.text.muted }]}>Newer</Text>
-                    <Ionicons name="chevron-forward" size={12} color={theme.text.muted} />
+                    <Text style={[styles.prevNextLabel, { color: fullThemeColors.textMuted }]}>Newer</Text>
+                    <Ionicons name="chevron-forward" size={12} color={fullThemeColors.textMuted} />
                   </View>
-                  <Text style={[styles.prevNextTitle, { color: theme.text.primary }]} numberOfLines={1}>
+                  <Text style={[styles.prevNextTitle, { color: fullThemeColors.text }]} numberOfLines={1}>
                     {trackerHistory.next.title || 'Entry'}
                   </Text>
-                  <Text style={[styles.dayMeta, { color: theme.text.muted }]}>
+                  <Text style={[styles.dayMeta, { color: fullThemeColors.textMuted }]}>
                     {format(new Date(trackerHistory.next.timestamp), 'MMM d, h:mm a')}
                   </Text>
                 </TouchableOpacity>
               ) : <View style={{ flex: 1 }} />}
             </View>
             {trackerHistory.total > 0 && (
-              <Text style={[styles.positionText, { color: theme.text.muted }]}>
+              <Text style={[styles.positionText, { color: fullThemeColors.textMuted }]}>
                 Entry {trackerHistory.index + 1} of {trackerHistory.total} in {tracker?.name || entry.trackerId}
               </Text>
             )}
@@ -1416,7 +1433,7 @@ export default function EntryDetailScreen() {
             )}
             {canDuplicate && (
               <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: theme.surface.card, borderColor: theme.surface.border }]}
+                style={[styles.actionBtn, { backgroundColor: fullThemeColors.surface, borderColor: fullThemeColors.border }]}
                 onPress={handleDuplicate}
                 activeOpacity={0.85}
               >
@@ -1469,7 +1486,7 @@ export default function EntryDetailScreen() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — No card shadows, unified aesthetic
+   STYLES — Unified with AddEntryScreen
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
@@ -1523,14 +1540,14 @@ const styles = StyleSheet.create({
   // ── Header ──
   headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
-  headerButton: { width: 42, height: 42, borderRadius: 14, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', /* no shadow */ },
+  headerButton: { width: 42, height: 42, borderRadius: 14, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   headerActions: { flexDirection: 'row', gap: 8 },
   headerTitleWrap: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
   headerSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 1 },
 
   // ── Hero ──
-  heroCard: { overflow: 'hidden', marginBottom: 16, marginHorizontal: 16, /* no shadow */ },
+  heroCard: { overflow: 'hidden', marginBottom: 16, marginHorizontal: 16 },
   heroGradient: { padding: 20 },
   heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   heroEmojiBubble: { width: 60, height: 60, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
@@ -1561,7 +1578,6 @@ const styles = StyleSheet.create({
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
     padding: 16,
-    backgroundColor: 'rgba(255,255,255,0.6)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
     alignItems: 'center',
@@ -1662,7 +1678,6 @@ const styles = StyleSheet.create({
   similarValueText: { fontSize: 12, fontWeight: '800' },
 
   // ── Card Inner ──
-  card: { overflow: 'hidden', marginBottom: 16, borderWidth: 1, /* no shadow */ },
   cardInner: { padding: 16 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   cardHeaderIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },

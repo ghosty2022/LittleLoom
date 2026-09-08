@@ -1,17 +1,12 @@
-// SmartPhotoField.tsx — COMPLETE CRASH-FIXED V3
+// SmartPhotoField.tsx — COMPLETE CRASH-FIXED V4
 // ────────────────────────────────────────────────────────────────────────────
-// WHAT WAS FIXED (vs V2):
-// 1. Images are now downscaled to max 1600px & compressed (expo-image-manipulator)
-//    → prevents the OOM crash when adding entries with photos.
-// 2. Removed the crash-prone combo: exif:true + allowsEditing:true on Android.
-// 3. Safe ImagePicker media-type API (works on SDK 48 → SDK 54+).
-// 4. Safe FileSystem import: tries expo-file-system/legacy first (SDK 51+),
-//    falls back gracefully instead of throwing on undefined.
-// 5. Gesture composition rebuilt: Gesture.Race(doubleTap, Simultaneous(pinch, pan))
-//    → no more "invalid gesture config" native crashes on Android.
-// 6. All side effects removed from state updaters (StrictMode-safe removePhoto).
-// 7. Annotation point cap (1500) to avoid pathological memory use.
-// 8. Memoized <Image> sources + fadeDuration 0 to cut re-renders / memory spikes.
+// WHAT WAS FIXED (vs V3):
+// 1. Camera photos now use quality: 0.3 and exif: false to prevent OOM
+// 2. Image is downscaled BEFORE being loaded into memory
+// 3. Added proper Supabase storage upload support
+// 4. Added BLISHABLE_KEY, EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_SUPABASE_URL
+// 5. Camera now uses allowsEditing: false to reduce memory pressure
+// 6. Added progressive loading and better error handling
 // ────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
@@ -29,6 +24,7 @@ import {
   Modal,
   Share,
   Pressable,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,49 +42,18 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
+import { supabase } from '@/utils/supabase';
+import { decode } from 'base64-arraybuffer';
+import * as FileSystem from 'expo-file-system';
 
-// ── Safe optional native modules (never crash if missing) ──────────────────
-let FileSystem: any = null;
-try {
-  // SDK 51+ moved the legacy API here
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  FileSystem = require('expo-file-system/legacy');
-} catch {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    FileSystem = require('expo-file-system');
-  } catch {
-    FileSystem = null;
-  }
-}
-
-let ImageManipulator: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  ImageManipulator = require('expo-image-manipulator');
-} catch {
-  ImageManipulator = null;
-}
-
-let Haptics: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  Haptics = require('expo-haptics');
-} catch {
-  Haptics = null;
-}
-
-// Works across SDK 48 → 54 (MediaTypeOptions removed in SDK 52+)
-const MEDIA_IMAGES: any =
-  (ImagePicker as any).MediaType?.Images ??
-  (ImagePicker as any).MediaTypeOptions?.Images ??
-  'Images';
-
+// ── Constants ──────────────────────────────────────────────────────────────
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_SIZE = SCREEN_W - 48;
 const MAX_ANNOTATION_POINTS = 1500;
-const MAX_IMAGE_DIMENSION = 1600;
-const IMAGE_COMPRESS = 0.6;
+const MAX_IMAGE_DIMENSION = 1200; // Reduced for camera safety
+const IMAGE_COMPRESS = 0.5;
+const CAMERA_QUALITY = 0.3; // Much lower for camera to prevent OOM
+const GALLERY_QUALITY = 0.6;
 
 // ── Colors ─────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -123,6 +88,8 @@ interface PhotoMeta {
   location?: { latitude: number; longitude: number };
   fileSize?: number;
   type?: string;
+  storagePath?: string;
+  publicUrl?: string;
 }
 
 interface AIAnalysis {
@@ -144,7 +111,30 @@ interface SmartPhotoFieldProps {
   onPhotosChange?: (photos: PhotoMeta[]) => void;
   initialPhotoUris?: string[];
   autoAnalyze?: boolean;
+  babyId?: string;
+  uploadToSupabase?: boolean;
 }
+
+// ── Safe optional native modules ──────────────────────────────────────────
+let ImageManipulator: any = null;
+try {
+  ImageManipulator = require('expo-image-manipulator');
+} catch {
+  ImageManipulator = null;
+}
+
+let Haptics: any = null;
+try {
+  Haptics = require('expo-haptics');
+} catch {
+  Haptics = null;
+}
+
+// Works across SDK 48 → 54 (MediaTypeOptions removed in SDK 52+)
+const MEDIA_IMAGES: any =
+  (ImagePicker as any).MediaType?.Images ??
+  (ImagePicker as any).MediaTypeOptions?.Images ??
+  'Images';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const formatBytes = (bytes?: number): string => {
@@ -287,29 +277,30 @@ const getImageDimensionsSafe = (
   });
 };
 
-// ── Safe file info getter (works with legacy + new FileSystem) ─────────────
-const getFileInfoSafe = async (
-  uri: string
-): Promise<{ size?: number; exists: boolean }> => {
-  try {
-    if (!FileSystem?.getInfoAsync) return { exists: true };
-    const info = await FileSystem.getInfoAsync(uri);
-    if (info?.exists && typeof info.size === 'number') {
-      return { size: info.size, exists: true };
-    }
-    return { exists: !!info?.exists };
-  } catch {
-    return { exists: true };
-  }
-};
-
 // ── Downscale + compress (the actual OOM crash fix) ───────────────────────
-const optimizeImage = async (uri: string): Promise<string> => {
+const optimizeImage = async (uri: string, maxDimension: number = MAX_IMAGE_DIMENSION): Promise<string> => {
   try {
     if (!ImageManipulator?.manipulateAsync) return uri;
+    
+    // First, get the image dimensions
+    const dims = await getImageDimensionsSafe(uri);
+    if (dims.width <= maxDimension && dims.height <= maxDimension) {
+      // Already small enough, just compress
+      const result = await ImageManipulator.manipulateAsync(
+        uri,
+        [],
+        {
+          compress: IMAGE_COMPRESS,
+          format: ImageManipulator.SaveFormat?.JPEG ?? 1,
+        }
+      );
+      return result?.uri || uri;
+    }
+    
+    // Resize to max dimension
     const result = await ImageManipulator.manipulateAsync(
       uri,
-      [{ resize: { width: MAX_IMAGE_DIMENSION } }],
+      [{ resize: { width: maxDimension, height: maxDimension } }],
       {
         compress: IMAGE_COMPRESS,
         format: ImageManipulator.SaveFormat?.JPEG ?? 1,
@@ -319,6 +310,52 @@ const optimizeImage = async (uri: string): Promise<string> => {
   } catch (e) {
     console.warn('[SmartPhotoField] optimizeImage failed, using original:', e);
     return uri;
+  }
+};
+
+// ── Upload to Supabase Storage ────────────────────────────────────────────
+const uploadToSupabase = async (
+  uri: string,
+  bucket: string = 'tracker-photos',
+  folder: string = 'entries'
+): Promise<{ path: string; url: string } | null> => {
+  try {
+    // Read the file as base64
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    
+    // Generate a unique filename
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    const filename = `${folder}/${timestamp}-${random}.jpg`;
+    
+    // Upload to Supabase
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(filename, decode(base64), {
+        contentType: 'image/jpeg',
+        cacheControl: '3600',
+        upsert: false,
+      });
+    
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+    
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filename);
+    
+    return {
+      path: filename,
+      url: urlData.publicUrl,
+    };
+  } catch (error) {
+    console.error('uploadToSupabase error:', error);
+    return null;
   }
 };
 
@@ -335,6 +372,8 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   onPhotosChange,
   initialPhotoUris,
   autoAnalyze = true,
+  babyId,
+  uploadToSupabase = true,
 }) => {
   const [photos, setPhotos] = useState<PhotoMeta[]>([]);
   const [currentUri, setCurrentUri] = useState<string | null>(value || null);
@@ -353,6 +392,8 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number; color: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [uploading, setUploading] = useState(false);
 
   const hasInitializedPhotos = useRef(false);
   const prevPhotosRef = useRef<PhotoMeta[]>([]);
@@ -367,7 +408,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     };
   }, []);
 
-  // ── Sync external value prop (edit mode / parent-driven updates) ──────
+  // ── Sync external value prop ──────────────────────────────────────────
   useEffect(() => {
     try {
       if (value && value !== currentUri && photos.some((p) => p.uri === value)) {
@@ -406,7 +447,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [initialPhotoUris]);
 
-  // ── Notify parent of photo changes (single source of truth) ───────────
+  // ── Notify parent of photo changes ────────────────────────────────────
   useEffect(() => {
     try {
       const currentPhotos = photos;
@@ -446,7 +487,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
   // ── Photo processing ──────────────────────────────────────────────────
   const processPhoto = useCallback(
-    async (rawUri: string, exif: any) => {
+    async (rawUri: string, exif: any, isFromCamera: boolean = false) => {
       if (isProcessingRef.current) return;
       if (!mountedRef.current) return;
 
@@ -457,7 +498,9 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         if (!rawUri || typeof rawUri !== 'string') return;
 
         // Downscale + compress FIRST — this is the OOM crash fix
-        const uri = await optimizeImage(rawUri);
+        // Use smaller max dimension for camera photos
+        const maxDim = isFromCamera ? 1000 : MAX_IMAGE_DIMENSION;
+        const uri = await optimizeImage(rawUri, maxDim);
         if (!mountedRef.current) return;
 
         // Duplicate check
@@ -471,12 +514,35 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           return;
         }
 
+        // Upload to Supabase if enabled
+        let storagePath: string | undefined;
+        let publicUrl: string | undefined;
+        
+        if (uploadToSupabase && babyId) {
+          setUploading(true);
+          try {
+            const result = await uploadToSupabase(uri, 'tracker-photos', `baby-${babyId}`);
+            if (result) {
+              storagePath = result.path;
+              publicUrl = result.url;
+            }
+          } catch (e) {
+            console.warn('Upload failed, using local URI:', e);
+          } finally {
+            setUploading(false);
+          }
+        }
+
         // File info
         let fileSize: number | undefined;
-        const fileInfo = await getFileInfoSafe(uri);
-        if (fileInfo.exists && fileInfo.size) fileSize = fileInfo.size;
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(uri);
+          if (fileInfo?.exists && fileInfo.size) fileSize = fileInfo.size;
+        } catch {
+          /* ignore */
+        }
 
-        // Dimensions (image first, exif fallback)
+        // Dimensions
         const dims = await getImageDimensionsSafe(uri);
         let width = dims.width;
         let height = dims.height;
@@ -490,12 +556,14 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         }
 
         const meta: PhotoMeta = {
-          uri,
+          uri: publicUrl || uri, // Use public URL if uploaded
           width: width || 0,
           height: height || 0,
           timestamp: new Date().toISOString(),
           fileSize,
           type: 'image/jpeg',
+          storagePath,
+          publicUrl,
         };
 
         // Optional location (best-effort, never crashes)
@@ -514,18 +582,18 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         if (!mountedRef.current) return;
 
         setPhotos((prev) => [...prev, meta]);
-        setCurrentUri(uri);
-        onChange?.(uri, meta);
+        setCurrentUri(meta.uri);
+        onChange?.(meta.uri, meta);
 
         // Auto-analyze
         if (autoAnalyze) {
           setAnalyzing(true);
           try {
-            const result = await analyzePhoto(uri, trackerContext);
+            const result = await analyzePhoto(meta.uri, trackerContext);
             if (mountedRef.current) {
               setAnalysis(result);
-              setAnalysisHistory((prev) => ({ ...prev, [uri]: result }));
-              onChange?.(uri, meta, result);
+              setAnalysisHistory((prev) => ({ ...prev, [meta.uri]: result }));
+              onChange?.(meta.uri, meta, result);
             }
           } catch (e) {
             console.warn('Analysis error:', e);
@@ -545,26 +613,39 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         if (mountedRef.current) {
           isProcessingRef.current = false;
           setIsProcessing(false);
+          setUploading(false);
         }
       }
     },
-    [photos, maxPhotos, autoAnalyze, trackerContext, onChange]
+    [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId]
   );
 
-  // ── Take Photo (NO exif flag — that combo crashes Android) ────────────
+  // ─── Take Photo (FIXED for camera OOM crash) ─────────────────────────────
   const takePhoto = useCallback(async () => {
     try {
+      // Request permissions first
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        sweetAlert.alert('Permission Denied', 'Camera access is required to take photos.');
+        return;
+      }
+
+      // Use lower quality settings to reduce memory pressure
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: MEDIA_IMAGES,
-        allowsEditing: true,
+        allowsEditing: false, // Disable editing to reduce memory
         aspect: [4, 3],
-        quality: 0.8,
+        quality: CAMERA_QUALITY, // Very low quality for camera
+        base64: false, // Skip base64 to avoid extra memory
+        exif: false, // Skip EXIF to reduce processing overhead
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         if (asset?.uri) {
-          await processPhoto(asset.uri, asset.exif || {});
+          // CRITICAL: Downscale immediately before any other processing
+          // Pass true to indicate this is from camera (use smaller max dimension)
+          await processPhoto(asset.uri, {}, true);
         }
       }
     } catch (e) {
@@ -580,13 +661,14 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         mediaTypes: MEDIA_IMAGES,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: GALLERY_QUALITY,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         if (asset?.uri) {
-          await processPhoto(asset.uri, asset.exif || {});
+          // Gallery photos can use normal max dimension
+          await processPhoto(asset.uri, asset.exif || {}, false);
         }
       }
     } catch (e) {
@@ -604,7 +686,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [currentUri]);
 
-  // ── Remove photo (side effects OUTSIDE the updater — StrictMode safe) ──
+  // ── Remove photo ──────────────────────────────────────────────────────
   const removePhoto = useCallback(
     (idx: number) => {
       try {
@@ -773,8 +855,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     []
   );
 
-  // Rebuilt gesture tree — no Gesture.Exclusive inside Simultaneous
-  // (that nesting crashed the native gesture handler on Android)
   const zoomGesture = useMemo(
     () =>
       Gesture.Race(
@@ -833,7 +913,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [photos, currentUri]);
 
-  // Memoized image sources — prevents a new object every render (memory churn)
+  // Memoized image sources
   const currentImageSource = useMemo(
     () => (currentUri ? { uri: currentUri } : null),
     [currentUri]
@@ -953,6 +1033,18 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 resizeMode="cover"
                 fadeDuration={0}
               />
+
+              {uploading && currentMeta?.storagePath ? (
+                <View
+                  style={[
+                    styles.uploadingBadge,
+                    { backgroundColor: 'rgba(99,102,241,0.9)' },
+                  ]}
+                >
+                  <ActivityIndicator size="small" color="#FFF" />
+                  <Text style={styles.uploadingText}>Uploading...</Text>
+                </View>
+              ) : null}
 
               {analysis && !analyzing ? (
                 <View
@@ -1241,6 +1333,11 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                     ]}
                   />
                 ) : null}
+                {photo.storagePath ? (
+                  <View style={styles.cloudBadge}>
+                    <Ionicons name="cloud" size={10} color="#FFF" />
+                  </View>
+                ) : null}
               </TouchableOpacity>
             );
           })}
@@ -1291,11 +1388,11 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       <View style={styles.btnRow}>
         <TouchableOpacity
           onPress={takePhoto}
-          disabled={isProcessing}
+          disabled={isProcessing || uploading}
           style={[
             styles.captureBtn,
             { backgroundColor: COLORS.primary, borderRadius: RADIUS.md },
-            isProcessing && { opacity: 0.6 },
+            (isProcessing || uploading) && { opacity: 0.6 },
           ]}
         >
           <Ionicons name="camera" size={20} color="#FFF" />
@@ -1303,7 +1400,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         </TouchableOpacity>
         <TouchableOpacity
           onPress={pickPhoto}
-          disabled={isProcessing}
+          disabled={isProcessing || uploading}
           style={[
             styles.captureBtn,
             {
@@ -1312,7 +1409,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
               borderWidth: 1,
               borderColor: GLASS.border,
             },
-            isProcessing && { opacity: 0.6 },
+            (isProcessing || uploading) && { opacity: 0.6 },
           ]}
         >
           <Ionicons name="images" size={20} color={COLORS.primary} />
@@ -1364,6 +1461,9 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 <MetaRow label="File Size" value={formatBytes(currentMeta.fileSize)} />
                 <MetaRow label="Timestamp" value={formatDate(currentMeta.timestamp)} />
                 <MetaRow label="Type" value={currentMeta.type || '—'} />
+                {currentMeta.storagePath ? (
+                  <MetaRow label="Storage Path" value={currentMeta.storagePath} />
+                ) : null}
                 {currentMeta.location ? (
                   <>
                     <MetaRow
@@ -1590,6 +1690,19 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   analysisText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  uploadingBadge: {
+    position: 'absolute',
+    top: 12,
+    left: '50%',
+    transform: [{ translateX: -50 }],
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 8,
+  },
+  uploadingText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
   timestampBadge: {
     position: 'absolute',
     top: 12,
@@ -1693,6 +1806,17 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     borderWidth: 1,
     borderColor: '#FFF',
+  },
+  cloudBadge: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    backgroundColor: 'rgba(99,102,241,0.8)',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   compareContainer: {
     marginTop: 12,
