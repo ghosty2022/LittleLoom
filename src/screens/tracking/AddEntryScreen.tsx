@@ -4,7 +4,6 @@
 // 2. ConfirmModal correctly receives and displays photos
 // 3. No duplicate photo URIs in submission
 // 4. Photo URIs are sanitized before being sent to the database
-// 5. Fixed ReferenceError: Property 'error' doesn't exist in handleTrackerSelect
 
 import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
@@ -1681,19 +1680,12 @@ export default function AddEntryScreen() {
   const { fullThemeColors, themeColors, isDark } = useCustomization();
   const { getTracker } = useTracker();
   const { currentBaby, babyLoading } = useBaby();
-  const { error: showError } = useSweetAlert(); // ✅ FIX: Added useSweetAlert here
 
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(
     route.params?.trackerId || null
   );
   const [showPicker, setShowPicker] = useState(!route.params?.trackerId);
-  const [date, setDate] = useState(() => {
-  const presetTimestamp = route.params?.presetData?.timestamp;
-  if (presetTimestamp && typeof presetTimestamp === 'number') {
-    return new Date(presetTimestamp);
-  }
-  return new Date();
-});
+  const [date, setDate] = useState(new Date());
   const [showConfirm, setShowConfirm] = useState(false);
   const [showYesterdayModal, setShowYesterdayModal] = useState(false);
   const [yesterdayEntries, setYesterdayEntries] = useState<YesterdayEntry[]>([]);
@@ -1735,30 +1727,29 @@ export default function AddEntryScreen() {
     (route.params as any)?.editMode ? (route.params as any)?.eventId : undefined,
     [route.params]
   );
-const handleTrackerSelect = useCallback((trackerId: string) => {
-  // Verify tracker exists before proceeding
-  const tracker = getTracker(trackerId);
-  if (!tracker) {
-    console.warn('[AddEntry] Tracker not found:', trackerId);
-    showError('Tracker Not Found', 'The selected tracker could not be loaded. Please try again.');
-    return;
-  }
-  
-  setSelectedTrackerId(trackerId);
-  setShowPicker(false);
-  setPendingOptions((prev) => ({
-    photoUris: prev?.photoUris || [],
-    notes: prev?.notes || '',
-    tags: prev?.tags || [],
-  }));
-  setErrors([]);
-  setDismissedCorrelations(new Set());
-  setDismissedReminders(new Set());
-  setAppliedCorrelationPrefill(null);
-  setAppliedSuggestions(new Set());
-  setShowYesterdayModal(false);
-  setYesterdayEntries([]);
-}, [getTracker, showError]);
+
+  const handleTrackerSelect = useCallback((trackerId: string) => {
+    if (!trackerId) {
+      console.warn('No tracker selected');
+      return;
+    }
+    console.log('[AddEntryScreen] Tracker selected:', trackerId);
+    setSelectedTrackerId(trackerId);
+    setShowPicker(false);
+    setPendingOptions({ photoUris: [] });
+    setPendingData({});
+    setErrors([]);
+    setDismissedCorrelations(new Set());
+    setDismissedReminders(new Set());
+    setAppliedCorrelationPrefill(null);
+    setAppliedSuggestions(new Set());
+    setShowYesterdayModal(false);
+    setYesterdayEntries([]);
+    // Force re-render by updating state
+    setTimeout(() => {
+      setDate(new Date());
+    }, 50);
+  }, []);
 
   const handlePickerClose = useCallback(() => {
     if (!selectedTrackerId) {
@@ -1768,20 +1759,28 @@ const handleTrackerSelect = useCallback((trackerId: string) => {
     }
   }, [selectedTrackerId, navigation]);
 
-if (showPicker) {
-  return (
-    <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <TimelinePicker
-        visible={showPicker}
-        onClose={handlePickerClose}
-        onSelect={handleTrackerSelect}
-        currentBabyName={currentBaby?.name}
-        currentBabyAvatar={currentBaby?.avatar}
-      />
-    </View>
-  );
-}
+  if (showPicker) {
+    return (
+      <View style={[styles.container, { backgroundColor: fullThemeColors.background, flex: 1 }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <TimelinePicker
+          visible={true}
+          onClose={handlePickerClose}
+          onSelect={handleTrackerSelect}
+          currentBabyName={currentBaby?.name}
+          currentBabyAvatar={currentBaby?.avatar}
+          isModal={false}
+        />
+        {/* Backup close button in case TimelinePicker doesn't show */}
+        <TouchableOpacity 
+          style={{ position: 'absolute', top: 50, right: 20, padding: 10, zIndex: 999 }}
+          onPress={handlePickerClose}
+        >
+          <Ionicons name="close" size={28} color={fullThemeColors.text} />
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (!tracker) {
     return (
@@ -1795,39 +1794,41 @@ if (showPicker) {
 
   return (
     <View style={{ flex: 1 }}>
-      <TrackerContent
-        tracker={tracker}
-        selectedTrackerId={selectedTrackerId}
-        date={date}
-        setDate={setDate}
-        pendingData={pendingData}
-        setPendingData={setPendingData}
-        pendingOptions={pendingOptions}
-        setPendingOptions={setPendingOptions}
-        showConfirm={showConfirm}
-        setShowConfirm={setShowConfirm}
-        showYesterdayModal={showYesterdayModal}
-        setShowYesterdayModal={setShowYesterdayModal}
-        yesterdayEntries={yesterdayEntries}
-        setYesterdayEntries={setYesterdayEntries}
-        errors={errors}
-        setErrors={setErrors}
-        dismissedCorrelations={dismissedCorrelations}
-        setDismissedCorrelations={setDismissedCorrelations}
-        dismissedReminders={dismissedReminders}
-        setDismissedReminders={setDismissedReminders}
-        appliedCorrelationPrefill={appliedCorrelationPrefill}
-        setAppliedCorrelationPrefill={setAppliedCorrelationPrefill}
-        appliedSuggestions={appliedSuggestions}
-        setAppliedSuggestions={setAppliedSuggestions}
-        editEntryId={editEntryId}
-        route={route}
-        navigation={navigation}
-        showPicker={showPicker}
-        setShowPicker={setShowPicker}
-        handleTrackerSelect={handleTrackerSelect}
-        handlePickerClose={handlePickerClose}
-      />
+      {tracker && (
+        <TrackerContent
+          tracker={tracker}
+          selectedTrackerId={selectedTrackerId}
+          date={date}
+          setDate={setDate}
+          pendingData={pendingData}
+          setPendingData={setPendingData}
+          pendingOptions={pendingOptions}
+          setPendingOptions={setPendingOptions}
+          showConfirm={showConfirm}
+          setShowConfirm={setShowConfirm}
+          showYesterdayModal={showYesterdayModal}
+          setShowYesterdayModal={setShowYesterdayModal}
+          yesterdayEntries={yesterdayEntries}
+          setYesterdayEntries={setYesterdayEntries}
+          errors={errors}
+          setErrors={setErrors}
+          dismissedCorrelations={dismissedCorrelations}
+          setDismissedCorrelations={setDismissedCorrelations}
+          dismissedReminders={dismissedReminders}
+          setDismissedReminders={setDismissedReminders}
+          appliedCorrelationPrefill={appliedCorrelationPrefill}
+          setAppliedCorrelationPrefill={setAppliedCorrelationPrefill}
+          appliedSuggestions={appliedSuggestions}
+          setAppliedSuggestions={setAppliedSuggestions}
+          editEntryId={editEntryId}
+          route={route}
+          navigation={navigation}
+          showPicker={showPicker}
+          setShowPicker={setShowPicker}
+          handleTrackerSelect={handleTrackerSelect}
+          handlePickerClose={handlePickerClose}
+        />
+      )}
       {/* Baby Required Modal */}
       <Modal
         visible={showBabyRequiredModal}

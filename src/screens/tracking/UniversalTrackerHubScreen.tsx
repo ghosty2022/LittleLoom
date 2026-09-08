@@ -326,15 +326,28 @@ const formatDistanceToNow = (timestamp: number): string => {
 
 const getDateTitle = (timestamp: number): string => {
   if (!timestamp || typeof timestamp !== 'number' || isNaN(timestamp)) return 'Recent';
+  
   const date = new Date(timestamp);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
+  const twoDaysAgo = new Date(today);
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+  
+  // Check if date is today
   if (date >= today) return 'Today';
+  
+  // Check if date is yesterday
   if (date >= yesterday) return 'Yesterday';
-  const days = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  if (days < 7) return format(date, 'EEEE');
+  
+  // Check if date is within last 7 days
+  const daysDiff = Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysDiff < 7) {
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return daysOfWeek[date.getDay()] || 'Unknown';
+  }
+  
   return format(date, 'MMM d, yyyy');
 };
 
@@ -1633,6 +1646,46 @@ const { getRecentTimelineEvents } = useActivity();
     return entries.filter((e: any) => e?.timestamp >= today).length;
   }, [entries, today, currentBaby]);
 
+    // ─── Combined timeline events (same as HomeScreen) ──────────────────────
+  const allTimelineEvents = useMemo(() => {
+    if (!currentBaby) return [];
+    
+    // Get entries from tracker context
+    const trackerList = (entries || []).filter((e: any) => e?.timestamp && e?.timestamp > 0);
+    
+    // Get activity events
+    let activityEvents: any[] = [];
+    try {
+      if (getRecentTimelineEvents) {
+        const events = getRecentTimelineEvents(50, currentBaby?.id);
+        activityEvents = Array.isArray(events) ? events : [];
+      }
+    } catch (e) {
+      console.warn('Failed to get recent timeline events:', e);
+    }
+    
+    // Merge and deduplicate by id
+    const merged = [...trackerList];
+    (activityEvents || []).forEach((ae: any) => {
+      if (ae && ae.id && !merged.find((me: any) => me?.id === ae.id)) {
+        merged.push(ae);
+      }
+    });
+    
+    // Sort by timestamp descending (newest first)
+    const sorted = merged
+      .filter((e: any) => e?.timestamp && typeof e.timestamp === 'number' && e.timestamp > 0)
+      .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
+    
+    // Log for debugging
+    console.log(`[UniversalTrackerHub] allTimelineEvents count: ${sorted.length}`);
+    if (sorted.length > 0) {
+      console.log(`[UniversalTrackerHub] Latest entry: ${new Date(sorted[0].timestamp).toISOString()}`);
+    }
+    
+    return sorted.slice(0, 50);
+  }, [entries, currentBaby?.id, getRecentTimelineEvents]);
+  
   const trackerCards = useMemo(() => {
     if (!currentBaby) return [];
     
@@ -1800,14 +1853,7 @@ const { getRecentTimelineEvents } = useActivity();
               style={[styles.addBtn, { backgroundColor: themeColors?.primary || '#667eea' }]} 
               onPress={() => {
                 HAPTIC_MEDIUM();
-                const currentDate = new Date();
-                navigation.navigate('AddEntry', {
-                  presetData: {
-                    timestamp: currentDate.getTime(),
-                    date: format(currentDate, 'yyyy-MM-dd'),
-                    time: format(currentDate, 'HH:mm'),
-                  }
-                });
+                navigation.navigate('TimelinePicker');
               }}
               activeOpacity={0.8}
             >
@@ -1857,7 +1903,7 @@ const { getRecentTimelineEvents } = useActivity();
         />
 
         {/* ─── RECENT ACTIVITY ──────────────────────────────────────────── */}
-        <RecentActivityList entries={entries} onViewAll={handleViewTimeline} onEntryPress={handleEntryPress} />
+        <RecentActivityList entries={allTimelineEvents.length > 0 ? allTimelineEvents : entries} onViewAll={handleViewTimeline} onEntryPress={handleEntryPress} />
 
         {/* ─── QUICK LINKS ───────────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(480).springify()} style={{ marginHorizontal: SPACING.lg, marginBottom: SPACING.xl }}>
