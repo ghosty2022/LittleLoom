@@ -244,20 +244,27 @@ const GlassCard = React.memo(({ children, style, onPress, active = false }: any)
    SECTION HEADER — Matching Achievements screen
    ═══════════════════════════════════════════════════════════════ */
 
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark }: any) => (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
-      {subtitle && <Text style={[styles.sectionSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>{subtitle}</Text>}
+// ✅ FIXED: Handle undefined/null title and subtitle values
+const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark }: any) => {
+  // Convert to string and provide fallback for null/undefined
+  const safeTitle = title != null ? String(title) : '';
+  const safeSubtitle = subtitle != null ? String(subtitle) : '';
+  
+  return (
+    <View style={styles.sectionHeader}>
+      <View>
+        <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{safeTitle}</Text>
+        {safeSubtitle !== '' && <Text style={[styles.sectionSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>{safeSubtitle}</Text>}
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction}>
+          <Text style={[styles.sectionActionText, { color: '#6366f1' }]}>{actionLabel || 'See All'}</Text>
+          <Ionicons name="chevron-forward" size={14} color="#6366f1" />
+        </TouchableOpacity>
+      )}
     </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={[styles.sectionActionText, { color: '#6366f1' }]}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color="#6366f1" />
-      </TouchableOpacity>
-    )}
-  </View>
-));
+  );
+});
 
 /* ═══════════════════════════════════════════════════════════════
    SWEET ALERT — Matching Achievements screen
@@ -490,7 +497,6 @@ const UpcomingTimeline = React.memo(({ reminders, onPress, isDark }: { reminders
    NEW FEATURE 4: Daily Insights — Matching Achievements style
    ═══════════════════════════════════════════════════════════════ */
 
-// ✅ FIXED: All text properly wrapped in Text components
 const DailyInsights = memo(({ insights, isDark, onAction }: { insights: DailyInsight[]; isDark: boolean; onAction: (insight: DailyInsight) => void }) => {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
