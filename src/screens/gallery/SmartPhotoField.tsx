@@ -1,9 +1,9 @@
-// SmartPhotoField.tsx — COMPLETE CRASH-FIXED VERSION
-// Fixes:
-// 1. All string values guaranteed to render inside <Text>
-// 2. External `value` prop syncs (edit mode safe)
-// 3. No duplicate photo URIs (single source of truth via onPhotosChange)
-// 4. Defensive guards on every derived value
+// SmartPhotoField.tsx — COMPLETE CRASH-FIXED V2
+// Additional fixes:
+// 1. Better error handling for exif data
+// 2. Safe file system operations with try-catch
+// 3. Proper image dimension detection with fallbacks
+// 4. Memory leak prevention
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
@@ -210,6 +210,41 @@ const analyzePhoto = async (uri: string, context?: string): Promise<AIAnalysis> 
   );
 };
 
+// ── Safe image dimension getter ─────────────────────────────────────────────
+const getImageDimensionsSafe = (uri: string): Promise<{ width: number; height: number }> => {
+  return new Promise((resolve) => {
+    try {
+      Image.getSize(
+        uri,
+        (width, height) => {
+          resolve({ width: width || 0, height: height || 0 });
+        },
+        (error) => {
+          console.warn('Image.getSize error:', error);
+          resolve({ width: 0, height: 0 });
+        }
+      );
+    } catch (error) {
+      console.warn('Image.getSize exception:', error);
+      resolve({ width: 0, height: 0 });
+    }
+  });
+};
+
+// ── Safe file info getter ────────────────────────────────────────────────────
+const getFileInfoSafe = async (uri: string): Promise<{ size?: number; exists: boolean }> => {
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    if (info.exists && 'size' in info) {
+      return { size: info.size, exists: true };
+    }
+    return { exists: false };
+  } catch (error) {
+    console.warn('FileSystem.getInfoAsync error:', error);
+    return { exists: false };
+  }
+};
+
 // ── Component ────────────────────────────────────────────────────────────────
 const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   value,
@@ -240,10 +275,20 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const [annotationPoints, setAnnotationPoints] = useState<{ x: number; y: number; color: string }[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number; color: string }[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const hasInitializedPhotos = useRef(false);
   const prevPhotosRef = useRef<PhotoMeta[]>([]);
   const isProcessingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // ── Sync external value prop (edit mode / parent-driven updates) ──────────
   useEffect(() => {
@@ -329,12 +374,23 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   // ── Photo Capture ─────────────────────────────────────────────────────────
   const processPhoto = useCallback(
     async (uri: string, exif: any) => {
-      if (isProcessingRef.current) return;
+      if (isProcessingRef.current) {
+        console.log('Already processing, skipping');
+        return;
+      }
+      
+      if (!mountedRef.current) {
+        console.log('Component unmounted, skipping');
+        return;
+      }
+
       isProcessingRef.current = true;
+      setIsProcessing(true);
 
       try {
         if (!uri || typeof uri !== 'string') {
           isProcessingRef.current = false;
+          setIsProcessing(false);
           return;
         }
 
@@ -342,46 +398,41 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         if (photos.some((p) => p.uri === uri)) {
           sweetAlert.alert('Duplicate', 'This photo is already added.');
           isProcessingRef.current = false;
+          setIsProcessing(false);
           return;
         }
 
         if (photos.length >= maxPhotos) {
           sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
           isProcessingRef.current = false;
+          setIsProcessing(false);
           return;
         }
 
         // ── SAFELY get file info ──
         let fileSize: number | undefined;
-        let width = 0;
-        let height = 0;
-
-        try {
-          const fileInfo = await FileSystem.getInfoAsync(uri);
-          if (fileInfo.exists && 'size' in fileInfo) {
-            fileSize = fileInfo.size;
-          }
-        } catch (fileError) {
-          console.warn('Could not get file info:', fileError);
+        const fileInfo = await getFileInfoSafe(uri);
+        if (fileInfo.exists && fileInfo.size) {
+          fileSize = fileInfo.size;
         }
 
         // ── SAFELY get image dimensions ──
-        try {
-          const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-            Image.getSize(
-              uri,
-              (w, h) => resolve({ width: w || 0, height: h || 0 }),
-              (err) => reject(err)
-            );
-          });
-          width = dims.width;
-          height = dims.height;
-        } catch (dimError) {
-          console.warn('Could not get image dimensions:', dimError);
-          if (exif?.ImageWidth) width = exif.ImageWidth;
-          if (exif?.ImageLength) height = exif.ImageLength;
-          if (exif?.width) width = exif.width;
-          if (exif?.height) height = exif.height;
+        let width = 0;
+        let height = 0;
+        const dims = await getImageDimensionsSafe(uri);
+        width = dims.width || 0;
+        height = dims.height || 0;
+
+        // Fallback to exif data if available
+        if (width === 0 && height === 0) {
+          try {
+            if (exif?.ImageWidth) width = exif.ImageWidth;
+            if (exif?.ImageLength) height = exif.ImageLength;
+            if (exif?.width) width = exif.width;
+            if (exif?.height) height = exif.height;
+          } catch (exifError) {
+            console.warn('Could not parse exif dimensions:', exifError);
+          }
         }
 
         const meta: PhotoMeta = {
@@ -394,18 +445,25 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         };
 
         // ── SAFELY get location ──
-        if (exif?.GPSLatitude && exif?.GPSLongitude) {
-          try {
-            meta.location = {
-              latitude: typeof exif.GPSLatitude === 'number' ? exif.GPSLatitude : parseFloat(exif.GPSLatitude),
-              longitude: typeof exif.GPSLongitude === 'number' ? exif.GPSLongitude : parseFloat(exif.GPSLongitude),
-            };
-          } catch (locError) {
-            console.warn('Could not parse location:', locError);
+        try {
+          if (exif?.GPSLatitude && exif?.GPSLongitude) {
+            const lat = typeof exif.GPSLatitude === 'number' ? exif.GPSLatitude : parseFloat(exif.GPSLatitude);
+            const lng = typeof exif.GPSLongitude === 'number' ? exif.GPSLongitude : parseFloat(exif.GPSLongitude);
+            if (!isNaN(lat) && !isNaN(lng)) {
+              meta.location = { latitude: lat, longitude: lng };
+            }
           }
+        } catch (locError) {
+          console.warn('Could not parse location:', locError);
         }
 
         // ── Update state ──
+        if (!mountedRef.current) {
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+          return;
+        }
+
         setPhotos((prev) => [...prev, meta]);
         setCurrentUri(uri);
         if (onChange) onChange(uri, meta);
@@ -415,13 +473,17 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           setAnalyzing(true);
           try {
             const result = await analyzePhoto(uri, trackerContext);
-            setAnalysis(result);
-            setAnalysisHistory((prev) => ({ ...prev, [uri]: result }));
-            if (onChange) onChange(uri, meta, result);
+            if (mountedRef.current) {
+              setAnalysis(result);
+              setAnalysisHistory((prev) => ({ ...prev, [uri]: result }));
+              if (onChange) onChange(uri, meta, result);
+            }
           } catch (analysisError) {
             console.warn('Analysis error:', analysisError);
           } finally {
-            setAnalyzing(false);
+            if (mountedRef.current) {
+              setAnalyzing(false);
+            }
           }
         }
 
@@ -433,10 +495,15 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         }
       } catch (e) {
         console.error('processPhoto error:', e);
-        setError('Failed to process photo');
-        sweetAlert.alert('Error', 'Failed to process photo. Please try again.');
+        if (mountedRef.current) {
+          setError('Failed to process photo');
+          sweetAlert.alert('Error', 'Failed to process photo. Please try again.');
+        }
       } finally {
-        isProcessingRef.current = false;
+        if (mountedRef.current) {
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+        }
       }
     },
     [photos, maxPhotos, autoAnalyze, trackerContext, onChange]
@@ -786,10 +853,12 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 </View>
               ) : null}
 
-              {analyzing ? (
+              {analyzing || isProcessing ? (
                 <View style={styles.analyzingOverlay}>
                   <ActivityIndicator color={COLORS.primary} size="large" />
-                  <Text style={[styles.analyzingText, { color: COLORS.text.primary }]}>{'Analyzing photo...'}</Text>
+                  <Text style={[styles.analyzingText, { color: COLORS.text.primary }]}>
+                    {isProcessing ? 'Processing photo...' : 'Analyzing photo...'}
+                  </Text>
                 </View>
               ) : null}
 
