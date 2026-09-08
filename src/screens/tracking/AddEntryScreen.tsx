@@ -1735,33 +1735,30 @@ export default function AddEntryScreen() {
     (route.params as any)?.editMode ? (route.params as any)?.eventId : undefined,
     [route.params]
   );
-
-  // ✅ FIXED: handleTrackerSelect now properly handles errors and preserves photoUris
-  const handleTrackerSelect = useCallback((trackerId: string) => {
-    // Verify tracker exists before proceeding
-    const tracker = getTracker(trackerId);
-    if (!tracker) {
-      console.warn('[AddEntry] Tracker not found:', trackerId);
-      showError('Tracker Not Found', 'The selected tracker could not be loaded. Please try again.');
-      return;
-    }
-    
-    setSelectedTrackerId(trackerId);
-    setShowPicker(false);
-    // Preserve photoUris from preset data if any
-    setPendingOptions((prev) => ({
-      photoUris: prev?.photoUris || [],
-      notes: prev?.notes || '',
-      tags: prev?.tags || [],
-    }));
-    setErrors([]);
-    setDismissedCorrelations(new Set());
-    setDismissedReminders(new Set());
-    setAppliedCorrelationPrefill(null);
-    setAppliedSuggestions(new Set());
-    setShowYesterdayModal(false);
-    setYesterdayEntries([]);
-  }, [getTracker, showError]);
+const handleTrackerSelect = useCallback((trackerId: string) => {
+  // Verify tracker exists before proceeding
+  const tracker = getTracker(trackerId);
+  if (!tracker) {
+    console.warn('[AddEntry] Tracker not found:', trackerId);
+    showError('Tracker Not Found', 'The selected tracker could not be loaded. Please try again.');
+    return;
+  }
+  
+  setSelectedTrackerId(trackerId);
+  setShowPicker(false);
+  setPendingOptions((prev) => ({
+    photoUris: prev?.photoUris || [],
+    notes: prev?.notes || '',
+    tags: prev?.tags || [],
+  }));
+  setErrors([]);
+  setDismissedCorrelations(new Set());
+  setDismissedReminders(new Set());
+  setAppliedCorrelationPrefill(null);
+  setAppliedSuggestions(new Set());
+  setShowYesterdayModal(false);
+  setYesterdayEntries([]);
+}, [getTracker, showError]);
 
   const handlePickerClose = useCallback(() => {
     if (!selectedTrackerId) {
@@ -1771,20 +1768,20 @@ export default function AddEntryScreen() {
     }
   }, [selectedTrackerId, navigation]);
 
-  if (showPicker) {
-    return (
-      <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <TimelinePicker
-          visible={showPicker}
-          onClose={handlePickerClose}
-          onSelect={handleTrackerSelect}
-          currentBabyName={currentBaby?.name}
-          currentBabyAvatar={currentBaby?.avatar}
-        />
-      </View>
-    );
-  }
+if (showPicker) {
+  return (
+    <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <TimelinePicker
+        visible={showPicker}
+        onClose={handlePickerClose}
+        onSelect={handleTrackerSelect}
+        currentBabyName={currentBaby?.name}
+        currentBabyAvatar={currentBaby?.avatar}
+      />
+    </View>
+  );
+}
 
   if (!tracker) {
     return (

@@ -24,7 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-
+import { useTracker } from '../../hooks';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTrackerProgressive } from '../../hooks';
 import { useBaby } from '../../context/BabyContext';
@@ -402,9 +402,7 @@ export default function AllTrackersScreen() {
   const { isDark, fullThemeColors, colors, borderRadiusValue, triggerHaptic, shouldReduceMotion } = useCustomization();
   
   // Safely use hooks with fallbacks
-  const trackerHook = useTrackerProgressive();
-  const { entries = [], getEntries = () => [], trackers = [], isLoading = false, refreshEntries = () => {} } = trackerHook || {};
-  
+const { entries, getEntries, trackers, refreshEntries, isLoading } = useTracker();
   const babyHook = useBaby();
   const { currentBaby = null, isLoading: babyLoading = false, refreshCurrentBaby = () => {}, loadBabies = () => {} } = babyHook || {};
   
@@ -470,56 +468,51 @@ export default function AllTrackersScreen() {
     setRefreshing(false);
   }, [refreshEntries, refreshCurrentBaby, loadBabies]);
 
-  // ─── FIXED: Build tracker cards from ALL available trackers ──────────────
-  const trackerCards = useMemo(() => {
-    if (!currentBaby) return [];
+const trackerCards = useMemo(() => {
+  if (!currentBaby) return [];
+  
+  // Use the trackers from the tracker context
+  const sourceTrackers = trackers?.length > 0 ? trackers : DEFAULT_TRACKERS;
+  
+  return sourceTrackers.map((tracker: any) => {
+    const id = tracker.id;
+    const entriesForTracker = typeof getEntries === 'function' ? getEntries(id) : [];
+    const lastEntry = entriesForTracker && entriesForTracker.length > 0 ? entriesForTracker[0] : null;
     
-    // Get all tracker IDs from DEFAULT_TRACKERS config
-    const allTrackerIds = DEFAULT_TRACKERS.map(t => t.id);
-    
-    // Build cards for ALL trackers, not just ones with entries
-    return allTrackerIds.map((id) => {
-      const config = TRACKER_CONFIGS[id];
-      // If config doesn't exist, skip this tracker
-      if (!config) return null;
-      
-      const entriesForTracker = typeof getEntries === 'function' ? getEntries(id) : [];
-      const lastEntry = entriesForTracker && entriesForTracker.length > 0 ? entriesForTracker[0] : null;
-      
-      return {
-        id,
-        title: id.charAt(0).toUpperCase() + id.slice(1),
-        emoji: config.emoji,
-        color: config.color,
-        gradient: config.gradient,
-        category: config.category,
-        count: entriesForTracker ? entriesForTracker.length : 0,
-        lastEntry: lastEntry && lastEntry.timestamp
-          ? new Date(lastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : undefined,
-        hasSubActions: !!(config.subActions && config.subActions.length > 0),
-      };
-    }).filter(Boolean) as any[];
-  }, [getEntries, currentBaby]);
+    return {
+      id,
+      title: tracker.name || tracker.title || id.charAt(0).toUpperCase() + id.slice(1),
+      emoji: tracker.emoji || '📋',
+      color: tracker.color || '#667eea',
+      gradient: tracker.gradient || ['#667eea', '#764ba2'],
+      category: tracker.category || 'essential',
+      count: entriesForTracker ? entriesForTracker.length : 0,
+      lastEntry: lastEntry && lastEntry.timestamp
+        ? new Date(lastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : undefined,
+      hasSubActions: !!(tracker.subActions && tracker.subActions.length > 0),
+    };
+  });
+}, [trackers, getEntries, currentBaby]);
 
   const categories = useMemo(() => {
     const cats = [...new Set(trackerCards.map(t => t.category))];
     return cats.sort();
   }, [trackerCards]);
 
-  const filtered = useMemo(() => {
-    let res = trackerCards.filter((t: any) => !hiddenIds.includes(t.id));
-    if (activeCategory) res = res.filter((t: any) => t.category === activeCategory);
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      res = res.filter((t: any) =>
-        t.title.toLowerCase().includes(q) ||
-        t.category.toLowerCase().includes(q) ||
-        (TRACKER_CONFIGS[t.id]?.description || '').toLowerCase().includes(q)
-      );
-    }
-    return res;
-  }, [trackerCards, activeCategory, searchQuery, hiddenIds]);
+const filtered = useMemo(() => {
+  let res = trackerCards;
+  if (activeCategory) res = res.filter((t: any) => t.category === activeCategory);
+  if (searchQuery.trim()) {
+    const q = searchQuery.toLowerCase();
+    res = res.filter((t: any) =>
+      t.title.toLowerCase().includes(q) ||
+      t.category.toLowerCase().includes(q) ||
+      (t.description || '').toLowerCase().includes(q)
+    );
+  }
+  return res;
+}, [trackerCards, activeCategory, searchQuery]);
 
   // Sort pinned first, then by count (with 0 count trackers at the end)
   const sortedFiltered = useMemo(() => {
