@@ -1,4 +1,8 @@
-import React, { useState, useCallback, useMemo } from 'react';
+// PediatricianPDFExport.tsx — v2.0
+// Two modes: 1) Generate & Download Report | 2) Upload & Manage Doctor-Filled Reports
+// Uses new expo-file-system API with File and Directory classes
+
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,10 +15,14 @@ import {
   Dimensions,
   Share,
   Image,
+  Alert,
+  Modal,
+  FlatList,
 } from 'react-native';
+import { File, Directory, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as DocumentPicker from 'expo-document-picker';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/hooks/useSweetAlert';
 import { Ionicons } from '@expo/vector-icons';
@@ -57,7 +65,21 @@ interface TrackerEntry {
   amount?: number;
 }
 
+interface DoctorReport {
+  id: string;
+  name: string;
+  uri: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+  status: 'pending' | 'reviewed' | 'approved' | 'rejected';
+  doctorNotes?: string;
+  templateType?: 'visit' | 'full' | 'growth' | 'emergency' | 'development';
+  isDoctorFilled?: boolean;
+}
+
 type ReportTemplate = 'visit' | 'full' | 'growth' | 'emergency' | 'development';
+type ReportMode = 'generate' | 'upload';
 
 /* ═══════════════════════════════════════════════════════════════════════
    CLINICAL DATA — WHO/CDC Simplified Reference Curves
@@ -88,7 +110,6 @@ const getGrowthRef = (gender: string, type: 'weight' | 'height' | 'head', ageMon
 };
 
 const zToPercentile = (z: number): number => {
-  // Simplified error-function approximation for standard normal CDF
   const b1 = 0.31938153, b2 = -0.356563782, b3 = 1.781477937, b4 = -1.821255978, b5 = 1.330274429;
   const p = 0.2316419;
   const t = 1 / (1 + p * Math.abs(z));
@@ -244,8 +265,10 @@ const BabyProfileHeader = ({ baby }: { baby: any }) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURE 1 — Clinical Growth Percentiles
+   INTELLIGENCE FEATURES — All 6 from original
    ═══════════════════════════════════════════════════════════════════════ */
+
+// Feature 1: Growth Percentiles
 const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
   const theme = useReportTheme();
   const ageMo = getBabyAgeMonths(baby?.birthDate);
@@ -298,9 +321,7 @@ const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURE 2 — Vaccination Compliance Tracker
-   ═══════════════════════════════════════════════════════════════════════ */
+// Feature 2: Vaccination Compliance
 const VaccinationComplianceCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
   const theme = useReportTheme();
   const ageMo = getBabyAgeMonths(baby?.birthDate);
@@ -350,9 +371,7 @@ const VaccinationComplianceCard = ({ entries, baby }: { entries: TrackerEntry[];
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURE 3 — Developmental Red Flag Scanner
-   ═══════════════════════════════════════════════════════════════════════ */
+// Feature 3: Developmental Red Flags
 const DevelopmentalRedFlagsCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
   const theme = useReportTheme();
   const ageMo = getBabyAgeMonths(baby?.birthDate);
@@ -398,18 +417,14 @@ const DevelopmentalRedFlagsCard = ({ entries, baby }: { entries: TrackerEntry[];
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURE 4 — Medical Event Correlator
-   ═══════════════════════════════════════════════════════════════════════ */
+// Feature 4: Medical Correlations
 const MedicalCorrelatorCard = ({ entries }: { entries: TrackerEntry[] }) => {
   const theme = useReportTheme();
   const insights = useMemo(() => {
     const result: any[] = [];
     const meds = entries.filter(e => e.trackerId === 'medication').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     const symptoms = entries.filter(e => ['symptom', 'temperature', 'allergy', 'skin_condition'].includes(e.trackerId)).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    const feeds = entries.filter(e => e.trackerId === 'feed').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-    // Med -> Symptom correlation (symptom within 72h of med start)
     meds.slice(0, 5).forEach(med => {
       const medTime = new Date(med.timestamp).getTime();
       const related = symptoms.find(s => {
@@ -427,7 +442,6 @@ const MedicalCorrelatorCard = ({ entries }: { entries: TrackerEntry[] }) => {
       }
     });
 
-    // Fever + Vaccine correlation
     const fevers = entries.filter(e => e.trackerId === 'temperature' && parseFloat(e.data?.value) > 38);
     const vax = entries.filter(e => ['vaccine', 'immunization'].includes(e.trackerId));
     fevers.slice(0, 3).forEach(f => {
@@ -446,23 +460,6 @@ const MedicalCorrelatorCard = ({ entries }: { entries: TrackerEntry[] }) => {
         });
       }
     });
-
-    // Feed gap -> Sleep quality
-    const sleeps = entries.filter(e => e.trackerId === 'sleep' && e.duration).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    if (feeds.length >= 2 && sleeps.length >= 1) {
-      const lastFeed = new Date(feeds[0].timestamp).getTime();
-      const lastSleep = sleeps[0];
-      const feedGap = (lastFeed - new Date(feeds[1].timestamp).getTime()) / 3600000;
-      if (feedGap > 4 && lastSleep.duration && lastSleep.duration < 60) {
-        result.push({
-          type: 'tip',
-          icon: '💡',
-          title: 'Feed-Sleep Correlation',
-          desc: `Long feed gap (${Math.round(feedGap)}h) followed by short sleep (${lastSleep.duration}m)`,
-          color: '#8b5cf6',
-        });
-      }
-    }
 
     return result.slice(0, 4);
   }, [entries]);
@@ -487,25 +484,23 @@ const MedicalCorrelatorCard = ({ entries }: { entries: TrackerEntry[] }) => {
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURE 5 — Sleep Debt & Circadian Analyzer
-   ═══════════════════════════════════════════════════════════════════════ */
+// Feature 5: Sleep Debt Analysis
 const SleepDebtCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
   const theme = useReportTheme();
   const ageMo = getBabyAgeMonths(baby?.birthDate);
-  const recSleep = ageMo < 4 ? 15 : ageMo < 12 ? 14 : ageMo < 24 ? 13 : 12; // hours per 24h
+  const recSleep = ageMo < 4 ? 15 : ageMo < 12 ? 14 : ageMo < 24 ? 13 : 12;
 
   const analysis = useMemo(() => {
     const sleeps = entries.filter(e => e.trackerId === 'sleep' && e.duration).slice(0, 14);
     if (!sleeps.length) return null;
     const totalMins = sleeps.reduce((s, e) => s + (e.duration || 0), 0);
     const avgHrs = totalMins / sleeps.length / 60;
-    const debt = Math.max(0, recSleep - avgHrs * (sleeps.length >= 7 ? 1 : 24 / sleeps.length)); // rough
+    const debt = Math.max(0, recSleep - avgHrs * (sleeps.length >= 7 ? 1 : 24 / sleeps.length));
     const bedtimes = sleeps.map(e => new Date(e.timestamp).getHours()).filter(h => h > 17 || h < 4);
     const avgBed = bedtimes.length ? bedtimes.reduce((a, b) => a + b, 0) / bedtimes.length : 0;
     const consistency = bedtimes.length > 2 ? Math.sqrt(bedtimes.map(h => Math.pow(h - avgBed, 2)).reduce((a, b) => a + b, 0) / bedtimes.length) : 0;
     const score = Math.min(100, Math.round((avgHrs / recSleep) * 60 + (1 - Math.min(consistency, 3) / 3) * 40));
-    return { avgHrs: Math.round(avgHrs * 10) / 10, debt: Math.round(debt * 10) / 10, consistency: Math.round(consistency * 10) / 10, score, naps: sleeps.filter(e => new Date(e.timestamp).getHours() >= 6 && new Date(e.timestamp).getHours() < 18).length };
+    return { avgHrs: Math.round(avgHrs * 10) / 10, debt: Math.round(debt * 10) / 10, consistency: Math.round(consistency * 10) / 10, score };
   }, [entries, recSleep]);
 
   if (!analysis) return null;
@@ -543,9 +538,7 @@ const SleepDebtCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURE 6 — Predictive Growth & Event Forecast
-   ═══════════════════════════════════════════════════════════════════════ */
+// Feature 6: Predictive Forecast
 const PredictiveForecastCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
   const theme = useReportTheme();
   const ageMo = getBabyAgeMonths(baby?.birthDate);
@@ -557,7 +550,7 @@ const PredictiveForecastCard = ({ entries, baby }: { entries: TrackerEntry[]; ba
     if (growth.length >= 2) {
       const w = growth.map(e => ({ t: new Date(e.timestamp).getTime(), v: parseFloat(e.data?.weight) || 0 })).filter(p => p.v > 0);
       if (w.length >= 2) {
-        const dt = (w[w.length - 1].t - w[0].t) / (1000 * 60 * 60 * 24 * 7); // weeks
+        const dt = (w[w.length - 1].t - w[0].t) / (1000 * 60 * 60 * 24 * 7);
         const dv = w[w.length - 1].v - w[0].v;
         const velocity = dt > 0 ? dv / dt : 0;
         const nextW = w[w.length - 1].v + velocity * 2;
@@ -565,7 +558,6 @@ const PredictiveForecastCard = ({ entries, baby }: { entries: TrackerEntry[]; ba
       }
     }
 
-    // Next feed prediction
     const feeds = entries.filter(e => e.trackerId === 'feed').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     if (feeds.length >= 2) {
       const gap = (new Date(feeds[0].timestamp).getTime() - new Date(feeds[1].timestamp).getTime()) / 3600000;
@@ -575,7 +567,6 @@ const PredictiveForecastCard = ({ entries, baby }: { entries: TrackerEntry[]; ba
       }
     }
 
-    // Next sleep prediction
     const sleeps = entries.filter(e => e.trackerId === 'sleep').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     if (sleeps.length >= 2) {
       const gap = (new Date(sleeps[0].timestamp).getTime() - new Date(sleeps[1].timestamp).getTime()) / 3600000;
@@ -585,7 +576,6 @@ const PredictiveForecastCard = ({ entries, baby }: { entries: TrackerEntry[]; ba
       }
     }
 
-    // Milestone window
     const nextMilestone = MILESTONE_EXPECTATIONS.find(m => m.maxMo > ageMo && m.maxMo <= ageMo + 3);
     if (nextMilestone) {
       result.push({ type: 'milestone', label: 'Upcoming Milestone', value: `${nextMilestone.maxMo}mo window`, sub: nextMilestone.items[0], icon: 'trophy-outline', color: '#ffd700' });
@@ -616,7 +606,7 @@ const PredictiveForecastCard = ({ entries, baby }: { entries: TrackerEntry[]; ba
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   MAIN SCREEN
+   MAIN SCREEN — Two Modes: Generate & Upload
    ═══════════════════════════════════════════════════════════════════════ */
 export const PediatricianPDFExport: React.FC = () => {
   const theme = useReportTheme();
@@ -626,12 +616,17 @@ export const PediatricianPDFExport: React.FC = () => {
   const { parent1, parent2, guardians } = useFamily();
   const sweetAlert = useSweetAlert();
 
+  // ─── State ──────────────────────────────────────────────────────────────
+  const [mode, setMode] = useState<ReportMode>('generate');
   const [generating, setGenerating] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
   const [template, setTemplate] = useState<ReportTemplate>('full');
   const [customNotes, setCustomNotes] = useState('');
   const [showPreview, setShowPreview] = useState(false);
-  const [reportHistory, setReportHistory] = useState<{ path: string; date: string; name: string }[]>([]);
+  const [reportHistory, setReportHistory] = useState<DoctorReport[]>([]);
+  const [selectedReport, setSelectedReport] = useState<DoctorReport | null>(null);
+  const [showReportDetail, setShowReportDetail] = useState(false);
 
   const [sections, setSections] = useState<ReportSection[]>([
     { id: 'summary', label: 'Visit Summary', emoji: '📋', enabled: true, description: 'Overview of recent visits and stats' },
@@ -657,6 +652,64 @@ export const PediatricianPDFExport: React.FC = () => {
     transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
+  // ─── Load saved reports ────────────────────────────────────────────────
+  useEffect(() => {
+    loadReports();
+  }, []);
+
+  const loadReports = async () => {
+    try {
+      const reportsDir = new Directory(Paths.document, 'DoctorReports');
+      if (!reportsDir.exists) {
+        reportsDir.create();
+        return;
+      }
+      const files = reportsDir.list();
+      const reports: DoctorReport[] = [];
+      for (const file of files) {
+        if (file instanceof File && file.extension === '.json') {
+          try {
+            const content = file.textSync();
+            const data = JSON.parse(content);
+            reports.push({ ...data, uri: file.uri });
+          } catch (e) {
+            console.warn('Failed to parse report:', e);
+          }
+        }
+      }
+      setReportHistory(reports.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()));
+    } catch (error) {
+      console.error('Failed to load reports:', error);
+    }
+  };
+
+  const saveReport = async (report: DoctorReport) => {
+    try {
+      const reportsDir = new Directory(Paths.document, 'DoctorReports');
+      if (!reportsDir.exists) reportsDir.create();
+      
+      const file = new File(reportsDir, `${report.id}.json`);
+      file.create({ overwrite: true });
+      file.write(JSON.stringify(report));
+      
+      await loadReports();
+    } catch (error) {
+      console.error('Failed to save report:', error);
+    }
+  };
+
+  const deleteReportFile = async (reportId: string) => {
+    try {
+      const reportsDir = new Directory(Paths.document, 'DoctorReports');
+      const file = new File(reportsDir, `${reportId}.json`);
+      if (file.exists) file.delete();
+      await loadReports();
+    } catch (error) {
+      console.error('Failed to delete report:', error);
+    }
+  };
+
+  // ─── Toggle sections ──────────────────────────────────────────────────
   const toggleSection = (id: string) => setSections(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
 
   const applyTemplate = (t: ReportTemplate) => {
@@ -666,11 +719,12 @@ export const PediatricianPDFExport: React.FC = () => {
       visit: ['summary', 'babyInfo', 'family', 'growth', 'percentiles', 'vaccines', 'health', 'medications', 'notes'],
       growth: ['babyInfo', 'growth', 'percentiles', 'feeding', 'sleep', 'development', 'forecast'],
       emergency: ['babyInfo', 'family', 'health', 'medications', 'correlations', 'notes'],
-      development: ['babyInfo', 'growth', 'percentiles', 'development', 'milestones', 'sleep', 'forecast', 'notes'],
+      development: ['babyInfo', 'growth', 'percentiles', 'development', 'sleep', 'forecast', 'notes'],
     };
     setSections(prev => prev.map(s => ({ ...s, enabled: presets[t].includes(s.id) })));
   };
 
+  // ─── Filter entries ────────────────────────────────────────────────────
   const filteredEntries = useMemo(() => {
     if (dateRange === 'all') return entries;
     const days = { '7d': 7, '30d': 30, '90d': 90 };
@@ -684,9 +738,7 @@ export const PediatricianPDFExport: React.FC = () => {
     return { total: filteredEntries.length, today: todayEntries.length, trackers: new Set(filteredEntries.map((e: TrackerEntry) => e.trackerId)).size };
   }, [filteredEntries]);
 
-  /* ═════════════════════════════════════════════════════════════════════
-     PDF HTML GENERATOR — Enhanced with all 6 intelligence features
-     ═════════════════════════════════════════════════════════════════════ */
+  // ─── Generate HTML ────────────────────────────────────────────────────
   const generateHTML = useCallback(() => {
     const baby = currentBaby;
     const babyName = baby?.name || 'Baby';
@@ -893,6 +945,10 @@ export const PediatricianPDFExport: React.FC = () => {
     .success-box { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 12px; border-radius: 10px; margin: 12px 0; font-size: 13px; }
     .contact-card { background: #f8fafc; border-radius: 10px; padding: 14px; border: 1px solid #e2e8f0; font-size: 13px; line-height: 1.8; }
     .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+    .doctor-section { background: #f0fdf4; border: 2px solid #86efac; border-radius: 12px; padding: 16px; margin: 20px 0; }
+    .doctor-section h3 { color: #065f46; margin-bottom: 8px; }
+    .doctor-section .field { margin: 8px 0; padding: 8px; background: white; border-radius: 6px; border: 1px solid #d1fae5; }
+    .doctor-section .field-label { font-weight: 600; color: #065f46; }
     @media print { body { padding: 0; } .section { page-break-inside: avoid; } }
   </style>
 </head>
@@ -908,6 +964,23 @@ export const PediatricianPDFExport: React.FC = () => {
     </div>
   </div>
   ${sectionsHTML}
+  <!-- Doctor's Notes Section -->
+  <div class="doctor-section">
+    <h3>👨‍⚕️ Pediatrician's Notes</h3>
+    <p style="color:#065f46;font-size:13px;">This section is intended for the pediatrician to fill out during the visit.</p>
+    <div class="field">
+      <div class="field-label">📋 Clinical Findings:</div>
+      <div style="min-height:60px;border:1px dashed #86efac;border-radius:4px;padding:8px;margin-top:4px;color:#6b7280;">[To be filled by pediatrician]</div>
+    </div>
+    <div class="field">
+      <div class="field-label">💊 Recommendations:</div>
+      <div style="min-height:60px;border:1px dashed #86efac;border-radius:4px;padding:8px;margin-top:4px;color:#6b7280;">[To be filled by pediatrician]</div>
+    </div>
+    <div class="field">
+      <div class="field-label">📅 Follow-up Plan:</div>
+      <div style="min-height:40px;border:1px dashed #86efac;border-radius:4px;padding:8px;margin-top:4px;color:#6b7280;">[To be filled by pediatrician]</div>
+    </div>
+  </div>
   <div class="footer">
     <p>This report was generated from LittleLoom tracking data.</p>
     <p>Not a substitute for professional medical advice. Always consult your pediatrician.</p>
@@ -916,7 +989,7 @@ export const PediatricianPDFExport: React.FC = () => {
 </html>`;
   }, [currentBaby, filteredEntries, sections, dateRange, customNotes, parent1, parent2, guardians]);
 
-  /* ── Generate PDF ── */
+  // ─── Generate PDF ──────────────────────────────────────────────────────
   const generatePDF = useCallback(async () => {
     const enabledCount = sections.filter(s => s.enabled).length;
     if (!enabledCount) { sweetAlert?.alert?.('No Sections', 'Enable at least one section.'); return; }
@@ -926,29 +999,156 @@ export const PediatricianPDFExport: React.FC = () => {
     try {
       const html = generateHTML();
       const { uri } = await Print.printToFileAsync({ html, base64: false });
-      const safeName = (currentBaby.name || 'Baby').replace(/\s+/g, '_');
-      const fileName = `${safeName}_Report_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
-      const newPath = `${FileSystem.documentDirectory}${fileName}`;
-      await FileSystem.moveAsync({ from: uri, to: newPath });
-      setReportHistory(prev => [{ path: newPath, date: format(new Date(), 'MMM d, h:mm a'), name: fileName }, ...prev].slice(0, 10));
-      sweetAlert?.confirm?.('Report Ready!', 'Share the PDF now?', async () => {
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(newPath, { mimeType: 'application/pdf', dialogTitle: `${currentBaby.name}'s Report`, UTI: 'com.adobe.pdf' });
-        } else { await Share.share({ title: `${currentBaby.name}'s Report`, url: newPath }); }
-      });
-    } catch (err) { console.error(err); sweetAlert?.alert?.('Failed', 'Could not create PDF.'); }
-    finally { setGenerating(false); }
-  }, [generateHTML, sections, currentBaby, sweetAlert]);
+      
+      // Use new File API to move the file
+      const fileName = `${(currentBaby.name || 'Baby').replace(/\s+/g, '_')}_Report_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.pdf`;
+      const reportsDir = new Directory(Paths.document, 'DoctorReports');
+      if (!reportsDir.exists) reportsDir.create();
+      
+      const sourceFile = new File(uri);
+      const destFile = new File(reportsDir, fileName);
+      sourceFile.move(destFile);
 
-  const shareExisting = async (path: string) => { if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(path, { mimeType: 'application/pdf' }); };
-  const deleteReport = async (path: string) => { try { await FileSystem.deleteAsync(path); } catch {} setReportHistory(prev => prev.filter(r => r.path !== path)); };
+      // Save report metadata
+      const report: DoctorReport = {
+        id: `report_${Date.now()}`,
+        name: fileName,
+        uri: destFile.uri,
+        mimeType: 'application/pdf',
+        size: destFile.size,
+        uploadedAt: new Date().toISOString(),
+        status: 'pending',
+        templateType: template,
+        isDoctorFilled: false,
+      };
+      
+      await saveReport(report);
+      sweetAlert?.success('Report Ready!', 'Your PDF report has been generated and saved.');
+      
+      // Show share option
+      sweetAlert?.confirm?.('Share Report?', 'Would you like to share this report with your pediatrician?',
+        async () => {
+          if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(destFile.uri, { mimeType: 'application/pdf', dialogTitle: `${currentBaby.name}'s Report` });
+          }
+        },
+        () => {}
+      );
+    } catch (err) { 
+      console.error(err); 
+      sweetAlert?.alert?.('Failed', 'Could not create PDF. Please try again.'); 
+    } finally { 
+      setGenerating(false); 
+    }
+  }, [generateHTML, sections, currentBaby, sweetAlert, template]);
+
+  // ─── Upload Doctor-Filled Report ──────────────────────────────────────
+  const uploadDoctorReport = useCallback(async () => {
+    if (!currentBaby) {
+      sweetAlert?.alert?.('No Baby', 'Select a baby profile first.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        setUploading(false);
+        return;
+      }
+
+      const asset = result.assets[0];
+      
+      // Copy to app directory
+      const reportsDir = new Directory(Paths.document, 'DoctorReports');
+      if (!reportsDir.exists) reportsDir.create();
+      
+      const sourceFile = new File(asset.uri);
+      const fileName = `${(currentBaby.name || 'Baby').replace(/\s+/g, '_')}_DoctorFilled_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.pdf`;
+      const destFile = new File(reportsDir, fileName);
+      sourceFile.copy(destFile);
+
+      const report: DoctorReport = {
+        id: `doctor_${Date.now()}`,
+        name: asset.name || fileName,
+        uri: destFile.uri,
+        mimeType: asset.mimeType || 'application/pdf',
+        size: asset.size || 0,
+        uploadedAt: new Date().toISOString(),
+        status: 'reviewed',
+        isDoctorFilled: true,
+        doctorNotes: 'Doctor-filled report uploaded',
+      };
+
+      await saveReport(report);
+      setUploading(false);
+      sweetAlert?.success('Uploaded!', 'Doctor-filled report uploaded successfully.');
+    } catch (error) {
+      setUploading(false);
+      sweetAlert?.alert?.('Error', 'Failed to upload report. Please try again.');
+    }
+  }, [currentBaby, sweetAlert]);
+
+  // ─── View Report ──────────────────────────────────────────────────────
+  const viewReport = useCallback(async (report: DoctorReport) => {
+    try {
+      const file = new File(report.uri);
+      if (!file.exists) {
+        sweetAlert?.alert?.('Error', 'Report file not found.');
+        return;
+      }
+      setSelectedReport(report);
+      setShowReportDetail(true);
+    } catch (error) {
+      sweetAlert?.alert?.('Error', 'Could not open report.');
+    }
+  }, [sweetAlert]);
+
+  // ─── Delete Report ────────────────────────────────────────────────────
+  const deleteReport = useCallback((report: DoctorReport) => {
+    sweetAlert?.confirm?.('Delete Report', `Delete "${report.name}"?`,
+      async () => {
+        try {
+          const file = new File(report.uri);
+          if (file.exists) file.delete();
+          await deleteReportFile(report.id);
+          sweetAlert?.success('Deleted', 'Report removed.');
+        } catch (error) {
+          sweetAlert?.alert?.('Error', 'Could not delete report.');
+        }
+      },
+      () => {}
+    );
+  }, [sweetAlert]);
+
+  // ─── Share Report ─────────────────────────────────────────────────────
+  const shareReport = useCallback(async (report: DoctorReport) => {
+    try {
+      const file = new File(report.uri);
+      if (!file.exists) {
+        sweetAlert?.alert?.('Error', 'Report file not found.');
+        return;
+      }
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf' });
+      }
+    } catch (error) {
+      sweetAlert?.alert?.('Error', 'Could not share report.');
+    }
+  }, [sweetAlert]);
+
+  // ─── Render ────────────────────────────────────────────────────────────
 
   if (!currentBaby) {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center', padding: 40 }]}>
         <Ionicons name="document-text-outline" size={64} color={theme.text.muted} />
         <Text style={[styles.emptyTitle, { color: theme.text.primary, marginTop: 16 }]}>No Baby Profile</Text>
-        <Text style={[styles.emptySub, { color: theme.text.muted, textAlign: 'center', marginTop: 8 }]}>Select a baby profile to generate reports.</Text>
+        <Text style={[styles.emptySub, { color: theme.text.muted, textAlign: 'center', marginTop: 8 }]}>Select a baby profile to generate or upload reports.</Text>
       </View>
     );
   }
@@ -957,143 +1157,367 @@ export const PediatricianPDFExport: React.FC = () => {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
         <BlurView intensity={theme.isDark ? 40 : 80} tint={theme.isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-        <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby.name}'s Report</Text>
-        <Text style={[styles.stickySubtitle, { color: theme.text.muted }]}>Pediatric Export</Text>
+        <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby.name}'s Reports</Text>
+        <Text style={[styles.stickySubtitle, { color: theme.text.muted }]}>Pediatric Documents</Text>
       </Animated.View>
 
-      <Animated.ScrollView onScroll={scrollHandler} scrollEventThrottle={16} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView 
+        onScroll={scrollHandler} 
+        scrollEventThrottle={16} 
+        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }} 
+        showsVerticalScrollIndicator={false}
+      >
         <BabyProfileHeader baby={currentBaby} />
 
+        {/* ─── Mode Selector ────────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(40).springify()}>
-          <GlassCard style={styles.heroCard}>
-            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.heroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <Ionicons name="document-text" size={36} color="#fff" />
-              <Text style={styles.heroTitle}>Pediatrician Report</Text>
-              <Text style={styles.heroSub}>Professional PDF with clinical intelligence</Text>
-              <View style={styles.heroStats}>
-                <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.total}</Text><Text style={styles.heroStatLabel}>Entries</Text></View>
-                <View style={styles.heroStatDivider} />
-                <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.trackers}</Text><Text style={styles.heroStatLabel}>Trackers</Text></View>
-                <View style={styles.heroStatDivider} />
-                <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.today}</Text><Text style={styles.heroStatLabel}>Today</Text></View>
-              </View>
-            </LinearGradient>
-          </GlassCard>
-        </Animated.View>
-
-        <Animated.View entering={FadeInUp.delay(60).springify()}>
-          <SectionHeader title="Report Template" icon="layers-outline" subtitle="Choose a starting preset" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateScroll}>
-            {([
-              { id: 'full', label: 'Full Report', icon: 'document-text', desc: 'Everything' },
-              { id: 'visit', label: 'Visit Summary', icon: 'medical', desc: 'Essentials' },
-              { id: 'growth', label: 'Growth Focus', icon: 'trending-up', desc: 'Charts & %iles' },
-              { id: 'development', label: 'Development', icon: 'body', desc: 'Milestones' },
-              { id: 'emergency', label: 'Emergency', icon: 'warning', desc: 'Health & contacts' },
-            ] as const).map(t => (
-              <TouchableOpacity key={t.id} onPress={() => applyTemplate(t.id as ReportTemplate)} style={[styles.templateChip, template === t.id && { borderColor: theme.primary, backgroundColor: `${theme.primary}15` }]}>
-                <Ionicons name={t.icon as any} size={20} color={template === t.id ? theme.primary : theme.text.muted} />
-                <Text style={[styles.templateLabel, { color: template === t.id ? theme.primary : theme.text.primary }]}>{t.label}</Text>
-                <Text style={[styles.templateDesc, { color: theme.text.muted }]}>{t.desc}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </Animated.View>
-
-        <Animated.View entering={FadeInUp.delay(80).springify()}>
-          <SectionHeader title="Date Range" icon="calendar-outline" />
-          <View style={styles.rangeRow}>
-            {(['7d', '30d', '90d', 'all'] as const).map(r => (
-              <TouchableOpacity key={r} onPress={() => setDateRange(r)} style={[styles.rangeBtn, dateRange === r && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
-                <Text style={[styles.rangeBtnText, { color: dateRange === r ? '#fff' : theme.text.primary }]}>{r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : r === '90d' ? '90 Days' : 'All Time'}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.modeSelector}>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'generate' && { backgroundColor: theme.primary }]}
+              onPress={() => setMode('generate')}
+            >
+              <Ionicons name="create-outline" size={20} color={mode === 'generate' ? '#fff' : theme.text.primary} />
+              <Text style={[styles.modeBtnText, { color: mode === 'generate' ? '#fff' : theme.text.primary }]}>Generate Report</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'upload' && { backgroundColor: theme.primary }]}
+              onPress={() => setMode('upload')}
+            >
+              <Ionicons name="cloud-upload-outline" size={20} color={mode === 'upload' ? '#fff' : theme.text.primary} />
+              <Text style={[styles.modeBtnText, { color: mode === 'upload' ? '#fff' : theme.text.primary }]}>Upload Report</Text>
+            </TouchableOpacity>
           </View>
         </Animated.View>
 
-        <GrowthPercentileCard entries={filteredEntries} baby={currentBaby} />
-        <VaccinationComplianceCard entries={filteredEntries} baby={currentBaby} />
-        <DevelopmentalRedFlagsCard entries={filteredEntries} baby={currentBaby} />
-        <MedicalCorrelatorCard entries={filteredEntries} />
-        <SleepDebtCard entries={filteredEntries} baby={currentBaby} />
-        <PredictiveForecastCard entries={filteredEntries} baby={currentBaby} />
-
-        <Animated.View entering={FadeInUp.delay(100).springify()}>
-          <SectionHeader title="Report Sections" icon="list-outline" subtitle="Toggle what to include" />
-          <GlassCard style={styles.sectionsCard}>
-            {sections.map((sec, idx) => (
-              <View key={sec.id} style={[styles.sectionRow, idx !== sections.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
-                <View style={styles.sectionRowLeft}>
-                  <Text style={styles.sectionEmoji}>{sec.emoji}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.sectionRowLabel, { color: theme.text.primary }]}>{sec.label}</Text>
-                    <Text style={[styles.sectionRowDesc, { color: theme.text.muted }]}>{sec.description}</Text>
+        {/* ─── GENERATE MODE ────────────────────────────────────────────── */}
+        {mode === 'generate' && (
+          <>
+            <Animated.View entering={FadeInUp.delay(60).springify()}>
+              <GlassCard style={styles.heroCard}>
+                <LinearGradient colors={['#667eea', '#764ba2']} style={styles.heroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  <Ionicons name="document-text" size={36} color="#fff" />
+                  <Text style={styles.heroTitle}>Generate Pediatric Report</Text>
+                  <Text style={styles.heroSub}>Create a professional PDF with clinical intelligence</Text>
+                  <View style={styles.heroStats}>
+                    <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.total}</Text><Text style={styles.heroStatLabel}>Entries</Text></View>
+                    <View style={styles.heroStatDivider} />
+                    <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.trackers}</Text><Text style={styles.heroStatLabel}>Trackers</Text></View>
+                    <View style={styles.heroStatDivider} />
+                    <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.today}</Text><Text style={styles.heroStatLabel}>Today</Text></View>
                   </View>
-                </View>
-                <Switch value={sec.enabled} onValueChange={() => toggleSection(sec.id)} trackColor={{ false: '#767577', true: `${theme.primary}80` }} thumbColor={sec.enabled ? theme.primary : '#f4f3f4'} />
-              </View>
-            ))}
-          </GlassCard>
-        </Animated.View>
+                </LinearGradient>
+              </GlassCard>
+            </Animated.View>
 
-        <Animated.View entering={FadeInUp.delay(120).springify()}>
-          <SectionHeader title="Notes for Doctor" icon="create-outline" subtitle="Concerns or questions" />
-          <GlassCard style={styles.notesCard}>
-            <TextInput value={customNotes} onChangeText={setCustomNotes} placeholder="e.g., Fussy after feeds, rash on neck..." placeholderTextColor={theme.text.muted} multiline numberOfLines={4} style={[styles.notesInput, { color: theme.text.primary }]} textAlignVertical="top" />
-          </GlassCard>
-        </Animated.View>
+            <Animated.View entering={FadeInUp.delay(80).springify()}>
+              <SectionHeader title="Report Template" icon="layers-outline" subtitle="Choose a starting preset" />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateScroll}>
+                {([
+                  { id: 'full', label: 'Full Report', icon: 'document-text', desc: 'Everything' },
+                  { id: 'visit', label: 'Visit Summary', icon: 'medical', desc: 'Essentials' },
+                  { id: 'growth', label: 'Growth Focus', icon: 'trending-up', desc: 'Charts & %iles' },
+                  { id: 'development', label: 'Development', icon: 'body', desc: 'Milestones' },
+                  { id: 'emergency', label: 'Emergency', icon: 'warning', desc: 'Health & contacts' },
+                ] as const).map(t => (
+                  <TouchableOpacity key={t.id} onPress={() => applyTemplate(t.id as ReportTemplate)} style={[styles.templateChip, template === t.id && { borderColor: theme.primary, backgroundColor: `${theme.primary}15` }]}>
+                    <Ionicons name={t.icon as any} size={20} color={template === t.id ? theme.primary : theme.text.muted} />
+                    <Text style={[styles.templateLabel, { color: template === t.id ? theme.primary : theme.text.primary }]}>{t.label}</Text>
+                    <Text style={[styles.templateDesc, { color: theme.text.muted }]}>{t.desc}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Animated.View>
 
-        <Animated.View entering={FadeInUp.delay(140).springify()}>
-          <TouchableOpacity onPress={() => setShowPreview(!showPreview)} style={styles.previewToggle}>
-            <Ionicons name={showPreview ? 'eye-off-outline' : 'eye-outline'} size={18} color={theme.primary} />
-            <Text style={[styles.previewToggleText, { color: theme.primary }]}>{showPreview ? 'Hide Preview' : 'Show Preview'}</Text>
-          </TouchableOpacity>
-        </Animated.View>
+            <Animated.View entering={FadeInUp.delay(100).springify()}>
+              <SectionHeader title="Date Range" icon="calendar-outline" />
+              <View style={styles.rangeRow}>
+                {(['7d', '30d', '90d', 'all'] as const).map(r => (
+                  <TouchableOpacity key={r} onPress={() => setDateRange(r)} style={[styles.rangeBtn, dateRange === r && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
+                    <Text style={[styles.rangeBtnText, { color: dateRange === r ? '#fff' : theme.text.primary }]}>{r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : r === '90d' ? '90 Days' : 'All Time'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Animated.View>
 
-        {showPreview && (
-          <Animated.View entering={FadeInUp.springify()}>
-            <GlassCard style={styles.previewCard}>
-              <Text style={[styles.previewTitle, { color: theme.text.primary }]}>Report Preview</Text>
-              <View style={styles.previewMeta}>
-                <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>📋 {sections.filter(s => s.enabled).length} sections</Text>
-                <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>📅 {dateRange === 'all' ? 'All time' : `Last ${dateRange.replace('d',' days')}`}</Text>
-                <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>👤 {currentBaby.name}</Text>
-              </View>
-              <View style={[styles.previewBar, { backgroundColor: `${theme.primary}12` }]}>
-                <View style={[styles.previewBarFill, { width: `${Math.min(100, (filteredEntries.length / 50) * 100)}%`, backgroundColor: theme.primary }]} />
-              </View>
-              <Text style={[styles.previewBarLabel, { color: theme.text.muted }]}>{filteredEntries.length} entries analyzed</Text>
-            </GlassCard>
-          </Animated.View>
+            {/* ─── Intelligence Cards ──────────────────────────────────── */}
+            <GrowthPercentileCard entries={filteredEntries} baby={currentBaby} />
+            <VaccinationComplianceCard entries={filteredEntries} baby={currentBaby} />
+            <DevelopmentalRedFlagsCard entries={filteredEntries} baby={currentBaby} />
+            <MedicalCorrelatorCard entries={filteredEntries} />
+            <SleepDebtCard entries={filteredEntries} baby={currentBaby} />
+            <PredictiveForecastCard entries={filteredEntries} baby={currentBaby} />
+
+            {/* ─── Sections Toggle ──────────────────────────────────────── */}
+            <Animated.View entering={FadeInUp.delay(120).springify()}>
+              <SectionHeader title="Report Sections" icon="list-outline" subtitle="Toggle what to include" />
+              <GlassCard style={styles.sectionsCard}>
+                {sections.map((sec, idx) => (
+                  <View key={sec.id} style={[styles.sectionRow, idx !== sections.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
+                    <View style={styles.sectionRowLeft}>
+                      <Text style={styles.sectionEmoji}>{sec.emoji}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.sectionRowLabel, { color: theme.text.primary }]}>{sec.label}</Text>
+                        <Text style={[styles.sectionRowDesc, { color: theme.text.muted }]}>{sec.description}</Text>
+                      </View>
+                    </View>
+                    <Switch value={sec.enabled} onValueChange={() => toggleSection(sec.id)} trackColor={{ false: '#767577', true: `${theme.primary}80` }} thumbColor={sec.enabled ? theme.primary : '#f4f3f4'} />
+                  </View>
+                ))}
+              </GlassCard>
+            </Animated.View>
+
+            {/* ─── Notes ────────────────────────────────────────────────── */}
+            <Animated.View entering={FadeInUp.delay(140).springify()}>
+              <SectionHeader title="Notes for Doctor" icon="create-outline" subtitle="Concerns or questions" />
+              <GlassCard style={styles.notesCard}>
+                <TextInput 
+                  value={customNotes} 
+                  onChangeText={setCustomNotes} 
+                  placeholder="e.g., Fussy after feeds, rash on neck..." 
+                  placeholderTextColor={theme.text.muted} 
+                  multiline 
+                  numberOfLines={4} 
+                  style={[styles.notesInput, { color: theme.text.primary }]} 
+                  textAlignVertical="top" 
+                />
+              </GlassCard>
+            </Animated.View>
+
+            {/* ─── Generate Button ──────────────────────────────────────── */}
+            <Animated.View entering={FadeInUp.delay(160).springify()}>
+              <TouchableOpacity onPress={generatePDF} disabled={generating} style={[styles.generateBtn, { backgroundColor: generating ? theme.text.muted : theme.primary }]}>
+                {generating ? <ActivityIndicator color="#fff" /> : <><Ionicons name="download-outline" size={22} color="#fff" /><Text style={styles.generateBtnText}>Generate PDF Report</Text></>}
+              </TouchableOpacity>
+              <Text style={[styles.disclaimer, { color: theme.text.muted }]}>Reports are generated locally. No data leaves your device.</Text>
+            </Animated.View>
+
+            {/* ─── Report Preview Toggle ────────────────────────────────── */}
+            <Animated.View entering={FadeInUp.delay(180).springify()}>
+              <TouchableOpacity onPress={() => setShowPreview(!showPreview)} style={styles.previewToggle}>
+                <Ionicons name={showPreview ? 'eye-off-outline' : 'eye-outline'} size={18} color={theme.primary} />
+                <Text style={[styles.previewToggleText, { color: theme.primary }]}>{showPreview ? 'Hide Preview' : 'Show Preview'}</Text>
+              </TouchableOpacity>
+            </Animated.View>
+
+            {showPreview && (
+              <Animated.View entering={FadeInUp.springify()}>
+                <GlassCard style={styles.previewCard}>
+                  <Text style={[styles.previewTitle, { color: theme.text.primary }]}>Report Preview</Text>
+                  <View style={styles.previewMeta}>
+                    <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>📋 {sections.filter(s => s.enabled).length} sections</Text>
+                    <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>📅 {dateRange === 'all' ? 'All time' : `Last ${dateRange.replace('d',' days')}`}</Text>
+                    <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>👤 {currentBaby.name}</Text>
+                  </View>
+                  <View style={[styles.previewBar, { backgroundColor: `${theme.primary}12` }]}>
+                    <View style={[styles.previewBarFill, { width: `${Math.min(100, (filteredEntries.length / 50) * 100)}%`, backgroundColor: theme.primary }]} />
+                  </View>
+                  <Text style={[styles.previewBarLabel, { color: theme.text.muted }]}>{filteredEntries.length} entries analyzed</Text>
+                </GlassCard>
+              </Animated.View>
+            )}
+          </>
         )}
 
-        <Animated.View entering={FadeInUp.delay(160).springify()}>
-          <TouchableOpacity onPress={generatePDF} disabled={generating} style={[styles.generateBtn, { backgroundColor: generating ? theme.text.muted : theme.primary }]}>
-            {generating ? <ActivityIndicator color="#fff" /> : <><Ionicons name="download-outline" size={22} color="#fff" /><Text style={styles.generateBtnText}>Generate PDF Report</Text></>}
-          </TouchableOpacity>
-          <Text style={[styles.disclaimer, { color: theme.text.muted }]}>Reports are generated locally. No data leaves your device.</Text>
-        </Animated.View>
-
-        {reportHistory.length > 0 && (
-          <Animated.View entering={FadeInUp.delay(180).springify()}>
-            <SectionHeader title="Recent Reports" icon="time-outline" />
-            {reportHistory.map(report => (
-              <GlassCard key={report.path} style={styles.historyCard}>
-                <View style={styles.historyLeft}>
-                  <View style={[styles.historyIconWrap, { backgroundColor: `${theme.primary}12` }]}><Ionicons name="document" size={20} color={theme.primary} /></View>
-                  <View><Text style={[styles.historyName, { color: theme.text.primary }]} numberOfLines={1}>{report.name}</Text><Text style={[styles.historyDate, { color: theme.text.muted }]}>{report.date}</Text></View>
-                </View>
-                <View style={styles.historyActions}>
-                  <TouchableOpacity onPress={() => shareExisting(report.path)} style={styles.historyActionBtn}><Ionicons name="share-outline" size={18} color={theme.primary} /></TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteReport(report.path)} style={styles.historyActionBtn}><Ionicons name="trash-outline" size={18} color="#ef4444" /></TouchableOpacity>
-                </View>
+        {/* ─── UPLOAD MODE ──────────────────────────────────────────────── */}
+        {mode === 'upload' && (
+          <>
+            <Animated.View entering={FadeInUp.delay(60).springify()}>
+              <GlassCard style={styles.uploadHeroCard}>
+                <LinearGradient colors={['#10b981', '#34d399']} style={styles.uploadHeroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  <Ionicons name="cloud-upload" size={36} color="#fff" />
+                  <Text style={styles.uploadHeroTitle}>Upload Doctor-Filled Report</Text>
+                  <Text style={styles.uploadHeroSub}>Upload the PDF report filled out by your pediatrician</Text>
+                  
+                  <TouchableOpacity 
+                    onPress={uploadDoctorReport} 
+                    disabled={uploading} 
+                    style={[styles.uploadHeroBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+                  >
+                    {uploading ? <ActivityIndicator color="#fff" /> : <><Ionicons name="cloud-upload-outline" size={20} color="#fff" /><Text style={styles.uploadHeroBtnText}>Upload Report</Text></>}
+                  </TouchableOpacity>
+                </LinearGradient>
               </GlassCard>
-            ))}
-          </Animated.View>
+            </Animated.View>
+
+            {/* ─── Report List ──────────────────────────────────────────── */}
+            <Animated.View entering={FadeInUp.delay(80).springify()}>
+              <SectionHeader 
+                title="All Reports" 
+                icon="document-text-outline" 
+                subtitle={`${reportHistory.length} reports saved`} 
+              />
+              
+              {reportHistory.length === 0 ? (
+                <GlassCard>
+                  <View style={styles.emptyReportsContainer}>
+                    <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
+                    <Text style={[styles.emptyReportsText, { color: theme.text.muted }]}>No reports yet</Text>
+                    <Text style={[styles.emptyReportsSub, { color: theme.text.muted }]}>Generate or upload your first report</Text>
+                  </View>
+                </GlassCard>
+              ) : (
+                reportHistory.map((report) => (
+                  <GlassCard key={report.id} style={styles.reportCard}>
+                    <View style={styles.reportCardRow}>
+                      <View style={styles.reportCardLeft}>
+                        <View style={[styles.reportCardIcon, { 
+                          backgroundColor: report.isDoctorFilled ? '#10b98115' : '#667eea15' 
+                        }]}>
+                          <Ionicons 
+                            name={report.isDoctorFilled ? 'medical-outline' : 'document-text'} 
+                            size={24} 
+                            color={report.isDoctorFilled ? '#10b981' : '#667eea'} 
+                          />
+                        </View>
+                        <View style={styles.reportCardInfo}>
+                          <Text style={[styles.reportCardName, { color: theme.text.primary }]} numberOfLines={1}>
+                            {report.name}
+                          </Text>
+                          <Text style={[styles.reportCardMeta, { color: theme.text.muted }]}>
+                            {new Date(report.uploadedAt).toLocaleDateString()} • 
+                            {report.isDoctorFilled ? ' 👨‍⚕️ Doctor-filled' : ' 📄 Generated'}
+                          </Text>
+                          <View style={styles.reportCardStatus}>
+                            <View style={[styles.reportStatusDot, { 
+                              backgroundColor: report.status === 'approved' ? '#10b981' : 
+                                             report.status === 'reviewed' ? '#3b82f6' : '#f59e0b' 
+                            }]} />
+                            <Text style={[styles.reportCardStatusText, { color: theme.text.muted }]}>
+                              {report.status === 'approved' ? 'Approved' : 
+                               report.status === 'reviewed' ? 'Reviewed' : 'Pending'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                      <View style={styles.reportCardActions}>
+                        <TouchableOpacity onPress={() => viewReport(report)} style={styles.reportCardAction}>
+                          <Ionicons name="eye-outline" size={18} color={theme.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => shareReport(report)} style={styles.reportCardAction}>
+                          <Ionicons name="share-outline" size={18} color={theme.secondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => deleteReport(report)} style={styles.reportCardAction}>
+                          <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </GlassCard>
+                ))
+              )}
+            </Animated.View>
+          </>
         )}
 
         <View style={{ height: insets.bottom + 20 }} />
       </Animated.ScrollView>
+
+      {/* ─── Report Detail Modal ───────────────────────────────────────── */}
+      <Modal visible={showReportDetail} transparent animationType="slide" onRequestClose={() => setShowReportDetail(false)}>
+        <View style={styles.detailModalOverlay}>
+          <View style={[styles.detailModalContent, { backgroundColor: theme.bg }]}>
+            <View style={styles.detailModalHeader}>
+              <Text style={[styles.detailModalTitle, { color: theme.text.primary }]}>Report Details</Text>
+              <TouchableOpacity onPress={() => setShowReportDetail(false)} style={styles.detailModalClose}>
+                <Ionicons name="close" size={24} color={theme.text.primary} />
+              </TouchableOpacity>
+            </View>
+            
+            {selectedReport && (
+              <ScrollView style={styles.detailModalBody} showsVerticalScrollIndicator={false}>
+                <View style={[styles.detailIconWrap, { 
+                  backgroundColor: selectedReport.isDoctorFilled ? '#10b98115' : '#667eea15' 
+                }]}>
+                  <Ionicons 
+                    name={selectedReport.isDoctorFilled ? 'medical-outline' : 'document-text'} 
+                    size={48} 
+                    color={selectedReport.isDoctorFilled ? '#10b981' : '#667eea'} 
+                  />
+                </View>
+                
+                <Text style={[styles.detailFileName, { color: theme.text.primary }]}>{selectedReport.name}</Text>
+                
+                <View style={styles.detailMetaGrid}>
+                  <View style={styles.detailMetaItem}>
+                    <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Uploaded</Text>
+                    <Text style={[styles.detailMetaValue, { color: theme.text.primary }]}>
+                      {new Date(selectedReport.uploadedAt).toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={styles.detailMetaItem}>
+                    <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Status</Text>
+                    <View style={[styles.detailStatusBadge, { 
+                      backgroundColor: selectedReport.status === 'approved' ? '#10b98115' : 
+                                     selectedReport.status === 'reviewed' ? '#3b82f615' : '#f59e0b15' 
+                    }]}>
+                      <Text style={[styles.detailStatusText, { 
+                        color: selectedReport.status === 'approved' ? '#10b981' : 
+                               selectedReport.status === 'reviewed' ? '#3b82f6' : '#f59e0b' 
+                      }]}>
+                        {selectedReport.status === 'approved' ? '✅ Approved' : 
+                         selectedReport.status === 'reviewed' ? '📋 Reviewed' : '⏳ Pending'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                
+                <View style={[styles.detailMetaItem, { marginTop: 8 }]}>
+                  <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Type</Text>
+                  <Text style={[styles.detailMetaValue, { color: theme.text.primary }]}>
+                    {selectedReport.isDoctorFilled ? '👨‍⚕️ Doctor-Filled Report' : '📄 Generated Report'}
+                  </Text>
+                </View>
+                
+                {selectedReport.doctorNotes && (
+                  <View style={styles.detailNotes}>
+                    <Text style={[styles.detailNotesLabel, { color: theme.text.muted }]}>Doctor's Notes</Text>
+                    <Text style={[styles.detailNotesText, { color: theme.text.primary }]}>
+                      {selectedReport.doctorNotes}
+                    </Text>
+                  </View>
+                )}
+                
+                <View style={styles.detailActions}>
+                  <TouchableOpacity 
+                    style={[styles.detailActionBtn, { backgroundColor: theme.primary }]} 
+                    onPress={() => {
+                      if (selectedReport) shareReport(selectedReport);
+                    }}
+                  >
+                    <Ionicons name="share-outline" size={18} color="#fff" />
+                    <Text style={styles.detailActionBtnText}>Share</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.detailActionBtn, { backgroundColor: selectedReport.isDoctorFilled ? theme.secondary : '#667eea' }]} 
+                    onPress={() => {
+                      if (selectedReport) {
+                        // Open the file
+                        Linking.openURL(selectedReport.uri);
+                      }
+                    }}
+                  >
+                    <Ionicons name="eye-outline" size={18} color="#fff" />
+                    <Text style={styles.detailActionBtnText}>Open</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.detailActionBtn, { backgroundColor: '#ef4444' }]} 
+                    onPress={() => {
+                      if (selectedReport) {
+                        deleteReport(selectedReport);
+                        setShowReportDetail(false);
+                      }
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#fff" />
+                    <Text style={styles.detailActionBtnText}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1103,13 +1527,13 @@ export const PediatricianPDFExport: React.FC = () => {
    ═══════════════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
+  
   /* Sticky Header */
   stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 8 },
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
-  /* Glass */
+  /* Glass Card */
   glassCard: { marginHorizontal: 16, marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
   glassContent: { flex: 1 },
@@ -1119,6 +1543,45 @@ const styles = StyleSheet.create({
   sectionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+
+  /* Mode Selector */
+  modeSelector: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
+  modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
+  modeBtnText: { fontSize: 14, fontWeight: '700' },
+
+  /* Hero Cards */
+  heroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
+  heroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
+  heroTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 10 },
+  heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 3, textAlign: 'center' },
+  heroStats: { flexDirection: 'row', alignItems: 'center', marginTop: 18, gap: 20 },
+  heroStat: { alignItems: 'center', minWidth: 60 },
+  heroStatNum: { fontSize: 22, fontWeight: '800', color: '#fff' },
+  heroStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '600', marginTop: 2 },
+  heroStatDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.3)' },
+
+  /* Upload Hero */
+  uploadHeroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
+  uploadHeroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
+  uploadHeroTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 10 },
+  uploadHeroSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 3, textAlign: 'center' },
+  uploadHeroBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, marginTop: 16 },
+  uploadHeroBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  /* Templates */
+  templateScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
+  templateChip: { width: 100, paddingVertical: 14, paddingHorizontal: 10, borderRadius: 14, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
+  templateLabel: { fontSize: 12, fontWeight: '700', marginTop: 8 },
+  templateDesc: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+
+  /* Date Range */
+  rangeRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 16 },
+  rangeBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: 'rgba(255,255,255,0.6)' },
+  rangeBtnText: { fontSize: 13, fontWeight: '700' },
+
+  /* Badge */
+  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, alignSelf: 'flex-start' },
+  badgeText: { fontSize: 11, fontWeight: '700' },
 
   /* Profile Header */
   profileCard: { marginHorizontal: 16, marginBottom: 16, overflow: 'hidden' },
@@ -1133,32 +1596,6 @@ const styles = StyleSheet.create({
   profileName: { fontSize: 20, fontWeight: '800', color: '#fff' },
   profileMeta: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '500' },
   profileChips: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
-
-  /* Badge */
-  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, alignSelf: 'flex-start' },
-  badgeText: { fontSize: 11, fontWeight: '700' },
-
-  /* Hero */
-  heroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
-  heroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
-  heroTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 10 },
-  heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 3, textAlign: 'center' },
-  heroStats: { flexDirection: 'row', alignItems: 'center', marginTop: 18, gap: 20 },
-  heroStat: { alignItems: 'center', minWidth: 60 },
-  heroStatNum: { fontSize: 22, fontWeight: '800', color: '#fff' },
-  heroStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '600', marginTop: 2 },
-  heroStatDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.3)' },
-
-  /* Templates */
-  templateScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
-  templateChip: { width: 100, paddingVertical: 14, paddingHorizontal: 10, borderRadius: 14, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
-  templateLabel: { fontSize: 12, fontWeight: '700', marginTop: 8 },
-  templateDesc: { fontSize: 10, fontWeight: '600', marginTop: 2 },
-
-  /* Date Range */
-  rangeRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 16 },
-  rangeBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: 'rgba(255,255,255,0.6)' },
-  rangeBtnText: { fontSize: 13, fontWeight: '700' },
 
   /* Percentiles */
   percGrid: { padding: 16, gap: 14 },
@@ -1238,19 +1675,51 @@ const styles = StyleSheet.create({
   previewBarFill: { height: '100%', borderRadius: 3 },
   previewBarLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
 
-  /* Generate */
-  generateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 18, borderRadius: 18, marginHorizontal: 16, marginTop: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  /* Generate Button */
+  generateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 18, borderRadius: 18, marginHorizontal: 16, marginTop: 8 },
   generateBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   disclaimer: { textAlign: 'center', fontSize: 12, marginTop: 14, lineHeight: 18, marginHorizontal: 30 },
 
-  /* History */
-  historyCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 10 },
-  historyLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  historyIconWrap: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  historyName: { fontSize: 14, fontWeight: '700', maxWidth: 180 },
-  historyDate: { fontSize: 11, fontWeight: '500', marginTop: 2 },
-  historyActions: { flexDirection: 'row', gap: 8 },
-  historyActionBtn: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
+  /* Report Cards */
+  reportCard: { padding: 0, overflow: 'hidden' },
+  reportCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
+  reportCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  reportCardIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  reportCardInfo: { flex: 1 },
+  reportCardName: { fontSize: 14, fontWeight: '700' },
+  reportCardMeta: { fontSize: 11, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  reportCardStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  reportStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  reportCardStatusText: { fontSize: 10, fontWeight: '600', opacity: 0.7 },
+  reportCardActions: { flexDirection: 'row', gap: 6 },
+  reportCardAction: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
+
+  /* Empty State */
+  emptyReportsContainer: { alignItems: 'center', paddingVertical: 40, gap: 12 },
+  emptyReportsText: { fontSize: 16, fontWeight: '600' },
+  emptyReportsSub: { fontSize: 13, fontWeight: '500', opacity: 0.7 },
+
+  /* Detail Modal */
+  detailModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  detailModalContent: { width: '100%', maxWidth: 400, maxHeight: '80%', borderRadius: 24, overflow: 'hidden' },
+  detailModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+  detailModalTitle: { fontSize: 18, fontWeight: '800' },
+  detailModalClose: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
+  detailModalBody: { padding: 20 },
+  detailIconWrap: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
+  detailFileName: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 16 },
+  detailMetaGrid: { flexDirection: 'row', gap: 16, marginBottom: 16 },
+  detailMetaItem: { flex: 1, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 12 },
+  detailMetaLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.7 },
+  detailMetaValue: { fontSize: 14, fontWeight: '700', marginTop: 4 },
+  detailStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, alignSelf: 'flex-start', marginTop: 4 },
+  detailStatusText: { fontSize: 12, fontWeight: '700' },
+  detailNotes: { backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 12, marginTop: 8 },
+  detailNotesLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.7 },
+  detailNotesText: { fontSize: 14, fontWeight: '500', marginTop: 4, lineHeight: 20 },
+  detailActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  detailActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12 },
+  detailActionBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   /* Empty */
   emptyTitle: { fontSize: 20, fontWeight: '800' },
