@@ -1,9 +1,8 @@
-// AddEntryScreen.tsx — INTELLIGENCE EDITION v7.1 (CRASH-FIXED)
+// AddEntryScreen.tsx — INTELLIGENCE EDITION v7.2 (CRASH-FIXED)
 // Fixes:
-// 1. Removed raw `\u2022` text node in correlationMeta (wrapped in {'•'})
-// 2. All emoji strings verified inside <Text> components
-// 3. SmartPhotoField: single source of truth for photoUris (no duplicate append)
-// 4. Defensive null checks on all rendered values
+// 1. Photo URIs properly passed from SmartPhotoField to pendingOptions
+// 2. ConfirmModal correctly receives and displays photos
+// 3. No duplicate photo URIs in submission
 
 import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
@@ -571,10 +570,11 @@ interface ConfirmModalProps {
   date: Date;
   notes?: string;
   tags: string[];
+  photoUris?: string[];
 }
 
 const ConfirmModal = memo<ConfirmModalProps>(({
-  visible, onClose, onConfirm, data, tracker, babyName, babyAvatar, date, notes, tags,
+  visible, onClose, onConfirm, data, tracker, babyName, babyAvatar, date, notes, tags, photoUris = [],
 }) => {
   const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
   const scale = useSharedValue(0.9);
@@ -603,10 +603,13 @@ const ConfirmModal = memo<ConfirmModalProps>(({
     [data]
   );
 
-  const photoUris: string[] = useMemo(() => {
-    const uris = (data as any)?.photoUris;
-    return Array.isArray(uris) ? uris.filter((u: any) => typeof u === 'string' && u.length > 0) : [];
-  }, [data]);
+  // Get photoUris from props or from data
+  const displayPhotoUris = useMemo(() => {
+    const uris = photoUris.length > 0 
+      ? photoUris 
+      : (Array.isArray((data as any)?.photoUris) ? (data as any).photoUris : []);
+    return uris.filter((u: any) => typeof u === 'string' && u.length > 0);
+  }, [photoUris, data]);
 
   const handleConfirm = useCallback(() => {
     HAPTIC_SUCCESS();
@@ -632,14 +635,14 @@ const ConfirmModal = memo<ConfirmModalProps>(({
             <Animated.ScrollView style={modalStyles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={[modalStyles.previewCard, { backgroundColor: fullThemeColors.glassBg, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue }]}>
                 <Text style={[modalStyles.previewTime, { color: fullThemeColors.textSecondary }]}>{format(date, 'MMM d, yyyy \u2022 h:mm a')}</Text>
-                {photoUris.length > 0 ? (
+                {displayPhotoUris.length > 0 ? (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     style={{ marginBottom: 12 }}
                     contentContainerStyle={{ gap: 8 }}
                   >
-                    {photoUris.map((uri, idx) => (
+                    {displayPhotoUris.map((uri: string, idx: number) => (
                       <Image
                         key={`preview-photo-${idx}`}
                         source={{ uri }}
@@ -1141,6 +1144,7 @@ function TrackerContent({
         notes: entry.notes,
         tags: entry.tags,
         title: entry.title,
+        photoUris: entry.photoUris || [],
       }));
     setYesterdayEntries(filtered);
   }, [tracker, getEntries, editEntryId, currentBaby, setYesterdayEntries]);
@@ -1186,7 +1190,7 @@ function TrackerContent({
       setPendingOptions({
         notes: entry.notes,
         tags: entry.tags,
-        photoUris: entry.photoUris,
+        photoUris: entry.photoUris || [],
       });
     }
   }, [editEntryId, tracker, getEntries, setDate, setPendingData, setPendingOptions]);
@@ -1202,11 +1206,12 @@ function TrackerContent({
     const now = new Date();
     setDate(now);
     setPendingData(copiedData);
-    if (entry.notes || entry.tags) {
+    if (entry.notes || entry.tags || entry.photoUris) {
       setPendingOptions((prev: any) => ({
         ...prev,
         notes: entry.notes || prev.notes,
         tags: entry.tags || prev.tags,
+        photoUris: entry.photoUris || prev.photoUris || [],
       }));
     }
     success('Copied!', `Yesterday's ${tracker?.name || 'entry'} data loaded. Time set to now.`);
@@ -1286,8 +1291,9 @@ function TrackerContent({
   const handleFormSubmit = useCallback((data: Record<string, unknown>, options: { title?: string; notes?: string; photoUris?: string[]; tags?: string[] }) => {
     setPendingData(data);
     setPendingOptions((prev: any) => ({
-      ...options,
-      photoUris: prev?.photoUris?.length > 0 ? prev.photoUris : options?.photoUris,
+      notes: options?.notes || prev?.notes || '',
+      tags: options?.tags || prev?.tags || [],
+      photoUris: options?.photoUris || prev?.photoUris || [],
     }));
     setShowConfirm(true);
   }, [setPendingData, setPendingOptions, setShowConfirm]);
@@ -1299,7 +1305,7 @@ function TrackerContent({
         title: buildTitle(pendingData),
         notes: pendingOptions.notes,
         tags: pendingOptions.tags,
-        photoUris: pendingOptions.photoUris,
+        photoUris: pendingOptions.photoUris || [],
       });
       if (entry) {
         triggerHaptic('success');
@@ -1307,7 +1313,8 @@ function TrackerContent({
         success('Saved!', `${tracker.name} entry added successfully.`);
         navigation.goBack();
       }
-    } catch {
+    } catch (err) {
+      console.error('Save error:', err);
       error('Error', 'Failed to save entry. Please try again.');
     }
   }, [tracker, pendingData, pendingOptions, addEntry, triggerHaptic, success, error, navigation, buildTitle, setShowConfirm]);
@@ -1582,7 +1589,7 @@ function TrackerContent({
                 // This prevents duplicate URIs from being appended.
               }}
               onPhotosChange={handlePhotosChange}
-              initialPhotoUris={pendingOptions.photoUris}
+              initialPhotoUris={pendingOptions.photoUris || []}
               label="Photo Documentation"
               trackerContext={tracker.id}
               allowAnnotation={true}
@@ -1603,9 +1610,14 @@ function TrackerContent({
 
       {/* Modals */}
       <ConfirmModal visible={showConfirm} onClose={() => setShowConfirm(false)} onConfirm={confirmSave}
-        data={{ ...pendingData, photoUris: pendingOptions.photoUris }} tracker={tracker}
-        babyName={currentBaby?.name || 'Baby'} babyAvatar={currentBaby?.avatar} date={date}
-        notes={pendingOptions.notes} tags={pendingOptions.tags || []} />
+        data={{ ...pendingData }}
+        photoUris={pendingOptions.photoUris || []}
+        tracker={tracker}
+        babyName={currentBaby?.name || 'Baby'} 
+        babyAvatar={currentBaby?.avatar} 
+        date={date}
+        notes={pendingOptions.notes} 
+        tags={pendingOptions.tags || []} />
 
       <YesterdayEntriesModal visible={showYesterdayModal} onClose={() => setShowYesterdayModal(false)}
         entries={yesterdayEntries} tracker={tracker} onCopyEntry={handleCopyYesterdayEntry}
@@ -1659,7 +1671,9 @@ export default function AddEntryScreen() {
     notes?: string;
     tags?: string[];
     photoUris?: string[];
-  }>({});
+  }>({
+    photoUris: [],
+  });
 
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 
@@ -1684,7 +1698,7 @@ export default function AddEntryScreen() {
   const handleTrackerSelect = useCallback((trackerId: string) => {
     setSelectedTrackerId(trackerId);
     setShowPicker(false);
-    setPendingOptions({});
+    setPendingOptions({ photoUris: [] });
     setErrors([]);
     setDismissedCorrelations(new Set());
     setDismissedReminders(new Set());

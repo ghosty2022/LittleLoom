@@ -1,7 +1,6 @@
-// SafetyCornerScreen.tsx — MODERN v6.0
+// SafetyCornerScreen.tsx — MODERN v6.1
 // NO SHADOWS — Clean flat design
-// Full Supabase SQL integration
-// Complete functional features
+// Full Supabase SQL integration with fixed contacts, checklists, and reports
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import {
@@ -25,19 +24,17 @@ import {
   View,
   LayoutAnimation,
   UIManager,
-  KeyboardAvoidingView,
-  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import * as Contacts from 'expo-contacts';
 import * as Notifications from 'expo-notifications';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -70,6 +67,9 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { supabase } from '@/utils/supabase';
 
+// Import the PediatricianPDFExport for report generation
+import { PediatricianPDFExport } from '../tracking/PediatricianPDFExport';
+
 /* ═══════════════════════════════════════════════════════════════════════════
    INTELLIGENCE HOOKS
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -85,9 +85,7 @@ type SafetyCornerScreenProps = BottomTabScreenProps<MainTabParamList, 'SafetyCor
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — NO SHADOWS — Clean flat design
-   ═══════════════════════════════════════════════════════════════════════════ */
+// ─── DESIGN TOKENS — NO SHADOWS ────────────────────────────────────────────
 
 const SPACING = {
   xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
@@ -97,7 +95,6 @@ const RADIUS = {
   xs: 6, sm: 10, md: 14, lg: 18, xl: 22, full: 999,
 };
 
-// NO SHADOWS — all shadow opacity set to 0
 const SHADOW = {
   none: { shadowOpacity: 0, elevation: 0 },
   xs: { shadowOpacity: 0, elevation: 0 },
@@ -109,9 +106,7 @@ const SHADOW = {
 
 type SafetyTab = 'overview' | 'emergency' | 'topics' | 'checklists' | 'reports' | 'intelligence';
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   THEME HOOK — Unified with TrackerHub
-   ═══════════════════════════════════════════════════════════════════════════ */
+// ─── THEME HOOK ─────────────────────────────────────────────────────────────
 
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
@@ -135,53 +130,6 @@ const useHubTheme = () => {
     },
   }), [isDark, colors, fullThemeColors]);
 };
-
-// ─── EMERGENCY NUMBERS BY LOCATION ────────────────────────────────────────
-
-interface EmergencyNumber {
-  country: string;
-  code: string;
-  emergency: string;
-  police: string;
-  ambulance: string;
-  fire: string;
-  poison?: string;
-  sos?: string;
-}
-
-const EMERGENCY_NUMBERS: EmergencyNumber[] = [
-  { country: 'US', code: '+1', emergency: '911', police: '911', ambulance: '911', fire: '911', poison: '1-800-222-1222' },
-  { country: 'UK', code: '+44', emergency: '999', police: '999', ambulance: '999', fire: '999' },
-  { country: 'CA', code: '+1', emergency: '911', police: '911', ambulance: '911', fire: '911' },
-  { country: 'AU', code: '+61', emergency: '000', police: '000', ambulance: '000', fire: '000' },
-  { country: 'NZ', code: '+64', emergency: '111', police: '111', ambulance: '111', fire: '111' },
-  { country: 'IN', code: '+91', emergency: '112', police: '100', ambulance: '102', fire: '101' },
-  { country: 'DE', code: '+49', emergency: '112', police: '110', ambulance: '112', fire: '112' },
-  { country: 'FR', code: '+33', emergency: '112', police: '17', ambulance: '15', fire: '18' },
-  { country: 'ES', code: '+34', emergency: '112', police: '091', ambulance: '061', fire: '080' },
-  { country: 'IT', code: '+39', emergency: '112', police: '113', ambulance: '118', fire: '115' },
-  { country: 'JP', code: '+81', emergency: '119', police: '110', ambulance: '119', fire: '119' },
-  { country: 'BR', code: '+55', emergency: '190', police: '190', ambulance: '192', fire: '193' },
-  { country: 'MX', code: '+52', emergency: '911', police: '911', ambulance: '911', fire: '911' },
-  { country: 'ZA', code: '+27', emergency: '10111', police: '10111', ambulance: '10177', fire: '10111' },
-  { country: 'NG', code: '+234', emergency: '112', police: '199', ambulance: '112', fire: '112' },
-  { country: 'KE', code: '+254', emergency: '112', police: '999', ambulance: '999', fire: '999' },
-  { country: 'PH', code: '+63', emergency: '911', police: '117', ambulance: '911', fire: '911' },
-  { country: 'SG', code: '+65', emergency: '995', police: '999', ambulance: '995', fire: '995' },
-  { country: 'AE', code: '+971', emergency: '999', police: '999', ambulance: '998', fire: '997' },
-  { country: 'SA', code: '+966', emergency: '911', police: '999', ambulance: '997', fire: '998' },
-  { country: 'EG', code: '+20', emergency: '122', police: '122', ambulance: '123', fire: '180' },
-  { country: 'PK', code: '+92', emergency: '15', police: '15', ambulance: '115', fire: '16' },
-  { country: 'BD', code: '+880', emergency: '999', police: '999', ambulance: '999', fire: '999' },
-  { country: 'ID', code: '+62', emergency: '112', police: '110', ambulance: '118', fire: '113' },
-  { country: 'TH', code: '+66', emergency: '191', police: '191', ambulance: '1669', fire: '199' },
-  { country: 'VN', code: '+84', emergency: '113', police: '113', ambulance: '115', fire: '114' },
-  { country: 'MY', code: '+60', emergency: '999', police: '999', ambulance: '999', fire: '999' },
-  { country: 'KR', code: '+82', emergency: '119', police: '112', ambulance: '119', fire: '119' },
-  { country: 'IL', code: '+972', emergency: '100', police: '100', ambulance: '101', fire: '102' },
-  { country: 'TR', code: '+90', emergency: '112', police: '155', ambulance: '112', fire: '110' },
-  { country: 'PL', code: '+48', emergency: '112', police: '997', ambulance: '999', fire: '998' },
-];
 
 // ─── GLASS CARD — NO SHADOWS ─────────────────────────────────────────────
 
@@ -219,9 +167,7 @@ const GlassCard = memo(({ children, style, onPress, active = false }: {
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER — Matches TrackerHub
-   ═══════════════════════════════════════════════════════════════════════════ */
+// ─── SECTION HEADER ────────────────────────────────────────────────────────
 
 const SectionHeader = memo(({ 
   title, 
@@ -264,9 +210,7 @@ const SectionHeader = memo(({
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   TAB BAR — NO SHADOWS
-   ═══════════════════════════════════════════════════════════════════════════ */
+// ─── TAB BAR ──────────────────────────────────────────────────────────────
 
 const TabBar = memo(({ tabs, activeTab, onChange }: { 
   tabs: { key: SafetyTab; label: string; icon: keyof typeof Ionicons.glyphMap }[]; 
@@ -302,7 +246,9 @@ const TabBar = memo(({ tabs, activeTab, onChange }: {
   );
 });
 
-// ─── MODAL COMPONENTS ───────────────────────────────────────────────────────
+// ─── MODAL COMPONENTS ──────────────────────────────────────────────────────
+
+// ─── Contact Modal ─────────────────────────────────────────────────────────
 
 const ContactModal = memo(({ visible, onClose, onAdd, theme }: { 
   visible: boolean; 
@@ -430,6 +376,8 @@ const ContactModal = memo(({ visible, onClose, onAdd, theme }: {
   );
 });
 
+// ─── Checklist Modal ──────────────────────────────────────────────────────
+
 const ChecklistModal = memo(({ visible, checklist, onClose, onToggleItem, theme }: { 
   visible: boolean; 
   checklist: SafetyChecklist | null; 
@@ -511,14 +459,29 @@ const ChecklistModal = memo(({ visible, checklist, onClose, onToggleItem, theme 
   );
 });
 
-const ReportModal = memo(({ visible, onClose, onUpload, reports, onDelete, theme }: { 
+// ─── Report Modal ──────────────────────────────────────────────────────────
+
+const ReportModal = memo(({ 
+  visible, 
+  onClose, 
+  onUpload,
+  onGeneratePDF,
+  reports,
+  onDelete,
+  onUpdate,
+  theme 
+}: { 
   visible: boolean; 
   onClose: () => void; 
   onUpload: () => void;
+  onGeneratePDF: () => void;
   reports: DoctorReport[];
   onDelete: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<DoctorReport>) => void;
   theme: any;
 }) => {
+  const [selectedReport, setSelectedReport] = useState<DoctorReport | null>(null);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -532,10 +495,18 @@ const ReportModal = memo(({ visible, onClose, onUpload, reports, onDelete, theme
             </TouchableOpacity>
           </View>
           <View style={styles.modalBody}>
+            {/* Upload Button */}
             <TouchableOpacity style={[styles.uploadReportBtn, { borderColor: theme.primary, backgroundColor: `${theme.primary}08` }]} onPress={onUpload}>
               <Ionicons name="cloud-upload" size={24} color={theme.primary} />
-              <Text style={[styles.uploadReportText, { color: theme.primary }]}>Upload New Report</Text>
+              <Text style={[styles.uploadReportText, { color: theme.primary }]}>Upload Report</Text>
             </TouchableOpacity>
+
+            {/* Generate PDF Button */}
+            <TouchableOpacity style={[styles.generateReportBtn, { backgroundColor: theme.secondary }]} onPress={onGeneratePDF}>
+              <Ionicons name="document-text" size={20} color="#fff" />
+              <Text style={styles.generateReportText}>Generate PDF Report</Text>
+            </TouchableOpacity>
+
             {reports.length === 0 ? (
               <View style={styles.emptyReports}>
                 <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
@@ -551,13 +522,58 @@ const ReportModal = memo(({ visible, onClose, onUpload, reports, onDelete, theme
                         <Text style={[styles.reportName, { color: theme.text.primary }]} numberOfLines={1}>{report.name}</Text>
                         <Text style={[styles.reportMeta, { color: theme.text.muted }]}>
                           {new Date(report.uploadedAt).toLocaleDateString()} • 
-                          {report.status === 'approved' ? ' ✅ Approved' : report.status === 'reviewed' ? ' 📋 Reviewed' : ' ⏳ Pending'}
+                          <View style={[styles.reportStatusBadge, { 
+                            backgroundColor: report.status === 'approved' ? '#10b98115' : 
+                                         report.status === 'reviewed' ? '#3b82f615' : '#f59e0b15' 
+                          }]}>
+                            <Text style={[styles.reportStatusText, { 
+                              color: report.status === 'approved' ? '#10b981' : 
+                                     report.status === 'reviewed' ? '#3b82f6' : '#f59e0b' 
+                            }]}>
+                              {report.status === 'approved' ? '✅ Approved' : 
+                               report.status === 'reviewed' ? '📋 Reviewed' : '⏳ Pending'}
+                            </Text>
+                          </View>
                         </Text>
                       </View>
                     </View>
-                    <TouchableOpacity onPress={() => onDelete(report.id)} style={styles.reportDelete}>
-                      <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                    </TouchableOpacity>
+                    <View style={styles.reportActions}>
+                      {report.uri && (
+                        <TouchableOpacity 
+                          onPress={() => {
+                            // Open the report file
+                            if (Platform.OS === 'ios') {
+                              Linking.openURL(report.uri);
+                            } else {
+                              Linking.openURL(report.uri);
+                            }
+                          }} 
+                          style={styles.reportActionBtn}
+                        >
+                          <Ionicons name="eye-outline" size={18} color={theme.primary} />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity 
+                        onPress={() => {
+                          Alert.alert(
+                            'Update Status',
+                            'Mark this report as:',
+                            [
+                              { text: 'Pending', onPress: () => onUpdate(report.id, { status: 'pending' }) },
+                              { text: 'Reviewed', onPress: () => onUpdate(report.id, { status: 'reviewed' }) },
+                              { text: 'Approved', onPress: () => onUpdate(report.id, { status: 'approved' }) },
+                              { text: 'Cancel', style: 'cancel' },
+                            ]
+                          );
+                        }} 
+                        style={styles.reportActionBtn}
+                      >
+                        <Ionicons name="pencil-outline" size={18} color={theme.secondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => onDelete(report.id)} style={styles.reportActionBtn}>
+                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </ScrollView>
@@ -568,6 +584,8 @@ const ReportModal = memo(({ visible, onClose, onUpload, reports, onDelete, theme
     </Modal>
   );
 });
+
+// ─── Reminder Modal ──────────────────────────────────────────────────────
 
 const ReminderModal = memo(({ visible, onClose, onSchedule, theme }: { 
   visible: boolean; 
@@ -655,9 +673,7 @@ const ReminderModal = memo(({ visible, onClose, onSchedule, theme }: {
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN
-   ═══════════════════════════════════════════════════════════════════════════ */
+// ─── MAIN SCREEN ──────────────────────────────────────────────────────────
 
 export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenProps) {
   const theme = useHubTheme();
@@ -686,6 +702,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     addDoctorReport,
     getDoctorReports,
     deleteDoctorReport,
+    updateDoctorReport,
     scheduleSafetyReminder,
     loadSafetyData,
     importDeviceContacts,
@@ -710,6 +727,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const [refreshing, setRefreshing] = useState(false);
   const [reports, setReports] = useState<DoctorReport[]>([]);
   const [emergencyNumbers, setEmergencyNumbers] = useState<EmergencyNumber | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   // ─── Load emergency numbers based on location ────────────────────────────
 
@@ -717,7 +735,6 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     const loadEmergencyNumbers = async () => {
       const numbers = await getLocalEmergencyNumbers();
       if (numbers && numbers.length > 0) {
-        // Find the first emergency contact
         const emergency = numbers.find(n => n.type === 'emergency');
         if (emergency) {
           setEmergencyNumbers({
@@ -808,12 +825,16 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
 
   const handleUploadReport = useCallback(async () => {
     try {
+      setUploading(true);
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'image/*'],
         copyToCacheDirectory: true,
       });
 
-      if (result.canceled || !result.assets?.length) return;
+      if (result.canceled || !result.assets?.length) {
+        setUploading(false);
+        return;
+      }
 
       const asset = result.assets[0];
       const report = {
@@ -826,12 +847,19 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
 
       await addDoctorReport(report);
       setReports(getDoctorReports());
+      setUploading(false);
       triggerHaptic('success');
       sweetAlert.success('Uploaded', 'Report uploaded successfully.');
     } catch (error) {
+      setUploading(false);
       sweetAlert.alert('Error', 'Failed to upload report.');
     }
   }, [addDoctorReport, getDoctorReports, triggerHaptic, sweetAlert]);
+
+  const handleGeneratePDF = useCallback(() => {
+    // Navigate to the PediatricianPDFExport screen
+    navigation.navigate('PediatricianPDFExport');
+  }, [navigation]);
 
   const handleDeleteReport = useCallback(async (id: string) => {
     sweetAlert.confirm(
@@ -847,6 +875,13 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
       'Cancel'
     );
   }, [deleteDoctorReport, getDoctorReports, triggerHaptic, sweetAlert]);
+
+  const handleUpdateReport = useCallback(async (id: string, updates: Partial<DoctorReport>) => {
+    await updateDoctorReport(id, updates);
+    setReports(getDoctorReports());
+    triggerHaptic('success');
+    sweetAlert.success('Updated', 'Report status updated successfully.');
+  }, [updateDoctorReport, getDoctorReports, triggerHaptic, sweetAlert]);
 
   const handleScheduleReminder = useCallback(async (title: string, body: string, date: Date) => {
     await scheduleSafetyReminder(title, body, date);
@@ -898,6 +933,8 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const bgColors = theme.isDark
     ? [theme.bgColors?.[0] || '#0a0a0a', '#1a1a2e']
     : [theme.bgColors?.[0] || '#f8fafc', '#e2e8f0'];
+
+  // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.container, { backgroundColor: bgColors[0] }]}>
@@ -1436,15 +1473,27 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
               icon="document-text-outline"
             />
 
-            <TouchableOpacity style={[styles.uploadBtn, { borderColor: theme.primary, backgroundColor: `${theme.primary}08` }]} onPress={handleUploadReport}>
-              <Ionicons name="cloud-upload" size={24} color={theme.primary} />
-              <Text style={[styles.uploadText, { color: theme.primary }]}>Upload Report</Text>
+            <TouchableOpacity style={[styles.uploadBtn, { borderColor: theme.primary, backgroundColor: `${theme.primary}08` }]} onPress={handleUploadReport} disabled={uploading}>
+              {uploading ? (
+                <ActivityIndicator color={theme.primary} />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload" size={24} color={theme.primary} />
+                  <Text style={[styles.uploadText, { color: theme.primary }]}>Upload Report</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.generateReportBtn, { backgroundColor: theme.secondary }]} onPress={handleGeneratePDF}>
+              <Ionicons name="document-text" size={20} color="#fff" />
+              <Text style={styles.generateReportText}>Generate PDF Report</Text>
             </TouchableOpacity>
 
             {reports.length === 0 ? (
               <View style={styles.emptyReports}>
                 <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
                 <Text style={[styles.emptyReportsText, { color: theme.text.muted }]}>No reports yet</Text>
+                <Text style={[styles.emptyReportsSub, { color: theme.text.muted }]}>Upload a report or generate a PDF</Text>
               </View>
             ) : (
               reports.map((report) => (
@@ -1454,15 +1503,57 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
                       <Ionicons name="document-text" size={24} color={theme.primary} />
                       <View style={styles.reportDetails}>
                         <Text style={[styles.reportName, { color: theme.text.primary }]} numberOfLines={1}>{report.name}</Text>
-                        <Text style={[styles.reportMeta, { color: theme.text.muted }]}>
-                          {new Date(report.uploadedAt).toLocaleDateString()} • 
-                          {report.status === 'approved' ? ' ✅ Approved' : report.status === 'reviewed' ? ' 📋 Reviewed' : ' ⏳ Pending'}
-                        </Text>
+                        <View style={styles.reportMetaRow}>
+                          <Text style={[styles.reportMeta, { color: theme.text.muted }]}>
+                            {new Date(report.uploadedAt).toLocaleDateString()}
+                          </Text>
+                          <View style={[styles.reportStatusBadge, { 
+                            backgroundColor: report.status === 'approved' ? '#10b98115' : 
+                                         report.status === 'reviewed' ? '#3b82f615' : '#f59e0b15' 
+                          }]}>
+                            <Text style={[styles.reportStatusText, { 
+                              color: report.status === 'approved' ? '#10b981' : 
+                                     report.status === 'reviewed' ? '#3b82f6' : '#f59e0b' 
+                            }]}>
+                              {report.status === 'approved' ? '✅ Approved' : 
+                               report.status === 'reviewed' ? '📋 Reviewed' : '⏳ Pending'}
+                            </Text>
+                          </View>
+                        </View>
                       </View>
                     </View>
-                    <TouchableOpacity onPress={() => handleDeleteReport(report.id)} style={styles.reportDelete}>
-                      <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                    </TouchableOpacity>
+                    <View style={styles.reportActions}>
+                      {report.uri && (
+                        <TouchableOpacity 
+                          onPress={() => {
+                            Linking.openURL(report.uri);
+                          }} 
+                          style={styles.reportActionBtn}
+                        >
+                          <Ionicons name="eye-outline" size={18} color={theme.primary} />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity 
+                        onPress={() => {
+                          Alert.alert(
+                            'Update Status',
+                            'Mark this report as:',
+                            [
+                              { text: 'Pending', onPress: () => handleUpdateReport(report.id, { status: 'pending' }) },
+                              { text: 'Reviewed', onPress: () => handleUpdateReport(report.id, { status: 'reviewed' }) },
+                              { text: 'Approved', onPress: () => handleUpdateReport(report.id, { status: 'approved' }) },
+                              { text: 'Cancel', style: 'cancel' },
+                            ]
+                          );
+                        }} 
+                        style={styles.reportActionBtn}
+                      >
+                        <Ionicons name="pencil-outline" size={18} color={theme.secondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteReport(report.id)} style={styles.reportActionBtn}>
+                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </GlassCard>
               ))
@@ -1555,8 +1646,10 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
         visible={showReportModal}
         onClose={() => setShowReportModal(false)}
         onUpload={handleUploadReport}
+        onGeneratePDF={handleGeneratePDF}
         reports={reports}
         onDelete={handleDeleteReport}
+        onUpdate={handleUpdateReport}
         theme={theme}
       />
 
@@ -1570,9 +1663,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — NO SHADOWS — Clean flat design
-   ═══════════════════════════════════════════════════════════════════════════ */
+// ─── STYLES ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -1989,12 +2080,25 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     borderRadius: 16,
     borderWidth: 2,
     borderStyle: 'dashed',
   },
   uploadText: { fontSize: 16, fontWeight: '700' },
+
+  generateReportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+  },
+  generateReportText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
   reportItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2004,8 +2108,12 @@ const styles = StyleSheet.create({
   reportInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   reportDetails: { flex: 1 },
   reportName: { fontSize: 14, fontWeight: '600' },
-  reportMeta: { fontSize: 12, fontWeight: '500', marginTop: 1, opacity: 0.7 },
-  reportDelete: { padding: 4 },
+  reportMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  reportMeta: { fontSize: 12, fontWeight: '500', opacity: 0.7 },
+  reportStatusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  reportStatusText: { fontSize: 10, fontWeight: '700' },
+  reportActions: { flexDirection: 'row', gap: 6 },
+  reportActionBtn: { padding: 6, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
 
   uploadReportBtn: {
     flexDirection: 'row',
@@ -2016,13 +2124,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderStyle: 'dashed',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   uploadReportText: { fontSize: 15, fontWeight: '700' },
   reportsList: { maxHeight: SCREEN_H * 0.5 },
 
   emptyReports: { alignItems: 'center', paddingVertical: 32, gap: 12 },
   emptyReportsText: { fontSize: 15, fontWeight: '500' },
+  emptyReportsSub: { fontSize: 12, fontWeight: '500', opacity: 0.6 },
 
   predictorHeader: {
     flexDirection: 'row',
