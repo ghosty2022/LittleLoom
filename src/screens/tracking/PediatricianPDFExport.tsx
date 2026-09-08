@@ -45,7 +45,7 @@ import Animated, {
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format, differenceInMonths } from 'date-fns';
+import { format, differenceInMonths, subDays } from 'date-fns';
 import { supabase } from '@/utils/supabase';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -146,7 +146,7 @@ const getGrowthRef = (gender: string, type: 'weight' | 'height' | 'head', ageMon
   const arr = GROWTH_REF[g][type];
   if (ageMonths <= 0) return arr[0];
   if (ageMonths >= 24) return arr[arr.length - 1];
-  const lower = arr.findLast((a: any) => a.m <= ageMonths) || arr[0];
+  const lower = [...arr].reverse().find((a: any) => a.m <= ageMonths) || arr[0];
   const upper = arr.find((a: any) => a.m >= ageMonths) || arr[arr.length - 1];
   if (lower.m === upper.m) return lower;
   const ratio = (ageMonths - lower.m) / (upper.m - lower.m);
