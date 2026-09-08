@@ -991,6 +991,31 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
   }, [getTracker, handleCreateCustomTracker]);
 
+  /* ─── ENTRY HELPERS ───────────────────────────────────────────────── */
+
+  /**
+   * Strip anything jsonb/PostgREST can't serialize (undefined, functions, NaN).
+   */
+  const sanitizeForJsonb = useCallback((value: unknown): unknown => {
+    try {
+      return JSON.parse(
+        JSON.stringify(value, (_key, v) =>
+          typeof v === 'number' && !isFinite(v) ? null : v
+        )
+      );
+    } catch {
+      return {};
+    }
+  }, []);
+
+  /**
+   * Guarantee a clean string[] of URIs — never null, never undefined entries.
+   */
+  const sanitizePhotoUris = useCallback((uris?: string[]): string[] => {
+    if (!Array.isArray(uris)) return [];
+    return uris.filter((u): u is string => typeof u === 'string' && u.length > 0);
+  }, []);
+
   /* ─── Entry CRUD ──────────────────────────────────────────────────── */
 
   const handleAddEntry = useCallback(async (
@@ -1033,25 +1058,31 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const newId = generateId();
       const now = new Date().toISOString();
       const timestamp = Date.now();
-      
+
+      // ── CRASH FIX: sanitize everything before it touches Supabase ──
+      const cleanPhotoUris = sanitizePhotoUris(options?.photoUris);
+      const cleanTags = Array.isArray(options?.tags)
+        ? options.tags.filter((t): t is string => typeof t === 'string' && t.length > 0)
+        : [];
+      const cleanData = sanitizeForJsonb(data) as Record<string, unknown>;
+
       const newEntry: TrackerEntry = {
         id: newId,
         babyId: babyId,
         trackerId,
         timestamp: timestamp,
         title: options?.title || `${tracker.emoji} ${tracker.name}`,
-        data,
+        data: cleanData,
         loggedBy: userProfile?.id || 'unknown',
         loggedByName: userProfile?.fullName || 'Unknown',
         loggedByRole: (myRole as any) || 'parent1',
         notes: options?.notes,
-        photoUris: options?.photoUris,
-        tags: options?.tags,
+        photoUris: cleanPhotoUris.length > 0 ? cleanPhotoUris : undefined,
+        tags: cleanTags.length > 0 ? cleanTags : undefined,
         linkedEntries: [],
         isDeleted: false,
       };
 
-      // Get the tracker_type from the mapping
       const trackerType = getTrackerType(trackerId);
       const timestampISO = new Date(timestamp).toISOString();
 
@@ -1064,10 +1095,11 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
           baby_id: babyId,
           timestamp: timestampISO,
           title: options?.title || `${tracker.emoji} ${tracker.name}`,
-          data: data,
+          data: cleanData,
           notes: options?.notes || null,
-          photo_uris: options?.photoUris || null,
-          tags: options?.tags || null,
+          // ── CRASH FIX: arrays, NOT null (schema default '{}' expects arrays) ──
+          photo_uris: cleanPhotoUris,
+          tags: cleanTags,
           logged_by: userProfile?.id || 'unknown',
           logged_by_name: userProfile?.fullName || 'Unknown',
           logged_by_role: (myRole as any) || 'parent1',
@@ -1099,15 +1131,13 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastTrackerId: trackerId,
       }));
 
-      if (babyId) {
-        const streak = calculateStreak(trackerId, updatedEntries, babyId);
-        if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
-          triggerHaptic('success');
-          success(
-            `${streak.currentStreak} Day Streak!`,
-            `You've been consistently tracking ${tracker.name} for ${streak.currentStreak} days! 🎉`
-          );
-        }
+      const streak = calculateStreak(trackerId, updatedEntries, babyId);
+      if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
+        triggerHaptic('success');
+        success(
+          `${streak.currentStreak} Day Streak!`,
+          `You've been consistently tracking ${tracker.name} for ${streak.currentStreak} days! 🎉`
+        );
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -1117,7 +1147,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
     }
-  }, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert]);
+  }, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert, sanitizeForJsonb, sanitizePhotoUris]);
 
   const handleUpdateEntry = useCallback(async (
     entryId: string,
@@ -1157,11 +1187,22 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         edited_at: Date.now(),
       };
 
+      // Sanitize arrays for Supabase
+      if (updates.photoUris !== undefined) {
+        const cleanPhotoUris = sanitizePhotoUris(updates.photoUris);
+        remoteUpdates.photo_uris = cleanPhotoUris;
+      }
+      if (updates.tags !== undefined) {
+        const cleanTags = Array.isArray(updates.tags)
+          ? updates.tags.filter((t): t is string => typeof t === 'string' && t.length > 0)
+          : [];
+        remoteUpdates.tags = cleanTags;
+      }
+      if (updates.data !== undefined) {
+        remoteUpdates.data = sanitizeForJsonb(updates.data);
+      }
       if (updates.title !== undefined) remoteUpdates.title = updates.title;
-      if (updates.data !== undefined) remoteUpdates.data = updates.data;
       if (updates.notes !== undefined) remoteUpdates.notes = updates.notes;
-      if (updates.photoUris !== undefined) remoteUpdates.photo_uris = updates.photoUris;
-      if (updates.tags !== undefined) remoteUpdates.tags = updates.tags;
       if (updates.timestamp !== undefined) remoteUpdates.timestamp = new Date(updates.timestamp).toISOString();
 
       const { error } = await supabase
@@ -1176,7 +1217,18 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       const updatedEntries = state.entries.map(e =>
-        e.id === entryId ? { ...e, ...updates, editedBy: userProfile?.id, editedAt: Date.now() } : e
+        e.id === entryId ? { 
+          ...e, 
+          ...updates, 
+          editedBy: userProfile?.id, 
+          editedAt: Date.now(),
+          // Ensure arrays are clean
+          photoUris: updates.photoUris !== undefined ? sanitizePhotoUris(updates.photoUris) : e.photoUris,
+          tags: updates.tags !== undefined ? 
+            (Array.isArray(updates.tags) ? updates.tags.filter((t): t is string => typeof t === 'string' && t.length > 0) : []) 
+            : e.tags,
+          data: updates.data !== undefined ? sanitizeForJsonb(updates.data) as Record<string, unknown> : e.data,
+        } : e
       );
 
       const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
@@ -1199,7 +1251,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       sweetAlert('Error', 'Failed to update entry', 'warning');
       return false;
     }
-  }, [state.entries, canEditEntry, userProfile, sweetAlert]);
+  }, [state.entries, canEditEntry, userProfile, sweetAlert, sanitizeForJsonb, sanitizePhotoUris]);
 
   const handleDeleteEntry = useCallback(async (entryId: string): Promise<boolean> => {
     const entry = state.entries.find(e => e.id === entryId);
@@ -1450,11 +1502,11 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: `template_${Date.now()}`,
       name,
       emoji: '⭐',
-      data,
+      data: sanitizeForJsonb(data) as Record<string, unknown>,
     });
 
     await AsyncStorage.setItem(key, JSON.stringify(templates));
-  }, []);
+  }, [sanitizeForJsonb]);
 
   const getTemplates = useCallback(async (trackerId: string) => {
     const key = TRACKER_STORAGE_KEYS.TEMPLATES(trackerId);
