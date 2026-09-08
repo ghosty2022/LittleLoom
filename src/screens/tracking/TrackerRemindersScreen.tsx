@@ -65,6 +65,9 @@ import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
+// ✅ FIX: Import Svg at the top before any usage
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+
 const { width, height } = Dimensions.get('window');
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -324,10 +327,10 @@ const ReminderStatsRing = React.memo(({ total, active, isDark }: { total: number
       <View style={[styles.statsRingWrap, { width: size, height: size }]}>
         <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <Defs>
-            <LinearGradient id="statsRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <SvgLinearGradient id="statsRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <Stop offset="0%" stopColor="#6366f1" />
               <Stop offset="100%" stopColor="#a78bfa" />
-            </LinearGradient>
+            </SvgLinearGradient>
           </Defs>
           <Circle
             cx={size / 2}
@@ -368,9 +371,6 @@ const ReminderStatsRing = React.memo(({ total, active, isDark }: { total: number
     </Animated.View>
   );
 });
-
-// Import Svg components
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
 /* ═══════════════════════════════════════════════════════════════
    NEW FEATURE 2: Category Breakdown — Like Rarity Showcase
@@ -802,8 +802,8 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const scrollY = useSharedValue(0);
   const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
   const sweetAlert = useSweetAlert();
-  const { currentBaby, babies, loadBabies } = useBaby();
-  const { entries: activities } = useActivity();
+  const { currentBaby, babies, loadBabies, isLoading: babyLoading } = useBaby();
+  const { entries: activities, isLoading: activityLoading } = useActivity();
 
   /* ---- State ---- */
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -822,6 +822,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const [analytics, setAnalytics] = useState<any>({});
   const [dailyInsights, setDailyInsights] = useState<DailyInsight[]>([]);
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const [formTitle, setFormTitle] = useState('');
   const [formCategory, setFormCategory] = useState<CategoryType>('custom');
@@ -897,15 +898,14 @@ export default function RemindersScreen({ navigation, route }: Props) {
 
   /* ---- Baby required modal ---- */
   useEffect(() => {
-    if (!baby) {
-      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
-      return () => clearTimeout(timer);
+    if (!baby && !isInitialLoad) {
+      setShowBabyRequiredModal(true);
     } else {
       setShowBabyRequiredModal(false);
     }
   }, [baby]);
 
-  /* ---- Data loading ---- */
+  /* ---- Data loading with instant display ---- */
   const loadData = async () => {
     setIsLoading(true);
     try {
@@ -922,6 +922,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
       setReminders(getDefaultReminders());
     } finally {
       setIsLoading(false);
+      setIsInitialLoad(false);
     }
   };
 
@@ -1434,22 +1435,15 @@ export default function RemindersScreen({ navigation, route }: Props) {
     }
   };
 
-  /* ---- Loading state ---- */
-  if (isLoading) {
-    return (
-      <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0']} style={StyleSheet.absoluteFill} />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={themeColors?.primary || '#6366f1'} />
-          <Text style={[styles.loadingText, isDark && styles.textDark]}>Loading reminders...</Text>
-        </View>
-      </View>
-    );
-  }
+  /* ═══════════════════════════════════════════════════════════════
+     ⚡ INSTANT LOADING: Show content immediately, no spinner
+     ═══════════════════════════════════════════════════════════════ */
 
-  /* ---- No baby state ---- */
-  if (!baby) {
+  // ❌ No loading spinner - show content instantly even if data is loading
+  // Only show loading if truly nothing exists and still loading
+
+  /* ---- No baby state (shown instantly) ---- */
+  if (!baby && !isInitialLoad) {
     return (
       <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -1511,6 +1505,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
     );
   }
 
+  // ⚡ Show content even while loading - no spinner
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent />
@@ -1519,8 +1514,12 @@ export default function RemindersScreen({ navigation, route }: Props) {
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, headerAnimatedStyle]}>
         <BlurView intensity={isDark ? 40 : 80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-        <Text style={[styles.stickyTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{baby.name}'s Reminders</Text>
-        <Text style={[styles.stickySubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>{reminders.filter(r => r.enabled).length} active</Text>
+        <Text style={[styles.stickyTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+          {baby?.name ? `${baby.name}'s Reminders` : 'Reminders'}
+        </Text>
+        <Text style={[styles.stickySubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+          {reminders.filter(r => r.enabled).length} active
+        </Text>
       </Animated.View>
 
       <Animated.ScrollView
@@ -1537,7 +1536,9 @@ export default function RemindersScreen({ navigation, route }: Props) {
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{baby.name}'s Reminders</Text>
+            <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+              {baby?.name ? `${baby.name}'s Reminders` : 'Reminders'}
+            </Text>
             <View style={[styles.pointsBadge, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
               <Ionicons name="time" size={14} color="#6366f1" />
               <Text style={[styles.pointsText, { color: '#6366f1' }]}>{reminders.filter(r => r.enabled).length} active</Text>
@@ -1550,63 +1551,73 @@ export default function RemindersScreen({ navigation, route }: Props) {
         </Animated.View>
 
         {/* ── BABY INFO CARD ── */}
-        <Animated.View entering={FadeInDown.delay(100).springify()}>
-          <GlassCard onPress={() => babies.length > 1 && navigation.navigate('SwitchBaby')}>
-            <View style={styles.babyRow}>
-              <SafeBabyAvatar
-                avatar={baby.avatar}
-                gender={baby.gender}
-                size={60}
-                showBadge={streakData.current > 0}
-                animated={!shouldReduceMotion}
-              />
-              <View style={styles.babyInfo}>
-                <Text style={[styles.babyName, { color: isDark ? '#fff' : '#1e293b' }]}>{baby.name}</Text>
-                <Text style={[styles.babyAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>{baby.age}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: streakData.atRisk ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)' }]}>
-                  <Ionicons name={streakData.atRisk ? 'flame-outline' : 'checkmark-circle'} size={14} color={streakData.atRisk ? '#ef4444' : '#10b981'} />
-                  <Text style={[styles.statusText, { color: streakData.atRisk ? '#ef4444' : '#10b981' }]}>
-                    {streakData.atRisk ? 'Streak at risk!' : `${streakData.current}d streak`}
-                  </Text>
+        {baby && (
+          <Animated.View entering={FadeInDown.delay(100).springify()}>
+            <GlassCard onPress={() => babies.length > 1 && navigation.navigate('SwitchBaby')}>
+              <View style={styles.babyRow}>
+                <SafeBabyAvatar
+                  avatar={baby.avatar}
+                  gender={baby.gender}
+                  size={60}
+                  showBadge={streakData.current > 0}
+                  animated={!shouldReduceMotion}
+                />
+                <View style={styles.babyInfo}>
+                  <Text style={[styles.babyName, { color: isDark ? '#fff' : '#1e293b' }]}>{baby.name}</Text>
+                  <Text style={[styles.babyAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>{baby.age}</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: streakData.atRisk ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)' }]}>
+                    <Ionicons name={streakData.atRisk ? 'flame-outline' : 'checkmark-circle'} size={14} color={streakData.atRisk ? '#ef4444' : '#10b981'} />
+                    <Text style={[styles.statusText, { color: streakData.atRisk ? '#ef4444' : '#10b981' }]}>
+                      {streakData.atRisk ? 'Streak at risk!' : `${streakData.current}d streak`}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.statsCol}>
+                  <Text style={[styles.statValue, { color: isDark ? '#fff' : '#1e293b' }]}>{reminders.filter(r => r.enabled).length}</Text>
+                  <Text style={[styles.statLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Active</Text>
                 </View>
               </View>
-              <View style={styles.statsCol}>
-                <Text style={[styles.statValue, { color: isDark ? '#fff' : '#1e293b' }]}>{reminders.filter(r => r.enabled).length}</Text>
-                <Text style={[styles.statLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Active</Text>
-              </View>
-            </View>
-            {streakData.atRisk && (
-              <View style={styles.warningBanner}>
-                <Ionicons name="warning" size={16} color="#ef4444" />
-                <Text style={styles.warningText}>Log an activity today to keep your streak!</Text>
-                <TouchableOpacity style={styles.warningAction} onPress={() => quickLog('potty')}>
-                  <Text style={styles.warningActionText}>Log Now</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </GlassCard>
-        </Animated.View>
+              {streakData.atRisk && (
+                <View style={styles.warningBanner}>
+                  <Ionicons name="warning" size={16} color="#ef4444" />
+                  <Text style={styles.warningText}>Log an activity today to keep your streak!</Text>
+                  <TouchableOpacity style={styles.warningAction} onPress={() => quickLog('potty')}>
+                    <Text style={styles.warningActionText}>Log Now</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </GlassCard>
+          </Animated.View>
+        )}
 
         {/* ── NEW FEATURE 1: Reminder Stats Ring ── */}
-        <View style={styles.statsRingSection}>
-          <ReminderStatsRing
-            total={reminders.length}
-            active={reminders.filter(r => r.enabled).length}
-            isDark={isDark}
-          />
-        </View>
+        {baby && reminders.length > 0 && (
+          <View style={styles.statsRingSection}>
+            <ReminderStatsRing
+              total={reminders.length}
+              active={reminders.filter(r => r.enabled).length}
+              isDark={isDark}
+            />
+          </View>
+        )}
 
         {/* ── NEW FEATURE 2: Category Breakdown ── */}
-        <CategoryBreakdown reminders={reminders} isDark={isDark} />
+        {baby && reminders.length > 0 && (
+          <CategoryBreakdown reminders={reminders} isDark={isDark} />
+        )}
 
         {/* ── Daily Insights ── */}
-        <DailyInsights insights={dailyInsights} isDark={isDark} onAction={(insight) => {
-          triggerHaptic('light');
-          if (insight.actionScreen) navigation.navigate(insight.actionScreen as any);
-        }} />
+        {baby && dailyInsights.length > 0 && (
+          <DailyInsights insights={dailyInsights} isDark={isDark} onAction={(insight) => {
+            triggerHaptic('light');
+            if (insight.actionScreen) navigation.navigate(insight.actionScreen as any);
+          }} />
+        )}
 
         {/* ── NEW FEATURE 3: Upcoming Timeline ── */}
-        <UpcomingTimeline reminders={reminders} onPress={openEditModal} isDark={isDark} />
+        {baby && reminders.filter(r => r.enabled).length > 0 && (
+          <UpcomingTimeline reminders={reminders} onPress={openEditModal} isDark={isDark} />
+        )}
 
         {/* ── View Mode Tabs ── */}
         <ViewModeTabs
@@ -1621,7 +1632,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
         />
 
         {/* ── Category Filter ── */}
-        {(viewMode === 'today' || viewMode === 'upcoming' || viewMode === 'all') && (
+        {(viewMode === 'today' || viewMode === 'upcoming' || viewMode === 'all') && reminders.length > 0 && (
           <CategoryFilter
             reminders={reminders}
             selectedCategory={activeCategory}
