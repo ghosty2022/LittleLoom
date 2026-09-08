@@ -1727,19 +1727,32 @@ export default function AddEntryScreen() {
     (route.params as any)?.editMode ? (route.params as any)?.eventId : undefined,
     [route.params]
   );
-
-  const handleTrackerSelect = useCallback((trackerId: string) => {
-    setSelectedTrackerId(trackerId);
-    setShowPicker(false);
-    setPendingOptions({ photoUris: [] });
-    setErrors([]);
-    setDismissedCorrelations(new Set());
-    setDismissedReminders(new Set());
-    setAppliedCorrelationPrefill(null);
-    setAppliedSuggestions(new Set());
-    setShowYesterdayModal(false);
-    setYesterdayEntries([]);
-  }, []);
+const handleTrackerSelect = useCallback((trackerId: string) => {
+  // Verify tracker exists before proceeding
+  const tracker = getTracker(trackerId);
+  if (!tracker) {
+    console.warn('[AddEntry] Tracker not found:', trackerId);
+    // Show error to user
+    error('Tracker Not Found', 'The selected tracker could not be loaded. Please try again.');
+    return;
+  }
+  
+  setSelectedTrackerId(trackerId);
+  setShowPicker(false);
+  // Preserve photoUris from preset data if any
+  setPendingOptions((prev) => ({
+    photoUris: prev?.photoUris || [],
+    notes: prev?.notes || '',
+    tags: prev?.tags || [],
+  }));
+  setErrors([]);
+  setDismissedCorrelations(new Set());
+  setDismissedReminders(new Set());
+  setAppliedCorrelationPrefill(null);
+  setAppliedSuggestions(new Set());
+  setShowYesterdayModal(false);
+  setYesterdayEntries([]);
+}, [getTracker, error]);
 
   const handlePickerClose = useCallback(() => {
     if (!selectedTrackerId) {
