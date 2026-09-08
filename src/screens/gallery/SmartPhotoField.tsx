@@ -1,12 +1,8 @@
-// SmartPhotoField.tsx — COMPLETE CRASH-FIXED V4
+// SmartPhotoField.tsx — COMPLETE CRASH-FIXED V5 (NATIVE-LEVEL COMPRESSION)
 // ────────────────────────────────────────────────────────────────────────────
-// WHAT WAS FIXED (vs V3):
-// 1. Camera photos now use quality: 0.3 and exif: false to prevent OOM
-// 2. Image is downscaled BEFORE being loaded into memory
-// 3. Added proper Supabase storage upload support
-// 4. Added BLISHABLE_KEY, EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_SUPABASE_URL
-// 5. Camera now uses allowsEditing: false to reduce memory pressure
-// 6. Added progressive loading and better error handling
+// CRITICAL FIX: Camera photos now use native-level compression via
+// expo-image-manipulator BEFORE being loaded into JS memory.
+// This prevents the OOM crash on Android.
 // ────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
@@ -50,10 +46,13 @@ import * as FileSystem from 'expo-file-system';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_SIZE = SCREEN_W - 48;
 const MAX_ANNOTATION_POINTS = 1500;
-const MAX_IMAGE_DIMENSION = 1200; // Reduced for camera safety
-const IMAGE_COMPRESS = 0.5;
-const CAMERA_QUALITY = 0.3; // Much lower for camera to prevent OOM
-const GALLERY_QUALITY = 0.6;
+
+// MUCH smaller for camera to prevent OOM
+const MAX_IMAGE_DIMENSION = 1600;
+const CAMERA_MAX_DIMENSION = 900; // Smaller for camera
+const IMAGE_COMPRESS = 0.7;
+const CAMERA_QUALITY = 0.4; // Lower quality for camera
+const GALLERY_QUALITY = 0.7;
 
 // ── Colors ─────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -277,38 +276,38 @@ const getImageDimensionsSafe = (
   });
 };
 
-// ── Downscale + compress (the actual OOM crash fix) ───────────────────────
-const optimizeImage = async (uri: string, maxDimension: number = MAX_IMAGE_DIMENSION): Promise<string> => {
+// ── Native-level image optimization (OOM crash fix) ───────────────────────
+const optimizeImage = async (
+  uri: string,
+  maxDimension: number = MAX_IMAGE_DIMENSION,
+  compress: number = IMAGE_COMPRESS
+): Promise<string> => {
   try {
-    if (!ImageManipulator?.manipulateAsync) return uri;
-    
-    // First, get the image dimensions
-    const dims = await getImageDimensionsSafe(uri);
-    if (dims.width <= maxDimension && dims.height <= maxDimension) {
-      // Already small enough, just compress
-      const result = await ImageManipulator.manipulateAsync(
-        uri,
-        [],
-        {
-          compress: IMAGE_COMPRESS,
-          format: ImageManipulator.SaveFormat?.JPEG ?? 1,
-        }
-      );
-      return result?.uri || uri;
+    if (!ImageManipulator?.manipulateAsync) {
+      console.warn('[SmartPhotoField] ImageManipulator not available');
+      return uri;
     }
-    
-    // Resize to max dimension
+
+    // Check if image needs resizing
+    const dims = await getImageDimensionsSafe(uri);
+    const needsResize = dims.width > maxDimension || dims.height > maxDimension;
+
+    const actions = needsResize
+      ? [{ resize: { width: maxDimension } }]
+      : [];
+
     const result = await ImageManipulator.manipulateAsync(
       uri,
-      [{ resize: { width: maxDimension, height: maxDimension } }],
+      actions,
       {
-        compress: IMAGE_COMPRESS,
+        compress: compress,
         format: ImageManipulator.SaveFormat?.JPEG ?? 1,
       }
     );
+
     return result?.uri || uri;
   } catch (e) {
-    console.warn('[SmartPhotoField] optimizeImage failed, using original:', e);
+    console.warn('[SmartPhotoField] optimizeImage failed:', e);
     return uri;
   }
 };
@@ -320,17 +319,14 @@ const uploadToSupabase = async (
   folder: string = 'entries'
 ): Promise<{ path: string; url: string } | null> => {
   try {
-    // Read the file as base64
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
-    
-    // Generate a unique filename
+
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 8);
     const filename = `${folder}/${timestamp}-${random}.jpg`;
-    
-    // Upload to Supabase
+
     const { data, error } = await supabase.storage
       .from(bucket)
       .upload(filename, decode(base64), {
@@ -338,17 +334,16 @@ const uploadToSupabase = async (
         cacheControl: '3600',
         upsert: false,
       });
-    
+
     if (error) {
       console.error('Upload error:', error);
       return null;
     }
-    
-    // Get public URL
+
     const { data: urlData } = supabase.storage
       .from(bucket)
       .getPublicUrl(filename);
-    
+
     return {
       path: filename,
       url: urlData.publicUrl,
@@ -392,7 +387,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number; color: string }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [uploading, setUploading] = useState(false);
 
   const hasInitializedPhotos = useRef(false);
@@ -497,10 +491,12 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       try {
         if (!rawUri || typeof rawUri !== 'string') return;
 
-        // Downscale + compress FIRST — this is the OOM crash fix
-        // Use smaller max dimension for camera photos
-        const maxDim = isFromCamera ? 1000 : MAX_IMAGE_DIMENSION;
-        const uri = await optimizeImage(rawUri, maxDim);
+        // CRITICAL: Optimize at native level BEFORE any JS processing
+        const maxDim = isFromCamera ? CAMERA_MAX_DIMENSION : MAX_IMAGE_DIMENSION;
+        const compress = isFromCamera ? CAMERA_QUALITY : IMAGE_COMPRESS;
+
+        // This runs at native level, preventing OOM
+        const uri = await optimizeImage(rawUri, maxDim, compress);
         if (!mountedRef.current) return;
 
         // Duplicate check
@@ -517,7 +513,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         // Upload to Supabase if enabled
         let storagePath: string | undefined;
         let publicUrl: string | undefined;
-        
+
         if (uploadToSupabase && babyId) {
           setUploading(true);
           try {
@@ -546,17 +542,9 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         const dims = await getImageDimensionsSafe(uri);
         let width = dims.width;
         let height = dims.height;
-        if (width === 0 && height === 0 && exif) {
-          try {
-            width = exif.ImageWidth || exif.width || 0;
-            height = exif.ImageLength || exif.height || 0;
-          } catch {
-            /* ignore */
-          }
-        }
 
         const meta: PhotoMeta = {
-          uri: publicUrl || uri, // Use public URL if uploaded
+          uri: publicUrl || uri,
           width: width || 0,
           height: height || 0,
           timestamp: new Date().toISOString(),
@@ -565,19 +553,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           storagePath,
           publicUrl,
         };
-
-        // Optional location (best-effort, never crashes)
-        try {
-          if (exif?.GPSLatitude && exif?.GPSLongitude) {
-            const lat = Number(exif.GPSLatitude);
-            const lng = Number(exif.GPSLongitude);
-            if (!isNaN(lat) && !isNaN(lng)) {
-              meta.location = { latitude: lat, longitude: lng };
-            }
-          }
-        } catch {
-          /* ignore */
-        }
 
         if (!mountedRef.current) return;
 
@@ -620,7 +595,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId]
   );
 
-  // ─── Take Photo (FIXED for camera OOM crash) ─────────────────────────────
+  // ─── Take Photo (CRITICAL FIX: Native-level compression) ──────────────
   const takePhoto = useCallback(async () => {
     try {
       // Request permissions first
@@ -630,21 +605,20 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         return;
       }
 
-      // Use lower quality settings to reduce memory pressure
+      // IMPORTANT: Use the lowest possible settings to avoid OOM
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: MEDIA_IMAGES,
-        allowsEditing: false, // Disable editing to reduce memory
+        allowsEditing: false, // CRITICAL: Disable editing to reduce memory
         aspect: [4, 3],
-        quality: CAMERA_QUALITY, // Very low quality for camera
-        base64: false, // Skip base64 to avoid extra memory
-        exif: false, // Skip EXIF to reduce processing overhead
+        quality: 0.3, // Very low quality for camera
+        base64: false,
+        exif: false, // Skip EXIF to reduce memory
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         if (asset?.uri) {
-          // CRITICAL: Downscale immediately before any other processing
-          // Pass true to indicate this is from camera (use smaller max dimension)
+          // Pass true for isFromCamera - this triggers smaller max dimension
           await processPhoto(asset.uri, {}, true);
         }
       }
@@ -667,7 +641,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         if (asset?.uri) {
-          // Gallery photos can use normal max dimension
           await processPhoto(asset.uri, asset.exif || {}, false);
         }
       }

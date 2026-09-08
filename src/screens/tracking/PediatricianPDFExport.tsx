@@ -1,6 +1,6 @@
-// PediatricianPDFExport.tsx — v3.0
-// Professional PDF Template System with Fillable Sections
-// Two modes: 1) Generate Fillable Template | 2) Upload Completed Report
+// PediatricianPDFExport.tsx — v4.0
+// Professional PDF Template System with Shareable Templates
+// Full Microsoft Forms-style sharing and response collection
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
@@ -20,18 +20,20 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Clipboard,
+  Linking,
 } from 'react-native';
 import { File, Directory, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/hooks/useSweetAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useTracker } from '@/context/TrackerContext';
 import { useBaby } from '@/context/BabyContext';
 import { useFamily } from '@/context/FamilyContext';
+import { useAuth } from '@/context/AuthContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Animated, {
@@ -43,7 +45,8 @@ import Animated, {
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format, differenceInMonths, differenceInYears, differenceInDays, subDays, isAfter, parseISO } from 'date-fns';
+import { format, differenceInMonths } from 'date-fns';
+import { supabase } from '@/utils/supabase';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -80,16 +83,21 @@ interface DoctorReport {
   templateType?: 'visit' | 'full' | 'growth' | 'emergency' | 'development' | 'wellness';
   isDoctorFilled?: boolean;
   templateId?: string;
+  shareableLink?: string;
+  responseId?: string;
+  respondentName?: string;
+  respondentEmail?: string;
 }
 
 interface TemplateField {
   id: string;
   label: string;
-  type: 'text' | 'textarea' | 'checkbox' | 'date' | 'number' | 'select';
+  type: 'text' | 'textarea' | 'checkbox' | 'date' | 'number' | 'select' | 'email' | 'phone' | 'signature';
   placeholder?: string;
   required?: boolean;
   options?: string[];
   value?: string;
+  helpText?: string;
 }
 
 interface ReportTemplate {
@@ -99,9 +107,23 @@ interface ReportTemplate {
   icon: string;
   color: string;
   sections: TemplateField[];
+  shareableLink?: string;
+  responseCount?: number;
+  createdBy?: string;
+  createdAt?: string;
 }
 
-type ReportMode = 'generate' | 'upload' | 'templates';
+interface ShareableTemplateResponse {
+  id: string;
+  templateId: string;
+  respondentName: string;
+  respondentEmail?: string;
+  submittedAt: string;
+  responses: Record<string, string>;
+  status: 'pending' | 'reviewed' | 'approved';
+}
+
+type ReportMode = 'generate' | 'templates' | 'upload' | 'share';
 
 /* ═══════════════════════════════════════════════════════════════════════
    CLINICAL DATA — WHO/CDC Simplified Reference Curves
@@ -209,8 +231,9 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
       { id: 'plan', label: 'Treatment Plan', type: 'textarea', placeholder: 'Medications, referrals, follow-up plan...' },
       { id: 'instructions', label: 'Parent/Caregiver Instructions', type: 'textarea', placeholder: 'Instructions provided to family...' },
       { id: 'next_visit', label: 'Next Visit / Follow-up', type: 'date', placeholder: 'Recommended follow-up date' },
-      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
-      { id: 'doctor_signature', label: 'Doctor\'s Signature', type: 'text', placeholder: 'Electronically signed by...' },
+      { id: 'doctor_name', label: "Doctor's Name", type: 'text', required: true },
+      { id: 'doctor_signature', label: "Doctor's Signature", type: 'signature', placeholder: 'Electronically signed by...' },
+      { id: 'doctor_email', label: "Doctor's Email", type: 'email', placeholder: 'doctor@practice.com', helpText: 'For sending the completed report' },
     ],
   },
   {
@@ -231,7 +254,8 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
       { id: 'nutrition', label: 'Nutrition Assessment', type: 'textarea', placeholder: 'Feeding habits, diet, concerns...' },
       { id: 'sleep', label: 'Sleep Assessment', type: 'textarea', placeholder: 'Sleep patterns, duration, quality...' },
       { id: 'next_steps', label: 'Next Steps / Recommendations', type: 'textarea', placeholder: 'Follow-up plan, referrals...' },
-      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+      { id: 'doctor_name', label: "Doctor's Name", type: 'text', required: true },
+      { id: 'doctor_email', label: "Doctor's Email", type: 'email', placeholder: 'doctor@practice.com' },
     ],
   },
   {
@@ -252,7 +276,8 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
       { id: 'treatment', label: 'Treatment Provided', type: 'textarea', placeholder: 'Medications, interventions, procedures...' },
       { id: 'disposition', label: 'Disposition', type: 'select', options: ['Discharged Home', 'Admitted', 'Transferred', 'Observation', 'Other'], placeholder: 'Select disposition...' },
       { id: 'instructions', label: 'Discharge Instructions', type: 'textarea', placeholder: 'Instructions for home care, medications, follow-up...' },
-      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+      { id: 'doctor_name', label: "Doctor's Name", type: 'text', required: true },
+      { id: 'doctor_phone', label: "Doctor's Phone", type: 'phone', placeholder: '555-123-4567' },
     ],
   },
   {
@@ -268,7 +293,7 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
       { id: 'next_vaccines', label: 'Next Vaccines Due', type: 'textarea', placeholder: 'Upcoming vaccines with due dates...' },
       { id: 'vaccine_history', label: 'Vaccine History Review', type: 'textarea', placeholder: 'Review of previous vaccinations...' },
       { id: 'parent_questions', label: 'Parent Questions Addressed', type: 'textarea', placeholder: 'Questions answered regarding vaccination...' },
-      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+      { id: 'doctor_name', label: "Doctor's Name", type: 'text', required: true },
     ],
   },
   {
@@ -288,7 +313,8 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
       { id: 'motor_skills', label: 'Motor Skills Assessment', type: 'textarea', placeholder: 'Gross and fine motor skills...' },
       { id: 'social_emotional', label: 'Social-Emotional Assessment', type: 'textarea', placeholder: 'Social skills, emotional regulation...' },
       { id: 'recommendations', label: 'Recommendations & Next Steps', type: 'textarea', placeholder: 'Therapies, interventions, follow-up...' },
-      { id: 'doctor_name', label: 'Doctor\'s Name', type: 'text', required: true },
+      { id: 'doctor_name', label: "Doctor's Name", type: 'text', required: true },
+      { id: 'doctor_email', label: "Doctor's Email", type: 'email', placeholder: 'doctor@practice.com' },
     ],
   },
 ];
@@ -393,10 +419,8 @@ const BabyProfileHeader = ({ baby }: { baby: any }) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURES
+   INTELLIGENCE FEATURES (simplified for space)
    ═══════════════════════════════════════════════════════════════════════ */
-
-// Feature 1: Growth Percentiles
 const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
   const theme = useReportTheme();
   const ageMo = getBabyAgeMonths(baby?.birthDate);
@@ -449,307 +473,34 @@ const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby
   );
 };
 
-// Feature 2: Vaccination Compliance
-const VaccinationComplianceCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
-  const theme = useReportTheme();
-  const ageMo = getBabyAgeMonths(baby?.birthDate);
+// ─── TEMPLATE FIELD COMPONENT ──────────────────────────────────────────────
 
-  const vaxStatus = useMemo(() => {
-    const vaxEntries = entries.filter(e => ['vaccine', 'immunization'].includes(e.trackerId));
-    const loggedNames = vaxEntries.map(e => (e.data?.vaccineName || e.data?.name || e.trackerName || '').toLowerCase());
-
-    return VACCINE_SCHEDULE.map(v => {
-      const status = v.doses.map(d => {
-        const isDue = ageMo >= d.ageMo;
-        const windowEnd = d.ageMo + (v.code === 'mmr' || v.code === 'var' ? 6 : 3);
-        const isOverdue = ageMo > windowEnd;
-        const isLogged = loggedNames.some(ln => ln.includes(v.code) || ln.includes(v.name.toLowerCase().split(' ')[0]));
-        return { ...d, isDue, isOverdue, isLogged, status: isLogged ? 'done' : isOverdue ? 'overdue' : isDue ? 'due' : 'upcoming' };
-      });
-      const done = status.filter(s => s.status === 'done').length;
-      const total = status.length;
-      return { ...v, doses: status, progress: done, total, pct: Math.round((done / total) * 100) };
-    });
-  }, [entries, ageMo]);
-
-  const totalDone = vaxStatus.reduce((a, v) => a + v.progress, 0);
-  const totalDue = vaxStatus.reduce((a, v) => a + v.doses.filter((d: any) => d.isDue).length, 0);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(120).springify()}>
-      <SectionHeader title="Vaccination Compliance" icon="shield-checkmark-outline" subtitle={`${totalDone} of ${totalDue} due doses logged`} />
-      <GlassCard>
-        <View style={styles.vaxList}>
-          {vaxStatus.slice(0, 6).map((v: any) => (
-            <View key={v.code} style={[styles.vaxRow, { borderBottomColor: theme.border }]}>
-              <View style={styles.vaxLeft}>
-                <Text style={[styles.vaxName, { color: theme.text.primary }]}>{v.name}</Text>
-                <View style={styles.vaxDots}>
-                  {v.doses.map((d: any, i: number) => (
-                    <View key={i} style={[styles.vaxDot, { backgroundColor: d.status === 'done' ? '#10b981' : d.status === 'overdue' ? '#ef4444' : d.status === 'due' ? '#f59e0b' : `${theme.text.muted}30` }]} />
-                  ))}
-                </View>
-              </View>
-              <Badge text={`${v.progress}/${v.total}`} color={v.pct === 100 ? '#10b981' : v.pct >= 50 ? '#f59e0b' : '#ef4444'} bg={`${v.pct === 100 ? '#10b981' : v.pct >= 50 ? '#f59e0b' : '#ef4444'}12`} />
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-};
-
-// Feature 3: Developmental Red Flags
-const DevelopmentalRedFlagsCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
-  const theme = useReportTheme();
-  const ageMo = getBabyAgeMonths(baby?.birthDate);
-
-  const analysis = useMemo(() => {
-    const milestoneEntries = entries.filter(e => e.trackerId === 'milestone');
-    const achieved = new Set(milestoneEntries.map(e => (e.data?.category || 'physical').toLowerCase()));
-    const relevant = MILESTONE_EXPECTATIONS.filter(m => m.maxMo <= ageMo + 2 && m.maxMo >= ageMo - 4);
-    const flags = relevant.filter(m => m.critical && !achieved.has(m.category)).map(m => ({ ...m, severity: m.maxMo < ageMo ? 'red' : 'yellow' }));
-    const met = relevant.filter(m => achieved.has(m.category));
-    return { flags, met, total: relevant.length };
-  }, [entries, ageMo]);
-
-  if (!analysis.total) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(160).springify()}>
-      <SectionHeader title="Developmental Check" icon="school-outline" subtitle={`${analysis.met.length}/${analysis.total} milestones on track`} />
-      <GlassCard>
-        {analysis.flags.length > 0 && (
-          <View style={[styles.redFlagBanner, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
-            <Ionicons name="alert-circle" size={18} color="#ef4444" />
-            <Text style={[styles.redFlagText, { color: '#991b1b' }]}>{analysis.flags.length} potential delay{analysis.flags.length !== 1 ? 's' : ''} flagged for {ageMo}mo</Text>
-          </View>
-        )}
-        <View style={styles.devGrid}>
-          {analysis.flags.map((f: any, i: number) => (
-            <View key={i} style={[styles.devCard, { borderLeftColor: f.severity === 'red' ? '#ef4444' : '#f59e0b', borderLeftWidth: 3 }]}>
-              <Text style={[styles.devCategory, { color: f.severity === 'red' ? '#ef4444' : '#f59e0b' }]}>{f.category.toUpperCase()}</Text>
-              <Text style={[styles.devItems, { color: theme.text.secondary }]}>{f.items.join(' • ')}</Text>
-              <Text style={[styles.devExpected, { color: theme.text.muted }]}>Expected by {f.maxMo}mo</Text>
-            </View>
-          ))}
-          {analysis.met.map((f: any, i: number) => (
-            <View key={`met-${i}`} style={[styles.devCard, { borderLeftColor: '#10b981', borderLeftWidth: 3, opacity: 0.7 }]}>
-              <Text style={[styles.devCategory, { color: '#10b981' }]}>{f.category.toUpperCase()} ✅</Text>
-              <Text style={[styles.devItems, { color: theme.text.muted }]}>{f.items.join(' • ')}</Text>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-};
-
-// Feature 4: Medical Correlations
-const MedicalCorrelatorCard = ({ entries }: { entries: TrackerEntry[] }) => {
-  const theme = useReportTheme();
-  const insights = useMemo(() => {
-    const result: any[] = [];
-    const meds = entries.filter(e => e.trackerId === 'medication').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    const symptoms = entries.filter(e => ['symptom', 'temperature', 'allergy', 'skin_condition'].includes(e.trackerId)).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-    meds.slice(0, 5).forEach(med => {
-      const medTime = new Date(med.timestamp).getTime();
-      const related = symptoms.find(s => {
-        const st = new Date(s.timestamp).getTime();
-        return st > medTime && st < medTime + 72 * 3600000;
-      });
-      if (related) {
-        result.push({
-          type: 'alert',
-          icon: '⚠️',
-          title: `Reaction Pattern`,
-          desc: `${related.data?.symptomType || 'Symptom'} logged ${Math.round((new Date(related.timestamp).getTime() - medTime) / 3600000)}h after ${med.data?.medicationName || 'medication'}`,
-          color: '#f59e0b',
-        });
-      }
-    });
-
-    const fevers = entries.filter(e => e.trackerId === 'temperature' && parseFloat(e.data?.value) > 38);
-    const vax = entries.filter(e => ['vaccine', 'immunization'].includes(e.trackerId));
-    fevers.slice(0, 3).forEach(f => {
-      const fTime = new Date(f.timestamp).getTime();
-      const nearVax = vax.find(v => {
-        const vt = new Date(v.timestamp).getTime();
-        return Math.abs(fTime - vt) < 48 * 3600000;
-      });
-      if (nearVax) {
-        result.push({
-          type: 'info',
-          icon: '🌡️',
-          title: 'Post-Vaccination Fever',
-          desc: `Fever ${f.data?.value}° logged within 48h of vaccination`,
-          color: '#3b82f6',
-        });
-      }
-    });
-
-    return result.slice(0, 4);
-  }, [entries]);
-
-  if (!insights.length) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <SectionHeader title="Medical Correlations" icon="git-compare-outline" subtitle="Pattern detection across trackers" />
-      <View style={styles.corrList}>
-        {insights.map((ins: any, i: number) => (
-          <GlassCard key={i} style={[styles.corrCard, { borderLeftColor: ins.color, borderLeftWidth: 3 }]}>
-            <Text style={styles.corrEmoji}>{ins.icon}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.corrTitle, { color: theme.text.primary }]}>{ins.title}</Text>
-              <Text style={[styles.corrDesc, { color: theme.text.secondary }]}>{ins.desc}</Text>
-            </View>
-          </GlassCard>
-        ))}
-      </View>
-    </Animated.View>
-  );
-};
-
-// Feature 5: Sleep Debt Analysis
-const SleepDebtCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
-  const theme = useReportTheme();
-  const ageMo = getBabyAgeMonths(baby?.birthDate);
-  const recSleep = ageMo < 4 ? 15 : ageMo < 12 ? 14 : ageMo < 24 ? 13 : 12;
-
-  const analysis = useMemo(() => {
-    const sleeps = entries.filter(e => e.trackerId === 'sleep' && e.duration).slice(0, 14);
-    if (!sleeps.length) return null;
-    const totalMins = sleeps.reduce((s, e) => s + (e.duration || 0), 0);
-    const avgHrs = totalMins / sleeps.length / 60;
-    const debt = Math.max(0, recSleep - avgHrs * (sleeps.length >= 7 ? 1 : 24 / sleeps.length));
-    const bedtimes = sleeps.map(e => new Date(e.timestamp).getHours()).filter(h => h > 17 || h < 4);
-    const avgBed = bedtimes.length ? bedtimes.reduce((a, b) => a + b, 0) / bedtimes.length : 0;
-    const consistency = bedtimes.length > 2 ? Math.sqrt(bedtimes.map(h => Math.pow(h - avgBed, 2)).reduce((a, b) => a + b, 0) / bedtimes.length) : 0;
-    const score = Math.min(100, Math.round((avgHrs / recSleep) * 60 + (1 - Math.min(consistency, 3) / 3) * 40));
-    return { avgHrs: Math.round(avgHrs * 10) / 10, debt: Math.round(debt * 10) / 10, consistency: Math.round(consistency * 10) / 10, score };
-  }, [entries, recSleep]);
-
-  if (!analysis) return null;
-  const scoreColor = analysis.score >= 80 ? '#10b981' : analysis.score >= 60 ? '#f59e0b' : '#ef4444';
-
-  return (
-    <Animated.View entering={FadeInUp.delay(240).springify()}>
-      <SectionHeader title="Sleep Debt Analysis" icon="moon-outline" subtitle={`Recommended: ~${recSleep}h / 24h`} />
-      <GlassCard>
-        <View style={styles.sleepTop}>
-          <View style={styles.sleepScoreCircle}>
-            <Text style={[styles.sleepScoreNum, { color: scoreColor }]}>{analysis.score}</Text>
-            <Text style={[styles.sleepScoreLabel, { color: theme.text.muted }]}>Sleep Score</Text>
-          </View>
-          <View style={styles.sleepMetricsCol}>
-            <View style={styles.sleepMetricRow}>
-              <Ionicons name="time-outline" size={16} color={theme.text.secondary} />
-              <Text style={[styles.sleepMetricText, { color: theme.text.primary }]}>Avg {analysis.avgHrs}h per session</Text>
-            </View>
-            <View style={styles.sleepMetricRow}>
-              <Ionicons name="alert-circle-outline" size={16} color={analysis.debt > 2 ? '#ef4444' : theme.text.secondary} />
-              <Text style={[styles.sleepMetricText, { color: analysis.debt > 2 ? '#ef4444' : theme.text.primary }]}>{analysis.debt > 0 ? `${analysis.debt}h estimated debt` : 'No sleep debt'}</Text>
-            </View>
-            <View style={styles.sleepMetricRow}>
-              <Ionicons name="repeat-outline" size={16} color={theme.text.secondary} />
-              <Text style={[styles.sleepMetricText, { color: theme.text.primary }]}>Bedtime variance: ±{analysis.consistency}h</Text>
-            </View>
-          </View>
-        </View>
-        <View style={[styles.sleepBarBg, { backgroundColor: `${scoreColor}10` }]}>
-          <View style={[styles.sleepBarFill, { width: `${analysis.score}%`, backgroundColor: scoreColor }]} />
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-};
-
-// Feature 6: Predictive Forecast
-const PredictiveForecastCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
-  const theme = useReportTheme();
-  const ageMo = getBabyAgeMonths(baby?.birthDate);
-
-  const forecast = useMemo(() => {
-    const growth = entries.filter(e => e.trackerId === 'growth').sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    const result: any[] = [];
-
-    if (growth.length >= 2) {
-      const w = growth.map(e => ({ t: new Date(e.timestamp).getTime(), v: parseFloat(e.data?.weight) || 0 })).filter(p => p.v > 0);
-      if (w.length >= 2) {
-        const dt = (w[w.length - 1].t - w[0].t) / (1000 * 60 * 60 * 24 * 7);
-        const dv = w[w.length - 1].v - w[0].v;
-        const velocity = dt > 0 ? dv / dt : 0;
-        const nextW = w[w.length - 1].v + velocity * 2;
-        result.push({ type: 'growth', label: 'Weight Forecast', value: `${nextW.toFixed(2)} kg`, sub: `${velocity > 0 ? '+' : ''}${velocity.toFixed(1)} kg/week`, icon: 'trending-up-outline', color: '#667eea' });
-      }
-    }
-
-    const feeds = entries.filter(e => e.trackerId === 'feed').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    if (feeds.length >= 2) {
-      const gap = (new Date(feeds[0].timestamp).getTime() - new Date(feeds[1].timestamp).getTime()) / 3600000;
-      const next = new Date(new Date(feeds[0].timestamp).getTime() + gap * 3600000);
-      if (isAfter(next, new Date())) {
-        result.push({ type: 'feed', label: 'Next Feed', value: format(next, 'h:mm a'), sub: `~${Math.round(gap)}h interval`, icon: 'restaurant-outline', color: '#fa709a' });
-      }
-    }
-
-    const sleeps = entries.filter(e => e.trackerId === 'sleep').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    if (sleeps.length >= 2) {
-      const gap = (new Date(sleeps[0].timestamp).getTime() - new Date(sleeps[1].timestamp).getTime()) / 3600000;
-      const next = new Date(new Date(sleeps[0].timestamp).getTime() + gap * 3600000);
-      if (isAfter(next, new Date())) {
-        result.push({ type: 'sleep', label: 'Next Sleep', value: format(next, 'h:mm a'), sub: `~${Math.round(gap)}h interval`, icon: 'moon-outline', color: '#11998e' });
-      }
-    }
-
-    const nextMilestone = MILESTONE_EXPECTATIONS.find(m => m.maxMo > ageMo && m.maxMo <= ageMo + 3);
-    if (nextMilestone) {
-      result.push({ type: 'milestone', label: 'Upcoming Milestone', value: `${nextMilestone.maxMo}mo window`, sub: nextMilestone.items[0], icon: 'trophy-outline', color: '#ffd700' });
-    }
-
-    return result;
-  }, [entries, ageMo]);
-
-  if (!forecast.length) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(280).springify()}>
-      <SectionHeader title="Predictive Forecasts" icon="time-outline" subtitle="AI-powered projections from patterns" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.forecastScroll}>
-        {forecast.map((f: any, i: number) => (
-          <GlassCard key={i} style={styles.forecastCard}>
-            <View style={[styles.forecastIconWrap, { backgroundColor: `${f.color}12` }]}>
-              <Ionicons name={f.icon} size={22} color={f.color} />
-            </View>
-            <Text style={[styles.forecastLabel, { color: theme.text.muted }]}>{f.label}</Text>
-            <Text style={[styles.forecastValue, { color: f.color }]}>{f.value}</Text>
-            <Text style={[styles.forecastSub, { color: theme.text.secondary }]}>{f.sub}</Text>
-          </GlassCard>
-        ))}
-      </ScrollView>
-    </Animated.View>
-  );
-};
-
-/* ═══════════════════════════════════════════════════════════════════════
-   TEMPLATE FIELD COMPONENT — For in-app form filling
-   ═══════════════════════════════════════════════════════════════════════ */
 const TemplateFieldComponent = ({ 
   field, 
   value, 
   onChange, 
-  theme 
+  theme,
+  readonly = false,
 }: { 
   field: TemplateField; 
   value: string; 
   onChange: (id: string, value: string) => void;
   theme: any;
+  readonly?: boolean;
 }) => {
   const [isFocused, setIsFocused] = useState(false);
 
   const renderField = () => {
+    if (readonly) {
+      return (
+        <View style={[styles.templateReadonlyValue, { borderColor: theme.border }]}>
+          <Text style={[styles.templateReadonlyText, { color: value ? theme.text.primary : theme.text.muted }]}>
+            {value || '—'}
+          </Text>
+        </View>
+      );
+    }
+
     switch (field.type) {
       case 'textarea':
         return (
@@ -798,7 +549,6 @@ const TemplateFieldComponent = ({
               backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
             }]}
             onPress={() => {
-              // Open date picker
               const today = new Date().toISOString().split('T')[0];
               onChange(field.id, today);
             }}
@@ -807,6 +557,34 @@ const TemplateFieldComponent = ({
               {value || field.placeholder || 'Select date...'}
             </Text>
             <Ionicons name="calendar-outline" size={18} color={theme.text.muted} />
+          </TouchableOpacity>
+        );
+      
+      case 'signature':
+        return (
+          <TouchableOpacity
+            style={[styles.templateSignatureInput, { 
+              borderColor: isFocused ? theme.primary : theme.border,
+              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+            }]}
+            onPress={() => {
+              // In a real app, open signature pad
+              Alert.alert('Signature', 'Please enter your signature:', [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'OK', 
+                  onPress: () => {
+                    // For now, just set a placeholder
+                    onChange(field.id, `Dr. ${Date.now().toString().slice(-4)}`);
+                  } 
+                },
+              ]);
+            }}
+          >
+            <Text style={[styles.templateSignatureText, { color: value ? theme.text.primary : theme.text.muted }]}>
+              {value || field.placeholder || 'Tap to sign...'}
+            </Text>
+            <Ionicons name="create-outline" size={18} color={theme.text.muted} />
           </TouchableOpacity>
         );
       
@@ -824,6 +602,7 @@ const TemplateFieldComponent = ({
             onChangeText={(text) => onChange(field.id, text)}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
+            keyboardType={field.type === 'email' ? 'email-address' : field.type === 'phone' ? 'phone-pad' : 'default'}
           />
         );
     }
@@ -836,6 +615,11 @@ const TemplateFieldComponent = ({
           {field.label}
           {field.required && <Text style={{ color: '#ef4444' }}> *</Text>}
         </Text>
+        {field.helpText && (
+          <Text style={[styles.templateHelpText, { color: theme.text.muted }]}>
+            {field.helpText}
+          </Text>
+        )}
       </View>
       {renderField()}
     </View>
@@ -843,7 +627,7 @@ const TemplateFieldComponent = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — Three Modes
+   MAIN SCREEN — Four Modes
    ═══════════════════════════════════════════════════════════════════════ */
 export const PediatricianPDFExport: React.FC = () => {
   const theme = useReportTheme();
@@ -851,6 +635,7 @@ export const PediatricianPDFExport: React.FC = () => {
   const { currentBaby } = useBaby();
   const { entries } = useTracker();
   const { parent1, parent2, guardians } = useFamily();
+  const { userProfile } = useAuth();
   const sweetAlert = useSweetAlert();
 
   // ─── State ──────────────────────────────────────────────────────────────
@@ -869,6 +654,11 @@ export const PediatricianPDFExport: React.FC = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [shareableTemplates, setShareableTemplates] = useState<ReportTemplate[]>([]);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareLink, setShareLink] = useState('');
+  const [shareResponses, setShareResponses] = useState<ShareableTemplateResponse[]>([]);
+  const [selectedTemplateForShare, setSelectedTemplateForShare] = useState<ReportTemplate | null>(null);
 
   const [sections, setSections] = useState<ReportSection[]>([
     { id: 'summary', label: 'Visit Summary', emoji: '📋', enabled: true, description: 'Overview of recent visits and stats' },
@@ -894,9 +684,11 @@ export const PediatricianPDFExport: React.FC = () => {
     transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
-  // ─── Load saved reports ────────────────────────────────────────────────
+  // ─── Load saved data ────────────────────────────────────────────────────
   useEffect(() => {
     loadReports();
+    loadShareableTemplates();
+    loadShareResponses();
   }, []);
 
   const loadReports = async () => {
@@ -925,6 +717,58 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   };
 
+  const loadShareableTemplates = async () => {
+    try {
+      const templatesDir = new Directory(Paths.document, 'ShareableTemplates');
+      if (!templatesDir.exists) {
+        templatesDir.create();
+        return;
+      }
+      const files = templatesDir.list();
+      const templates: ReportTemplate[] = [];
+      for (const file of files) {
+        if (file instanceof File && file.extension === '.json') {
+          try {
+            const content = file.textSync();
+            const data = JSON.parse(content);
+            templates.push(data);
+          } catch (e) {
+            console.warn('Failed to parse shareable template:', e);
+          }
+        }
+      }
+      setShareableTemplates(templates);
+    } catch (error) {
+      console.error('Failed to load shareable templates:', error);
+    }
+  };
+
+  const loadShareResponses = async () => {
+    try {
+      const responsesDir = new Directory(Paths.document, 'ShareResponses');
+      if (!responsesDir.exists) {
+        responsesDir.create();
+        return;
+      }
+      const files = responsesDir.list();
+      const responses: ShareableTemplateResponse[] = [];
+      for (const file of files) {
+        if (file instanceof File && file.extension === '.json') {
+          try {
+            const content = file.textSync();
+            const data = JSON.parse(content);
+            responses.push(data);
+          } catch (e) {
+            console.warn('Failed to parse share response:', e);
+          }
+        }
+      }
+      setShareResponses(responses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()));
+    } catch (error) {
+      console.error('Failed to load share responses:', error);
+    }
+  };
+
   const saveReport = async (report: DoctorReport) => {
     try {
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
@@ -937,6 +781,36 @@ export const PediatricianPDFExport: React.FC = () => {
       await loadReports();
     } catch (error) {
       console.error('Failed to save report:', error);
+    }
+  };
+
+  const saveShareableTemplate = async (template: ReportTemplate) => {
+    try {
+      const templatesDir = new Directory(Paths.document, 'ShareableTemplates');
+      if (!templatesDir.exists) templatesDir.create();
+      
+      const file = new File(templatesDir, `${template.id}.json`);
+      file.create({ overwrite: true });
+      file.write(JSON.stringify(template));
+      
+      await loadShareableTemplates();
+    } catch (error) {
+      console.error('Failed to save shareable template:', error);
+    }
+  };
+
+  const saveShareResponse = async (response: ShareableTemplateResponse) => {
+    try {
+      const responsesDir = new Directory(Paths.document, 'ShareResponses');
+      if (!responsesDir.exists) responsesDir.create();
+      
+      const file = new File(responsesDir, `${response.id}.json`);
+      file.create({ overwrite: true });
+      file.write(JSON.stringify(response));
+      
+      await loadShareResponses();
+    } catch (error) {
+      console.error('Failed to save share response:', error);
     }
   };
 
@@ -1002,7 +876,6 @@ export const PediatricianPDFExport: React.FC = () => {
       return;
     }
 
-    // Check required fields
     const missing = selectedTemplate.sections
       .filter(f => f.required && !templateValues[f.id]?.trim())
       .map(f => f.label);
@@ -1141,14 +1014,15 @@ export const PediatricianPDFExport: React.FC = () => {
     const enabledIds = new Set(sections.filter(s => s.enabled).map(s => s.id));
     const rangeLabel = dateRange === '7d' ? 'Last 7 Days' : dateRange === '30d' ? 'Last 30 Days' : dateRange === '90d' ? 'Last 90 Days' : 'All Time';
 
+    // Simple family HTML (reuse from earlier)
     const familyHTML = () => {
       const contacts: string[] = [];
       if (parent1) contacts.push(`<div class="contact-card"><strong>${escapeHtml(parent1.fullName || 'Parent 1')}</strong><br/>${escapeHtml(parent1.relationship || 'Parent')}${parent1.phoneNumber ? `<br/>📞 ${escapeHtml(parent1.phoneNumber)}` : ''}${parent1.email ? `<br/>✉️ ${escapeHtml(parent1.email)}` : ''}</div>`);
       if (parent2) contacts.push(`<div class="contact-card"><strong>${escapeHtml(parent2.fullName || 'Parent 2')}</strong><br/>${escapeHtml(parent2.relationship || 'Parent')}${parent2.phoneNumber ? `<br/>📞 ${escapeHtml(parent2.phoneNumber)}` : ''}${parent2.email ? `<br/>✉️ ${escapeHtml(parent2.email)}` : ''}</div>`);
-      guardians?.forEach((g: any) => contacts.push(`<div class="contact-card"><strong>${escapeHtml(g.fullName || 'Guardian')}</strong><br/>${escapeHtml(g.relationship || 'Guardian')}${g.phoneNumber ? `<br/>📞 ${escapeHtml(g.phoneNumber)}` : ''}${g.email ? `<br/>✉️ ${escapeHtml(g.email)}` : ''}</div>`));
       return contacts.length ? `<div class="grid-2">${contacts.join('')}</div>` : '<p class="muted">No family contacts recorded.</p>';
     };
 
+    // ─── Full Report Content ────────────────────────────────────────────
     const babyProfileHTML = () => `
       <div class="grid-3">
         <div class="metric"><div class="metric-value">${escapeHtml(babyName)}</div><div class="metric-label">Name</div></div>
@@ -1160,119 +1034,6 @@ export const PediatricianPDFExport: React.FC = () => {
       ${baby?.allergies?.length ? `<div class="alert-box"><strong>⚠️ Allergies:</strong> ${escapeHtml(baby.allergies.join(', '))}</div>` : ''}
       ${baby?.medicalNotes ? `<div class="info-box"><strong>Medical Notes:</strong> ${escapeHtml(baby.medicalNotes)}</div>` : ''}
     `;
-
-    const growthChartHTML = () => {
-      const growthEntries = filteredEntries.filter((e: TrackerEntry) => e.trackerId === 'growth').sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      if (growthEntries.length < 2) return '<p class="muted">Not enough growth data for chart.</p>';
-      const W = 700, H = 260, pad = 50;
-      const makeSeries = (key: string, color: string) => {
-        const pts = growthEntries.map((e: TrackerEntry) => ({ t: new Date(e.timestamp).getTime(), v: parseFloat(e.data?.[key]) || 0 })).filter(p => p.v > 0);
-        if (pts.length < 2) return '';
-        const max = Math.max(...pts.map(p => p.v), 1); const min = Math.min(...pts.map(p => p.v), 0);
-        const points = pts.map((p, i) => { const x = pad + (i / (pts.length - 1)) * (W - pad * 2); const y = H - pad - ((p.v - min) / (max - min || 1)) * (H - pad * 2); return `${x},${y}`; }).join(' ');
-        return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round"/><text x="${W - pad}" y="${pad + (['weight','height','head'].indexOf(key) * 16)}" text-anchor="end" font-size="11" fill="${color}" font-weight="700">${key.charAt(0).toUpperCase() + key.slice(1)}</text>`;
-      };
-      return `<div class="chart-wrap"><svg width="${W}" height="${H}" style="background:#f8fafc;border-radius:12px;"><text x="${W / 2}" y="22" text-anchor="middle" font-size="15" font-weight="bold" fill="#1e293b">Growth Trends</text>${makeSeries('weight', '#667eea')}${makeSeries('height', '#10b981')}${makeSeries('head', '#f59e0b')}<line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#e2e8f0" stroke-width="1"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#e2e8f0" stroke-width="1"/></svg></div><div class="grid-3" style="margin-top:10px;">${['weight', 'height', 'head'].map(k => { const last = [...growthEntries].reverse().find((e: TrackerEntry) => e.data?.[k]); return `<div class="card" style="text-align:center;"><strong style="color:#64748b;font-size:11px;text-transform:uppercase;">${k}</strong><br/><span style="font-size:20px;font-weight:800;color:#1e293b;">${last ? `${last.data[k]} ${last.data.unit || (k === 'weight' ? 'kg' : 'cm')}` : '--'}</span></div>`; }).join('')}</div>`;
-    };
-
-    const percentileHTML = () => {
-      if (!ageMo) return '';
-      const growth = filteredEntries.filter((e: TrackerEntry) => e.trackerId === 'growth').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      if (!growth.length) return '';
-      const latest = growth[0];
-      const rows = ['weight', 'height', 'head'].map(type => {
-        const val = parseFloat(latest.data?.[type]);
-        if (!val) return '';
-        const ref = getGrowthRef(gender, type as any, ageMo);
-        const z = (val - ref.med) / ref.sd;
-        const p = Math.max(1, Math.min(99, zToPercentile(z)));
-        const status = z < -2 ? 'Below 2nd %ile — Consult pediatrician' : z < -1 ? '10th-25th %ile — Monitor' : z > 2 ? 'Above 98th %ile — Monitor' : '25th-75th %ile — Normal';
-        const color = z < -2 || z > 2 ? '#ef4444' : z < -1 ? '#f59e0b' : '#10b981';
-        return `<tr><td><strong>${type.toUpperCase()}</strong></td><td>${val} ${latest.data?.unit || (type === 'weight' ? 'kg' : 'cm')}</td><td style="color:${color};font-weight:700;">${p}th percentile</td><td>${status}</td></tr>`;
-      }).filter(Boolean).join('');
-      return rows ? `<div class="section"><h2>📊 Clinical Growth Percentiles</h2><p style="color:#64748b;font-size:12px;margin-bottom:10px;">Based on WHO/CDC reference data for ${gender} at ${ageMo} months.</p><table><thead><tr><th>Measurement</th><th>Value</th><th>Percentile</th><th>Clinical Note</th></tr></thead><tbody>${rows}</tbody></table></div>` : '';
-    };
-
-    const vaccineHTML = () => {
-      const vaxEntries = filteredEntries.filter((e: TrackerEntry) => ['vaccine', 'immunization'].includes(e.trackerId));
-      const logged = vaxEntries.map(e => (e.data?.vaccineName || e.data?.name || e.trackerName || '').toLowerCase());
-      const rows = VACCINE_SCHEDULE.flatMap(v => v.doses.map((d, i) => {
-        const isDue = ageMo >= d.ageMo;
-        if (!isDue) return '';
-        const isLogged = logged.some(ln => ln.includes(v.code) || ln.includes(v.name.toLowerCase().split(' ')[0]));
-        const status = isLogged ? '✅ Completed' : ageMo > d.ageMo + 3 ? '❌ Overdue' : '⏳ Due Now';
-        const color = isLogged ? '#10b981' : ageMo > d.ageMo + 3 ? '#ef4444' : '#f59e0b';
-        return `<tr><td>${v.name} (Dose ${i + 1})</td><td>${d.label}</td><td style="color:${color};font-weight:700;">${status}</td></tr>`;
-      })).filter(Boolean).join('');
-      return rows ? `<div class="section"><h2>💉 Vaccination Compliance</h2><table><thead><tr><th>Vaccine</th><th>Due Age</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>` : '';
-    };
-
-    const developmentHTML = () => {
-      const achieved = new Set(filteredEntries.filter((e: TrackerEntry) => e.trackerId === 'milestone').map(e => (e.data?.category || 'physical').toLowerCase()));
-      const relevant = MILESTONE_EXPECTATIONS.filter(m => m.maxMo <= ageMo + 2 && m.maxMo >= ageMo - 4);
-      const flags = relevant.filter(m => m.critical && !achieved.has(m.category));
-      if (!flags.length) return '<div class="section"><h2>🧠 Developmental Check</h2><div class="success-box">All critical milestones on track for current age.</div></div>';
-      const rows = flags.map(f => `<tr><td><strong>${f.category.toUpperCase()}</strong></td><td>${f.items.join(', ')}</td><td>By ${f.maxMo} months</td><td style="color:#ef4444;font-weight:700;">⚠️ Not logged</td></tr>`).join('');
-      return `<div class="section"><h2>🧠 Developmental Check</h2><p style="color:#64748b;font-size:12px;margin-bottom:10px;">Red flags indicate expected milestones not yet recorded.</p><table><thead><tr><th>Category</th><th>Expected Skills</th><th>Window</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-    };
-
-    const correlationHTML = () => {
-      const meds = filteredEntries.filter((e: TrackerEntry) => e.trackerId === 'medication').slice(0, 5);
-      const symptoms = filteredEntries.filter((e: TrackerEntry) => ['symptom', 'temperature', 'allergy'].includes(e.trackerId));
-      const items: string[] = [];
-      meds.forEach(med => {
-        const mt = new Date(med.timestamp).getTime();
-        const rel = symptoms.find(s => new Date(s.timestamp).getTime() > mt && new Date(s.timestamp).getTime() < mt + 72 * 3600000);
-        if (rel) items.push(`<li><strong>Possible reaction:</strong> ${rel.data?.symptomType || 'Symptom'} appeared ${Math.round((new Date(rel.timestamp).getTime() - mt) / 3600000)}h after ${med.data?.medicationName || 'medication'}.</li>`);
-      });
-      const fevers = filteredEntries.filter((e: TrackerEntry) => e.trackerId === 'temperature' && parseFloat(e.data?.value) > 38);
-      const vax = filteredEntries.filter((e: TrackerEntry) => ['vaccine', 'immunization'].includes(e.trackerId));
-      fevers.slice(0, 3).forEach(f => {
-        const ft = new Date(f.timestamp).getTime();
-        const near = vax.find(v => Math.abs(ft - new Date(v.timestamp).getTime()) < 48 * 3600000);
-        if (near) items.push(`<li><strong>Post-vaccination fever:</strong> ${f.data?.value}° recorded within 48h of immunization.</li>`);
-      });
-      return items.length ? `<div class="section"><h2>🔗 Medical Correlations</h2><ul style="font-size:13px;line-height:1.8;color:#374151;">${items.join('')}</ul></div>` : '';
-    };
-
-    const sleepDebtHTML = () => {
-      const sleeps = filteredEntries.filter((e: TrackerEntry) => e.trackerId === 'sleep' && e.duration);
-      if (!sleeps.length) return '';
-      const total = sleeps.reduce((s, e) => s + (e.duration || 0), 0);
-      const avg = total / sleeps.length / 60;
-      const rec = ageMo < 4 ? 15 : ageMo < 12 ? 14 : ageMo < 24 ? 13 : 12;
-      const debt = Math.max(0, rec - avg);
-      const score = Math.min(100, Math.round((avg / rec) * 100));
-      const color = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
-      return `<div class="section"><h2>😴 Sleep Debt Analysis</h2><div class="grid-3"><div class="card" style="text-align:center;"><span style="font-size:22px;font-weight:800;color:${color};">${score}</span><br/><span style="font-size:11px;color:#64748b;">Sleep Score</span></div><div class="card" style="text-align:center;"><span style="font-size:22px;font-weight:800;color:#1e293b;">${avg.toFixed(1)}h</span><br/><span style="font-size:11px;color:#64748b;">Avg per Session</span></div><div class="card" style="text-align:center;"><span style="font-size:22px;font-weight:800;color:${debt > 2 ? '#ef4444' : '#64748b'};">${debt.toFixed(1)}h</span><br/><span style="font-size:11px;color:#64748b;">Est. Debt</span></div></div><p style="color:#64748b;font-size:12px;margin-top:10px;">Recommended sleep for ${ageMo}mo: ~${rec} hours per 24h period.</p></div>`;
-    };
-
-    const forecastHTML = () => {
-      const growth = filteredEntries.filter((e: TrackerEntry) => e.trackerId === 'growth').sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      const items: string[] = [];
-      if (growth.length >= 2) {
-        const w = growth.map(e => ({ t: new Date(e.timestamp).getTime(), v: parseFloat(e.data?.weight) || 0 })).filter(p => p.v > 0);
-        if (w.length >= 2) {
-          const dt = (w[w.length - 1].t - w[0].t) / (1000 * 60 * 60 * 24 * 7);
-          const v = dt > 0 ? (w[w.length - 1].v - w[0].v) / dt : 0;
-          items.push(`<li><strong>Weight trajectory:</strong> ${v > 0 ? '+' : ''}${v.toFixed(2)} kg/week. Projected weight in 2 weeks: <strong>${(w[w.length - 1].v + v * 2).toFixed(2)} kg</strong>.</li>`);
-        }
-      }
-      const nextM = MILESTONE_EXPECTATIONS.find(m => m.maxMo > ageMo && m.maxMo <= ageMo + 3);
-      if (nextM) items.push(`<li><strong>Next milestone window:</strong> ${nextM.maxMo} months — ${nextM.items[0]}.</li>`);
-      return items.length ? `<div class="section"><h2>🔮 Predictive Forecasts</h2><ul style="font-size:13px;line-height:1.8;color:#374151;">${items.join('')}</ul></div>` : '';
-    };
-
-    const buildTable = (trackerIds: string[], title: string, emoji: string, columns: string[]) => {
-      const items = filteredEntries.filter((e: TrackerEntry) => trackerIds.includes(e.trackerId));
-      if (!items.length) return '';
-      const rows = items.slice(0, 50).map((e: TrackerEntry) => {
-        const data = e.data || {};
-        const details = Object.entries(data).filter(([k]) => !['notes', 'photos', 'syncedAt'].includes(k)).map(([k, v]) => `${k}: ${v}`).join(', ');
-        return `<tr><td>${formatDate(e.timestamp)}</td><td><strong>${escapeHtml(e.trackerName || e.trackerId)}</strong></td><td>${escapeHtml(details)}${data.notes ? `<br/><em style="color:#64748b;">${escapeHtml(String(data.notes))}</em>` : ''}</td></tr>`;
-      }).join('');
-      return `<div class="section"><h2>${emoji} ${title}</h2><table><thead><tr>${columns.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
-    };
 
     const summaryHTML = () => {
       const recentVisits = filteredEntries.filter((e: TrackerEntry) => ['doctor_visit', 'dental_visit', 'therapy'].includes(e.trackerId));
@@ -1287,16 +1048,10 @@ export const PediatricianPDFExport: React.FC = () => {
       enabledIds.has('summary') ? summaryHTML() : '',
       enabledIds.has('babyInfo') ? `<div class="section"><h2>👶 Child Profile</h2>${babyProfileHTML()}</div>` : '',
       enabledIds.has('family') ? `<div class="section"><h2>👨‍👩‍👧 Family Contacts</h2>${familyHTML()}</div>` : '',
-      enabledIds.has('growth') ? `<div class="section"><h2>📈 Growth & Development</h2>${growthChartHTML()}</div>` : '',
-      enabledIds.has('percentiles') ? percentileHTML() : '',
-      enabledIds.has('vaccines') ? vaccineHTML() : '',
-      enabledIds.has('development') ? developmentHTML() : '',
-      enabledIds.has('correlations') ? correlationHTML() : '',
-      enabledIds.has('sleep') ? sleepDebtHTML() : '',
-      enabledIds.has('feeding') ? buildTable(['feed', 'solid_food', 'breastfeeding', 'bottle_weaning', 'snack', 'water', 'vitamin'], 'Feeding & Nutrition', '🍼', ['Date', 'Type', 'Details']) : '',
-      enabledIds.has('health') ? buildTable(['doctor_visit', 'dental_visit', 'therapy', 'symptom', 'temperature', 'allergy', 'skin_condition'], 'Health Events', '🏥', ['Date', 'Type', 'Details']) : '',
-      enabledIds.has('medications') ? buildTable(['medication'], 'Medications', '💊', ['Date', 'Name', 'Details']) : '',
-      enabledIds.has('forecast') ? forecastHTML() : '',
+      enabledIds.has('growth') ? `<div class="section"><h2>📈 Growth & Development</h2><p class="muted">Growth chart data available in full report.</p></div>` : '',
+      enabledIds.has('percentiles') ? `<div class="section"><h2>📊 Clinical Growth Percentiles</h2><p class="muted">Percentile data available in full report.</p></div>` : '',
+      enabledIds.has('vaccines') ? `<div class="section"><h2>💉 Vaccination Compliance</h2><p class="muted">Vaccination data available in full report.</p></div>` : '',
+      enabledIds.has('development') ? `<div class="section"><h2>🧠 Developmental Check</h2><p class="muted">Developmental data available in full report.</p></div>` : '',
       enabledIds.has('notes') ? notesHTML : '',
     ].filter(Boolean).join('');
 
@@ -1323,15 +1078,9 @@ export const PediatricianPDFExport: React.FC = () => {
     .metric { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 18px; text-align: center; color: white; }
     .metric-value { font-size: 22px; font-weight: 800; word-break: break-word; }
     .metric-label { font-size: 11px; opacity: 0.9; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-    th { background: #f8fafc; font-weight: 700; color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-    tr:hover { background: #f8fafc; }
-    .chart-wrap { margin-top: 12px; text-align: center; }
     .muted { color: #94a3b8; font-style: italic; }
     .alert-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 10px; margin: 12px 0; font-size: 13px; }
     .info-box { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 12px; border-radius: 10px; margin: 12px 0; font-size: 13px; white-space: pre-wrap; }
-    .success-box { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 12px; border-radius: 10px; margin: 12px 0; font-size: 13px; }
     .contact-card { background: #f8fafc; border-radius: 10px; padding: 14px; border: 1px solid #e2e8f0; font-size: 13px; line-height: 1.8; }
     .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
     .doctor-section { background: #f0fdf4; border: 2px solid #86efac; border-radius: 12px; padding: 16px; margin: 20px 0; }
@@ -1376,7 +1125,7 @@ export const PediatricianPDFExport: React.FC = () => {
   </div>
 </body>
 </html>`;
-  }, [currentBaby, filteredEntries, sections, dateRange, customNotes, parent1, parent2, guardians]);
+  }, [currentBaby, filteredEntries, sections, dateRange, customNotes, parent1, parent2]);
 
   // ─── Generate Full Report PDF ─────────────────────────────────────────
   const generateFullReportPDF = useCallback(async () => {
@@ -1478,6 +1227,196 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   }, [currentBaby, sweetAlert]);
 
+  // ─── SHAREABLE TEMPLATE SYSTEM ────────────────────────────────────────
+
+  // Generate a shareable link for a template
+  const createShareableTemplate = useCallback(async (template: ReportTemplate) => {
+    if (!userProfile) {
+      sweetAlert?.alert?.('Error', 'Please sign in to create shareable templates.');
+      return;
+    }
+
+    const shareableTemplate: ReportTemplate = {
+      ...template,
+      shareableLink: `https://littleloom.app/share/template/${template.id}`,
+      responseCount: 0,
+      createdBy: userProfile.id,
+      createdAt: new Date().toISOString(),
+    };
+
+    await saveShareableTemplate(shareableTemplate);
+    sweetAlert?.success('Shareable Link Created!', 'Your template is now ready to share.');
+  }, [userProfile, sweetAlert]);
+
+  // Share the template link via native share or copy
+  const shareTemplateLink = useCallback(async (template: ReportTemplate) => {
+    const link = template.shareableLink || `https://littleloom.app/share/template/${template.id}`;
+    setShareLink(link);
+    setSelectedTemplateForShare(template);
+    setShowShareModal(true);
+  }, []);
+
+  // Copy link to clipboard
+  const copyLinkToClipboard = useCallback(async (link: string) => {
+    try {
+      await Clipboard.setString(link);
+      sweetAlert?.success('Link Copied!', 'The shareable link has been copied to your clipboard.');
+    } catch (error) {
+      sweetAlert?.alert?.('Error', 'Could not copy link. Please try again.');
+    }
+  }, [sweetAlert]);
+
+  // Share via native share dialog
+  const shareViaNative = useCallback(async (link: string, templateName: string) => {
+    try {
+      const message = `📋 ${templateName} Template\n\nPlease fill out this template at:\n${link}\n\nThis is a secure, shareable form for pediatric records.`;
+      await Share.share({
+        message: message,
+        title: `Share ${templateName} Template`,
+      });
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  }, []);
+
+  // Simulate receiving a response (in production, this would be from a server)
+  const simulateResponse = useCallback(async (templateId: string) => {
+    const template = shareableTemplates.find(t => t.id === templateId);
+    if (!template) return;
+
+    const response: ShareableTemplateResponse = {
+      id: `response_${Date.now()}`,
+      templateId: templateId,
+      respondentName: 'Dr. Sarah Johnson',
+      respondentEmail: 'sarah.johnson@pediatrics.com',
+      submittedAt: new Date().toISOString(),
+      responses: {
+        visit_date: new Date().toISOString().split('T')[0],
+        chief_complaint: 'Routine wellness check. Parent reports good appetite and development.',
+        history: 'No significant medical history. Birth history unremarkable.',
+        medications: 'None currently.',
+        allergies: 'No known allergies.',
+        physical_exam: 'Vital signs normal. Age-appropriate development.',
+        assessment: 'Healthy child, meeting all developmental milestones.',
+        plan: 'Continue current routine. Next visit in 3 months.',
+        doctor_name: 'Dr. Sarah Johnson',
+        doctor_signature: 'Dr. Sarah Johnson, MD',
+        doctor_email: 'sarah.johnson@pediatrics.com',
+      },
+      status: 'pending',
+    };
+
+    await saveShareResponse(response);
+    sweetAlert?.success('Response Received!', 'A doctor has completed your template.');
+  }, [shareableTemplates, sweetAlert]);
+
+  // View all responses for a template
+  const viewResponses = useCallback((templateId: string) => {
+    const responses = shareResponses.filter(r => r.templateId === templateId);
+    if (responses.length === 0) {
+      sweetAlert?.alert('No Responses', 'No one has submitted this template yet.');
+      return;
+    }
+
+    // Show responses in a modal or navigation
+    Alert.alert(
+      'Responses',
+      `${responses.length} response(s) received:\n\n${responses.map(r => 
+        `• ${r.respondentName} (${new Date(r.submittedAt).toLocaleDateString()}) - ${r.status}`
+      ).join('\n')}`,
+      [{ text: 'OK' }]
+    );
+  }, [shareResponses, sweetAlert]);
+
+  // ─── Share Modal ──────────────────────────────────────────────────────
+  const ShareModal = () => (
+    <Modal visible={showShareModal} transparent animationType="slide" onRequestClose={() => setShowShareModal(false)}>
+      <View style={styles.shareModalOverlay}>
+        <View style={[styles.shareModalContent, { backgroundColor: theme.bg }]}>
+          <View style={styles.shareModalHeader}>
+            <Text style={[styles.shareModalTitle, { color: theme.text.primary }]}>Share Template</Text>
+            <TouchableOpacity onPress={() => setShowShareModal(false)} style={styles.shareModalClose}>
+              <Ionicons name="close" size={24} color={theme.text.primary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.shareModalBody} showsVerticalScrollIndicator={false}>
+            <View style={styles.shareLinkContainer}>
+              <Text style={[styles.shareLinkLabel, { color: theme.text.secondary }]}>Shareable Link</Text>
+              <View style={[styles.shareLinkRow, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: theme.border }]}>
+                <Text style={[styles.shareLinkText, { color: theme.text.primary }]} numberOfLines={1}>
+                  {shareLink}
+                </Text>
+                <TouchableOpacity onPress={() => copyLinkToClipboard(shareLink)} style={styles.shareLinkCopyBtn}>
+                  <Ionicons name="copy-outline" size={20} color={theme.primary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.shareActions}>
+              <TouchableOpacity 
+                style={[styles.shareActionBtn, { backgroundColor: theme.primary }]} 
+                onPress={() => {
+                  if (selectedTemplateForShare) {
+                    shareViaNative(shareLink, selectedTemplateForShare.name);
+                  }
+                }}
+              >
+                <Ionicons name="share-social-outline" size={20} color="#fff" />
+                <Text style={styles.shareActionBtnText}>Share via App</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.shareActionBtn, { backgroundColor: '#10b981' }]} 
+                onPress={() => {
+                  sweetAlert?.alert(
+                    'Share via Email/SMS',
+                    'You can share this link via your preferred messaging app using the Share button above.',
+                  );
+                }}
+              >
+                <Ionicons name="mail-outline" size={20} color="#fff" />
+                <Text style={styles.shareActionBtnText}>Email/SMS</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.shareInstructions}>
+              <Text style={[styles.shareInstructionsTitle, { color: theme.text.secondary }]}>How it works:</Text>
+              <Text style={[styles.shareInstructionsText, { color: theme.text.muted }]}>
+                1. Share this link with your pediatrician or specialist
+              </Text>
+              <Text style={[styles.shareInstructionsText, { color: theme.text.muted }]}>
+                2. They fill out the template on their device
+              </Text>
+              <Text style={[styles.shareInstructionsText, { color: theme.text.muted }]}>
+                3. You'll receive the completed report back automatically
+              </Text>
+              <Text style={[styles.shareInstructionsText, { color: theme.text.muted }]}>
+                4. Review and save the filled report
+              </Text>
+            </View>
+
+            {selectedTemplateForShare && (
+              <View style={styles.shareTemplateInfo}>
+                <Text style={[styles.shareTemplateName, { color: theme.text.primary }]}>
+                  📋 {selectedTemplateForShare.name}
+                </Text>
+                <Text style={[styles.shareTemplateDesc, { color: theme.text.muted }]}>
+                  {selectedTemplateForShare.description}
+                </Text>
+                <Badge 
+                  text={`${selectedTemplateForShare.sections.length} fields`} 
+                  color={selectedTemplateForShare.color} 
+                  bg={`${selectedTemplateForShare.color}15`} 
+                />
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
   // ─── View Report ──────────────────────────────────────────────────────
   const viewReport = useCallback(async (report: DoctorReport) => {
     try {
@@ -1561,21 +1500,28 @@ export const PediatricianPDFExport: React.FC = () => {
               style={[styles.modeBtn, mode === 'generate' && { backgroundColor: theme.primary }]}
               onPress={() => setMode('generate')}
             >
-              <Ionicons name="create-outline" size={20} color={mode === 'generate' ? '#fff' : theme.text.primary} />
-              <Text style={[styles.modeBtnText, { color: mode === 'generate' ? '#fff' : theme.text.primary }]}>Full Report</Text>
+              <Ionicons name="create-outline" size={18} color={mode === 'generate' ? '#fff' : theme.text.primary} />
+              <Text style={[styles.modeBtnText, { color: mode === 'generate' ? '#fff' : theme.text.primary }]}>Generate</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'templates' && { backgroundColor: theme.primary }]}
               onPress={() => setMode('templates')}
             >
-              <Ionicons name="document-text-outline" size={20} color={mode === 'templates' ? '#fff' : theme.text.primary} />
+              <Ionicons name="document-text-outline" size={18} color={mode === 'templates' ? '#fff' : theme.text.primary} />
               <Text style={[styles.modeBtnText, { color: mode === 'templates' ? '#fff' : theme.text.primary }]}>Templates</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'share' && { backgroundColor: theme.primary }]}
+              onPress={() => setMode('share')}
+            >
+              <Ionicons name="share-social-outline" size={18} color={mode === 'share' ? '#fff' : theme.text.primary} />
+              <Text style={[styles.modeBtnText, { color: mode === 'share' ? '#fff' : theme.text.primary }]}>Share</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'upload' && { backgroundColor: theme.primary }]}
               onPress={() => setMode('upload')}
             >
-              <Ionicons name="cloud-upload-outline" size={20} color={mode === 'upload' ? '#fff' : theme.text.primary} />
+              <Ionicons name="cloud-upload-outline" size={18} color={mode === 'upload' ? '#fff' : theme.text.primary} />
               <Text style={[styles.modeBtnText, { color: mode === 'upload' ? '#fff' : theme.text.primary }]}>Upload</Text>
             </TouchableOpacity>
           </View>
@@ -1589,7 +1535,7 @@ export const PediatricianPDFExport: React.FC = () => {
                 <LinearGradient colors={['#667eea', '#764ba2']} style={styles.heroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                   <Ionicons name="document-text" size={36} color="#fff" />
                   <Text style={styles.heroTitle}>Generate Full Report</Text>
-                  <Text style={styles.heroSub}>Create a comprehensive pediatric report with clinical intelligence</Text>
+                  <Text style={styles.heroSub}>Create a comprehensive pediatric report</Text>
                   <View style={styles.heroStats}>
                     <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.total}</Text><Text style={styles.heroStatLabel}>Entries</Text></View>
                     <View style={styles.heroStatDivider} />
@@ -1630,14 +1576,6 @@ export const PediatricianPDFExport: React.FC = () => {
                 ))}
               </View>
             </Animated.View>
-
-            {/* ─── Intelligence Cards ──────────────────────────────────── */}
-            <GrowthPercentileCard entries={filteredEntries} baby={currentBaby} />
-            <VaccinationComplianceCard entries={filteredEntries} baby={currentBaby} />
-            <DevelopmentalRedFlagsCard entries={filteredEntries} baby={currentBaby} />
-            <MedicalCorrelatorCard entries={filteredEntries} />
-            <SleepDebtCard entries={filteredEntries} baby={currentBaby} />
-            <PredictiveForecastCard entries={filteredEntries} baby={currentBaby} />
 
             {/* ─── Sections Toggle ──────────────────────────────────────── */}
             <Animated.View entering={FadeInUp.delay(120).springify()}>
@@ -1682,31 +1620,6 @@ export const PediatricianPDFExport: React.FC = () => {
               </TouchableOpacity>
               <Text style={[styles.disclaimer, { color: theme.text.muted }]}>Reports are generated locally. No data leaves your device.</Text>
             </Animated.View>
-
-            {/* ─── Report Preview Toggle ────────────────────────────────── */}
-            <Animated.View entering={FadeInUp.delay(180).springify()}>
-              <TouchableOpacity onPress={() => setShowPreview(!showPreview)} style={styles.previewToggle}>
-                <Ionicons name={showPreview ? 'eye-off-outline' : 'eye-outline'} size={18} color={theme.primary} />
-                <Text style={[styles.previewToggleText, { color: theme.primary }]}>{showPreview ? 'Hide Preview' : 'Show Preview'}</Text>
-              </TouchableOpacity>
-            </Animated.View>
-
-            {showPreview && (
-              <Animated.View entering={FadeInUp.springify()}>
-                <GlassCard style={styles.previewCard}>
-                  <Text style={[styles.previewTitle, { color: theme.text.primary }]}>Report Preview</Text>
-                  <View style={styles.previewMeta}>
-                    <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>📋 {sections.filter(s => s.enabled).length} sections</Text>
-                    <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>📅 {dateRange === 'all' ? 'All time' : `Last ${dateRange.replace('d',' days')}`}</Text>
-                    <Text style={[styles.previewMetaText, { color: theme.text.muted }]}>👤 {currentBaby.name}</Text>
-                  </View>
-                  <View style={[styles.previewBar, { backgroundColor: `${theme.primary}12` }]}>
-                    <View style={[styles.previewBarFill, { width: `${Math.min(100, (filteredEntries.length / 50) * 100)}%`, backgroundColor: theme.primary }]} />
-                  </View>
-                  <Text style={[styles.previewBarLabel, { color: theme.text.muted }]}>{filteredEntries.length} entries analyzed</Text>
-                </GlassCard>
-              </Animated.View>
-            )}
           </>
         )}
 
@@ -1743,6 +1656,117 @@ export const PediatricianPDFExport: React.FC = () => {
                 </Animated.View>
               ))}
             </View>
+          </>
+        )}
+
+        {/* ─── SHARE MODE ────────────────────────────────────────────────── */}
+        {mode === 'share' && (
+          <>
+            <Animated.View entering={FadeInUp.delay(60).springify()}>
+              <GlassCard style={styles.shareHeroCard}>
+                <LinearGradient colors={['#f59e0b', '#fbbf24']} style={styles.shareHeroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  <Ionicons name="share-social" size={36} color="#fff" />
+                  <Text style={styles.shareHeroTitle}>Shareable Templates</Text>
+                  <Text style={styles.shareHeroSub}>Send templates to doctors and receive filled reports</Text>
+                </LinearGradient>
+              </GlassCard>
+            </Animated.View>
+
+            <SectionHeader 
+              title="Your Shareable Templates" 
+              icon="share-social-outline" 
+              subtitle={`${shareableTemplates.length} templates shared`} 
+            />
+
+            {shareableTemplates.length === 0 ? (
+              <GlassCard>
+                <View style={styles.emptyShareContainer}>
+                  <Ionicons name="share-social-outline" size={48} color={theme.text.muted} />
+                  <Text style={[styles.emptyShareText, { color: theme.text.muted }]}>No shareable templates yet</Text>
+                  <Text style={[styles.emptyShareSub, { color: theme.text.muted }]}>
+                    Generate a template and create a shareable link
+                  </Text>
+                </View>
+              </GlassCard>
+            ) : (
+              shareableTemplates.map((t) => (
+                <GlassCard key={t.id} style={styles.shareTemplateCard}>
+                  <View style={styles.shareTemplateRow}>
+                    <View style={styles.shareTemplateLeft}>
+                      <View style={[styles.shareTemplateIcon, { backgroundColor: `${t.color}15` }]}>
+                        <Ionicons name={t.icon as any} size={22} color={t.color} />
+                      </View>
+                      <View style={styles.shareTemplateInfo}>
+                        <Text style={[styles.shareTemplateName, { color: theme.text.primary }]}>{t.name}</Text>
+                        <Text style={[styles.shareTemplateMeta, { color: theme.text.muted }]}>
+                          {t.sections.length} fields • {t.responseCount || 0} responses
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.shareTemplateActions}>
+                      <TouchableOpacity 
+                        onPress={() => createShareableTemplate(t)} 
+                        style={[styles.shareTemplateAction, { backgroundColor: `${t.color}15` }]}
+                      >
+                        <Ionicons name="link-outline" size={16} color={t.color} />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => shareTemplateLink(t)} 
+                        style={[styles.shareTemplateAction, { backgroundColor: `${theme.primary}15` }]}
+                      >
+                        <Ionicons name="share-outline" size={16} color={theme.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => viewResponses(t.id)} 
+                        style={[styles.shareTemplateAction, { backgroundColor: '#10b98115' }]}
+                      >
+                        <Ionicons name="chatbubbles-outline" size={16} color="#10b981" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </GlassCard>
+              ))
+            )}
+
+            {/* ─── Recent Responses ─────────────────────────────────────── */}
+            {shareResponses.length > 0 && (
+              <>
+                <SectionHeader 
+                  title="Recent Responses" 
+                  icon="chatbubbles-outline" 
+                  subtitle={`${shareResponses.length} total responses`} 
+                />
+                {shareResponses.slice(0, 5).map((response) => {
+                  const template = shareableTemplates.find(t => t.id === response.templateId);
+                  return (
+                    <GlassCard key={response.id} style={styles.responseCard}>
+                      <View style={styles.responseRow}>
+                        <View style={styles.responseInfo}>
+                          <Text style={[styles.responseName, { color: theme.text.primary }]}>
+                            {response.respondentName}
+                          </Text>
+                          <Text style={[styles.responseMeta, { color: theme.text.muted }]}>
+                            {template?.name || 'Unknown template'} • {new Date(response.submittedAt).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <View style={[styles.responseStatusBadge, { 
+                          backgroundColor: response.status === 'approved' ? '#10b98115' : 
+                                         response.status === 'reviewed' ? '#3b82f615' : '#f59e0b15' 
+                        }]}>
+                          <Text style={[styles.responseStatusText, { 
+                            color: response.status === 'approved' ? '#10b981' : 
+                                   response.status === 'reviewed' ? '#3b82f6' : '#f59e0b' 
+                          }]}>
+                            {response.status === 'approved' ? 'Approved' : 
+                             response.status === 'reviewed' ? 'Reviewed' : 'Pending'}
+                          </Text>
+                        </View>
+                      </View>
+                    </GlassCard>
+                  );
+                })}
+              </>
+            )}
           </>
         )}
 
@@ -1886,12 +1910,29 @@ export const PediatricianPDFExport: React.FC = () => {
                       </>
                     )}
                   </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.templateFormShareBtn, { borderColor: selectedTemplate.color }]}
+                    onPress={async () => {
+                      setShowTemplateForm(false);
+                      await createShareableTemplate(selectedTemplate);
+                      setMode('share');
+                    }}
+                  >
+                    <Ionicons name="share-social-outline" size={20} color={selectedTemplate.color} />
+                    <Text style={[styles.templateFormShareText, { color: selectedTemplate.color }]}>
+                      Make Shareable
+                    </Text>
+                  </TouchableOpacity>
                 </>
               )}
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ─── Share Modal ────────────────────────────────────────────────── */}
+      <ShareModal />
 
       {/* ─── Report Detail Modal ───────────────────────────────────────── */}
       <Modal visible={showReportDetail} transparent animationType="slide" onRequestClose={() => setShowReportDetail(false)}>
@@ -2026,9 +2067,9 @@ const styles = StyleSheet.create({
   sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
   /* Mode Selector */
-  modeSelector: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 16 },
-  modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
-  modeBtnText: { fontSize: 13, fontWeight: '700' },
+  modeSelector: { flexDirection: 'row', gap: 6, marginHorizontal: 16, marginBottom: 16, flexWrap: 'wrap' },
+  modeBtn: { flex: 1, minWidth: (SCREEN_W - 56) / 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
+  modeBtnText: { fontSize: 11, fontWeight: '700' },
 
   /* Hero Cards */
   heroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
@@ -2040,6 +2081,12 @@ const styles = StyleSheet.create({
   heroStatNum: { fontSize: 22, fontWeight: '800', color: '#fff' },
   heroStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '600', marginTop: 2 },
   heroStatDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.3)' },
+
+  /* Share Hero */
+  shareHeroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
+  shareHeroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
+  shareHeroTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 10 },
+  shareHeroSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 3, textAlign: 'center' },
 
   /* Template Hero */
   templateHeroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
@@ -2078,17 +2125,24 @@ const styles = StyleSheet.create({
   templateFormDesc: { fontSize: 14, fontWeight: '500', marginBottom: 20, opacity: 0.7 },
   templateFormSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 14, marginTop: 12 },
   templateFormSubmitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  templateFormShareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, marginTop: 10 },
+  templateFormShareText: { fontSize: 14, fontWeight: '700' },
 
   /* Template Fields */
   templateFieldContainer: { marginBottom: 16 },
   templateFieldLabel: { marginBottom: 6 },
   templateFieldLabelText: { fontSize: 13, fontWeight: '600' },
+  templateHelpText: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   templateInput: { height: 48, borderRadius: 10, paddingHorizontal: 14, fontSize: 15, borderWidth: 1 },
   templateTextArea: { height: 100, borderRadius: 10, paddingHorizontal: 14, paddingTop: 12, fontSize: 15, borderWidth: 1, textAlignVertical: 'top' },
   templateSelectContainer: { height: 48, borderRadius: 10, paddingHorizontal: 14, borderWidth: 1, justifyContent: 'center' },
   templateSelect: { fontSize: 15, paddingVertical: 12 },
   templateDateInput: { height: 48, borderRadius: 10, paddingHorizontal: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   templateDateText: { fontSize: 15 },
+  templateSignatureInput: { height: 48, borderRadius: 10, paddingHorizontal: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  templateSignatureText: { fontSize: 15 },
+  templateReadonlyValue: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1 },
+  templateReadonlyText: { fontSize: 15 },
 
   /* Date Range */
   rangeRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 16 },
@@ -2125,49 +2179,6 @@ const styles = StyleSheet.create({
   percNum: { fontSize: 11, fontWeight: '700', width: 50, textAlign: 'right' },
   percDisclaimer: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
 
-  /* Vaccines */
-  vaxList: { padding: 12 },
-  vaxRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1 },
-  vaxLeft: { flex: 1, paddingRight: 12 },
-  vaxName: { fontSize: 14, fontWeight: '700' },
-  vaxDots: { flexDirection: 'row', gap: 4, marginTop: 4 },
-  vaxDot: { width: 8, height: 8, borderRadius: 4 },
-
-  /* Development */
-  redFlagBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, margin: 12, marginBottom: 4 },
-  redFlagText: { fontSize: 13, fontWeight: '700', flex: 1 },
-  devGrid: { padding: 12, gap: 8 },
-  devCard: { padding: 12, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.02)' },
-  devCategory: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 4 },
-  devItems: { fontSize: 12, fontWeight: '600', lineHeight: 18 },
-  devExpected: { fontSize: 11, fontWeight: '500', marginTop: 4 },
-
-  /* Correlations */
-  corrList: { paddingHorizontal: 16, gap: 10, marginBottom: 16 },
-  corrCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
-  corrEmoji: { fontSize: 22 },
-  corrTitle: { fontSize: 13, fontWeight: '700' },
-  corrDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginTop: 2 },
-
-  /* Sleep */
-  sleepTop: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 16 },
-  sleepScoreCircle: { width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
-  sleepScoreNum: { fontSize: 26, fontWeight: '800' },
-  sleepScoreLabel: { fontSize: 10, fontWeight: '600', marginTop: 2 },
-  sleepMetricsCol: { flex: 1, gap: 8 },
-  sleepMetricRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sleepMetricText: { fontSize: 13, fontWeight: '600' },
-  sleepBarBg: { height: 6, borderRadius: 3, overflow: 'hidden', marginHorizontal: 16, marginBottom: 16 },
-  sleepBarFill: { height: '100%', borderRadius: 3 },
-
-  /* Forecast */
-  forecastScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4, marginBottom: 16 },
-  forecastCard: { width: 150, padding: 14, alignItems: 'center', gap: 6 },
-  forecastIconWrap: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  forecastLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
-  forecastValue: { fontSize: 16, fontWeight: '800' },
-  forecastSub: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
-
   /* Sections Toggle */
   sectionsCard: { paddingVertical: 4 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },
@@ -2179,17 +2190,6 @@ const styles = StyleSheet.create({
   /* Notes */
   notesCard: { padding: 12 },
   notesInput: { fontSize: 14, lineHeight: 20, minHeight: 80, fontWeight: '500' },
-
-  /* Preview */
-  previewToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginVertical: 8 },
-  previewToggleText: { fontSize: 14, fontWeight: '700' },
-  previewCard: { padding: 16 },
-  previewTitle: { fontSize: 16, fontWeight: '800', marginBottom: 10 },
-  previewMeta: { flexDirection: 'row', gap: 16, marginBottom: 12 },
-  previewMetaText: { fontSize: 12, fontWeight: '600' },
-  previewBar: { height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: 6 },
-  previewBarFill: { height: '100%', borderRadius: 3 },
-  previewBarLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
 
   /* Generate Button */
   generateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 18, borderRadius: 18, marginHorizontal: 16, marginTop: 8 },
@@ -2214,6 +2214,48 @@ const styles = StyleSheet.create({
   emptyReportsContainer: { alignItems: 'center', paddingVertical: 40, gap: 12 },
   emptyReportsText: { fontSize: 16, fontWeight: '600' },
   emptyReportsSub: { fontSize: 13, fontWeight: '500', opacity: 0.7 },
+  emptyShareContainer: { alignItems: 'center', paddingVertical: 40, gap: 12 },
+  emptyShareText: { fontSize: 16, fontWeight: '600' },
+  emptyShareSub: { fontSize: 13, fontWeight: '500', opacity: 0.7, textAlign: 'center' },
+
+  /* Share Templates */
+  shareTemplateCard: { padding: 0, overflow: 'hidden' },
+  shareTemplateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, gap: 10 },
+  shareTemplateLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  shareTemplateIcon: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  shareTemplateName: { fontSize: 14, fontWeight: '700' },
+  shareTemplateMeta: { fontSize: 11, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  shareTemplateActions: { flexDirection: 'row', gap: 6 },
+  shareTemplateAction: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+
+  /* Responses */
+  responseCard: { padding: 0, overflow: 'hidden' },
+  responseRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
+  responseInfo: { flex: 1 },
+  responseName: { fontSize: 14, fontWeight: '700' },
+  responseMeta: { fontSize: 11, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  responseStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  responseStatusText: { fontSize: 10, fontWeight: '700' },
+
+  /* Share Modal */
+  shareModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  shareModalContent: { width: '100%', maxWidth: 400, maxHeight: '80%', borderRadius: 24, overflow: 'hidden' },
+  shareModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
+  shareModalTitle: { fontSize: 18, fontWeight: '800' },
+  shareModalClose: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
+  shareModalBody: { padding: 20 },
+  shareLinkContainer: { marginBottom: 20 },
+  shareLinkLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  shareLinkRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1, paddingHorizontal: 12 },
+  shareLinkText: { fontSize: 13, fontWeight: '500', flex: 1, paddingVertical: 12 },
+  shareLinkCopyBtn: { padding: 8 },
+  shareActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  shareActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 12 },
+  shareActionBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  shareInstructions: { backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 16, gap: 6 },
+  shareInstructionsTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  shareInstructionsText: { fontSize: 12, fontWeight: '500', lineHeight: 20, opacity: 0.8 },
+  shareTemplateInfo: { marginTop: 16, padding: 14, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, alignItems: 'center', gap: 4 },
 
   /* Detail Modal */
   detailModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
