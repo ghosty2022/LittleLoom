@@ -1,9 +1,10 @@
 // src/context/SafetyContext.tsx
-// Full Supabase-compatible safety features
+// Full Supabase-compatible safety features with SQL integration
 
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
+import * as Contacts from 'expo-contacts';
 import React, {
   useCallback,
   useContext,
@@ -14,7 +15,7 @@ import React, {
   useRef,
   ReactNode,
 } from 'react';
-import { Linking, Vibration, Platform } from 'react-native';
+import { Linking, Vibration, Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import { useSweetAlert } from '../components/SweetAlert';
@@ -30,20 +31,9 @@ const DOCTOR_REPORTS_KEY = 'littleloom_doctor_reports_v2';
 const MAX_TOPICS_SELECTED = 5;
 
 /* ═══════════════════════════════════════════════════════════════
-   NOTIFICATIONS SETUP — Required for reminders
-   ═══════════════════════════════════════════════════════════════ */
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
-/* ═══════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════ */
-export type EmergencyType = 'emergency' | 'medical' | 'poison' | 'custom' | 'family';
+export type EmergencyType = 'emergency' | 'medical' | 'poison' | 'custom' | 'family' | 'police' | 'fire';
 export type SafetyCategory = 'emergency' | 'prevention' | 'daily';
 export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
 export type FirstAidType = 'cpr' | 'choking' | 'burns' | 'bleeding' | 'allergic';
@@ -132,6 +122,7 @@ interface SafetyState {
   streakDays: number;
   lastActiveDate: string | null;
   doctorReports: DoctorReport[];
+  deviceContactsImported: boolean;
 }
 
 interface SafetyContextType extends SafetyState {
@@ -166,7 +157,8 @@ interface SafetyContextType extends SafetyState {
     role?: string;
     avatar?: string;
   }>) => Promise<void>;
-  importDeviceContacts: (contacts: EmergencyContact[]) => Promise<void>;
+  importDeviceContacts: () => Promise<void>;
+  getLocalEmergencyNumbers: () => Promise<EmergencyContact[]>;
 
   toggleChecklistItem: (checklistId: string, itemId: string) => Promise<void>;
   getChecklistProgress: (category: string) => number;
@@ -478,6 +470,47 @@ const defaultChecklists: SafetyChecklist[] = [
   },
 ];
 
+// ─── SQL Emergency Numbers by Country ──────────────────────────────────────
+// This maps country codes to emergency numbers
+export const EMERGENCY_NUMBERS_BY_COUNTRY: Record<string, {
+  police: string;
+  ambulance: string;
+  fire: string;
+  poison: string;
+  emergency: string;
+}> = {
+  'US': { police: '911', ambulance: '911', fire: '911', poison: '1-800-222-1222', emergency: '911' },
+  'CA': { police: '911', ambulance: '911', fire: '911', poison: '1-800-268-9017', emergency: '911' },
+  'UK': { police: '999', ambulance: '999', fire: '999', poison: '111', emergency: '999' },
+  'AU': { police: '000', ambulance: '000', fire: '000', poison: '13 11 26', emergency: '000' },
+  'NZ': { police: '111', ambulance: '111', fire: '111', poison: '0800 764 766', emergency: '111' },
+  'IN': { police: '100', ambulance: '102', fire: '101', poison: '1066', emergency: '112' },
+  'KE': { police: '999', ambulance: '999', fire: '999', poison: '1-800-222-1222', emergency: '999' },
+  'NG': { police: '199', ambulance: '199', fire: '199', poison: '1-800-222-1222', emergency: '199' },
+  'ZA': { police: '10111', ambulance: '10111', fire: '10111', poison: '0861 555 777', emergency: '112' },
+  'EG': { police: '122', ambulance: '123', fire: '180', poison: '1-800-222-1222', emergency: '122' },
+  'AE': { police: '999', ambulance: '998', fire: '997', poison: '1-800-222-1222', emergency: '999' },
+  'SA': { police: '999', ambulance: '997', fire: '998', poison: '1-800-222-1222', emergency: '999' },
+  'DE': { police: '110', ambulance: '112', fire: '112', poison: '19240', emergency: '112' },
+  'FR': { police: '17', ambulance: '15', fire: '18', poison: '01 40 05 48 48', emergency: '112' },
+  'ES': { police: '091', ambulance: '061', fire: '080', poison: '91 562 04 20', emergency: '112' },
+  'IT': { police: '113', ambulance: '118', fire: '115', poison: '01 21 43 15 19', emergency: '112' },
+  'BR': { police: '190', ambulance: '192', fire: '193', poison: '0800 722 6001', emergency: '112' },
+  'MX': { police: '911', ambulance: '911', fire: '911', poison: '1-800-222-1222', emergency: '911' },
+  'JP': { police: '110', ambulance: '119', fire: '119', poison: '1-800-222-1222', emergency: '119' },
+  'CN': { police: '110', ambulance: '120', fire: '119', poison: '1-800-222-1222', emergency: '120' },
+  'KR': { police: '112', ambulance: '119', fire: '119', poison: '1-800-222-1222', emergency: '119' },
+  'RU': { police: '102', ambulance: '103', fire: '101', poison: '1-800-222-1222', emergency: '112' },
+  'TR': { police: '155', ambulance: '112', fire: '110', poison: '1-800-222-1222', emergency: '112' },
+  'PK': { police: '15', ambulance: '1122', fire: '16', poison: '1-800-222-1222', emergency: '1122' },
+  'BD': { police: '999', ambulance: '999', fire: '999', poison: '1-800-222-1222', emergency: '999' },
+  'PH': { police: '117', ambulance: '117', fire: '117', poison: '1-800-222-1222', emergency: '117' },
+  'VN': { police: '113', ambulance: '115', fire: '114', poison: '1-800-222-1222', emergency: '115' },
+  'TH': { police: '191', ambulance: '1669', fire: '199', poison: '1-800-222-1222', emergency: '191' },
+  'MY': { police: '999', ambulance: '999', fire: '999', poison: '1-800-222-1222', emergency: '999' },
+  'SG': { police: '999', ambulance: '995', fire: '995', poison: '1-800-222-1222', emergency: '999' },
+};
+
 /* ═══════════════════════════════════════════════════════════════
    CONTEXT
    ═══════════════════════════════════════════════════════════════ */
@@ -502,6 +535,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     streakDays: 0,
     lastActiveDate: null,
     doctorReports: [],
+    deviceContactsImported: false,
   });
 
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
@@ -518,7 +552,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, []);
 
-  /* ── Persistence: Main state ── */
+  /* ── Persistence ── */
   useEffect(() => {
     const persist = async () => {
       try {
@@ -528,24 +562,22 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           checklists: state.checklists,
           lastEmergencyCall: state.lastEmergencyCall,
           doctorReports: state.doctorReports,
+          deviceContactsImported: state.deviceContactsImported,
         });
         await setAppSetting(STORAGE_KEY, data);
-        // Also save to AsyncStorage for backward compatibility
         await AsyncStorage.setItem(STORAGE_KEY, data);
       } catch (error) {
         console.error('[SafetyContext] Failed to save safety data:', error);
       }
     };
     persist();
-  }, [state.emergencyContacts, state.recentTipsViewed, state.checklists, state.lastEmergencyCall, state.doctorReports]);
+  }, [state.emergencyContacts, state.recentTipsViewed, state.checklists, state.lastEmergencyCall, state.doctorReports, state.deviceContactsImported]);
 
-  /* ── Persistence: Logs ── */
   useEffect(() => {
     const persistLogs = async () => {
       try {
         const data = JSON.stringify(state.emergencyLogs);
         await setAppSetting(EMERGENCY_LOG_KEY, data);
-        // Also save to AsyncStorage for backward compatibility
         await AsyncStorage.setItem(EMERGENCY_LOG_KEY, data);
       } catch (error) {
         console.error('[SafetyContext] Failed to save emergency logs:', error);
@@ -557,7 +589,6 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   /* ── Load data ── */
   const loadSafetyData = useCallback(async () => {
     try {
-      // Try Supabase first
       const [stored, logsStored, streakStored, reportsStored] = await Promise.all([
         getAppSetting(STORAGE_KEY),
         getAppSetting(EMERGENCY_LOG_KEY),
@@ -565,7 +596,6 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         getAppSetting(DOCTOR_REPORTS_KEY),
       ]);
 
-      // Fallback to AsyncStorage if Supabase returns null
       let storedData = stored;
       let logsData = logsStored;
       let streakData = streakStored;
@@ -598,6 +628,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           updates.checklists = parsed.checklists || defaultChecklists;
           updates.lastEmergencyCall = parsed.lastEmergencyCall ? new Date(parsed.lastEmergencyCall) : null;
           updates.doctorReports = parsed.doctorReports || [];
+          updates.deviceContactsImported = parsed.deviceContactsImported || false;
         } catch (e) {
           console.warn('[SafetyContext] Failed to parse stored data');
         }
@@ -641,12 +672,10 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   /* ── Reset all data ── */
   const resetSafetyData = useCallback(async () => {
     try {
-      // Delete from Supabase
       await deleteAppSetting(STORAGE_KEY);
       await deleteAppSetting(EMERGENCY_LOG_KEY);
       await deleteAppSetting(STREAK_KEY);
       await deleteAppSetting(DOCTOR_REPORTS_KEY);
-      // Delete from AsyncStorage
       await AsyncStorage.multiRemove([STORAGE_KEY, EMERGENCY_LOG_KEY, STREAK_KEY, DOCTOR_REPORTS_KEY]);
       
       setState({
@@ -664,11 +693,167 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         streakDays: 0,
         lastActiveDate: null,
         doctorReports: [],
+        deviceContactsImported: false,
       });
     } catch (error) {
       console.error('[SafetyContext] Failed to reset safety data:', error);
     }
   }, []);
+
+  /* ── Get local emergency numbers based on country ── */
+  const getLocalEmergencyNumbers = useCallback(async (): Promise<EmergencyContact[]> => {
+    const contacts: EmergencyContact[] = [];
+    
+    // Try to get country from location
+    let countryCode = 'US';
+    try {
+      const hasPermission = await Location.requestForegroundPermissionsAsync();
+      if (hasPermission.status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({});
+        const [address] = await Location.reverseGeocodeAsync({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        if (address?.isoCountryCode) {
+          countryCode = address.isoCountryCode;
+        }
+      }
+    } catch (e) {
+      console.warn('[SafetyContext] Could not determine country from location, using US as fallback');
+    }
+
+    // Get country-specific emergency numbers
+    const countryNumbers = EMERGENCY_NUMBERS_BY_COUNTRY[countryCode] || EMERGENCY_NUMBERS_BY_COUNTRY['US'];
+    
+    contacts.push({
+      id: `local_emergency_${Date.now()}`,
+      label: 'Emergency',
+      number: countryNumbers.emergency,
+      type: 'emergency',
+      icon: 'call',
+      color: '#ef4444',
+      isDefault: true,
+    });
+
+    contacts.push({
+      id: `local_police_${Date.now()}`,
+      label: 'Police',
+      number: countryNumbers.police,
+      type: 'police',
+      icon: 'shield',
+      color: '#3b82f6',
+      isDefault: true,
+    });
+
+    contacts.push({
+      id: `local_ambulance_${Date.now()}`,
+      label: 'Ambulance',
+      number: countryNumbers.ambulance,
+      type: 'emergency',
+      icon: 'medical',
+      color: '#10b981',
+      isDefault: true,
+    });
+
+    contacts.push({
+      id: `local_fire_${Date.now()}`,
+      label: 'Fire',
+      number: countryNumbers.fire,
+      type: 'fire',
+      icon: 'flame',
+      color: '#f59e0b',
+      isDefault: true,
+    });
+
+    contacts.push({
+      id: `local_poison_${Date.now()}`,
+      label: 'Poison Control',
+      number: countryNumbers.poison,
+      type: 'poison',
+      icon: 'medical',
+      color: '#8b5cf6',
+      isDefault: true,
+    });
+
+    return contacts;
+  }, []);
+
+  /* ── Import device contacts ── */
+  const importDeviceContacts = useCallback(async () => {
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        sweetAlert.alert('Permission Denied', 'Please grant contacts permission to import emergency contacts.');
+        return;
+      }
+
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name, Contacts.Fields.Image],
+      });
+
+      if (data.length === 0) {
+        sweetAlert.alert('No Contacts', 'No contacts found on your device.');
+        return;
+      }
+
+      // Filter contacts with phone numbers
+      const contactsWithNumbers = data.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
+      
+      if (contactsWithNumbers.length === 0) {
+        sweetAlert.alert('No Phone Numbers', 'No contacts with phone numbers found.');
+        return;
+      }
+
+      // Map to emergency contacts (limit to 10 to avoid overwhelming)
+      const newContacts: EmergencyContact[] = contactsWithNumbers.slice(0, 10).map((contact, index) => ({
+        id: `device_${contact.id || index}_${Date.now()}`,
+        label: contact.name || 'Unnamed Contact',
+        number: contact.phoneNumbers?.[0]?.number || '',
+        type: 'family' as EmergencyType,
+        icon: 'person',
+        color: '#8b5cf6',
+        avatar: contact.image?.uri,
+      })).filter(c => c.number);
+
+      if (newContacts.length === 0) {
+        sweetAlert.alert('No Valid Contacts', 'No contacts with valid phone numbers found.');
+        return;
+      }
+
+      // Merge with existing contacts
+      setState((prev) => {
+        const existingNumbers = new Set(prev.emergencyContacts.map(c => c.number));
+        const uniqueNewContacts = newContacts.filter(c => !existingNumbers.has(c.number));
+        return {
+          ...prev,
+          emergencyContacts: [...prev.emergencyContacts, ...uniqueNewContacts],
+          deviceContactsImported: true,
+        };
+      });
+
+      sweetAlert.success('Contacts Imported', `Imported ${newContacts.length} contacts successfully.`);
+      
+      // Save to AsyncStorage
+      try {
+        const data = JSON.stringify({
+          emergencyContacts: state.emergencyContacts,
+          recentTipsViewed: state.recentTipsViewed,
+          checklists: state.checklists,
+          lastEmergencyCall: state.lastEmergencyCall,
+          doctorReports: state.doctorReports,
+          deviceContactsImported: true,
+        });
+        await setAppSetting(STORAGE_KEY, data);
+        await AsyncStorage.setItem(STORAGE_KEY, data);
+      } catch (e) {
+        console.error('[SafetyContext] Failed to save imported contacts:', e);
+      }
+
+    } catch (error) {
+      console.error('[SafetyContext] Failed to import contacts:', error);
+      sweetAlert.alert('Error', 'Failed to import contacts. Please try again.');
+    }
+  }, [sweetAlert, state.emergencyContacts]);
 
   /* ── Location helpers ── */
   const checkLocationAvailability = useCallback(async () => {
@@ -1107,8 +1292,24 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         emergencyContacts: [...prev.emergencyContacts, newContact],
       }));
       triggerHaptic('success');
+      
+      // Save to AsyncStorage
+      try {
+        const data = JSON.stringify({
+          emergencyContacts: state.emergencyContacts,
+          recentTipsViewed: state.recentTipsViewed,
+          checklists: state.checklists,
+          lastEmergencyCall: state.lastEmergencyCall,
+          doctorReports: state.doctorReports,
+          deviceContactsImported: state.deviceContactsImported,
+        });
+        await setAppSetting(STORAGE_KEY, data);
+        await AsyncStorage.setItem(STORAGE_KEY, data);
+      } catch (e) {
+        console.error('[SafetyContext] Failed to save contact:', e);
+      }
     },
-    [triggerHaptic]
+    [triggerHaptic, state.emergencyContacts, state.recentTipsViewed, state.checklists, state.lastEmergencyCall, state.doctorReports, state.deviceContactsImported]
   );
 
   const removeCustomContact = useCallback(async (id: string) => {
@@ -1159,22 +1360,6 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }));
     },
     []
-  );
-
-  const importDeviceContacts = useCallback(
-    async (contacts: EmergencyContact[]) => {
-      if (contacts.length === 0) return;
-
-      setState((prev) => ({
-        ...prev,
-        emergencyContacts: [
-          ...prev.emergencyContacts,
-          ...contacts.filter((c) => !prev.emergencyContacts.some((ec) => ec.number === c.number)),
-        ],
-      }));
-      triggerHaptic('success');
-    },
-    [triggerHaptic]
   );
 
   /* ── Checklist management ── */
@@ -1489,6 +1674,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       updateEmergencyContact,
       importFamilyContacts,
       importDeviceContacts,
+      getLocalEmergencyNumbers,
       toggleChecklistItem,
       getChecklistProgress,
       resetChecklist,
@@ -1532,6 +1718,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       updateEmergencyContact,
       importFamilyContacts,
       importDeviceContacts,
+      getLocalEmergencyNumbers,
       toggleChecklistItem,
       getChecklistProgress,
       resetChecklist,

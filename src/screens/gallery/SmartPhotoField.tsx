@@ -1,6 +1,9 @@
-// SmartPhotoField.tsx — COMPLETE FIXED VERSION
-// Fix: Camera crash issues resolved
-// Fix: Text strings must be rendered within <Text> component
+// SmartPhotoField.tsx — COMPLETE CRASH-FIXED VERSION
+// Fixes:
+// 1. All string values guaranteed to render inside <Text>
+// 2. External `value` prop syncs (edit mode safe)
+// 3. No duplicate photo URIs (single source of truth via onPhotosChange)
+// 4. Defensive guards on every derived value
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
@@ -242,6 +245,18 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const prevPhotosRef = useRef<PhotoMeta[]>([]);
   const isProcessingRef = useRef(false);
 
+  // ── Sync external value prop (edit mode / parent-driven updates) ──────────
+  useEffect(() => {
+    try {
+      if (value && value !== currentUri && photos.some((p) => p.uri === value)) {
+        setCurrentUri(value);
+      }
+    } catch (e) {
+      console.error('value sync error:', e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
   // ── Init photos (edit mode) ───────────────────────────────────────────────
   useEffect(() => {
     try {
@@ -249,7 +264,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       if (!initialPhotoUris || initialPhotoUris.length === 0) return;
       hasInitializedPhotos.current = true;
 
-      const metas = initialPhotoUris.map((uri) => ({
+      const validUris = initialPhotoUris.filter((u): u is string => typeof u === 'string' && u.length > 0);
+      if (validUris.length === 0) return;
+
+      const metas: PhotoMeta[] = validUris.map((uri) => ({
         uri,
         width: 0,
         height: 0,
@@ -269,13 +287,13 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     try {
       const currentPhotos = photos;
       const prevPhotos = prevPhotosRef.current;
-      
+
       if (currentPhotos.length !== prevPhotos.length) {
         prevPhotosRef.current = currentPhotos;
         onPhotosChange?.(currentPhotos);
         return;
       }
-      
+
       let changed = false;
       for (let i = 0; i < currentPhotos.length; i++) {
         if (currentPhotos[i]?.uri !== prevPhotos[i]?.uri) {
@@ -283,7 +301,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           break;
         }
       }
-      
+
       if (changed) {
         prevPhotosRef.current = currentPhotos;
         onPhotosChange?.(currentPhotos);
@@ -311,18 +329,22 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   // ── Photo Capture ─────────────────────────────────────────────────────────
   const processPhoto = useCallback(
     async (uri: string, exif: any) => {
-      // Prevent duplicate processing
       if (isProcessingRef.current) return;
       isProcessingRef.current = true;
 
       try {
+        if (!uri || typeof uri !== 'string') {
+          isProcessingRef.current = false;
+          return;
+        }
+
         // Check for duplicate
         if (photos.some((p) => p.uri === uri)) {
           sweetAlert.alert('Duplicate', 'This photo is already added.');
           isProcessingRef.current = false;
           return;
         }
-        
+
         if (photos.length >= maxPhotos) {
           sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
           isProcessingRef.current = false;
@@ -345,22 +367,15 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
         // ── SAFELY get image dimensions ──
         try {
-          await new Promise<{ width: number; height: number }>((resolve, reject) => {
+          const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
             Image.getSize(
               uri,
-              (w, h) => resolve({ width: w, height: h }),
+              (w, h) => resolve({ width: w || 0, height: h || 0 }),
               (err) => reject(err)
             );
-          }).then((dims) => {
-            width = dims.width;
-            height = dims.height;
-          }).catch(() => {
-            // Fallback to EXIF data if available
-            if (exif?.ImageWidth) width = exif.ImageWidth;
-            if (exif?.ImageLength) height = exif.ImageLength;
-            if (exif?.width) width = exif.width;
-            if (exif?.height) height = exif.height;
           });
+          width = dims.width;
+          height = dims.height;
         } catch (dimError) {
           console.warn('Could not get image dimensions:', dimError);
           if (exif?.ImageWidth) width = exif.ImageWidth;
@@ -416,7 +431,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         } catch {
           // Haptics not available
         }
-
       } catch (e) {
         console.error('processPhoto error:', e);
         setError('Failed to process photo');
@@ -438,10 +452,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         quality: 0.8,
         exif: true,
       });
-      
+
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        if (asset.uri) {
+        if (asset && asset.uri) {
           await processPhoto(asset.uri, asset.exif || {});
         }
       }
@@ -461,10 +475,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         quality: 0.8,
         exif: true,
       });
-      
+
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        if (asset.uri) {
+        if (asset && asset.uri) {
           await processPhoto(asset.uri, asset.exif || {});
         }
       }
@@ -488,23 +502,30 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     (idx: number) => {
       try {
         if (idx < 0 || idx >= photos.length) return;
-        
+
         const photoToRemove = photos[idx];
         if (!photoToRemove) return;
-        
+
         sweetAlert.confirm('Remove Photo?', 'This cannot be undone.', () => {
           try {
             setPhotos((prev) => {
               const next = prev.filter((_, i) => i !== idx);
               if (currentUri && photoToRemove && currentUri === photoToRemove.uri) {
-                setCurrentUri(next[0]?.uri || null);
-                if (onChange) onChange(next[0]?.uri || null);
+                const nextUri = next.length > 0 ? next[0].uri : null;
+                setCurrentUri(nextUri);
+                if (onChange) onChange(nextUri);
               }
               return next;
             });
             setSelectedCompare((prev) =>
               prev.filter((i) => i !== idx).map((i) => (i > idx ? i - 1 : i))
             );
+            setAnalysis((prev) => {
+              if (prev && photoToRemove && analysisHistory[photoToRemove.uri]) {
+                return null;
+              }
+              return prev;
+            });
           } catch (e) {
             console.error('Remove photo callback error:', e);
           }
@@ -513,7 +534,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         console.error('removePhoto error:', e);
       }
     },
-    [currentUri, onChange, photos]
+    [currentUri, onChange, photos, analysisHistory]
   );
 
   // ── Annotation ─────────────────────────────────────────────────────────────
@@ -584,12 +605,12 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
 
-  const resetZoom = () => {
+  const resetZoom = useCallback(() => {
     scale.value = withSpring(1);
     savedScale.value = 1;
     translateX.value = withSpring(0);
     translateY.value = withSpring(0);
-  };
+  }, [scale, savedScale, translateX, translateY]);
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
@@ -647,17 +668,14 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   }));
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const currentMeta = useMemo(
-    () => {
-      try {
-        return photos.find((p) => p.uri === currentUri);
-      } catch (e) {
-        console.error('currentMeta error:', e);
-        return undefined;
-      }
-    },
-    [photos, currentUri]
-  );
+  const currentMeta = useMemo(() => {
+    try {
+      return photos.find((p) => p.uri === currentUri);
+    } catch (e) {
+      console.error('currentMeta error:', e);
+      return undefined;
+    }
+  }, [photos, currentUri]);
 
   const severityColor = useMemo(() => {
     try {
@@ -670,7 +688,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [analysis]);
 
-  const photoCountText = `${photos?.length || 0}/${maxPhotos}`;
+  const photoCountText = `${photos?.length || 0}/${maxPhotos || 5}`;
 
   const currentPhotoIndex = useMemo(() => {
     try {
@@ -683,37 +701,43 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
   // ── Render annotation overlay ─────────────────────────────────────────────
   const renderAnnotationOverlay = () => {
-    const allPoints = [...annotationPoints, ...currentPoints];
-    if (allPoints.length === 0) return null;
+    try {
+      const allPoints = [...annotationPoints, ...currentPoints];
+      if (allPoints.length === 0) return null;
 
-    const groupedPoints: Record<string, { x: number; y: number }[]> = {};
-    allPoints.forEach((p) => {
-      if (!groupedPoints[p.color]) groupedPoints[p.color] = [];
-      groupedPoints[p.color].push({ x: p.x, y: p.y });
-    });
+      const groupedPoints: Record<string, { x: number; y: number }[]> = {};
+      allPoints.forEach((p) => {
+        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return;
+        if (!groupedPoints[p.color]) groupedPoints[p.color] = [];
+        groupedPoints[p.color].push({ x: p.x, y: p.y });
+      });
 
-    return (
-      <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
-        {Object.entries(groupedPoints).map(([color, points]) => (
-          <View key={color} style={{ flex: 1 }}>
-            {points.map((p, i) => (
-              <View
-                key={i}
-                style={{
-                  position: 'absolute',
-                  left: p.x - 3,
-                  top: p.y - 3,
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: color,
-                }}
-              />
-            ))}
-          </View>
-        ))}
-      </View>
-    );
+      return (
+        <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]} pointerEvents="none">
+          {Object.entries(groupedPoints).map(([color, points]) => (
+            <View key={`group-${color}`} style={StyleSheet.absoluteFill}>
+              {points.map((p, i) => (
+                <View
+                  key={`dot-${i}`}
+                  style={{
+                    position: 'absolute',
+                    left: p.x - 3,
+                    top: p.y - 3,
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: color,
+                  }}
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+      );
+    } catch (e) {
+      console.error('renderAnnotationOverlay error:', e);
+      return null;
+    }
   };
 
   // If there's an error, show a fallback UI
@@ -731,7 +755,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   return (
     <View style={[styles.container, { marginVertical: SPACE.md }]}>
       {/* Label + Counter */}
-      {label && (
+      {label ? (
         <View style={styles.labelRow}>
           <Text style={[styles.label, { color: COLORS.text.primary, marginBottom: SPACE.sm }]}>
             {label}
@@ -740,57 +764,57 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
             <Text style={[styles.badgeText, { color: COLORS.text.secondary }]}>{photoCountText}</Text>
           </View>
         </View>
-      )}
+      ) : null}
 
       {/* Main Preview */}
-      <Pressable onPress={() => currentUri && setShowZoom(true)}>
+      <Pressable onPress={() => { if (currentUri) setShowZoom(true); }}>
         <View style={[styles.previewWrap, { backgroundColor: GLASS.bg, borderColor: GLASS.border, borderRadius: RADIUS.lg, borderWidth: 1 }]}>
           {currentUri ? (
             <>
               <Image source={{ uri: currentUri }} style={[styles.previewImg, { borderRadius: RADIUS.lg }]} resizeMode="cover" />
 
-              {analysis && !analyzing && (
+              {analysis && !analyzing ? (
                 <View style={[styles.analysisBadge, { backgroundColor: severityColor + 'E6' }]}>
                   <Ionicons name="sparkles" size={14} color="#FFF" />
-                  <Text style={styles.analysisText}>AI {Math.round(analysis.confidence * 100)}%</Text>
+                  <Text style={styles.analysisText}>{`AI ${Math.round((analysis.confidence || 0) * 100)}%`}</Text>
                 </View>
-              )}
+              ) : null}
 
-              {currentMeta && (
+              {currentMeta ? (
                 <View style={[styles.timestampBadge, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
                   <Text style={styles.timestampText}>{formatDate(currentMeta.timestamp)}</Text>
                 </View>
-              )}
+              ) : null}
 
-              {analyzing && (
+              {analyzing ? (
                 <View style={styles.analyzingOverlay}>
                   <ActivityIndicator color={COLORS.primary} size="large" />
-                  <Text style={[styles.analyzingText, { color: COLORS.text.primary }]}>Analyzing photo...</Text>
+                  <Text style={[styles.analyzingText, { color: COLORS.text.primary }]}>{'Analyzing photo...'}</Text>
                 </View>
-              )}
+              ) : null}
 
               <View style={styles.actionBar}>
                 <TouchableOpacity onPress={() => setShowMeta(true)} style={[styles.iconBtn, { backgroundColor: GLASS.bg }]}>
                   <Ionicons name="information-circle" size={20} color={COLORS.primary} />
                 </TouchableOpacity>
-                {allowAnnotation && (
+                {allowAnnotation ? (
                   <TouchableOpacity onPress={() => setAnnotating(true)} style={[styles.iconBtn, { backgroundColor: GLASS.bg }]}>
                     <Ionicons name="pencil" size={20} color={COLORS.primary} />
                   </TouchableOpacity>
-                )}
-                {allowCompare && photos.length > 1 && (
+                ) : null}
+                {allowCompare && photos.length > 1 ? (
                   <TouchableOpacity
                     onPress={() => { setCompareMode((v) => !v); setSelectedCompare([]); }}
                     style={[styles.iconBtn, { backgroundColor: compareMode ? COLORS.primary : GLASS.bg }]}
                   >
                     <Ionicons name="git-compare" size={20} color={compareMode ? '#FFF' : COLORS.primary} />
                   </TouchableOpacity>
-                )}
-                {allowShare && (
+                ) : null}
+                {allowShare ? (
                   <TouchableOpacity onPress={sharePhoto} style={[styles.iconBtn, { backgroundColor: GLASS.bg }]}>
                     <Ionicons name="share-outline" size={20} color={COLORS.primary} />
                   </TouchableOpacity>
-                )}
+                ) : null}
                 <TouchableOpacity
                   onPress={() => {
                     if (currentPhotoIndex !== -1) removePhoto(currentPhotoIndex);
@@ -803,15 +827,15 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
               <View style={styles.zoomHint}>
                 <Ionicons name="scan" size={14} color="#FFF" />
-                <Text style={styles.zoomHintText}>Tap to zoom</Text>
+                <Text style={styles.zoomHintText}>{'Tap to zoom'}</Text>
               </View>
             </>
           ) : (
             <View style={styles.emptyState}>
               <Ionicons name="camera" size={48} color={COLORS.text.tertiary} />
-              <Text style={[styles.emptyText, { color: COLORS.text.secondary }]}>No photo yet</Text>
+              <Text style={[styles.emptyText, { color: COLORS.text.secondary }]}>{'No photo yet'}</Text>
               <Text style={[styles.emptySub, { color: COLORS.text.tertiary, marginTop: SPACE.xs }]}>
-                Tap camera or gallery below
+                {'Tap camera or gallery below'}
               </Text>
             </View>
           )}
@@ -819,7 +843,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       </Pressable>
 
       {/* Caption Input */}
-      {currentUri && (
+      {currentUri ? (
         <TextInput
           value={caption}
           onChangeText={setCaption}
@@ -827,103 +851,110 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           placeholderTextColor={COLORS.text.tertiary}
           style={[styles.captionInput, { backgroundColor: GLASS.bg, borderColor: GLASS.border, color: COLORS.text.primary, borderRadius: RADIUS.md }]}
         />
-      )}
+      ) : null}
 
       {/* AI Analysis Panel */}
-      {analysis && !analyzing && (
+      {analysis && !analyzing ? (
         <View style={[styles.analysisPanel, { backgroundColor: GLASS.bg, borderColor: GLASS.border, borderRadius: RADIUS.lg, borderWidth: 1 }]}>
           <View style={styles.analysisHeader}>
             <Ionicons name="bulb" size={18} color={COLORS.primary} />
-            <Text style={[styles.analysisTitle, { color: COLORS.text.primary }]}>Smart Insights</Text>
+            <Text style={[styles.analysisTitle, { color: COLORS.text.primary }]}>{'Smart Insights'}</Text>
           </View>
 
           <View style={[styles.confidenceTrack, { backgroundColor: COLORS.text.disabled + '40' }]}>
             <Animated.View style={[styles.confidenceFill, { backgroundColor: severityColor }, severityBarStyle]} />
           </View>
           <Text style={[styles.confidenceLabel, { color: COLORS.text.tertiary, marginBottom: SPACE.sm }]}>
-            Confidence: {Math.round(analysis.confidence * 100)}%
+            {`Confidence: ${Math.round((analysis.confidence || 0) * 100)}%`}
           </Text>
 
-          {analysis.suggestions && analysis.suggestions.length > 0 && analysis.suggestions.map((s, i) => (
-            <View key={i} style={styles.suggestionRow}>
-              <Ionicons name="checkmark-circle" size={14} color={severityColor} />
-              <Text style={[styles.suggestionText, { color: COLORS.text.secondary }]}>{s}</Text>
-            </View>
-          ))}
+          {Array.isArray(analysis.suggestions) && analysis.suggestions.length > 0
+            ? analysis.suggestions.map((s, i) => (
+                <View key={`suggestion-${i}`} style={styles.suggestionRow}>
+                  <Ionicons name="checkmark-circle" size={14} color={severityColor} />
+                  <Text style={[styles.suggestionText, { color: COLORS.text.secondary }]}>{String(s)}</Text>
+                </View>
+              ))
+            : null}
         </View>
-      )}
+      ) : null}
 
       {/* Thumbnail Strip */}
-      {photos.length > 0 && (
+      {photos.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbStrip} contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
-          {photos.map((photo, idx) => (
-            <TouchableOpacity
-              key={photo.uri + idx}
-              onPress={() => { compareMode ? toggleCompareSelect(idx) : setCurrentUri(photo.uri); }}
-              onLongPress={() => removePhoto(idx)}
-              style={[
-                styles.thumb,
-                {
-                  borderRadius: RADIUS.md,
-                  borderWidth: currentUri === photo.uri ? 3 : 2,
-                  borderColor: currentUri === photo.uri ? COLORS.primary : selectedCompare.includes(idx) ? COLORS.warning : GLASS.border,
-                },
-              ]}
-            >
-              <Image source={{ uri: photo.uri }} style={styles.thumbImg} />
-              {selectedCompare.includes(idx) && compareMode && (
-                <View style={styles.compareBadge}>
-                  <Text style={styles.compareBadgeText}>{selectedCompare.indexOf(idx) + 1}</Text>
-                </View>
-              )}
-              {analysisHistory[photo.uri] && !compareMode && (
-                <View
-                  style={[
-                    styles.aiDot,
-                    {
-                      backgroundColor:
-                        analysisHistory[photo.uri].severity === 'high'
-                          ? COLORS.danger
-                          : analysisHistory[photo.uri].severity === 'medium'
-                          ? COLORS.warning
-                          : COLORS.success,
-                    },
-                  ]}
-                />
-              )}
-            </TouchableOpacity>
-          ))}
+          {photos.map((photo, idx) => {
+            if (!photo || !photo.uri) return null;
+            const isSelected = selectedCompare.includes(idx);
+            const historyEntry = analysisHistory[photo.uri];
+            return (
+              <TouchableOpacity
+                key={`${photo.uri}-${idx}`}
+                onPress={() => { if (compareMode) { toggleCompareSelect(idx); } else { setCurrentUri(photo.uri); } }}
+                onLongPress={() => removePhoto(idx)}
+                style={[
+                  styles.thumb,
+                  {
+                    borderRadius: RADIUS.md,
+                    borderWidth: currentUri === photo.uri ? 3 : 2,
+                    borderColor: currentUri === photo.uri ? COLORS.primary : isSelected ? COLORS.warning : GLASS.border,
+                  },
+                ]}
+              >
+                <Image source={{ uri: photo.uri }} style={styles.thumbImg} />
+                {isSelected && compareMode ? (
+                  <View style={styles.compareBadge}>
+                    <Text style={styles.compareBadgeText}>{String(selectedCompare.indexOf(idx) + 1)}</Text>
+                  </View>
+                ) : null}
+                {historyEntry && !compareMode ? (
+                  <View
+                    style={[
+                      styles.aiDot,
+                      {
+                        backgroundColor:
+                          historyEntry.severity === 'high'
+                            ? COLORS.danger
+                            : historyEntry.severity === 'medium'
+                            ? COLORS.warning
+                            : COLORS.success,
+                      },
+                    ]}
+                  />
+                ) : null}
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
-      )}
+      ) : null}
 
       {/* Compare View */}
-      {compareMode && selectedCompare.length === 2 && (
+      {compareMode && selectedCompare.length === 2 ? (
         <View style={[styles.compareContainer, { borderRadius: RADIUS.lg }]}>
-          <Text style={[styles.compareLabel, { color: COLORS.text.primary }]}>Before & After</Text>
+          <Text style={[styles.compareLabel, { color: COLORS.text.primary }]}>{'Before & After'}</Text>
           <View style={styles.compareRow}>
-            {photos[selectedCompare[0]] && (
+            {photos[selectedCompare[0]] ? (
               <Image source={{ uri: photos[selectedCompare[0]].uri }} style={styles.compareImg} />
-            )}
+            ) : null}
             <Ionicons name="arrow-forward" size={24} color={COLORS.primary} />
-            {photos[selectedCompare[1]] && (
+            {photos[selectedCompare[1]] ? (
               <Image source={{ uri: photos[selectedCompare[1]].uri }} style={styles.compareImg} />
-            )}
+            ) : null}
           </View>
         </View>
-      )}
+      ) : null}
 
       {/* Capture Buttons */}
       <View style={styles.btnRow}>
         <TouchableOpacity onPress={takePhoto} style={[styles.captureBtn, { backgroundColor: COLORS.primary, borderRadius: RADIUS.md }]}>
           <Ionicons name="camera" size={20} color="#FFF" />
-          <Text style={styles.captureBtnText}>Camera</Text>
+          <Text style={styles.captureBtnText}>{'Camera'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={pickPhoto}
           style={[styles.captureBtn, { backgroundColor: GLASS.bg, borderRadius: RADIUS.md, borderWidth: 1, borderColor: GLASS.border }]}
         >
           <Ionicons name="images" size={20} color={COLORS.primary} />
-          <Text style={[styles.captureBtnText, { color: COLORS.primary }]}>Gallery</Text>
+          <Text style={[styles.captureBtnText, { color: COLORS.primary }]}>{'Gallery'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -933,27 +964,30 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       <Modal visible={showMeta} transparent animationType="fade" onRequestClose={() => setShowMeta(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowMeta(false)}>
           <BlurView intensity={60} style={StyleSheet.absoluteFill} />
-          <View style={[styles.modalContent, { backgroundColor: COLORS.surface, borderRadius: RADIUS.xl }]}>
-            <Text style={[styles.modalTitle, { color: COLORS.text.primary }]}>Photo Metadata</Text>
+          <View style={[styles.modalContent, { backgroundColor: COLORS.surface, borderRadius: RADIUS.xl }]}
+            onStartShouldSetResponder={() => true}
+            onTouchEnd={(e: any) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: COLORS.text.primary }]}>{'Photo Metadata'}</Text>
             {currentMeta ? (
               <ScrollView showsVerticalScrollIndicator={false}>
-                <MetaRow label="URI" value={currentMeta.uri || '—'} />
+                <MetaRow label="URI" value={currentMeta.uri} />
                 <MetaRow label="Dimensions" value={`${currentMeta.width || 0} × ${currentMeta.height || 0}`} />
                 <MetaRow label="File Size" value={formatBytes(currentMeta.fileSize)} />
                 <MetaRow label="Timestamp" value={formatDate(currentMeta.timestamp)} />
                 <MetaRow label="Type" value={currentMeta.type || '—'} />
-                {currentMeta.location && (
+                {currentMeta.location ? (
                   <>
-                    <MetaRow label="Latitude" value={currentMeta.location.latitude?.toFixed(6) || '—'} />
-                    <MetaRow label="Longitude" value={currentMeta.location.longitude?.toFixed(6) || '—'} />
+                    <MetaRow label="Latitude" value={String(currentMeta.location.latitude?.toFixed(6) ?? '—')} />
+                    <MetaRow label="Longitude" value={String(currentMeta.location.longitude?.toFixed(6) ?? '—')} />
                   </>
-                )}
+                ) : null}
               </ScrollView>
             ) : (
-              <Text style={{ color: COLORS.text.secondary }}>No metadata available</Text>
+              <Text style={{ color: COLORS.text.secondary }}>{'No metadata available'}</Text>
             )}
             <TouchableOpacity onPress={() => setShowMeta(false)} style={[styles.modalClose, { backgroundColor: COLORS.primary, borderRadius: RADIUS.md }]}>
-              <Text style={styles.modalCloseText}>Close</Text>
+              <Text style={styles.modalCloseText}>{'Close'}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -966,7 +1000,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
             <TouchableOpacity onPress={() => setAnnotating(false)}>
               <Ionicons name="close" size={28} color={COLORS.text.primary} />
             </TouchableOpacity>
-            <Text style={[styles.annotateTitle, { color: COLORS.text.primary }]}>Annotate</Text>
+            <Text style={[styles.annotateTitle, { color: COLORS.text.primary }]}>{'Annotate'}</Text>
             <View style={{ flexDirection: 'row', gap: 16 }}>
               <TouchableOpacity onPress={undoAnnotation}>
                 <Ionicons name="arrow-undo" size={24} color={COLORS.text.secondary} />
@@ -983,14 +1017,14 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           <View style={styles.colorRow}>
             {['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#FFFFFF'].map((c) => (
               <TouchableOpacity
-                key={c}
+                key={`color-${c}`}
                 onPress={() => setAnnotationColor(c)}
                 style={[styles.colorDot, { backgroundColor: c, borderWidth: annotationColor === c ? 3 : 0, borderColor: COLORS.text.primary }]}
               />
             ))}
           </View>
 
-          {currentUri && (
+          {currentUri ? (
             <View style={{ flex: 1, position: 'relative' }}>
               <Image
                 source={{ uri: currentUri }}
@@ -1016,7 +1050,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 {renderAnnotationOverlay()}
               </View>
             </View>
-          )}
+          ) : null}
         </View>
       </Modal>
 
@@ -1028,14 +1062,14 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
               <TouchableOpacity style={styles.zoomClose} onPress={() => { setShowZoom(false); resetZoom(); }}>
                 <Ionicons name="close" size={28} color="#FFF" />
               </TouchableOpacity>
-              {currentUri && (
+              {currentUri ? (
                 <Animated.Image
                   source={{ uri: currentUri }}
                   style={[{ width: SCREEN_W, height: SCREEN_H * 0.6 }, zoomAnimatedStyle]}
                   resizeMode="contain"
                 />
-              )}
-              <Text style={styles.zoomHintBottom}>Pinch to zoom • Double-tap to reset</Text>
+              ) : null}
+              <Text style={styles.zoomHintBottom}>{'Pinch to zoom • Double-tap to reset'}</Text>
             </View>
           </GestureDetector>
         </GestureHandlerRootView>
@@ -1045,12 +1079,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 };
 
 // ── Subcomponents ────────────────────────────────────────────────────────────
-// FIXED: Properly handle undefined values and always render Text components
 const MetaRow = ({ label, value }: { label?: string | null; value?: string | null }) => {
-  // Ensure we always have a string value
-  const safeLabel = (label !== undefined && label !== null) ? String(label) : '—';
-  const safeValue = (value !== undefined && value !== null) ? String(value) : '—';
-  
+  const safeLabel = label !== undefined && label !== null ? String(label) : '—';
+  const safeValue = value !== undefined && value !== null ? String(value) : '—';
+
   return (
     <View style={styles.metaRow}>
       <Text style={[styles.metaKey, { color: COLORS.text.tertiary }]}>{safeLabel}</Text>
