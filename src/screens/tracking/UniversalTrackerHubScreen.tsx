@@ -1544,8 +1544,8 @@ export default function UniversalTrackerHubScreen() {
   const insets = useSafeAreaInsets();
   const { fullThemeColors, themeColors, isDark, borderRadiusValue, triggerHaptic } = useCustomization();
   const tracker = useTracker();
-  const { entries, getEntries, trackers } = tracker;
-  const { getRecentTimelineEvents } = useActivity();
+const { entries, getEntries, trackers } = tracker;
+const { getRecentTimelineEvents } = useActivity();
   const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
   const { success: showSuccess, error: showError, confirm: showConfirm } = useSweetAlert();
   const achievements = useTrackerAchievements();
@@ -1632,18 +1632,6 @@ export default function UniversalTrackerHubScreen() {
     if (!currentBaby) return 0;
     return entries.filter((e: any) => e?.timestamp >= today).length;
   }, [entries, today, currentBaby]);
-
-  // ─── Combined timeline events (same as HomeScreen) ──────────────────────
-  const allTimelineEvents = useMemo(() => {
-    if (!currentBaby) return [];
-    const trackerList = (entries || []).filter((e: any) => e?.timestamp);
-    const activityEvents = getRecentTimelineEvents ? getRecentTimelineEvents(50, currentBaby?.id) : [];
-    const merged = [...trackerList];
-    (activityEvents || []).forEach((ae: any) => {
-      if (ae && !merged.find((me: any) => me?.id === ae.id)) merged.push(ae);
-    });
-    return merged.slice(0, 50).sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
-  }, [entries, currentBaby?.id, getRecentTimelineEvents]);
 
   const trackerCards = useMemo(() => {
     if (!currentBaby) return [];
@@ -1740,11 +1728,8 @@ export default function UniversalTrackerHubScreen() {
   }, [navigation]);
 
   const handleEntryPress = useCallback((entry: any) => {
-    if (!entry?.id) {
-      navigation.navigate('Timeline', {});
-      return;
-    }
-    navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId || entry.type });
+    if (!entry?.id) return;
+    navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId });
   }, [navigation]);
 
   const handleInsightPress = useCallback((insight: SmartInsight) => {
@@ -1872,7 +1857,7 @@ export default function UniversalTrackerHubScreen() {
         />
 
         {/* ─── RECENT ACTIVITY ──────────────────────────────────────────── */}
-        <RecentActivityList entries={allTimelineEvents} onViewAll={handleViewTimeline} onEntryPress={handleEntryPress} />
+        <RecentActivityList entries={entries} onViewAll={handleViewTimeline} onEntryPress={handleEntryPress} />
 
         {/* ─── QUICK LINKS ───────────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(480).springify()} style={{ marginHorizontal: SPACING.lg, marginBottom: SPACING.xl }}>
