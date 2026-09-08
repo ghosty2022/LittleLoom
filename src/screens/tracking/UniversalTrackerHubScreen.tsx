@@ -1,4 +1,4 @@
-// UniversalTrackerHubScreen.tsx — INSTANT LOADING
+// UniversalTrackerHubScreen.tsx — INSTANT LOADING WITH WORKING FAB
 // No loading screens, renders immediately with available data
 
 import React, {
@@ -724,7 +724,7 @@ const EmergencyQuickActions = React.memo(({ onEmergencyPress }: { onEmergencyPre
     </Animated.View>
   );
 });
-EmergencyQuickActions.displayName = 'EmergencyQuickActions';
+EmergencyQuickActions.displayName='EmergencyQuickActions';
 
 // ─── AI NEXT EVENT PREDICTOR ────────────────────────────────────────────
 
@@ -1426,6 +1426,29 @@ export default function UniversalTrackerHubScreen() {
     try { await loadBabies(); await refreshCurrentBaby(); } catch (e) { console.warn('Refresh failed', e); } finally { setIsRefreshing(false); }
   }, [loadBabies, refreshCurrentBaby]);
 
+  // ─── FAB HANDLER ──────────────────────────────────────────────────────
+  const handleFabPress = useCallback(() => {
+    HAPTIC_MEDIUM();
+    setShowTimelinePicker(true);
+  }, []);
+
+  // ─── TIMELINE PICKER HANDLER ────────────────────────────────────────
+  const handleTimelineSelect = useCallback((trackerId: string) => {
+    setShowTimelinePicker(false);
+    // Check if the tracker has sub-actions
+    const config = TRACKER_CONFIGS[trackerId];
+    if (config?.subActions && config.subActions.length > 0) {
+      // Show the action modal
+      setSelectedTrackerId(trackerId);
+      setShowActionModal(true);
+    } else {
+      // Navigate directly to AddEntry
+      setTimeout(() => {
+        navigation.navigate('AddEntry', { trackerId });
+      }, 100);
+    }
+  }, [navigation]);
+
   // ─── NO LOADING SCREEN — ALWAYS RENDER ──────────────────────────────────
 
   return (
@@ -1495,7 +1518,14 @@ export default function UniversalTrackerHubScreen() {
 
       <TrackerActionModal visible={showActionModal} trackerId={selectedTrackerId} onClose={() => setShowActionModal(false)} onSelect={handleSubActionSelect} />
 
-      <TimelinePicker visible={showTimelinePicker} onClose={() => setShowTimelinePicker(false)} onSelect={(trackerId: string) => { setShowTimelinePicker(false); setTimeout(() => navigation.navigate('AddEntry', { trackerId }), 50); }} currentBabyName={currentBaby?.name} currentBabyAvatar={currentBaby?.avatar} />
+      {/* ─── TIMELINE PICKER MODAL ──────────────────────────────────────────── */}
+      <TimelinePicker 
+        visible={showTimelinePicker} 
+        onClose={() => setShowTimelinePicker(false)} 
+        onSelect={handleTimelineSelect}
+        currentBabyName={currentBaby?.name} 
+        currentBabyAvatar={currentBaby?.avatar} 
+      />
 
       {/* ─── FAB ──────────────────────────────────────────────────────────── */}
       <Animated.View
@@ -1504,17 +1534,7 @@ export default function UniversalTrackerHubScreen() {
       >
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: themeColors?.primary || '#667eea' }]}
-          onPress={() => {
-            HAPTIC_MEDIUM();
-            const currentDate = new Date();
-            navigation.navigate('AddEntry', {
-              presetData: {
-                timestamp: currentDate.getTime(),
-                date: format(currentDate, 'yyyy-MM-dd'),
-                time: format(currentDate, 'HH:mm'),
-              }
-            });
-          }}
+          onPress={handleFabPress}
           activeOpacity={0.85}
         >
           <LinearGradient
@@ -1523,7 +1543,7 @@ export default function UniversalTrackerHubScreen() {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
-                    <View style={styles.fabInner}>
+          <View style={styles.fabInner}>
             <Ionicons name="add" size={28} color="#fff" />
             <View style={styles.fabDateBadge}>
               <Text style={styles.fabDateText}>{format(new Date(), 'MMM d')}</Text>

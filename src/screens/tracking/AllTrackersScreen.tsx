@@ -1,3 +1,5 @@
+// AllTrackersScreen.tsx — COMPLETE FIXED WITH WORKING FAB
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -12,6 +14,8 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { format } from 'date-fns';
@@ -30,6 +34,7 @@ import { useTrackerProgressive } from '../../hooks';
 import { useBaby } from '../../context/BabyContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { DEFAULT_TRACKERS, getDefaultTrackerIds } from '../../config/defaultTrackers';
+import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -402,7 +407,7 @@ export default function AllTrackersScreen() {
   const { isDark, fullThemeColors, colors, borderRadiusValue, triggerHaptic, shouldReduceMotion } = useCustomization();
   
   // Safely use hooks with fallbacks
-const { entries, getEntries, trackers, refreshEntries, isLoading } = useTracker();
+  const { entries, getEntries, trackers, refreshEntries, isLoading } = useTracker();
   const babyHook = useBaby();
   const { currentBaby = null, isLoading: babyLoading = false, refreshCurrentBaby = () => {}, loadBabies = () => {} } = babyHook || {};
   
@@ -415,6 +420,7 @@ const { entries, getEntries, trackers, refreshEntries, isLoading } = useTracker(
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(null);
   const [showSubSheet, setShowSubSheet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showTimelinePicker, setShowTimelinePicker] = useState(false);
 
   // Load pinned/hidden from storage
   useEffect(() => {
@@ -468,51 +474,51 @@ const { entries, getEntries, trackers, refreshEntries, isLoading } = useTracker(
     setRefreshing(false);
   }, [refreshEntries, refreshCurrentBaby, loadBabies]);
 
-const trackerCards = useMemo(() => {
-  if (!currentBaby) return [];
-  
-  // Use the trackers from the tracker context
-  const sourceTrackers = trackers?.length > 0 ? trackers : DEFAULT_TRACKERS;
-  
-  return sourceTrackers.map((tracker: any) => {
-    const id = tracker.id;
-    const entriesForTracker = typeof getEntries === 'function' ? getEntries(id) : [];
-    const lastEntry = entriesForTracker && entriesForTracker.length > 0 ? entriesForTracker[0] : null;
+  const trackerCards = useMemo(() => {
+    if (!currentBaby) return [];
     
-    return {
-      id,
-      title: tracker.name || tracker.title || id.charAt(0).toUpperCase() + id.slice(1),
-      emoji: tracker.emoji || '📋',
-      color: tracker.color || '#667eea',
-      gradient: tracker.gradient || ['#667eea', '#764ba2'],
-      category: tracker.category || 'essential',
-      count: entriesForTracker ? entriesForTracker.length : 0,
-      lastEntry: lastEntry && lastEntry.timestamp
-        ? new Date(lastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : undefined,
-      hasSubActions: !!(tracker.subActions && tracker.subActions.length > 0),
-    };
-  });
-}, [trackers, getEntries, currentBaby]);
+    // Use the trackers from the tracker context
+    const sourceTrackers = trackers?.length > 0 ? trackers : DEFAULT_TRACKERS;
+    
+    return sourceTrackers.map((tracker: any) => {
+      const id = tracker.id;
+      const entriesForTracker = typeof getEntries === 'function' ? getEntries(id) : [];
+      const lastEntry = entriesForTracker && entriesForTracker.length > 0 ? entriesForTracker[0] : null;
+      
+      return {
+        id,
+        title: tracker.name || tracker.title || id.charAt(0).toUpperCase() + id.slice(1),
+        emoji: tracker.emoji || '📋',
+        color: tracker.color || '#667eea',
+        gradient: tracker.gradient || ['#667eea', '#764ba2'],
+        category: tracker.category || 'essential',
+        count: entriesForTracker ? entriesForTracker.length : 0,
+        lastEntry: lastEntry && lastEntry.timestamp
+          ? new Date(lastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : undefined,
+        hasSubActions: !!(tracker.subActions && tracker.subActions.length > 0),
+      };
+    });
+  }, [trackers, getEntries, currentBaby]);
 
   const categories = useMemo(() => {
     const cats = [...new Set(trackerCards.map(t => t.category))];
     return cats.sort();
   }, [trackerCards]);
 
-const filtered = useMemo(() => {
-  let res = trackerCards;
-  if (activeCategory) res = res.filter((t: any) => t.category === activeCategory);
-  if (searchQuery.trim()) {
-    const q = searchQuery.toLowerCase();
-    res = res.filter((t: any) =>
-      t.title.toLowerCase().includes(q) ||
-      t.category.toLowerCase().includes(q) ||
-      (t.description || '').toLowerCase().includes(q)
-    );
-  }
-  return res;
-}, [trackerCards, activeCategory, searchQuery]);
+  const filtered = useMemo(() => {
+    let res = trackerCards;
+    if (activeCategory) res = res.filter((t: any) => t.category === activeCategory);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      res = res.filter((t: any) =>
+        t.title.toLowerCase().includes(q) ||
+        t.category.toLowerCase().includes(q) ||
+        (t.description || '').toLowerCase().includes(q)
+      );
+    }
+    return res;
+  }, [trackerCards, activeCategory, searchQuery]);
 
   // Sort pinned first, then by count (with 0 count trackers at the end)
   const sortedFiltered = useMemo(() => {
@@ -558,6 +564,29 @@ const filtered = useMemo(() => {
   const handleCustomPress = useCallback(() => {
     HAPTIC_MEDIUM();
     navigation.navigate('CreateCustomTracker');
+  }, [navigation]);
+
+  // ─── FAB HANDLER ──────────────────────────────────────────────────────
+  const handleFabPress = useCallback(() => {
+    HAPTIC_MEDIUM();
+    setShowTimelinePicker(true);
+  }, []);
+
+  // ─── TIMELINE PICKER HANDLER ────────────────────────────────────────
+  const handleTimelineSelect = useCallback((trackerId: string) => {
+    setShowTimelinePicker(false);
+    // Check if the tracker has sub-actions
+    const config = TRACKER_CONFIGS[trackerId];
+    if (config?.subActions && config.subActions.length > 0) {
+      // Show the action modal
+      setSelectedTrackerId(trackerId);
+      setShowSubSheet(true);
+    } else {
+      // Navigate directly to AddEntry
+      setTimeout(() => {
+        navigation.navigate('AddEntry', { trackerId });
+      }, 100);
+    }
   }, [navigation]);
 
   // ─── RENDER ──────────────────────────────────────────────────────────────
@@ -858,24 +887,23 @@ const filtered = useMemo(() => {
         />
       )}
 
-           {/* ─── FAB ──────────────────────────────────────────────────────────── */}
+      {/* ─── TIMELINE PICKER MODAL ──────────────────────────────────────────── */}
+      <TimelinePicker 
+        visible={showTimelinePicker} 
+        onClose={() => setShowTimelinePicker(false)} 
+        onSelect={handleTimelineSelect}
+        currentBabyName={currentBaby?.name} 
+        currentBabyAvatar={currentBaby?.avatar} 
+      />
+
+      {/* ─── FAB ──────────────────────────────────────────────────────────── */}
       <Animated.View
         entering={FadeInUp.delay(600).springify()}
         style={[styles.fabContainer, { bottom: insets.bottom + 100, right: 20 }]}
       >
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: theme.primary }]}
-          onPress={() => {
-            HAPTIC_MEDIUM();
-            const currentDate = new Date();
-            navigation.navigate('AddEntry', {
-              presetData: {
-                timestamp: currentDate.getTime(),
-                date: format(currentDate, 'yyyy-MM-dd'),
-                time: format(currentDate, 'HH:mm'),
-              }
-            });
-          }}
+          onPress={handleFabPress}
           activeOpacity={0.85}
         >
           <LinearGradient
@@ -1194,7 +1222,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   subActionLabel: { fontWeight: '700', textAlign: 'center', fontSize: 13 },
-    fabContainer: {
+  fabContainer: {
     position: 'absolute',
     zIndex: 100,
   },
