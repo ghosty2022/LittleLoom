@@ -707,7 +707,7 @@ const ViewModeTabs = React.memo(({
           ]}>
             {tab.label}
           </Text>
-          {tab.badge && tab.badge > 0 && !isActive && (
+          {!!tab.badge && tab.badge > 0 && !isActive && (
             <View style={[styles.viewTabBadge, { backgroundColor: '#6366f1' }]}>
               <Text style={styles.viewTabBadgeText}>{tab.badge}</Text>
             </View>
@@ -1664,7 +1664,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
                   <Ionicons name="people-outline" size={32} color="#fff" />
                 </LinearGradient>
               </View>
-              <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1a1a1a' }]}>Baby Profile Needed</Text>
+              <Text style={[styles.modalBabyTitle, { color: isDark ? '#fff' : '#1a1a1a' }]}>Baby Profile Needed</Text>
               <Text style={[styles.modalDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
                 Create a baby profile to start tracking activities and unlock all features.
               </Text>
@@ -1682,7 +1682,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
                 style={styles.modalSecondaryBtn}
                 onPress={() => setShowBabyRequiredModal(false)}
               >
-                <Text style={[styles.modalSecondaryBtnText, { color: isDark ? '#94a3b8' : '#94a3b8' }]}>Maybe Later</Text>
+                <Text style={[styles.modalSecondaryBtnText, { color: '#94a3b8' }]}>Maybe Later</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -2014,7 +2014,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
                     onPress={() => { setFormCategory(cat); setFormColor(CATEGORY_CONFIG[cat].color); triggerHaptic('light'); }}
                   >
                     <Text style={styles.categoryChipEmoji}>{CATEGORY_CONFIG[cat].emoji}</Text>
-                    <Text style={[styles.categoryChipText, formCategory === cat && { color: CATEGORY_CONFIG[cat].color, fontWeight: '700' }, { color: isDark ? '#cbd5e1' : '#475569' }]}>
+                    <Text style={[styles.categoryChipText, { color: isDark ? '#cbd5e1' : '#475569' }, formCategory === cat && { color: CATEGORY_CONFIG[cat].color, fontWeight: '700' }]}>
                       {CATEGORY_CONFIG[cat].label}
                     </Text>
                   </TouchableOpacity>
@@ -2493,7 +2493,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalTitle: {
+  modalBabyTitle: {
     fontSize: 22,
     fontWeight: '800',
     marginBottom: 8,
