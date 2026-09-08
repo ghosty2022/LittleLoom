@@ -1,3 +1,7 @@
+// SafetyCornerScreen.tsx — COMPLETE FUNCTIONAL VERSION
+// NO SHADOWS — Clean flat design matching app aesthetic
+// Full Supabase integration for all features
+
 import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import {
   ActivityIndicator,
@@ -20,16 +24,19 @@ import {
   View,
   LayoutAnimation,
   UIManager,
+  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Contacts from 'expo-contacts';
 import * as Notifications from 'expo-notifications';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -43,7 +50,6 @@ import Animated, {
   FadeInDown,
   Layout,
   useAnimatedScrollHandler,
-  runOnJS,
 } from 'react-native-reanimated';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { MainTabParamList } from '../../types/navigation';
@@ -53,6 +59,7 @@ import {
   type EmergencyContact,
   type SafetyTopic,
   type SafetyChecklist,
+  type DoctorReport,
 } from '../../context/SafetyContext';
 import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';
@@ -60,11 +67,12 @@ import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
+import { supabase } from '@/utils/supabase';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   INTELLIGENCE HOOKS — Same as TimelineScreen
+   INTELLIGENCE HOOKS
    ═══════════════════════════════════════════════════════════════════════════ */
-import { usePredictiveReminders, PredictiveReminder } from '@/hooks/usePredictiveReminders';
+import { usePredictiveReminders } from '@/hooks/usePredictiveReminders';
 import { useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
 import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';
 
@@ -77,7 +85,7 @@ type SafetyCornerScreenProps = BottomTabScreenProps<MainTabParamList, 'SafetyCor
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Unified with TrackerHub / GrowthDashboard / TimelineScreen
+   DESIGN TOKENS — NO SHADOWS — Clean flat design
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SPACING = {
@@ -88,32 +96,21 @@ const RADIUS = {
   xs: 6, sm: 10, md: 14, lg: 18, xl: 22, full: 999,
 };
 
+// NO SHADOWS — all shadow opacity set to 0
 const SHADOW = {
   none: { shadowOpacity: 0, elevation: 0 },
-  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
-  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
-  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
-  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
-  xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
+  xs: { shadowOpacity: 0, elevation: 0 },
+  sm: { shadowOpacity: 0, elevation: 0 },
+  md: { shadowOpacity: 0, elevation: 0 },
+  lg: { shadowOpacity: 0, elevation: 0 },
+  xl: { shadowOpacity: 0, elevation: 0 },
 };
 
 type SafetyTab = 'overview' | 'emergency' | 'topics' | 'checklists' | 'reports' | 'intelligence';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NOTIFICATIONS SETUP
+   THEME HOOK — Unified with TrackerHub
    ═══════════════════════════════════════════════════════════════════════════ */
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
-// ─── THEME HOOK — Unified with TrackerHub ──────────────────────────────────
 
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
@@ -138,16 +135,60 @@ const useHubTheme = () => {
   }), [isDark, colors, fullThemeColors]);
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   GLASS CARD — Matches TrackerHub exactly
-   ═══════════════════════════════════════════════════════════════════════════ */
+// ─── EMERGENCY NUMBERS BY LOCATION ────────────────────────────────────────
 
-const GlassCard = memo(({ children, style, onPress, active = false, shadow = 'md' }: { 
+interface EmergencyNumber {
+  country: string;
+  code: string;
+  emergency: string;
+  police: string;
+  ambulance: string;
+  fire: string;
+  poison?: string;
+  sos?: string;
+}
+
+const EMERGENCY_NUMBERS: EmergencyNumber[] = [
+  { country: 'US', code: '+1', emergency: '911', police: '911', ambulance: '911', fire: '911', poison: '1-800-222-1222' },
+  { country: 'UK', code: '+44', emergency: '999', police: '999', ambulance: '999', fire: '999' },
+  { country: 'CA', code: '+1', emergency: '911', police: '911', ambulance: '911', fire: '911' },
+  { country: 'AU', code: '+61', emergency: '000', police: '000', ambulance: '000', fire: '000' },
+  { country: 'NZ', code: '+64', emergency: '111', police: '111', ambulance: '111', fire: '111' },
+  { country: 'IN', code: '+91', emergency: '112', police: '100', ambulance: '102', fire: '101' },
+  { country: 'DE', code: '+49', emergency: '112', police: '110', ambulance: '112', fire: '112' },
+  { country: 'FR', code: '+33', emergency: '112', police: '17', ambulance: '15', fire: '18' },
+  { country: 'ES', code: '+34', emergency: '112', police: '091', ambulance: '061', fire: '080' },
+  { country: 'IT', code: '+39', emergency: '112', police: '113', ambulance: '118', fire: '115' },
+  { country: 'JP', code: '+81', emergency: '119', police: '110', ambulance: '119', fire: '119' },
+  { country: 'BR', code: '+55', emergency: '190', police: '190', ambulance: '192', fire: '193' },
+  { country: 'MX', code: '+52', emergency: '911', police: '911', ambulance: '911', fire: '911' },
+  { country: 'ZA', code: '+27', emergency: '10111', police: '10111', ambulance: '10177', fire: '10111' },
+  { country: 'NG', code: '+234', emergency: '112', police: '199', ambulance: '112', fire: '112' },
+  { country: 'KE', code: '+254', emergency: '112', police: '999', ambulance: '999', fire: '999' },
+  { country: 'PH', code: '+63', emergency: '911', police: '117', ambulance: '911', fire: '911' },
+  { country: 'SG', code: '+65', emergency: '995', police: '999', ambulance: '995', fire: '995' },
+  { country: 'AE', code: '+971', emergency: '999', police: '999', ambulance: '998', fire: '997' },
+  { country: 'SA', code: '+966', emergency: '911', police: '999', ambulance: '997', fire: '998' },
+  { country: 'EG', code: '+20', emergency: '122', police: '122', ambulance: '123', fire: '180' },
+  { country: 'PK', code: '+92', emergency: '15', police: '15', ambulance: '115', fire: '16' },
+  { country: 'BD', code: '+880', emergency: '999', police: '999', ambulance: '999', fire: '999' },
+  { country: 'ID', code: '+62', emergency: '112', police: '110', ambulance: '118', fire: '113' },
+  { country: 'TH', code: '+66', emergency: '191', police: '191', ambulance: '1669', fire: '199' },
+  { country: 'VN', code: '+84', emergency: '113', police: '113', ambulance: '115', fire: '114' },
+  { country: 'MY', code: '+60', emergency: '999', police: '999', ambulance: '999', fire: '999' },
+  { country: 'KR', code: '+82', emergency: '119', police: '112', ambulance: '119', fire: '119' },
+  { country: 'IL', code: '+972', emergency: '100', police: '100', ambulance: '101', fire: '102' },
+  { country: 'TR', code: '+90', emergency: '112', police: '155', ambulance: '112', fire: '110' },
+  { country: 'PL', code: '+48', emergency: '112', police: '997', ambulance: '999', fire: '998' },
+];
+
+// ─── GLASS CARD — NO SHADOWS ─────────────────────────────────────────────
+
+const GlassCard = memo(({ children, style, onPress, active = false }: { 
   children: React.ReactNode; 
   style?: any; 
   onPress?: () => void; 
   active?: boolean;
-  shadow?: keyof typeof SHADOW;
 }) => {
   const theme = useHubTheme();
   const Wrapper = onPress ? TouchableOpacity : View;
@@ -157,7 +198,6 @@ const GlassCard = memo(({ children, style, onPress, active = false, shadow = 'md
       activeOpacity={onPress ? 0.85 : 1} 
       style={[
         styles.glassCard,
-        SHADOW[shadow],
         active && { borderColor: theme.primary, borderWidth: 2 },
         style
       ]}
@@ -179,7 +219,7 @@ const GlassCard = memo(({ children, style, onPress, active = false, shadow = 'md
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER — Matches TrackerHub exactly
+   SECTION HEADER — Matches TrackerHub
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SectionHeader = memo(({ 
@@ -224,7 +264,7 @@ const SectionHeader = memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TAB BAR — Unified with TimelineScreen
+   TAB BAR — NO SHADOWS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const TabBar = memo(({ tabs, activeTab, onChange }: { 
@@ -243,7 +283,7 @@ const TabBar = memo(({ tabs, activeTab, onChange }: {
             onPress={() => onChange(tab.key)}
             style={[
               styles.tabItem,
-              isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...SHADOW.sm }
+              isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff' }
             ]}
           >
             <Ionicons name={tab.icon} size={16} color={isActive ? theme.primary : theme.text.muted} />
@@ -262,813 +302,415 @@ const TabBar = memo(({ tabs, activeTab, onChange }: {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   KPI CARD — Unified with GrowthDashboard
+   MODAL COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const KpiCard = memo(({ title, value, icon, color, onPress, size = 'normal' }: any) => {
-  const theme = useHubTheme();
-  const isLarge = size === 'large';
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[
-      styles.kpiCard,
-      isLarge && styles.kpiCardLarge,
-      { borderColor: `${color}25` }
-    ]}>
-      <LinearGradient colors={[`${color}06`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.5)' }]} />
-      <View style={styles.kpiInner}>
-        <View style={styles.kpiTop}>
-          <View style={[styles.kpiIconBg, { backgroundColor: `${color}12` }]}>
-            <Ionicons name={icon as any} size={20} color={color} />
-          </View>
-        </View>
-        <View style={styles.kpiBody}>
-          <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: isLarge ? 32 : 24 }]} numberOfLines={1}>{value}</Text>
-          <Text style={[styles.kpiTitle, { color: theme.text.secondary }]}>{title}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-});
+// ─── Contact Modal ─────────────────────────────────────────────────────────
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   FEATURE 1: Safety Score Ring — Visual safety health indicator
-   ═══════════════════════════════════════════════════════════════════════════ */
+const ContactModal = memo(({ 
+  visible, 
+  onClose, 
+  onAdd, 
+  theme 
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+  onAdd: (contact: Omit<EmergencyContact, 'id'>) => void;
+  theme: any;
+}) => {
+  const [name, setName] = useState('');
+  const [number, setNumber] = useState('');
+  const [type, setType] = useState<EmergencyType>('family');
+  const [relation, setRelation] = useState('');
 
-const SafetyScoreRing = memo(({ score, theme, onPress }: { score: number; theme: any; onPress: () => void }) => {
-  const getColor = () => {
-    if (score >= 80) return '#10b981';
-    if (score >= 50) return '#f59e0b';
-    return '#ef4444';
-  };
-
-  const getLabel = () => {
-    if (score >= 80) return 'Excellent';
-    if (score >= 50) return 'Good';
-    return 'Needs Attention';
-  };
-
-  return (
-    <Animated.View entering={FadeInUp.delay(100).springify()}>
-      <GlassCard onPress={onPress} style={{ marginBottom: SPACING.lg }}>
-        <View style={styles.scoreRingWrap}>
-          <View style={[styles.scoreRingOuter, { borderColor: `${getColor()}25` }]}>
-            <View style={[styles.scoreRingInner, { borderColor: getColor() }]}>
-              <Text style={[styles.scoreValue, { color: getColor() }]}>{score}</Text>
-              <Text style={[styles.scoreMax, { color: theme.text.muted }]}>/100</Text>
-            </View>
-          </View>
-          <View style={styles.scoreLabels}>
-            <Text style={[styles.scoreLabel, { color: theme.text.primary }]}>Safety Score</Text>
-            <Text style={[styles.scoreSublabel, { color: getColor() }]}>{getLabel()}</Text>
-            <View style={styles.scoreBreakdown}>
-              {[
-                { label: 'Prevention', value: Math.min(score + 5, 100), color: '#10b981' },
-                { label: 'Emergency', value: Math.min(score + 10, 100), color: '#ef4444' },
-                { label: 'Daily', value: Math.max(score - 5, 0), color: '#6366f1' },
-              ].map(s => (
-                <View key={s.label} style={styles.scoreMini}>
-                  <View style={[styles.scoreMiniBarBg, { backgroundColor: `${s.color}12` }]}>
-                    <View style={[styles.scoreMiniBarFill, { width: `${s.value}%`, backgroundColor: s.color }]} />
-                  </View>
-                  <Text style={[styles.scoreMiniLabel, { color: theme.text.muted }]}>{s.label}</Text>
-                  <Text style={[styles.scoreMiniValue, { color: s.color }]}>{s.value}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   FEATURE 2: Emergency Quick Dial — Redesigned SOS with better hierarchy
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const EmergencyQuickDial = memo(({ contacts, onCall, onSOS, theme }: { contacts: EmergencyContact[]; onCall: (c: EmergencyContact) => void; onSOS: () => void; theme: any }) => {
-  const pulseAnim = useSharedValue(1);
-
-  useEffect(() => {
-    pulseAnim.value = withSequence(
-      withTiming(1.05, { duration: 1000 }),
-      withTiming(1, { duration: 1000 })
-    );
-  }, [pulseAnim]);
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseAnim.value }],
-  }));
-
-  const emergencyContacts = contacts.filter(c => c.type === 'emergency' || c.type === 'police');
-  const familyContacts = contacts.filter(c => c.type === 'family');
-
-  return (
-    <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <SectionHeader title="Emergency" subtitle="One-tap access to help" icon="alert-circle-outline" />
-
-      {/* SOS Button */}
-      <Animated.View style={[pulseStyle, styles.sosWrap]}>
-        <TouchableOpacity onPress={onSOS} activeOpacity={0.8} style={styles.sosButton}>
-          <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.sosGradient}>
-            <Ionicons name="alert" size={32} color="#fff" />
-            <Text style={styles.sosText}>SOS EMERGENCY</Text>
-            <Text style={styles.sosSub}>Tap to call 911 & alert family</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* Emergency Contacts Grid — Glass style */}
-      <View style={styles.emergencyGrid}>
-        {emergencyContacts.map(contact => (
-          <GlassCard key={contact.id} onPress={() => onCall(contact)} shadow="sm" style={styles.emergencyCard}>
-            <View style={[styles.emergencyIconBg, { backgroundColor: `${contact.color}15` }]}>
-              <Ionicons name={contact.icon as any} size={22} color={contact.color} />
-            </View>
-            <Text style={[styles.emergencyLabel, { color: theme.text.primary }]}>{contact.label}</Text>
-            <Text style={[styles.emergencyNumber, { color: theme.text.muted }]}>{contact.number}</Text>
-          </GlassCard>
-        ))}
-      </View>
-
-      {/* Family Chips — Glass style */}
-      {familyContacts.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.familyScroll}>
-          {familyContacts.map(contact => (
-            <TouchableOpacity key={contact.id} onPress={() => onCall(contact)} style={[
-              styles.familyChip,
-              {
-                backgroundColor: theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)',
-                borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-              }
-            ]}>
-              {contact.avatar ? (
-                <Image source={{ uri: contact.avatar }} style={styles.familyAvatar} />
-              ) : (
-                <View style={[styles.familyAvatarPlaceholder, { backgroundColor: `${contact.color}15` }]}>
-                  <Ionicons name={contact.icon as any} size={14} color={contact.color} />
-                </View>
-              )}
-              <Text style={[styles.familyName, { color: theme.text.primary }]}>{contact.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   FEATURE 3: Safety Topic Cards — Glass card grid
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const SafetyTopicGrid = memo(({ topics, onPress, theme }: { topics: SafetyTopic[]; onPress: (t: SafetyTopic) => void; theme: any }) => {
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'emergency': return '#ef4444';
-      case 'prevention': return '#10b981';
-      case 'daily': return '#6366f1';
-      default: return theme.primary;
+  const handleAdd = () => {
+    if (!name.trim() || !number.trim()) {
+      Alert.alert('Missing Info', 'Please enter both name and phone number.');
+      return;
     }
+    
+    onAdd({
+      label: name.trim(),
+      number: number.trim(),
+      type,
+      icon: type === 'emergency' ? 'call' : type === 'medical' ? 'medical' : 'person',
+      color: type === 'emergency' ? '#ef4444' : type === 'medical' ? '#3b82f6' : '#10b981',
+      relation: relation.trim() || undefined,
+    });
+    
+    setName('');
+    setNumber('');
+    setRelation('');
+    onClose();
   };
 
+  const contactTypes = [
+    { id: 'family', label: 'Family', icon: 'people' },
+    { id: 'emergency', label: 'Emergency', icon: 'alert-circle' },
+    { id: 'medical', label: 'Medical', icon: 'medical' },
+    { id: 'custom', label: 'Custom', icon: 'person' },
+  ];
+
   return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <SectionHeader 
-        title="Safety Topics" 
-        subtitle={`${topics.filter(t => t.completedAt).length}/${topics.length} completed`} 
-        icon="shield-checkmark-outline"
-      />
-      <View style={styles.topicGrid}>
-        {topics.map((topic, i) => {
-          const color = getCategoryColor(topic.category);
-          const isCompleted = !!topic.completedAt;
-          return (
-            <Animated.View key={topic.id} entering={FadeInUp.delay(i * 60).springify()} style={styles.topicGridItem}>
-              <GlassCard onPress={() => onPress(topic)} shadow="sm" style={{ marginBottom: 0 }}>
-                <View style={styles.topicCardInner}>
-                  <View style={[styles.topicIconBg, { backgroundColor: `${color}12` }]}>
-                    <Ionicons name={topic.icon as any} size={24} color={color} />
-                    {isCompleted && (
-                      <View style={styles.topicCompletedBadge}>
-                        <Ionicons name="checkmark" size={10} color="#fff" />
-                      </View>
-                    )}
-                  </View>
-                  <Text style={[styles.topicTitle, { color: theme.text.primary }]} numberOfLines={2}>{topic.title}</Text>
-                  <Text style={[styles.topicCategory, { color }]}>{topic.category}</Text>
-                  {topic.completedAt && (
-                    <View style={[styles.topicDoneBadge, { backgroundColor: `${color}12` }]}>
-                      <Text style={[styles.topicDoneText, { color }]}>Completed</Text>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={[styles.modalContent, { backgroundColor: theme.isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+          <View style={styles.modalHandle} />
+          
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Add Contact</Text>
+            <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+              <Ionicons name="close" size={20} color={theme.text.primary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalBody}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Name</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  color: theme.text.primary,
+                  borderColor: theme.surface.border,
+                }]}
+                placeholder="e.g., Mom, Dr. Smith"
+                placeholderTextColor={theme.text.muted}
+                value={name}
+                onChangeText={setName}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Phone Number</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  color: theme.text.primary,
+                  borderColor: theme.surface.border,
+                }]}
+                placeholder="e.g., 555-123-4567"
+                placeholderTextColor={theme.text.muted}
+                value={number}
+                onChangeText={setNumber}
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Type</Text>
+              <View style={styles.contactTypeGrid}>
+                {contactTypes.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[
+                      styles.contactTypeChip,
+                      { 
+                        backgroundColor: type === t.id ? theme.primary : 'transparent',
+                        borderColor: type === t.id ? theme.primary : theme.surface.border,
+                      }
+                    ]}
+                    onPress={() => setType(t.id as EmergencyType)}
+                  >
+                    <Ionicons name={t.icon as any} size={16} color={type === t.id ? '#fff' : theme.text.secondary} />
+                    <Text style={[
+                      styles.contactTypeText,
+                      { color: type === t.id ? '#fff' : theme.text.secondary }
+                    ]}>
+                      {t.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Relationship (Optional)</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  color: theme.text.primary,
+                  borderColor: theme.surface.border,
+                }]}
+                placeholder="e.g., Mother, Pediatrician"
+                placeholderTextColor={theme.text.muted}
+                value={relation}
+                onChangeText={setRelation}
+              />
+            </View>
+
+            <TouchableOpacity style={[styles.modalPrimaryBtn, { backgroundColor: theme.primary }]} onPress={handleAdd}>
+              <Text style={styles.modalPrimaryBtnText}>Add Contact</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
+// ─── Checklist Modal ──────────────────────────────────────────────────────
+
+const ChecklistModal = memo(({ 
+  visible, 
+  checklist, 
+  onClose, 
+  onToggleItem,
+  theme 
+}: { 
+  visible: boolean; 
+  checklist: SafetyChecklist | null; 
+  onClose: () => void; 
+  onToggleItem: (checklistId: string, itemId: string) => void;
+  theme: any;
+}) => {
+  if (!checklist) return null;
+
+  const completed = checklist.items.filter(i => i.completed).length;
+  const total = checklist.items.length;
+  const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={[styles.modalContent, { backgroundColor: theme.isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+          <View style={styles.modalHandle} />
+          
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={[styles.modalTitle, { color: theme.text.primary }]}>{checklist.title}</Text>
+              <Text style={[styles.modalSubtitle, { color: theme.text.muted }]}>{progress}% complete • {completed}/{total} items</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+              <Ionicons name="close" size={20} color={theme.text.primary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.progressBarWrap}>
+            <View style={[styles.progressBarBg, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
+              <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: theme.primary }]} />
+            </View>
+          </View>
+
+          <ScrollView style={styles.checklistScroll} showsVerticalScrollIndicator={false}>
+            {checklist.items.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.checklistItemRow,
+                  { 
+                    borderBottomColor: theme.surface.border,
+                    backgroundColor: item.completed ? (theme.isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.04)') : 'transparent',
+                  }
+                ]}
+                onPress={() => onToggleItem(checklist.id, item.id)}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.checklistCheckbox,
+                  { 
+                    borderColor: item.completed ? '#10b981' : theme.text.muted,
+                    backgroundColor: item.completed ? '#10b981' : 'transparent',
+                  }
+                ]}>
+                  {item.completed && <Ionicons name="checkmark" size={14} color="#fff" />}
+                </View>
+                <View style={styles.checklistItemTextWrap}>
+                  <Text style={[
+                    styles.checklistItemText,
+                    { 
+                      color: item.completed ? theme.text.muted : theme.text.primary,
+                      textDecorationLine: item.completed ? 'line-through' : 'none',
+                    }
+                  ]}>
+                    {item.text}
+                  </Text>
+                  {item.critical && (
+                    <View style={[styles.criticalBadge, { backgroundColor: '#ef444415' }]}>
+                      <Text style={styles.criticalBadgeText}>Critical</Text>
                     </View>
                   )}
                 </View>
-              </GlassCard>
-            </Animated.View>
-          );
-        })}
-      </View>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   FEATURE 4: Safety Streak & Achievements — Gamification card
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const SafetyStreakCard = memo(({ streakDays, theme, onPress }: { streakDays: number; theme: any; onPress: () => void }) => {
-  const flames = Math.min(streakDays, 7);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard onPress={onPress} shadow="md">
-        <View style={styles.streakWrap}>
-          <View style={styles.streakLeft}>
-            <View style={styles.streakIconBg}>
-              <Text style={styles.streakEmoji}>🔥</Text>
-            </View>
-            <View>
-              <Text style={[styles.streakTitle, { color: theme.text.primary }]}>{streakDays}-Day Streak</Text>
-              <Text style={[styles.streakSub, { color: theme.text.muted }]}>Keep checking safety daily</Text>
-            </View>
-          </View>
-          <View style={styles.streakFlames}>
-            {Array.from({ length: 7 }).map((_, i) => (
-              <Ionicons key={i} name="flame" size={16} color={i < flames ? '#f59e0b' : theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'} />
+              </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   FEATURE 5: Quick Actions Bar — Horizontal action pills
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const QuickActionsBar = memo(({ actions, theme }: { actions: { icon: string; label: string; color: string; onPress: () => void }[]; theme: any }) => (
-  <Animated.View entering={FadeInUp.delay(300).springify()}>
-    <SectionHeader title="Quick Actions" icon="flash-outline" />
-    <View style={styles.quickActionsWrap}>
-      {actions.map((action, i) => (
-        <TouchableOpacity key={i} onPress={action.onPress} style={[styles.quickActionPill, { backgroundColor: `${action.color}10` }]}>
-          <Ionicons name={action.icon as any} size={18} color={action.color} />
-          <Text style={[styles.quickActionLabel, { color: action.color }]}>{action.label}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  </Animated.View>
-));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   FEATURE 6: Location Status Card — Live location sharing indicator
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const LocationStatusCard = memo(({ isActive, theme, onToggle }: { isActive: boolean; theme: any; onToggle: () => void }) => (
-  <Animated.View entering={FadeInUp.delay(350).springify()}>
-    <GlassCard shadow="sm">
-      <View style={styles.locationWrap}>
-        <View style={[styles.locationDot, { backgroundColor: isActive ? '#10b981' : '#ef4444' }]}>
-          <View style={[styles.locationPulse, { backgroundColor: isActive ? '#10b98130' : '#ef444430' }]} />
-        </View>
-        <View style={styles.locationInfo}>
-          <Text style={[styles.locationTitle, { color: theme.text.primary }]}>
-            {isActive ? 'Location Sharing Active' : 'Location Sharing Off'}
-          </Text>
-          <Text style={[styles.locationDesc, { color: theme.text.muted }]}>
-            {isActive ? 'Emergency contacts can see your location' : 'Enable for emergency response'}
-          </Text>
-        </View>
-        <Switch
-          value={isActive}
-          onValueChange={onToggle}
-          trackColor={{ false: '#cbd5e1', true: '#10b981' }}
-          thumbColor="#fff"
-        />
       </View>
-    </GlassCard>
-  </Animated.View>
-));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   ═══════════════════════════════════════════════════════════════════════════
-   NEW INTELLIGENCE FEATURES (from TimelineScreen)
-   ═══════════════════════════════════════════════════════════════════════════
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── AI Pattern Predictor for Safety ── */
-const SafetyPatternPredictor = memo(({ checklists, topics, theme, onPress }: { checklists: SafetyChecklist[]; topics: SafetyTopic[]; theme: any; onPress: () => void }) => {
-  const predictions = useMemo(() => {
-    const now = new Date();
-
-    // Calculate overdue checklists
-    const overdueChecks = checklists.filter(cl => cl.progress < 100 && cl.items.some(i => i.critical && !i.completed));
-
-    // Calculate topics needing attention
-    const attentionTopics = topics.filter(t => !t.completedAt && t.category === 'emergency');
-
-    return [
-      {
-        pattern: overdueChecks.length > 0 ? 'Critical Checks Pending' : 'All Checks Current',
-        predictedTime: overdueChecks.length > 0 ? 'Now' : 'Next week',
-        confidence: overdueChecks.length > 0 ? 95 : 78,
-        basedOn: `${overdueChecks.length} overdue`,
-        emoji: overdueChecks.length > 0 ? '⚠️' : '✅',
-        color: overdueChecks.length > 0 ? '#ef4444' : '#10b981',
-      },
-      {
-        pattern: attentionTopics.length > 0 ? 'Emergency Topics Unread' : 'Topics Up To Date',
-        predictedTime: attentionTopics.length > 0 ? 'Review now' : 'Good',
-        confidence: attentionTopics.length > 0 ? 88 : 82,
-        basedOn: `${attentionTopics.length} pending`,
-        emoji: attentionTopics.length > 0 ? '📋' : '📚',
-        color: attentionTopics.length > 0 ? '#f59e0b' : '#6366f1',
-      },
-      {
-        pattern: 'Weekly Safety Review',
-        predictedTime: 'Sunday 8PM',
-        confidence: 72,
-        basedOn: 'Habit pattern',
-        emoji: '📅',
-        color: '#8b5cf6',
-      },
-    ];
-  }, [checklists, topics]);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <GlassCard onPress={onPress} shadow="md">
-        <View style={styles.predictorHeader}>
-          <View style={[styles.predictorIconBg, { backgroundColor: `${theme.primary}15` }]}>
-            <Ionicons name="sparkles" size={20} color={theme.primary} />
-          </View>
-          <View style={styles.predictorTitleWrap}>
-            <Text style={[styles.predictorTitle, { color: theme.text.primary }]}>Safety Intelligence</Text>
-            <Text style={[styles.predictorSubtitle, { color: theme.text.muted }]}>AI-powered safety monitoring</Text>
-          </View>
-        </View>
-
-        <View style={styles.predictorList}>
-          {predictions.map((pred, i) => (
-            <View key={i} style={[styles.predictorItem, i < predictions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
-              <View style={styles.predictorLeft}>
-                <Text style={styles.predictorEmoji}>{pred.emoji}</Text>
-                <View>
-                  <Text style={[styles.predictorMilestone, { color: theme.text.primary }]}>{pred.pattern}</Text>
-                  <Text style={[styles.predictorCategory, { color: theme.text.muted }]}>{pred.basedOn}</Text>
-                </View>
-              </View>
-              <View style={styles.predictorRight}>
-                <View style={styles.predictorBarBg}>
-                  <View style={[styles.predictorBarFill, { width: `${pred.confidence}%`, backgroundColor: pred.confidence > 70 ? '#10b981' : pred.confidence > 50 ? '#f59e0b' : '#ef4444' }]} />
-                </View>
-                <Text style={[styles.predictorConfidence, { color: theme.text.secondary }]}>{pred.confidence}% confidence</Text>
-                <Text style={[styles.predictorAge, { color: pred.color }]}>{pred.predictedTime}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
+    </Modal>
   );
 });
 
-/* ── Activity Balance Radar for Safety ── */
-const SafetyBalanceRadar = memo(({ checklists, topics, theme }: { checklists: SafetyChecklist[]; topics: SafetyTopic[]; theme: any }) => {
-  const dimensions = useMemo(() => {
-    const homeProgress = checklists.find(c => c.category === 'home')?.progress || 0;
-    const carProgress = checklists.find(c => c.category === 'car')?.progress || 0;
-    const sleepProgress = checklists.find(c => c.category === 'sleep')?.progress || 0;
-    const feedingProgress = checklists.find(c => c.category === 'feeding')?.progress || 0;
+// ─── Report Modal ─────────────────────────────────────────────────────────
 
-    const emergencyTopics = topics.filter(t => t.category === 'emergency').length;
-    const preventionTopics = topics.filter(t => t.category === 'prevention').length;
-    const dailyTopics = topics.filter(t => t.category === 'daily').length;
-    const totalTopics = topics.length || 1;
-
-    return [
-      { key: 'home', label: 'Home', color: '#f59e0b', value: homeProgress },
-      { key: 'car', label: 'Car', color: '#8b5cf6', value: carProgress },
-      { key: 'sleep', label: 'Sleep', color: '#10b981', value: sleepProgress },
-      { key: 'feeding', label: 'Feeding', color: '#ec4899', value: feedingProgress },
-      { key: 'emergency', label: 'Emergency', color: '#ef4444', value: Math.round((emergencyTopics / totalTopics) * 100) },
-    ];
-  }, [checklists, topics]);
-
-  const size = 140;
-  const center = size / 2;
-  const radius = size * 0.38;
-  const angleStep = (Math.PI * 2) / dimensions.length;
-
+const ReportModal = memo(({ 
+  visible, 
+  onClose, 
+  onUpload,
+  reports,
+  onDelete,
+  theme 
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+  onUpload: () => void;
+  reports: DoctorReport[];
+  onDelete: (id: string) => void;
+  theme: any;
+}) => {
   return (
-    <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard shadow="md">
-        <View style={styles.radarHeader}>
-          <Text style={[styles.radarTitle, { color: theme.text.primary }]}>Safety Coverage</Text>
-          <Text style={[styles.radarSubtitle, { color: theme.text.muted }]}>Checklist & topic completion</Text>
-        </View>
-
-        <View style={styles.radarContainer}>
-          <View style={[styles.radarCanvas, { width: size, height: size }]}>
-            {[0.25, 0.5, 0.75, 1].map((r, i) => (
-              <View key={i} style={[
-                styles.radarRing,
-                {
-                  width: radius * 2 * r,
-                  height: radius * 2 * r,
-                  borderRadius: radius * r,
-                  borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  left: center - radius * r,
-                  top: center - radius * r,
-                }
-              ]} />
-            ))}
-
-            {dimensions.map((_, i) => {
-              const angle = i * angleStep - Math.PI / 2;
-              return (
-                <View key={`axis-${i}`} style={[
-                  styles.radarAxis,
-                  {
-                    left: center,
-                    top: center,
-                    width: radius,
-                    transform: [{ rotate: `${angle * 180 / Math.PI}deg` }],
-                    backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  }
-                ]} />
-              );
-            })}
-
-            <View style={StyleSheet.absoluteFill}>
-              {dimensions.map((d, i) => {
-                const angle = i * angleStep - Math.PI / 2;
-                const r = (d.value / 100) * radius;
-                const x = center + Math.cos(angle) * r;
-                const y = center + Math.sin(angle) * r;
-                return (
-                  <View key={`pt-${i}`} style={[
-                    styles.radarPoint,
-                    {
-                      left: x - 4,
-                      top: y - 4,
-                      backgroundColor: d.color,
-                    }
-                  ]} />
-                );
-              })}
-            </View>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={[styles.modalContent, { backgroundColor: theme.isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+          <View style={styles.modalHandle} />
+          
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Doctor Reports</Text>
+            <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+              <Ionicons name="close" size={20} color={theme.text.primary} />
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.radarLegend}>
-            {dimensions.map((d, i) => (
-              <View key={d.key} style={styles.radarLegendItem}>
-                <View style={[styles.radarLegendDot, { backgroundColor: d.color }]} />
-                <Text style={[styles.radarLegendLabel, { color: theme.text.secondary }]}>{d.label}</Text>
-                <Text style={[styles.radarLegendValue, { color: theme.text.primary }]}>{d.value}%</Text>
+          <View style={styles.modalBody}>
+            <TouchableOpacity style={[styles.uploadReportBtn, { borderColor: theme.primary, backgroundColor: `${theme.primary}08` }]} onPress={onUpload}>
+              <Ionicons name="cloud-upload" size={24} color={theme.primary} />
+              <Text style={[styles.uploadReportText, { color: theme.primary }]}>Upload New Report</Text>
+            </TouchableOpacity>
+
+            {reports.length === 0 ? (
+              <View style={styles.emptyReports}>
+                <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
+                <Text style={[styles.emptyReportsText, { color: theme.text.muted }]}>No reports uploaded yet</Text>
               </View>
-            ))}
+            ) : (
+              <ScrollView style={styles.reportsList} showsVerticalScrollIndicator={false}>
+                {reports.map((report) => (
+                  <View key={report.id} style={[styles.reportItem, { borderBottomColor: theme.surface.border }]}>
+                    <View style={styles.reportInfo}>
+                      <Ionicons name="document-text" size={24} color={theme.primary} />
+                      <View style={styles.reportDetails}>
+                        <Text style={[styles.reportName, { color: theme.text.primary }]} numberOfLines={1}>{report.name}</Text>
+                        <Text style={[styles.reportMeta, { color: theme.text.muted }]}>
+                          {new Date(report.uploadedAt).toLocaleDateString()} • 
+                          {report.status === 'approved' ? ' ✅ Approved' : report.status === 'reviewed' ? ' 📋 Reviewed' : ' ⏳ Pending'}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => onDelete(report.id)} style={styles.reportDelete}>
+                      <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-/* ── Weekly Heatmap for Safety Activity ── */
-const SafetyHeatmap = memo(({ checklists, topics, theme }: { checklists: SafetyChecklist[]; topics: SafetyTopic[]; theme: any }) => {
-  const heatmapData = useMemo(() => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const now = new Date();
-
-    // Simulate activity based on completion dates
-    const completedTopics = topics.filter(t => t.completedAt);
-
-    const data = days.map((day, i) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() - (6 - i));
-      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-      const dayEnd = dayStart + 86400000;
-
-      // Count completions on this day
-      const count = completedTopics.filter(t => {
-        if (!t.completedAt) return false;
-        const completed = new Date(t.completedAt).getTime();
-        return completed >= dayStart && completed < dayEnd;
-      }).length;
-
-      return { day, count, date: `${d.getMonth() + 1}/${d.getDate()}` };
-    });
-    return data;
-  }, [topics]);
-
-  const maxCount = Math.max(...heatmapData.map(d => d.count), 1);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <GlassCard shadow="md">
-        <View style={styles.heatmapHeader}>
-          <Text style={[styles.heatmapTitle, { color: theme.text.primary }]}>Weekly Activity</Text>
-          <View style={styles.heatmapLegend}>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: '#10b981' }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>High</Text>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: theme.primary }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>Normal</Text>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: '#ef4444' }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>Low</Text>
-          </View>
-        </View>
-
-        <View style={styles.heatmapGrid}>
-          {heatmapData.map((day, i) => (
-            <View key={i} style={styles.heatmapCell}>
-              <View style={[
-                styles.heatmapBlock,
-                { 
-                  backgroundColor: `${theme.primary}${Math.round((day.count / maxCount) * 35 + 8).toString(16).padStart(2, '0')}`,
-                  borderColor: theme.primary,
-                }
-              ]}>
-                <Text style={[styles.heatmapValue, { color: theme.text.primary }]}>{day.count}</Text>
-              </View>
-              <Text style={[styles.heatmapWeek, { color: theme.text.muted }]}>{day.day}</Text>
-              <Text style={[styles.heatmapDate, { color: theme.text.muted }]}>{day.date}</Text>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-/* ── Health Trend Correlation — Links safety to baby health ── */
-const SafetyHealthCorrelation = memo(({ growthIndex, checklists, theme }: { growthIndex: any; checklists: SafetyChecklist[]; theme: any }) => {
-  const correlations = useMemo(() => {
-    const sleepSafetyProgress = checklists.find(c => c.category === 'sleep')?.progress || 0;
-    const feedingSafetyProgress = checklists.find(c => c.category === 'feeding')?.progress || 0;
-
-    const nutritionScore = growthIndex?.nutritionScore?.value || 0;
-    const restScore = growthIndex?.restScore?.value || 0;
-    const physicalScore = growthIndex?.physicalScore?.value || 0;
-
-    return [
-      {
-        label: 'Sleep Safety ↔ Rest Score',
-        value: Math.min(100, Math.round((sleepSafetyProgress + restScore) / 2)),
-        icon: '😴',
-        color: '#8b5cf6',
-        detail: `Safety: ${sleepSafetyProgress}% • Rest: ${restScore}`,
-      },
-      {
-        label: 'Feeding Safety ↔ Nutrition',
-        value: Math.min(100, Math.round((feedingSafetyProgress + nutritionScore) / 2)),
-        icon: '🍼',
-        color: '#f59e0b',
-        detail: `Safety: ${feedingSafetyProgress}% • Nutrition: ${nutritionScore}`,
-      },
-      {
-        label: 'Overall Safety ↔ Health',
-        value: Math.min(100, Math.round((sleepSafetyProgress + feedingSafetyProgress + physicalScore) / 3)),
-        icon: '💚',
-        color: '#10b981',
-        detail: 'Cross-domain correlation',
-      },
-    ];
-  }, [growthIndex, checklists]);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <GlassCard shadow="md">
-        <View style={styles.correlationHeader}>
-          <Text style={[styles.correlationTitle, { color: theme.text.primary }]}>Safety ↔ Health Link</Text>
-          <Text style={[styles.correlationSubtitle, { color: theme.text.muted }]}>How safety habits affect baby health</Text>
-        </View>
-
-        <View style={styles.correlationList}>
-          {correlations.map((corr, i) => (
-            <View key={i} style={styles.correlationItem}>
-              <View style={styles.correlationLeft}>
-                <Text style={styles.correlationIcon}>{corr.icon}</Text>
-                <View>
-                  <Text style={[styles.correlationLabel, { color: theme.text.primary }]}>{corr.label}</Text>
-                  <Text style={[styles.correlationDetail, { color: theme.text.muted }]}>{corr.detail}</Text>
-                </View>
-              </View>
-              <View style={styles.correlationRight}>
-                <View style={[styles.correlationBarBg, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-                  <View style={[styles.correlationBarFill, { width: `${corr.value}%`, backgroundColor: corr.color }]} />
-                </View>
-                <Text style={[styles.correlationValue, { color: corr.color }]}>{corr.value}%</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-/* ── Upcoming Safety Events Timeline ── */
-const SafetyEventsTimeline = memo(({ checklists, topics, theme, onPress }: { checklists: SafetyChecklist[]; topics: SafetyTopic[]; theme: any; onPress: (item: any) => void }) => {
-  const upcoming = useMemo(() => {
-    const items = [];
-
-    // Overdue critical checklist items
-    checklists.forEach(cl => {
-      cl.items.filter(i => i.critical && !i.completed).forEach(item => {
-        items.push({
-          id: `${cl.id}-${item.id}`,
-          title: item.text,
-          description: cl.title,
-          emoji: '⚠️',
-          priority: 'urgent' as const,
-          confidence: 95,
-          suggestedTime: 'Now',
-        });
-      });
-    });
-
-    // Unread emergency topics
-    topics.filter(t => t.category === 'emergency' && !t.completedAt).forEach(topic => {
-      items.push({
-        id: topic.id,
-        title: topic.title,
-        description: 'Emergency safety topic',
-        emoji: '🚨',
-        priority: 'high' as const,
-        confidence: 88,
-        suggestedTime: 'Review today',
-      });
-    });
-
-    return items.slice(0, 4);
-  }, [checklists, topics]);
-
-  if (!upcoming.length) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <SectionHeader 
-        title="Safety Alerts" 
-        subtitle="Items requiring attention"
-        icon="alert-circle-outline"
-      />
-
-      <View style={styles.calendarTimeline}>
-        {upcoming.map((event, i) => (
-          <TouchableOpacity key={event.id} onPress={() => onPress(event)} style={styles.calendarItem}>
-            <View style={styles.calendarLeft}>
-              <View style={[styles.calendarLine, { backgroundColor: theme.surface.border }]} />
-              <View style={[styles.calendarDot, { backgroundColor: event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary }]} />
-              {i === upcoming.length - 1 && <View style={[styles.calendarLineEnd, { backgroundColor: 'transparent' }]} />}
-            </View>
-            <View style={[styles.calendarCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
-              <View style={styles.calendarHeader}>
-                <Text style={styles.calendarEmoji}>{event.emoji}</Text>
-                <View style={styles.calendarMeta}>
-                  <Text style={[styles.calendarTitle, { color: theme.text.primary }]}>{event.title}</Text>
-                  <Text style={[styles.calendarCategory, { color: theme.text.muted }]}>{event.description}</Text>
-                </View>
-                <View style={[styles.calendarBadge, { backgroundColor: `${event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary}15` }]}>
-                  <Text style={[styles.calendarBadgeText, { color: event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary }]}>
-                    {event.priority}
-                  </Text>
-                </View>
-              </View>
-              <Text style={[styles.calendarAge, { color: theme.primary }]}>
-                {event.suggestedTime}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
       </View>
-    </Animated.View>
+    </Modal>
   );
 });
 
-/* ── Growth Intelligence Score Card for Safety ── */
-const SafetyGrowthCard = memo(({ growthIndex, theme, onPress }: { growthIndex: any; theme: any; onPress: () => void }) => {
-  if (!growthIndex) return null;
+// ─── Reminder Modal ──────────────────────────────────────────────────────
 
-  const nutritionScore = growthIndex?.nutritionScore;
-  const restScore = growthIndex?.restScore;
-  const physicalScore = growthIndex?.physicalScore;
-  const cognitiveScore = growthIndex?.cognitiveScore;
-  const healthStability = growthIndex?.healthStability;
-  const compositeIndex = growthIndex?.compositeIndex || 0;
+const ReminderModal = memo(({ 
+  visible, 
+  onClose, 
+  onSchedule,
+  theme 
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+  onSchedule: (title: string, body: string, date: Date) => void;
+  theme: any;
+}) => {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [date, setDate] = useState(new Date());
 
-  const scores = [
-    { label: 'Nutrition', score: nutritionScore, icon: '🍎', color: '#FF9F43' },
-    { label: 'Rest', score: restScore, icon: '😴', color: '#5F27CD' },
-    { label: 'Physical', score: physicalScore, icon: '💪', color: '#10AC84' },
-    { label: 'Cognitive', score: cognitiveScore, icon: '🧠', color: '#FFD700' },
-    { label: 'Health', score: healthStability, icon: '❤️', color: '#EE5A24' },
-  ];
-
-  const getScoreColor = (value: number) => {
-    if (value >= 80) return '#10b981';
-    if (value >= 60) return '#f59e0b';
-    return '#ef4444';
+  const handleSchedule = () => {
+    if (!title.trim()) {
+      Alert.alert('Missing Info', 'Please enter a reminder title.');
+      return;
+    }
+    onSchedule(title.trim(), body.trim() || 'Safety reminder', date);
+    setTitle('');
+    setBody('');
+    onClose();
   };
 
   return (
-    <Animated.View entering={FadeInUp.delay(50).springify()}>
-      <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
-        <LinearGradient
-          colors={[`${theme.primary}15`, `${theme.secondary}08`]}
-          style={[styles.growthCard, { borderRadius: 20 }]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.growthHeader}>
-            <View style={styles.growthTitleRow}>
-              <Text style={styles.growthEmoji}>📊</Text>
-              <Text style={[styles.growthTitle, { color: theme.text.primary }]}>
-                Growth Intelligence
-              </Text>
-            </View>
-            <View style={[styles.compositeBadge, { backgroundColor: `${getScoreColor(compositeIndex)}20` }]}>
-              <Text style={[styles.compositeText, { color: getScoreColor(compositeIndex) }]}>
-                {compositeIndex}
-              </Text>
-            </View>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={[styles.modalContent, { backgroundColor: theme.isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+          <View style={styles.modalHandle} />
+          
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Schedule Reminder</Text>
+            <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+              <Ionicons name="close" size={20} color={theme.text.primary} />
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.scoresGrid}>
-            {scores.map((item) => (
-              <View key={item.label} style={styles.scoreItem}>
-                <Text style={styles.scoreEmoji}>{item.icon}</Text>
-                <View style={styles.scoreBarContainer}>
-                  <View
-                    style={[
-                      styles.scoreBar,
-                      {
-                        width: `${item.score?.value || 0}%`,
-                        backgroundColor: item.color,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={[styles.scoreValue, { color: theme.text.primary }]}>
-                  {item.score?.value || 0}
-                </Text>
-                <Text style={[styles.scoreLabel, { color: theme.text.muted }]}>{item.label}</Text>
-              </View>
-            ))}
+          <View style={styles.modalBody}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Title</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  color: theme.text.primary,
+                  borderColor: theme.surface.border,
+                }]}
+                placeholder="e.g., Check babyproofing"
+                placeholderTextColor={theme.text.muted}
+                value={title}
+                onChangeText={setTitle}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Description</Text>
+              <TextInput
+                style={[styles.input, styles.inputMultiline, { 
+                  backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  color: theme.text.primary,
+                  borderColor: theme.surface.border,
+                }]}
+                placeholder="What do you want to remember?"
+                placeholderTextColor={theme.text.muted}
+                value={body}
+                onChangeText={setBody}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Date & Time</Text>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  color: theme.text.primary,
+                  borderColor: theme.surface.border,
+                }]}
+                value={date.toLocaleString()}
+                editable={false}
+              />
+            </View>
+
+            <TouchableOpacity style={[styles.modalPrimaryBtn, { backgroundColor: theme.primary }]} onPress={handleSchedule}>
+              <Text style={styles.modalPrimaryBtnText}>Schedule Reminder</Text>
+            </TouchableOpacity>
           </View>
-        </LinearGradient>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   MODAL COMPONENTS — Glass aesthetic
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const UnifiedModal = memo(({ visible, onClose, title, children, theme }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode; theme: any }) => {
-  const translateY = useSharedValue(SCREEN_H);
-  const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    if (visible) {
-      translateY.value = withSpring(0, { damping: 25, stiffness: 300 });
-      opacity.value = withTiming(1, { duration: 200 });
-    } else {
-      translateY.value = withSpring(SCREEN_H, { damping: 25, stiffness: 300 });
-      opacity.value = withTiming(0, { duration: 200 });
-    }
-  }, [visible, translateY, opacity]);
-
-  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
-  if (!visible) return null;
-
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }, backdropStyle]} pointerEvents={visible ? 'auto' : 'none'}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-      </Animated.View>
-      <Animated.View style={[styles.modalSheet, sheetStyle]} pointerEvents={visible ? 'auto' : 'none'}>
-        <BlurView intensity={theme.isDark ? 60 : 90} style={StyleSheet.absoluteFill} tint={theme.blur} />
-        <View style={styles.modalHandle} />
-        <View style={styles.modalHeader}>
-          <Text style={[styles.modalTitle, { color: theme.text.primary }]}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }]}>
-            <Ionicons name="close" size={20} color={theme.text.primary} />
-          </TouchableOpacity>
         </View>
-        {children}
-      </Animated.View>
-    </View>
+      </View>
+    </Modal>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — REDESIGNED WITH INTELLIGENCE + UNIFIED THEMING
+   MAIN SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenProps) {
@@ -1077,6 +719,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const { currentBaby } = useBaby();
   const { triggerHaptic, borderRadiusValue, shouldReduceMotion, fontSizeMultiplier } = useCustomization();
   const sweetAlert = useSweetAlert();
+  const { user } = useAuth();
 
   /* ── Safety Context ── */
   const {
@@ -1090,15 +733,21 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     markTipAsViewed,
     getSafetyScore,
     streakDays,
-    currentLocation,
     markTopicCompleted,
     importFamilyContacts,
     addCustomEmergencyContact,
+    removeCustomContact,
     checklists,
     toggleChecklistItem,
+    addDoctorReport,
+    getDoctorReports,
+    deleteDoctorReport,
+    scheduleSafetyReminder,
+    cancelSafetyReminder,
+    loadSafetyData,
   } = useSafety();
 
-  /* ── Intelligence Hooks (same as TimelineScreen) ── */
+  /* ── Intelligence Hooks ── */
   const { growthIndex } = useGrowthIntelligence();
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { reminders: predictiveReminders } = usePredictiveReminders();
@@ -1107,20 +756,67 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const [selectedTopic, setSelectedTopic] = useState<SafetyTopic | null>(null);
   const [showTopicModal, setShowTopicModal] = useState(false);
   const [showChecklistModal, setShowChecklistModal] = useState(false);
+  const [selectedChecklist, setSelectedChecklist] = useState<SafetyChecklist | null>(null);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [locationSharing, setLocationSharing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [countryCode, setCountryCode] = useState<string>('US');
 
-  // Refresh instantly every time this tab becomes active
+  // ─── Location-based emergency numbers ────────────────────────────────────
+
+  const getEmergencyNumbers = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        return EMERGENCY_NUMBERS.find(n => n.country === 'US');
+      }
+      
+      const pos = await Location.getCurrentPositionAsync({});
+      const [address] = await Location.reverseGeocodeAsync({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      });
+      
+      if (address?.countryCode) {
+        const found = EMERGENCY_NUMBERS.find(n => 
+          n.country === address.countryCode || 
+          n.country === address.country
+        );
+        if (found) {
+          setCountryCode(found.country);
+          return found;
+        }
+      }
+      return EMERGENCY_NUMBERS.find(n => n.country === 'US');
+    } catch (error) {
+      return EMERGENCY_NUMBERS.find(n => n.country === 'US');
+    }
+  }, []);
+
+  const [emergencyNumbers, setEmergencyNumbers] = useState<EmergencyNumber | null>(null);
+
+  useEffect(() => {
+    getEmergencyNumbers().then(setEmergencyNumbers);
+  }, []);
+
+  // ─── Load data ───────────────────────────────────────────────────────────
+
   useFocusEffect(
     useCallback(() => {
-      // Add your safety-context refreshers here if available:
-      // e.g. refreshSafetyData?.(); refreshChecklists?.(); refreshGrowth?.();
-      // If those methods don't exist yet, wire them into your hooks/contexts.
-    }, [])
+      loadSafetyData();
+    }, [loadSafetyData])
   );
+
+  // ─── State ──────────────────────────────────────────────────────────────
+
+  const [reports, setReports] = useState<DoctorReport[]>([]);
+
+  useEffect(() => {
+    setReports(getDoctorReports());
+  }, [getDoctorReports]);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -1134,6 +830,8 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
 
   const safetyScore = useMemo(() => getSafetyScore(), [getSafetyScore]);
   const completedCount = useMemo(() => topics.filter((t: SafetyTopic) => t.completedAt).length, [topics]);
+
+  // ─── Handlers ────────────────────────────────────────────────────────────
 
   const handleTabChange = useCallback((tab: SafetyTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1151,23 +849,131 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const handleSOS = useCallback(() => {
     sweetAlert.confirm(
       'SOS Emergency',
-      'This will call 911 and alert your emergency contacts with your location. Are you sure?',
+      `This will call ${emergencyNumbers?.emergency || '911'} and alert your emergency contacts with your location. Are you sure?`,
       () => {
         Vibration.vibrate([0, 500, 200, 500]);
         triggerSOS();
-        sweetAlert.success('SOS Triggered', 'Emergency services have been contacted.');
+        sweetAlert.success('SOS Triggered', `Emergency services (${emergencyNumbers?.emergency || '911'}) have been contacted.`);
       },
       () => {},
-      'Call 911',
+      `Call ${emergencyNumbers?.emergency || '911'}`,
       'Cancel'
     );
-  }, [triggerSOS, sweetAlert]);
+  }, [triggerSOS, sweetAlert, emergencyNumbers]);
+
+  const handleAddContact = useCallback(async (contact: Omit<EmergencyContact, 'id'>) => {
+    await addCustomEmergencyContact(contact);
+    triggerHaptic('success');
+    sweetAlert.success('Contact Added', `${contact.label} has been added to your emergency contacts.`);
+  }, [addCustomEmergencyContact, triggerHaptic, sweetAlert]);
+
+  const handleToggleChecklistItem = useCallback((checklistId: string, itemId: string) => {
+    toggleChecklistItem(checklistId, itemId);
+    triggerHaptic('light');
+  }, [toggleChecklistItem, triggerHaptic]);
+
+  const handleChecklistPress = useCallback((checklist: SafetyChecklist) => {
+    setSelectedChecklist(checklist);
+    setShowChecklistModal(true);
+    triggerHaptic('light');
+  }, [triggerHaptic]);
+
+  const handleUploadReport = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      const report = {
+        name: asset.name || 'Report',
+        uri: asset.uri,
+        mimeType: asset.mimeType || 'application/pdf',
+        size: asset.size || 0,
+        status: 'pending' as const,
+      };
+
+      await addDoctorReport(report);
+      setReports(getDoctorReports());
+      triggerHaptic('success');
+      sweetAlert.success('Uploaded', 'Report uploaded successfully.');
+    } catch (error) {
+      sweetAlert.alert('Error', 'Failed to upload report.');
+    }
+  }, [addDoctorReport, getDoctorReports, triggerHaptic, sweetAlert]);
+
+  const handleDeleteReport = useCallback(async (id: string) => {
+    sweetAlert.confirm(
+      'Delete Report',
+      'Are you sure you want to delete this report?',
+      async () => {
+        await deleteDoctorReport(id);
+        setReports(getDoctorReports());
+        triggerHaptic('success');
+      },
+      () => {},
+      'Delete',
+      'Cancel'
+    );
+  }, [deleteDoctorReport, getDoctorReports, triggerHaptic, sweetAlert]);
+
+  const handleScheduleReminder = useCallback(async (title: string, body: string, date: Date) => {
+    await scheduleSafetyReminder(title, body, date);
+    triggerHaptic('success');
+    sweetAlert.success('Reminder Set', `"${title}" scheduled for ${date.toLocaleString()}`);
+  }, [scheduleSafetyReminder, triggerHaptic, sweetAlert]);
+
+  const handleShareLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        sweetAlert.alert('Location Required', 'Please enable location services.');
+        return;
+      }
+
+      const pos = await Location.getCurrentPositionAsync({});
+      const [address] = await Location.reverseGeocodeAsync({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      });
+
+      const locationStr = address 
+        ? `${address.street || ''}, ${address.city || ''}, ${address.region || ''}`
+        : `https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;
+
+      const message = `🚨 LittleLoom Emergency Location\n\nI'm at: ${locationStr}\n\nSent via LittleLoom Safety Corner`;
+      
+      await shareLocationWithEmergency();
+      setLocationSharing(true);
+      triggerHaptic('success');
+      
+      sweetAlert.success('Location Shared', 'Your location has been shared with emergency contacts.');
+    } catch (error) {
+      sweetAlert.alert('Error', 'Could not share location.');
+    }
+  }, [shareLocationWithEmergency, triggerHaptic, sweetAlert]);
+
+  const handleFindHospitals = useCallback(() => {
+    findNearbyHospitals();
+    triggerHaptic('medium');
+  }, [findNearbyHospitals, triggerHaptic]);
+
+  const handleFindPediatricians = useCallback(() => {
+    findNearbyPediatricians();
+    triggerHaptic('medium');
+  }, [findNearbyPediatricians, triggerHaptic]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise(r => setTimeout(r, 800));
+    await loadSafetyData();
+    setReports(getDoctorReports());
     setRefreshing(false);
-  }, []);
+  }, [loadSafetyData, getDoctorReports]);
+
+  // ─── Tabs ──────────────────────────────────────────────────────────────
 
   const tabs = [
     { key: 'overview' as SafetyTab, label: 'Overview', icon: 'grid-outline' },
@@ -1179,22 +985,24 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   ];
 
   const quickActions = [
-    { icon: 'people', label: 'Import Contacts', color: '#6366f1', onPress: () => setShowContactModal(true) },
+    { icon: 'people', label: 'Add Contact', color: '#6366f1', onPress: () => setShowContactModal(true) },
     { icon: 'notifications', label: 'Reminder', color: '#10b981', onPress: () => setShowReminderModal(true) },
-    { icon: 'document-text', label: 'Reports', color: '#f59e0b', onPress: () => setShowReportModal(true) },
-    { icon: 'medical', label: 'Hospitals', color: '#ef4444', onPress: findNearbyHospitals },
+    { icon: 'location', label: 'Share Location', color: '#f59e0b', onPress: handleShareLocation },
+    { icon: 'medical', label: 'Hospitals', color: '#ef4444', onPress: handleFindHospitals },
   ];
 
   const bgColors = theme.isDark
     ? [theme.bgColors?.[0] || '#0a0a0a', '#1a1a2e']
     : [theme.bgColors?.[0] || '#f8fafc', '#e2e8f0'];
 
+  // ─── Render ─────────────────────────────────────────────────────────────
+
   return (
     <View style={[styles.container, { backgroundColor: bgColors[0] }]}>
       <StatusBar barStyle={theme.statusBar} />
       <LinearGradient colors={bgColors} style={StyleSheet.absoluteFill} />
 
-      {/* Sticky Header - Matches TrackerHub */}
+      {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
         <BlurView intensity={theme.isDark ? 40 : 80} tint={theme.blur} style={StyleSheet.absoluteFill} />
         <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>Safety Corner</Text>
@@ -1211,7 +1019,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} />
         }
       >
-        {/* ── TOP HEADER — Unified with TrackerHub ── */}
+        {/* ── TOP HEADER ── */}
         <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
           <TouchableOpacity 
             onPress={() => navigation.goBack()} 
@@ -1228,14 +1036,14 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
           </View>
 
           <TouchableOpacity 
-            onPress={() => setShowChecklistModal(true)} 
+            onPress={() => setShowContactModal(true)} 
             style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
           >
-            <Ionicons name="list" size={22} color={theme.text.secondary} />
+            <Ionicons name="person-add" size={22} color={theme.text.secondary} />
           </TouchableOpacity>
 
           <TouchableOpacity 
-            onPress={() => navigation.navigate('PediatricianPDFExport')} 
+            onPress={() => setShowReportModal(true)} 
             style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
           >
             <Ionicons name="document-text" size={22} color={theme.text.secondary} />
@@ -1250,10 +1058,48 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'overview' && (
           <>
-            {/* ── SAFETY SCORE RING ── */}
-            <SafetyScoreRing score={safetyScore} theme={theme} onPress={() => {}} />
+            {/* Safety Score */}
+            <GlassCard onPress={() => {}}>
+              <View style={styles.scoreRingWrap}>
+                <View style={[styles.scoreRingOuter, { 
+                  borderColor: safetyScore >= 80 ? '#10b98125' : safetyScore >= 50 ? '#f59e0b25' : '#ef444425' 
+                }]}>
+                  <View style={[styles.scoreRingInner, { 
+                    borderColor: safetyScore >= 80 ? '#10b981' : safetyScore >= 50 ? '#f59e0b' : '#ef4444' 
+                  }]}>
+                    <Text style={[styles.scoreValue, { 
+                      color: safetyScore >= 80 ? '#10b981' : safetyScore >= 50 ? '#f59e0b' : '#ef4444' 
+                    }]}>{safetyScore}</Text>
+                    <Text style={[styles.scoreMax, { color: theme.text.muted }]}>/100</Text>
+                  </View>
+                </View>
+                <View style={styles.scoreLabels}>
+                  <Text style={[styles.scoreLabel, { color: theme.text.primary }]}>Safety Score</Text>
+                  <Text style={[styles.scoreSublabel, { 
+                    color: safetyScore >= 80 ? '#10b981' : safetyScore >= 50 ? '#f59e0b' : '#ef4444' 
+                  }]}>
+                    {safetyScore >= 80 ? 'Excellent' : safetyScore >= 50 ? 'Good' : 'Needs Attention'}
+                  </Text>
+                  <View style={styles.scoreBreakdown}>
+                    {[
+                      { label: 'Topics', value: Math.round((completedCount / topics.length) * 100), color: '#6366f1' },
+                      { label: 'Checklists', value: Math.round(checklists.reduce((acc, c) => acc + c.progress, 0) / checklists.length), color: '#10b981' },
+                      { label: 'Streak', value: Math.min(streakDays * 5, 100), color: '#f59e0b' },
+                    ].map(s => (
+                      <View key={s.label} style={styles.scoreMini}>
+                        <View style={[styles.scoreMiniBarBg, { backgroundColor: `${s.color}12` }]}>
+                          <View style={[styles.scoreMiniBarFill, { width: `${s.value}%`, backgroundColor: s.color }]} />
+                        </View>
+                        <Text style={[styles.scoreMiniLabel, { color: theme.text.muted }]}>{s.label}</Text>
+                        <Text style={[styles.scoreMiniValue, { color: s.color }]}>{s.value}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            </GlassCard>
 
-            {/* ── KPI GRID ── */}
+            {/* KPI Grid */}
             <View style={styles.kpiGrid}>
               {[
                 { title: 'Completed', value: completedCount, icon: 'checkmark-circle', color: '#10b981', size: 'large' },
@@ -1262,31 +1108,91 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
                 { title: 'Contacts', value: emergencyContacts.length, icon: 'people', color: '#ec4899', size: 'normal' },
               ].map((kpi, i) => (
                 <Animated.View key={kpi.title} entering={FadeInUp.delay(120 + i * 80).springify()} style={[styles.kpiGridItem, kpi.size === 'large' ? styles.kpiGridItemLarge : styles.kpiGridItemNormal]}>
-                  <KpiCard {...kpi} theme={theme} />
+                  <GlassCard style={{ marginBottom: 0, height: '100%', justifyContent: 'center' }}>
+                    <View style={styles.kpiInner}>
+                      <View style={styles.kpiTop}>
+                        <View style={[styles.kpiIconBg, { backgroundColor: `${kpi.color}12` }]}>
+                          <Ionicons name={kpi.icon as any} size={20} color={kpi.color} />
+                        </View>
+                      </View>
+                      <View style={styles.kpiBody}>
+                        <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: kpi.size === 'large' ? 32 : 24 }]}>{kpi.value}</Text>
+                        <Text style={[styles.kpiTitle, { color: theme.text.secondary }]}>{kpi.title}</Text>
+                      </View>
+                    </View>
+                  </GlassCard>
                 </Animated.View>
               ))}
             </View>
 
-            {/* ── STREAK CARD ── */}
-            <SafetyStreakCard streakDays={streakDays} theme={theme} onPress={() => {}} />
+            {/* Streak Card */}
+            <GlassCard onPress={() => {}}>
+              <View style={styles.streakWrap}>
+                <View style={styles.streakLeft}>
+                  <View style={styles.streakIconBg}>
+                    <Text style={styles.streakEmoji}>🔥</Text>
+                  </View>
+                  <View>
+                    <Text style={[styles.streakTitle, { color: theme.text.primary }]}>{streakDays}-Day Streak</Text>
+                    <Text style={[styles.streakSub, { color: theme.text.muted }]}>Keep checking safety daily</Text>
+                  </View>
+                </View>
+                <View style={styles.streakFlames}>
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <Ionicons key={i} name="flame" size={16} color={i < Math.min(streakDays, 7) ? '#f59e0b' : theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'} />
+                  ))}
+                </View>
+              </View>
+            </GlassCard>
 
-            {/* ── QUICK ACTIONS ── */}
-            <QuickActionsBar actions={quickActions} theme={theme} />
+            {/* Quick Actions */}
+            <SectionHeader title="Quick Actions" icon="flash-outline" />
+            <View style={styles.quickActionsWrap}>
+              {quickActions.map((action, i) => (
+                <TouchableOpacity key={i} onPress={action.onPress} style={[styles.quickActionPill, { backgroundColor: `${action.color}10` }]}>
+                  <Ionicons name={action.icon as any} size={18} color={action.color} />
+                  <Text style={[styles.quickActionLabel, { color: action.color }]}>{action.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-            {/* ── LOCATION STATUS ── */}
-            <LocationStatusCard isActive={locationSharing} theme={theme} onToggle={() => setLocationSharing(!locationSharing)} />
+            {/* Location Status */}
+            <GlassCard>
+              <View style={styles.locationWrap}>
+                <View style={[styles.locationDot, { backgroundColor: locationSharing ? '#10b981' : '#ef4444' }]}>
+                  <View style={[styles.locationPulse, { backgroundColor: locationSharing ? '#10b98130' : '#ef444430' }]} />
+                </View>
+                <View style={styles.locationInfo}>
+                  <Text style={[styles.locationTitle, { color: theme.text.primary }]}>
+                    {locationSharing ? 'Location Sharing Active' : 'Location Sharing Off'}
+                  </Text>
+                  <Text style={[styles.locationDesc, { color: theme.text.muted }]}>
+                    {locationSharing ? 'Emergency contacts can see your location' : 'Enable for emergency response'}
+                  </Text>
+                </View>
+                <Switch
+                  value={locationSharing}
+                  onValueChange={handleShareLocation}
+                  trackColor={{ false: '#cbd5e1', true: '#10b981' }}
+                  thumbColor="#fff"
+                />
+              </View>
+            </GlassCard>
 
-            {/* ── RECENT TOPICS ── */}
+            {/* Recent Topics */}
             <View style={styles.section}>
               <SectionHeader 
                 title="Recent Topics" 
-                subtitle={`${topics.filter(t => t.completedAt).length} completed`} 
+                subtitle={`${completedCount} completed`} 
                 action={() => setActiveTab('topics')} 
                 icon="shield-checkmark-outline"
               />
               {topics.slice(0, 3).map((topic, i) => (
                 <Animated.View key={topic.id} entering={FadeInUp.delay(i * 60).springify()}>
-                  <GlassCard onPress={() => handleTopicPress(topic)} shadow="sm" style={styles.topicListItem}>
+                  <TouchableOpacity onPress={() => handleTopicPress(topic)} style={[styles.topicListItem, { 
+                    borderColor: theme.surface.border,
+                    backgroundColor: theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)',
+                  }]}>
                     <View style={[styles.topicListIcon, { backgroundColor: `${topic.color}12` }]}>
                       <Ionicons name={topic.icon as any} size={20} color={topic.color} />
                     </View>
@@ -1295,26 +1201,10 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
                       <Text style={[styles.topicListDesc, { color: theme.text.muted }]} numberOfLines={1}>{topic.description}</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
-                  </GlassCard>
+                  </TouchableOpacity>
                 </Animated.View>
               ))}
             </View>
-
-            {/* ── GROWTH INTELLIGENCE CARD (from TimelineScreen) ── */}
-            {growthIndex && (
-              <View style={styles.section}>
-                <SectionHeader 
-                  title="Baby Health" 
-                  subtitle="From Growth Intelligence" 
-                  icon="trending-up-outline"
-                />
-                <SafetyGrowthCard 
-                  growthIndex={growthIndex} 
-                  theme={theme} 
-                  onPress={() => navigation.navigate('GrowthDashboard')} 
-                />
-              </View>
-            )}
           </>
         )}
 
@@ -1322,19 +1212,177 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
             TAB: EMERGENCY
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'emergency' && (
-          <EmergencyQuickDial
-            contacts={emergencyContacts}
-            onCall={(c) => callEmergency(c.number, c.label, c.type)}
-            onSOS={handleSOS}
-            theme={theme}
-          />
+          <>
+            <SectionHeader title="Emergency" subtitle="One-tap access to help" icon="alert-circle-outline" />
+
+            {/* SOS Button */}
+            <TouchableOpacity onPress={handleSOS} activeOpacity={0.8} style={styles.sosButton}>
+              <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.sosGradient}>
+                <Ionicons name="alert" size={32} color="#fff" />
+                <Text style={styles.sosText}>SOS EMERGENCY</Text>
+                <Text style={styles.sosSub}>Tap to call {emergencyNumbers?.emergency || '911'} & alert family</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Emergency Numbers */}
+            <GlassCard>
+              <View style={styles.emergencyNumbersWrap}>
+                <Text style={[styles.emergencyNumbersTitle, { color: theme.text.secondary }]}>
+                  Emergency Numbers • {emergencyNumbers?.country || 'US'}
+                </Text>
+                <View style={styles.emergencyNumbersGrid}>
+                  {[
+                    { label: 'Emergency', number: emergencyNumbers?.emergency || '911', color: '#ef4444', icon: 'alert-circle' },
+                    { label: 'Police', number: emergencyNumbers?.police || '911', color: '#3b82f6', icon: 'shield' },
+                    { label: 'Ambulance', number: emergencyNumbers?.ambulance || '911', color: '#10b981', icon: 'medical' },
+                    { label: 'Fire', number: emergencyNumbers?.fire || '911', color: '#f59e0b', icon: 'flame' },
+                    emergencyNumbers?.poison ? { label: 'Poison Control', number: emergencyNumbers.poison, color: '#8b5cf6', icon: 'warning' } : null,
+                  ].filter(Boolean).map((item) => (
+                    <TouchableOpacity 
+                      key={item!.label} 
+                      style={[styles.emergencyNumberBtn, { backgroundColor: `${item!.color}12` }]} 
+                      onPress={() => callEmergency(item!.number, item!.label, 'emergency')}
+                    >
+                      <Ionicons name={item!.icon as any} size={20} color={item!.color} />
+                      <View style={styles.emergencyNumberInfo}>
+                        <Text style={[styles.emergencyNumberLabel, { color: theme.text.primary }]}>{item!.label}</Text>
+                        <Text style={[styles.emergencyNumberValue, { color: item!.color }]}>{item!.number}</Text>
+                      </View>
+                      <Ionicons name="call" size={18} color={item!.color} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </GlassCard>
+
+            {/* Emergency Contacts */}
+            <SectionHeader 
+              title="Emergency Contacts" 
+              subtitle={`${emergencyContacts.filter(c => c.type === 'emergency' || c.type === 'family').length} contacts`}
+              action={() => setShowContactModal(true)}
+              actionLabel="Add"
+              icon="people-outline"
+            />
+
+            {emergencyContacts.filter(c => c.type === 'emergency' || c.type === 'family').map((contact) => (
+              <GlassCard key={contact.id}>
+                <View style={styles.contactRow}>
+                  <View style={[styles.contactAvatar, { backgroundColor: `${contact.color}15` }]}>
+                    <Ionicons name={contact.icon as any} size={22} color={contact.color} />
+                  </View>
+                  <View style={styles.contactInfo}>
+                    <Text style={[styles.contactName, { color: theme.text.primary }]}>{contact.label}</Text>
+                    <Text style={[styles.contactNumber, { color: theme.text.muted }]}>{contact.number}</Text>
+                    {contact.relation && (
+                      <Text style={[styles.contactRelation, { color: theme.text.muted }]}>{contact.relation}</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity 
+                    style={[styles.contactCallBtn, { backgroundColor: `${contact.color}15` }]} 
+                    onPress={() => callEmergency(contact.number, contact.label, contact.type)}
+                  >
+                    <Ionicons name="call" size={18} color={contact.color} />
+                  </TouchableOpacity>
+                  {!contact.isDefault && (
+                    <TouchableOpacity 
+                      style={styles.contactDeleteBtn} 
+                      onPress={() => {
+                        sweetAlert.confirm(
+                          'Remove Contact',
+                          `Remove "${contact.label}" from emergency contacts?`,
+                          () => removeCustomContact(contact.id),
+                          () => {},
+                          'Remove',
+                          'Cancel'
+                        );
+                      }}
+                    >
+                      <Ionicons name="close" size={16} color={theme.text.muted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </GlassCard>
+            ))}
+
+            {/* Quick Location Actions */}
+            <SectionHeader title="Location Services" icon="location-outline" />
+            
+            <GlassCard>
+              <TouchableOpacity style={styles.locationActionRow} onPress={handleShareLocation}>
+                <View style={[styles.locationActionIcon, { backgroundColor: '#f59e0b15' }]}>
+                  <Ionicons name="share-outline" size={20} color="#f59e0b" />
+                </View>
+                <View style={styles.locationActionInfo}>
+                  <Text style={[styles.locationActionTitle, { color: theme.text.primary }]}>Share Location</Text>
+                  <Text style={[styles.locationActionDesc, { color: theme.text.muted }]}>Send your current location to contacts</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
+              </TouchableOpacity>
+            </GlassCard>
+
+            <GlassCard>
+              <TouchableOpacity style={styles.locationActionRow} onPress={handleFindHospitals}>
+                <View style={[styles.locationActionIcon, { backgroundColor: '#ef444415' }]}>
+                  <Ionicons name="medical" size={20} color="#ef4444" />
+                </View>
+                <View style={styles.locationActionInfo}>
+                  <Text style={[styles.locationActionTitle, { color: theme.text.primary }]}>Find Nearby Hospitals</Text>
+                  <Text style={[styles.locationActionDesc, { color: theme.text.muted }]}>Locate the closest medical facilities</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
+              </TouchableOpacity>
+            </GlassCard>
+
+            <GlassCard>
+              <TouchableOpacity style={styles.locationActionRow} onPress={handleFindPediatricians}>
+                <View style={[styles.locationActionIcon, { backgroundColor: '#6366f115' }]}>
+                  <Ionicons name="person" size={20} color="#6366f1" />
+                </View>
+                <View style={styles.locationActionInfo}>
+                  <Text style={[styles.locationActionTitle, { color: theme.text.primary }]}>Find Pediatricians</Text>
+                  <Text style={[styles.locationActionDesc, { color: theme.text.muted }]}>Locate pediatricians near you</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.text.muted} />
+              </TouchableOpacity>
+            </GlassCard>
+          </>
         )}
 
         {/* ═════════════════════════════════════════════════════════════════
             TAB: TOPICS
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'topics' && (
-          <SafetyTopicGrid topics={topics} onPress={handleTopicPress} theme={theme} />
+          <View style={styles.topicGrid}>
+            {topics.map((topic, i) => {
+              const isCompleted = !!topic.completedAt;
+              return (
+                <Animated.View key={topic.id} entering={FadeInUp.delay(i * 60).springify()} style={styles.topicGridItem}>
+                  <TouchableOpacity onPress={() => handleTopicPress(topic)} style={[styles.topicCard, {
+                    borderColor: theme.surface.border,
+                    backgroundColor: isCompleted ? (theme.isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.04)') : (theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)'),
+                  }]}>
+                    <View style={styles.topicCardInner}>
+                      <View style={[styles.topicIconBg, { backgroundColor: `${topic.color}12` }]}>
+                        <Ionicons name={topic.icon as any} size={24} color={topic.color} />
+                        {isCompleted && (
+                          <View style={styles.topicCompletedBadge}>
+                            <Ionicons name="checkmark" size={10} color="#fff" />
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.topicTitle, { color: theme.text.primary }]} numberOfLines={2}>{topic.title}</Text>
+                      <Text style={[styles.topicCategory, { color: topic.color }]}>{topic.category}</Text>
+                      {topic.completedAt && (
+                        <View style={[styles.topicDoneBadge, { backgroundColor: `${topic.color}12` }]}>
+                          <Text style={[styles.topicDoneText, { color: topic.color }]}>Completed</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </Animated.View>
+              );
+            })}
+          </View>
         )}
 
         {/* ═════════════════════════════════════════════════════════════════
@@ -1349,21 +1397,26 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
             />
             {checklists.map((checklist, i) => (
               <Animated.View key={checklist.id} entering={FadeInUp.delay(i * 60).springify()}>
-                <GlassCard onPress={() => setShowChecklistModal(true)} shadow="sm" style={{ marginBottom: SPACING.md }}>
-                  <View style={styles.checklistRow}>
-                    <View style={[styles.checklistIcon, { backgroundColor: `${theme.primary}12` }]}>
-                      <Ionicons name="list" size={22} color={theme.primary} />
-                    </View>
-                    <View style={styles.checklistInfo}>
-                      <Text style={[styles.checklistTitle, { color: theme.text.primary }]}>{checklist.title}</Text>
-                      <Text style={[styles.checklistMeta, { color: theme.text.muted }]}>{checklist.category} • {checklist.items.length} items</Text>
-                      <View style={styles.checklistBarBg}>
-                        <View style={[styles.checklistBarFill, { width: `${checklist.progress}%`, backgroundColor: theme.primary }]} />
-                      </View>
-                    </View>
-                    <Text style={[styles.checklistPercent, { color: theme.primary }]}>{checklist.progress}%</Text>
+                <TouchableOpacity onPress={() => handleChecklistPress(checklist)} style={[styles.checklistRow, {
+                  borderColor: theme.surface.border,
+                  backgroundColor: theme.isDark ? 'rgba(45,45,60,0.5)' : 'rgba(255,255,255,0.75)',
+                  borderRadius: 16,
+                  padding: 14,
+                  marginBottom: 12,
+                  borderWidth: 1,
+                }]}>
+                  <View style={[styles.checklistIcon, { backgroundColor: `${theme.primary}12` }]}>
+                    <Ionicons name="list" size={22} color={theme.primary} />
                   </View>
-                </GlassCard>
+                  <View style={styles.checklistInfo}>
+                    <Text style={[styles.checklistTitle, { color: theme.text.primary }]}>{checklist.title}</Text>
+                    <Text style={[styles.checklistMeta, { color: theme.text.muted }]}>{checklist.category} • {checklist.items.filter(i => i.completed).length}/{checklist.items.length} items</Text>
+                    <View style={styles.checklistBarBg}>
+                      <View style={[styles.checklistBarFill, { width: `${checklist.progress}%`, backgroundColor: theme.primary }]} />
+                    </View>
+                  </View>
+                  <Text style={[styles.checklistPercent, { color: theme.primary }]}>{checklist.progress}%</Text>
+                </TouchableOpacity>
               </Animated.View>
             ))}
           </View>
@@ -1374,58 +1427,93 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
            ═════════════════════════════════════════════════════════════════ */}
         {activeTab === 'intelligence' && (
           <>
-            <SafetyPatternPredictor 
-              checklists={checklists} 
-              topics={topics} 
-              theme={theme} 
-              onPress={() => {}} 
-            />
-
-            <SafetyBalanceRadar 
-              checklists={checklists} 
-              topics={topics} 
-              theme={theme} 
-            />
-
-            <SafetyHeatmap 
-              checklists={checklists} 
-              topics={topics} 
-              theme={theme} 
-            />
-
-            <SafetyHealthCorrelation 
-              growthIndex={growthIndex} 
-              checklists={checklists} 
-              theme={theme} 
-            />
-
-            <SafetyEventsTimeline 
-              checklists={checklists} 
-              topics={topics} 
-              theme={theme} 
-              onPress={(item) => {
-                if (item.id.includes('-')) {
-                  setShowChecklistModal(true);
-                } else {
-                  const topic = topics.find(t => t.id === item.id);
-                  if (topic) handleTopicPress(topic);
-                }
-              }} 
-            />
-
-            {growthIndex && (
-              <View style={{ marginTop: 16 }}>
-                <SectionHeader 
-                  title="Growth Intelligence" 
-                  subtitle="Baby health metrics" 
-                  icon="trending-up-outline"
-                />
-                <SafetyGrowthCard 
-                  growthIndex={growthIndex} 
-                  theme={theme} 
-                  onPress={() => navigation.navigate('GrowthDashboard')} 
-                />
+            <GlassCard onPress={() => {}}>
+              <View style={styles.predictorHeader}>
+                <View style={[styles.predictorIconBg, { backgroundColor: `${theme.primary}15` }]}>
+                  <Ionicons name="sparkles" size={20} color={theme.primary} />
+                </View>
+                <View style={styles.predictorTitleWrap}>
+                  <Text style={[styles.predictorTitle, { color: theme.text.primary }]}>Safety Intelligence</Text>
+                  <Text style={[styles.predictorSubtitle, { color: theme.text.muted }]}>AI-powered safety monitoring</Text>
+                </View>
               </View>
+
+              <View style={styles.predictorList}>
+                {[
+                  { 
+                    pattern: checklists.some(c => c.progress < 100) ? 'Checklists Pending' : 'All Checklists Complete',
+                    confidence: 95,
+                    basedOn: `${checklists.filter(c => c.progress < 100).length} incomplete`,
+                    emoji: checklists.some(c => c.progress < 100) ? '⚠️' : '✅',
+                    color: checklists.some(c => c.progress < 100) ? '#ef4444' : '#10b981',
+                  },
+                  {
+                    pattern: topics.filter(t => !t.completedAt).length > 0 ? 'Topics to Review' : 'All Topics Completed',
+                    confidence: 88,
+                    basedOn: `${topics.filter(t => !t.completedAt).length} pending`,
+                    emoji: topics.filter(t => !t.completedAt).length > 0 ? '📋' : '📚',
+                    color: topics.filter(t => !t.completedAt).length > 0 ? '#f59e0b' : '#6366f1',
+                  },
+                  {
+                    pattern: 'Weekly Safety Review',
+                    confidence: 72,
+                    basedOn: 'Habit pattern',
+                    emoji: '📅',
+                    color: '#8b5cf6',
+                  },
+                ].map((pred, i) => (
+                  <View key={i} style={[styles.predictorItem, i < 2 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
+                    <View style={styles.predictorLeft}>
+                      <Text style={styles.predictorEmoji}>{pred.emoji}</Text>
+                      <View>
+                        <Text style={[styles.predictorMilestone, { color: theme.text.primary }]}>{pred.pattern}</Text>
+                        <Text style={[styles.predictorCategory, { color: theme.text.muted }]}>{pred.basedOn}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.predictorRight}>
+                      <View style={styles.predictorBarBg}>
+                        <View style={[styles.predictorBarFill, { width: `${pred.confidence}%`, backgroundColor: pred.confidence > 70 ? '#10b981' : pred.confidence > 50 ? '#f59e0b' : '#ef4444' }]} />
+                      </View>
+                      <Text style={[styles.predictorConfidence, { color: theme.text.secondary }]}>{pred.confidence}% confidence</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </GlassCard>
+
+            {/* Growth Intelligence */}
+            {growthIndex && (
+              <GlassCard onPress={() => navigation.navigate('GrowthDashboard')}>
+                <View style={styles.growthHeader}>
+                  <View style={styles.growthTitleRow}>
+                    <Text style={styles.growthEmoji}>📊</Text>
+                    <Text style={[styles.growthTitle, { color: theme.text.primary }]}>Growth Intelligence</Text>
+                  </View>
+                  <View style={[styles.compositeBadge, { backgroundColor: `${growthIndex.compositeIndex >= 80 ? '#10b981' : growthIndex.compositeIndex >= 60 ? '#f59e0b' : '#ef4444'}20` }]}>
+                    <Text style={[styles.compositeText, { color: growthIndex.compositeIndex >= 80 ? '#10b981' : growthIndex.compositeIndex >= 60 ? '#f59e0b' : '#ef4444' }]}>
+                      {growthIndex.compositeIndex || 0}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.scoresGrid}>
+                  {[
+                    { label: 'Nutrition', score: growthIndex.nutritionScore?.value || 0, icon: '🍎', color: '#FF9F43' },
+                    { label: 'Rest', score: growthIndex.restScore?.value || 0, icon: '😴', color: '#5F27CD' },
+                    { label: 'Physical', score: growthIndex.physicalScore?.value || 0, icon: '💪', color: '#10AC84' },
+                    { label: 'Cognitive', score: growthIndex.cognitiveScore?.value || 0, icon: '🧠', color: '#FFD700' },
+                  ].map((item) => (
+                    <View key={item.label} style={styles.scoreItem}>
+                      <Text style={styles.scoreEmoji}>{item.icon}</Text>
+                      <View style={styles.scoreBarContainer}>
+                        <View style={[styles.scoreBar, { width: `${Math.min(item.score, 100)}%`, backgroundColor: item.color }]} />
+                      </View>
+                      <Text style={[styles.scoreValue, { color: theme.text.primary }]}>{item.score}</Text>
+                      <Text style={[styles.scoreLabel, { color: theme.text.muted }]}>{item.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </GlassCard>
             )}
           </>
         )}
@@ -1437,15 +1525,41 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
           <View style={styles.section}>
             <SectionHeader 
               title="Doctor Reports" 
-              subtitle="Upload and manage medical documents" 
+              subtitle={`${reports.length} reports`} 
               icon="document-text-outline"
             />
-            <GlassCard onPress={() => setShowReportModal(true)} style={styles.uploadBtn}>
-              <LinearGradient colors={[theme.primary, theme.secondary]} style={styles.uploadGradient}>
-                <Ionicons name="cloud-upload" size={24} color="#fff" />
-                <Text style={styles.uploadText}>Upload PDF Report</Text>
-              </LinearGradient>
-            </GlassCard>
+
+            <TouchableOpacity style={[styles.uploadBtn, { borderColor: theme.primary, backgroundColor: `${theme.primary}08` }]} onPress={handleUploadReport}>
+              <Ionicons name="cloud-upload" size={24} color={theme.primary} />
+              <Text style={[styles.uploadText, { color: theme.primary }]}>Upload Report</Text>
+            </TouchableOpacity>
+
+            {reports.length === 0 ? (
+              <View style={styles.emptyReports}>
+                <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
+                <Text style={[styles.emptyReportsText, { color: theme.text.muted }]}>No reports yet</Text>
+              </View>
+            ) : (
+              reports.map((report) => (
+                <GlassCard key={report.id}>
+                  <View style={styles.reportItem}>
+                    <View style={styles.reportInfo}>
+                      <Ionicons name="document-text" size={24} color={theme.primary} />
+                      <View style={styles.reportDetails}>
+                        <Text style={[styles.reportName, { color: theme.text.primary }]} numberOfLines={1}>{report.name}</Text>
+                        <Text style={[styles.reportMeta, { color: theme.text.muted }]}>
+                          {new Date(report.uploadedAt).toLocaleDateString()} • 
+                          {report.status === 'approved' ? ' ✅ Approved' : report.status === 'reviewed' ? ' 📋 Reviewed' : ' ⏳ Pending'}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => handleDeleteReport(report.id)} style={styles.reportDelete}>
+                      <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                </GlassCard>
+              ))
+            )}
           </View>
         )}
 
@@ -1453,43 +1567,116 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
       </Animated.ScrollView>
 
       {/* ── MODALS ── */}
-      <UnifiedModal visible={showTopicModal} onClose={() => setShowTopicModal(false)} title={selectedTopic?.title || ''} theme={theme}>
-        {selectedTopic && (
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
-            <View style={[styles.topicDetailIcon, { backgroundColor: `${selectedTopic.color}12` }]}>
-              <Ionicons name={selectedTopic.icon as any} size={32} color={selectedTopic.color} />
-            </View>
-            <Text style={[styles.topicDetailTitle, { color: theme.text.primary }]}>{selectedTopic.title}</Text>
-            <Text style={[styles.topicDetailDesc, { color: theme.text.muted }]}>{selectedTopic.description}</Text>
-            <View style={styles.tipsList}>
-              {selectedTopic.tips.map((tip, i) => (
-                <View key={i} style={styles.tipRow}>
-                  <View style={[styles.tipBullet, { backgroundColor: selectedTopic.color }]}>
-                    <Text style={styles.tipNumber}>{i + 1}</Text>
-                  </View>
-                  <Text style={[styles.tipText, { color: theme.text.secondary }]}>{tip}</Text>
-                </View>
-              ))}
-            </View>
-            {selectedTopic.emergencyNumbers?.map((num, i) => (
-              <TouchableOpacity key={i} style={[styles.emergencyCallBtn, { backgroundColor: selectedTopic.color }]} onPress={() => callEmergency(num.number, num.label, 'emergency')}>
-                <Ionicons name="call" size={18} color="#fff" />
-                <Text style={styles.emergencyCallText}>Call {num.label}</Text>
+
+      {/* Topic Modal */}
+      <Modal visible={showTopicModal} transparent animationType="fade" onRequestClose={() => setShowTopicModal(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowTopicModal(false)} />
+          <View style={[styles.modalContent, { backgroundColor: theme.isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
+            <View style={styles.modalHandle} />
+            
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text.primary }]}>{selectedTopic?.title || 'Topic'}</Text>
+              <TouchableOpacity onPress={() => setShowTopicModal(false)} style={[styles.modalClose, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                <Ionicons name="close" size={20} color={theme.text.primary} />
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={[styles.completeBtn, { backgroundColor: theme.primary }]} onPress={() => { markTopicCompleted(selectedTopic.id); setShowTopicModal(false); }}>
-              <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={styles.completeBtnText}>Mark as Completed</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        )}
-      </UnifiedModal>
+            </View>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {selectedTopic && (
+                <>
+                  <View style={[styles.topicDetailIcon, { backgroundColor: `${selectedTopic.color}12` }]}>
+                    <Ionicons name={selectedTopic.icon as any} size={32} color={selectedTopic.color} />
+                  </View>
+                  <Text style={[styles.topicDetailDesc, { color: theme.text.muted }]}>{selectedTopic.description}</Text>
+                  
+                  <View style={styles.tipsList}>
+                    {selectedTopic.tips.map((tip, i) => (
+                      <View key={i} style={styles.tipRow}>
+                        <View style={[styles.tipBullet, { backgroundColor: selectedTopic.color }]}>
+                          <Text style={styles.tipNumber}>{i + 1}</Text>
+                        </View>
+                        <Text style={[styles.tipText, { color: theme.text.secondary }]}>{tip}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {selectedTopic.emergencyNumbers?.map((num, i) => (
+                    <TouchableOpacity 
+                      key={i} 
+                      style={[styles.emergencyCallBtn, { backgroundColor: selectedTopic.color }]} 
+                      onPress={() => callEmergency(num.number, num.label, 'emergency')}
+                    >
+                      <Ionicons name="call" size={18} color="#fff" />
+                      <Text style={styles.emergencyCallText}>Call {num.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  <TouchableOpacity 
+                    style={[styles.completeBtn, { backgroundColor: selectedTopic.completedAt ? theme.text.muted : theme.primary }]} 
+                    onPress={() => {
+                      if (selectedTopic.completedAt) {
+                        // Could add mark incomplete functionality here
+                        sweetAlert.alert('Already Completed', 'This topic has already been marked as completed.');
+                      } else {
+                        markTopicCompleted(selectedTopic.id);
+                        setShowTopicModal(false);
+                        sweetAlert.success('Completed!', 'Topic marked as completed.');
+                      }
+                    }}
+                  >
+                    <Ionicons name={selectedTopic.completedAt ? 'checkmark-circle' : 'checkmark-circle-outline'} size={20} color="#fff" />
+                    <Text style={styles.completeBtnText}>
+                      {selectedTopic.completedAt ? 'Completed' : 'Mark as Completed'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Contact Modal */}
+      <ContactModal 
+        visible={showContactModal} 
+        onClose={() => setShowContactModal(false)} 
+        onAdd={handleAddContact}
+        theme={theme}
+      />
+
+      {/* Checklist Modal */}
+      <ChecklistModal
+        visible={showChecklistModal}
+        checklist={selectedChecklist}
+        onClose={() => setShowChecklistModal(false)}
+        onToggleItem={handleToggleChecklistItem}
+        theme={theme}
+      />
+
+      {/* Report Modal */}
+      <ReportModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onUpload={handleUploadReport}
+        reports={reports}
+        onDelete={handleDeleteReport}
+        theme={theme}
+      />
+
+      {/* Reminder Modal */}
+      <ReminderModal
+        visible={showReminderModal}
+        onClose={() => setShowReminderModal(false)}
+        onSchedule={handleScheduleReminder}
+        theme={theme}
+      />
     </View>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Unified with TrackerHub / GrowthDashboard / TimelineScreen
+   STYLES — NO SHADOWS — Clean flat design
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
@@ -1593,7 +1780,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   headerSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 2 },
 
-  // ── KPI Grid ──
+  // ── KPI ──
   kpiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1604,18 +1791,7 @@ const styles = StyleSheet.create({
   kpiGridItem: { marginBottom: 0 },
   kpiGridItemLarge: { width: (SCREEN_W - 56) / 2, height: 140 },
   kpiGridItemNormal: { width: (SCREEN_W - 56) / 2, height: 120 },
-
-  // ── KPI Card ──
-  kpiCard: {
-    flex: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
-    padding: 14,
-    borderWidth: 1,
-    ...SHADOW.sm,
-  },
-  kpiCardLarge: { padding: 16 },
-  kpiInner: { flex: 1, justifyContent: 'space-between' },
+  kpiInner: { flex: 1, justifyContent: 'space-between', padding: 4 },
   kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   kpiIconBg: {
     width: 36,
@@ -1628,7 +1804,7 @@ const styles = StyleSheet.create({
   kpiValue: { fontWeight: '800', letterSpacing: -0.5 },
   kpiTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  // ── Safety Score Ring ──
+  // ── Score Ring ──
   scoreRingWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1663,12 +1839,12 @@ const styles = StyleSheet.create({
   scoreMiniLabel: { fontSize: 11, fontWeight: '600', width: 60 },
   scoreMiniValue: { fontSize: 11, fontWeight: '700', width: 24, textAlign: 'right' },
 
-  // ── Emergency Quick Dial ──
-  sosWrap: { marginHorizontal: 16, marginBottom: 16 },
+  // ── SOS Button ──
   sosButton: {
+    marginHorizontal: 16,
+    marginBottom: 16,
     borderRadius: 20,
     overflow: 'hidden',
-    ...SHADOW.lg,
   },
   sosGradient: {
     paddingVertical: 20,
@@ -1677,49 +1853,139 @@ const styles = StyleSheet.create({
   },
   sosText: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: 1 },
   sosSub: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '500' },
-  emergencyGrid: {
+
+  // ── Emergency Numbers ──
+  emergencyNumbersWrap: { padding: 16 },
+  emergencyNumbersTitle: { fontSize: 13, fontWeight: '700', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+  emergencyNumbersGrid: { gap: 8 },
+  emergencyNumberBtn: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 12,
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    gap: 12,
   },
-  emergencyCard: {
-    width: (SCREEN_W - 56) / 2,
-    padding: 16,
-    marginBottom: 0,
+  emergencyNumberInfo: { flex: 1 },
+  emergencyNumberLabel: { fontSize: 14, fontWeight: '600' },
+  emergencyNumberValue: { fontSize: 16, fontWeight: '800' },
+
+  // ── Contacts ──
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
   },
-  emergencyIconBg: {
+  contactAvatar: {
     width: 44,
     height: 44,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
   },
-  emergencyLabel: { fontSize: 14, fontWeight: '700' },
-  emergencyNumber: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  familyScroll: { paddingHorizontal: 16, paddingBottom: 4, gap: 8 },
-  familyChip: {
+  contactInfo: { flex: 1 },
+  contactName: { fontSize: 15, fontWeight: '700' },
+  contactNumber: { fontSize: 13, fontWeight: '500', marginTop: 1 },
+  contactRelation: { fontSize: 12, fontWeight: '500', marginTop: 1, opacity: 0.7 },
+  contactCallBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  contactDeleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // ── Location Actions ──
+  locationActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
+    padding: 14,
+    gap: 12,
   },
-  familyAvatar: { width: 28, height: 28, borderRadius: 14 },
-  familyAvatarPlaceholder: {
-    width: 28,
-    height: 28,
+  locationActionIcon: {
+    width: 44,
+    height: 44,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  familyName: { fontSize: 12, fontWeight: '600' },
+  locationActionInfo: { flex: 1 },
+  locationActionTitle: { fontSize: 15, fontWeight: '700' },
+  locationActionDesc: { fontSize: 12, fontWeight: '500', marginTop: 1, opacity: 0.7 },
 
-  // ── Safety Topic Grid ──
+  // ── Location Status ──
+  locationWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  locationDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  locationPulse: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    position: 'absolute',
+  },
+  locationInfo: { flex: 1 },
+  locationTitle: { fontSize: 15, fontWeight: '700' },
+  locationDesc: { fontSize: 12, fontWeight: '500', marginTop: 1 },
+
+  // ── Streak ──
+  streakWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 14,
+  },
+  streakLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  streakIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#f59e0b12',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  streakEmoji: { fontSize: 24 },
+  streakTitle: { fontSize: 16, fontWeight: '800' },
+  streakSub: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  streakFlames: { flexDirection: 'row', gap: 4 },
+
+  // ── Quick Actions ──
+  quickActionsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  quickActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    flex: 1,
+    minWidth: (SCREEN_W - 64) / 2,
+  },
+  quickActionLabel: { fontSize: 13, fontWeight: '700' },
+
+  // ── Topics ──
   topicGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1727,7 +1993,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   topicGridItem: { width: (SCREEN_W - 56) / 2 },
-  topicCardInner: { padding: 14, gap: 8 },
+  topicCard: {
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    minHeight: 140,
+  },
+  topicCardInner: { gap: 8 },
   topicIconBg: {
     width: 44,
     height: 44,
@@ -1764,8 +2036,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
+    marginHorizontal: 16,
     marginBottom: 8,
     gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
   },
   topicListIcon: {
     width: 44,
@@ -1778,76 +2053,15 @@ const styles = StyleSheet.create({
   topicListTitle: { fontSize: 15, fontWeight: '700' },
   topicListDesc: { fontSize: 12, fontWeight: '500' },
 
-  // ── Streak Card ──
-  streakWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 14,
-  },
-  streakLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  streakIconBg: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#f59e0b12',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  streakEmoji: { fontSize: 24 },
-  streakTitle: { fontSize: 16, fontWeight: '800' },
-  streakSub: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  streakFlames: { flexDirection: 'row', gap: 4 },
-
-  // ── Quick Actions ──
-  quickActionsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginHorizontal: 16,
-  },
-  quickActionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 16,
-    flex: 1,
-    minWidth: 140,
-  },
-  quickActionLabel: { fontSize: 13, fontWeight: '700' },
-
-  // ── Location Status ──
-  locationWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  locationDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  locationPulse: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    position: 'absolute',
-  },
-  locationInfo: { flex: 1 },
-  locationTitle: { fontSize: 15, fontWeight: '700' },
-  locationDesc: { fontSize: 12, fontWeight: '500', marginTop: 1 },
-
-  // ── Checklist Row ──
+  // ── Checklists ──
   checklistRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 12,
     gap: 12,
+    borderWidth: 1,
   },
   checklistIcon: {
     width: 44,
@@ -1862,68 +2076,190 @@ const styles = StyleSheet.create({
   checklistBarBg: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.04)',
+    backgroundColor: 'rgba(0,0,0,0.06)',
     overflow: 'hidden',
   },
   checklistBarFill: { height: '100%', borderRadius: 2 },
   checklistPercent: { fontSize: 14, fontWeight: '800', width: 40, textAlign: 'right' },
 
-  // ── Upload Button ──
-  uploadBtn: {
-    marginHorizontal: 16,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(0,0,0,0.1)',
-    marginBottom: 0,
-  },
-  uploadGradient: {
-    paddingVertical: 20,
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 20,
-  },
-  uploadText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  // ── Section ──
-  section: { marginBottom: SPACING.xl },
-
-  // ── Modal ──
-  modalSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    overflow: 'hidden',
-    maxHeight: SCREEN_H * 0.9,
-    ...SHADOW.xl,
-  },
-  modalHandle: {
-    width: 40,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(150,150,150,0.3)',
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  modalHeader: {
+  // ── Checklist Modal Items ──
+  checklistScroll: { maxHeight: SCREEN_H * 0.5 },
+  checklistItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    gap: 12,
   },
-  modalTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
-  modalClose: {
-    width: 36,
-    height: 36,
+  checklistCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checklistItemTextWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  checklistItemText: { fontSize: 15, fontWeight: '500', flex: 1 },
+  criticalBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  criticalBadgeText: { fontSize: 10, fontWeight: '700', color: '#ef4444' },
+
+  // ── Reports ──
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+  },
+  uploadText: { fontSize: 16, fontWeight: '700' },
+  reportItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
+  },
+  reportInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  reportDetails: { flex: 1 },
+  reportName: { fontSize: 14, fontWeight: '600' },
+  reportMeta: { fontSize: 12, fontWeight: '500', marginTop: 1, opacity: 0.7 },
+  reportDelete: { padding: 4 },
+
+  // ── Upload Report Button ──
+  uploadReportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    marginBottom: 16,
+  },
+  uploadReportText: { fontSize: 15, fontWeight: '700' },
+  reportsList: { maxHeight: SCREEN_H * 0.5 },
+
+  // ── Empty State ──
+  emptyReports: { alignItems: 'center', paddingVertical: 32, gap: 12 },
+  emptyReportsText: { fontSize: 15, fontWeight: '500' },
+
+  // ── Predictor ──
+  predictorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    paddingBottom: 12,
+  },
+  predictorIconBg: {
+    width: 40,
+    height: 40,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalScroll: { padding: 20, paddingTop: 8 },
+  predictorTitleWrap: { flex: 1 },
+  predictorTitle: { fontSize: 16, fontWeight: '800' },
+  predictorSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  predictorList: { paddingHorizontal: 16, paddingBottom: 16 },
+  predictorItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 12,
+  },
+  predictorLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  predictorEmoji: { fontSize: 22 },
+  predictorMilestone: { fontSize: 14, fontWeight: '700' },
+  predictorCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  predictorRight: { alignItems: 'flex-end', gap: 4 },
+  predictorBarBg: { width: 60, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)', overflow: 'hidden' },
+  predictorBarFill: { height: '100%', borderRadius: 2 },
+  predictorConfidence: { fontSize: 10, fontWeight: '600' },
+
+  // ── Growth Card ──
+  growthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 8,
+  },
+  growthTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  growthEmoji: { fontSize: 24 },
+  growthTitle: { fontSize: 16, fontWeight: '800' },
+  compositeBadge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
+  compositeText: { fontSize: 16, fontWeight: '800' },
+  scoresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  scoreItem: { width: '47%', gap: 4 },
+  scoreEmoji: { fontSize: 20 },
+  scoreBarContainer: { height: 4, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 2, overflow: 'hidden' },
+  scoreBar: { height: '100%', borderRadius: 2 },
+  scoreValue: { fontSize: 16, fontWeight: '800' },
+  scoreLabel: { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3, opacity: 0.7 },
+
+  // ── Section ──
+  section: { marginBottom: SPACING.xl },
+
+  // ── Modals ──
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: { width: '100%', maxWidth: 400, maxHeight: SCREEN_H * 0.85, borderRadius: 28, overflow: 'hidden' },
+  modalHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(150,150,150,0.3)', alignSelf: 'center', marginTop: 12, marginBottom: 8 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 },
+  modalTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  modalSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  modalClose: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  modalBody: { paddingHorizontal: 20, paddingBottom: 20 },
+  modalScroll: { paddingHorizontal: 20, paddingBottom: 20 },
+
+  // ── Modal Inputs ──
+  inputGroup: { marginBottom: 14 },
+  inputLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  input: {
+    height: 50,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    fontWeight: '500',
+    borderWidth: 1,
+  },
+  inputMultiline: { height: 80, paddingTop: 12, textAlignVertical: 'top' },
+  modalPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 14,
+    gap: 8,
+  },
+  modalPrimaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  // ── Contact Type Grid ──
+  contactTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  contactTypeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  contactTypeText: { fontSize: 13, fontWeight: '600' },
+
+  // ── Progress Bar ──
+  progressBarWrap: { paddingHorizontal: 20, paddingBottom: 12 },
+  progressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressBarFill: { height: '100%', borderRadius: 3 },
+
+  // ── Topic Detail ──
   topicDetailIcon: {
     width: 64,
     height: 64,
@@ -1931,20 +2267,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  topicDetailTitle: { fontSize: 24, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
-  topicDetailDesc: { fontSize: 15, fontWeight: '500', textAlign: 'center', marginBottom: 20, lineHeight: 22 },
-  tipsList: { gap: 12, marginBottom: 20 },
+  topicDetailDesc: { fontSize: 15, fontWeight: '500', textAlign: 'center', marginBottom: 16, lineHeight: 22 },
+  tipsList: { gap: 12, marginBottom: 16 },
   tipRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  tipBullet: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 2,
-  },
+  tipBullet: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginTop: 2 },
   tipNumber: { color: '#fff', fontSize: 12, fontWeight: '700' },
   tipText: { flex: 1, fontSize: 15, lineHeight: 22, fontWeight: '500' },
   emergencyCallBtn: {
@@ -1964,190 +2292,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 16,
     gap: 8,
-    marginTop: 10,
+    marginTop: 4,
   },
   completeBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  // ── Predictor ──
-  predictorHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12, 
-    padding: 16, 
-    paddingBottom: 12 
-  },
-  predictorIconBg: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  predictorTitleWrap: { flex: 1 },
-  predictorTitle: { fontSize: 16, fontWeight: '800' },
-  predictorSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  predictorList: { paddingHorizontal: 16, paddingBottom: 16 },
-  predictorItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 12, 
-    gap: 12 
-  },
-  predictorLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  predictorEmoji: { fontSize: 22 },
-  predictorMilestone: { fontSize: 14, fontWeight: '700' },
-  predictorCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  predictorRight: { alignItems: 'flex-end', gap: 4 },
-  predictorBarBg: { width: 60, height: 4, borderRadius: 2, overflow: 'hidden' },
-  predictorBarFill: { height: '100%', borderRadius: 2 },
-  predictorConfidence: { fontSize: 10, fontWeight: '600' },
-  predictorAge: { fontSize: 12, fontWeight: '700' },
-
-  // ── Radar ──
-  radarHeader: { padding: 16, paddingBottom: 8 },
-  radarTitle: { fontSize: 16, fontWeight: '800' },
-  radarSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  radarContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 16, 
-    paddingBottom: 16, 
-    gap: 16 
-  },
-  radarCanvas: { 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  radarRing: { 
-    position: 'absolute', 
-    borderWidth: 1, 
-    borderColor: 'rgba(0,0,0,0.04)' 
-  },
-  radarAxis: { 
-    position: 'absolute', 
-    height: 1, 
-    transformOrigin: '0% 50%' 
-  },
-  radarPoint: { 
-    position: 'absolute', 
-    width: 8, 
-    height: 8, 
-    borderRadius: 4, 
-    borderWidth: 2, 
-    borderColor: '#fff' 
-  },
-  radarLegend: { flex: 1, gap: 10 },
-  radarLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  radarLegendDot: { width: 8, height: 8, borderRadius: 4 },
-  radarLegendLabel: { fontSize: 12, fontWeight: '600', flex: 1 },
-  radarLegendValue: { fontSize: 12, fontWeight: '700' },
-
-  // ── Heatmap ──
-  heatmapHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    padding: 16, 
-    paddingBottom: 12 
-  },
-  heatmapTitle: { fontSize: 16, fontWeight: '800' },
-  heatmapLegend: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  heatmapLegendDot: { width: 8, height: 8, borderRadius: 4 },
-  heatmapLegendText: { fontSize: 10, fontWeight: '600' },
-  heatmapGrid: { 
-    flexDirection: 'row', 
-    paddingHorizontal: 16, 
-    paddingBottom: 16, 
-    gap: 8 
-  },
-  heatmapCell: { flex: 1, alignItems: 'center', gap: 4 },
-  heatmapBlock: { 
-    width: '100%', 
-    aspectRatio: 1, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    borderWidth: 1.5 
-  },
-  heatmapValue: { fontSize: 13, fontWeight: '700' },
-  heatmapWeek: { fontSize: 10, fontWeight: '600' },
-  heatmapDate: { fontSize: 9, fontWeight: '500' },
-
-  // ── Health Correlation ──
-  correlationHeader: { padding: 16, paddingBottom: 8 },
-  correlationTitle: { fontSize: 16, fontWeight: '800' },
-  correlationSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  correlationList: { paddingHorizontal: 16, paddingBottom: 16, gap: 12 },
-  correlationItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  correlationLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  correlationIcon: { fontSize: 20 },
-  correlationLabel: { fontSize: 13, fontWeight: '700' },
-  correlationDetail: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  correlationRight: { alignItems: 'flex-end', gap: 4, width: 80 },
-  correlationBarBg: { width: '100%', height: 4, borderRadius: 2, overflow: 'hidden' },
-  correlationBarFill: { height: '100%', borderRadius: 2 },
-  correlationValue: { fontSize: 12, fontWeight: '700' },
-
-  // ── Calendar Timeline ──
-  calendarTimeline: { marginHorizontal: 16, gap: 0 },
-  calendarItem: { flexDirection: 'row', gap: 12 },
-  calendarLeft: { 
-    width: 24, 
-    alignItems: 'center', 
-    paddingTop: 16 
-  },
-  calendarLine: { 
-    position: 'absolute', 
-    top: 0, 
-    bottom: 0, 
-    width: 2, 
-    left: 11 
-  },
-  calendarLineEnd: { 
-    position: 'absolute', 
-    top: 0, 
-    bottom: '50%', 
-    width: 2, 
-    left: 11 
-  },
-  calendarDot: { 
-    width: 12, 
-    height: 12, 
-    borderRadius: 6, 
-    borderWidth: 2, 
-    borderColor: '#fff', 
-    zIndex: 1 
-  },
-  calendarCard: { 
-    flex: 1, 
-    padding: 14, 
-    borderRadius: 16, 
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.03)',
-    ...SHADOW.sm,
-  },
-  calendarHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  calendarEmoji: { fontSize: 20 },
-  calendarMeta: { flex: 1 },
-  calendarTitle: { fontSize: 14, fontWeight: '700' },
-  calendarCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  calendarBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  calendarBadgeText: { fontSize: 10, fontWeight: '700' },
-  calendarAge: { fontSize: 11, fontWeight: '600' },
-
-  // ── Growth Card ──
-  growthCard: { padding: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)' },
-  growthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  growthTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  growthEmoji: { fontSize: 24 },
-  growthTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
-  compositeBadge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
-  compositeText: { fontSize: 16, fontWeight: '800' },
-  scoresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  scoreItem: { width: '47%', gap: 6 },
-  scoreEmoji: { fontSize: 20 },
-  scoreBarContainer: { height: 6, backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 3, overflow: 'hidden' },
-  scoreBar: { height: '100%', borderRadius: 3 },
-  scoreLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
 });
