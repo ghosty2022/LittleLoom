@@ -1,4 +1,6 @@
-// src/screens/auth/OnboardingScreen.tsx - SMOOTH & WELCOMING VERSION
+// src/screens/auth/OnboardingScreen.tsx - FAST LOADING VERSION
+// Removed "Preparing your experience..." loading text
+
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -77,6 +79,7 @@ export default function OnboardingScreen() {
   const flatListRef = useRef<FlatList>(null);
   const [isScrolling, setIsScrolling] = useState(false);
 
+  // ✨ FAST: Load onboarding state as quickly as possible
   useEffect(() => {
     const checkOnboarding = async () => {
       try {
@@ -87,6 +90,7 @@ export default function OnboardingScreen() {
           }
           return;
         }
+        // ✨ Immediately hide loading state - show content
         setLoading(false);
       } catch (e) {
         setLoading(false);
@@ -217,15 +221,17 @@ export default function OnboardingScreen() {
     });
   };
 
+  // ✨ FAST: Minimal loading state - just show content immediately
   if (loading) {
+    // Show minimal loader without text
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <SafeAreaView style={styles.container}>
         <LinearGradient
           colors={['#667eea', '#764ba2']}
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.centerContent}>
-          <Text style={styles.loadingText}>Preparing your experience...</Text>
+          <View style={styles.loadingRing} />
         </View>
       </SafeAreaView>
     );
@@ -339,11 +345,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
-    fontSize: 18,
-    color: '#fff',
-    fontWeight: '600',
-    letterSpacing: 0.5,
+  loadingRing: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderTopColor: '#ffffff',
+    borderRightColor: '#ffffff',
   },
   slide: {
     width: SCREEN_WIDTH,

@@ -1,8 +1,8 @@
-// src/navigation/AppNavigator.tsx - COMPLETE FIXED with QRScanner
-// FIX: Navigation loop prevention and user isolation
+// src/navigation/AppNavigator.tsx - FAST LOADING VERSION
+// FIX: Removed "Preparing your baby's world..." loading screen
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, AppState, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, AppState } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
@@ -65,7 +65,6 @@ import PediatricianPDFExport from '../screens/tracking/PediatricianPDFExport';
 import QRScannerScreen from '../screens/tracking/QRScannerScreen';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
-import { InlineSpinner } from '../components/UniversalSpinner';
 import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
@@ -226,17 +225,18 @@ function getNavState(
   seenOnboarding: boolean,
   firstOpen: boolean,
 ): NavigationState {
-  if (authLoading) return 'LOADING';
-  
+  // ✨ FAST: If not authenticated, show login immediately
   if (!isAuth || !isValidSession) {
     if (firstOpen && !seenOnboarding) return 'ONBOARDING';
     return 'LOGIN';
   }
 
+  // ✨ FAST: Security lock check
   if (isLocked && securityOn) {
     return 'SECURITY_LOCK';
   }
 
+  // ✨ FAST: Check if we have babies or skipped
   const babyAddressed = hasBaby === true || hasBaby === 'skipped' || babyCount > 0 || skippedBaby === true;
   
   if (!babyAddressed) {
@@ -257,31 +257,23 @@ function getNavState(
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   LOADING SCREEN
+   ✨ MINIMAL LOADING - Just a spinner, no text
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const AppLoadingScreen = React.memo(() => {
+const MinimalLoader = React.memo(() => {
   const { colors, isDark } = useSafeApp();
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <LinearGradient
-        colors={isDark ? ['#1a1a2e', '#16213e', '#0f3460'] : ['#667eea', '#764ba2', '#f093fb']}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View style={{ alignItems: 'center', zIndex: 1 }}>
-        <InlineSpinner size={56} color="#ffffff" section="main" variant="liquid" />
-        <Text style={{ marginTop: 20, fontSize: 15, color: 'rgba(255,255,255,0.85)', fontWeight: '600', letterSpacing: 0.5 }}>
-          Preparing your baby's world...
-        </Text>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? '#000' : '#f8faff' }}>
+      <View style={styles.minimalLoaderSpinner}>
+        <View style={[styles.minimalLoaderRing, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(102,126,234,0.2)' }]} />
+        <View style={[styles.minimalLoaderRingInner, { borderColor: isDark ? '#a3bffa' : '#667eea' }]} />
       </View>
     </View>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NAVIGATION CONTENT
+   NAVIGATION CONTENT - FAST LOADING
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function NavigationContent({
@@ -448,6 +440,7 @@ function NavigationContent({
 
   // ─── FIXED: Compute nav state with user isolation ──────────────────
   useEffect(() => {
+    // ✨ FAST: Skip if still loading, but don't show loading screen with text
     if (authLoading || !firstOpenChecked.current || !sessionChecked) return;
     if (isAuthenticated && !babiesReady) return;
 
@@ -634,11 +627,10 @@ function NavigationContent({
       return;
     }
 
-    // ─── FIXED: SETUP_BABY ─────────────────────────────────────────────
+    // ─── SETUP_BABY ─────────────────────────────────────────────────────
     if (navState === 'SETUP_BABY') {
       const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
       if (hasBabies) {
-        // Check if we're on a main screen already
         if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
           console.log('[Navigation] Already on main screen, staying');
           return;
@@ -664,9 +656,8 @@ function NavigationContent({
       return;
     }
 
-    // ─── FIXED: SETUP_PARENT2 ──────────────────────────────────────────
+    // ─── SETUP_PARENT2 ──────────────────────────────────────────────────
     if (navState === 'SETUP_PARENT2') {
-      // Check if we're on a main screen already (user may have completed setup)
       if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
         console.log('[Navigation] Already on main screen, staying');
         return;
@@ -734,9 +725,9 @@ function NavigationContent({
     }
   }, []);
 
-  // ─── Early return ────────────────────────────────────────────────────
+  // ─── ✨ FAST: Show minimal loader instead of text-heavy one ────────
   if (authLoading || !initialCheckDone || !sessionChecked) {
-    return <AppLoadingScreen />;
+    return <MinimalLoader />;
   }
 
   return (
@@ -771,7 +762,7 @@ function NavigationContent({
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </Stack.Group>
 
-          {/* QR SCANNER - Add this screen */}
+          {/* QR SCANNER */}
           <Stack.Screen 
             name="QRScanner" 
             component={QRScannerScreen}
@@ -859,3 +850,29 @@ export default function AppNavigator({ isDark, initialState, onStateChange }: {
     <NavigationContent isDark={isDark} initialState={initialState} onStateChange={onStateChange} />
   );
 }
+
+// ─── Styles ──────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  minimalLoaderSpinner: {
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  minimalLoaderRing: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 3,
+    opacity: 0.3,
+  },
+  minimalLoaderRingInner: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderTopColor: 'transparent',
+  },
+});
