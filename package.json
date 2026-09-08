@@ -4,7 +4,7 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
-    "start": "expo start --dev-client",
+    "start": "expo start --dev-client --clear",
     "start:clear": "expo start --clear",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -12,14 +12,18 @@
     "lint": "expo lint",
     "test": "jest",
     "prebuild": "expo prebuild",
-    "dev": "expo start --clear --max-workers 1",
+    "dev": "expo start --clear --max-workers=4 --dev-client",
+    "dev:fast": "expo start --clear --max-workers=4 --dev-client --no-minify",
+    "metro": "node --max-old-space-size=8192 node_modules/expo/start/metro/dev --reset-cache",
     "prebuild:clean": "expo prebuild --clean",
     "db:generate": "drizzle-kit generate --config=src/database/drizzle.config.ts",
     "db:push": "drizzle-kit push --config=src/database/drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config=src/database/drizzle.config.ts",
     "prebuild:check": "node prebuild-check.js",
     "build:dev": "node prebuild-check.js && eas build --platform android --profile development",
-    "postinstall": "npx patch-package"
+    "postinstall": "npx patch-package",
+    "reset": "expo start --clear",
+    "clean": "npx rimraf .expo node_modules/.cache .cache"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.15",
@@ -152,6 +156,7 @@
     "metro-minify-terser": "^0.81.0",
     "prettier": "^3.3.0",
     "react-test-renderer": "18.3.1",
+    "rimraf": "^6.1.3",
     "typescript": "~6.0.3"
   },
   "expo": {

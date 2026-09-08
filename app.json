@@ -175,6 +175,9 @@
       "ios",
       "android",
       "web"
-    ]
+    ],
+    "developmentClient": {
+      "silentLaunch": true
+    }
   }
 }
