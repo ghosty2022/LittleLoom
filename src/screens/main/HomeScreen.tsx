@@ -207,12 +207,6 @@ interface VaccinationReminder {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   THEME HELPERS
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-
-
-/* ═══════════════════════════════════════════════════════════════════════════
    DATA — Refined Quick Actions with Categories
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -1643,6 +1637,10 @@ const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
   // Smart notifications state
   const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
 
+  /* ── FIX: Use refs to track initial load state ── */
+  const isInitialLoad = useRef(true);
+  const dataLoaded = useRef(false);
+
   /* ── Load saved data ── */
   useEffect(() => {
     const loadSavedData = async () => {
@@ -1752,13 +1750,25 @@ const [pendingAction, setPendingAction] = useState<QuickAction | null>(null);
     return () => { clearInterval(timer); };
   }, []);
 
-  // Refresh instantly every time the tab/screen comes into focus
+  /* ── FIX: Load data instantly on focus without double-render ── */
   useFocusEffect(
     useCallback(() => {
-      loadBabies();
-      loadActivities();
+      // Only load on first focus or when returning from background
+      if (isInitialLoad.current || !dataLoaded.current) {
+        isInitialLoad.current = false;
+        loadBabies();
+        loadActivities();
+        dataLoaded.current = true;
+      }
     }, [loadBabies, loadActivities])
   );
+
+  /* ── FIX: Load data on mount immediately ── */
+  useEffect(() => {
+    // Immediate load on mount
+    loadBabies();
+    loadActivities();
+  }, []); // Empty deps = run once on mount
 
   // Scroll handler for header animation (GrowthDashboard pattern)
   const scrollHandler = useAnimatedScrollHandler({
@@ -2039,7 +2049,10 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
     ? (settings.compactSpacing ? 110 : 130)
     : (settings.compactSpacing ? 100 : 115);
 
-  if (authLoading) {
+  /* ── FIX: Determine if we should show loading ── */
+  const isLoading = authLoading || (activitiesLoading && activities.length === 0 && isInitialLoad.current);
+
+  if (isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -2051,18 +2064,6 @@ const navigateToScreen = useCallback((screenName: string, params?: Record<string
             <View style={[styles.dot, styles.dot3]} />
           </View>
         </LinearGradient>
-      </View>
-    );
-  }
-
-  if (activitiesLoading && activities.length === 0) {
-    return (
-      <View style={styles.container}>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-        <LinearGradient colors={bgColors} style={styles.backgroundGradient} />
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={primary} />
-        </View>
       </View>
     );
   }
