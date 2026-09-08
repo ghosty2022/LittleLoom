@@ -1,4 +1,4 @@
-// SmartPhotoField.tsx — COMPLETE FIXED V6 (4 PHOTOS MAX)
+// SmartPhotoField.tsx — COMPLETE FIXED V7 (4 PHOTOS MAX + MULTI-SELECT SUPPORT)
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
