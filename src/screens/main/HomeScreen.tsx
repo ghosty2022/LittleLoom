@@ -1,7 +1,6 @@
 // src/screens/main/HomeScreen.tsx - COMPLETE FIXED VERSION
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   FlatList,
   Image,
@@ -63,6 +62,7 @@ import { SkeletonLoader, ShimmerLoader, ShimmerPresets } from '../../components/
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
+import { navigationRef } from '../../navigation/navigationRef';
 
 const { width, height } = Dimensions.get('window');
 const SCREEN_W = width;
@@ -394,6 +394,46 @@ const RecentTimelineSkeleton = () => (
     ))}
   </View>
 );
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOME SKELETON — shown inline while cache/context data loads (no blocking screen)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const HomeSkeleton: React.FC<{
+  isDark: boolean;
+  theme: any;
+  borderRadius: number;
+  compact?: boolean;
+}> = React.memo(({ isDark, theme, borderRadius, compact }) => {
+  const pad = compact ? 16 : 20;
+  return (
+    <View>
+      <View style={{ paddingHorizontal: pad, marginTop: 16, gap: 8 }}>
+        <ShimmerLoader width="55%" height={22} borderRadius={8} />
+        <ShimmerLoader width="35%" height={13} borderRadius={6} />
+      </View>
+      <View style={{ paddingHorizontal: pad, marginTop: 14 }}>
+        <ShimmerLoader width="100%" height={92} borderRadius={borderRadius} />
+      </View>
+      <View style={{ paddingHorizontal: pad, marginTop: 14 }}>
+        <ShimmerLoader width="100%" height={118} borderRadius={borderRadius} />
+      </View>
+      <View style={{ marginHorizontal: pad, marginTop: 14 }}>
+        <DailySummarySkeleton />
+      </View>
+      <View style={{ marginTop: 14 }}>
+        <QuickActionsSkeleton />
+      </View>
+      <View style={{ marginTop: 14 }}>
+        <FeatureCardsSkeleton />
+      </View>
+      <View style={{ marginTop: 14 }}>
+        <RecentTimelineSkeleton />
+      </View>
+    </View>
+  );
+});
+(HomeSkeleton as any).displayName = 'HomeSkeleton';
 
 const FeatureCardsSkeleton = () => (
   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featureCardsScroll}>
@@ -1269,7 +1309,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           <View style={styles.logoFloatWrap}>
             <Image
               source={littleLoomLogo}
-              style={[styles.headerLogoImage, { width: Math.round(40 * fontSizeMultiplier), height: Math.round(40 * fontSizeMultiplier) }]}
+              style={[styles.headerLogoImage, { width: Math.min(SCREEN_W * 0.14, 56) * fontSizeMultiplier, height: Math.min(SCREEN_W * 0.14, 56) * fontSizeMultiplier }]}
               resizeMode="contain"
             />
           </View>
@@ -1534,30 +1574,41 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   /* ── Navigation ── */
   const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
     console.log('[HomeScreen] Navigating to:', screenName, params);
-    
-    // Handle special case for CommunityMain - it's in a nested navigator
-    if (screenName === 'CommunityMain' || screenName === 'CommunityProfile' || 
-        screenName === 'CommunityMemberProfile' || screenName === 'CommunityOnboarding' ||
-        screenName === 'CommunityVerification' || screenName === 'Topic' || 
-        screenName === 'TopicMembers' || screenName === 'CreatePost' || 
-        screenName === 'PostDetail' || screenName === 'ChatList' || 
-        screenName === 'Chat' || screenName === 'Notifications' || 
-        screenName === 'Followers' || screenName === 'Following' || 
-        screenName === 'SearchUsers' || screenName === 'BlockedUsers' || 
-        screenName === 'Report') {
-      // Navigate to CommunityMain first, then the specific screen
-      (navigation as any).navigate('Main', {
-        screen: 'Connect',
-        params: {
-          screen: screenName,
-          params: params || {},
-        },
-      });
+
+    // Always navigate from the ROOT stack via navigationRef. HomeScreen's own
+    // `navigation` prop belongs to the bottom-tab navigator, so navigating to
+    // root-stack routes (e.g. 'CommunityMain') from it throws
+    // "The action 'NAVIGATE' ... was not handled by any navigator."
+    const nav: any = navigationRef.current?.isReady()
+      ? navigationRef.current
+      : (navigation as any);
+
+    // Community screens live inside Main > Connect(tab) > CommunityNavigator(stack)
+    const COMMUNITY_SCREENS = new Set([
+      'CommunityMain', 'CommunityProfile', 'CommunityMemberProfile',
+      'CommunityOnboarding', 'CommunityVerification', 'Topic', 'TopicMembers',
+      'CreatePost', 'PostDetail', 'ChatList', 'Chat', 'Notifications',
+      'Followers', 'Following', 'SearchUsers', 'BlockedUsers', 'Report',
+    ]);
+
+    if (COMMUNITY_SCREENS.has(screenName)) {
+      try {
+        nav.navigate('Main', {
+          screen: 'Connect',
+          params: { screen: screenName, params: params || {} },
+        });
+      } catch (e) {
+        console.warn('[HomeScreen] Community navigation failed:', screenName, e);
+      }
       return;
     }
 
     if (DIRECT_SCREENS.has(screenName)) {
-      (navigation as any).navigate(screenName, params || {});
+      try {
+        nav.navigate(screenName, params || {});
+      } catch (e) {
+        console.warn('[HomeScreen] Navigation failed:', screenName, e);
+      }
       return;
     }
     const navConfig = NAVIGATION_MAP[screenName];
@@ -1565,7 +1616,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       console.warn(`Navigation target "${screenName}" not found`);
       return;
     }
-    (navigation as any).navigate(navConfig.screen, { ...navConfig.params, ...params });
+    try {
+      nav.navigate(navConfig.screen, { ...navConfig.params, ...params });
+    } catch (e) {
+      console.warn('[HomeScreen] Navigation failed:', navConfig.screen, e);
+    }
   }, [navigation]);
 
   /* ── Guarded navigation: requires baby ── */
@@ -1789,24 +1844,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     ? (settings.compactSpacing ? 110 : 130)
     : (settings.compactSpacing ? 100 : 115);
 
-  /* ── Loading state with subtle skeleton ── */
-  const isLoading = authLoading && !cachedBaby && allTimelineEvents.length === 0;
-
-  if (isLoading || isLoadingInitial) {
-    return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-        <LinearGradient colors={[primary, '#764ba2', secondary]} style={styles.loadingGradient}>
-          <Image source={littleLoomLogo} style={{ width: 80, height: 80 }} resizeMode="contain" />
-          <View style={styles.loadingDots}>
-            <View style={[styles.dot, styles.dot1]} />
-            <View style={[styles.dot, styles.dot2]} />
-            <View style={[styles.dot, styles.dot3]} />
-          </View>
-        </LinearGradient>
-      </View>
-    );
-  }
+  /* ── Instant render: no blocking loading screen — skeletons render inline ── */
+  const showSkeletons = isLoadingInitial || (authLoading && !cachedBaby && allTimelineEvents.length === 0);
 
   return (
     <View style={styles.container}>
@@ -1838,6 +1877,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
+        {showSkeletons ? (
+          <HomeSkeleton isDark={isDark} theme={theme} borderRadius={borderRadiusValue} compact={settings.compactSpacing} />
+        ) : (
+        <>
         {/* ═══ GREETING & PARENT CARD ═══ */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()}>
           <GlassCard style={[styles.parentCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]}>
@@ -1869,13 +1912,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                   style={[styles.parentQuickLink, { backgroundColor: `${primary}12`, borderRadius: borderRadiusValue - 10 }]}
                   onPress={() => navigateToScreen('Achievements')}
                 >
-                  <Ionicons name="ribbon-outline" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
+                  <Ionicons name="trophy-outline" size={Math.round(16 * fontSizeMultiplier)} color={primary} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.parentQuickLink, { backgroundColor: `${secondary}12`, borderRadius: borderRadiusValue - 10 }]}
                   onPress={() => navigateToScreen('CommunityMain')}
                 >
-                  <Ionicons name="people-outline" size={Math.round(16 * fontSizeMultiplier)} color={secondary} />
+                  <Ionicons name="planet-outline" size={Math.round(16 * fontSizeMultiplier)} color={secondary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -2168,6 +2211,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         <View style={{ height: settings.compactSpacing ? 80 : 120 }} />
+        </>
+        )}
       </Animated.ScrollView>
 
       {/* ═══ Notification Chooser Modal ═══ */}
