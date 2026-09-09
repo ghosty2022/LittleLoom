@@ -1,9 +1,8 @@
-// AllTrackersScreen.tsx — UNIFIED HEADER v6.1
+// AllTrackersScreen.tsx — UNIFIED HEADER v6.2
 // Matches header style from GrowthDashboard, EnhancedTimeline, and UniversalTrackerHub
 // Proper scroll behavior: top header visible at top, fades out on scroll
 // Long press to pin/unpin like Hub screen
 // Hidden trackers modal with unhide functionality
-// FIXED: Baby pill positioning matches Hub screen
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
@@ -603,6 +602,12 @@ const BabySwitcherPill = React.memo(({ baby, onPress }: { baby: any; onPress: ()
   if (!baby) {
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
+        <LinearGradient
+          colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
         <View style={[styles.babyPillNoBabyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
           <Ionicons name="add-circle" size={28} color={isDark ? '#a3bffa' : '#667eea'} />
         </View>
@@ -617,6 +622,12 @@ const BabySwitcherPill = React.memo(({ baby, onPress }: { baby: any; onPress: ()
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
+      <LinearGradient
+        colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
       <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={36} showBadge={false} />
       <View style={styles.babyPillText}>
         <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{safeStr(baby.name, 'Baby')}</Text>
@@ -875,12 +886,6 @@ export default function AllTrackersScreen() {
     setShowHiddenModal(true);
   }, []);
 
-  const handleBrowseAll = useCallback(() => {
-    HAPTIC_LIGHT();
-    // Already on AllTrackers, just scroll to top
-    // Could also show a different view
-  }, []);
-
   // ─── RENDER ──────────────────────────────────────────────────────────────
 
   return (
@@ -898,16 +903,8 @@ export default function AllTrackersScreen() {
         </Text>
       </Animated.View>
 
-      {/* ─── TOP HEADER — matches Hub screen positioning ──────────────── */}
-      <Animated.View 
-        style={[
-          styles.topHeader, 
-          { paddingTop: insets.top + 12 },
-          topHeaderStyle
-        ]}
-      >
-        <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
-        
+      {/* ─── TOP HEADER — matches Hub screen exactly ──────────────────── */}
+      <Animated.View entering={FadeInDown.springify()} style={[styles.topHeader, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity 
           onPress={handleBack} 
           style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
@@ -1236,11 +1233,6 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
     zIndex: 10,
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   addBtn: {
@@ -1265,8 +1257,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignSelf: 'flex-start',
     gap: 10,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(102,126,234,0.15)',
     flex: 1,
-    backgroundColor: 'transparent',
   },
   babyPillText: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 },
   babyPillName: { fontSize: 15, fontWeight: '700', maxWidth: 140 },
