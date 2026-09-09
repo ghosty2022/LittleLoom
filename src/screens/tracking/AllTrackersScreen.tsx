@@ -1,4 +1,5 @@
-// AllTrackersScreen.tsx — COMPLETE FIXED (No FAB, uses header buttons)
+// AllTrackersScreen.tsx — UNIFIED HEADER v5.0
+// Matches header style from GrowthDashboard, EnhancedTimeline, and UniversalTrackerHub
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
@@ -33,6 +34,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useBaby } from '../../context/BabyContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { DEFAULT_TRACKERS } from '../../config/defaultTrackers';
+import { differenceInMonths } from 'date-fns';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -182,6 +184,35 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+// ─── SAFE HELPERS ──────────────────────────────────────────────────────────
+
+const safeStr = (val: unknown, fallback = ''): string => {
+  if (val === undefined || val === null) return fallback;
+  return String(val);
+};
+
+const safeNum = (val: unknown, fallback = 0): number => {
+  if (val === undefined || val === null) return fallback;
+  const num = Number(val);
+  if (Number.isNaN(num) || !Number.isFinite(num)) return fallback;
+  return num;
+};
+
+const getBabyAge = (birthDate?: string | Date) => {
+  if (!birthDate) return { display: 'Unknown', shortDisplay: '?', months: 0 };
+  const birth = new Date(birthDate);
+  const now = new Date();
+  if (isNaN(birth.getTime())) return { display: 'Invalid', shortDisplay: '?', months: 0 };
+  const months = differenceInMonths(now, birth);
+  const years = Math.floor(months / 12);
+  const remainingMonths = months % 12;
+  let display: string;
+  if (years > 0) display = `${years}y ${remainingMonths}m`;
+  else if (months > 0) display = `${months}m`;
+  else display = 'Newborn';
+  return { display, shortDisplay: months > 0 ? `${months}m` : 'Newborn', months };
+};
 
 // ─── THEME HOOK ──────────────────────────────────────────────────────────
 
@@ -397,6 +428,53 @@ SubActionSheet.displayName = 'SubActionSheet';
 
 type AllTrackersNavProp = NativeStackNavigationProp<RootStackParamList>;
 
+// ─── BABY SWITCHER PILL ──────────────────────────────────────────────────
+
+const BabySwitcherPill = React.memo(({ baby, onPress }: { baby: any; onPress: () => void }) => {
+  const { isDark } = useCustomization();
+  const age = useMemo(() => getBabyAge(baby?.birthDate), [baby?.birthDate]);
+  const theme = useHubTheme();
+
+  if (!baby) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
+        <LinearGradient
+          colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={[styles.babyPillNoBabyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
+          <Ionicons name="add-circle" size={28} color={isDark ? '#a3bffa' : '#667eea'} />
+        </View>
+        <View style={styles.babyPillText}>
+          <Text style={[styles.babyPillName, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
+          <Text style={[styles.babyPillAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={isDark ? '#94a3b8' : '#64748b'} />
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.babyPill}>
+      <LinearGradient
+        colors={isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={36} showBadge={false} />
+      <View style={styles.babyPillText}>
+        <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{safeStr(baby.name, 'Baby')}</Text>
+        <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>{age.shortDisplay}</Text>
+      </View>
+      <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
+    </TouchableOpacity>
+  );
+});
+BabySwitcherPill.displayName = 'BabySwitcherPill';
+
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────
 
 export default function AllTrackersScreen() {
@@ -465,19 +543,20 @@ export default function AllTrackersScreen() {
       const id = tracker.id;
       const entriesForTracker = typeof getEntries === 'function' ? getEntries(id) : [];
       const lastEntry = entriesForTracker && entriesForTracker.length > 0 ? entriesForTracker[0] : null;
+      const config = TRACKER_CONFIGS[id];
       
       return {
         id,
         title: tracker.name || tracker.title || id.charAt(0).toUpperCase() + id.slice(1),
-        emoji: tracker.emoji || '📋',
-        color: tracker.color || '#667eea',
-        gradient: tracker.gradient || ['#667eea', '#764ba2'],
-        category: tracker.category || 'essential',
+        emoji: tracker.emoji || config?.emoji || '📋',
+        color: tracker.color || config?.color || '#667eea',
+        gradient: tracker.gradient || config?.gradient || ['#667eea', '#764ba2'],
+        category: tracker.category || config?.category || 'essential',
         count: entriesForTracker ? entriesForTracker.length : 0,
         lastEntry: lastEntry && lastEntry.timestamp
           ? new Date(lastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : undefined,
-        hasSubActions: !!(tracker.subActions && tracker.subActions.length > 0),
+        hasSubActions: !!(tracker.subActions && tracker.subActions.length > 0) || !!(config?.subActions && config.subActions.length > 0),
       };
     });
   }, [trackers, getEntries, currentBaby]);
@@ -548,6 +627,11 @@ export default function AllTrackersScreen() {
     navigation.goBack();
   }, [navigation]);
 
+  const handleSwitchBaby = useCallback(() => {
+    HAPTIC_LIGHT();
+    navigation.navigate('SwitchBaby', { returnTo: 'AllTrackers', returnLabel: 'All Trackers' });
+  }, [navigation]);
+
   // ─── RENDER ──────────────────────────────────────────────────────────────
 
   return (
@@ -565,7 +649,7 @@ export default function AllTrackersScreen() {
         </Text>
       </Animated.View>
 
-      {/* ─── TOP HEADER (scrolls away) ─────────────────────────────────── */}
+      {/* ─── TOP HEADER — UNIFIED with GrowthDashboard/Timeline/Hub ──── */}
       <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
         <TouchableOpacity 
           onPress={handleBack} 
@@ -575,50 +659,11 @@ export default function AllTrackersScreen() {
           <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'AllTrackers', returnLabel: 'All Trackers' })} 
-          style={styles.babyPill}
-          activeOpacity={0.85}
-        >
-          <LinearGradient
-            colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          {currentBaby ? (
-            <>
-              <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={36} showBadge={false} />
-              <View style={styles.babyPillText}>
-                <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
-                <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>
-                  {(() => {
-                    if (!currentBaby.birthDate) return '—';
-                    const diff = new Date().getTime() - new Date(currentBaby.birthDate).getTime();
-                    const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30.44));
-                    return `${months}mo`;
-                  })()}
-                </Text>
-              </View>
-              <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
-            </>
-          ) : (
-            <>
-              <View style={[styles.babyPillNoBabyIcon, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
-                <Ionicons name="add-circle" size={28} color={theme.isDark ? '#a3bffa' : '#667eea'} />
-              </View>
-              <View style={styles.babyPillText}>
-                <Text style={[styles.babyPillName, { color: theme.isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
-                <Text style={[styles.babyPillAge, { color: theme.isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={theme.text.muted} />
-            </>
-          )}
-        </TouchableOpacity>
+        <BabySwitcherPill baby={currentBaby} onPress={handleSwitchBaby} />
 
         <View style={styles.headerActions}>
           <TouchableOpacity 
-            onPress={() => setSearchQuery(!searchQuery)} 
+            onPress={() => setSearchQuery(prev => prev ? '' : 'search')} 
             style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
             activeOpacity={0.8}
           >
@@ -926,8 +971,47 @@ const styles = StyleSheet.create({
   babyPillAge: { fontSize: 12, fontWeight: '600' },
   babyPillNoBabyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Scroll Content ──
-  scrollContent: { paddingBottom: 20 },
+  // ── Glass Card ──
+  glassCard: {
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  glassContent: { flex: 1 },
+
+  // ── Section Header ──
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  sectionActionText: { fontSize: 13, fontWeight: '700' },
 
   // ── Search ──
   searchContainer: { marginHorizontal: 20, marginBottom: 16, marginTop: 8 },
@@ -973,22 +1057,6 @@ const styles = StyleSheet.create({
   gridItem: {
     width: (SCREEN_WIDTH - 56) / 2,
   },
-
-  // ── Glass Card ──
-  glassCard: {
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  glassBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  glassContent: { flex: 1 },
 
   // ── Tracker Card ──
   trackerCard: {
@@ -1076,32 +1144,6 @@ const styles = StyleSheet.create({
   emptyIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   emptyTitle: { fontWeight: '800', marginBottom: 8, textAlign: 'center', fontSize: 22 },
   emptySubtitle: { fontWeight: '500', textAlign: 'center', lineHeight: 22, fontSize: 15 },
-
-  // ── Section Header ──
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    marginTop: 8,
-  },
-  sectionHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sectionHeaderIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionActionText: { fontSize: 13, fontWeight: '700' },
 
   // ── Sub Action Sheet ──
   sheetOverlay: {
