@@ -1,5 +1,8 @@
-// AllTrackersScreen.tsx — UNIFIED HEADER v5.0
+// AllTrackersScreen.tsx — UNIFIED HEADER v6.0
 // Matches header style from GrowthDashboard, EnhancedTimeline, and UniversalTrackerHub
+// Proper scroll behavior: top header visible at top, fades out on scroll
+// Long press to pin/unpin like Hub screen
+// Hidden trackers modal with unhide functionality
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
@@ -12,9 +15,6 @@ import {
   Dimensions,
   StatusBar,
   RefreshControl,
-  LayoutAnimation,
-  Platform,
-  UIManager,
   Modal,
   Pressable,
 } from 'react-native';
@@ -23,7 +23,17 @@ import { format } from 'date-fns';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
+import Animated, { 
+  FadeInUp, 
+  FadeInDown,
+  useSharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -35,6 +45,7 @@ import { useBaby } from '../../context/BabyContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { DEFAULT_TRACKERS } from '../../config/defaultTrackers';
 import { differenceInMonths } from 'date-fns';
+import { useSweetAlert } from '../../components/SweetAlert';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -49,7 +60,10 @@ const RADIUS = {
 };
 
 const SHADOW = {
-  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
+  none: { shadowOpacity: 0, elevation: 0 },
+  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
+  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
   lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
 };
 
@@ -171,6 +185,27 @@ const TRACKER_CONFIGS: Record<string, TrackerConfig> = {
       { id: 'left', label: 'Left', icon: 'arrow-back-outline', color: '#f472b6', presetData: { side: 'left' } },
       { id: 'right', label: 'Right', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { side: 'right' } },
       { id: 'both', label: 'Both', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { side: 'both' } },
+    ],
+  },
+  bath: {
+    emoji: '🛁',
+    color: '#3b82f6',
+    gradient: ['#3b82f6', '#60a5fa'],
+    description: 'Bath time',
+    category: 'care',
+    subActions: [
+      { id: 'bath', label: 'Log Bath', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'bath' } },
+      { id: 'sponge', label: 'Sponge Bath', icon: 'cloud-outline', color: '#93c5fd', presetData: { type: 'sponge' } },
+    ],
+  },
+  tummy_time: {
+    emoji: '🤸',
+    color: '#10b981',
+    gradient: ['#10b981', '#34d399'],
+    description: 'Tummy time',
+    category: 'development',
+    subActions: [
+      { id: 'tummy_time', label: 'Log Tummy Time', icon: 'fitness-outline', color: '#10b981', presetData: { type: 'tummy_time' } },
     ],
   },
 };
@@ -342,6 +377,23 @@ const SubActionSheet = React.memo(({
 }) => {
   const { fullThemeColors, isDark, borderRadiusValue } = useCustomization();
   const theme = useHubTheme();
+  const scale = useSharedValue(0.95);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) { 
+      scale.value = withSpring(1, { damping: 15, stiffness: 200 }); 
+      opacity.value = withTiming(1, { duration: 250 }); 
+    } else { 
+      scale.value = withTiming(0.95, { duration: 200 }); 
+      opacity.value = withTiming(0, { duration: 200 }); 
+    }
+  }, [visible, scale, opacity]);
+
+  const animStyle = useAnimatedStyle(() => ({ 
+    transform: [{ scale: scale.value }], 
+    opacity: opacity.value 
+  }));
 
   if (!visible || !trackerId) return null;
 
@@ -356,11 +408,11 @@ const SubActionSheet = React.memo(({
 
   return (
     <View style={[styles.sheetOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
-      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <Animated.View 
-        entering={FadeInUp.springify().damping(15).stiffness(200)}
         style={[
           styles.sheetContent,
+          animStyle,
           {
             backgroundColor: fullThemeColors?.surface || (isDark ? '#1e1e2e' : '#ffffff'),
             borderRadius: Math.max(28, borderRadiusValue * 2.5),
@@ -426,6 +478,118 @@ const SubActionSheet = React.memo(({
 });
 SubActionSheet.displayName = 'SubActionSheet';
 
+// ─── HIDDEN TRACKERS MODAL ──────────────────────────────────────────────
+
+const HiddenTrackersModal = React.memo(({
+  visible,
+  hiddenTrackers,
+  onClose,
+  onUnhide,
+  onPinToggle,
+  pinnedIds,
+}: {
+  visible: boolean;
+  hiddenTrackers: any[];
+  onClose: () => void;
+  onUnhide: (id: string) => void;
+  onPinToggle: (id: string) => void;
+  pinnedIds: string[];
+}) => {
+  const { isDark, fullThemeColors } = useCustomization();
+  const theme = useHubTheme();
+  const scale = useSharedValue(0.95);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) { 
+      scale.value = withSpring(1, { damping: 15, stiffness: 200 }); 
+      opacity.value = withTiming(1, { duration: 250 }); 
+    } else { 
+      scale.value = withTiming(0.95, { duration: 200 }); 
+      opacity.value = withTiming(0, { duration: 200 }); 
+    }
+  }, [visible, scale, opacity]);
+
+  const animStyle = useAnimatedStyle(() => ({ 
+    transform: [{ scale: scale.value }], 
+    opacity: opacity.value 
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Animated.View style={[styles.hiddenModalContent, animStyle, { backgroundColor: fullThemeColors?.surface || (isDark ? '#1a1a2e' : '#ffffff') }]}>
+          <View style={styles.hiddenModalHeader}>
+            <Text style={[styles.hiddenModalTitle, { color: theme.text.primary }]}>Hidden Trackers</Text>
+            <Text style={[styles.hiddenModalSubtitle, { color: theme.text.secondary }]}>
+              {hiddenTrackers.length} tracker{hiddenTrackers.length > 1 ? 's' : ''} hidden
+            </Text>
+            <TouchableOpacity style={styles.hiddenModalClose} onPress={onClose} activeOpacity={0.8}>
+              <Ionicons name="close" size={24} color={theme.text.secondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.hiddenModalList} showsVerticalScrollIndicator={false}>
+            {hiddenTrackers.length === 0 ? (
+              <View style={styles.hiddenEmptyState}>
+                <Ionicons name="eye-off-outline" size={48} color={theme.text.muted} />
+                <Text style={[styles.hiddenEmptyText, { color: theme.text.secondary }]}>No hidden trackers</Text>
+                <Text style={[styles.hiddenEmptySub, { color: theme.text.muted }]}>Trackers you hide will appear here</Text>
+              </View>
+            ) : (
+              hiddenTrackers.map((tracker) => {
+                const isPinned = pinnedIds.includes(tracker.id);
+                return (
+                  <View key={tracker.id} style={[styles.hiddenTrackerItem, { borderBottomColor: theme.surface.border }]}>
+                    <View style={styles.hiddenTrackerLeft}>
+                      <View style={[styles.hiddenTrackerIcon, { backgroundColor: `${tracker.color}12` }]}>
+                        <Text style={styles.hiddenTrackerEmoji}>{tracker.emoji}</Text>
+                      </View>
+                      <View>
+                        <Text style={[styles.hiddenTrackerName, { color: theme.text.primary }]}>{tracker.title}</Text>
+                        <Text style={[styles.hiddenTrackerDesc, { color: theme.text.muted }]}>{tracker.category} • {tracker.count} logs</Text>
+                      </View>
+                    </View>
+                    <View style={styles.hiddenTrackerActions}>
+                      <TouchableOpacity 
+                        onPress={() => { HAPTIC_LIGHT(); onPinToggle(tracker.id); }} 
+                        style={[styles.hiddenActionBtn, { backgroundColor: isPinned ? `${theme.primary}15` : 'transparent' }]}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name={isPinned ? 'pin' : 'pin-outline'} size={16} color={isPinned ? theme.primary : theme.text.muted} />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => { HAPTIC_MEDIUM(); onUnhide(tracker.id); }} 
+                        style={[styles.hiddenUnhideBtn, { backgroundColor: `${theme.primary}15` }]}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="eye-outline" size={16} color={theme.primary} />
+                        <Text style={[styles.hiddenUnhideText, { color: theme.primary }]}>Unhide</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+
+          <TouchableOpacity 
+            onPress={onClose} 
+            style={[styles.hiddenModalDone, { backgroundColor: theme.primary }]}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.hiddenModalDoneText}>Done</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+});
+HiddenTrackersModal.displayName = 'HiddenTrackersModal';
+
 type AllTrackersNavProp = NativeStackNavigationProp<RootStackParamList>;
 
 // ─── BABY SWITCHER PILL ──────────────────────────────────────────────────
@@ -485,6 +649,7 @@ export default function AllTrackersScreen() {
   const { entries, getEntries, trackers, refreshEntries, isLoading } = useTracker();
   const babyHook = useBaby();
   const { currentBaby = null, isLoading: babyLoading = false, refreshCurrentBaby = () => {}, loadBabies = () => {} } = babyHook || {};
+  const { success: showSuccess } = useSweetAlert();
   
   const theme = useHubTheme();
 
@@ -494,9 +659,67 @@ export default function AllTrackersScreen() {
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(null);
   const [showSubSheet, setShowSubSheet] = useState(false);
+  const [showHiddenModal, setShowHiddenModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load pinned/hidden from storage
+  // ─── SCROLL ANIMATION ──────────────────────────────────────────────────
+  const scrollY = useSharedValue(0);
+  
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  // Top header: stays visible at top, fades out gradually on scroll
+  const topHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      scrollY.value,
+      [0, 60, 120],
+      [1, 0.8, 0],
+      Extrapolation.CLAMP
+    );
+    const translateY = interpolate(
+      scrollY.value,
+      [0, 120],
+      [0, -30],
+      Extrapolation.CLAMP
+    );
+    const scale = interpolate(
+      scrollY.value,
+      [0, 120],
+      [1, 0.95],
+      Extrapolation.CLAMP
+    );
+    return {
+      opacity,
+      transform: [{ translateY }, { scale }],
+    };
+  });
+
+  // Sticky header: fades in smoothly as you scroll
+  const stickyHeaderStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      scrollY.value,
+      [0, 60, 120],
+      [0, 0.4, 1],
+      Extrapolation.CLAMP
+    );
+    const translateY = interpolate(
+      scrollY.value,
+      [0, 120],
+      [-20, 0],
+      Extrapolation.CLAMP
+    );
+    return {
+      opacity,
+      transform: [{ translateY }],
+    };
+  });
+
+  // ─── LOAD PINNED/HIDDEN ──────────────────────────────────────────────
+
   useEffect(() => {
     Promise.all([
       AsyncStorage.getItem('@littleloom_pinned_trackers'),
@@ -589,6 +812,16 @@ export default function AllTrackersScreen() {
     });
   }, [filtered, pinnedIds]);
 
+  const visibleTrackers = useMemo(() => {
+    return sortedFiltered.filter(t => !hiddenIds.includes(t.id));
+  }, [sortedFiltered, hiddenIds]);
+
+  const hiddenTrackers = useMemo(() => {
+    return trackerCards.filter(t => hiddenIds.includes(t.id));
+  }, [trackerCards, hiddenIds]);
+
+  const hasHidden = hiddenIds.length > 0;
+
   const handleTrackerPress = useCallback((trackerId: string, hasSubActions: boolean) => {
     HAPTIC_LIGHT();
     if (hasSubActions) {
@@ -611,12 +844,28 @@ export default function AllTrackersScreen() {
   const handlePinToggle = useCallback((id: string) => {
     HAPTIC_LIGHT();
     setPinnedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }, []);
+    if (pinnedIds.includes(id)) {
+      showSuccess('Unpinned', 'Tracker removed from pinned');
+    } else {
+      showSuccess('Pinned', 'Tracker pinned for quick access');
+    }
+  }, [pinnedIds, showSuccess]);
 
   const handleHideToggle = useCallback((id: string) => {
     HAPTIC_LIGHT();
     setHiddenIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }, []);
+    if (!hiddenIds.includes(id)) {
+      showSuccess('Hidden', 'Tracker hidden from view');
+    } else {
+      showSuccess('Unhidden', 'Tracker restored to view');
+    }
+  }, [hiddenIds, showSuccess]);
+
+  const handleUnhideTracker = useCallback((id: string) => {
+    HAPTIC_LIGHT();
+    setHiddenIds(prev => prev.filter(x => x !== id));
+    showSuccess('Tracker Unhidden', 'The tracker has been restored to your list.');
+  }, [showSuccess]);
 
   const handleCustomPress = useCallback(() => {
     HAPTIC_MEDIUM();
@@ -632,6 +881,17 @@ export default function AllTrackersScreen() {
     navigation.navigate('SwitchBaby', { returnTo: 'AllTrackers', returnLabel: 'All Trackers' });
   }, [navigation]);
 
+  const handleShowHidden = useCallback(() => {
+    HAPTIC_LIGHT();
+    setShowHiddenModal(true);
+  }, []);
+
+  const handleBrowseAll = useCallback(() => {
+    HAPTIC_LIGHT();
+    // Already on AllTrackers, just scroll to top
+    // Could also show a different view
+  }, []);
+
   // ─── RENDER ──────────────────────────────────────────────────────────────
 
   return (
@@ -641,16 +901,16 @@ export default function AllTrackersScreen() {
       <LinearGradient colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={StyleSheet.absoluteFill} />
 
       {/* ─── STICKY HEADER (fades in on scroll) ───────────────────────── */}
-      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }]}>
+      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, stickyHeaderStyle]}>
         <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
         <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>All Trackers</Text>
         <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>
-          {trackerCards.length} trackers • {entries ? entries.length : 0} logs
+          {visibleTrackers.length} trackers • {entries ? entries.length : 0} logs
         </Text>
       </Animated.View>
 
-      {/* ─── TOP HEADER — UNIFIED with GrowthDashboard/Timeline/Hub ──── */}
-      <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
+      {/* ─── TOP HEADER — stays visible at top, fades on scroll ──────── */}
+      <Animated.View style={[styles.topHeader, topHeaderStyle]}>
         <TouchableOpacity 
           onPress={handleBack} 
           style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
@@ -680,7 +940,9 @@ export default function AllTrackersScreen() {
       </Animated.View>
 
       <Animated.ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingTop: 12, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl 
@@ -723,8 +985,8 @@ export default function AllTrackersScreen() {
                   <Ionicons name="albums-outline" size={18} color={theme.primary} />
                 </View>
                 <Text style={[styles.kpiValue, { color: theme.text.primary }]}>{trackerCards.length}</Text>
-                <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Trackers</Text>
-                <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>{hiddenIds.length} hidden</Text>
+                <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Total</Text>
+                <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>{visibleTrackers.length} visible</Text>
               </View>
 
               <View style={[styles.kpiCard, { borderRadius: theme.borderRadius, borderColor: `${theme.secondary}30`, backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(250,112,154,0.06)' }]}>
@@ -751,9 +1013,26 @@ export default function AllTrackersScreen() {
                 </View>
                 <Text style={[styles.kpiValue, { color: theme.text.primary }]}>{categories.length}</Text>
                 <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Categories</Text>
-                <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>Filter by type</Text>
+                <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>{hasHidden ? `${hiddenIds.length} hidden` : 'All visible'}</Text>
               </View>
             </Animated.ScrollView>
+          </Animated.View>
+        )}
+
+        {/* Hidden Trackers Banner */}
+        {hasHidden && (
+          <Animated.View entering={FadeInUp.delay(120).springify()}>
+            <TouchableOpacity 
+              onPress={handleShowHidden} 
+              style={[styles.hiddenBanner, { backgroundColor: `${theme.primary}10`, borderRadius: RADIUS.md, marginHorizontal: SPACING.lg, marginBottom: SPACING.md }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="eye-off-outline" size={18} color={theme.primary} />
+              <Text style={[styles.hiddenBannerText, { color: theme.primary }]}>
+                {hiddenIds.length} tracker{hiddenIds.length > 1 ? 's' : ''} hidden
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.primary} />
+            </TouchableOpacity>
           </Animated.View>
         )}
 
@@ -794,11 +1073,9 @@ export default function AllTrackersScreen() {
 
         {/* Tracker Grid */}
         <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)} style={styles.grid}>
-          {sortedFiltered.length > 0 ? (
-            sortedFiltered.map((tracker: any, index: number) => {
+          {visibleTrackers.length > 0 ? (
+            visibleTrackers.map((tracker: any, index: number) => {
               const isPinned = pinnedIds.includes(tracker.id);
-              const isHidden = hiddenIds.includes(tracker.id);
-              if (isHidden) return null;
               
               return (
                 <Animated.View
@@ -808,6 +1085,8 @@ export default function AllTrackersScreen() {
                 >
                   <TouchableOpacity
                     onPress={() => handleTrackerPress(tracker.id, tracker.hasSubActions)}
+                    onLongPress={() => handlePinToggle(tracker.id)}
+                    delayLongPress={500}
                     activeOpacity={0.85}
                     style={{ flex: 1 }}
                   >
@@ -854,6 +1133,9 @@ export default function AllTrackersScreen() {
                           <Ionicons name="pin" size={10} color="#fff" />
                         </View>
                       )}
+                      <View style={styles.trackerCardLongPressHint}>
+                        <Text style={[styles.trackerCardLongPressText, { color: theme.text.muted }]}>Long press to pin</Text>
+                      </View>
                     </GlassCard>
                   </TouchableOpacity>
                 </Animated.View>
@@ -870,6 +1152,14 @@ export default function AllTrackersScreen() {
               <Text style={[styles.emptySubtitle, { color: theme.text.secondary }]}>
                 {searchQuery ? 'Try adjusting your search' : 'Create your first tracker to get started'}
               </Text>
+              <TouchableOpacity
+                onPress={handleCustomPress}
+                style={[styles.emptyCreateBtn, { backgroundColor: theme.primary }]}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add" size={20} color="#fff" />
+                <Text style={styles.emptyCreateBtnText}>Create Tracker</Text>
+              </TouchableOpacity>
             </View>
           )}
         </Animated.View>
@@ -879,6 +1169,7 @@ export default function AllTrackersScreen() {
           <TouchableOpacity
             onPress={handleCustomPress}
             style={[styles.customBtn, { borderColor: theme.surface.border, marginHorizontal: SPACING.lg, marginTop: SPACING.md }]}
+            activeOpacity={0.8}
           >
             <LinearGradient
               colors={[`${theme.primary}08`, `${theme.primary}02`]}
@@ -905,6 +1196,16 @@ export default function AllTrackersScreen() {
           onSelect={handleSubActionSelect}
         />
       )}
+
+      {/* Hidden Trackers Modal */}
+      <HiddenTrackersModal
+        visible={showHiddenModal}
+        hiddenTrackers={hiddenTrackers}
+        onClose={() => setShowHiddenModal(false)}
+        onUnhide={handleUnhideTracker}
+        onPinToggle={handlePinToggle}
+        pinnedIds={pinnedIds}
+      />
     </View>
   );
 }
@@ -937,6 +1238,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
+    zIndex: 10,
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   addBtn: {
@@ -1026,6 +1328,16 @@ const styles = StyleSheet.create({
   kpiValue: { fontSize: 28, fontWeight: '800', letterSpacing: -1, marginBottom: 2 },
   kpiLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   kpiSub: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+
+  // ── Hidden Banner ──
+  hiddenBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: 8,
+  },
+  hiddenBannerText: { fontSize: 13, fontWeight: '600', flex: 1 },
 
   // ── Category Filter ──
   categoryScroll: {
@@ -1117,6 +1429,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  trackerCardLongPressHint: {
+    marginTop: 6,
+    alignItems: 'center',
+  },
+  trackerCardLongPressText: {
+    fontSize: 9,
+    fontWeight: '500',
+    opacity: 0.5,
+  },
 
   // ── Custom Button ──
   customBtn: {
@@ -1143,7 +1464,16 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', padding: 40, width: '100%' },
   emptyIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   emptyTitle: { fontWeight: '800', marginBottom: 8, textAlign: 'center', fontSize: 22 },
-  emptySubtitle: { fontWeight: '500', textAlign: 'center', lineHeight: 22, fontSize: 15 },
+  emptySubtitle: { fontWeight: '500', textAlign: 'center', lineHeight: 22, fontSize: 15, marginBottom: 20 },
+  emptyCreateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: RADIUS.md,
+  },
+  emptyCreateBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
   // ── Sub Action Sheet ──
   sheetOverlay: {
@@ -1223,4 +1553,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   subActionLabel: { fontWeight: '700', textAlign: 'center', fontSize: 13 },
+
+  // ── Hidden Trackers Modal ──
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' },
+  hiddenModalContent: { 
+    width: SCREEN_WIDTH - 40, 
+    maxHeight: SCREEN_HEIGHT * 0.75, 
+    borderRadius: 28, 
+    overflow: 'hidden', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 20 }, 
+    shadowOpacity: 0.2, 
+    shadowRadius: 40, 
+    elevation: 20 
+  },
+  hiddenModalHeader: { padding: SPACING.lg, alignItems: 'center', position: 'relative' },
+  hiddenModalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
+  hiddenModalSubtitle: { fontSize: 14, fontWeight: '500' },
+  hiddenModalClose: { position: 'absolute', top: SPACING.md, right: SPACING.md, padding: 4 },
+  hiddenModalList: { paddingHorizontal: SPACING.lg, maxHeight: 400 },
+  hiddenTrackerItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingVertical: SPACING.md, 
+    borderBottomWidth: 1 
+  },
+  hiddenTrackerLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 },
+  hiddenTrackerIcon: { width: 40, height: 40, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
+  hiddenTrackerEmoji: { fontSize: 20 },
+  hiddenTrackerName: { fontSize: 14, fontWeight: '700' },
+  hiddenTrackerDesc: { fontSize: 12, fontWeight: '500' },
+  hiddenTrackerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  hiddenActionBtn: { padding: 8, borderRadius: RADIUS.xs },
+  hiddenUnhideBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm },
+  hiddenUnhideText: { fontSize: 13, fontWeight: '600' },
+  hiddenModalDone: { margin: SPACING.lg, paddingVertical: SPACING.md, borderRadius: RADIUS.md, alignItems: 'center' },
+  hiddenModalDoneText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  hiddenEmptyState: { alignItems: 'center', paddingVertical: SPACING.xxxl, gap: SPACING.md },
+  hiddenEmptyText: { fontSize: 16, fontWeight: '500' },
+  hiddenEmptySub: { fontSize: 13, fontWeight: '500' },
 });
