@@ -1,6 +1,6 @@
-// AllTrackersScreen.tsx — UNIFIED HEADER v6.2
+// AllTrackersScreen.tsx — UNIFIED HEADER v6.3
 // Matches header style from GrowthDashboard, EnhancedTimeline, and UniversalTrackerHub
-// Proper scroll behavior: top header visible at top, fades out on scroll
+// Proper scroll behavior: top header fades out on scroll, sticky header fades in
 // Long press to pin/unpin like Hub screen
 // Hidden trackers modal with unhide functionality
 
@@ -672,7 +672,7 @@ export default function AllTrackersScreen() {
     },
   });
 
-  // Top header: stays visible at top, fades out gradually on scroll
+  // Top header: stays visible at top, fades out on scroll
   const topHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       scrollY.value,
@@ -698,7 +698,7 @@ export default function AllTrackersScreen() {
     };
   });
 
-  // Sticky header: fades in smoothly as you scroll
+  // Sticky header: fades in on scroll
   const stickyHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       scrollY.value,
@@ -903,8 +903,14 @@ export default function AllTrackersScreen() {
         </Text>
       </Animated.View>
 
-      {/* ─── TOP HEADER — matches Hub screen exactly ──────────────────── */}
-      <Animated.View entering={FadeInDown.springify()} style={[styles.topHeader, { paddingTop: insets.top + 12 }]}>
+      {/* ─── TOP HEADER — fades out on scroll ─────────────────────────── */}
+      <Animated.View 
+        style={[
+          styles.topHeader, 
+          { paddingTop: insets.top + 12 },
+          topHeaderStyle
+        ]}
+      >
         <TouchableOpacity 
           onPress={handleBack} 
           style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
