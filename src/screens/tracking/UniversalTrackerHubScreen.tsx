@@ -1903,7 +1903,7 @@ const { getRecentTimelineEvents } = useActivity();
         />
 
         {/* ─── RECENT ACTIVITY ──────────────────────────────────────────── */}
-        <RecentActivityList entries={allTimelineEvents.length > 0 ? allTimelineEvents : entries} onViewAll={handleViewTimeline} onEntryPress={handleEntryPress} />
+        <RecentActivityList entries={allTimelineEvents} onViewAll={handleViewTimeline} onEntryPress={handleEntryPress} />
 
         {/* ─── QUICK LINKS ───────────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(480).springify()} style={{ marginHorizontal: SPACING.lg, marginBottom: SPACING.xl }}>
