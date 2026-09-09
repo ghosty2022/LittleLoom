@@ -1,6 +1,6 @@
-// AllTrackersScreen.tsx — UNIFIED HEADER v6.3
+// AllTrackersScreen.tsx — UNIFIED HEADER v6.4
 // Matches header style from GrowthDashboard, EnhancedTimeline, and UniversalTrackerHub
-// Proper scroll behavior: top header fades out on scroll, sticky header fades in
+// Proper scroll behavior: top header fades out on scroll with transparency
 // Long press to pin/unpin like Hub screen
 // Hidden trackers modal with unhide functionality
 
@@ -903,7 +903,7 @@ export default function AllTrackersScreen() {
         </Text>
       </Animated.View>
 
-      {/* ─── TOP HEADER — fades out on scroll ─────────────────────────── */}
+      {/* ─── TOP HEADER — transparent, fades out on scroll ────────────── */}
       <Animated.View 
         style={[
           styles.topHeader, 
@@ -1239,6 +1239,7 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
     zIndex: 10,
+    backgroundColor: 'transparent',
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   addBtn: {
