@@ -1135,8 +1135,8 @@ export default function EnhancedTimelineScreen() {
   }, [scrollY]);
 
   const headerAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [0, 100], [0, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [0, 100], [-20, 0], Extrapolation.CLAMP);
+    const opacity = interpolate(scrollY.value, [0, 80, 120], [0, 0.5, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [0, 100], [-10, 0], Extrapolation.CLAMP);
     return { opacity, transform: [{ translateY }] };
   });
 
@@ -1175,23 +1175,22 @@ export default function EnhancedTimelineScreen() {
         </View>
       )}
 
-      {/* Header - Matches TrackerHub style */}
+      {/* ─── HEADER ─────────────────────────────────────────────────────── */}
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
-        <LinearGradient colors={[`${theme.primary}15`, `${theme.secondary}08`, 'transparent']} style={styles.headerGradient} />
-        
-        {/* Top Row - Like TrackerHub */}
+        {/* ─── TOP HEADER (always visible) ────────────────────────────── */}
         <View style={styles.topHeader}>
           <TouchableOpacity 
+            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} 
             onPress={() => navigation.goBack()} 
-            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+            activeOpacity={0.8}
           >
             <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
           </TouchableOpacity>
 
-          {/* Baby Switcher Pill - Like TrackerHub */}
           <TouchableOpacity 
             onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Timeline', returnLabel: 'Timeline' })} 
             style={styles.babyPill}
+            activeOpacity={0.85}
           >
             <LinearGradient
               colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
@@ -1201,7 +1200,7 @@ export default function EnhancedTimelineScreen() {
             />
             {currentBaby ? (
               <>
-                <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={36} fallbackIcon="happy-outline" fallbackColor={theme.primary} />
+                <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={36} showBadge={false} />
                 <View style={styles.babyPillText}>
                   <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
                   <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>{safeDiffMonths(new Date(), currentBaby.birthDate)}mo</Text>
@@ -1222,16 +1221,31 @@ export default function EnhancedTimelineScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            onPress={() => setShowSearch(!showSearch)} 
-            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
-          >
-            <Ionicons name={showSearch ? 'close' : 'search'} size={22} color={theme.text.secondary} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} 
+              onPress={() => navigation.navigate('Achievements')} 
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trophy-outline" size={22} color={theme.text.secondary} />
+              {stats.achievements > 0 && (
+                <View style={styles.achievementBadge}>
+                  <Text style={styles.achievementBadgeText}>{stats.achievements}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.addBtn, { backgroundColor: theme.primary }]} 
+              onPress={() => setShowTimelinePicker(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Sticky Header - Like TrackerHub */}
-        <Animated.View style={[styles.stickyHeader, headerAnimatedStyle, { top: insets.top + 8 }]}>
+        {/* ─── STICKY HEADER (fades in on scroll) ─────────────────────── */}
+        <Animated.View style={[styles.stickyHeader, headerAnimatedStyle]}>
           <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
           <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby?.name || 'Timeline'}</Text>
           <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>{stats.today} entries • {stats.achievements} achievements</Text>
@@ -1239,12 +1253,12 @@ export default function EnhancedTimelineScreen() {
       </View>
 
       <Animated.ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 140 }]}
+        contentContainerStyle={{ paddingTop: insets.top + 80, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} progressViewOffset={insets.top + 140} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} progressViewOffset={insets.top + 100} />
         }
       >
         {/* Search Bar */}
@@ -1837,25 +1851,86 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tabLabel: { fontSize: 12, fontWeight: '600' },
-
+  // ── Header Actions ──
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  achievementBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#f59e0b',
+    borderRadius: 12,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  achievementBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   // ── Header ──
-  headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100 },
-  headerGradient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16 },
-  headerButton: { width: 48, height: 48, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
-  headerCenter: { alignItems: 'center', flex: 1, marginHorizontal: 10, gap: 4 },
-  headerTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5, marginTop: 4 },
-  headerSubtitle: { fontSize: 13, marginTop: 2, fontWeight: '500' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerBabyPlaceholder: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  // ── Header Container ──
+  headerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    paddingTop: 0,
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  achievementBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#f59e0b',
+    borderRadius: 12,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  achievementBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 
   // ── Top Header ── (like TrackerHub)
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
   headerIconBtn: {
     width: 40,
@@ -1867,9 +1942,9 @@ const styles = StyleSheet.create({
   babyPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: SPACING.md,
     paddingVertical: 10,
-    borderRadius: 999,
+    borderRadius: RADIUS.full,
     alignSelf: 'flex-start',
     gap: 10,
     overflow: 'hidden',
@@ -1883,7 +1958,17 @@ const styles = StyleSheet.create({
   babyPillNoBabyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
   // ── Sticky Header ──
-  stickyHeader: { position: 'absolute', left: 0, right: 0, alignItems: 'center', paddingHorizontal: 80, paddingTop: 4, paddingBottom: 8 },
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.sm,
+    paddingTop: 8,
+    pointerEvents: 'none',
+  },
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500' },
 

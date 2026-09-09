@@ -1,3 +1,4 @@
+// src/screens/main/HomeScreen.tsx - COMPLETE FIXED VERSION
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -58,6 +59,7 @@ import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay, dif
 
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { SkeletonLoader, ShimmerLoader, ShimmerPresets } from '../../components/UniversalSpinner';
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -66,7 +68,8 @@ const { width, height } = Dimensions.get('window');
 const SCREEN_W = width;
 const SCREEN_H = height;
 
-const littleLoomLogo = require('../../../assets/logo.png');
+// Use the logo image instead of text
+const littleLoomLogo = require('../../../assets/logo4.png');
 
 /* ═══════════════════════════════════════════════════════════════════════════
    INSTANT-RENDER CACHE KEYS — Baby + activities cached so first paint has data
@@ -184,6 +187,9 @@ interface DailySummary {
   diapers: number;
   lastFeedTime: Date | null;
   lastSleepTime: Date | null;
+  yesterdayFeeds: number;
+  yesterdaySleepHours: number;
+  yesterdayDiapers: number;
 }
 
 interface VaccinationReminder {
@@ -216,7 +222,11 @@ const DIRECT_SCREENS = new Set<string>([
   'LanguageSettings', 'UnitSettings', 'PrivacyPolicy', 'TermsOfService',
   'About', 'EntryDetail', 'Insights', 'CreateCustomTracker', 'More',
   'AllTrackers', 'BabyProfileScreen', 'FamilySettings', 'FamilyDashboard',
-  'PediatricianPDFExport', 'CommunityMain',
+  'PediatricianPDFExport', 'CommunityMain', 'CommunityProfile',
+  'CommunityMemberProfile', 'CommunityOnboarding', 'CommunityVerification',
+  'Topic', 'TopicMembers', 'CreatePost', 'PostDetail', 'ChatList',
+  'Chat', 'Notifications', 'Followers', 'Following', 'SearchUsers',
+  'BlockedUsers', 'Report',
 ]);
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -313,6 +323,95 @@ const SectionHeader: React.FC<{
   </View>
 ));
 (SectionHeader as any).displayName = 'SectionHeader';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SKELETON LOADERS FOR SECTIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DailySummarySkeleton = () => (
+  <View style={styles.dailySummaryContainer}>
+    <View style={styles.dailySummaryHeader}>
+      <View style={styles.dailySummaryTitleRow}>
+        <ShimmerLoader width={28} height={28} borderRadius={8} />
+        <ShimmerLoader width={140} height={18} borderRadius={8} />
+      </View>
+      <ShimmerLoader width={100} height={14} borderRadius={6} />
+    </View>
+    <View style={styles.dailySummaryGrid}>
+      {[1, 2, 3, 4].map((i) => (
+        <View key={i} style={styles.dailySummaryItem}>
+          <ShimmerLoader width="100%" height="100%" borderRadius={20} />
+        </View>
+      ))}
+    </View>
+  </View>
+);
+
+const QuickActionsSkeleton = () => (
+  <View style={styles.sectionFullWidth}>
+    <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}>
+      <ShimmerLoader width={120} height={20} borderRadius={8} />
+    </View>
+    <View style={[styles.categorizedGrid, { paddingHorizontal: 20, gap: 10 }]}>
+      {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+        <View key={i} style={[styles.categorizedGridItem, { width: (SCREEN_W - 40 - 30) / 4 }]}>
+          <ShimmerLoader width="100%" height={80} borderRadius={20} />
+          <ShimmerLoader width={40} height={12} borderRadius={6} style={{ marginTop: 6 }} />
+        </View>
+      ))}
+    </View>
+  </View>
+);
+
+const RecentTimelineSkeleton = () => (
+  <View style={{ paddingHorizontal: 20 }}>
+    {[1, 2, 3].map((i) => (
+      <View key={i} style={styles.daySection}>
+        <View style={styles.dateHeaderContainer}>
+          <ShimmerLoader width={80} height={22} borderRadius={8} />
+          <ShimmerLoader width={24} height={24} borderRadius={12} />
+        </View>
+        <View style={styles.eventRow}>
+          <View style={styles.timeColumn}>
+            <ShimmerLoader width={50} height={14} borderRadius={6} />
+          </View>
+          <View style={[styles.eventCardContainer, { paddingBottom: 14 }]}>
+            <View style={styles.entryCard}>
+              <View style={styles.entryCardContent}>
+                <View style={styles.entryCardHeader}>
+                  <ShimmerLoader width={38} height={38} borderRadius={11} />
+                  <View style={styles.entryInfo}>
+                    <ShimmerLoader width="60%" height={16} borderRadius={6} />
+                    <ShimmerLoader width="40%" height={12} borderRadius={4} />
+                  </View>
+                  <ShimmerLoader width={50} height={22} borderRadius={8} />
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    ))}
+  </View>
+);
+
+const FeatureCardsSkeleton = () => (
+  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featureCardsScroll}>
+    {[1, 2, 3, 4].map((i) => (
+      <View key={i} style={styles.featureCardTouchable}>
+        <View style={[styles.featureCard, { padding: 14 }]}>
+          <View style={styles.featureCardTop}>
+            <ShimmerLoader width={40} height={40} borderRadius={12} />
+            <ShimmerLoader width={30} height={20} borderRadius={8} />
+          </View>
+          <ShimmerLoader width="80%" height={18} borderRadius={6} style={{ marginBottom: 4 }} />
+          <ShimmerLoader width="60%" height={14} borderRadius={4} style={{ marginBottom: 8 }} />
+          <ShimmerLoader width="50%" height={16} borderRadius={4} />
+        </View>
+      </View>
+    ))}
+  </ScrollView>
+);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    FEATURE 1: DAILY SUMMARY WIDGET
@@ -876,8 +975,6 @@ const FeatureCardsRow: React.FC<{
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ★★★ RECENT ACTIVITY — TIMELINE-STYLE (matches EnhancedTimelineScreen)
-   Day-grouped, time column with colored line, tracker-colored cards,
-   theme-aware text (fixes dark mode), tap → EntryDetail
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface DayGroup {
@@ -961,13 +1058,11 @@ const RecentTimeline: React.FC<{
                     entering={FadeInUp.delay(groupIndex * 80 + eventIndex * 50).springify()}
                   >
                     <View style={styles.eventRow}>
-                      {/* Time column with tracker-colored line */}
                       <View style={styles.timeColumn}>
                         <Text style={[styles.timeText, { color: cfg.color }]}>{time}</Text>
                         {!isLast && <View style={[styles.timelineLine, { backgroundColor: `${cfg.color}30` }]} />}
                       </View>
 
-                      {/* Entry card — Timeline look, theme-aware text */}
                       <TouchableOpacity
                         style={styles.eventCardContainer}
                         onPress={() => onEntryPress(event)}
@@ -1144,7 +1239,6 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 }) => {
   const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
   const headerPaddingBottom = compactSpacing ? 8 : 12;
-  const titleSize = Math.round(22 * fontSizeMultiplier);
 
   const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
   const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
@@ -1175,13 +1269,9 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           <View style={styles.logoFloatWrap}>
             <Image
               source={littleLoomLogo}
-              style={[styles.headerLogoImage, { width: Math.round(56 * fontSizeMultiplier), height: Math.round(56 * fontSizeMultiplier) }]}
+              style={[styles.headerLogoImage, { width: Math.round(40 * fontSizeMultiplier), height: Math.round(40 * fontSizeMultiplier) }]}
               resizeMode="contain"
             />
-            <View style={styles.logoTextColumn}>
-              <Text style={[styles.stickyHeaderTitle, { color: textColor, fontSize: titleSize }]}>LittleLoom</Text>
-              <View style={[styles.stickyHeaderUnderline, { backgroundColor: primaryColor, width: Math.round(34 * fontSizeMultiplier), height: Math.max(3, Math.round(3 * fontSizeMultiplier)), borderRadius: Math.max(2, Math.round(2 * fontSizeMultiplier)), marginTop: compactSpacing ? 3 : 4 }]} />
-            </View>
           </View>
         </View>
 
@@ -1212,7 +1302,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
               style={[styles.stickyHeaderBaby, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]}
               onPress={onBabyPress}
             >
-              <SafeBabyAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={Math.round(30 * fontSizeMultiplier)} />
+              <SafeBabyAvatar avatar={currentBaby.avatar || '👶'} gender={currentBaby.gender} size={Math.round(30 * fontSizeMultiplier)} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -1304,12 +1394,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   /* ── ★ INSTANT RENDER: cached baby + activities so first paint has data ── */
   const [cachedBaby, setCachedBaby] = useState<any>(null);
   const [cachedActivities, setCachedActivities] = useState<any[]>([]);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const cacheLoaded = useRef(false);
   const isInitialLoad = useRef(true);
   const dataLoaded = useRef(false);
 
   useEffect(() => {
-    // Read cache synchronously-ish before first paint completes
     (async () => {
       try {
         const [babyJson, actJson] = await Promise.all([
@@ -1325,15 +1415,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // ignore — fresh load will handle it
       } finally {
         cacheLoaded.current = true;
+        setIsLoadingInitial(false);
       }
     })();
   }, []);
 
-  // Displayed baby: fresh data wins, cache fills the gap → no flash
   const displayedBaby = currentBaby || cachedBaby;
   const hasBaby = !!displayedBaby;
 
-  /* ── Persist cache whenever fresh data arrives ── */
   useEffect(() => {
     if (currentBaby) {
       AsyncStorage.setItem(CACHE_KEYS.BABY, JSON.stringify(currentBaby)).catch(() => {});
@@ -1444,6 +1533,29 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   /* ── Navigation ── */
   const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
+    console.log('[HomeScreen] Navigating to:', screenName, params);
+    
+    // Handle special case for CommunityMain - it's in a nested navigator
+    if (screenName === 'CommunityMain' || screenName === 'CommunityProfile' || 
+        screenName === 'CommunityMemberProfile' || screenName === 'CommunityOnboarding' ||
+        screenName === 'CommunityVerification' || screenName === 'Topic' || 
+        screenName === 'TopicMembers' || screenName === 'CreatePost' || 
+        screenName === 'PostDetail' || screenName === 'ChatList' || 
+        screenName === 'Chat' || screenName === 'Notifications' || 
+        screenName === 'Followers' || screenName === 'Following' || 
+        screenName === 'SearchUsers' || screenName === 'BlockedUsers' || 
+        screenName === 'Report') {
+      // Navigate to CommunityMain first, then the specific screen
+      (navigation as any).navigate('Main', {
+        screen: 'Connect',
+        params: {
+          screen: screenName,
+          params: params || {},
+        },
+      });
+      return;
+    }
+
     if (DIRECT_SCREENS.has(screenName)) {
       (navigation as any).navigate(screenName, params || {});
       return;
@@ -1491,12 +1603,27 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const handleQuickAction = useCallback((action: QuickAction) => {
     triggerHaptic('medium');
+    
+    // Fix for milestone - navigate to AddEntry with milestone tracker
+    if (action.id === 'milestone') {
+      if (!requireBaby(action.label, action.screen, { trackerId: 'milestone' })) return;
+      navigateToScreen(action.screen, { trackerId: 'milestone' });
+      return;
+    }
+    
     if (action.id !== 'settings' && !requireBaby(action.label, action.screen, action.params)) return;
     navigateToScreen(action.screen, action.params);
   }, [requireBaby, navigateToScreen, triggerHaptic]);
 
   const handleFeaturePress = useCallback((item: FeatureCard) => {
     triggerHaptic('light');
+    
+    // Handle Community navigation
+    if (item.id === 'chat') {
+      navigateToScreen('FamilyChatList');
+      return;
+    }
+    
     const babyRequired = new Set(['growth', 'milestones', 'reminders', 'family', 'gallery', 'chat', 'vaccine']);
     if (babyRequired.has(item.id) && !requireBaby(item.label, item.screen, item.params)) return;
     navigateToScreen(item.screen, item.params);
@@ -1545,7 +1672,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     navigateToScreen(screen, params);
   }, [requireBaby, navigateToScreen]);
 
-  /* ── ★ Entry press: go to EntryDetail (Timeline behavior) ── */
+  /* ── ★ Entry press: go to EntryDetail ── */
   const handleEntryPress = useCallback((entry: any) => {
     if (!hasBaby) {
       setPendingAction({ label: 'Activity Details', screen: 'Timeline', params: {} });
@@ -1559,7 +1686,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }, [hasBaby, navigateToScreen]);
 
-  /* ── Unified timeline events (same source as Timeline screen) ── */
+  /* ── Unified timeline events ── */
   const allTimelineEvents = useMemo(() => {
     if (!hasBaby) return [];
     const trackerList = (trackerEntries || []).filter((e: any) => e?.timestamp);
@@ -1568,30 +1695,49 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     (activityEvents || []).forEach((ae: any) => {
       if (ae && !merged.find((me: any) => me?.id === ae.id)) merged.push(ae);
     });
-    // Fill with cached data until fresh data arrives (seamless, no flash)
     if (merged.length === 0 && cachedActivities.length > 0) return [...cachedActivities].sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0)).slice(0, 50);
     return merged.slice(0, 50).sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
   }, [hasBaby, displayedBaby?.id, trackerEntries, getRecentTimelineEvents, cachedActivities]);
 
-  /* ── Persist latest events for next cold start ── */
   useEffect(() => {
     if (allTimelineEvents.length > 0) {
       AsyncStorage.setItem(CACHE_KEYS.ACTIVITIES, JSON.stringify(allTimelineEvents.slice(0, 50))).catch(() => {});
     }
   }, [allTimelineEvents]);
 
-  /* ── Daily summary ── */
+  /* ── Daily summary with yesterday counts ── */
   const dailySummary = useMemo((): DailySummary => {
-    if (!hasBaby) return { feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null };
+    if (!hasBaby) return { 
+      feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null,
+      yesterdayFeeds: 0, yesterdaySleepHours: 0, yesterdayDiapers: 0 
+    };
+    
     const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
     const todayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today));
+    const yesterdayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), yesterday));
+    
     const feeds = todayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length;
     const sleepEntries = todayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
     const sleepHours = sleepEntries.reduce((sum: number, a: any) => sum + (a.duration || a.value || 0), 0) / 60;
     const diapers = todayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
+    
+    const yesterdayFeeds = yesterdayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length;
+    const yesterdaySleepEntries = yesterdayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
+    const yesterdaySleepHours = yesterdaySleepEntries.reduce((sum: number, a: any) => sum + (a.duration || a.value || 0), 0) / 60;
+    const yesterdayDiapers = yesterdayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
+    
     const lastFeed = allTimelineEvents.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed')[0];
     const lastSleep = allTimelineEvents.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep')[0];
-    return { feeds, sleepHours, diapers, lastFeedTime: lastFeed ? new Date(lastFeed.timestamp) : null, lastSleepTime: lastSleep ? new Date(lastSleep.timestamp) : null };
+    
+    return { 
+      feeds, sleepHours, diapers, 
+      lastFeedTime: lastFeed ? new Date(lastFeed.timestamp) : null, 
+      lastSleepTime: lastSleep ? new Date(lastSleep.timestamp) : null,
+      yesterdayFeeds, yesterdaySleepHours, yesterdayDiapers 
+    };
   }, [allTimelineEvents, hasBaby]);
 
   /* ── Growth KPIs ── */
@@ -1643,15 +1789,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     ? (settings.compactSpacing ? 110 : 130)
     : (settings.compactSpacing ? 100 : 115);
 
-  /* ── ★ Loading gate: only when truly nothing to show ── */
+  /* ── Loading state with subtle skeleton ── */
   const isLoading = authLoading && !cachedBaby && allTimelineEvents.length === 0;
 
-  if (isLoading) {
+  if (isLoading || isLoadingInitial) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <LinearGradient colors={[primary, '#764ba2', secondary]} style={styles.loadingGradient}>
-          <Text style={[styles.loadingText, { fontSize: Math.round(32 * fontSizeMultiplier) }]}>LittleLoom</Text>
+          <Image source={littleLoomLogo} style={{ width: 80, height: 80 }} resizeMode="contain" />
           <View style={styles.loadingDots}>
             <View style={[styles.dot, styles.dot1]} />
             <View style={[styles.dot, styles.dot2]} />
@@ -1729,14 +1875,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                   style={[styles.parentQuickLink, { backgroundColor: `${secondary}12`, borderRadius: borderRadiusValue - 10 }]}
                   onPress={() => navigateToScreen('CommunityMain')}
                 >
-                  <Ionicons name="sparkles-outline" size={Math.round(16 * fontSizeMultiplier)} color={secondary} />
+                  <Ionicons name="people-outline" size={Math.round(16 * fontSizeMultiplier)} color={secondary} />
                 </TouchableOpacity>
               </View>
             </View>
           </GlassCard>
         </Animated.View>
 
-        {/* ═══ BABY CARD — renders instantly from cache, no flash ═══ */}
+        {/* ═══ BABY CARD ═══ */}
         {hasBaby ? (
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(40).springify()}>
             <GlassCard style={[styles.babyCard, { borderRadius: borderRadiusValue, marginHorizontal: settings.compactSpacing ? 16 : 20 }]}>
@@ -1754,7 +1900,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               </View>
               <View style={[styles.babyMainInfo, { padding: settings.compactSpacing ? 14 : 18 }]}>
                 <SafeBabyAvatar
-                  avatar={displayedBaby.avatar}
+                  avatar={displayedBaby.avatar || '👶'}
                   gender={displayedBaby.gender}
                   size={Math.round(64 * fontSizeMultiplier)}
                   onPress={() => navigateToScreen('EditProfile', { mode: 'baby', babyId: displayedBaby.id })}
@@ -1801,7 +1947,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </Animated.View>
         )}
 
-        {/* ═══ GROWTH SNAPSHOT KPIs ═══ */}
+        {/* ═══ GROWTH SNAPSHOT KPIs with Yesterday comparison ═══ */}
         {hasBaby && growthStats && (
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
             <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, marginTop: 6 }]}>
@@ -1854,12 +2000,37 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </Animated.View>
         )}
 
-        {/* ═══ DAILY SUMMARY ═══ */}
-        {hasBaby && (
+        {/* ═══ DAILY SUMMARY with yesterday counts ═══ */}
+        {hasBaby ? (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
-            <DailySummaryWidget summary={dailySummary} isDark={isDark} theme={theme} onPress={handleDailySummaryPress} streakDays={getPottyStreak()} />
+            <DailySummaryWidget 
+              summary={dailySummary} 
+              isDark={isDark} 
+              theme={theme} 
+              onPress={handleDailySummaryPress} 
+              streakDays={getPottyStreak()} 
+            />
+            
+            {/* Yesterday comparison */}
+            <View style={[styles.yesterdayComparison, { marginTop: 8 }]}>
+              <Text style={[styles.yesterdayTitle, { color: theme.textMuted }]}>Yesterday vs Today</Text>
+              <View style={styles.yesterdayGrid}>
+                <View style={styles.yesterdayItem}>
+                  <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>Feeds</Text>
+                  <Text style={[styles.yesterdayValue, { color: theme.text }]}>{dailySummary.feeds} <Text style={{ color: theme.textMuted, fontSize: 12 }}>↑ {dailySummary.yesterdayFeeds}</Text></Text>
+                </View>
+                <View style={styles.yesterdayItem}>
+                  <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>Sleep</Text>
+                  <Text style={[styles.yesterdayValue, { color: theme.text }]}>{dailySummary.sleepHours.toFixed(1)}h <Text style={{ color: theme.textMuted, fontSize: 12 }}>↑ {dailySummary.yesterdaySleepHours.toFixed(1)}h</Text></Text>
+                </View>
+                <View style={styles.yesterdayItem}>
+                  <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>Diapers</Text>
+                  <Text style={[styles.yesterdayValue, { color: theme.text }]}>{dailySummary.diapers} <Text style={{ color: theme.textMuted, fontSize: 12 }}>↑ {dailySummary.yesterdayDiapers}</Text></Text>
+                </View>
+              </View>
+            </View>
           </View>
-        )}
+        ) : null}
 
         {/* ═══ SMART CONTEXT ═══ */}
         {hasBaby && (
@@ -1914,6 +2085,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               if (a.id === 'potty') badgeCount = getTodayPottyCount();
               if (a.id === 'growth' && growthStats?.height) badgeLabel = growthStats.height.value + 'cm';
               if (a.id === 'growth' && growthStats?.weight && !badgeLabel) badgeLabel = growthStats.weight.value + 'kg';
+              if (a.id === 'milestone' && milestones.length > 0) badgeCount = milestones.length;
               return { ...a, badgeCount, badgeLabel };
             })}
             onPress={handleQuickAction}
@@ -1977,17 +2149,21 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             </TouchableOpacity>
           </View>
           <View style={{ paddingHorizontal: settings.compactSpacing ? 16 : 20 }}>
-            <RecentTimeline
-              activities={allTimelineEvents}
-              isDark={isDark}
-              theme={theme}
-              onViewAll={() => {
-                if (!requireBaby('Timeline', 'Timeline', {})) return;
-                navigateToScreen('Timeline', {});
-              }}
-              onEntryPress={handleEntryPress}
-              borderRadius={borderRadiusValue}
-            />
+            {allTimelineEvents.length === 0 && activitiesLoading ? (
+              <RecentTimelineSkeleton />
+            ) : (
+              <RecentTimeline
+                activities={allTimelineEvents}
+                isDark={isDark}
+                theme={theme}
+                onViewAll={() => {
+                  if (!requireBaby('Timeline', 'Timeline', {})) return;
+                  navigateToScreen('Timeline', {});
+                }}
+                onEntryPress={handleEntryPress}
+                borderRadius={borderRadiusValue}
+              />
+            )}
           </View>
         </View>
 
@@ -2203,6 +2379,14 @@ const styles = StyleSheet.create({
   dailySummaryValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 6, color: '#fff' },
   dailySummaryLabel: { fontSize: 11, fontWeight: '700', marginTop: 3, color: '#fff' },
 
+  /* ── Yesterday Comparison ── */
+  yesterdayComparison: { paddingHorizontal: 4 },
+  yesterdayTitle: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
+  yesterdayGrid: { flexDirection: 'row', gap: 12 },
+  yesterdayItem: { flex: 1, padding: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.5)' },
+  yesterdayLabel: { fontSize: 10, fontWeight: '500', marginBottom: 2 },
+  yesterdayValue: { fontSize: 14, fontWeight: '700' },
+
   /* ── Context ── */
   contextCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 22, borderWidth: 1 },
   contextLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
@@ -2338,7 +2522,7 @@ const styles = StyleSheet.create({
   bar: { width: 2.5, height: 10, borderRadius: 1 },
   barMiddle: { height: 16 },
 
-  /* ── ★ Recent Timeline (Timeline-screen style) ── */
+  /* ── ★ Recent Timeline ── */
   daySection: { marginBottom: 20 },
   dateHeaderContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   dateHeader: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
