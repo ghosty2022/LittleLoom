@@ -1175,10 +1175,24 @@ export default function EnhancedTimelineScreen() {
         </View>
       )}
 
-      {/* ─── HEADER CONTAINER ───────────────────────────────────────────── */}
-      <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
-        {/* ─── TOP HEADER (always visible) ────────────────────────────── */}
-        <View style={styles.topHeader}>
+      {/* ─── STICKY HEADER (fades in on scroll) ───────────────────────── */}      
+      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerAnimatedStyle]}>
+        <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
+        <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby?.name || 'Timeline'}</Text>
+        <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>{stats.today} entries • {stats.achievements} achievements</Text>
+      </Animated.View>
+
+      <Animated.ScrollView
+        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }}
+        showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} progressViewOffset={insets.top + 100} />
+        }
+      >
+        {/* ─── TOP HEADER (scrolls away) ─────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
           <TouchableOpacity 
             style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} 
             onPress={() => navigation.goBack()} 
@@ -1242,25 +1256,8 @@ export default function EnhancedTimelineScreen() {
               <Ionicons name="add" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* ─── STICKY HEADER (fades in on scroll) ─────────────────────── */}
-        <Animated.View style={[styles.stickyHeader, headerAnimatedStyle]}>
-          <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
-          <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby?.name || 'Timeline'}</Text>
-          <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>{stats.today} entries • {stats.achievements} achievements</Text>
         </Animated.View>
-      </View>
 
-      <Animated.ScrollView
-        contentContainerStyle={{ paddingTop: insets.top + 80, paddingBottom: insets.bottom + 40 }}
-        showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} progressViewOffset={insets.top + 100} />
-        }
-      >
         {/* Search Bar */}
         {showSearch && (
           <Animated.View entering={FadeInDown} style={styles.searchContainer}>
@@ -1851,19 +1848,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tabLabel: { fontSize: 12, fontWeight: '600' },
-
-  // ── Header Container ──
-  headerContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-  },
-
+  
   // ── Header Actions ──
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  
   achievementBadge: {
     position: 'absolute',
     top: -4,
@@ -1883,19 +1870,27 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
-
-  // ── Header ──
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   addBtn: {
     width: 44,
     height: 44,
     borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // ── Header Container ──
+  headerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    paddingTop: 0,
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1906,10 +1901,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
-
-  // ── Baby Pill ──
   babyPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1934,6 +1927,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    zIndex: 100,
     alignItems: 'center',
     paddingHorizontal: SPACING.xl,
     paddingBottom: SPACING.sm,

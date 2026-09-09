@@ -22,7 +22,7 @@ import { format } from 'date-fns';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -556,70 +556,86 @@ export default function AllTrackersScreen() {
       
       <LinearGradient colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={StyleSheet.absoluteFill} />
 
-      {/* Header */}
-      <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
-        <LinearGradient colors={[`${theme.primary}15`, `${theme.secondary}08`, 'transparent']} style={styles.headerGradient} />
-        
-        <View style={styles.topHeader}>
-          <TouchableOpacity 
-            onPress={handleBack} 
-            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
-          >
-            <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
-          </TouchableOpacity>
+      {/* ─── STICKY HEADER (fades in on scroll) ───────────────────────── */}
+      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }]}>
+        <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
+        <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>All Trackers</Text>
+        <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>
+          {trackerCards.length} trackers • {entries ? entries.length : 0} logs
+        </Text>
+      </Animated.View>
 
-          {/* Baby Switcher */}
-          <TouchableOpacity 
-            onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'AllTrackers', returnLabel: 'All Trackers' })} 
-            style={styles.babyPill}
-          >
-            <LinearGradient
-              colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            {currentBaby ? (
-              <>
-                <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={36} fallbackIcon="happy-outline" fallbackColor={theme.primary} />
-                <View style={styles.babyPillText}>
-                  <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
-                  <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>
-                    {(() => {
-                      if (!currentBaby.birthDate) return '—';
-                      const diff = new Date().getTime() - new Date(currentBaby.birthDate).getTime();
-                      const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30.44));
-                      return `${months}mo`;
-                    })()}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
-              </>
-            ) : (
-              <>
-                <View style={[styles.babyPillNoBabyIcon, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
-                  <Ionicons name="add-circle" size={28} color={theme.isDark ? '#a3bffa' : '#667eea'} />
-                </View>
-                <View style={styles.babyPillText}>
-                  <Text style={[styles.babyPillName, { color: theme.isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
-                  <Text style={[styles.babyPillAge, { color: theme.isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={theme.text.muted} />
-              </>
-            )}
-          </TouchableOpacity>
+      {/* ─── TOP HEADER (scrolls away) ─────────────────────────────────── */}
+      <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
+        <TouchableOpacity 
+          onPress={handleBack} 
+          style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
+        </TouchableOpacity>
 
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'AllTrackers', returnLabel: 'All Trackers' })} 
+          style={styles.babyPill}
+          activeOpacity={0.85}
+        >
+          <LinearGradient
+            colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          {currentBaby ? (
+            <>
+              <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={36} showBadge={false} />
+              <View style={styles.babyPillText}>
+                <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
+                <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>
+                  {(() => {
+                    if (!currentBaby.birthDate) return '—';
+                    const diff = new Date().getTime() - new Date(currentBaby.birthDate).getTime();
+                    const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30.44));
+                    return `${months}mo`;
+                  })()}
+                </Text>
+              </View>
+              <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
+            </>
+          ) : (
+            <>
+              <View style={[styles.babyPillNoBabyIcon, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
+                <Ionicons name="add-circle" size={28} color={theme.isDark ? '#a3bffa' : '#667eea'} />
+              </View>
+              <View style={styles.babyPillText}>
+                <Text style={[styles.babyPillName, { color: theme.isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
+                <Text style={[styles.babyPillAge, { color: theme.isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={theme.text.muted} />
+            </>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.headerActions}>
           <TouchableOpacity 
-            onPress={() => setSearchQuery(searchQuery ? '' : '')} 
+            onPress={() => setSearchQuery(!searchQuery)} 
             style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+            activeOpacity={0.8}
           >
             <Ionicons name={searchQuery ? 'close' : 'search'} size={22} color={theme.text.secondary} />
           </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={handleCustomPress} 
+            style={[styles.addBtn, { backgroundColor: theme.primary }]}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={24} color="#fff" />
+          </TouchableOpacity>
         </View>
-      </View>
+      </Animated.View>
 
       <Animated.ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 120 }]}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl 
@@ -627,7 +643,7 @@ export default function AllTrackersScreen() {
             onRefresh={onRefresh} 
             tintColor={theme.primary} 
             colors={[theme.primary, theme.secondary]} 
-            progressViewOffset={insets.top + 120}
+            progressViewOffset={insets.top + 100}
           />
         }
       >
@@ -853,20 +869,42 @@ export default function AllTrackersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // ── Header ──
-  headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100 },
-  headerGradient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  // ── Sticky Header ──
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.sm,
+    paddingTop: 8,
+    pointerEvents: 'none',
+  },
+  stickyTitle: { fontSize: 17, fontWeight: '800' },
+  stickySubtitle: { fontSize: 12, fontWeight: '500' },
+
+  // ── Top Header ──
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerIconBtn: {
     width: 40,
     height: 40,
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },

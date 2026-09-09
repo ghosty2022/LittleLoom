@@ -325,55 +325,106 @@ const SectionHeader: React.FC<{
 (SectionHeader as any).displayName = 'SectionHeader';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SKELETON LOADERS — Subtle, Soft & Modern
+   SKELETON LOADERS — Ultra-Soft, Modern Glass-Morphism
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// Subtle shimmer gradient colors - softer and more elegant
-const SHIMMER_COLORS = {
-  light: ['rgba(230,235,245,0.3)', 'rgba(255,255,255,0.5)', 'rgba(230,235,245,0.3)'],
-  dark: ['rgba(50,50,65,0.3)', 'rgba(80,80,100,0.5)', 'rgba(50,50,65,0.3)'],
+// Ultra-soft shimmer with glass-morphism effect
+const SoftShimmer: React.FC<{ 
+  width?: number | string; 
+  height?: number | string; 
+  borderRadius?: number; 
+  style?: any; 
+  isDark?: boolean;
+  shimmerColor?: string;
+}> = ({ width = '100%', height = 16, borderRadius = 12, style, isDark = false, shimmerColor }) => {
+  const baseColor = isDark 
+    ? shimmerColor || 'rgba(255,255,255,0.06)' 
+    : shimmerColor || 'rgba(200,210,230,0.25)';
+  const highlightColor = isDark 
+    ? 'rgba(255,255,255,0.12)' 
+    : 'rgba(255,255,255,0.5)';
+  
+  return (
+    <View style={[
+      {
+        width,
+        height,
+        borderRadius,
+        backgroundColor: baseColor,
+        overflow: 'hidden',
+      },
+      style
+    ]}>
+      <ShimmerLoader 
+        width="100%" 
+        height="100%" 
+        borderRadius={borderRadius}
+        colors={[baseColor, highlightColor, baseColor]}
+        style={{ opacity: 0.7 }}
+      />
+    </View>
+  );
 };
 
-const SubtleShimmer: React.FC<{ width?: number | string; height?: number | string; borderRadius?: number; style?: any; isDark?: boolean }> = 
-  ({ width = '100%', height = 16, borderRadius = 8, style, isDark = false }) => (
-    <ShimmerLoader 
-      width={width} 
-      height={height} 
-      borderRadius={borderRadius}
-      colors={isDark ? SHIMMER_COLORS.dark : SHIMMER_COLORS.light}
-      style={[{ opacity: 0.6 }, style]}
+// Glass-morphism skeleton card
+const GlassSkeletonCard: React.FC<{ 
+  children: React.ReactNode; 
+  style?: any; 
+  isDark?: boolean;
+}> = ({ children, style, isDark = false }) => (
+  <View style={[
+    {
+      borderRadius: 20,
+      padding: 16,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.5)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.3)',
+      backdropFilter: 'blur(10px)',
+      overflow: 'hidden',
+    },
+    style
+  ]}>
+    <LinearGradient
+      colors={isDark 
+        ? ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.01)'] 
+        : ['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.1)']}
+      style={StyleSheet.absoluteFill}
     />
-  );
+    {children}
+  </View>
+);
 
 const DailySummarySkeleton = ({ isDark }: { isDark: boolean }) => (
-  <View style={styles.dailySummaryContainer}>
+  <GlassSkeletonCard isDark={isDark} style={styles.dailySummaryContainer}>
     <View style={styles.dailySummaryHeader}>
       <View style={styles.dailySummaryTitleRow}>
-        <SubtleShimmer width={28} height={28} borderRadius={8} isDark={isDark} />
-        <SubtleShimmer width={140} height={18} borderRadius={8} isDark={isDark} />
+        <SoftShimmer width={28} height={28} borderRadius={8} isDark={isDark} />
+        <SoftShimmer width={140} height={18} borderRadius={8} isDark={isDark} />
       </View>
-      <SubtleShimmer width={100} height={14} borderRadius={6} isDark={isDark} />
+      <SoftShimmer width={100} height={14} borderRadius={6} isDark={isDark} />
     </View>
     <View style={styles.dailySummaryGrid}>
       {[1, 2, 3, 4].map((i) => (
         <View key={i} style={styles.dailySummaryItem}>
-          <SubtleShimmer width="100%" height="100%" borderRadius={20} isDark={isDark} />
+          <SoftShimmer width="100%" height="100%" borderRadius={16} isDark={isDark} />
         </View>
       ))}
     </View>
-  </View>
+  </GlassSkeletonCard>
 );
 
 const QuickActionsSkeleton = ({ isDark }: { isDark: boolean }) => (
   <View style={styles.sectionFullWidth}>
     <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}>
-      <SubtleShimmer width={120} height={20} borderRadius={8} isDark={isDark} />
+      <SoftShimmer width={120} height={20} borderRadius={8} isDark={isDark} />
     </View>
     <View style={[styles.categorizedGrid, { paddingHorizontal: 20, gap: 10 }]}>
       {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <View key={i} style={[styles.categorizedGridItem, { width: (SCREEN_W - 40 - 30) / 4 }]}>
-          <SubtleShimmer width="100%" height={80} borderRadius={20} isDark={isDark} />
-          <SubtleShimmer width={40} height={12} borderRadius={6} style={{ marginTop: 6 }} isDark={isDark} />
+          <GlassSkeletonCard isDark={isDark} style={{ width: '100%', aspectRatio: 1, padding: 0 }}>
+            <SoftShimmer width="100%" height="100%" borderRadius={16} isDark={isDark} />
+          </GlassSkeletonCard>
+          <SoftShimmer width={40} height={12} borderRadius={6} style={{ marginTop: 8 }} isDark={isDark} />
         </View>
       ))}
     </View>
@@ -385,26 +436,26 @@ const RecentTimelineSkeleton = ({ isDark }: { isDark: boolean }) => (
     {[1, 2, 3].map((i) => (
       <View key={i} style={styles.daySection}>
         <View style={styles.dateHeaderContainer}>
-          <SubtleShimmer width={80} height={22} borderRadius={8} isDark={isDark} />
-          <SubtleShimmer width={24} height={24} borderRadius={12} isDark={isDark} />
+          <SoftShimmer width={80} height={22} borderRadius={8} isDark={isDark} />
+          <SoftShimmer width={24} height={24} borderRadius={12} isDark={isDark} />
         </View>
         <View style={styles.eventRow}>
           <View style={styles.timeColumn}>
-            <SubtleShimmer width={50} height={14} borderRadius={6} isDark={isDark} />
+            <SoftShimmer width={50} height={14} borderRadius={6} isDark={isDark} />
           </View>
           <View style={[styles.eventCardContainer, { paddingBottom: 14 }]}>
-            <View style={styles.entryCard}>
+            <GlassSkeletonCard isDark={isDark} style={{ borderRadius: 16 }}>
               <View style={styles.entryCardContent}>
                 <View style={styles.entryCardHeader}>
-                  <SubtleShimmer width={38} height={38} borderRadius={11} isDark={isDark} />
+                  <SoftShimmer width={38} height={38} borderRadius={11} isDark={isDark} />
                   <View style={styles.entryInfo}>
-                    <SubtleShimmer width="60%" height={16} borderRadius={6} isDark={isDark} />
-                    <SubtleShimmer width="40%" height={12} borderRadius={4} isDark={isDark} />
+                    <SoftShimmer width="60%" height={16} borderRadius={6} isDark={isDark} />
+                    <SoftShimmer width="40%" height={12} borderRadius={4} isDark={isDark} />
                   </View>
-                  <SubtleShimmer width={50} height={22} borderRadius={8} isDark={isDark} />
+                  <SoftShimmer width={50} height={22} borderRadius={8} isDark={isDark} />
                 </View>
               </View>
-            </View>
+            </GlassSkeletonCard>
           </View>
         </View>
       </View>
@@ -413,7 +464,7 @@ const RecentTimelineSkeleton = ({ isDark }: { isDark: boolean }) => (
 );
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HOME SKELETON — Subtle, Soft & Modern
+   HOME SKELETON — Ultra-Soft, Modern Glass-Morphism
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const HomeSkeleton: React.FC<{
@@ -426,14 +477,18 @@ const HomeSkeleton: React.FC<{
   return (
     <View style={{ paddingBottom: 40 }}>
       <View style={{ paddingHorizontal: pad, marginTop: 16, gap: 8 }}>
-        <SubtleShimmer width="55%" height={22} borderRadius={8} isDark={isDark} />
-        <SubtleShimmer width="35%" height={13} borderRadius={6} isDark={isDark} />
+        <SoftShimmer width="55%" height={22} borderRadius={8} isDark={isDark} />
+        <SoftShimmer width="35%" height={13} borderRadius={6} isDark={isDark} />
       </View>
       <View style={{ paddingHorizontal: pad, marginTop: 14 }}>
-        <SubtleShimmer width="100%" height={92} borderRadius={borderRadius} isDark={isDark} />
+        <GlassSkeletonCard isDark={isDark} style={{ borderRadius: borderRadius, padding: 20, height: 92 }}>
+          <SoftShimmer width="100%" height={52} borderRadius={8} isDark={isDark} />
+        </GlassSkeletonCard>
       </View>
       <View style={{ paddingHorizontal: pad, marginTop: 14 }}>
-        <SubtleShimmer width="100%" height={118} borderRadius={borderRadius} isDark={isDark} />
+        <GlassSkeletonCard isDark={isDark} style={{ borderRadius: borderRadius, padding: 20, height: 118 }}>
+          <SoftShimmer width="100%" height={78} borderRadius={8} isDark={isDark} />
+        </GlassSkeletonCard>
       </View>
       <View style={{ marginHorizontal: pad, marginTop: 14 }}>
         <DailySummarySkeleton isDark={isDark} />
@@ -456,15 +511,15 @@ const FeatureCardsSkeleton = ({ isDark }: { isDark: boolean }) => (
   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featureCardsScroll}>
     {[1, 2, 3, 4].map((i) => (
       <View key={i} style={styles.featureCardTouchable}>
-        <View style={[styles.featureCard, { padding: 14 }]}>
+        <GlassSkeletonCard isDark={isDark} style={{ padding: 14, borderRadius: 18 }}>
           <View style={styles.featureCardTop}>
-            <SubtleShimmer width={40} height={40} borderRadius={12} isDark={isDark} />
-            <SubtleShimmer width={30} height={20} borderRadius={8} isDark={isDark} />
+            <SoftShimmer width={40} height={40} borderRadius={12} isDark={isDark} />
+            <SoftShimmer width={30} height={20} borderRadius={8} isDark={isDark} />
           </View>
-          <SubtleShimmer width="80%" height={18} borderRadius={6} style={{ marginBottom: 4 }} isDark={isDark} />
-          <SubtleShimmer width="60%" height={14} borderRadius={4} style={{ marginBottom: 8 }} isDark={isDark} />
-          <SubtleShimmer width="50%" height={16} borderRadius={4} isDark={isDark} />
-        </View>
+          <SoftShimmer width="80%" height={18} borderRadius={6} style={{ marginBottom: 4 }} isDark={isDark} />
+          <SoftShimmer width="60%" height={14} borderRadius={4} style={{ marginBottom: 8 }} isDark={isDark} />
+          <SoftShimmer width="50%" height={16} borderRadius={4} isDark={isDark} />
+        </GlassSkeletonCard>
       </View>
     ))}
   </ScrollView>
@@ -1270,7 +1325,7 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
   });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STICKY HEADER
+   STICKY HEADER — Bigger Logo
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface StickyAppHeaderProps {
@@ -1301,6 +1356,9 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
   const textColor = isDark ? (fullTheme?.text || '#f0f0f7') : (fullTheme?.text || '#111827');
 
+  // Bigger logo size - increased from 0.14 to 0.18
+  const logoSize = Math.min(SCREEN_W * 0.18, 72);
+
   return (
     <Animated.View
       style={[
@@ -1326,7 +1384,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           <View style={styles.logoFloatWrap}>
             <Image
               source={littleLoomLogo}
-              style={[styles.headerLogoImage, { width: Math.min(SCREEN_W * 0.14, 56) * fontSizeMultiplier, height: Math.min(SCREEN_W * 0.14, 56) * fontSizeMultiplier }]}
+              style={[styles.headerLogoImage, { width: logoSize * fontSizeMultiplier, height: logoSize * fontSizeMultiplier }]}
               resizeMode="contain"
             />
           </View>
@@ -1677,7 +1735,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     triggerHaptic('medium');
     
     // Fix for milestone - navigate to AddEntry with milestone tracker
-    // This is the key fix: ensure milestone uses the correct screen
     if (action.id === 'milestone') {
       if (!requireBaby(action.label, 'AddEntry', { trackerId: 'milestone' })) return;
       navigateToScreen('AddEntry', { trackerId: 'milestone' });
