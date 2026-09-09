@@ -69,7 +69,7 @@ const SCREEN_W = width;
 const SCREEN_H = height;
 
 // Use the logo image instead of text
-const littleLoomLogo = require('../../../assets/logo4.png');
+const littleLoomLogo = require('../../../assets/logo 4.png');
 
 /* ═══════════════════════════════════════════════════════════════════════════
    INSTANT-RENDER CACHE KEYS — Baby + activities cached so first paint has data

@@ -1175,10 +1175,10 @@ export default function EnhancedTimelineScreen() {
         </View>
       )}
 
-      {/* ─── HEADER ─────────────────────────────────────────────────────── */}
+      {/* ─── HEADER CONTAINER (matches Hub + GrowthDashboard) ──────────── */}
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
         {/* ─── TOP HEADER (always visible) ────────────────────────────── */}
-        <View style={styles.topHeader}>
+        <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
           <TouchableOpacity 
             style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} 
             onPress={() => navigation.goBack()} 
@@ -1242,7 +1242,7 @@ export default function EnhancedTimelineScreen() {
               <Ionicons name="add" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
         {/* ─── STICKY HEADER (fades in on scroll) ─────────────────────── */}
         <Animated.View style={[styles.stickyHeader, headerAnimatedStyle]}>
@@ -1851,35 +1851,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tabLabel: { fontSize: 12, fontWeight: '600' },
-  // ── Header Actions ──
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  achievementBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#f59e0b',
-    borderRadius: 12,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  achievementBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // ── Header ──
+
   // ── Header Container ──
   headerContainer: {
     position: 'absolute',
@@ -1887,44 +1859,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 100,
-    paddingTop: 0,
   },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  achievementBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#f59e0b',
-    borderRadius: 12,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  achievementBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 
-  // ── Top Header ── (like TrackerHub)
+  // ── Top Header ──
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1935,10 +1872,43 @@ const styles = StyleSheet.create({
   headerIconBtn: {
     width: 40,
     height: 40,
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  achievementBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#f59e0b',
+    borderRadius: 12,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  achievementBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  // ── Baby Pill ──
   babyPill: {
     flexDirection: 'row',
     alignItems: 'center',
