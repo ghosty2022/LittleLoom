@@ -325,66 +325,83 @@ const SectionHeader: React.FC<{
 (SectionHeader as any).displayName = 'SectionHeader';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SKELETON LOADERS FOR SECTIONS
+   SKELETON LOADERS — Subtle, Soft & Modern
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const DailySummarySkeleton = () => (
+// Subtle shimmer gradient colors - softer and more elegant
+const SHIMMER_COLORS = {
+  light: ['rgba(230,235,245,0.3)', 'rgba(255,255,255,0.5)', 'rgba(230,235,245,0.3)'],
+  dark: ['rgba(50,50,65,0.3)', 'rgba(80,80,100,0.5)', 'rgba(50,50,65,0.3)'],
+};
+
+const SubtleShimmer: React.FC<{ width?: number | string; height?: number | string; borderRadius?: number; style?: any; isDark?: boolean }> = 
+  ({ width = '100%', height = 16, borderRadius = 8, style, isDark = false }) => (
+    <ShimmerLoader 
+      width={width} 
+      height={height} 
+      borderRadius={borderRadius}
+      colors={isDark ? SHIMMER_COLORS.dark : SHIMMER_COLORS.light}
+      style={[{ opacity: 0.6 }, style]}
+    />
+  );
+
+const DailySummarySkeleton = ({ isDark }: { isDark: boolean }) => (
   <View style={styles.dailySummaryContainer}>
     <View style={styles.dailySummaryHeader}>
       <View style={styles.dailySummaryTitleRow}>
-        <ShimmerLoader width={28} height={28} borderRadius={8} />
-        <ShimmerLoader width={140} height={18} borderRadius={8} />
+        <SubtleShimmer width={28} height={28} borderRadius={8} isDark={isDark} />
+        <SubtleShimmer width={140} height={18} borderRadius={8} isDark={isDark} />
       </View>
-      <ShimmerLoader width={100} height={14} borderRadius={6} />
+      <SubtleShimmer width={100} height={14} borderRadius={6} isDark={isDark} />
     </View>
     <View style={styles.dailySummaryGrid}>
       {[1, 2, 3, 4].map((i) => (
         <View key={i} style={styles.dailySummaryItem}>
-          <ShimmerLoader width="100%" height="100%" borderRadius={20} />
+          <SubtleShimmer width="100%" height="100%" borderRadius={20} isDark={isDark} />
         </View>
       ))}
     </View>
   </View>
 );
 
-const QuickActionsSkeleton = () => (
+const QuickActionsSkeleton = ({ isDark }: { isDark: boolean }) => (
   <View style={styles.sectionFullWidth}>
     <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}>
-      <ShimmerLoader width={120} height={20} borderRadius={8} />
+      <SubtleShimmer width={120} height={20} borderRadius={8} isDark={isDark} />
     </View>
     <View style={[styles.categorizedGrid, { paddingHorizontal: 20, gap: 10 }]}>
       {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <View key={i} style={[styles.categorizedGridItem, { width: (SCREEN_W - 40 - 30) / 4 }]}>
-          <ShimmerLoader width="100%" height={80} borderRadius={20} />
-          <ShimmerLoader width={40} height={12} borderRadius={6} style={{ marginTop: 6 }} />
+          <SubtleShimmer width="100%" height={80} borderRadius={20} isDark={isDark} />
+          <SubtleShimmer width={40} height={12} borderRadius={6} style={{ marginTop: 6 }} isDark={isDark} />
         </View>
       ))}
     </View>
   </View>
 );
 
-const RecentTimelineSkeleton = () => (
+const RecentTimelineSkeleton = ({ isDark }: { isDark: boolean }) => (
   <View style={{ paddingHorizontal: 20 }}>
     {[1, 2, 3].map((i) => (
       <View key={i} style={styles.daySection}>
         <View style={styles.dateHeaderContainer}>
-          <ShimmerLoader width={80} height={22} borderRadius={8} />
-          <ShimmerLoader width={24} height={24} borderRadius={12} />
+          <SubtleShimmer width={80} height={22} borderRadius={8} isDark={isDark} />
+          <SubtleShimmer width={24} height={24} borderRadius={12} isDark={isDark} />
         </View>
         <View style={styles.eventRow}>
           <View style={styles.timeColumn}>
-            <ShimmerLoader width={50} height={14} borderRadius={6} />
+            <SubtleShimmer width={50} height={14} borderRadius={6} isDark={isDark} />
           </View>
           <View style={[styles.eventCardContainer, { paddingBottom: 14 }]}>
             <View style={styles.entryCard}>
               <View style={styles.entryCardContent}>
                 <View style={styles.entryCardHeader}>
-                  <ShimmerLoader width={38} height={38} borderRadius={11} />
+                  <SubtleShimmer width={38} height={38} borderRadius={11} isDark={isDark} />
                   <View style={styles.entryInfo}>
-                    <ShimmerLoader width="60%" height={16} borderRadius={6} />
-                    <ShimmerLoader width="40%" height={12} borderRadius={4} />
+                    <SubtleShimmer width="60%" height={16} borderRadius={6} isDark={isDark} />
+                    <SubtleShimmer width="40%" height={12} borderRadius={4} isDark={isDark} />
                   </View>
-                  <ShimmerLoader width={50} height={22} borderRadius={8} />
+                  <SubtleShimmer width={50} height={22} borderRadius={8} isDark={isDark} />
                 </View>
               </View>
             </View>
@@ -396,7 +413,7 @@ const RecentTimelineSkeleton = () => (
 );
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HOME SKELETON — shown inline while cache/context data loads (no blocking screen)
+   HOME SKELETON — Subtle, Soft & Modern
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const HomeSkeleton: React.FC<{
@@ -407,46 +424,46 @@ const HomeSkeleton: React.FC<{
 }> = React.memo(({ isDark, theme, borderRadius, compact }) => {
   const pad = compact ? 16 : 20;
   return (
-    <View>
+    <View style={{ paddingBottom: 40 }}>
       <View style={{ paddingHorizontal: pad, marginTop: 16, gap: 8 }}>
-        <ShimmerLoader width="55%" height={22} borderRadius={8} />
-        <ShimmerLoader width="35%" height={13} borderRadius={6} />
+        <SubtleShimmer width="55%" height={22} borderRadius={8} isDark={isDark} />
+        <SubtleShimmer width="35%" height={13} borderRadius={6} isDark={isDark} />
       </View>
       <View style={{ paddingHorizontal: pad, marginTop: 14 }}>
-        <ShimmerLoader width="100%" height={92} borderRadius={borderRadius} />
+        <SubtleShimmer width="100%" height={92} borderRadius={borderRadius} isDark={isDark} />
       </View>
       <View style={{ paddingHorizontal: pad, marginTop: 14 }}>
-        <ShimmerLoader width="100%" height={118} borderRadius={borderRadius} />
+        <SubtleShimmer width="100%" height={118} borderRadius={borderRadius} isDark={isDark} />
       </View>
       <View style={{ marginHorizontal: pad, marginTop: 14 }}>
-        <DailySummarySkeleton />
+        <DailySummarySkeleton isDark={isDark} />
       </View>
       <View style={{ marginTop: 14 }}>
-        <QuickActionsSkeleton />
+        <QuickActionsSkeleton isDark={isDark} />
       </View>
       <View style={{ marginTop: 14 }}>
-        <FeatureCardsSkeleton />
+        <FeatureCardsSkeleton isDark={isDark} />
       </View>
       <View style={{ marginTop: 14 }}>
-        <RecentTimelineSkeleton />
+        <RecentTimelineSkeleton isDark={isDark} />
       </View>
     </View>
   );
 });
 (HomeSkeleton as any).displayName = 'HomeSkeleton';
 
-const FeatureCardsSkeleton = () => (
+const FeatureCardsSkeleton = ({ isDark }: { isDark: boolean }) => (
   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featureCardsScroll}>
     {[1, 2, 3, 4].map((i) => (
       <View key={i} style={styles.featureCardTouchable}>
         <View style={[styles.featureCard, { padding: 14 }]}>
           <View style={styles.featureCardTop}>
-            <ShimmerLoader width={40} height={40} borderRadius={12} />
-            <ShimmerLoader width={30} height={20} borderRadius={8} />
+            <SubtleShimmer width={40} height={40} borderRadius={12} isDark={isDark} />
+            <SubtleShimmer width={30} height={20} borderRadius={8} isDark={isDark} />
           </View>
-          <ShimmerLoader width="80%" height={18} borderRadius={6} style={{ marginBottom: 4 }} />
-          <ShimmerLoader width="60%" height={14} borderRadius={4} style={{ marginBottom: 8 }} />
-          <ShimmerLoader width="50%" height={16} borderRadius={4} />
+          <SubtleShimmer width="80%" height={18} borderRadius={6} style={{ marginBottom: 4 }} isDark={isDark} />
+          <SubtleShimmer width="60%" height={14} borderRadius={4} style={{ marginBottom: 8 }} isDark={isDark} />
+          <SubtleShimmer width="50%" height={16} borderRadius={4} isDark={isDark} />
         </View>
       </View>
     ))}
@@ -1660,13 +1677,35 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     triggerHaptic('medium');
     
     // Fix for milestone - navigate to AddEntry with milestone tracker
+    // This is the key fix: ensure milestone uses the correct screen
     if (action.id === 'milestone') {
-      if (!requireBaby(action.label, action.screen, { trackerId: 'milestone' })) return;
-      navigateToScreen(action.screen, { trackerId: 'milestone' });
+      if (!requireBaby(action.label, 'AddEntry', { trackerId: 'milestone' })) return;
+      navigateToScreen('AddEntry', { trackerId: 'milestone' });
       return;
     }
     
-    if (action.id !== 'settings' && !requireBaby(action.label, action.screen, action.params)) return;
+    // For growth, navigate directly to GrowthDashboard
+    if (action.id === 'growth') {
+      if (!requireBaby(action.label, 'GrowthDashboard', action.params)) return;
+      navigateToScreen('GrowthDashboard', action.params);
+      return;
+    }
+    
+    // For vaccine, navigate directly to VaccinationSchedule
+    if (action.id === 'vaccine') {
+      if (!requireBaby(action.label, 'VaccinationSchedule', action.params)) return;
+      navigateToScreen('VaccinationSchedule', action.params);
+      return;
+    }
+    
+    // For settings, no baby required
+    if (action.id === 'settings') {
+      navigateToScreen('More', action.params);
+      return;
+    }
+    
+    // For all other actions that require a baby
+    if (!requireBaby(action.label, action.screen, action.params)) return;
     navigateToScreen(action.screen, action.params);
   }, [requireBaby, navigateToScreen, triggerHaptic]);
 
@@ -2193,7 +2232,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
           <View style={{ paddingHorizontal: settings.compactSpacing ? 16 : 20 }}>
             {allTimelineEvents.length === 0 && activitiesLoading ? (
-              <RecentTimelineSkeleton />
+              <RecentTimelineSkeleton isDark={isDark} />
             ) : (
               <RecentTimeline
                 activities={allTimelineEvents}

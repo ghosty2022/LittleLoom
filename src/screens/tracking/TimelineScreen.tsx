@@ -1175,10 +1175,10 @@ export default function EnhancedTimelineScreen() {
         </View>
       )}
 
-      {/* ─── HEADER CONTAINER (matches Hub + GrowthDashboard) ──────────── */}
+      {/* ─── HEADER CONTAINER ───────────────────────────────────────────── */}
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
         {/* ─── TOP HEADER (always visible) ────────────────────────────── */}
-        <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
+        <View style={styles.topHeader}>
           <TouchableOpacity 
             style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} 
             onPress={() => navigation.goBack()} 
@@ -1242,7 +1242,7 @@ export default function EnhancedTimelineScreen() {
               <Ionicons name="add" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
 
         {/* ─── STICKY HEADER (fades in on scroll) ─────────────────────── */}
         <Animated.View style={[styles.stickyHeader, headerAnimatedStyle]}>
@@ -1861,33 +1861,9 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
 
-  // ── Top Header ──
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.sm,
-  },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  // ── Header Actions ──
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  
   achievementBadge: {
     position: 'absolute',
     top: -4,
@@ -1906,6 +1882,31 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 10,
     fontWeight: '800',
+  },
+
+  // ── Header ──
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // ── Top Header ──
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
 
   // ── Baby Pill ──
