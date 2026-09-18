@@ -254,7 +254,6 @@ function NavigationContent({
   const navRef = navigationRef;
   const lastNavState = useRef<NavigationState>('LOADING');
   const appState = useRef(AppState.currentState);
-  const isNavigating = useRef(false);
   const lastNavTime = useRef(0);
   const wasOnSecurityLock = useRef(false);
   const lastSecCheck = useRef(0);
@@ -263,9 +262,6 @@ function NavigationContent({
   const firstOpenChecked = useRef(false);
   const isMounted = useRef(true);
   const navReadyCalled = useRef(false);
-  const navigationLoopCount = useRef(0);
-  const lastNavigationTarget = useRef<string | null>(null);
-  const navLockRef = useRef(false);
 
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
@@ -431,162 +427,107 @@ function NavigationContent({
   }, []);
 
   // ═════════════════════════════════════════════════════════════════
-  // FIXED: MAIN NAVIGATION EFFECT - PREVENTS LOOPS
+  // FIXED: MAIN NAVIGATION EFFECT — Idempotent, loop-proof
   // ═════════════════════════════════════════════════════════════════
   useEffect(() => {
     if (!navRef.current?.isReady() || !isNavReady || !initialCheckDone) return;
-    if (navLockRef.current) return;
 
     const currentRoute = navRef.current.getCurrentRoute()?.name;
-    
-    // Only log in debug mode to reduce noise
+
     if (__DEV__) {
-      console.log('[Navigation] State:', navState, 'Route:', currentRoute);
+      console.log('[Navigation] State:', navState, 'Current route:', currentRoute);
     }
 
-    const now = Date.now();
-    if (now - lastNavTime.current < 300) {
-      return;
-    }
-
-    const target = navState;
-    if (target === lastNavigationTarget.current) {
-      navigationLoopCount.current += 1;
-      if (navigationLoopCount.current > 5) {
-        console.log('[Navigation] ⚠️ Navigation loop detected! Breaking...');
-        navigationLoopCount.current = 0;
-        lastNavigationTarget.current = null;
+    // Helper: safe navigate that only fires if route actually differs
+    const safeNavigateTo = (routeName: keyof RootStackParamList, useReset = false) => {
+      if (currentRoute === routeName) {
+        // Already on the target route — do nothing
         return;
       }
-    } else {
-      navigationLoopCount.current = 0;
-      lastNavigationTarget.current = target;
-    }
 
-    // ─── LOGIN ─────────────────────────────────────────────────────
-    if (navState === 'LOGIN') {
-      if (currentRoute !== 'Login' && currentRoute !== 'Onboarding' && currentRoute !== 'SignUp') {
-        console.log('[Navigation] → Login');
-        lastNavTime.current = now;
-        navLockRef.current = true;
-        navRef.current.reset({ index: 0, routes: [{ name: 'Login' }] });
-        setTimeout(() => { navLockRef.current = false; }, 300);
+      // Extra safety: don't spam navigations
+      const now = Date.now();
+      if (now - lastNavTime.current < 250) return;
+      lastNavTime.current = now;
+
+      console.log(`[Navigation] → ${routeName}${useReset ? ' (reset)' : ''}`);
+
+      if (useReset) {
+        navRef.current?.reset({ index: 0, routes: [{ name: routeName }] as any });
+      } else {
+        navRef.current?.navigate(routeName as any);
       }
-      return;
-    }
+    };
 
-    // ─── ONBOARDING ────────────────────────────────────────────────
-    if (navState === 'ONBOARDING') {
-      if (currentRoute !== 'Onboarding') {
-        console.log('[Navigation] → Onboarding');
-        lastNavTime.current = now;
-        navLockRef.current = true;
-        navRef.current.reset({ index: 0, routes: [{ name: 'Onboarding' }] });
-        setTimeout(() => { navLockRef.current = false; }, 300);
+    // ─── Decide target once ─────────────────────────────────────
+    switch (navState) {
+      case 'LOGIN':
+        safeNavigateTo('Login', true);
+        break;
+
+      case 'ONBOARDING':
+        safeNavigateTo('Onboarding', true);
+        break;
+
+      case 'SECURITY_LOCK':
+        // Only reset the unlock lock if we are transitioning INTO SecurityLock
+        if (currentRoute !== 'SecurityLock') {
+          resetUnlockLock();
+          safeNavigateTo('SecurityLock', true);
+        }
+        break;
+
+      case 'SETUP_BABY': {
+        const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
+        if (hasBabies) {
+          // Already past setup — if we're on a main flow screen, do nothing
+          if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) return;
+          safeNavigateTo('Main', true);
+        } else {
+          safeNavigateTo('BabyOptional', true);
+        }
+        break;
       }
-      return;
-    }
 
-    // ─── SECURITY_LOCK ─────────────────────────────────────────────
-    if (navState === 'SECURITY_LOCK') {
-      if (currentRoute !== 'SecurityLock') {
-        console.log('[Navigation] → SecurityLock');
-        lastNavTime.current = now;
-        resetUnlockLock();
-        navLockRef.current = true;
-        navRef.current.reset({ index: 0, routes: [{ name: 'SecurityLock' }] });
-        setTimeout(() => { navLockRef.current = false; }, 300);
-      }
-      return;
-    }
+      case 'SETUP_PARENT2':
+        if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) return;
+        safeNavigateTo('CoParentInviteScreen', true);
+        break;
 
-    // ─── SETUP_BABY ────────────────────────────────────────────────
-    if (navState === 'SETUP_BABY') {
-      const hasBabies = babyCountRef.current > 0 || hasSkippedBabyRef.current;
-      if (hasBabies) {
-        if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
+      case 'MAIN':
+        // If on setup screens, bounce to Main
+        if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
+          safeNavigateTo('Main', true);
           return;
         }
-        console.log('[Navigation] → Main (has babies)');
-        lastNavTime.current = now;
-        navLockRef.current = true;
-        navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
-        setTimeout(() => { navLockRef.current = false; }, 300);
-        return;
-      }
+        // If somehow stuck on SecurityLock while state says MAIN, force-unlock
+        if (currentRoute === 'SecurityLock') {
+          forceUnlock();
+          safeNavigateTo('Main', true);
+          return;
+        }
+        // If we're on any main flow screen — already correct, do nothing
+        if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) return;
+        // Fallback: if we're on an auth screen or nothing, jump to Main
+        safeNavigateTo('Main', true);
+        break;
 
-      if (currentRoute === 'BabyOptional' || currentRoute === 'CreateBabyProfile') {
-        return;
-      }
-
-      console.log('[Navigation] → BabyOptional');
-      lastNavTime.current = now;
-      navLockRef.current = true;
-      navRef.current.reset({ index: 0, routes: [{ name: 'BabyOptional' }] });
-      setTimeout(() => { navLockRef.current = false; }, 300);
-      return;
+      default:
+        // Unknown state — leave the user where they are rather than thrash
+        console.warn('[Navigation] Unknown state:', navState);
+        break;
     }
-
-    // ─── SETUP_PARENT2 ─────────────────────────────────────────────
-    if (navState === 'SETUP_PARENT2') {
-      if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
-        return;
-      }
-
-      if (currentRoute === 'CoParentInviteScreen') {
-        return;
-      }
-
-      console.log('[Navigation] → CoParentInviteScreen');
-      lastNavTime.current = now;
-      navLockRef.current = true;
-      navRef.current.reset({ index: 0, routes: [{ name: 'CoParentInviteScreen' }] });
-      setTimeout(() => { navLockRef.current = false; }, 300);
-      return;
-    }
-
-    // ─── MAIN ──────────────────────────────────────────────────────
-    if (navState === 'MAIN') {
-      if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
-        console.log('[Navigation] → Main (from setup)');
-        lastNavTime.current = now;
-        navLockRef.current = true;
-        navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
-        setTimeout(() => { navLockRef.current = false; }, 300);
-        return;
-      }
-
-      if (currentRoute === 'SecurityLock') {
-        console.log('[Navigation] Force unlocking from SecurityLock');
-        forceUnlock();
-        lastNavTime.current = now;
-        navLockRef.current = true;
-        navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
-        setTimeout(() => { navLockRef.current = false; }, 300);
-        return;
-      }
-
-      if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) {
-        return;
-      }
-
-      if (!currentRoute || AUTH_FLOW_SCREENS.has(currentRoute) || SETUP_FLOW_SCREENS.has(currentRoute) || currentRoute === 'SecurityLock') {
-        console.log('[Navigation] → Main (fallback)');
-        lastNavTime.current = now;
-        navLockRef.current = true;
-        navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
-        setTimeout(() => { navLockRef.current = false; }, 300);
-      }
-      return;
-    }
-
-    console.log('[Navigation] → Fallback to Login');
-    lastNavTime.current = now;
-    navLockRef.current = true;
-    navRef.current.reset({ index: 0, routes: [{ name: 'Login' }] });
-    setTimeout(() => { navLockRef.current = false; }, 300);
-
-  }, [navState, initialCheckDone, isNavReady, babies, isSecurityLocked, resetUnlockLock, forceUnlock]);
+  }, [
+    navState,
+    initialCheckDone,
+    isNavReady,
+    isSecurityLocked,
+    resetUnlockLock,
+    forceUnlock,
+    // NOTE: `babies` intentionally omitted — we read babyCountRef.current
+    // instead so this effect doesn't re-run when the babies array is
+    // replaced by an identical fetch (which was the root cause of the loop).
+  ]);
 
   // ─── EARLY RETURN ──────────────────────────────────────────────────
   if (authLoading || !initialCheckDone || !sessionChecked) {
