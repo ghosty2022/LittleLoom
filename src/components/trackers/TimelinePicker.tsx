@@ -1,3 +1,6 @@
+// src/components/trackers/TimelinePicker.tsx
+// FIX: Add all missing imports at the top
+
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView,
@@ -12,14 +15,13 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useCustomization } from '../../hooks/useCustomization';
-// ✅ FIX: Add the missing import for useTracker
+// ✅ FIX #1: This import was missing — it caused the TypeError
 import { useTracker } from '../../hooks';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { UnifiedTrackerConfig, TrackerCategory } from '../../types/trackers';
 import { RootStackParamList } from '../../types/navigation';
 import { CATEGORY_CONFIG } from './trackerConstants';
-
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
