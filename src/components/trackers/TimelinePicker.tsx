@@ -15,7 +15,6 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useCustomization } from '../../hooks/useCustomization';
-// ✅ FIX #1: This import was missing — it caused the TypeError
 import { useTracker } from '../../hooks';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';

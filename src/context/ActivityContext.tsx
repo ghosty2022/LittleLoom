@@ -515,42 +515,76 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   }, [loadEntriesInternal]);
 
   // ─── Push to Supabase ────────────────────────────────────────────────
-  const pushToSupabase = useCallback(async (entry: ActivityEntry) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No authenticated user');
+const pushToSupabase = useCallback(async (entry: ActivityEntry) => {
+  // First, try to sync immediately
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('No authenticated user');
 
-      const { error } = await supabase
-        .from('tracker_entries')
-        .upsert({
-          id: entry.id,
-          baby_id: entry.babyId,
-          tracker_id: entry.type,
-          tracker_type: entry.type,
-          timestamp: new Date(entry.timestamp).toISOString(),
-          title: entry.title,
-          data: entry,
-          notes: entry.notes || entry.details,
-          photo_uris: entry.photo ? [entry.photo] : [],
-          tags: entry.tags || [],
-          created_by: entry.loggedBy,
-          created_by_name: entry.loggedByName,
-          logged_by: entry.loggedBy,
-          logged_by_name: entry.loggedByName,
-          notification_id: entry.notificationId,
-          reminder_scheduled: entry.reminderScheduled || false,
-          synced_at: new Date().toISOString(),
-          deleted_at: entry.deletedAt || null,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
+    const { error } = await supabase
+      .from('tracker_entries')
+      .upsert({
+        id: entry.id,
+        baby_id: entry.babyId,
+        tracker_id: entry.type,
+        tracker_type: entry.type,
+        timestamp: new Date(entry.timestamp).toISOString(),
+        title: entry.title,
+        data: entry,
+        notes: entry.notes || entry.details,
+        photo_uris: entry.photo ? [entry.photo] : [],
+        tags: entry.tags || [],
+        created_by: entry.loggedBy,
+        created_by_name: entry.loggedByName,
+        logged_by: entry.loggedBy,
+        logged_by_name: entry.loggedByName,
+        notification_id: entry.notificationId,
+        reminder_scheduled: entry.reminderScheduled || false,
+        synced_at: new Date().toISOString(),
+        deleted_at: entry.deletedAt || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
 
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error pushing to Supabase:', error);
-      throw error;
+    if (error) throw error;
+    
+    // If successful, ensure it's not in the offline queue
+    await removeFromOfflineQueue(entry.id);
+  } catch (error) {
+    console.error('Error pushing to Supabase, queuing for later:', error);
+    // Add to offline queue for retry
+    await addToOfflineQueue(entry);
+    throw error; // Re-throw so UI can show "pending sync" status
+  }
+}, []);
+
+// Helper functions for offline queue
+const OFFLINE_QUEUE_KEY = '@littleloom_offline_sync_queue';
+
+async function addToOfflineQueue(entry: ActivityEntry): Promise<void> {
+  try {
+    const existing = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+    const queue = existing ? JSON.parse(existing) : [];
+    // Avoid duplicates
+    if (!queue.some((e: ActivityEntry) => e.id === entry.id)) {
+      queue.push(entry);
+      await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
     }
-  }, []);
+  } catch (error) {
+    console.error('Failed to add to offline queue:', error);
+  }
+}
 
+async function removeFromOfflineQueue(entryId: string): Promise<void> {
+  try {
+    const existing = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+    if (existing) {
+      const queue = JSON.parse(existing).filter((e: ActivityEntry) => e.id !== entryId);
+      await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    }
+  } catch (error) {
+    console.error('Failed to remove from offline queue:', error);
+  }
+}
   // ─── Pull from Supabase ──────────────────────────────────────────────
   const pullFromSupabase = useCallback(async (babyId: string) => {
     try {

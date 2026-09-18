@@ -633,26 +633,44 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return tracker.permissions?.allowGuardiansCreate ?? false;
   }, [state.trackers, myRole]);
 
-  const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
-    if (!userProfile || !myRole) return false;
-    if (['parent1', 'parent2'].includes(myRole)) return true;
-    if (myRole === 'guardian') {
-      return entry.loggedBy === userProfile.id &&
-        state.trackers.find(t => t.id === entry.trackerId)?.permissions.allowGuardiansEditOwn === true;
+const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
+  if (!userProfile || !myRole) return false;
+  if (['parent1', 'parent2'].includes(myRole)) return true;
+  
+  // For guardians/viewers, check granular permissions
+  if (myRole === 'guardian' || myRole === 'viewer') {
+    const tracker = state.trackers.find(t => t.id === entry.trackerId);
+    const memberPermissions = state.userPermissions[entry.babyId] || {};
+    
+    // Check if they can edit their own entries
+    if (entry.loggedBy === userProfile.id) {
+      return tracker?.permissions?.allowGuardiansEditOwn === true;
     }
-    return false;
-  }, [userProfile, myRole, state.trackers]);
+    
+    // Check granular edit permission
+    return memberPermissions.edit === true;
+  }
+  return false;
+}, [userProfile, myRole, state.trackers, state.userPermissions]);
 
-  const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
-    if (!userProfile || !myRole) return false;
-    if (['parent1', 'parent2'].includes(myRole)) return true;
-    if (myRole === 'guardian') {
-      return entry.loggedBy === userProfile.id &&
-        state.trackers.find(t => t.id === entry.trackerId)?.permissions.allowGuardiansDeleteOwn === true;
+const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
+  if (!userProfile || !myRole) return false;
+  if (['parent1', 'parent2'].includes(myRole)) return true;
+  
+  if (myRole === 'guardian' || myRole === 'viewer') {
+    const tracker = state.trackers.find(t => t.id === entry.trackerId);
+    const memberPermissions = state.userPermissions[entry.babyId] || {};
+    
+    // Check if they can delete their own entries
+    if (entry.loggedBy === userProfile.id) {
+      return tracker?.permissions?.allowGuardiansDeleteOwn === true;
     }
-    return false;
-  }, [userProfile, myRole, state.trackers]);
-
+    
+    // Check granular delete permission
+    return memberPermissions.delete === true;
+  }
+  return false;
+}, [userProfile, myRole, state.trackers, state.userPermissions]);
   /* ─── Load helpers ───────────────────────────────────────────────── */
 
   const loadCustomTrackers = useCallback(async (): Promise<UnifiedTrackerConfig[]> => {
@@ -715,6 +733,101 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return [];
     }
   }, []);
+
+  /* ─── REAL-TIME SYNC ─────────────────────────────────────────────── */
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
+
+  useEffect(() => {
+    const babyId = getCurrentBabyId();
+    if (!babyId) return;
+
+    // Tear down any existing channel
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`tracker-sync-${babyId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tracker_entries',
+          filter: `baby_id=eq.${babyId}`,
+        },
+        (payload) => {
+          if (__DEV__) console.log('[TrackerContext] Realtime update:', payload.eventType);
+
+          setState(prev => {
+            const current = prev.entries;
+            let updated: TrackerEntry[];
+
+            if (payload.eventType === 'INSERT') {
+              const row = payload.new as any;
+              const mapped = mapRowToEntry(row);
+              // Dedupe — we may already have it optimistically
+              if (current.some(e => e.id === mapped.id)) return prev;
+              updated = [mapped, ...current];
+            } else if (payload.eventType === 'UPDATE') {
+              const row = payload.new as any;
+              const mapped = mapRowToEntry(row);
+              updated = current.map(e => (e.id === mapped.id ? mapped : e));
+            } else if (payload.eventType === 'DELETE') {
+              const row = payload.old as any;
+              updated = current.filter(e => e.id !== row.id);
+            } else {
+              return prev;
+            }
+
+            // Rebuild the byTracker map
+            const byTracker: Record<string, TrackerEntry[]> = {};
+            updated.filter(e => !e.isDeleted).forEach(e => {
+              if (!byTracker[e.trackerId]) byTracker[e.trackerId] = [];
+              byTracker[e.trackerId].push(e);
+            });
+
+            return { ...prev, entries: updated, entriesByTracker: byTracker };
+          });
+        }
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [getCurrentBabyId]);
+
+  // Helper to convert a Supabase row to a TrackerEntry (extract this so we don't duplicate logic)
+  const mapRowToEntry = (row: any): TrackerEntry => ({
+    id: row.id,
+    babyId: row.baby_id,
+    trackerId: row.tracker_id,
+    timestamp: row.timestamp,
+    title: row.title || '',
+    data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+    loggedBy: row.logged_by || '',
+    loggedByName: row.logged_by_name || '',
+    loggedByRole: (row.logged_by_role as any) || 'parent1',
+    notes: row.notes || undefined,
+    photoUris: row.photo_uris || undefined,
+    tags: row.tags || undefined,
+    location: row.location ? { name: row.location } : undefined,
+    mood: row.mood || undefined,
+    notificationId: row.notification_id || undefined,
+    reminderScheduled: row.reminder_scheduled || false,
+    syncedAt: row.synced_at || undefined,
+    editedBy: row.edited_by || undefined,
+    editedAt: row.edited_at || undefined,
+    isDeleted: row.is_deleted || false,
+    linkedEntries: [],
+  });
 
   /* ─── Initialize ──────────────────────────────────────────────────── */
 
