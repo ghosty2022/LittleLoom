@@ -14,6 +14,7 @@ import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/utils/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import {
   UnifiedTrackerConfig,
