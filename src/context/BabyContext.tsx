@@ -5,6 +5,7 @@ import { AppState, Alert, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 // ─── STORAGE KEYS ────────────────────────────────────────────────────────
 export const STORAGE_KEYS = {
@@ -199,6 +200,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
 
+  // Stable ref so realtime callbacks can call loadBabies without
+  // creating a circular dependency in useCallback deps.
+  const loadBabiesRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
+
   const initRef = useRef(false);
   const isMounted = useRef(true);
   const isCreatingRef = useRef(false);
@@ -209,6 +214,77 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const maxLoadAttempts = 5;
   const currentUserIdRef = useRef<string | null>(null);
   const authStateListenerRef = useRef<any>(null);
+
+  // ─── Realtime: subscribe to babies + family_members changes ─────
+  // When any device updates the baby profile or family roster,
+  // this device reloads automatically (no app focus required).
+  useRealtimeSubscription({
+    table: 'babies',
+    enabled: !!state.currentBabyId,
+    onUpdate: (payload: any) => {
+      const row = payload?.new;
+      if (!row?.id) return;
+      if (__DEV__) console.log('[BabyContext] Realtime babies.updated:', row.id);
+      setState(prev => {
+        const updated = mapBabyRowToProfile(
+          row,
+          prev.userRoles[row.id] || 'viewer'
+        );
+        const babies = prev.babies.map(b =>
+          b.id === row.id ? updated : b
+        );
+        return {
+          ...prev,
+          babies,
+          currentBaby:
+            prev.currentBaby?.id === row.id ? updated : prev.currentBaby,
+        };
+      });
+    },
+    onInsert: (payload: any) => {
+      const row = payload?.new;
+      if (!row?.id || !row.parent1_id) return;
+      // Only reload if this is ours
+      if (row.parent1_id !== currentUserIdRef.current &&
+          row.parent2_id !== currentUserIdRef.current) return;
+      if (__DEV__) console.log('[BabyContext] Realtime babies.inserted:', row.id);
+      loadBabiesRef.current?.(true);
+    },
+    onDelete: (payload: any) => {
+      const row = payload?.old;
+      if (!row?.id) return;
+      if (__DEV__) console.log('[BabyContext] Realtime babies.deleted:', row.id);
+      setState(prev => {
+        const babies = prev.babies.filter(b => b.id !== row.id);
+        const stillValid = babies.some(b => b.id === prev.currentBabyId);
+        const newCurrentId = stillValid ? prev.currentBabyId : babies[0]?.id ?? null;
+        return {
+          ...prev,
+          babies,
+          currentBabyId: newCurrentId,
+          currentBaby: babies.find(b => b.id === newCurrentId) ?? null,
+        };
+      });
+    },
+  });
+
+  // ─── Realtime: family_members — reload babies when membership changes ──
+  useRealtimeSubscription({
+    table: 'family_members',
+    enabled: !!currentUserIdRef.current,
+    onInsert: () => {
+      if (__DEV__) console.log('[BabyContext] Realtime family_members.inserted');
+      loadBabiesRef.current?.(true);
+    },
+    onUpdate: () => {
+      if (__DEV__) console.log('[BabyContext] Realtime family_members.updated');
+      loadBabiesRef.current?.(true);
+    },
+    onDelete: () => {
+      if (__DEV__) console.log('[BabyContext] Realtime family_members.deleted');
+      loadBabiesRef.current?.(true);
+    },
+  });
 
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     babyChangeSubscribers.forEach(callback => {
@@ -460,13 +536,28 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   const role = member?.role || 'viewer';
                   userRoles[baby.id] = role;
                   
+                  // ─── Read granular JSON permissions from family_members ──
+                  const jsonPerms = (member?.permissions as Record<string, boolean>) || {};
+
                   userPermissions[baby.id] = {
-                    view: true,
-                    edit: role === 'parent1' || role === 'parent2' || role === 'guardian',
-                    delete: role === 'parent1' || role === 'parent2',
-                    manage: role === 'parent1' || role === 'parent2',
-                    invite: role === 'parent1' || role === 'parent2',
-                    export: role === 'parent1' || role === 'parent2',
+                    // Legacy aliases (for backward compat)
+                    view: jsonPerms.canView ?? true,
+                    edit: jsonPerms.canEditEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
+                    delete: jsonPerms.canDeleteEntry ?? (role === 'parent1' || role === 'parent2'),
+                    manage: jsonPerms.canManageFamily ?? (role === 'parent1' || role === 'parent2'),
+                    invite: jsonPerms.canInvite ?? (role === 'parent1' || role === 'parent2'),
+                    export: jsonPerms.canExport ?? (role === 'parent1' || role === 'parent2'),
+
+                    // Granular flags
+                    canView: jsonPerms.canView ?? true,
+                    canAddEntry: jsonPerms.canAddEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
+                    canEditEntry: jsonPerms.canEditEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
+                    canEditOthersEntries: jsonPerms.canEditOthersEntries ?? (role === 'parent1' || role === 'parent2'),
+                    canDeleteEntry: jsonPerms.canDeleteEntry ?? (role === 'parent1' || role === 'parent2'),
+                    canEditBaby: jsonPerms.canEditBaby ?? (role === 'parent1' || role === 'parent2'),
+                    canInvite: jsonPerms.canInvite ?? (role === 'parent1' || role === 'parent2'),
+                    canExport: jsonPerms.canExport ?? (role === 'parent1' || role === 'parent2'),
+                    canManageFamily: jsonPerms.canManageFamily ?? (role === 'parent1' || role === 'parent2'),
                   };
                 }
               });
@@ -504,13 +595,28 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   allBabies.push(baby);
                   const role = inviteData.role || 'viewer';
                   userRoles[baby.id] = role;
+                  // ─── Read granular JSON permissions from family_members ──
+                  const jsonPerms = (member?.permissions as Record<string, boolean>) || {};
+
                   userPermissions[baby.id] = {
-                    view: true,
-                    edit: role === 'parent1' || role === 'parent2' || role === 'guardian',
-                    delete: role === 'parent1' || role === 'parent2',
-                    manage: role === 'parent1' || role === 'parent2',
-                    invite: role === 'parent1' || role === 'parent2',
-                    export: role === 'parent1' || role === 'parent2',
+                    // Legacy aliases (for backward compat)
+                    view: jsonPerms.canView ?? true,
+                    edit: jsonPerms.canEditEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
+                    delete: jsonPerms.canDeleteEntry ?? (role === 'parent1' || role === 'parent2'),
+                    manage: jsonPerms.canManageFamily ?? (role === 'parent1' || role === 'parent2'),
+                    invite: jsonPerms.canInvite ?? (role === 'parent1' || role === 'parent2'),
+                    export: jsonPerms.canExport ?? (role === 'parent1' || role === 'parent2'),
+
+                    // Granular flags
+                    canView: jsonPerms.canView ?? true,
+                    canAddEntry: jsonPerms.canAddEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
+                    canEditEntry: jsonPerms.canEditEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
+                    canEditOthersEntries: jsonPerms.canEditOthersEntries ?? (role === 'parent1' || role === 'parent2'),
+                    canDeleteEntry: jsonPerms.canDeleteEntry ?? (role === 'parent1' || role === 'parent2'),
+                    canEditBaby: jsonPerms.canEditBaby ?? (role === 'parent1' || role === 'parent2'),
+                    canInvite: jsonPerms.canInvite ?? (role === 'parent1' || role === 'parent2'),
+                    canExport: jsonPerms.canExport ?? (role === 'parent1' || role === 'parent2'),
+                    canManageFamily: jsonPerms.canManageFamily ?? (role === 'parent1' || role === 'parent2'),
                   };
                 }
               });
@@ -671,6 +777,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loadInProgressRef.current = false;
     }
   }, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
+
+  // Keep the ref in sync with the latest loadBabies callback
+  useEffect(() => {
+    loadBabiesRef.current = loadBabies;
+  }, [loadBabies]);
 
   const forceRefresh = useCallback(async () => {
     console.log('[BabyContext] Force refresh requested');
@@ -876,18 +987,29 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const hasPermissionForBaby = useCallback((babyId: string, action: string): boolean => {
     const perms = state.userPermissions[babyId];
     if (!perms) return false;
-    
+
+    // Map action names → granular keys
     const actionMap: Record<string, string> = {
-      'view': 'view',
-      'edit': 'edit',
-      'delete': 'delete',
-      'manage': 'manage',
-      'invite': 'invite',
-      'export': 'export',
+      view: 'canView',
+      add: 'canAddEntry',
+      addEntry: 'canAddEntry',
+      edit: 'canEditEntry',
+      editEntry: 'canEditEntry',
+      editOthers: 'canEditOthersEntries',
+      editOthersEntries: 'canEditOthersEntries',
+      delete: 'canDeleteEntry',
+      deleteEntry: 'canDeleteEntry',
+      editBaby: 'canEditBaby',
+      invite: 'canInvite',
+      export: 'canExport',
+      manage: 'canManageFamily',
+      manageFamily: 'canManageFamily',
     };
-    
+
     const key = actionMap[action] || action;
-    return perms[key] || false;
+
+    // Read granular flag, fall back to legacy alias
+    return Boolean((perms as any)[key] ?? perms[action] ?? false);
   }, [state.userPermissions]);
 
   const getBabiesForRole = useCallback((role: 'parent1' | 'parent2' | 'guardian' | 'viewer'): BabyProfile[] => {

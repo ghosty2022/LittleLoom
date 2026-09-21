@@ -35,6 +35,7 @@ import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 import { useBaby } from './BabyContext';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
+import { EntryService, mapRowToEntry } from '@/services/EntryService';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -646,42 +647,37 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
 const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
   if (!userProfile || !myRole) return false;
+
+  // Parent1/Parent2 always have edit rights
   if (['parent1', 'parent2'].includes(myRole)) return true;
-  
-  // For guardians/viewers, check granular permissions
-  if (myRole === 'guardian' || myRole === 'viewer') {
-    const tracker = state.trackers.find(t => t.id === entry.trackerId);
-    const memberPermissions = state.userPermissions[entry.babyId] || {};
-    
-    // Check if they can edit their own entries
-    if (entry.loggedBy === userProfile.id) {
-      return tracker?.permissions?.allowGuardiansEditOwn === true;
-    }
-    
-    // Check granular edit permission
-    return memberPermissions.edit === true;
+
+  // Read granular permissions
+  const perms = state.userPermissions[entry.babyId] || {};
+  const isOwn = entry.loggedBy === userProfile.id;
+
+  if (isOwn) {
+    // Editing own entry
+    const ownEdit = perms.canEditEntry ?? perms.edit;
+    if (ownEdit === false) return false;
+  } else {
+    // Editing someone else's entry
+    const othersEdit = perms.canEditOthersEntries;
+    if (othersEdit !== true) return false;
   }
-  return false;
-}, [userProfile, myRole, state.trackers, state.userPermissions]);
+
+  return true;
+}, [userProfile, myRole, state.userPermissions]);
 
 const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
   if (!userProfile || !myRole) return false;
+
+  // Parent1/Parent2 always have delete rights
   if (['parent1', 'parent2'].includes(myRole)) return true;
-  
-  if (myRole === 'guardian' || myRole === 'viewer') {
-    const tracker = state.trackers.find(t => t.id === entry.trackerId);
-    const memberPermissions = state.userPermissions[entry.babyId] || {};
-    
-    // Check if they can delete their own entries
-    if (entry.loggedBy === userProfile.id) {
-      return tracker?.permissions?.allowGuardiansDeleteOwn === true;
-    }
-    
-    // Check granular delete permission
-    return memberPermissions.delete === true;
-  }
-  return false;
-}, [userProfile, myRole, state.trackers, state.userPermissions]);
+
+  // Granular check
+  const perms = state.userPermissions[entry.babyId] || {};
+  return perms.canDeleteEntry === true;
+}, [userProfile, myRole, state.userPermissions]);
   /* ─── Load helpers ───────────────────────────────────────────────── */
 
   const loadCustomTrackers = useCallback(async (): Promise<UnifiedTrackerConfig[]> => {
@@ -695,41 +691,14 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
   const loadEntries = useCallback(async (babyId: string): Promise<TrackerEntry[]> => {
     try {
-      const { data, error } = await supabase
-        .from('tracker_entries')
-        .select('*')
-        .eq('baby_id', babyId)
-        .eq('is_deleted', false)
-        .order('timestamp', { ascending: false });
+      const entries = await EntryService.getEntries({ babyId });
 
-      if (error) {
-        console.error('[Tracker] loadEntries error:', error);
-        return [];
+      // Warm the cache so subsequent offline reads succeed
+      if (entries.length > 0) {
+        EntryService.warmCache(babyId, entries).catch(() => {});
       }
 
-      return (data || []).map(row => ({
-        id: row.id,
-        babyId: row.baby_id,
-        trackerId: row.tracker_id,
-        timestamp: row.timestamp,
-        title: row.title || '',
-        data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
-        loggedBy: row.logged_by || '',
-        loggedByName: row.logged_by_name || '',
-        loggedByRole: (row.logged_by_role as any) || 'parent1',
-        notes: row.notes || undefined,
-        photoUris: row.photo_uris || undefined,
-        tags: row.tags || undefined,
-        location: row.location ? { name: row.location } : undefined,
-        mood: row.mood || undefined,
-        notificationId: row.notification_id || undefined,
-        reminderScheduled: row.reminder_scheduled || false,
-        syncedAt: row.synced_at || undefined,
-        editedBy: row.edited_by || undefined,
-        editedAt: row.edited_at || undefined,
-        isDeleted: row.is_deleted || false,
-        linkedEntries: [],
-      }));
+      return entries;
     } catch (error) {
       console.error('[Tracker] loadEntries error:', error);
       return [];
@@ -1210,42 +1179,39 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       const trackerType = getTrackerType(trackerId);
       const timestampISO = new Date(timestamp).toISOString();
 
-      const insertPayload = {
+      // ─── Build canonical payload via EntryService ─────────────────
+      const rawInput = {
         id: newId,
-        tracker_id: trackerId,
-        tracker_type: trackerType,
-        baby_id: babyId,
-        timestamp: timestampISO,
+        trackerId,
+        trackerType,
+        babyId,
+        timestamp,
         title: options?.title || `${tracker.emoji} ${tracker.name}`,
         data: cleanData,
-        notes: options?.notes || null,
-        // ── CRASH FIX: arrays, NOT null (schema default '{}' expects arrays) ──
-        photo_uris: cleanPhotoUris,
+        notes: options?.notes,
+        photoUris: cleanPhotoUris,
         tags: cleanTags,
-        logged_by: userProfile?.id || 'unknown',
-        logged_by_name: userProfile?.fullName || 'Unknown',
-        logged_by_role: (myRole as any) || 'parent1',
-        created_at: now,
-        updated_at: now,
-        is_deleted: false,
+        loggedBy: userProfile?.id || 'unknown',
+        loggedByName: userProfile?.fullName || 'Unknown',
+        loggedByRole: (myRole as any) || 'parent1',
+        notificationId: undefined,
+        reminderScheduled: false,
       };
 
-      const { error } = await supabase
-        .from('tracker_entries')
-        .insert(insertPayload);
+      const result = await EntryService.saveEntry(rawInput);
 
-      if (error) {
-        // ─── OFFLINE FALLBACK: queue for retry instead of losing the entry ───
-        console.warn('[TrackerContext] Insert failed, queuing offline:', error.message);
+      if (!result.ok) {
+        // ─── Offline fallback ────────────────────────────────────────
+        console.warn('[TrackerContext] Save failed, queuing offline:', result.error);
         try {
-          await enqueueOffline('tracker_entries', 'insert', insertPayload);
+          const payload = EntryService.buildSupabasePayload(rawInput);
+          await enqueueOffline('tracker_entries', 'insert', payload);
           if (__DEV__) {
             console.log('[TrackerContext] Entry queued offline for later sync');
           }
-          // Still proceed — entry is queued and will sync when online
         } catch (queueErr) {
           console.error('[TrackerContext] Failed to queue entry:', queueErr);
-          sweetAlert('Error', `Failed to save entry: ${error.message}`, 'warning');
+          sweetAlert('Error', `Failed to save entry: ${result.error}`, 'warning');
           return null;
         }
       }
@@ -1317,37 +1283,21 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         await AsyncStorage.setItem(EDIT_HISTORY_KEY, JSON.stringify(historyStore));
       } catch {}
 
-      const remoteUpdates: Record<string, unknown> = {
-        updated_at: new Date().toISOString(),
-        edited_by: userProfile?.id,
-        edited_at: Date.now(),
-      };
+      const result = await EntryService.updateEntry({
+        id: entryId,
+        updates: {
+          title: updates.title,
+          notes: updates.notes,
+          data: updates.data,
+          timestamp: updates.timestamp,
+          photoUris: updates.photoUris,
+          tags: updates.tags,
+        },
+        editedBy: userProfile?.id || 'unknown',
+      });
 
-      // Sanitize arrays for Supabase
-      if (updates.photoUris !== undefined) {
-        const cleanPhotoUris = sanitizePhotoUris(updates.photoUris);
-        remoteUpdates.photo_uris = cleanPhotoUris;
-      }
-      if (updates.tags !== undefined) {
-        const cleanTags = Array.isArray(updates.tags)
-          ? updates.tags.filter((t): t is string => typeof t === 'string' && t.length > 0)
-          : [];
-        remoteUpdates.tags = cleanTags;
-      }
-      if (updates.data !== undefined) {
-        remoteUpdates.data = sanitizeForJsonb(updates.data);
-      }
-      if (updates.title !== undefined) remoteUpdates.title = updates.title;
-      if (updates.notes !== undefined) remoteUpdates.notes = updates.notes;
-      if (updates.timestamp !== undefined) remoteUpdates.timestamp = new Date(updates.timestamp).toISOString();
-
-      const { error } = await supabase
-        .from('tracker_entries')
-        .update(remoteUpdates)
-        .eq('id', entryId);
-
-      if (error) {
-        console.error('Failed to update entry:', error);
+      if (!result.ok) {
+        console.error('Failed to update entry:', result.error);
         sweetAlert('Error', 'Failed to update entry', 'warning');
         return false;
       }
@@ -1399,16 +1349,10 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     }
 
     try {
-      const { error } = await supabase
-        .from('tracker_entries')
-        .update({
-          is_deleted: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', entryId);
+      const result = await EntryService.softDeleteEntry(entryId);
 
-      if (error) {
-        console.error('Failed to delete entry:', error);
+      if (!result.ok) {
+        console.error('Failed to delete entry:', result.error);
         sweetAlert('Error', 'Failed to delete entry', 'warning');
         return false;
       }

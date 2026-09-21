@@ -12,8 +12,10 @@ import {
   getAppSetting,
   setAppSetting,
 } from '@/database/dbHelpers';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/utils/supabase';
 import { useBaby } from './BabyContext';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
+import { EntryService } from '@/services/EntryService';
 
 export type ActivityType = 
   | 'potty' 
@@ -237,6 +239,15 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
   // ─── READ BABY FROM BABYCONTEXT ──────────────────────────────────────
   const { getCurrentBabyId: getBabyIdFromContext, subscribeToBabyChanges } = useBaby();
 
+  // ─── Offline queue for failed Supabase writes ────────────────────────
+  const { enqueue: enqueueOffline } = useOfflineSync({
+    onPermanentFailure: (op) => {
+      if (__DEV__) {
+        console.error('[ActivityContext] Op permanently failed:', op.table, op.lastError);
+      }
+    },
+  });
+
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -320,27 +331,26 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     setError(null);
 
     try {
-      const rows = await getEntriesByBabyFromDb(babyId);
-      const parsed: ActivityEntry[] = rows.map(row => {
-        const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {};
+      const trackerEntries = await EntryService.getEntries({ babyId });
+      const parsed: ActivityEntry[] = trackerEntries.map(e => {
+        const data = e.data || {};
         return {
-          id: row.id,
-          type: row.tracker_id as ActivityType,
-          babyId: row.baby_id,
-          timestamp: row.timestamp,
-          title: row.title,
-          details: row.notes || undefined,
-          icon: undefined,
-          loggedBy: row.logged_by || '',
-          loggedByName: row.logged_by_name || '',
-          ...data,
-          notes: row.notes || undefined,
-          photo: data.photo || (row.photo_uris ? (Array.isArray(row.photo_uris) ? row.photo_uris[0] : JSON.parse(row.photo_uris as any)[0]) : undefined),
-          tags: row.tags || undefined,
-          notificationId: row.notification_id || undefined,
-          reminderScheduled: row.reminder_scheduled || false,
-          syncedAt: row.synced_at || undefined,
-          deletedAt: row.deleted_at || undefined,
+          id: e.id,
+          type: e.trackerId as ActivityType,
+          babyId: e.babyId,
+          timestamp: e.timestamp,
+          title: e.title,
+          details: e.notes,
+          loggedBy: e.loggedBy,
+          loggedByName: e.loggedByName,
+          ...(data as Record<string, unknown>),
+          notes: e.notes,
+          photo: e.photoUris?.[0],
+          tags: e.tags,
+          notificationId: e.notificationId,
+          reminderScheduled: e.reminderScheduled,
+          syncedAt: e.syncedAt,
+          deletedAt: undefined,
         } as ActivityEntry;
       });
       setEntries(parsed);
@@ -473,20 +483,11 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
 
       await softDeleteEntryInDb(id);
 
-      // Try to sync deletion with Supabase if online
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase
-            .from('tracker_entries')
-            .update({ 
-              deleted_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', id);
-        }
-      } catch (syncError) {
-        console.log('Failed to sync deletion with Supabase:', syncError);
+      // Sync deletion via EntryService
+      const result = await EntryService.softDeleteEntry(id);
+      if (!result.ok) {
+        console.warn('[ActivityContext] Delete sync failed:', result.error);
+        await enqueueOffline('tracker_entries', 'delete', { id });
       }
 
       setEntries(prev => prev.filter(entry => entry.id !== id));
@@ -514,77 +515,46 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     }
   }, [loadEntriesInternal]);
 
-  // ─── Push to Supabase ────────────────────────────────────────────────
-const pushToSupabase = useCallback(async (entry: ActivityEntry) => {
-  // First, try to sync immediately
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('No authenticated user');
+  // ─── Push to Supabase (delegates to EntryService) ────────────────────
+  const pushToSupabase = useCallback(async (entry: ActivityEntry) => {
+    const trackerType = (() => {
+      // Map activity types to the constrained DB enum
+      const t = entry.type;
+      if (t === 'feed') return 'feed';
+      if (t === 'sleep') return 'sleep';
+      if (t === 'diaper' || t === 'potty') return 'potty';
+      if (t === 'growth') return 'growth';
+      if (t === 'medication') return 'medication';
+      if (t === 'milestone') return 'milestone';
+      return 'custom';
+    })();
 
-    const { error } = await supabase
-      .from('tracker_entries')
-      .upsert({
-        id: entry.id,
-        baby_id: entry.babyId,
-        tracker_id: entry.type,
-        tracker_type: entry.type,
-        timestamp: new Date(entry.timestamp).toISOString(),
-        title: entry.title,
-        data: entry,
-        notes: entry.notes || entry.details,
-        photo_uris: entry.photo ? [entry.photo] : [],
-        tags: entry.tags || [],
-        created_by: entry.loggedBy,
-        created_by_name: entry.loggedByName,
-        logged_by: entry.loggedBy,
-        logged_by_name: entry.loggedByName,
-        notification_id: entry.notificationId,
-        reminder_scheduled: entry.reminderScheduled || false,
-        synced_at: new Date().toISOString(),
-        deleted_at: entry.deletedAt || null,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' });
+    const rawInput = {
+      id: entry.id,
+      trackerId: entry.type,
+      trackerType,
+      babyId: entry.babyId,
+      timestamp: entry.timestamp,
+      title: entry.title,
+      data: entry as Record<string, unknown>,
+      notes: entry.notes || entry.details,
+      photoUris: entry.photo ? [entry.photo] : [],
+      tags: entry.tags || [],
+      loggedBy: entry.loggedBy,
+      loggedByName: entry.loggedByName,
+      loggedByRole: 'parent1',
+      notificationId: entry.notificationId,
+      reminderScheduled: entry.reminderScheduled,
+    };
 
-    if (error) throw error;
-    
-    // If successful, ensure it's not in the offline queue
-    await removeFromOfflineQueue(entry.id);
-  } catch (error) {
-    console.error('Error pushing to Supabase, queuing for later:', error);
-    // Add to offline queue for retry
-    await addToOfflineQueue(entry);
-    throw error; // Re-throw so UI can show "pending sync" status
-  }
-}, []);
+    const result = await EntryService.saveEntry(rawInput, { upsert: true });
 
-// Helper functions for offline queue
-const OFFLINE_QUEUE_KEY = '@littleloom_offline_sync_queue';
-
-async function addToOfflineQueue(entry: ActivityEntry): Promise<void> {
-  try {
-    const existing = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
-    const queue = existing ? JSON.parse(existing) : [];
-    // Avoid duplicates
-    if (!queue.some((e: ActivityEntry) => e.id === entry.id)) {
-      queue.push(entry);
-      await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    if (!result.ok) {
+      console.warn('[ActivityContext] Push failed, queuing offline:', result.error);
+      const payload = EntryService.buildSupabasePayload(rawInput);
+      await enqueueOffline('tracker_entries', 'upsert', payload);
     }
-  } catch (error) {
-    console.error('Failed to add to offline queue:', error);
-  }
-}
-
-async function removeFromOfflineQueue(entryId: string): Promise<void> {
-  try {
-    const existing = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
-    if (existing) {
-      const queue = JSON.parse(existing).filter((e: ActivityEntry) => e.id !== entryId);
-      await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-    }
-  } catch (error) {
-    console.error('Failed to remove from offline queue:', error);
-  }
-}
+  }, [enqueueOffline]);
   // ─── Pull from Supabase ──────────────────────────────────────────────
   const pullFromSupabase = useCallback(async (babyId: string) => {
     try {

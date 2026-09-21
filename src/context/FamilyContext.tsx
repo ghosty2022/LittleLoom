@@ -6,6 +6,7 @@ import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from './AuthContext';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
 
 export type { FamilyMember } from '../types/roles';
@@ -98,6 +99,29 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const familyLoadInProgress = useRef(false);
   const loadingRef = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
+
+  // Stable ref so realtime callbacks can trigger reloads without
+  // creating a circular dependency in useCallback deps.
+  const loadFamilyRef = useRef<(() => Promise<void>) | null>(null);
+
+  // ─── Realtime: reload family when members change on any device ──
+  useRealtimeSubscription({
+    table: 'family_members',
+    filter: currentBaby?.id ? `baby_id=eq.${currentBaby.id}` : undefined,
+    enabled: !!currentBaby?.id,
+    onInsert: () => {
+      if (__DEV__) console.log('[FamilyContext] Realtime family_members.inserted');
+      loadFamilyRef.current?.();
+    },
+    onUpdate: () => {
+      if (__DEV__) console.log('[FamilyContext] Realtime family_members.updated');
+      loadFamilyRef.current?.();
+    },
+    onDelete: () => {
+      if (__DEV__) console.log('[FamilyContext] Realtime family_members.deleted');
+      loadFamilyRef.current?.();
+    },
+  });
 
   // ─── Track current user to prevent cross-device conflicts ────
   useEffect(() => {
@@ -286,6 +310,11 @@ const { data: dbMembers, error: membersError } = await supabase
       familyLoadInProgress.current = false;
     }
   }, [currentBaby, authProfile]);
+
+  // Keep the ref in sync with the latest loadFamily callback
+  useEffect(() => {
+    loadFamilyRef.current = loadFamily;
+  }, [loadFamily]);
 
   useEffect(() => {
     if (babyLoading || !authProfile) return;
