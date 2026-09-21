@@ -99,9 +99,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const familyLoadInProgress = useRef(false);
   const loadingRef = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
-
-  // Stable ref so realtime callbacks can trigger reloads without
-  // creating a circular dependency in useCallback deps.
   const loadFamilyRef = useRef<(() => Promise<void>) | null>(null);
 
   // ─── Realtime: reload family when members change on any device ──

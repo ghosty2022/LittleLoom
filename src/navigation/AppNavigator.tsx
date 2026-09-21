@@ -90,7 +90,8 @@ const MAIN_FLOW_SCREENS = new Set([
   'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy',
   'TermsOfService', 'About', 'LanguageSettings', 'UnitSettings',
   'UniversalTrackerHub', 'CreateCustomTracker', 'AllTrackers',
-  'VaccinationSchedule', 'SafetyCorner',
+  'VaccinationSchedule', 'SafetyCorner', 'RealtimeDebug',
+  'SecureAccessList',
 ]);
 
 const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword']);
@@ -602,6 +603,10 @@ function NavigationContent({
           />
           <Stack.Screen name="EditProfile" component={BabyProfileScreen} />
           <Stack.Screen name="EditGuardian" component={EditGuardianScreen} />
+          <Stack.Screen
+            name="SecureAccessList"
+            component={require('../screens/family/SecureAccessListScreen').default}
+          />
           <Stack.Screen name="Gallery" component={GalleryScreen} />
           <Stack.Screen name="FamilyChatList" component={FamilyChatListScreen} />
           <Stack.Screen name="FamilyChat" component={FamilyChatScreen} />

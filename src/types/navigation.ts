@@ -261,7 +261,8 @@ export type RootStackParamList = {
     familyCode?: string;
   } | undefined;
   EditGuardian: {
-    guardianId: string;
+    guardianId?: string;
+    memberId?: string;
     mode?: 'guardian' | 'parent2' | 'viewer';
     fromChat?: boolean;
   } | undefined;

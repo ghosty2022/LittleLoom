@@ -1044,7 +1044,17 @@ const ActionModal = React.memo(({ visible, onClose, title, children, isDark }: a
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function EditGuardianScreen({ navigation, route }: EditGuardianScreenProps) {
-  const { guardianId, mode = 'guardian', fromChat = false } = route.params;
+  // Accept BOTH `guardianId` and `memberId` — different call sites use different names.
+  // Normalize so the rest of this screen only has to work with one value.
+  const params = (route.params ?? {}) as {
+    guardianId?: string;
+    memberId?: string;
+    mode?: 'guardian' | 'parent2' | 'viewer';
+    fromChat?: boolean;
+  };
+  const guardianId = params.guardianId ?? params.memberId ?? '';
+  const mode = params.mode ?? 'guardian';
+  const fromChat = params.fromChat ?? false;
   const { members, updateGuardianProfile, removeMember, loadFamily, refreshFamily } = useFamily();
   const { hasPermission, profile, updateProfile } = useUser();
   const { currentBaby, getRecentActivities, milestones, refreshBabyData } = useBaby();
@@ -1154,7 +1164,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         setOriginalData(initialData);
         if (currentBaby) await loadMemberActivities(found.id, found.userId, found.fullName);
       } else if (isMountedRef.current) {
-        sweetAlert.error('Member Not Found', 'The requested family member could not be found.');
+        const reason = !guardianId
+          ? 'No member ID was provided to this screen.'
+          : 'The requested family member could not be found.';
+        console.warn('[EditGuardian] Member lookup failed:', {
+          guardianId,
+          availableIds: members.map(m => ({ id: m.id, userId: m.userId, name: m.fullName })),
+        });
+        sweetAlert.error('Member Not Found', reason);
       }
     } catch (error) {
       console.error('Error loading member data:', error);

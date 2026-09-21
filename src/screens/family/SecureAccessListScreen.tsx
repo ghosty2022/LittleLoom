@@ -308,8 +308,14 @@ export default function SecureAccessListScreen() {
                 if (!canManageFamily) return;
                 if (member.role === 'parent1') return;
                 navigation.navigate('EditGuardian', {
-                  memberId: member.id,
-                });
+  guardianId: member.id,
+  mode:
+    member.role === 'parent2'
+      ? 'parent2'
+      : member.role === 'guardian'
+      ? 'guardian'
+      : 'viewer',
+});
               }}
               style={[
                 styles.memberCard,
