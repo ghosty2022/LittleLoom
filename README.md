@@ -1,2 +1,0 @@
-# LittleLoom
-LittleLoom
