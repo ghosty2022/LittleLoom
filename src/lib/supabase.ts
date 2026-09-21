@@ -1,26 +1,71 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
+// src/lib/supabase.ts
+// ─────────────────────────────────────────────────────────────────────
+// ⚠️  BACKWARD-COMPAT RE-EXPORT
+//
+// This file previously created its own Supabase client. That was one of
+// THREE duplicate clients in the codebase, which caused auth and realtime
+// bugs across the app.
+//
+// It now re-exports from the canonical client at src/utils/supabase.ts.
+// Existing imports like `import { supabase } from '@/lib/supabase'`
+// continue to work unchanged.
+//
+// DO NOT ADD createClient() to this file.
+// If you need a new helper, add it to src/utils/supabase.ts.
+// ─────────────────────────────────────────────────────────────────────
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+// ─── The Client (re-exported) ───────────────────────────────────────
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    '⚠️ Supabase credentials missing. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your .env file.'
-  );
-}
+export {
+  supabase,
+  supabase as default,
+} from '../utils/supabase';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+// ─── Helpers (re-exported) ──────────────────────────────────────────
 
-// Re-export types from the services file for convenience
+export {
+  checkSupabaseConnection,
+  getCurrentSession,
+  getCurrentUser,
+  getCurrentUserId,
+  refreshSessionWithRetry,
+  onAuthStateChange,
+  signOutWithCleanup,
+  getUserProfile,
+  upsertUserProfile,
+  clearSupabaseLocalState,
+} from '../utils/supabase';
+
+// ─── Storage Adapter (re-exported) ──────────────────────────────────
+
+export { supabaseStorage } from '../utils/supabase';
+
+// ─── Type Re-exports ────────────────────────────────────────────────
+
 export type {
+  SupabaseClient,
+  Session,
+  User,
+} from '../utils/supabase';
+
+// ─── Community & Domain Types ───────────────────────────────────────
+
+export type {
+  // Babies / family
+  BabyRow,
+  FamilyMemberRow,
+  TrackerEntryRow,
+  AppSettingsRow,
+  ProfileRow,
+  InviteCodeRow,
+  AIFeaturesRow,
+
+  // Family chat
+  SupabaseMessage,
+  SupabaseFamilyChat,
+  SupabaseTypingStatus,
+
+  // Community
   SupabaseCommunityTopic,
   SupabaseUserTopic,
   SupabaseCommunityPost,
@@ -37,4 +82,10 @@ export type {
   SupabaseCommunityNotification,
   SupabaseUserActivity,
   SupabasePollVote,
-} from '@/services/supabaseClient';
+  SupabaseCommunityProfile,
+
+  // Helpers
+  SupabaseStorageAdapter,
+  SupabaseAuthResult,
+  SupabaseConnectionStatus,
+} from '../types/supabase';

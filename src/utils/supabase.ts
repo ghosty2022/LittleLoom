@@ -1,25 +1,43 @@
 // src/utils/supabase.ts
+// ─────────────────────────────────────────────────────────────────────
+// THE canonical Supabase client for the entire app.
+//
+// Every other file (src/lib/supabase.ts, src/services/supabaseClient.ts)
+// re-exports from here — they never call createClient themselves.
+//
+// Uses a hybrid storage adapter (SecureStore for small values, AsyncStorage
+// for large) with in-memory caching to reduce I/O.
+// ─────────────────────────────────────────────────────────────────────
+
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
+import {
+  createClient,
+  SupabaseClient,
+  Session,
+  User,
+} from '@supabase/supabase-js';
+
 import { supabaseStorage } from './supabaseStorage';
 
-// ─── Environment Variables ──────────────────────────────────────────
+// ─── Environment Validation ─────────────────────────────────────────
+
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
-// ─── Validation ─────────────────────────────────────────────────────
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Supabase credentials are missing!');
   console.error('   EXPO_PUBLIC_SUPABASE_URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
   console.error('   EXPO_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? '✅ Set' : '❌ Missing');
-  
-  if (!__DEV__) {
+  console.error('   → Create a .env file at the project root with these values.');
+
+  if (typeof __DEV__ !== 'undefined' && !__DEV__) {
     throw new Error('Supabase credentials are required in production');
   }
 }
 
-// ─── Supabase Client ──────────────────────────────────────────────
+// ─── The Singleton Client ───────────────────────────────────────────
+
 export const supabase: SupabaseClient = createClient(
   supabaseUrl || 'https://placeholder-project.supabase.co',
   supabaseAnonKey || 'placeholder-anon-key',
@@ -36,13 +54,18 @@ export const supabase: SupabaseClient = createClient(
         eventsPerSecond: 10,
       },
     },
+    global: {
+      headers: {
+        'X-Client-Info': 'littleloom-mobile',
+      },
+    },
   }
 );
 
-// ─── Custom Hooks & Helpers ──────────────────────────────────────
+// ─── Connection Helpers ─────────────────────────────────────────────
 
 /**
- * Check if Supabase connection is healthy
+ * Lightweight connectivity probe. Does not throw.
  */
 export async function checkSupabaseConnection(): Promise<{
   connected: boolean;
@@ -50,11 +73,7 @@ export async function checkSupabaseConnection(): Promise<{
   error?: string;
 }> {
   try {
-    const { error } = await supabase
-      .from('babies')
-      .select('id')
-      .limit(1);
-    
+    const { error } = await supabase.from('babies').select('id').limit(1);
     if (error) {
       return {
         connected: false,
@@ -62,7 +81,6 @@ export async function checkSupabaseConnection(): Promise<{
         error: error.message,
       };
     }
-    
     return {
       connected: true,
       message: 'Connected to Supabase',
@@ -76,39 +94,59 @@ export async function checkSupabaseConnection(): Promise<{
   }
 }
 
+// ─── Session Helpers ────────────────────────────────────────────────
+
 /**
- * Get the current session with error handling
+ * Safe session getter — never throws, returns null on failure.
  */
 export async function getCurrentSession(): Promise<Session | null> {
   try {
     const { data, error } = await supabase.auth.getSession();
     if (error) {
-      console.warn('[Supabase] Failed to get session:', error.message);
+      if (__DEV__) {
+        console.warn('[Supabase] Failed to get session:', error.message);
+      }
       return null;
     }
     return data.session;
   } catch (error) {
-    console.warn('[Supabase] Session error:', error);
+    if (__DEV__) {
+      console.warn('[Supabase] Session error:', error);
+    }
     return null;
   }
 }
 
 /**
- * Get the current user with error handling
+ * Safe user getter — never throws.
  */
-export async function getCurrentUser() {
+export async function getCurrentUser(): Promise<User | null> {
   try {
     const session = await getCurrentSession();
-    return session?.user || null;
+    if (session?.user) return session.user;
+
+    // Fallback: try directly
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) return null;
+    return data.user;
   } catch (error) {
-    console.warn('[Supabase] Failed to get user:', error);
+    if (__DEV__) {
+      console.warn('[Supabase] Failed to get user:', error);
+    }
     return null;
   }
 }
 
 /**
- * Refresh session with retry logic
+ * Get the current user's ID (string or null).
  */
+export async function getCurrentUserId(): Promise<string | null> {
+  const user = await getCurrentUser();
+  return user?.id ?? null;
+}
+
+// ─── Refresh with Retry ─────────────────────────────────────────────
+
 export async function refreshSessionWithRetry(
   maxRetries: number = 3,
   delayMs: number = 1000
@@ -119,12 +157,19 @@ export async function refreshSessionWithRetry(
       if (!error && data.session) {
         return { session: data.session, success: true };
       }
-      if (error?.status !== 400) {
-        // Only retry on certain errors
+
+      // Don't retry auth-rejected refreshes
+      if (error?.status === 400 || error?.status === 401) {
+        return { session: null, success: false };
+      }
+
+      if (attempt < maxRetries - 1) {
         await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)));
       }
     } catch (error) {
-      console.warn(`[Supabase] Refresh attempt ${attempt + 1} failed:`, error);
+      if (__DEV__) {
+        console.warn(`[Supabase] Refresh attempt ${attempt + 1} failed:`, error);
+      }
       if (attempt < maxRetries - 1) {
         await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)));
       }
@@ -133,23 +178,23 @@ export async function refreshSessionWithRetry(
   return { session: null, success: false };
 }
 
-/**
- * Listen for auth state changes with automatic cleanup
- */
+// ─── Auth State Listener ────────────────────────────────────────────
+
 export function onAuthStateChange(
   callback: (event: string, session: Session | null) => void
 ) {
   const { data } = supabase.auth.onAuthStateChange((event, session) => {
     callback(event, session);
   });
-  
   return data.subscription;
 }
 
-/**
- * Sign out with error handling
- */
-export async function signOutWithCleanup(): Promise<{ success: boolean; error?: string }> {
+// ─── Sign Out ───────────────────────────────────────────────────────
+
+export async function signOutWithCleanup(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
   try {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -164,9 +209,8 @@ export async function signOutWithCleanup(): Promise<{ success: boolean; error?: 
   }
 }
 
-/**
- * Get user profile with error handling
- */
+// ─── Profile Helpers ────────────────────────────────────────────────
+
 export async function getUserProfile(userId: string) {
   try {
     const { data, error } = await supabase
@@ -174,21 +218,22 @@ export async function getUserProfile(userId: string) {
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
-    
+
     if (error) {
-      console.warn('[Supabase] Failed to get user profile:', error.message);
+      if (__DEV__) {
+        console.warn('[Supabase] Failed to get user profile:', error.message);
+      }
       return null;
     }
     return data;
   } catch (error) {
-    console.warn('[Supabase] User profile error:', error);
+    if (__DEV__) {
+      console.warn('[Supabase] User profile error:', error);
+    }
     return null;
   }
 }
 
-/**
- * Upsert user profile
- */
 export async function upsertUserProfile(profile: {
   user_id: string;
   display_name: string;
@@ -203,9 +248,11 @@ export async function upsertUserProfile(profile: {
       .upsert(profile, { onConflict: 'user_id' })
       .select()
       .single();
-    
+
     if (error) {
-      console.warn('[Supabase] Failed to upsert user profile:', error.message);
+      if (__DEV__) {
+        console.warn('[Supabase] Failed to upsert user profile:', error.message);
+      }
       return { success: false, error: error.message };
     }
     return { success: true, data };
@@ -217,8 +264,40 @@ export async function upsertUserProfile(profile: {
   }
 }
 
-// ─── Type Exports ──────────────────────────────────────────────────
-export type { SupabaseClient } from '@supabase/supabase-js';
+// ─── Storage Utilities (Advanced) ───────────────────────────────────
 
-// ─── Default Export ──────────────────────────────────────────────
+/**
+ * Direct access to the underlying storage adapter. Rarely needed.
+ */
+export { supabaseStorage } from './supabaseStorage';
+
+/**
+ * Wipe all Supabase-related keys from local storage.
+ * Useful on sign-out or account deletion.
+ */
+export async function clearSupabaseLocalState(): Promise<void> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const supabaseKeys = keys.filter(
+      k =>
+        k.startsWith('sb-') ||
+        k.startsWith('supabase.') ||
+        k.includes('auth-token')
+    );
+    if (supabaseKeys.length > 0) {
+      await AsyncStorage.multiRemove(supabaseKeys);
+    }
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[Supabase] clearLocalState failed:', error);
+    }
+  }
+}
+
+// ─── Type Re-exports ────────────────────────────────────────────────
+
+export type { SupabaseClient, Session, User } from '@supabase/supabase-js';
+
+// ─── Default Export ─────────────────────────────────────────────────
+
 export default supabase;
