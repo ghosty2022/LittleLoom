@@ -34,6 +34,7 @@ import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 import { useBaby } from './BabyContext';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -504,6 +505,15 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   // ─── READ BABY FROM BABYCONTEXT ──────────────────────────────────────
   const { getCurrentBabyId: getBabyIdFromContext, subscribeToBabyChanges } = useBaby();
+
+  // ─── Offline queue for failed Supabase writes ────────────────────────
+  const { enqueue: enqueueOffline } = useOfflineSync({
+    onPermanentFailure: (op) => {
+      if (__DEV__) {
+        console.error('[TrackerContext] Op permanently failed:', op.table, op.lastError);
+      }
+    },
+  });
 
   const [state, setState] = useState<TrackerState>({
     isLoading: true,
@@ -1200,32 +1210,44 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       const trackerType = getTrackerType(trackerId);
       const timestampISO = new Date(timestamp).toISOString();
 
+      const insertPayload = {
+        id: newId,
+        tracker_id: trackerId,
+        tracker_type: trackerType,
+        baby_id: babyId,
+        timestamp: timestampISO,
+        title: options?.title || `${tracker.emoji} ${tracker.name}`,
+        data: cleanData,
+        notes: options?.notes || null,
+        // ── CRASH FIX: arrays, NOT null (schema default '{}' expects arrays) ──
+        photo_uris: cleanPhotoUris,
+        tags: cleanTags,
+        logged_by: userProfile?.id || 'unknown',
+        logged_by_name: userProfile?.fullName || 'Unknown',
+        logged_by_role: (myRole as any) || 'parent1',
+        created_at: now,
+        updated_at: now,
+        is_deleted: false,
+      };
+
       const { error } = await supabase
         .from('tracker_entries')
-        .insert({
-          id: newId,
-          tracker_id: trackerId,
-          tracker_type: trackerType,
-          baby_id: babyId,
-          timestamp: timestampISO,
-          title: options?.title || `${tracker.emoji} ${tracker.name}`,
-          data: cleanData,
-          notes: options?.notes || null,
-          // ── CRASH FIX: arrays, NOT null (schema default '{}' expects arrays) ──
-          photo_uris: cleanPhotoUris,
-          tags: cleanTags,
-          logged_by: userProfile?.id || 'unknown',
-          logged_by_name: userProfile?.fullName || 'Unknown',
-          logged_by_role: (myRole as any) || 'parent1',
-          created_at: now,
-          updated_at: now,
-          is_deleted: false,
-        });
+        .insert(insertPayload);
 
       if (error) {
-        console.error('Failed to add entry:', error);
-        sweetAlert('Error', `Failed to save entry: ${error.message}`, 'warning');
-        return null;
+        // ─── OFFLINE FALLBACK: queue for retry instead of losing the entry ───
+        console.warn('[TrackerContext] Insert failed, queuing offline:', error.message);
+        try {
+          await enqueueOffline('tracker_entries', 'insert', insertPayload);
+          if (__DEV__) {
+            console.log('[TrackerContext] Entry queued offline for later sync');
+          }
+          // Still proceed — entry is queued and will sync when online
+        } catch (queueErr) {
+          console.error('[TrackerContext] Failed to queue entry:', queueErr);
+          sweetAlert('Error', `Failed to save entry: ${error.message}`, 'warning');
+          return null;
+        }
       }
 
       const updatedEntries = [newEntry, ...state.entries];
