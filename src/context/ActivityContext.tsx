@@ -2,7 +2,7 @@
 // DEPRECATED: This context is now a read-only adapter for TrackerContext.
 // All data management should go through TrackerContext.
 
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useCallback } from 'react';
 import { useTracker } from '../hooks/useTrackerContext';
 import { TrackerEntry } from '../types/trackers';
 
@@ -20,28 +20,72 @@ interface ActivityContextType {
   getEntryById: (id: string) => ActivityEntry | undefined;
   getTodayCount: (type: string, babyId?: string) => number;
   getCurrentBabyId: () => string | null;
+
+  // ─── Bridge compatibility ─────────────────────────────────────────
+  // ActivitySyncBridge in ContextProvider.tsx calls these when the active
+  // baby changes. They are thin passthroughs to TrackerContext, which
+  // owns all data mutation.
+  syncWithBabyContext: (babyId: string | null) => Promise<void>;
+  refreshEntries: () => Promise<void>;
+  loadEntries: () => Promise<void>;
 }
 
 const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
 
 export function ActivityProvider({ children }: { children: React.ReactNode }): JSX.Element {
   // Read all data directly from the single source of truth: TrackerContext
+  const tracker = useTracker();
   const {
     entries,
     isLoading,
     getEntries,
-    getEntriesByDate,
     getEntryById: getTrackerEntryById,
     getCurrentBabyId,
     getTodaySummary,
-  } = useTracker();
+    refreshEntries: trackerRefreshEntries,
+    setCurrentBabyId: trackerSetCurrentBabyId,
+  } = tracker;
 
-  const getTodayCount = React.useCallback((type: string, babyId?: string) => {
-    // Defensive: fallback context may not implement getTodaySummary
-    if (typeof getTodaySummary !== 'function') return 0;
-    const summary = getTodaySummary() || [];
-    return summary.find(item => item.trackerId === type)?.count || 0;
-  }, [getTodaySummary]);
+  // ─── Bridge passthroughs ──────────────────────────────────────────
+  const syncWithBabyContext = useCallback(
+    async (babyId: string | null) => {
+      try {
+        if (typeof trackerSetCurrentBabyId === 'function') {
+          trackerSetCurrentBabyId(babyId);
+        }
+        if (babyId && typeof trackerRefreshEntries === 'function') {
+          await trackerRefreshEntries();
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[ActivityContext] syncWithBabyContext failed:', e);
+      }
+    },
+    [trackerSetCurrentBabyId, trackerRefreshEntries]
+  );
+
+  const refreshEntries = useCallback(async () => {
+    try {
+      if (typeof trackerRefreshEntries === 'function') {
+        await trackerRefreshEntries();
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[ActivityContext] refreshEntries failed:', e);
+    }
+  }, [trackerRefreshEntries]);
+
+  const loadEntries = useCallback(async () => {
+    return refreshEntries();
+  }, [refreshEntries]);
+
+  const getTodayCount = useCallback(
+    (type: string, babyId?: string) => {
+      // Defensive: fallback context may not implement getTodaySummary
+      if (typeof getTodaySummary !== 'function') return 0;
+      const summary = getTodaySummary() || [];
+      return summary.find((item: any) => item.trackerId === type)?.count || 0;
+    },
+    [getTodaySummary]
+  );
 
   const value = useMemo<ActivityContextType>(() => ({
     entries: Array.isArray(entries) ? entries : [],
@@ -56,10 +100,26 @@ export function ActivityProvider({ children }: { children: React.ReactNode }): J
     getEntriesByDateRange: (start, end, babyId) =>
       (typeof getEntries === 'function' ? getEntries() || [] : [])
         .filter(e => e.timestamp >= start && e.timestamp <= end && (!babyId || e.babyId === babyId)),
-    getEntryById: (id) => (typeof getTrackerEntryById === 'function' ? getTrackerEntryById(id) : undefined),
+    getEntryById: (id) =>
+      (typeof getTrackerEntryById === 'function' ? getTrackerEntryById(id) : undefined),
     getTodayCount,
     getCurrentBabyId: typeof getCurrentBabyId === 'function' ? getCurrentBabyId : () => null,
-  }), [entries, isLoading, getEntries, getTrackerEntryById, getTodayCount, getCurrentBabyId]);
+
+    // ─── Bridge passthroughs ──────────────────────────────────────
+    syncWithBabyContext,
+    refreshEntries,
+    loadEntries,
+  }), [
+    entries,
+    isLoading,
+    getEntries,
+    getTrackerEntryById,
+    getTodayCount,
+    getCurrentBabyId,
+    syncWithBabyContext,
+    refreshEntries,
+    loadEntries,
+  ]);
 
   return (
     <ActivityContext.Provider value={value}>
