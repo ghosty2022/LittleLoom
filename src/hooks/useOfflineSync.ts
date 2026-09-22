@@ -316,12 +316,18 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
             if (!opData.id) {
               throw new Error('Update operation missing id');
             }
-            const updatePayload = { ...opData };
+            const updatePayload: Record<string, unknown> = { ...opData };
             delete updatePayload.id;
+            // Ensure the row is scoped to the authenticated user so RLS
+            // policies don't silently drop it.
+            if (!updatePayload.user_id) {
+              updatePayload.user_id = user.id;
+            }
             const { error } = await supabase
               .from(op.table)
               .update(updatePayload)
-              .eq('id', opData.id);
+              .eq('id', opData.id)
+              .eq('user_id', user.id);
             if (error) throw error;
             break;
           }
@@ -330,10 +336,13 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
             if (!opData.id) {
               throw new Error('Delete operation missing id');
             }
+            // Scope the delete to the authenticated user so RLS
+            // policies don't silently drop the row on a mismatch.
             const { error } = await supabase
               .from(op.table)
               .delete()
-              .eq('id', opData.id);
+              .eq('id', opData.id)
+              .eq('user_id', user.id);
             if (error) throw error;
             break;
           }

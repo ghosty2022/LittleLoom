@@ -129,6 +129,12 @@ export function useEmergencySave<T>(
   const dataRef = useRef(data);
   const hasSavedRef = useRef(false);
 
+  // Stable ref — saveFn changes every render in most call-sites, which
+  // would cause the AppState listener to be torn down and re-registered
+  // repeatedly. On Android this can drop pending callbacks mid-invoke.
+  const saveFnRef = useRef(saveFn);
+  saveFnRef.current = saveFn;
+
   useEffect(() => {
     dataRef.current = data;
     hasSavedRef.current = false;
@@ -141,16 +147,14 @@ export function useEmergencySave<T>(
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         if (!hasSavedRef.current) {
           console.log(critical ? '🚨 Critical save triggered' : '💾 Emergency save triggered');
-          
           try {
-            await saveFn(dataRef.current);
+            await saveFnRef.current(dataRef.current);
             hasSavedRef.current = true;
           } catch (error) {
             console.error('Emergency save failed:', error);
           }
         }
       }
-      
       if (nextAppState === 'active') {
         hasSavedRef.current = false;
       }
@@ -158,25 +162,10 @@ export function useEmergencySave<T>(
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
-    const handleBeforeUnload = () => {
-      if (!hasSavedRef.current) {
-        saveFn(dataRef.current);
-        hasSavedRef.current = true;
-      }
-    };
-
-    // window object only exists in web, not React Native
-    // if (typeof window !== 'undefined') {
-    //   window.addEventListener('beforeunload', handleBeforeUnload);
-    // }
     return () => {
       subscription.remove();
-      // window object only exists in web, not React Native
-      // if (typeof window !== 'undefined') {
-      //   window.removeEventListener('beforeunload', handleBeforeUnload);
-      // }
     };
-  }, [enabled, critical, saveFn]);
+  }, [enabled, critical]);
 }
 
 /**

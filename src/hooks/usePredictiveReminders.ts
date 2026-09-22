@@ -9,7 +9,7 @@
 //   ✓ Robust to missing data (no crashes on empty history)
 // ─────────────────────────────────────────────────────────────────────
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   differenceInHours,
   differenceInDays,
@@ -72,6 +72,16 @@ export const usePredictiveReminders = () => {
   const { getEntries } = useTracker();
   const { currentBaby, growthData } = useBaby();
 
+  // Stable ref — `getEntries` is a fresh function reference every provider
+  // render, so memoizing on it directly would thrash. All call-sites below
+  // use `getEntriesStable`.
+  const getEntriesRef = useRef(getEntries);
+  getEntriesRef.current = getEntries;
+  const getEntriesStable = useCallback(
+    (...args: Parameters<typeof getEntries>) => getEntriesRef.current(...args),
+    []
+  );
+
   // ─── REAL growth intelligence (was hardcoded) ────────────────────
   // Call the hook ONCE unconditionally (Rules of Hooks), but memoize
   // the expensive downstream computation via the module cache above.
@@ -95,7 +105,7 @@ export const usePredictiveReminders = () => {
     // ═══════════════════════════════════════════════════════════════
     // 1. FEEDING — predictive based on average interval
     // ═══════════════════════════════════════════════════════════════
-    const feedEntries = getEntries('feed', 20);
+    const feedEntries = getEntriesStable('feed', 20);
     if (feedEntries.length >= 3) {
       const intervals: number[] = [];
       for (let i = 1; i < feedEntries.length; i++) {
@@ -151,7 +161,7 @@ export const usePredictiveReminders = () => {
     // ═══════════════════════════════════════════════════════════════
     // 2. SLEEP — uses REAL rest score from growth index
     // ═══════════════════════════════════════════════════════════════
-    const sleepEntries = getEntries('sleep', 14);
+    const sleepEntries = getEntriesStable('sleep', 14);
     if (sleepEntries.length >= 5) {
       const bedtimes = sleepEntries
         .filter(e => e.data?.sleepType === 'night')
@@ -231,7 +241,7 @@ export const usePredictiveReminders = () => {
       const recommendedInterval = ageInMonths < 6 ? 14 : ageInMonths < 12 ? 30 : 60;
 
       if (daysSince > recommendedInterval * 0.8) {
-        const growthEntriesForType = (getEntries('growth', 50) || []);
+        const growthEntriesForType = (getEntriesStable('growth', 50) || []);
         const measurementTypes = new Set(
           growthEntriesForType
             .map(e => String(e.data?.measurementType ?? '').toLowerCase())
@@ -310,8 +320,8 @@ export const usePredictiveReminders = () => {
     // ═══════════════════════════════════════════════════════════════
     const healthScore = growthIndex?.healthStability?.value ?? 100;
     if (healthScore < 60) {
-      const tempEntries = getEntries('temperature', 7);
-      const symptomEntries = getEntries('symptom', 7);
+      const tempEntries = getEntriesStable('temperature', 7);
+      const symptomEntries = getEntriesStable('symptom', 7);
 
       if (tempEntries.length > 0 || symptomEntries.length > 0) {
         const lastTempEntry = tempEntries[0];
@@ -354,7 +364,7 @@ export const usePredictiveReminders = () => {
     // ═══════════════════════════════════════════════════════════════
     // 6. POTTY TRAINING
     // ═══════════════════════════════════════════════════════════════
-    const pottyEntries = getEntries('potty', 30);
+    const pottyEntries = getEntriesStable('potty', 30);
     if (pottyEntries.length >= 10) {
       const successful = pottyEntries.filter(e => e.data?.successful).length;
       const successRate = (successful / pottyEntries.length) * 100;
@@ -392,7 +402,7 @@ export const usePredictiveReminders = () => {
         priorityWeight[b.priority] * b.confidence -
         priorityWeight[a.priority] * a.confidence
     );
-  }, [getEntries, currentBaby, growthData, growthIndex, ageInMonths]);
+  }, [getEntriesStable, currentBaby, growthData, growthIndex, ageInMonths]);
 
   return { reminders };
 };

@@ -1,7 +1,7 @@
 // src/hooks/useGrowthIntelligence.ts
 // FIX: Use direct imports
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { differenceInMonths, differenceInDays, differenceInHours, subDays, subMonths } from 'date-fns';
 
@@ -173,6 +173,17 @@ export const useGrowthIntelligence = () => {
   const { entries, getEntries } = useTracker();
   const { currentBaby, growthData, milestones } = useBaby();
 
+  // Stable refs so downstream useMemo deps don't thrash.
+  const getEntriesRef = useRef(getEntries);
+  getEntriesRef.current = getEntries;
+  // Stable reference — the tracker context returns a fresh `getEntries`
+  // function on every provider render, which would thrash every memo
+  // below. All call-sites and deps use `getEntriesStable`.
+  const getEntriesStable = useCallback(
+    (...args: Parameters<typeof getEntries>) => getEntriesRef.current(...args),
+    []
+  );
+
   const ageInMonths = useMemo(() => {
     if (!currentBaby?.birthDate) return 0;
     const birth = safeParseDate(currentBaby.birthDate);
@@ -185,7 +196,7 @@ export const useGrowthIntelligence = () => {
 
   const mergedGrowthData = useMemo(() => {
     // ─── Primary source: tracker_entries (real Supabase data) ────
-    const fromEntries = (getEntries('growth', 500) || [])
+    const fromEntries = (getEntriesStable('growth', 500) || [])
       .map(e => {
         const d = (e.data || {}) as Record<string, unknown>;
         // `measurementType` is the canonical field; fall back to `type`
@@ -236,11 +247,11 @@ export const useGrowthIntelligence = () => {
       merged.push(g);
     }
     return merged;
-  }, [growthData, getEntries]);
+  }, [growthData, getEntriesStable]);
 
   const achievedMilestoneIds = useMemo(() => {
     // ─── Primary source: tracker_entries with tracker_type='milestone' ──
-    const fromTracker = (getEntries('milestone', 300) || [])
+    const fromTracker = (getEntriesStable('milestone', 300) || [])
       .map(e => {
         const d = (e.data || {}) as Record<string, unknown>;
         // Try title → name → milestone fields
@@ -255,10 +266,10 @@ export const useGrowthIntelligence = () => {
       .filter(Boolean);
 
     return new Set([...fromContext, ...fromTracker]);
-  }, [milestones, getEntries, entries]);
+  }, [milestones, getEntriesStable, entries]);
 
   const nutritionScore = useMemo((): SubScore => {
-    const feedEntries = getEntries('feed', 30) || [];
+    const feedEntries = getEntriesStable('feed', 30) || [];
     const last7Days = feedEntries.filter(e => e.timestamp > subDays(new Date(), 7).getTime());
 
     if (feedEntries.length === 0) {
@@ -318,7 +329,7 @@ export const useGrowthIntelligence = () => {
   }, [getEntries, ageInMonths]);
 
   const restScore = useMemo((): SubScore => {
-    const sleepEntries = getEntries('sleep', 30) || [];
+    const sleepEntries = getEntriesStable('sleep', 30) || [];
     const last7Days = sleepEntries.filter(e => e.timestamp > subDays(new Date(), 7).getTime());
 
     if (sleepEntries.length === 0) {
@@ -443,10 +454,9 @@ export const useGrowthIntelligence = () => {
   }, [mergedGrowthData, ageInMonths, gender, currentBaby?.birthDate]);
 
   const cognitiveScore = useMemo((): SubScore => {
-    const milestoneEntries = getEntries('milestone', 50) || [];
-    const playEntries = getEntries('play', 30) || [];
-    const readingEntries = getEntries('reading', 30) || [];
-
+    const milestoneEntries = getEntriesStable('milestone', 50) || [];
+const playEntries = getEntriesStable('play', 30) || [];
+const readingEntries = getEntriesStable('reading', 30) || [];
     const expectedMilestones = Object.entries(MILESTONE_CALENDAR)
       .filter(([_, data]) => data.window.start <= ageInMonths)
       .map(([name, _]) => name);
@@ -474,13 +484,12 @@ export const useGrowthIntelligence = () => {
       trend: milestoneScore > 80 ? 'up' : 'stable',
       delta: achievedCount,
     };
-  }, [achievedMilestoneIds, getEntries, ageInMonths]);
+  }, [achievedMilestoneIds, getEntriesStable, ageInMonths]);
 
   const healthStability = useMemo((): SubScore => {
-    const tempEntries = getEntries('temperature', 30) || [];
-    const symptomEntries = getEntries('symptom', 30) || [];
-    const medicationEntries = getEntries('medication', 30) || [];
-
+    const tempEntries = getEntriesStable('temperature', 30) || [];
+const symptomEntries = getEntriesStable('symptom', 30) || [];
+const medicationEntries = getEntriesStable('medication', 30) || [];
     const feverEntries = tempEntries.filter(e => {
       const val = safeNumber(e.data?.value, 0);
       const unit = String(e.data?.unit || '');
@@ -509,7 +518,7 @@ export const useGrowthIntelligence = () => {
       trend: daysSinceFever > 14 ? 'up' : daysSinceFever < 3 ? 'down' : 'stable',
       delta: daysSinceFever,
     };
-  }, [entries, getEntries]);
+  }, [entries, getEntriesStable]);
 
   const milestoneReadiness = useMemo((): MilestoneReadiness[] => {
     const achievedTitles = achievedMilestoneIds;
@@ -525,10 +534,10 @@ export const useGrowthIntelligence = () => {
         const prerequisitesMet = data.prerequisites.every(p => achievedTitles.has(p));
         const windowProgress = Math.max(0, (currentAge - data.window.start) / (data.window.end - data.window.start));
 
-        const relatedEntries = data.category === 'physical' ? getEntries('tummy_time', 14) :
-          data.category === 'language' ? getEntries('reading', 14) :
-          data.category === 'social' ? getEntries('mood', 14) :
-          data.category === 'cognitive' ? getEntries('play', 14) : [];
+        const relatedEntries = data.category === 'physical' ? getEntriesStable('tummy_time', 14) :
+  data.category === 'language' ? getEntriesStable('reading', 14) :
+  data.category === 'social' ? getEntriesStable('mood', 14) :
+  data.category === 'cognitive' ? getEntriesStable('play', 14) : [];
 
         const activityBonus = Math.min(20, (relatedEntries || []).length * 5);
         const readiness = Math.min(100, (windowProgress * 60) + (prerequisitesMet ? 20 : 0) + activityBonus);
@@ -547,7 +556,7 @@ export const useGrowthIntelligence = () => {
       })
       .sort((a, b) => b.readinessPercent - a.readinessPercent)
       .slice(0, 3);
-  }, [achievedMilestoneIds, ageInMonths, getEntries]);
+  }, [achievedMilestoneIds, ageInMonths, getEntriesStable]);
 
   const velocityTrends = useMemo(() => {
     const safeGrowthData = mergedGrowthData;
@@ -712,12 +721,12 @@ export const useGrowthIntelligence = () => {
     if (!key) return null;
     const dimScores = { nutritionScore, restScore, physicalScore, cognitiveScore, healthStability };
     const thirtyDaysAgo = subDays(new Date(), 30).getTime();
-    const entries30d = typeof getEntries === 'function'
-      ? (getEntries(trackerId, 200) || []).filter(e => e.timestamp > thirtyDaysAgo).length
-      : 0;
+    const entries30d = typeof getEntriesStable === 'function'
+  ? (getEntriesStable(trackerId, 200) || []).filter(e => e.timestamp > thirtyDaysAgo).length
+  : 0;
     const score = Math.round(dimScores[key].value * 0.6 + Math.min(100, (entries30d / 14) * 100) * 0.4);
     return { trackerId, dimension: key, score: Math.max(0, Math.min(100, score)), entries30d };
-  }, [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, getEntries]);
+  }, [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, getEntriesStable]);
 
   const generateReminders = useCallback((_entries: TrackerEntry[], _trackers: any[], _score: any) => {
     const reminders: { id: string; title: string; body: string; emoji: string; priority: 'low' | 'medium' | 'high' }[] = [];
@@ -739,7 +748,7 @@ export const useGrowthIntelligence = () => {
     }
 
     const nutritionGuide = getGuidelineForAge(NUTRITION_GUIDELINES, ageInMonths);
-    const feedWeek = (getEntries('feed', 60) || []).filter(e => e.timestamp > now - 7 * dayMs);
+    const feedWeek = (getEntriesStable('feed', 60) || []).filter(e => e.timestamp > now - 7 * dayMs);
     if (feedWeek.length >= 3 && nutritionScore.value < 55) {
       reminders.push({
         id: 'rem_nutrition_gap',
@@ -773,7 +782,7 @@ export const useGrowthIntelligence = () => {
       }
     });
 
-    const recentFever = (getEntries('temperature', 10) || []).some(e => {
+    const recentFever = (getEntriesStable('temperature', 10) || []).some(e => {
       const val = safeNumber(e.data?.value, 0);
       const unit = String(e.data?.unit || '');
       const celsius = unit === 'fahrenheit' ? (val - 32) * 5 / 9 : val;
@@ -790,7 +799,7 @@ export const useGrowthIntelligence = () => {
     }
 
     return reminders;
-  }, [mergedGrowthData, ageInMonths, nutritionScore.value, restScore.value, milestoneReadiness, getEntries]);
+  }, [mergedGrowthData, ageInMonths, nutritionScore.value, restScore.value, milestoneReadiness, getEntriesStable]);
 
   const checkNewAchievements = useCallback((_entries: TrackerEntry[], _score: any, unlocked: string[]) => {
     const candidates = [

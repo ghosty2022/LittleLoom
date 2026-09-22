@@ -1,7 +1,7 @@
 // src/hooks/useTrackerAchievements.ts
 // FIX: Use direct imports, not useSafeContexts
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { differenceInDays, differenceInHours, isSameDay, subDays, format, addHours, addDays } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../utils/supabase';
@@ -125,6 +125,22 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
   const baby = useBaby();
   const { growthIndex } = useGrowthIntelligence();
   const { reminders: predictiveReminders } = usePredictiveReminders();
+
+  // ─── Stable refs — keep the 200+ achievement useMemo from re-running
+  //     on every provider render (tracker.getEntries + tracker.entries
+  //     are fresh references every pass).
+  const getEntriesRef = useRef(tracker?.getEntries);
+  getEntriesRef.current = tracker?.getEntries;
+  const getEntriesStable = useCallback(
+    (...args: any[]) => (getEntriesRef.current as any)?.(...args) ?? [],
+    []
+  );
+
+  const achievementsFingerprint = `${
+    tracker?.entries?.length ?? 0
+  }:${growthIndex?.compositeIndex ?? 0}:${
+    (predictiveReminders || []).length
+  }`;
 
   const [unlockedHistory, setUnlockedHistory] = useState<Set<string>>(new Set());
   const [unlockedAtMap, setUnlockedAtMap] = useState<Record<string, number>>({});
@@ -260,17 +276,17 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
     const allEntries = (tracker?.entries || []).filter((e: any) => e.babyId === babyId && !e.isDeleted);
     const totalActivities = allEntries.length;
 
-    const feedEntries = tracker?.getEntries ? tracker.getEntries('feed') : [];
-    const sleepEntries = tracker?.getEntries ? tracker.getEntries('sleep') : [];
-    const pottyEntries = tracker?.getEntries ? tracker.getEntries('potty') : [];
-    const diaperEntries = tracker?.getEntries ? tracker.getEntries('diaper') : [];
-    const growthEntries = tracker?.getEntries ? tracker.getEntries('growth') : [];
-    const milestoneEntries = tracker?.getEntries ? tracker.getEntries('milestone') : [];
-    const medicationEntries = tracker?.getEntries ? tracker.getEntries('medication') : [];
-    const temperatureEntries = tracker?.getEntries ? tracker.getEntries('temperature') : [];
-    const symptomEntries = tracker?.getEntries ? tracker.getEntries('symptom') : [];
-    const noteEntries = tracker?.getEntries ? tracker.getEntries('note') : [];
-    const pumpingEntries = tracker?.getEntries ? tracker.getEntries('pumping') : [];
+    const feedEntries = getEntriesStable('feed') as any[];
+    const sleepEntries = getEntriesStable('sleep') as any[];
+    const pottyEntries = getEntriesStable('potty') as any[];
+    const diaperEntries = getEntriesStable('diaper') as any[];
+    const growthEntries = getEntriesStable('growth') as any[];
+    const milestoneEntries = getEntriesStable('milestone') as any[];
+    const medicationEntries = getEntriesStable('medication') as any[];
+    const temperatureEntries = getEntriesStable('temperature') as any[];
+    const symptomEntries = getEntriesStable('symptom') as any[];
+    const noteEntries = getEntriesStable('note') as any[];
+    const pumpingEntries = getEntriesStable('pumping') as any[];
 
     const totalFeed = feedEntries.length;
     const totalSleep = sleepEntries.length;
@@ -961,8 +977,21 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
       ...predictiveAchievements,
     ];
 
+    // NOTE: `getEntries` below is called via the stable ref captured at
+    //       the top of the hook so the memo doesn't thrash. See top of
+    //       hook for `getEntriesStable`.
     return built.map((a) => ({ ...a, unlockedAt: unlockedAtMap[a.id] }));
-  }, [tracker, baby, growthIndex, predictiveReminders, unlockedHistory, unlockedAtMap, refreshToken]);
+  }, [
+    // Fingerprint — NOT the full context objects
+    achievementsFingerprint,
+    baby?.currentBaby?.id,
+    baby?.currentBaby?.birthDate,
+    growthIndex,
+    predictiveReminders,
+    unlockedHistory,
+    unlockedAtMap,
+    refreshToken,
+  ]);
 
   /* ── Detect newly unlocked ── */
   useEffect(() => {

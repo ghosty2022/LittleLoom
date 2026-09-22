@@ -123,7 +123,7 @@ export const useTimelineCorrelations = () => {
       seen.add(c.id);
       return true;
     }).slice(0, 10);
-  }, [entries, getEntries]);
+  }, [entries, entries.length]);
 
   return { correlations };
 };
