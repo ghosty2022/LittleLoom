@@ -1185,11 +1185,15 @@ export const PediatricianPDFExport: React.FC = () => {
       ${baby?.medicalNotes ? `<div class="info-box"><strong>Medical Notes:</strong> ${escapeHtml(baby.medicalNotes)}</div>` : ''}
     `;
 
-    // ─── Summary block ────────────────────────────────────────────────
+    // ─── Summary block — derived from real tracker entries ──────────
     const summaryHTML = () => {
-      const recentVisits = filteredEntries.filter((e) => ['doctor_visit', 'dental_visit', 'therapy'].includes(e.trackerId));
+      const recentVisits = filteredEntries.filter((e) => 
+        ['doctor_visit', 'dental_visit', 'therapy', 'vaccine'].includes(e.trackerId)
+      );
       const recentMeds = filteredEntries.filter((e) => e.trackerId === 'medication');
-      const recentSymptoms = filteredEntries.filter((e) => ['symptom', 'temperature', 'allergy'].includes(e.trackerId));
+      const recentSymptoms = filteredEntries.filter((e) => 
+        ['symptom', 'temperature', 'allergy', 'symptom'].includes(e.trackerId)
+      );
       return `<div class="section"><h2>📋 Visit Summary</h2><p style="color:#64748b;font-size:13px;margin-bottom:16px;">Report period: <strong>${rangeLabel}</strong> | Generated: ${format(new Date(), 'MMM d, yyyy h:mm a')}</p><div class="grid-2"><div class="card"><strong>Total Entries</strong><br/><span style="font-size:24px;font-weight:800;color:#667eea;">${filteredEntries.length}</span></div><div class="card"><strong>Health Events</strong><br/><span style="font-size:24px;font-weight:800;color:#ef4444;">${recentVisits.length}</span></div><div class="card"><strong>Medications</strong><br/><span style="font-size:24px;font-weight:800;color:#f59e0b;">${recentMeds.length}</span></div><div class="card"><strong>Symptoms</strong><br/><span style="font-size:24px;font-weight:800;color:#8b5cf6;">${recentSymptoms.length}</span></div></div></div>`;
     };
 

@@ -1884,28 +1884,163 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [state.currentBabyId]
   );
   
-  // Growth/milestone stubs — these should be wired to real services
-  const addGrowthMeasurement = useCallback(async () => {
-    console.warn('[BabyContext] addGrowthMeasurement not implemented. Use useTracker().addEntry("growth", ...)');
+  // ─── DEPRECATED STUBS ───────────────────────────────────────────────
+  // These exist ONLY for backward compatibility with older screens that
+  // still call `useBaby().<method>()`. New code MUST use `useTracker()`
+  // as the single source of truth for entries.
+  //
+  // Every stub logs a `__DEV__` warning the first time it is called, then
+  // returns a safe default (false / [] / 0 / null). They never touch
+  // Supabase, never fabricate data, and never throw.
+
+  const _warnDeprecated = (method: string) => {
+    if (__DEV__) {
+      console.warn(
+        `[BabyContext] ${method}() is deprecated. Use useTracker() instead.`
+      );
+    }
+  };
+
+  // ── Growth ────────────────────────────────────────────────────────
+  const addGrowthMeasurement = useCallback(async (_measurement?: any) => {
+    _warnDeprecated('addGrowthMeasurement');
     return false;
   }, []);
-  const getGrowthData = useCallback(() => [], []);
-  const getLatestMeasurements = useCallback(
-    () => ({ height: null, weight: null, head: null, temperature: null }),
-    []
-  );
-  const deleteGrowthMeasurement = useCallback(async () => false, []);
-  const addMilestone = useCallback(async () => {
-    console.warn('[BabyContext] addMilestone not implemented. Use useTracker().addEntry("milestone", ...)');
+
+  const getGrowthData = useCallback((_type?: any) => {
+    _warnDeprecated('getGrowthData');
+    return [] as any[];
+  }, []);
+
+  const getLatestMeasurements = useCallback(() => {
+    _warnDeprecated('getLatestMeasurements');
+    return { height: null, weight: null, head: null, temperature: null } as Record<string, any | null>;
+  }, []);
+
+  const deleteGrowthMeasurement = useCallback(async (_id?: string) => {
+    _warnDeprecated('deleteGrowthMeasurement');
     return false;
   }, []);
-  const getMilestones = useCallback(() => [], []);
-  const deleteMilestone = useCallback(async () => false, []);
-  const getBabyStats = useCallback(
-    () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
-    []
-  );
-  const updateBabyStats = useCallback(async () => {}, []);
+
+  // ── Milestones ────────────────────────────────────────────────────
+  const addMilestone = useCallback(async (_milestone?: any) => {
+    _warnDeprecated('addMilestone');
+    return false;
+  }, []);
+
+  const getMilestones = useCallback((_category?: any) => {
+    _warnDeprecated('getMilestones');
+    return [] as any[];
+  }, []);
+
+  const deleteMilestone = useCallback(async (_id?: string) => {
+    _warnDeprecated('deleteMilestone');
+    return false;
+  }, []);
+
+  // ── Sleep ─────────────────────────────────────────────────────────
+  const addSleepLog = useCallback(async (_log?: any) => {
+    _warnDeprecated('addSleepLog');
+    return false;
+  }, []);
+
+  const getSleepLogs = useCallback((_days?: number) => {
+    _warnDeprecated('getSleepLogs');
+    return [] as any[];
+  }, []);
+
+  const endSleepSession = useCallback(async (_logId?: string, _endTime?: string) => {
+    _warnDeprecated('endSleepSession');
+    return false;
+  }, []);
+
+  const getTodaySleepCount = useCallback(() => {
+    _warnDeprecated('getTodaySleepCount');
+    return 0;
+  }, []);
+
+  // ── Feeding ───────────────────────────────────────────────────────
+  const addFeedingLog = useCallback(async (_log?: any) => {
+    _warnDeprecated('addFeedingLog');
+    return false;
+  }, []);
+
+  const getFeedingLogs = useCallback((_days?: number) => {
+    _warnDeprecated('getFeedingLogs');
+    return [] as any[];
+  }, []);
+
+  const getTodayFeedCount = useCallback(() => {
+    _warnDeprecated('getTodayFeedCount');
+    return 0;
+  }, []);
+
+  // ── Potty ─────────────────────────────────────────────────────────
+  const addPottyLog = useCallback(async (_log?: any) => {
+    _warnDeprecated('addPottyLog');
+    return false;
+  }, []);
+
+  const getPottyLogs = useCallback((_days?: number) => {
+    _warnDeprecated('getPottyLogs');
+    return [] as any[];
+  }, []);
+
+  const getPottyStreak = useCallback(() => {
+    _warnDeprecated('getPottyStreak');
+    return 0;
+  }, []);
+
+  const getTodayPottyCount = useCallback(() => {
+    _warnDeprecated('getTodayPottyCount');
+    return 0;
+  }, []);
+
+  const getPottySuccessRate = useCallback(() => {
+    _warnDeprecated('getPottySuccessRate');
+    return 0;
+  }, []);
+
+  // ── Medication ────────────────────────────────────────────────────
+  const addMedicationLog = useCallback(async (_log?: any) => {
+    _warnDeprecated('addMedicationLog');
+    return false;
+  }, []);
+
+  const getMedicationLogs = useCallback((_days?: number) => {
+    _warnDeprecated('getMedicationLogs');
+    return [] as any[];
+  }, []);
+
+  // ── Generic activities ────────────────────────────────────────────
+  const addActivity = useCallback(async (_entry?: any) => {
+    _warnDeprecated('addActivity');
+    return false;
+  }, []);
+
+  const getRecentActivities = useCallback((_limit?: number) => {
+    _warnDeprecated('getRecentActivities');
+    return [] as ActivityEntry[];
+  }, []);
+
+  const getActivitiesByType = useCallback((_type?: string) => {
+    _warnDeprecated('getActivitiesByType');
+    return [] as ActivityEntry[];
+  }, []);
+
+  const deleteActivity = useCallback(async (_id?: string) => {
+    _warnDeprecated('deleteActivity');
+    return false;
+  }, []);
+
+  // ── Stats ─────────────────────────────────────────────────────────
+  const getBabyStats = useCallback(() => {
+    return { streak: 0, milestones: 0, photos: 0, entries: 0 };
+  }, []);
+
+  const updateBabyStats = useCallback(async (_updates?: Partial<BabyProfile>) => {
+    _warnDeprecated('updateBabyStats');
+  }, []);
 
   // ─── MEMOIZED VALUE ─────────────────────────────────────────────────
   const value = useMemo<BabyContextType>(

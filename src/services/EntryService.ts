@@ -87,34 +87,92 @@ function sanitizeTags(tags?: string[] | null): string[] {
 }
 
 // ─── Map Row → TrackerEntry ─────────────────────────────────────────
+//
+// Canonical row-to-entry mapper. Used by:
+//   • EntryService.getEntries / getEntryById
+//   • TrackerContext's realtime subscription callback
+//
+// Handles every shape Supabase can return:
+//   • timestamptz as ISO string OR epoch ms number
+//   • data as jsonb object OR JSON string
+//   • photo_uris / tags / linked_entries as jsonb array OR null
+//   • Missing timestamp → falls back to created_at → Date.now()
 
 export function mapRowToEntry(row: any): TrackerEntry {
+  if (!row) {
+    throw new Error('[mapRowToEntry] Received null/undefined row');
+  }
+
+  // ── Timestamp: normalize to epoch ms, never NaN ──────────────────
+  const rawTs = row.timestamp ?? row.created_at;
+  const tsMs =
+    typeof rawTs === 'number'
+      ? rawTs
+      : typeof rawTs === 'string'
+        ? new Date(rawTs).getTime()
+        : Date.now();
+  const timestamp = Number.isFinite(tsMs) ? tsMs : Date.now();
+
+  // ── Photo URIs: jsonb array → clean string[] ─────────────────────
+  const photoUris: string[] | undefined = Array.isArray(row.photo_uris)
+    ? row.photo_uris.filter(
+        (u: unknown): u is string => typeof u === 'string' && u.length > 0
+      )
+    : undefined;
+
+  // ── Tags: jsonb array → clean string[] ───────────────────────────
+  const tags: string[] | undefined = Array.isArray(row.tags)
+    ? row.tags.filter(
+        (t: unknown): t is string => typeof t === 'string' && t.length > 0
+      )
+    : undefined;
+
+  // ── Linked entries: jsonb array or [] ────────────────────────────
+  const linkedEntries = Array.isArray(row.linked_entries)
+    ? row.linked_entries
+    : [];
+
+  // ── Data: jsonb object OR JSON string ────────────────────────────
+  let parsedData: Record<string, unknown> = {};
+  if (row.data && typeof row.data === 'object') {
+    parsedData = row.data;
+  } else if (typeof row.data === 'string') {
+    try {
+      parsedData = JSON.parse(row.data);
+    } catch {
+      parsedData = {};
+    }
+  }
+
+  // ── Edited-at: normalize to epoch ms or undefined ────────────────
+  let editedAt: number | undefined;
+  if (typeof row.edited_at === 'number') {
+    editedAt = row.edited_at;
+  } else if (typeof row.edited_at === 'string') {
+    const parsed = new Date(row.edited_at).getTime();
+    editedAt = Number.isFinite(parsed) ? parsed : undefined;
+  }
+
   return {
-    id: row.id,
-    babyId: row.baby_id,
-    trackerId: row.tracker_id || row.tracker_type,
-    timestamp:
-      typeof row.timestamp === 'number'
-        ? row.timestamp
-        : new Date(row.timestamp).getTime(),
-    title: row.title || '',
-    data:
-      typeof row.data === 'string'
-        ? JSON.parse(row.data)
-        : row.data || {},
-    loggedBy: row.logged_by || '',
-    loggedByName: row.logged_by_name || '',
+    id: String(row.id),
+    babyId: String(row.baby_id),
+    trackerId: String(row.tracker_id || row.tracker_type || 'custom'),
+    timestamp,
+    title: String(row.title || ''),
+    data: parsedData,
+    loggedBy: String(row.logged_by || ''),
+    loggedByName: String(row.logged_by_name || ''),
     loggedByRole: (row.logged_by_role as any) || 'parent1',
     notes: row.notes || undefined,
-    photoUris: row.photo_uris || undefined,
-    tags: row.tags || undefined,
+    photoUris,
+    tags,
     notificationId: row.notification_id || undefined,
-    reminderScheduled: row.reminder_scheduled || false,
+    reminderScheduled: row.reminder_scheduled === true,
     syncedAt: row.synced_at || undefined,
     editedBy: row.edited_by || undefined,
-    editedAt: row.edited_at || undefined,
-    isDeleted: row.is_deleted || false,
-    linkedEntries: [],
+    editedAt,
+    isDeleted: row.is_deleted === true,
+    linkedEntries,
   };
 }
 
@@ -453,6 +511,20 @@ export async function warmCache(
   await writeCache(babyId, entries);
 }
 
+// ─── Get Cached Entries (offline read) ──────────────────────────────
+
+export async function getCachedEntries(
+  babyId: string
+): Promise<TrackerEntry[]> {
+  try {
+    const raw = await AsyncStorage.getItem(cacheKey(babyId));
+    if (!raw) return [];
+    return JSON.parse(raw) as TrackerEntry[];
+  } catch {
+    return [];
+  }
+}
+
 // ─── Cleanup (used on sign-out) ─────────────────────────────────────
 
 export async function clearEntryCache(): Promise<void> {
@@ -474,6 +546,7 @@ export const EntryService = {
   restoreEntry,
   getEntries,
   getEntryById,
+  getCachedEntries,
   warmCache,
   clearEntryCache,
   buildSupabasePayload,

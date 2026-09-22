@@ -89,6 +89,30 @@ const MILESTONE_CATEGORIES = [
 
 const EMOJI_OPTIONS = ['👶', '👧', '👦', '🧒', '👼', '🤱', '🍼', '🧸', '🎈', '🌟', '🦁', '🐯', '🐻', '🐨', '🐼', '🐸', '🦄', '🌈', '⭐', '🔆'];
 
+// ─── TRACKER META — display metadata keyed by trackerId ──────────────
+// Used to render real tracker_entries in the activity feed without
+// hardcoding colors/emojis per call site.
+const TRACKER_META: Record<string, { emoji: string; color: string; label: string }> = {
+  feed:          { emoji: '🍼', color: '#fa709a', label: 'Feeding' },
+  sleep:         { emoji: '🌙', color: '#11998e', label: 'Sleep' },
+  diaper:        { emoji: '👶', color: '#8B5CF6', label: 'Diaper' },
+  potty:         { emoji: '💧', color: '#667eea', label: 'Potty' },
+  growth:        { emoji: '📏', color: '#43e97b', label: 'Growth' },
+  milestone:     { emoji: '🏆', color: '#ffd700', label: 'Milestone' },
+  medication:    { emoji: '💊', color: '#ff6b6b', label: 'Medication' },
+  temperature:   { emoji: '🌡️', color: '#ef4444', label: 'Temperature' },
+  symptom:       { emoji: '🤒', color: '#f97316', label: 'Symptom' },
+  vaccine:       { emoji: '💉', color: '#3b82f6', label: 'Vaccine' },
+  pumping:       { emoji: '🤱', color: '#ec4899', label: 'Pumping' },
+  bath:          { emoji: '🛁', color: '#3b82f6', label: 'Bath' },
+  tummy_time:    { emoji: '🤸', color: '#10b981', label: 'Tummy Time' },
+  reading:       { emoji: '📚', color: '#6366f1', label: 'Reading' },
+  walk:          { emoji: '🚶', color: '#0ea5e9', label: 'Walk' },
+  note:          { emoji: '📝', color: '#64748b', label: 'Note' },
+  mood:          { emoji: '😊', color: '#f59e0b', label: 'Mood' },
+  default:       { emoji: '•',  color: '#94a3b8', label: 'Activity' },
+};
+
 type BabyFamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 type ProfileTab = 'overview' | 'milestones' | 'health' | 'danger';
 
@@ -461,8 +485,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     babies, updateBaby, currentBaby, currentBabyId, addMilestone, deleteMilestone,
     loadBabies, switchBaby, deleteBaby, milestones, calculateAge,
   } = useBaby();
-  // useTracker is the single source of truth - no useActivity
-  const { entries: trackerEntries, getEntries: getTrackerEntries, refreshEntries } = useTracker();
+  // useTracker is the single source of truth for all tracker entries.
+  // NOTE: Do NOT re-declare `trackerEntries` later in this component —
+  // it will cause a "Identifier has already been declared" SyntaxError.
+  const { entries: trackerEntries, refreshEntries } = useTracker();
   const { members, loadFamily } = useFamily();
 
   const isBabyMode = mode === 'baby';
@@ -1066,8 +1092,9 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   }, [loadFullData]);
 
   // ─── COMPUTED VALUES ──────────────────────────────────────────────────
-  // Use TrackerContext as the single source of truth
-  const { entries: trackerEntries, getEntries: getTrackerEntries } = useTracker();
+  // NOTE: trackerEntries, getTrackerEntries, and refreshEntries are already
+  // destructured from useTracker() near the top of this component.
+  // DO NOT re-declare them here — that causes a SyntaxError.
   
   const recentActivities = useMemo(() => {
     if (!currentBabyData?.id) return [];
@@ -1370,20 +1397,42 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                 </GlassCard>
               ) : (
                 <View style={styles.activitiesList}>
-                  {recentActivities.slice(0, 5).map((activity, index) => (
-                    <GlassCard key={activity.id || index} style={styles.activityCard} delay={index * 60} isDark={isDark} colors={themeColors}>
-                      <View style={styles.activityRow}>
-                        <View style={[styles.activityIcon, { backgroundColor: `${activity.color || '#6366f1'}18` }]}>
-                          <Text style={styles.activityEmoji}>{activity.icon || '📝'}</Text>
+                  {recentActivities.slice(0, 5).map((activity, index) => {
+                    // TrackerEntry fields — derive display values from real data
+                    const trackerId = String((activity as any).trackerId || (activity as any).type || 'note');
+                    const trackerMeta = TRACKER_META[trackerId] || TRACKER_META.default;
+                    const timeValue = (activity as any).timestamp;
+                    const validTime = typeof timeValue === 'number' && !isNaN(timeValue);
+
+                    return (
+                      <GlassCard
+                        key={(activity as any).id || index}
+                        style={styles.activityCard}
+                        delay={index * 60}
+                        isDark={isDark}
+                        colors={themeColors}
+                      >
+                        <View style={styles.activityRow}>
+                          <View style={[styles.activityIcon, { backgroundColor: `${trackerMeta.color}18` }]}>
+                            <Text style={styles.activityEmoji}>{trackerMeta.emoji}</Text>
+                          </View>
+                          <View style={styles.activityContent}>
+                            <Text style={styles.activityTitle}>
+                              {(activity as any).title || trackerMeta.label}
+                            </Text>
+                            {(activity as any).notes ? (
+                              <Text style={styles.activityDetails} numberOfLines={2}>
+                                {(activity as any).notes}
+                              </Text>
+                            ) : null}
+                            <Text style={styles.activityTime}>
+                              {validTime ? format(timeValue, 'MMM d, h:mm a') : '—'}
+                            </Text>
+                          </View>
                         </View>
-                        <View style={styles.activityContent}>
-                          <Text style={styles.activityTitle}>{activity.title || 'Activity'}</Text>
-                          {activity.details && <Text style={styles.activityDetails} numberOfLines={2}>{activity.details}</Text>}
-                          <Text style={styles.activityTime}>{format(activity.timestamp, 'MMM d, h:mm a')}</Text>
-                        </View>
-                      </View>
-                    </GlassCard>
-                  ))}
+                      </GlassCard>
+                    );
+                  })}
                 </View>
               )}
             </Animated.View>

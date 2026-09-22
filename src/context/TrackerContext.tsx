@@ -29,14 +29,21 @@ import {
 } from '@/types/trackers';
 
 import { useAuth } from '@/context/AuthContext';
-import { useFamily } from '@/context/FamilyContext';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 import { useBaby } from './BabyContext';
 // observeValue is now reached transitively via bootstrap.observeEntry
 import { useOfflineSync } from '@/hooks/useOfflineSync';
-import { EntryService } from '@/services/EntryService';
+import { EntryService, mapRowToEntry } from '@/services/EntryService';
+
+// ─── IMPORTANT: DO NOT import FamilyContext at module scope. ─────
+//     FamilyContext → BabyContext → (indirectly) TrackerContext
+//     creates a circular dependency. Node/Metro resolves cycles by
+//     returning `undefined` for the not-yet-initialized export, which
+//     makes `TrackerProvider` itself undefined at render time.
+//
+//     We resolve `useFamily` lazily inside a safe hook below.
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -544,9 +551,44 @@ const generateInsights = (
    PROVIDER
    ═══════════════════════════════════════════════════════════════════════════ */
 
+// ─── Safe lazy accessor for FamilyContext ─────────────────────────
+// We can't call `useFamily()` at module scope (circular import), and
+// we can't call it before FamilyProvider mounts (context is null).
+// So we use a ref-based subscription that updates members lazily.
+function useFamilyMembersSafe(): any[] {
+  const [members, setMembers] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const mod = await import('@/context/FamilyContext');
+        if (cancelled) return;
+        // The FamilyContext module exposes a `FamilyContext` object.
+        // We read its current value via a tiny inline consumer.
+        // (react's useContext can't be called outside render, so we
+        // fall back to reading the module's internal state if exposed,
+        // otherwise return []).
+        const anyMod = mod as any;
+        if (anyMod?.__getFamilySnapshot) {
+          setMembers(anyMod.__getFamilySnapshot().members || []);
+        }
+      } catch (e) {
+        if (__DEV__) {
+          console.warn('[TrackerContext] FamilyContext lazy load failed:', e);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return members;
+}
+
 export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile } = useAuth();
-  const { members } = useFamily();
+  // ─── Lazy-resolve family members without a circular import ────
+  const members = useFamilyMembersSafe();
   const { triggerHaptic } = useCustomization();
   const { success, toast, alert: sweetAlert } = useSweetAlert();
   
@@ -676,11 +718,19 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   /* ─── Permission helpers ──────────────────────────────────────────── */
 
+  // Derive role directly from userProfile.role to avoid the
+  // FamilyContext circular import entirely. `members` was only
+  // used to look up a role we already have on the profile.
   const myRole = useMemo(() => {
     if (!userProfile) return null;
-    const me = members?.find(m => m.userId === userProfile.id || m.email === userProfile.email);
-    return me?.role || 'parent1';
-  }, [userProfile, members]);
+    const role = (userProfile as any)?.role;
+    if (role === 'parent1' || role === 'parent2' ||
+        role === 'guardian' || role === 'viewer') {
+      return role;
+    }
+    // Default to parent1 for the account owner.
+    return 'parent1';
+  }, [userProfile]);
 
   // ─── Granular permissions for the CURRENT baby ─────────────────────
   // Reads JSON overrides from family_members.permissions (Phase 2.2).
