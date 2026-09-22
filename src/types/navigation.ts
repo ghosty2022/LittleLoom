@@ -238,7 +238,11 @@ export type RootStackParamList = {
   } | undefined;
 
   // ── Insights ──
-  Insights: { babyId?: string; timeframe?: 'week' | 'month' | 'year' } | undefined;
+  Insights: {
+    babyId?: string;
+    timeframe?: 'week' | 'month' | 'year';
+    focusCategory?: string;
+  } | undefined;
 
   // ── Reminders ──
   TrackerReminders: {

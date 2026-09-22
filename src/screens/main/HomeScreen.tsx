@@ -20,7 +20,8 @@ import {
   UIManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-
+import CorrelationCard from '../../components/trackers/CorrelationCard';
+import PredictionCard from '../../components/trackers/PredictionCard';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
@@ -2085,6 +2086,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             </TouchableOpacity>
           </Animated.View>
         )}
+
+        {/* ═══ AI PREDICTIONS ═══ */}
+        {hasBaby && (
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
+            <PredictionCard />
+          </View>
+        )}
+
 
         {/* ═══ GROWTH SNAPSHOT KPIs with Yesterday comparison ═══ */}
         {hasBaby && growthStats && (

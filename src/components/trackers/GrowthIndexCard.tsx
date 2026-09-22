@@ -106,7 +106,19 @@ export const GrowthIndexCard: React.FC = () => {
         colors={[gradientStart + '15', gradientEnd + '08']}
         style={[StyleSheet.absoluteFill, { borderRadius: borderRadiusValue * 1.5 }]}
       />
-      
+
+      {/* ─── View full insights link ──────────────────────────────── */}
+      <TouchableOpacity
+        onPress={() => navigation.navigate('Insights' as never)}
+        style={styles.viewInsightsRow}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.viewInsightsText, { color: gradientStart }]}>
+          View full insights
+        </Text>
+        <Ionicons name="chevron-forward" size={14} color={gradientStart} />
+      </TouchableOpacity>
+
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -387,6 +399,16 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 10,
   },
+    viewInsightsRow: {
+    position: 'absolute',
+    top: 14,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    zIndex: 2,
+  },
+  viewInsightsText: { fontSize: 12, fontWeight: '700' },
   checkupText: {
     fontWeight: '600',
     flex: 1,

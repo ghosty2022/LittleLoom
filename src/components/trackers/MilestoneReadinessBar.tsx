@@ -39,16 +39,30 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
             borderWidth: 1.5,
           },
         ]}
-        onPress={() => navigation.navigate('AddEntry', {
-          trackerId: 'milestone',
-          presetData: { category: readiness.category },
-        })}
+        onPress={() => navigation.navigate('Insights', {
+          focusCategory: readiness.category,
+        } as never)}
         activeOpacity={0.85}
       >
         <LinearGradient
           colors={[`${colors[0]}08`, `${colors[1]}04`]}
           style={[StyleSheet.absoluteFill, { borderRadius: borderRadiusValue }]}
         />
+
+        {/* ─── Log shortcut ─────────────────────────────────────── */}
+        <TouchableOpacity
+          onPress={() =>
+            navigation.navigate('AddEntry', {
+              trackerId: 'milestone',
+              presetData: { category: readiness.category },
+            } as never)
+          }
+          style={[styles.logShortcut, { backgroundColor: colors[0] }]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="add" size={14} color="#fff" />
+          <Text style={styles.logShortcutText}>Log</Text>
+        </TouchableOpacity>
 
         <View style={styles.header}>
           <View style={[styles.iconContainer, { backgroundColor: `${colors[0]}20` }]}>
@@ -240,6 +254,19 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.05)',
   },
+    logShortcut: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    zIndex: 2,
+  },
+  logShortcutText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   footerText: {
     fontSize: 13,
     fontWeight: '500',
