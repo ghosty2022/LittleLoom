@@ -36,7 +36,7 @@ import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/
 import { useBaby } from './BabyContext';
 import { observeValue } from '@/services/ai/BayesianEngine';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
-import { EntryService, mapRowToEntry } from '@/services/EntryService';
+import { EntryService } from '@/services/EntryService';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -841,30 +841,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     }
   }, []);
 
-  /* ─── Helper: map a Supabase row → TrackerEntry (declared FIRST) ─── */
-  const mapRowToEntry = useCallback((row: any): TrackerEntry => ({
-    id: row.id,
-    babyId: row.baby_id,
-    trackerId: row.tracker_id,
-    timestamp: row.timestamp,
-    title: row.title || '',
-    data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
-    loggedBy: row.logged_by || '',
-    loggedByName: row.logged_by_name || '',
-    loggedByRole: (row.logged_by_role as any) || 'parent1',
-    notes: row.notes || undefined,
-    photoUris: row.photo_uris || undefined,
-    tags: row.tags || undefined,
-    location: row.location ? { name: row.location } : undefined,
-    mood: row.mood || undefined,
-    notificationId: row.notification_id || undefined,
-    reminderScheduled: row.reminder_scheduled || false,
-    syncedAt: row.synced_at || undefined,
-    editedBy: row.edited_by || undefined,
-    editedAt: row.edited_at || undefined,
-    isDeleted: row.is_deleted || false,
-    linkedEntries: [],
-  }), []);
+  // Uses the canonical mapRowToEntry from EntryService (imported above).
 
   /* ─── REAL-TIME SYNC ─────────────────────────────────────────────── */
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
@@ -1363,10 +1340,29 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       }));
 
       // ─── Bayesian learning: feed the new value into the engine ────
-      learnFromEntry(babyId, trackerId, cleanData).catch(() => {});
+      //     Uses the canonical observeEntry() from bootstrap.ts, which
+      //     applies the TRACKER_TO_METRICS map + extractMetricValue().
+      (async () => {
+        try {
+          const { observeEntry } = await import('@/services/ai/bootstrap');
+          await observeEntry(babyId, trackerId, cleanData, timestamp);
+        } catch (err) {
+          if (__DEV__) console.warn('[TrackerContext] observeEntry failed:', err);
+        }
+      })();
 
       // ─── Predictor learning: feed the timestamp into Holt-Winters ──
       predictFromEntry(babyId, trackerId, timestamp).catch(() => {});
+
+      // ─── Correlation cache invalidation (async, non-blocking) ──────
+      (async () => {
+        try {
+          const { invalidateCorrelationCacheIfStale } = await import(
+            '@/services/ai/CorrelationEngine'
+          );
+          await invalidateCorrelationCacheIfStale(babyId);
+        } catch {}
+      })();
 
       // ─── Cohort publishing: opportunistically push to aggregate pool ─
       //     Throttled to once per 12h per device by CohortPriors

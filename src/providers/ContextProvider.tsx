@@ -14,6 +14,7 @@ import { AudioProvider } from '@/context/AudioContext';
 import { AppProvider, useTheme } from '@/context/AppContext';
 import { TrackerProvider, TrackerContext } from '@/context/TrackerContext';
 import { SweetAlertProvider } from '@/components/SweetAlert';
+import { AIBootstrapGate } from '@/components/AIBootstrapGate';
 import useCustomization from '@/hooks/useCustomization';
 // Lazy-load NotificationService so a bad export doesn't crash the whole app
 let notificationService: any = null;
@@ -350,6 +351,8 @@ export default function ContextProvider({ children }: ContextProviderProps) {
                             <SafetyProvider>
                               <TrackerProvider>
                                 <TrackerBabySync>
+                                  {/* AIBootstrapGate runs AI warm-up on app launch + baby change */}
+                                  <AIBootstrapGate />
                                   {/* SweetAlertWrapper now INSIDE AudioProvider */}
                                   <SweetAlertWrapper>
                                     {children}
