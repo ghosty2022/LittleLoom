@@ -256,6 +256,69 @@ const VACCINE_SERIES: VaccineSeries[] = [
 ];
 
 const STORAGE_KEY = '@littleloom_vaccination_records';
+// Supabase-backed canonical vaccine schedule. Seeds on first run,
+// then always prefers Supabase so the schedule can be updated
+// server-side without an app release.
+const SUPABASE_SCHEDULE_KEY = 'canonical_vaccine_schedule_v1';
+
+/**
+ * Loads the vaccine schedule from Supabase (app_settings row keyed by
+ * SUPABASE_SCHEDULE_KEY). If not present, seeds it from the bundled
+ * VACCINE_SERIES. The bundled version is the fallback if offline.
+ */
+async function loadVaccineScheduleFromSupabase(): Promise<VaccineSeries[]> {
+  try {
+    // Try to read a shared/global row (no user_id) first; if a specific
+    // user override exists, that wins.
+    const { data: { user } } = await supabase.auth.getUser();
+    const queries = [
+      supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', SUPABASE_SCHEDULE_KEY)
+        .maybeSingle(),
+    ];
+    if (user?.id) {
+      queries.push(
+        supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', `${SUPABASE_SCHEDULE_KEY}:${user.id}`)
+          .eq('user_id', user.id)
+          .maybeSingle()
+      );
+    }
+    const results = await Promise.all(queries);
+    // Prefer user-scoped override if it exists
+    for (const res of results.reverse()) {
+      const raw = (res as any)?.data?.value;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    }
+
+    // Not present → seed the global row from the bundled constant
+    if (VACCINE_SERIES.length > 0) {
+      await supabase
+        .from('app_settings')
+        .upsert(
+          {
+            key: SUPABASE_SCHEDULE_KEY,
+            value: JSON.stringify(VACCINE_SERIES),
+            user_id: user?.id ?? '00000000-0000-0000-0000-000000000000',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'key, user_id' }
+        )
+        .then(() => {/* best-effort seed */}, () => {/* ignore */});
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[Vaccination] Supabase schedule load failed:', e);
+  }
+  // Fallback
+  return VACCINE_SERIES;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SAFE HELPERS
@@ -1088,6 +1151,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
   const { currentBaby, babies, switchBaby } = useBaby();
 
   const [doses, setDoses] = useState<VaccineDose[]>([]);
+  const [schedule, setSchedule] = useState<VaccineSeries[]>(VACCINE_SERIES);
   const [activeTab, setActiveTab] = useState<VaccineTab>('schedule');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -1147,10 +1211,13 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
       const stored = await AsyncStorage.getItem(`${STORAGE_KEY}_${baby.id}`);
       const records: Record<string, { completedDate: string; notes: string; sideEffects: string[]; batchNumber?: string; location?: string }> = stored ? JSON.parse(stored) : {};
 
+      // ─── Load canonical schedule from Supabase (falls back to bundled) ──
+      const schedule = await loadVaccineScheduleFromSupabase();
+
       const birthDate = safeParseDate(baby.birthDate) || new Date();
       const generatedDoses: VaccineDose[] = [];
 
-      VACCINE_SERIES.forEach(series => {
+      schedule.forEach(series => {
         series.doses.forEach((dose) => {
           const dueDate = addDays(birthDate, dose.recommendedAgeDays);
           const record = records[`${series.id}_${dose.doseNumber}`];

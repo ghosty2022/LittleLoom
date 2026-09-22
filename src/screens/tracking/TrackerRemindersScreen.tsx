@@ -842,9 +842,9 @@ class IntelligentReminderEngine {
     const now = new Date();
     const currentHour = now.getHours();
 
-    const pottyActs = babyActs.filter((a) => a.type === 'potty');
+    const pottyActs = babyActs.filter((a) => a.type === 'potty' || a.trackerId === 'potty');
     if (pottyActs.length >= 3) {
-      const avgInterval = this.calculateAverageInterval(pottyActs);
+      const avgInterval = this.calculateAverageInterval(pottyActs, 2);
       const lastPotty = pottyActs[pottyActs.length - 1];
       const hoursSince = lastPotty ? differenceInHours(now, new Date(lastPotty.timestamp)) : 999;
       const nextPottyTime = lastPotty ? addMinutes(new Date(lastPotty.timestamp), avgInterval * 60) : null;
@@ -866,7 +866,7 @@ class IntelligentReminderEngine {
       }
     }
 
-    const sleepActs = babyActs.filter((a) => a.type === 'sleep');
+    const sleepActs = babyActs.filter((a) => a.type === 'sleep' || a.trackerId === 'sleep');
     if (sleepActs.length >= 2) {
       const bedtimes = sleepActs
         .filter((a) => a.data?.sleepType === 'night' || a.data?.sleepType === 'nap')
@@ -894,7 +894,7 @@ class IntelligentReminderEngine {
       }
     }
 
-    const feedActs = babyActs.filter((a) => a.type === 'feed');
+    const feedActs = babyActs.filter((a) => a.type === 'feed' || a.trackerId === 'feed');
     if (feedActs.length >= 3) {
       const avgInterval = this.calculateAverageInterval(feedActs);
       const lastFeed = feedActs[feedActs.length - 1];
@@ -963,8 +963,8 @@ class IntelligentReminderEngine {
     });
   }
 
-  private calculateAverageInterval(activities: any[]): number {
-    if (activities.length < 2) return 3;
+  private calculateAverageInterval(activities: any[], fallbackHours = 3): number {
+    if (activities.length < 2) return fallbackHours;
     let totalDiff = 0;
     let count = 0;
     for (let i = 1; i < activities.length; i++) {
@@ -974,7 +974,7 @@ class IntelligentReminderEngine {
         count++;
       }
     }
-    return count > 0 ? totalDiff / count : 3;
+    return count > 0 ? totalDiff / count : fallbackHours;
   }
 
   private calculateStreak(): number {

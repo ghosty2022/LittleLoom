@@ -126,31 +126,42 @@ interface ShareableTemplateResponse {
 type ReportMode = 'generate' | 'templates' | 'upload' | 'share';
 
 /* ═══════════════════════════════════════════════════════════════════════
-   CLINICAL DATA — WHO/CDC Simplified Reference Curves
+   CLINICAL DATA — Real WHO LMS Reference (imported from the canonical
+   useWHOGrowthCalculator — the single source of truth for percentiles).
+   The former inline GROWTH_REF table was invented; this uses the same
+   LMS tables the app already uses for live percentile calculations.
    ═══════════════════════════════════════════════════════════════════════ */
-const GROWTH_REF = {
-  boy: {
-    weight: [{ m: 0, med: 3.3, sd: 0.4 }, { m: 1, med: 4.5, sd: 0.5 }, { m: 2, med: 5.6, sd: 0.6 }, { m: 3, med: 6.4, sd: 0.7 }, { m: 6, med: 7.9, sd: 0.8 }, { m: 9, med: 8.9, sd: 0.9 }, { m: 12, med: 9.8, sd: 1.0 }, { m: 18, med: 11.0, sd: 1.1 }, { m: 24, med: 12.2, sd: 1.2 }],
-    height: [{ m: 0, med: 50, sd: 2.0 }, { m: 3, med: 61, sd: 2.3 }, { m: 6, med: 67, sd: 2.5 }, { m: 12, med: 76, sd: 2.8 }, { m: 24, med: 87, sd: 3.2 }],
-    head: [{ m: 0, med: 35.0, sd: 1.5 }, { m: 3, med: 40.0, sd: 1.5 }, { m: 6, med: 43.0, sd: 1.5 }, { m: 12, med: 47.0, sd: 1.5 }, { m: 24, med: 49.0, sd: 1.5 }],
-  },
-  girl: {
-    weight: [{ m: 0, med: 3.2, sd: 0.4 }, { m: 1, med: 4.2, sd: 0.5 }, { m: 2, med: 5.1, sd: 0.6 }, { m: 3, med: 5.8, sd: 0.6 }, { m: 6, med: 7.3, sd: 0.7 }, { m: 9, med: 8.2, sd: 0.8 }, { m: 12, med: 9.1, sd: 0.9 }, { m: 18, med: 10.2, sd: 1.0 }, { m: 24, med: 11.5, sd: 1.1 }],
-    height: [{ m: 0, med: 49, sd: 2.0 }, { m: 3, med: 60, sd: 2.3 }, { m: 6, med: 65, sd: 2.4 }, { m: 12, med: 74, sd: 2.8 }, { m: 24, med: 85, sd: 3.1 }],
-    head: [{ m: 0, med: 34.5, sd: 1.5 }, { m: 3, med: 39.0, sd: 1.5 }, { m: 6, med: 42.0, sd: 1.5 }, { m: 12, med: 46.0, sd: 1.5 }, { m: 24, med: 48.0, sd: 1.5 }],
-  },
+import {
+  WHO_BOY_LMS,
+  WHO_GIRL_LMS,
+  calculateZScore,
+  zScoreToPercentile,
+} from '@/hooks/useWHOGrowthCalculator';
+
+const _getLMS = (
+  gender: string,
+  type: 'weight' | 'height' | 'head',
+  ageMonths: number
+) => {
+  const g = gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
+  const table = g === 'girl' ? WHO_GIRL_LMS : WHO_BOY_LMS;
+  const clampedAge = Math.max(0, Math.min(24, Math.round(ageMonths)));
+  const row = table[clampedAge];
+  if (!row) return null;
+  const lms = row[type];
+  return lms ?? null;
 };
 
-const getGrowthRef = (gender: string, type: 'weight' | 'height' | 'head', ageMonths: number) => {
-  const g = gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
-  const arr = GROWTH_REF[g][type];
-  if (ageMonths <= 0) return arr[0];
-  if (ageMonths >= 24) return arr[arr.length - 1];
-  const lower = [...arr].reverse().find((a: any) => a.m <= ageMonths) || arr[0];
-  const upper = arr.find((a: any) => a.m >= ageMonths) || arr[arr.length - 1];
-  if (lower.m === upper.m) return lower;
-  const ratio = (ageMonths - lower.m) / (upper.m - lower.m);
-  return { med: lower.med + (upper.med - lower.med) * ratio, sd: lower.sd + (upper.sd - lower.sd) * ratio };
+const getGrowthRef = (
+  gender: string,
+  type: 'weight' | 'height' | 'head',
+  ageMonths: number
+) => {
+  const lms = _getLMS(gender, type, ageMonths);
+  if (!lms) return { med: 0, sd: 1 };
+  // Convert LMS → (median, SD) for backward-compatible callers.
+  // For a normal approximation: SD ≈ M * S (approximate; WHO uses LMS).
+  return { med: lms.M, sd: Math.max(0.01, lms.M * lms.S) };
 };
 
 const zToPercentile = (z: number): number => {

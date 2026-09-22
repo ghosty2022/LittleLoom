@@ -265,15 +265,22 @@ function detectOutdoorVsSleep(entries: Entry[]): DiscoveredCorrelation | null {
   const byDay = groupByDay(entries);
   const days: { outdoor: number; sleep: number }[] = [];
 
+  // Both 'outdoor' and 'outdoor_time' are valid tracker IDs in this app.
+  // Also match the legacy 'walk' tracker which is a form of outdoor time.
+  const OUTDOOR_IDS = new Set(['outdoor', 'outdoor_time', 'walk']);
+
   for (const [, dayEntries] of byDay) {
     const outdoor = dayEntries
-      .filter(
-        e => e.tracker_id === 'outdoor' || e.tracker_id === 'outdoor_time'
-      )
-      .reduce(
-        (sum, e) => sum + Number(e.data?.duration ?? e.data?.minutes ?? 0),
-        0
-      );
+      .filter(e => OUTDOOR_IDS.has(e.tracker_id))
+      .reduce((sum, e) => {
+        const d = e.data || {};
+        // Duration is stored in SECONDS per the schema
+        const seconds = Number(d.duration ?? 0);
+        const minutes = Number(d.minutes ?? 0);
+        // Prefer minutes if explicitly present; otherwise seconds/60
+        const mins = minutes > 0 ? minutes : seconds > 0 ? seconds / 60 : 0;
+        return sum + mins;
+      }, 0);
     const sleepMin = dayEntries
       .filter(e => e.tracker_id === 'sleep')
       .reduce(

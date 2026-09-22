@@ -397,10 +397,19 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     let cancelled = false;
     (async () => {
       try {
-        const { discoverCorrelations } = require('../services/ai/CorrelationEngine');
-        const list = await discoverCorrelations(currentBaby.id, 45);
-        if (!cancelled) setAiCorrelations(list);
-      } catch {}
+        const { discoverCorrelations, getCachedCorrelations } = require('../services/ai/CorrelationEngine');
+        // 1. Show cache instantly if available
+        const cached = await getCachedCorrelations(currentBaby.id);
+        if (!cancelled && Array.isArray(cached) && cached.length > 0) {
+          setAiCorrelations(cached);
+        }
+        // 2. Recompute — CorrelationEngine already writes to
+        //    ai_correlation_cache on success, so next open is instant.
+        const fresh = await discoverCorrelations(currentBaby.id, 45);
+        if (!cancelled && Array.isArray(fresh)) setAiCorrelations(fresh);
+      } catch (e) {
+        if (__DEV__) console.warn('[Insights] correlation discovery failed:', e);
+      }
     })();
     return () => { cancelled = true; };
   }, [currentBaby?.id]);

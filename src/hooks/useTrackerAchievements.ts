@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { differenceInDays, differenceInHours, isSameDay, subDays, format, addHours, addDays } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../utils/supabase';
 
 // FIX: Direct imports from context sources
 import { useTracker } from './useTrackerContext';
@@ -131,16 +132,54 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
 
-  /* ── Load persisted unlocked history ── */
+  /* ── Load persisted unlocked history (local + cloud) ── */
   useEffect(() => {
     const load = async () => {
       try {
+        // 1. Local first (fast)
         const [savedIds, savedAt] = await Promise.all([
           AsyncStorage.getItem(ACHIEVEMENTS_UNLOCKED_KEY),
           AsyncStorage.getItem(ACHIEVEMENTS_UNLOCKED_AT_KEY),
         ]);
-        if (savedIds) setUnlockedHistory(new Set(JSON.parse(savedIds)));
-        if (savedAt) setUnlockedAtMap(JSON.parse(savedAt));
+        let localIds: string[] = [];
+        let localAt: Record<string, number> = {};
+        if (savedIds) { localIds = JSON.parse(savedIds); setUnlockedHistory(new Set(localIds)); }
+        if (savedAt) { localAt = JSON.parse(savedAt); setUnlockedAtMap(localAt); }
+
+        // 2. Cloud merge (authoritative — might have more from another device)
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user?.id) {
+            const [cloudIdsRes, cloudAtRes] = await Promise.all([
+              supabase
+                .from('app_settings')
+                .select('value')
+                .eq('key', 'achievements_unlocked_v2')
+                .eq('user_id', user.id)
+                .maybeSingle(),
+              supabase
+                .from('app_settings')
+                .select('value')
+                .eq('key', 'achievements_unlocked_at_v2')
+                .eq('user_id', user.id)
+                .maybeSingle(),
+            ]);
+            const cloudIds: string[] = cloudIdsRes.data?.value ? JSON.parse(cloudIdsRes.data.value) : [];
+            const cloudAt: Record<string, number> = cloudAtRes.data?.value ? JSON.parse(cloudAtRes.data.value) : {};
+
+            // Union of local + cloud
+            const mergedIds = new Set<string>([...localIds, ...cloudIds]);
+            const mergedAt = { ...localAt, ...cloudAt };
+            if (mergedIds.size > localIds.length || Object.keys(mergedAt).length > Object.keys(localAt).length) {
+              await AsyncStorage.setItem(ACHIEVEMENTS_UNLOCKED_KEY, JSON.stringify([...mergedIds]));
+              await AsyncStorage.setItem(ACHIEVEMENTS_UNLOCKED_AT_KEY, JSON.stringify(mergedAt));
+              setUnlockedHistory(mergedIds);
+              setUnlockedAtMap(mergedAt);
+            }
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[Achievements] Cloud load failed:', e);
+        }
       } catch (e) {
         console.warn('Failed to load achievement history:', e);
       } finally {
@@ -160,8 +199,42 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
       newlyUnlocked.forEach((id) => {
         if (!updatedAt[id]) updatedAt[id] = now;
       });
+
+      // ─── Local cache (fast) ─────────────────────────────────
       await AsyncStorage.setItem(ACHIEVEMENTS_UNLOCKED_KEY, JSON.stringify([...updated]));
       await AsyncStorage.setItem(ACHIEVEMENTS_UNLOCKED_AT_KEY, JSON.stringify(updatedAt));
+
+      // ─── Cloud sync via app_settings (survives reinstall) ───
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+          await supabase
+            .from('app_settings')
+            .upsert(
+              {
+                key: 'achievements_unlocked_v2',
+                value: JSON.stringify([...updated]),
+                user_id: user.id,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'key, user_id' }
+            );
+          await supabase
+            .from('app_settings')
+            .upsert(
+              {
+                key: 'achievements_unlocked_at_v2',
+                value: JSON.stringify(updatedAt),
+                user_id: user.id,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'key, user_id' }
+            );
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Achievements] Cloud sync failed:', e);
+      }
+
       setUnlockedHistory(updated);
       setUnlockedAtMap(updatedAt);
     };

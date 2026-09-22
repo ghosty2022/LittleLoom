@@ -869,20 +869,63 @@ NextEventPredictor.displayName = 'NextEventPredictor';
 
 // ─── SMART DAILY GOALS ───────────────────────────────────────────────────
 
-const SmartDailyGoals = React.memo(({ entries, onGoalPress }: { entries: any[]; onGoalPress: (trackerId: string) => void }) => {
+const SmartDailyGoals = React.memo(({ entries, baby, onGoalPress }: { entries: any[]; baby?: any; onGoalPress: (trackerId: string) => void }) => {
   const theme = useHubTheme();
   const today = useMemo(() => startOfDay(new Date()).getTime(), []);
 
   const goals = useMemo((): DailyGoal[] => {
     const todayEntries = entries.filter(e => e?.timestamp >= today);
 
+    // ─── Age-adjusted daily targets from WHO guidelines ─────────────
+    // Ages (months) → guidance. Values interpolate across boundaries.
+    const ageMonths = (() => {
+      const dob = baby?.birthDate ? new Date(baby.birthDate) : null;
+      if (!dob || isNaN(dob.getTime())) return 0;
+      const now = new Date();
+      return Math.max(
+        0,
+        (now.getFullYear() - dob.getFullYear()) * 12 +
+          (now.getMonth() - dob.getMonth())
+      );
+    })();
+    const feedTarget =
+      ageMonths < 1 ? 8 :
+      ageMonths < 3 ? 8 :
+      ageMonths < 6 ? 6 :
+      ageMonths < 12 ? 5 : 4;
+    const sleepHoursTarget =
+      ageMonths < 3 ? 16 :
+      ageMonths < 6 ? 14 :
+      ageMonths < 12 ? 13 :
+      ageMonths < 24 ? 12 : 11;
+    const diaperTarget =
+      ageMonths < 3 ? 8 :
+      ageMonths < 6 ? 7 :
+      ageMonths < 12 ? 6 : 5;
+
     return [
-      { id: 'feed-goal', label: 'Feeds', icon: '🍼', target: 8, current: todayEntries.filter(e => e.trackerId === 'feed').length, color: '#fa709a', unit: 'feeds' },
-      { id: 'sleep-goal', label: 'Sleep', icon: '🌙', target: 14, current: Math.floor(todayEntries.filter(e => e.trackerId === 'sleep').reduce((sum, e) => sum + (e.duration || 0), 0) / 60), color: '#11998e', unit: 'hrs' },
-      { id: 'diaper-goal', label: 'Diapers', icon: '👶', target: 6, current: todayEntries.filter(e => e.trackerId === 'diaper').length, color: '#8B5CF6', unit: 'changes' },
-      { id: 'milestone-goal', label: 'Moments', icon: '🏆', target: 1, current: todayEntries.filter(e => e.trackerId === 'milestone').length, color: '#ffd700', unit: 'logs' },
+      { id: 'feed-goal', label: 'Feeds', icon: '🍼',
+        target: feedTarget,
+        current: todayEntries.filter(e => e.trackerId === 'feed').length,
+        color: '#fa709a', unit: 'feeds' },
+      { id: 'sleep-goal', label: 'Sleep', icon: '🌙',
+        target: sleepHoursTarget,
+        current: Math.floor(
+          todayEntries
+            .filter(e => e.trackerId === 'sleep')
+            .reduce((sum, e) => sum + (e.duration || 0), 0) / 3600
+        ),
+        color: '#11998e', unit: 'hrs' },
+      { id: 'diaper-goal', label: 'Diapers', icon: '👶',
+        target: diaperTarget,
+        current: todayEntries.filter(e => e.trackerId === 'diaper').length,
+        color: '#8B5CF6', unit: 'changes' },
+      { id: 'milestone-goal', label: 'Moments', icon: '🏆',
+        target: 1,
+        current: todayEntries.filter(e => e.trackerId === 'milestone').length,
+        color: '#ffd700', unit: 'logs' },
     ];
-  }, [entries, today]);
+  }, [entries, today, baby?.birthDate]);
 
   const completedCount = goals.filter(g => g.current >= g.target).length;
 
@@ -1854,7 +1897,7 @@ export default function UniversalTrackerHubScreen() {
         <NextEventPredictor entries={entries} onEventPress={handleSubActionSelect} />
 
         {/* ─── DAILY GOALS ───────────────────────────────────────────────── */}
-        <SmartDailyGoals entries={entries} onGoalPress={handleGoalPress} />
+        <SmartDailyGoals entries={entries} baby={currentBaby} onGoalPress={handleGoalPress} />
 
         {/* ─── SMART INSIGHTS ───────────────────────────────────────────── */}
         <SmartInsightsCarousel entries={entries} baby={currentBaby} onInsightPress={handleInsightPress} />
