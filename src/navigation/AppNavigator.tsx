@@ -32,6 +32,7 @@ import TermsOfServiceScreen from '../screens/settings/TermsOfServiceScreen';
 import AboutScreen from '../screens/settings/AboutScreen';
 import LanguageSettingsScreen from '../screens/settings/LanguageSettingsScreen';
 import UnitSettingsScreen from '../screens/settings/UnitSettingsScreen';
+import AIManagementScreen from '../screens/settings/AIManagementScreen';
 import CommunityNavigator from './CommunityNavigator';
 import AddEntryScreen from '../screens/tracking/AddEntryScreen';
 import AchievementsScreen from '../screens/settings/AchievementsScreen';
@@ -88,7 +89,7 @@ const MAIN_FLOW_SCREENS = new Set([
   'FamilySharing', 'SoundMixer', 'Customize', 'EntryDetail',
   'BiometricSetup', 'SecurityCenter',
   'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy',
-  'TermsOfService', 'About', 'LanguageSettings', 'UnitSettings',
+  'TermsOfService', 'About', 'LanguageSettings', 'UnitSettings', 'AIManagement',
   'UniversalTrackerHub', 'CreateCustomTracker', 'AllTrackers',
   'VaccinationSchedule', 'SafetyCorner', 'RealtimeDebug',
   'SecureAccessList',
@@ -618,6 +619,7 @@ function NavigationContent({
           <Stack.Screen name="About" component={AboutScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} options={{ animation: 'none' }} />
+          <Stack.Screen name="AIManagement" component={AIManagementScreen} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="VaccinationSchedule" component={VaccinationScheduleScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="PediatricianPDFExport" component={PediatricianPDFExport} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'none' }} />

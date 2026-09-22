@@ -99,11 +99,36 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     toggleBiometric,
   } = useSecurity();
 
-  // ✅ FIXED: Properly compute if biometric should be available
-  // Biometric is available if:
-  // 1. Hardware is available AND enrolled AND enabled in settings
-  const biometricAvailable = isBiometricHardwareAvailable && isBiometricEnrolled && isBiometricEnabled;
-  const effectiveBiometricEnabled = isBiometricEnabled ?? false;
+  // ── Track biometric readiness, reading directly from storage to avoid races ──
+  const [biometricReady, setBiometricReady] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
+        const enabledFromStorage = stored === 'true';
+        if (mounted) {
+          setBiometricReady(
+            !!isBiometricHardwareAvailable &&
+            !!isBiometricEnrolled &&
+            (isBiometricEnabled === true || enabledFromStorage)
+          );
+        }
+      } catch {
+        if (mounted) {
+          setBiometricReady(
+            !!isBiometricHardwareAvailable &&
+            !!isBiometricEnrolled &&
+            !!isBiometricEnabled
+          );
+        }
+      }
+    })();
+    return () => { mounted = false; };
+  }, [isBiometricHardwareAvailable, isBiometricEnrolled, isBiometricEnabled]);
+
+  const biometricAvailable = biometricReady;
 
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const insets = useSafeAreaInsets();
@@ -250,7 +275,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   // ─── Auto-prompt biometric ──────────────────────────────────────
   useEffect(() => {
-    // ✅ FIXED: Use biometricAvailable instead of effectiveBiometricEnabled
     if (!biometricAvailable) {
       console.log('[SecurityLock] Biometric not available - skipping auto-prompt');
       return;
@@ -581,12 +605,12 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             style={[
               styles.keypadButton,
               styles.keypadButtonSpecial,
-              (isLoading || isLockedOut || !hasBiometric || unlockInProgress.current) && styles.keypadButtonDisabled,
+              (isLoading || isLockedOut || !biometricAvailable || unlockInProgress.current) && styles.keypadButtonDisabled,
             ]}
             onPress={handleBiometricAuth}
-            disabled={isLoading || isLockedOut || !hasBiometric || unlockInProgress.current}
+            disabled={isLoading || isLockedOut || !biometricAvailable || unlockInProgress.current}
           >
-            {hasBiometric ? (
+            {biometricAvailable ? (
               <Ionicons
                 name={biometricInfo.icon as any}
                 size={28}

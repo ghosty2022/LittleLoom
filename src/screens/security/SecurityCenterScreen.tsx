@@ -201,6 +201,22 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     setLocalBioEnabled(isBiometricEnabled ?? false);
   }, [isBiometricEnabled]);
 
+  // On focus, re-read from context AFTER refreshing capabilities
+  const wasFocusedRef = useRef(false);
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', async () => {
+      if (!isMounted.current) return;
+      await refreshBiometricStatus();
+      // Pull the freshest value via a fresh read of storage (belt & suspenders)
+      try {
+        const { readBiometricEnabledFromStorage } = require('../../context/SecurityContext');
+      } catch {}
+      setLocalBioEnabled(isBiometricEnabled ?? false);
+      setForceUpdate(prev => !prev);
+    });
+    return unsubscribe;
+  }, [navigation, refreshBiometricStatus, isBiometricEnabled]);
+
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
@@ -484,21 +500,34 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     navigation.navigate('BiometricSetup');
   }, [navigation]);
 
-  // ─── FIXED: Toggle biometric with proper state handling ──────────────────────────
-  const handleToggleBiometric = useCallback(async () => {
+  // ─── FIXED: Toggle biometric — accepts the target value from the Switch ──
+  const handleToggleBiometric = useCallback(async (targetValue?: boolean) => {
     if (biometricLoading) return;
-    
-    // Check if biometric hardware is available and enrolled
-    if (!isBiometricEnabled) {
-      // Trying to enable - check if hardware and enrollment are available
-      if (!isBiometricHardwareAvailable || !isBiometricEnrolled) {
-        // Show SweetAlert with option to navigate to BiometricSetup
-        sweetAlert.confirm(
+
+    // Fall back to toggling current state if caller didn't pass a value
+    const newState = typeof targetValue === 'boolean' ? targetValue : !localBioEnabled;
+
+    // If enabling, verify hardware is available & enrolled
+    if (newState) {
+      await refreshBiometricStatus();
+
+      // Read fresh values from context after refresh
+      const hasHardwareNow = isBiometricHardwareAvailable;
+      const isEnrolledNow = isBiometricEnrolled;
+
+      if (!hasHardwareNow) {
+        sweetAlert.warning(
           'Biometric Not Available',
+          'This device does not support biometric authentication.'
+        );
+        return;
+      }
+
+      if (!isEnrolledNow) {
+        sweetAlert.confirm(
+          'Set Up Biometrics',
           'Please set up biometrics in your device settings first, or continue to setup.',
-          () => {
-            navigateToBiometricSetup();
-          },
+          () => navigateToBiometricSetup(),
           undefined,
           'Go to Setup',
           'Cancel',
@@ -507,33 +536,46 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         return;
       }
     }
-    
+
     setBiometricLoading(true);
     try {
-      await refreshBiometricStatus();
-      
-      const newState = !isBiometricEnabled;
       const result = await toggleBiometric(newState);
-      
+
       if (result) {
+        // Optimistic local update — context will also update
         setLocalBioEnabled(newState);
         await refreshBiometricStatus();
+        setForceUpdate(prev => !prev);
+
         sweetAlert.success(
           newState ? 'Biometric On' : 'Biometric Off',
           newState ? 'Biometric unlock enabled' : 'Biometric unlock disabled'
         );
-        // Force UI update
-        setForceUpdate(prev => !prev);
       } else {
-        sweetAlert.error('Failed', 'Could not change biometric setting. Please ensure biometrics are set up in your device settings.');
+        // Revert UI — the toggle didn't take
+        setLocalBioEnabled(!newState);
+        sweetAlert.error(
+          'Failed',
+          'Could not change biometric setting. Please ensure biometrics are set up in your device settings.'
+        );
       }
     } catch (error) {
       console.error('Biometric toggle error:', error);
+      setLocalBioEnabled(!newState);
       sweetAlert.error('Error', 'An error occurred while changing biometric settings.');
     } finally {
       setBiometricLoading(false);
     }
-  }, [isBiometricEnabled, isBiometricHardwareAvailable, isBiometricEnrolled, toggleBiometric, refreshBiometricStatus, sweetAlert, biometricLoading, navigateToBiometricSetup]);
+  }, [
+    isBiometricHardwareAvailable,
+    isBiometricEnrolled,
+    toggleBiometric,
+    refreshBiometricStatus,
+    sweetAlert,
+    biometricLoading,
+    navigateToBiometricSetup,
+    localBioEnabled,
+  ]);
 
   useEffect(() => {
     if (biometricLoading) return;
@@ -704,11 +746,18 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         subtitle={securitySettings.isAppLockEnabled ? 'Enabled on app launch' : 'Disabled'}
         status={securitySettings.isAppLockEnabled ? 'active' : 'inactive'}
         onPress={async () => {
-          await toggleAppLock(!securitySettings.isAppLockEnabled);
-          sweetAlert.success(
-            securitySettings.isAppLockEnabled ? 'App Lock Off' : 'App Lock On',
-            securitySettings.isAppLockEnabled ? 'App will no longer lock on launch' : 'App will lock when launched'
-          );
+          try {
+            const newValue = !securitySettings.isAppLockEnabled;
+            await toggleAppLock(newValue);
+            triggerHaptic(newValue ? 'success' : 'light');
+            sweetAlert.success(
+              newValue ? 'App Lock On' : 'App Lock Off',
+              newValue ? 'App will lock when launched' : 'App will no longer lock on launch'
+            );
+          } catch (err) {
+            console.error('[SecurityCenter] toggleAppLock failed:', err);
+            sweetAlert.error('Error', 'Could not update App Lock.');
+          }
         }}
         delay={500}
         isDark={isDark}
@@ -1036,7 +1085,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             </Text>
             <Switch
               value={bioEnabled}
-              onValueChange={handleToggleBiometric}
+              onValueChange={(value) => {
+                triggerHaptic('light');
+                handleToggleBiometric(value);
+              }}
               disabled={biometricLoading || !hasHardware || !isEnrolled}
               trackColor={{ false: '#d1d5db', true: themeColors.primary + '80' }}
               thumbColor={bioEnabled ? themeColors.primary : '#f9fafb'}

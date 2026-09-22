@@ -346,7 +346,11 @@ const MenuItem = React.memo<MenuItemProps>(({
 
   const handlePress = useCallback(() => {
     if (disabled || loading) return;
+    // When onToggle exists, the Switch itself handles the value change.
+    // We only invoke onPress for navigation-style rows.
     if (onToggle) {
+      // Pressing the row (outside the switch) toggles it
+      if (hapticFeedback) triggerHaptic('light').catch(() => {});
       onToggle(!isEnabled);
     } else if (onPress) {
       if (hapticFeedback) triggerHaptic('light').catch(() => {});
@@ -398,13 +402,20 @@ const MenuItem = React.memo<MenuItemProps>(({
           {onToggle ? (
             <Switch
               value={isEnabled}
-              onValueChange={disabled ? undefined : onToggle}
+              onValueChange={
+                disabled || loading
+                  ? undefined
+                  : (value) => {
+                      if (hapticFeedback) triggerHaptic('light').catch(() => {});
+                      onToggle(value);
+                    }
+              }
               trackColor={{
                 false: isDark ? '#333' : '#d1d5db',
                 true: `${color}50`,
               }}
               thumbColor={isEnabled ? color : isDark ? '#555' : '#f4f3f4'}
-              disabled={disabled}
+              disabled={disabled || loading}
               style={styles.switch}
             />
           ) : showArrow ? (
@@ -1041,22 +1052,26 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   // ─── LOCAL STATE for biometric toggle (synced from context + storage) ──
   const [localBiometricEnabled, setLocalBiometricEnabled] = useState<boolean>(false);
   
-  // ✅ FIXED: Sync local state from context whenever it changes
+  // Sync local state from context whenever it changes
   useEffect(() => {
     setLocalBiometricEnabled(isBiometricEnabled ?? false);
   }, [isBiometricEnabled]);
-  
-  // ✅ FIXED: On mount, read directly from storage as a fallback
+
+  // On mount: read directly from storage as source of truth
   useEffect(() => {
+    let mounted = true;
     (async () => {
       try {
         const stored = await readBiometricEnabledFromStorage();
-        if (stored !== localBiometricEnabled) {
+        if (mounted && stored !== localBiometricEnabled) {
           setLocalBiometricEnabled(stored);
         }
       } catch {}
     })();
-  }, [readBiometricEnabledFromStorage]);
+    return () => {
+      mounted = false;
+    };
+  }, [readBiometricEnabledFromStorage]); // Intentionally NOT depending on localBiometricEnabled
   
   const bioEnabled = localBiometricEnabled;
   const hasHardware = isBiometricHardwareAvailable || false;
@@ -1462,14 +1477,24 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             tint={isDark ? 'dark' : 'light'}
           >
             <MenuItem
-              icon={bioEnabled ? (biometricIcon.includes('-outline') ? biometricIcon : `${biometricIcon}`) as any : `${biometricIcon}` as any}
+              icon={biometricIcon as any}
               title={`${biometricTypeName} Unlock`}
               subtitle={bioEnabled ? 'Enabled' : bioAvailable ? 'Tap to enable' : 'Not Available'}
               isEnabled={bioEnabled}
-              onToggle={handleBiometricToggle}
+              onToggle={(val) => {
+                // Do not toggle if hardware isn't available and it's currently off
+                if (!bioAvailable && !bioEnabled) {
+                  sweetAlert.warning(
+                    'Biometric Not Available',
+                    'Set up biometrics in your device settings first.'
+                  );
+                  return;
+                }
+                handleBiometricToggle(val);
+              }}
               color={primary}
               isDark={isDark}
-              disabled={!bioAvailable && !bioEnabled}
+              disabled={false}
             />
             <MenuItem
               icon="keypad"
@@ -1485,7 +1510,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               title="Auto-Lock App"
               subtitle={securitySettings.isAppLockEnabled ? `After ${formatTimeout(securitySettings.autoLockTimeout)}` : 'Disabled'}
               isEnabled={securitySettings.isAppLockEnabled}
-              onToggle={toggleAppLock}
+              onToggle={async (val) => {
+                try {
+                  // Require at least one auth method to enable auto-lock
+                  if (val && !securitySettings.isPinEnabled && !bioEnabled) {
+                    sweetAlert.warning(
+                      'Set Up Security First',
+                      'Enable a PIN or biometric lock before turning on auto-lock.'
+                    );
+                    return;
+                  }
+                  await toggleAppLock(val);
+                  triggerHaptic(val ? 'success' : 'light');
+                } catch (err) {
+                  console.error('[MoreScreen] toggleAppLock failed:', err);
+                  sweetAlert.error('Error', 'Could not update auto-lock.');
+                }
+              }}
               color={accent}
               isDark={isDark}
             />
@@ -1554,40 +1595,19 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           >
             <AILearningStatus />
             <MenuItem
+              icon="sparkles-outline"
+              title="AI Learning Management"
+              subtitle="View what the AI has learned · manage privacy"
+              onPress={() => navigation.navigate('AIManagement')}
+              color="#8b5cf6"
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
               icon="trash-bin-outline"
               title="Erase Cohort Contributions"
               subtitle="Remove your device's AI learning from the shared pool"
-              onPress={async () => {
-                if (!userProfile?.id || !currentBaby?.id) {
-                  sweetAlert.warning(
-                    'No Baby Selected',
-                    'Select a baby profile first.'
-                  );
-                  return;
-                }
-                sweetAlert.confirm(
-                  'Erase Cohort Contributions?',
-                  'This removes your local AI caches and prevents future contributions. Already-aggregated priors cannot be reversed.',
-                  async () => {
-                    const { deleteCohortContributions } = await import(
-                      '../../services/ai/CohortPriors'
-                    );
-                    const res = await deleteCohortContributions(
-                      currentBaby.id,
-                      userProfile.id
-                    );
-                    if (res.success) {
-                      sweetAlert.success('Erased', res.message);
-                    } else {
-                      sweetAlert.error('Error', res.message);
-                    }
-                  },
-                  () => {},
-                  'Erase',
-                  'Cancel',
-                  true
-                );
-              }}
+              onPress={() => navigation.navigate('AIManagement')}
               color="#ef4444"
               isDark={isDark}
               showArrow
@@ -1610,8 +1630,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                   setCollaborativeEnabled(val);
                   triggerHaptic(val ? 'success' : 'light');
 
-                  // Immediately run bootstrap so the first publish happens now,
-                  // not on next app launch.
                   if (val && currentBaby?.id) {
                     const { bootstrapAI } = await import(
                       '@/services/ai/bootstrap'
@@ -1632,6 +1650,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                 } catch (err) {
                   console.error('[MoreScreen] Failed to toggle collaborative learning:', err);
                   sweetAlert.error('Error', 'Could not update the setting. Please try again.');
+                  // Revert the UI on failure
+                  setCollaborativeEnabled(!val);
                 }
               }}
               color="#8b5cf6"

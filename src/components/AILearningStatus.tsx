@@ -1,9 +1,10 @@
 // src/components/AILearningStatus.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 import { useBaby } from '../context/BabyContext';
 import { useCustomization } from '../hooks/useCustomization';
 
@@ -17,53 +18,60 @@ interface LearningStats {
 }
 
 export const AILearningStatus: React.FC = () => {
+  const navigation = useNavigation<any>();
   const { currentBaby } = useBaby();
   const { fullThemeColors, borderRadiusValue, themeColors } = useCustomization();
   const [stats, setStats] = useState<LearningStats>({ samples: 0, metrics: 0, enabled: true });
 
-  useEffect(() => {
-    (async () => {
-      if (!currentBaby?.id) return;
+  const loadStats = useCallback(async () => {
+    if (!currentBaby?.id) return;
 
-      // Check consent
-      let enabled = true;
-      try {
-        const raw = await AsyncStorage.getItem(CONSENT_KEY);
-        if (raw) enabled = JSON.parse(raw)?.learningEnabled !== false;
-      } catch {}
+    let enabled = true;
+    try {
+      const raw = await AsyncStorage.getItem(CONSENT_KEY);
+      if (raw) enabled = JSON.parse(raw)?.learningEnabled !== false;
+    } catch {}
 
-      // Count learned metrics — hardened against corrupt entries
-      try {
-        const keys = await AsyncStorage.getAllKeys();
-        const babyKeys = keys.filter(k =>
-          typeof k === 'string' &&
-          k.startsWith(`${BAYES_PREFIX}${currentBaby.id}:`)
-        );
-        let totalSamples = 0;
-        let validMetrics = 0;
-        for (const key of babyKeys) {
-          try {
-            const val = await AsyncStorage.getItem(key);
-            if (val) {
-              const parsed = JSON.parse(val);
-              const n = Number(parsed?.n);
-              if (Number.isFinite(n) && n > 0) {
-                totalSamples += n;
-                validMetrics += 1;
-              }
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const babyKeys = keys.filter(k =>
+        typeof k === 'string' &&
+        k.startsWith(`${BAYES_PREFIX}${currentBaby.id}:`)
+      );
+      let totalSamples = 0;
+      let validMetrics = 0;
+      for (const key of babyKeys) {
+        try {
+          const val = await AsyncStorage.getItem(key);
+          if (val) {
+            const parsed = JSON.parse(val);
+            const n = Number(parsed?.n);
+            if (Number.isFinite(n) && n > 0) {
+              totalSamples += n;
+              validMetrics += 1;
             }
-          } catch {
-            // Corrupt entry — skip silently
           }
-        }
-        setStats({ samples: totalSamples, metrics: validMetrics, enabled });
-      } catch (err) {
-        if (__DEV__) console.warn('[AILearningStatus] count failed:', err);
+        } catch {}
       }
-    })();
+      setStats({ samples: totalSamples, metrics: validMetrics, enabled });
+    } catch (err) {
+      if (__DEV__) console.warn('[AILearningStatus] count failed:', err);
+    }
   }, [currentBaby?.id]);
 
-  const toggleEnabled = async () => {
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  if (!currentBaby) return null;
+
+  const progress = Math.min(100, Math.round((stats.samples / 50) * 100));
+
+  const handlePress = () => {
+    navigation.navigate('AIManagement');
+  };
+
+  const handleToggle = async () => {
     try {
       await AsyncStorage.setItem(
         CONSENT_KEY,
@@ -73,16 +81,23 @@ export const AILearningStatus: React.FC = () => {
     } catch {}
   };
 
-  if (!currentBaby) return null;
-
-  const progress = Math.min(100, Math.round((stats.samples / 50) * 100));
-
   return (
-    <Animated.View entering={FadeInUp} style={[
-      styles.container,
-      { backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue, borderColor: fullThemeColors.border }
-    ]}>
-      <View style={styles.header}>
+    <Animated.View
+      entering={FadeInUp}
+      style={[
+        styles.container,
+        {
+          backgroundColor: fullThemeColors.surface,
+          borderRadius: borderRadiusValue,
+          borderColor: fullThemeColors.border,
+        },
+      ]}
+    >
+      <TouchableOpacity
+        style={styles.header}
+        onPress={handlePress}
+        activeOpacity={0.75}
+      >
         <View style={[styles.iconWrap, { backgroundColor: `${themeColors.primary}15` }]}>
           <Ionicons name="sparkles" size={20} color={themeColors.primary} />
         </View>
@@ -98,21 +113,35 @@ export const AILearningStatus: React.FC = () => {
               : `Personalized (${stats.samples} samples across ${stats.metrics} metrics)`}
           </Text>
         </View>
-        <TouchableOpacity onPress={toggleEnabled} style={styles.toggle}>
+        <TouchableOpacity onPress={handleToggle} style={styles.toggle} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons
             name={stats.enabled ? 'toggle' : 'toggle-outline'}
             size={32}
             color={stats.enabled ? themeColors.primary : fullThemeColors.textSecondary}
           />
         </TouchableOpacity>
-      </View>
+        <Ionicons
+          name="chevron-forward"
+          size={20}
+          color={fullThemeColors.textSecondary}
+          style={{ marginLeft: 4 }}
+        />
+      </TouchableOpacity>
 
       <View style={[styles.progressBar, { backgroundColor: fullThemeColors.border }]}>
-        <View style={[
-          styles.progressFill,
-          { width: `${progress}%`, backgroundColor: themeColors.primary }
-        ]} />
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${progress}%`, backgroundColor: themeColors.primary },
+          ]}
+        />
       </View>
+
+      <TouchableOpacity onPress={handlePress} style={styles.footerLink}>
+        <Text style={[styles.footerText, { color: themeColors.primary }]}>
+          View detailed learning status →
+        </Text>
+      </TouchableOpacity>
     </Animated.View>
   );
 };
@@ -126,6 +155,8 @@ const styles = StyleSheet.create({
   toggle: { padding: 4 },
   progressBar: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
+  footerLink: { marginTop: 10, alignItems: 'flex-end' },
+  footerText: { fontSize: 12, fontWeight: '700' },
 });
 
 export default AILearningStatus;

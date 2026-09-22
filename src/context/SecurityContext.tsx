@@ -720,16 +720,35 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } catch {}
   }, []);
 
-  // ─── FIXED: Toggle biometric with proper persistence (uses fresh state) ──
+  // ─── FIXED: Toggle biometric — reads FRESH state, never trusts closure ──
   const toggleBiometric = useCallback(async (enabled: boolean): Promise<boolean> => {
     console.log('[Security] toggleBiometric called with:', enabled);
-    console.log('[Security] Current state:', state.settings.isBiometricEnabled);
-    
+
+    // ── Read the ACTUAL current value from storage, not from closure ──
+    let currentlyEnabled = false;
+    try {
+      const stored = await AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED);
+      currentlyEnabled = stored === 'true';
+    } catch {}
+    console.log('[Security] toggleBiometric — currentlyEnabled (from storage):', currentlyEnabled);
+
+    // ── Idempotency: if we're already in the target state, no-op success ──
+    if (enabled === currentlyEnabled) {
+      console.log('[Security] toggleBiometric — already in target state, no-op');
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          settings: { ...prev.settings, isBiometricEnabled: currentlyEnabled },
+        }));
+      }
+      return true;
+    }
+
     if (enabled) {
-      // First check if biometric is available
+      // Refresh hardware/enrollment status
       await refreshBiometricStatus();
-      
-      // Read FRESH state directly from device (not from closure)
+
+      // Read FRESH hardware state (never trust closure)
       let hasHardware = false;
       let isEnrolled = false;
       try {
@@ -738,56 +757,53 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       } catch (e) {
         console.warn('[Security] Fresh biometric check failed:', e);
       }
-      
+
       if (!hasHardware || !isEnrolled) {
         console.warn('[Security] Biometric not available - hardware:', hasHardware, 'enrolled:', isEnrolled);
         return false;
       }
-      
-      // Authenticate to confirm
+
+      // Authenticate once to confirm
       const result = await authenticateWithBiometric('Confirm to enable biometric unlock');
-      if (result.success) {
-        // ✅ Persist to AsyncStorage
-        await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'true');
-        // Also persist to SecureStore for login
-        await SecureStore.setItemAsync(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'true');
-        
-        if (isMounted.current) {
-          setState(prev => ({ 
-            ...prev, 
-            settings: { 
-              ...prev.settings, 
-              isBiometricEnabled: true 
-            },
-            isBiometricHardwareAvailable: true,
-            isBiometricEnrolled: true,
-          }));
-        }
-        await refreshBiometricStatus();
-        console.log('[Security] ✅ Biometric enabled successfully');
-        return true;
+      if (!result.success) {
+        // User cancelled — leave state unchanged
+        console.log('[Security] Biometric enable cancelled by user');
+        return false;
       }
-      console.log('[Security] Biometric enable cancelled or failed');
-      return false;
-    } else {
-      // ✅ Disable and persist
-      await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'false');
-      await SecureStore.setItemAsync(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'false');
-      
+
+      // Persist BOTH flags
+      await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'true');
+      try {
+        await SecureStore.setItemAsync(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'true');
+      } catch {}
+
       if (isMounted.current) {
-        setState(prev => ({ 
-          ...prev, 
-          settings: { 
-            ...prev.settings, 
-            isBiometricEnabled: false 
-          } 
+        setState(prev => ({
+          ...prev,
+          settings: { ...prev.settings, isBiometricEnabled: true },
+          isBiometricHardwareAvailable: hasHardware,
+          isBiometricEnrolled: isEnrolled,
         }));
       }
-      await refreshBiometricStatus();
+      console.log('[Security] ✅ Biometric enabled successfully');
+      return true;
+    } else {
+      // Disable path — no biometric prompt needed
+      await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'false');
+      try {
+        await SecureStore.setItemAsync(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'false');
+      } catch {}
+
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          settings: { ...prev.settings, isBiometricEnabled: false },
+        }));
+      }
       console.log('[Security] ❌ Biometric disabled');
       return true;
     }
-  }, [authenticateWithBiometric, refreshBiometricStatus, state.settings.isBiometricEnabled]);
+  }, [authenticateWithBiometric, refreshBiometricStatus]);
 
   const toggleAppLock = useCallback(async (enabled: boolean) => {
     await AsyncStorage.setItem(ASYNC_KEYS.APP_LOCK_ENABLED, enabled ? 'true' : 'false');
@@ -828,13 +844,24 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     let isValid = false;
     try {
       if (method === 'biometric') {
-        await refreshBiometricStatus();
-        if (!state.isBiometricHardwareAvailable) {
-          console.log('[Security] Biometric hardware not available');
+        // Read hardware + enrollment FRESH from device, not from closure
+        let hasHardware = false;
+        let isEnrolled = false;
+        try {
+          hasHardware = await LocalAuthentication.hasHardwareAsync();
+          isEnrolled = await LocalAuthentication.isEnrolledAsync();
+        } catch {}
+        if (!hasHardware || !isEnrolled) {
+          console.log('[Security] Biometric hardware not available/enrolled');
           return false;
         }
-        // Check if biometric is actually enabled
-        if (!state.settings.isBiometricEnabled) {
+        // Read the persisted toggle from storage, not from closure
+        let enabledFromStorage = false;
+        try {
+          enabledFromStorage =
+            (await AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED)) === 'true';
+        } catch {}
+        if (!enabledFromStorage) {
           console.log('[Security] Biometric not enabled in settings');
           return false;
         }

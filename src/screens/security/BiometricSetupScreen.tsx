@@ -341,16 +341,26 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       return;
     }
 
-    // First check if hardware is available
+    // Guard against double-tap
+    if (isScanning) return;
+
+    // First refresh the context's view of hardware/enrollment
     await refreshBiometricStatus();
-    
-    const hasHardwareNow = isBiometricHardwareAvailable;
-    const isEnrolledNow = isBiometricEnrolled;
-    
+
+    // Read FRESH state from device — never trust the closure's stale values
+    let hasHardwareNow = false;
+    let isEnrolledNow = false;
+    try {
+      hasHardwareNow = await LocalAuthentication.hasHardwareAsync();
+      isEnrolledNow = await LocalAuthentication.isEnrolledAsync();
+    } catch (e) {
+      console.warn('[BiometricSetup] fresh hardware check failed:', e);
+    }
+
     if (!hasHardwareNow) {
       sweetAlert.warning(
         'Not Available',
-        'Your device doesn\'t support biometric authentication. You can use a PIN instead.'
+        "Your device doesn't support biometric authentication. You can use a PIN instead."
       );
       return;
     }
@@ -368,6 +378,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     triggerHaptic('medium');
 
     try {
+      // toggleBiometric is now idempotent — safe to call even if already on
       const enabled = await toggleBiometric(true);
       setIsScanning(false);
 
@@ -378,7 +389,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         await refreshBiometricStatus();
         setTimeout(() => safeGoBack(), 2000);
       } else {
-        setErrorMessage('Setup was cancelled or didn\'t complete');
+        setErrorMessage("Setup was cancelled or didn't complete");
         sweetAlert.info('Cancelled', 'Biometric setup was cancelled');
       }
     } catch (error) {
