@@ -24,6 +24,8 @@ import type { RootStackParamList } from '../../types/navigation';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { useAuth } from '../../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showAlert } from '@/utils/alert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BackupRestore'>;
@@ -661,6 +663,7 @@ const AutoBackupModal = ({ visible, onClose, onSave, settings, isDark, primaryCo
 export default function BackupRestoreScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const sweetAlert = useSweetAlert();
+  const { userProfile } = useAuth();
 
   const {
     darkMode: isDark,
@@ -807,7 +810,7 @@ const processRestore = async (content: string, password?: string) => {
           const parsed = JSON.parse(data);
           
           // Restore babies
-          const { createBabyInDb, updateBabyInDb } = await import('@/database/dbHelpers');
+          const { createBabyInDb, updateBabyInDb, getBabyByIdFromDb } = await import('@/database/dbHelpers');
           for (const baby of parsed.babies || []) {
             const exists = await getBabyByIdFromDb(baby.id);
             if (!exists) {
@@ -873,7 +876,7 @@ const processRestore = async (content: string, password?: string) => {
             'success');
           
           // Refresh the app
-          navigation.replace('MainTabs');
+          navigation.replace('Main');
           
         } catch (restoreError) {
           console.error('Restore error:', restoreError);

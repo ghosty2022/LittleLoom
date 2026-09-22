@@ -41,7 +41,6 @@ import InsightsScreen from '../screens/tracking/InsightsScreen';
 import EntryDetailScreen from '../screens/tracking/EntryDetailScreen';
 import TrackerRemindersScreen from '../screens/tracking/TrackerRemindersScreen';
 import FamilySharingScreen from '../screens/family/FamilySharingScreen';
-import FamilySettingsScreen from '../screens/family/FamilySettingsScreen';
 import FamilyDashboardScreen from '../screens/baby/FamilyDashboardScreen';
 import BabyProfileScreen from '../screens/baby/BabyProfileScreen';
 import EditGuardianScreen from '../screens/family/EditGuardianScreen';
@@ -86,7 +85,7 @@ const MAIN_FLOW_SCREENS = new Set([
   'Profile', 'SwitchBaby', 'EditProfile', 'EditGuardian',
   'Gallery', 'FamilyChatList', 'FamilyChat',
   'AddEntry', 'Achievements', 'GrowthDashboard', 'Insights', 'TrackerReminders',
-  'FamilySharing', 'SoundMixer', 'Customize', 'EntryDetail',
+  'FamilySharing', 'SoundMixer', 'Customize', 'EntryDetail', 'SecureAccessList',
   'BiometricSetup', 'SecurityCenter',
   'BackupRestore', 'HelpCenter', 'ContactSupport', 'PrivacyPolicy',
   'TermsOfService', 'About', 'LanguageSettings', 'UnitSettings', 'AIManagement',
@@ -624,10 +623,9 @@ function NavigationContent({
           />
           <Stack.Screen name="EditProfile" component={BabyProfileScreen} />
           <Stack.Screen name="EditGuardian" component={EditGuardianScreen} />
-          <Stack.Screen
-            name="SecureAccessList"
-            component={require('../screens/family/SecureAccessListScreen').default}
-          />
+          {/* SecureAccessList is now a tab inside FamilySharing.
+              Route kept registered so deep links don't crash; it redirects. */}
+          <Stack.Screen name="SecureAccessList" component={FamilySharingScreen} />
           <Stack.Screen name="Gallery" component={GalleryScreen} />
           <Stack.Screen name="FamilyChatList" component={FamilyChatListScreen} />
           <Stack.Screen name="FamilyChat" component={FamilyChatScreen} />
@@ -651,7 +649,6 @@ function NavigationContent({
             <Stack.Screen name="Insights" component={InsightsScreen} />
             <Stack.Screen name="TrackerReminders" component={TrackerRemindersScreen} />
             <Stack.Screen name="FamilySharing" component={FamilySharingScreen} />
-            <Stack.Screen name="FamilySettings" component={FamilySettingsScreen} options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="SoundMixer" component={SoundMixerScreen} />
             <Stack.Screen name="Customize" component={CustomizeScreen} />
           </Stack.Group>

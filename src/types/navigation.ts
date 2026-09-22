@@ -253,8 +253,8 @@ export type RootStackParamList = {
 
   // ── Family ──
   FamilySharing: { openInvite?: boolean } | undefined;
-  FamilySettings: undefined;
   FamilyDashboard: { babyId?: string } | undefined;
+  SecureAccessList: undefined;
   FamilyChatList: undefined;
   FamilyChat: {
     chatId?: string;
@@ -492,8 +492,9 @@ export const isRootStackScreen = (name: string): name is RootStackRoute => {
     'Timeline', 'AddEntry', 'EntryDetail', 'CreateCustomTracker',
     'PottyTracker', 'FeedTracker', 'SleepTracker', 'GrowthDashboard',
     'VaccinationSchedule', 'PediatricianPDFExport', 'Achievements',
-    'Insights', 'TrackerReminders', 'FamilySharing', 'FamilySettings',
+    'Insights', 'TrackerReminders', 'FamilySharing',
     'FamilyDashboard', 'FamilyChatList', 'FamilyChat', 'EditGuardian',
+    'SecureAccessList',
     'Gallery', 'SoundMixer', 'SecurityLock', 'BiometricSetup',
     'SecurityCenter', 'SafetyCorner', 'Customize', 'LanguageSettings',
     'UnitSettings', 'BackupRestore', 'AIManagement', 'HelpCenter', 'ContactSupport',

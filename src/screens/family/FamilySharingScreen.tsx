@@ -1,13 +1,11 @@
 // src/screens/family/FamilySharingScreen.tsx
 // SINGLE SOURCE OF TRUTH for family management, permissions, and settings.
-// Absorbs: SecureAccessListScreen, FamilySettingsScreen.
-// Tabs: Members | Activity | Permissions | Settings
+// Tabs: Members | Activity | Access | Settings
 // ─────────────────────────────────────────────────────────────────────
 
 import {
   StyleSheet,
   ActivityIndicator,
-  Linking,
   Text,
   TouchableOpacity,
   View,
@@ -18,7 +16,6 @@ import {
   Switch,
   RefreshControl,
   StatusBar,
-  Platform,
   ScrollView,
   Clipboard,
 } from 'react-native';
@@ -46,7 +43,7 @@ import * as FileSystem from 'expo-file-system';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { UserRole, FamilyMember, ROLE_LABELS } from '../../types/roles';
+import { UserRole, FamilyMember } from '../../types/roles';
 
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
@@ -59,6 +56,7 @@ import { useSafeUser } from '../../hooks/useSafeContexts';
 const FAMILY_IMAGES_DIR = FileSystem.documentDirectory + 'family_images/';
 
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
+type TabKey = 'members' | 'activity' | 'access' | 'settings';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
@@ -123,7 +121,7 @@ const ROLE_CONFIG: Record<UserRole, {
   },
 };
 
-// ── Granular permission meta (from SecureAccessListScreen) ──────────
+// ── Granular permission meta ────────────────────────────────────────
 type PermissionKey =
   | 'canView' | 'canAddEntry' | 'canEditEntry' | 'canEditOthersEntries'
   | 'canDeleteEntry' | 'canEditBaby' | 'canInvite' | 'canExport' | 'canManageFamily';
@@ -140,7 +138,6 @@ const PERMISSION_META: Record<PermissionKey, { label: string; icon: keyof typeof
   canManageFamily: { label: 'Manage Family', icon: 'people', color: '#f97316' },
 };
 
-// ── Full permission map per role (what the SecureAccessListScreen used) ──
 const ROLE_PERMISSION_MAP: Record<UserRole, Record<PermissionKey, boolean>> = {
   [UserRole.PARENT_1]: {
     canView: true, canAddEntry: true, canEditEntry: true, canEditOthersEntries: true,
@@ -179,9 +176,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof 
 const FamilyHealthScore: React.FC<{
   members: FamilyMember[];
   isDark: boolean;
-  themeColors: any;
   shouldReduceMotion: boolean;
-}> = ({ members, isDark, themeColors, shouldReduceMotion }) => {
+}> = ({ members, isDark, shouldReduceMotion }) => {
   const score = useMemo(() => {
     const activeMembers = members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000).length;
     const totalMembers = members.length || 1;
@@ -659,10 +655,10 @@ const MemberCard: React.FC<{
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PERMISSIONS TAB — FULLY ABSORBS SecureAccessListScreen
+// ACCESS TAB
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PermissionsTab: React.FC<{
+const AccessTab: React.FC<{
   members: FamilyMember[];
   isDark: boolean;
   themeColors: any;
@@ -806,27 +802,32 @@ const PermissionsTab: React.FC<{
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SETTINGS TAB — FULLY ABSORBS FamilySettingsScreen
+// SETTINGS TAB — real destinations, no dead-ends
 // ═══════════════════════════════════════════════════════════════════════════
 
-const SettingsTab: React.FC<{
+interface SettingsTabProps {
   isDark: boolean;
   themeColors: any;
   isPrimaryParent: boolean;
   familyCount: number;
   hasCoParent: boolean;
   guardianCount: number;
-  onNavigateFamilySharing: () => void;
-  onNavigateInvite: () => void;
-  onNavigateBackup: () => void;
-  onNavigateReminders: () => void;
+  unreadCount: number;
+  onOpenMembers: () => void;
+  onOpenAccess: () => void;
+  onOpenFamilyChat: () => void;
+  onOpenInvite: () => void;
+  onOpenBackup: () => void;
+  onOpenReminders: () => void;
   onLeaveFamily: () => void;
   shouldReduceMotion: boolean;
-}> = ({
+}
+
+const SettingsTab: React.FC<SettingsTabProps> = ({
   isDark, themeColors, isPrimaryParent,
-  familyCount, hasCoParent, guardianCount,
-  onNavigateFamilySharing, onNavigateInvite,
-  onNavigateBackup, onNavigateReminders, onLeaveFamily,
+  familyCount, hasCoParent, guardianCount, unreadCount,
+  onOpenMembers, onOpenAccess, onOpenFamilyChat, onOpenInvite,
+  onOpenBackup, onOpenReminders, onLeaveFamily,
   shouldReduceMotion,
 }) => {
   const renderRow = (
@@ -836,6 +837,7 @@ const SettingsTab: React.FC<{
     subtitle: string,
     onPress: () => void,
     destructive = false,
+    badge?: string | number,
   ) => (
     <TouchableOpacity
       onPress={onPress}
@@ -857,13 +859,18 @@ const SettingsTab: React.FC<{
           {subtitle}
         </Text>
       </View>
+      {badge !== undefined && (
+        <View style={[styles.settingsBadge, { backgroundColor: '#ef4444' }]}>
+          <Text style={styles.settingsBadgeText}>{badge}</Text>
+        </View>
+      )}
       <Ionicons name="chevron-forward" size={18} color={isDark ? '#64748b' : '#94a3b8'} />
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.tabContent}>
-      {/* Summary card (from FamilySettingsScreen) */}
+      {/* Summary card */}
       <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
         <LinearGradient
           colors={[themeColors.colors[0], themeColors.colors[1]]}
@@ -888,26 +895,44 @@ const SettingsTab: React.FC<{
         </LinearGradient>
       </Animated.View>
 
-      {/* Family Management */}
+      {/* Communication */}
       <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100).springify()}>
         <View style={styles.sectionHeaderRow}>
+          <View>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Communication</Text>
+            <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Keep the family connected</Text>
+          </View>
+        </View>
+        <View style={{ gap: 8 }}>
+          {renderRow(
+            'chatbubbles-outline',
+            '#ec4899',
+            'Family Chat',
+            unreadCount > 0 ? `${unreadCount} unread messages` : 'Message your family',
+            onOpenFamilyChat,
+            false,
+            unreadCount > 0 ? unreadCount : undefined,
+          )}
+        </View>
+      </Animated.View>
+
+      {/* Family Management */}
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(150).springify()}>
+        <View style={[styles.sectionHeaderRow, { marginTop: 8 }]}>
           <View>
             <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Family Management</Text>
             <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Manage your household</Text>
           </View>
         </View>
         <View style={{ gap: 8 }}>
-          {renderRow('people-outline', themeColors.primary, 'Family Members', 'View and manage family members', onNavigateFamilySharing)}
-          {isPrimaryParent && renderRow('person-add', '#11998e', 'Invite Co-Parent', 'Send an invite to your partner', onNavigateInvite)}
-          {renderRow('shield-checkmark-outline', '#f59e0b', 'Permissions', 'Control what family members can access', () => {
-            // Switch to Permissions tab instead of navigating
-            onNavigateFamilySharing();
-          })}
+          {renderRow('people-outline', themeColors.primary, 'View Family Members', 'See everyone in this family', onOpenMembers)}
+          {renderRow('shield-checkmark-outline', '#f59e0b', 'Roles & Permissions', 'Control what family members can access', onOpenAccess)}
+          {isPrimaryParent && renderRow('person-add', '#11998e', 'Invite Co-Parent', 'Send an invite to your partner', onOpenInvite)}
         </View>
       </Animated.View>
 
       {/* Data & Privacy */}
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(150).springify()}>
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200).springify()}>
         <View style={[styles.sectionHeaderRow, { marginTop: 8 }]}>
           <View>
             <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Data & Privacy</Text>
@@ -915,13 +940,13 @@ const SettingsTab: React.FC<{
           </View>
         </View>
         <View style={{ gap: 8 }}>
-          {renderRow('share-outline', '#10b981', 'Export Family Data', 'Backup all family records', onNavigateBackup)}
-          {renderRow('notifications-outline', '#4facfe', 'Family Notifications', 'Alerts for family activity', onNavigateReminders)}
+          {renderRow('cloud-upload-outline', '#10b981', 'Export & Backup', 'Backup all family records', onOpenBackup)}
+          {renderRow('notifications-outline', '#4facfe', 'Notifications & Reminders', 'Alerts for family activity', onOpenReminders)}
         </View>
       </Animated.View>
 
       {/* Danger Zone */}
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200).springify()}>
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250).springify()}>
         <View style={[styles.sectionHeaderRow, { marginTop: 8 }]}>
           <View>
             <Text style={[styles.sectionTitle, { color: '#ef4444' }]}>Danger Zone</Text>
@@ -965,7 +990,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'members' | 'activity' | 'permissions' | 'settings'>('members');
+  const [activeTab, setActiveTab] = useState<TabKey>('members');
   const [activeCodes, setActiveCodes] = useState<any[]>([]);
 
   const [editForm, setEditForm] = useState({
@@ -1179,7 +1204,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     triggerHaptic('light');
   };
 
-  const handleToggleGoal = (goalId: string) => {
+  const handleToggleGoal = (_goalId: string) => {
     triggerHaptic('light');
   };
 
@@ -1224,7 +1249,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     );
   };
 
-  const handleTabChange = (tab: typeof activeTab) => {
+  const handleTabChange = (tab: TabKey) => {
     setActiveTab(tab);
     triggerHaptic('light');
   };
@@ -1263,9 +1288,12 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
       {/* 4-tab bar */}
       <View style={[styles.modernTabBar, isDark && styles.modernTabBarDark]}>
-        {(['members', 'activity', 'permissions', 'settings'] as const).map((tab) => {
-          const icons: Record<typeof tab, keyof typeof Ionicons.glyphMap> = {
-            members: 'people', activity: 'pulse', permissions: 'shield-checkmark', settings: 'settings',
+        {(['members', 'activity', 'access', 'settings'] as const).map((tab) => {
+          const icons: Record<TabKey, keyof typeof Ionicons.glyphMap> = {
+            members: 'people', activity: 'pulse', access: 'shield-checkmark', settings: 'settings',
+          };
+          const labels: Record<TabKey, string> = {
+            members: 'Members', activity: 'Activity', access: 'Access', settings: 'Settings',
           };
           const isActive = activeTab === tab;
           return (
@@ -1286,7 +1314,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                 ]}
                 numberOfLines={1}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {labels[tab]}
               </Text>
             </TouchableOpacity>
           );
@@ -1298,7 +1326,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   // ─── Members tab ─────────────────────────────────────────────────
   const renderMembersTab = () => (
     <View style={styles.tabContent}>
-      <FamilyHealthScore members={members} isDark={isDark} themeColors={themeColors} shouldReduceMotion={shouldReduceMotion} />
+      <FamilyHealthScore members={members} isDark={isDark} shouldReduceMotion={shouldReduceMotion} />
       <DailyFamilyGoals goals={dailyGoals} isDark={isDark} themeColors={themeColors} shouldReduceMotion={shouldReduceMotion} onToggleGoal={handleToggleGoal} />
       <SmartSuggestions suggestions={smartSuggestions} isDark={isDark} shouldReduceMotion={shouldReduceMotion} onAction={handleSuggestionAction} />
       <FamilyInsights insights={familyInsights} isDark={isDark} shouldReduceMotion={shouldReduceMotion} />
@@ -1453,8 +1481,8 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             <FamilyActivityTimeline events={timelineEvents} isDark={isDark} shouldReduceMotion={shouldReduceMotion} />
           </View>
         )}
-        {activeTab === 'permissions' && (
-          <PermissionsTab
+        {activeTab === 'access' && (
+          <AccessTab
             members={members}
             isDark={isDark}
             themeColors={themeColors}
@@ -1472,10 +1500,13 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             familyCount={familyCount}
             hasCoParent={hasCoParent}
             guardianCount={guardians?.length || 0}
-            onNavigateFamilySharing={() => setActiveTab('members')}
-            onNavigateInvite={() => navigation.navigate('CoParentInviteScreen')}
-            onNavigateBackup={() => navigation.navigate('BackupRestore')}
-            onNavigateReminders={() => navigation.navigate('TrackerReminders')}
+            unreadCount={0}
+            onOpenMembers={() => setActiveTab('members')}
+            onOpenAccess={() => setActiveTab('access')}
+            onOpenFamilyChat={() => navigation.navigate('FamilyChatList')}
+            onOpenInvite={() => navigation.navigate('CoParentInviteScreen')}
+            onOpenBackup={() => navigation.navigate('BackupRestore')}
+            onOpenReminders={() => navigation.navigate('TrackerReminders')}
             onLeaveFamily={handleLeaveFamily}
             shouldReduceMotion={shouldReduceMotion}
           />
@@ -1527,6 +1558,26 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             </View>
 
             <View style={styles.detailActions}>
+              {selectedMember.id !== currentUserId && selectedMember.status !== 'pending' && (
+                <TouchableOpacity
+                  style={styles.detailActionBtn}
+                  onPress={() => {
+                    setShowMemberModal(false);
+                    navigation.navigate('FamilyChat', {
+                      memberId: selectedMember.id,
+                      memberName: selectedMember.fullName,
+                      memberAvatar: selectedMember.avatar,
+                      memberRole: selectedMember.role,
+                    });
+                  }}
+                >
+                  <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.detailActionGradient}>
+                    <Ionicons name="chatbubble" size={20} color="#fff" />
+                    <Text style={styles.detailActionText}>Send Message</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
               {isPrimaryParent && selectedMember.role !== UserRole.PARENT_1 && (
                 <>
                   <TouchableOpacity
@@ -1878,7 +1929,7 @@ const styles = StyleSheet.create({
   addFirstMemberBtn: { marginTop: 12, paddingHorizontal: DESIGN.spacing.lg, paddingVertical: 8, borderRadius: 10 },
   addFirstMemberText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-  // ── Permissions Tab ──
+  // ── Access Tab ──
   permissionsHeaderCard: {
     borderRadius: DESIGN.radius.lg, padding: 16, marginBottom: 16,
   },
@@ -1951,6 +2002,12 @@ const styles = StyleSheet.create({
   },
   settingsRowTitle: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
   settingsRowSubtitle: { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
+  settingsBadge: {
+    minWidth: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 6, marginRight: 4,
+  },
+  settingsBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
 
   // ── Avatar ──
   avatarWrapper: { borderRadius: DESIGN.radius.md, overflow: 'hidden' },
@@ -1999,6 +2056,11 @@ const styles = StyleSheet.create({
   detailText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#1a1a1a', marginLeft: 12 },
   detailActions: { gap: 10, marginTop: 10 },
   detailActionBtn: { borderRadius: 12, overflow: 'hidden' },
+  detailActionGradient: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, gap: 8,
+  },
+  detailActionText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   detailActionSecondary: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: 14, gap: 8, borderRadius: 12, borderWidth: 1,

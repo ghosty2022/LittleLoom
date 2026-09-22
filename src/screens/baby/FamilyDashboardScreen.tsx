@@ -44,6 +44,7 @@ import { UserRole } from '../../types/roles';
 import { useBaby } from '../../context/BabyContext';
 import { useTracker } from '../../hooks/useTrackerContext';
 import OptimizedImage from '../../components/OptimizedImage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AnimatedScrollView = Animated.ScrollView;
 
@@ -564,7 +565,11 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   }, [navigation, effectiveUser]);
 
   const handleNavigateFamily = useCallback(() => navigation.navigate('FamilySharing'), [navigation]);
-  const handleNavigateFamilySettings = useCallback(() => navigation.navigate('FamilySettings'), [navigation]);
+  // FamilySettings was absorbed into FamilySharing's Settings tab
+const handleNavigateFamilySettings = useCallback(
+  () => navigation.navigate('FamilySharing'),
+  [navigation],
+);
   const handleNavigateTimeline = useCallback(() => navigation.navigate('Timeline'), [navigation]);
   const handleNavigateAchievements = useCallback(() => navigation.navigate('Achievements'), [navigation]);
   const handleNavigateGrowthChart = useCallback(() => navigation.navigate('GrowthDashboard'), [navigation]);
