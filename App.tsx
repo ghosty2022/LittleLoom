@@ -31,6 +31,7 @@ import { ensureAllImageDirs } from '@/utils/imageUtils';
 
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
+import { AIBootstrapGate } from '@/components/AIBootstrapGate';
 
 // ─── SweetAlert Provider ──────────────────────────────────────────────
 // Import from the fixed SweetAlert component
@@ -192,6 +193,7 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
     >
       <ModalProvider>
         <View style={styles.container}>
+          <AIBootstrapGate />
           <AppNavigator initialState={initialState} onStateChange={onStateChange} />
           <GlobalAudioPlayer />
         </View>

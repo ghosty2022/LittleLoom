@@ -375,7 +375,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       avatar_url: row.avatar_url || row.avatar || '',
       parent1Id: row.parent1_id || '',
       parent2Id: row.parent2_id || undefined,
-      guardianIds: row.guardian_ids || [],
+      guardianIds: [], // Populated by FamilyContext from family_members
       role: userRole || 'viewer',
       bloodType: row.blood_type || undefined,
       medicalNotes: row.medical_notes || undefined,
@@ -738,7 +738,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Runs in the background ONCE per baby — the flag lives in AsyncStorage.
       if (babies.length > 0 && !backfillRanRef.current) {
         backfillRanRef.current = true;
-        import('../services/ai/backfillBayesian')
+        import('@/services/ai/backfillBayesian')
           .then(({ backfillBayesianIfNeeded }) => {
             Promise.all(
               babies.map(b => backfillBayesianIfNeeded(b.id).catch(() => null))
@@ -747,7 +747,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .catch(() => {});
 
         // ─── Predictor backfill (sleep, feed, diaper, medication) ──
-        import('../services/ai/PredictorEngine')
+        import('@/services/ai/PredictorEngine')
           .then(({ backfillPredictor }) => {
             const types: Array<'sleep' | 'feed' | 'diaper' | 'medication'> =
               ['sleep', 'feed', 'diaper', 'medication'];
@@ -1538,9 +1538,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteActivity = useCallback(async () => false, []);
   const getBabyStats = useCallback(() => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }), []);
   const updateBabyStats = useCallback(async () => {}, []);
-  const entries: ActivityEntry[] = [];
   // NOTE: BabyContext.entries is intentionally empty — use useTracker().entries
   //       or useActivity().entries as the source of truth.
+  const entries = useMemo<ActivityEntry[]>(() => [], []);
   const loadEntries = useCallback(async () => {}, []);
   const deleteEntry = useCallback(async () => false, []);
   const addEntry = useCallback(async () => false, []);
