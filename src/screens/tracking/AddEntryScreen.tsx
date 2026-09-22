@@ -61,7 +61,7 @@ import { supabase } from '../../utils/supabase';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
 import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
 import { useDashboardIntelligence } from '../../hooks/useDashboardIntelligence';
-import SmartPhotoField from '../../screens/gallery/SmartPhotoField';
+import SmartPhotoField from '../../components/trackers/SmartPhotoField';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useAnomalyFeedback } from '../../hooks/useAnomalyFeedback';
 import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/useTrackerProgressive';
@@ -621,11 +621,11 @@ const ConfirmModal = memo<ConfirmModalProps>(({
 
   // Get photoUris from props or from data - with deduplication
   const displayPhotoUris = useMemo(() => {
-    const uris = photoUris.length > 0 
-      ? photoUris 
-      : (Array.isArray((data as any)?.photoUris) ? (data as any).photoUris : []);
-    // Filter and deduplicate
-    const filtered = uris.filter((u: any) => typeof u === 'string' && u.length > 0);
+    const rawFromProps = Array.isArray(photoUris) ? photoUris : [];
+    const rawFromData = Array.isArray((data as any)?.photoUris) ? (data as any).photoUris : [];
+    const uris = rawFromProps.length > 0 ? rawFromProps : rawFromData;
+    // Filter out non-strings, empty strings, and nested arrays
+    const filtered = uris.filter((u: unknown): u is string => typeof u === 'string' && u.length > 0);
     return [...new Set(filtered)];
   }, [photoUris, data]);
 
@@ -660,7 +660,9 @@ const ConfirmModal = memo<ConfirmModalProps>(({
                     style={{ marginBottom: 12 }}
                     contentContainerStyle={{ gap: 8 }}
                   >
-                    {displayPhotoUris.map((uri: string, idx: number) => (
+                    {displayPhotoUris
+                      .filter((uri): uri is string => typeof uri === 'string' && uri.length > 0)
+                      .map((uri: string, idx: number) => (
                       <Image
                         key={`preview-photo-${idx}`}
                         source={{ uri }}
@@ -807,7 +809,15 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                 const fields = getEntryFields(entry);
                 const entryDate = new Date(entry.timestamp);
                 const entryPhotoUris: string[] = Array.isArray((entry as any)?.photoUris)
-                  ? (entry as any).photoUris.filter((u: any) => typeof u === 'string' && u.length > 0)
+                  ? ((entry as any).photoUris as unknown[])
+                      .flat(Infinity)
+                      .map((u: any) =>
+                        typeof u === 'string' ? u : u?.uri
+                      )
+                      .filter(
+                        (u: unknown): u is string =>
+                          typeof u === 'string' && u.length > 0
+                      )
                   : [];
                 return (
                   <Animated.View key={entry.id} entering={FadeInUp.delay(index * 80).springify()}
@@ -849,7 +859,9 @@ const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(({
                     {entryPhotoUris.length > 0 ? (
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}
                         style={{ marginTop: 8 }} contentContainerStyle={{ gap: 6 }}>
-                        {entryPhotoUris.map((uri, idx) => (
+                        {entryPhotoUris
+                          .filter((uri): uri is string => typeof uri === 'string' && uri.length > 0)
+                          .map((uri, idx) => (
                           <Image key={`entry-photo-${idx}`} source={{ uri }}
                             style={{ width: 48, height: 48, borderRadius: borderRadiusValue / 2 }}
                             resizeMode="cover" />
@@ -1363,40 +1375,61 @@ function TrackerContent({
     setShowConfirm(true);
   }, [setPendingData, setPendingOptions, setShowConfirm]);
 
-  // ─── REPLACED: handlePhotosChange (single source of truth, deduped) ───────
-
-  const handlePhotosChange = useCallback((photos: any[]) => {
-    try {
-      const uris = Array.isArray(photos)
-        ? photos
-            .map((p: any) => p?.uri)
-            .filter((u: any): u is string => typeof u === 'string' && u.length > 0)
-        : [];
-      // Dedupe while preserving order
-      const deduped = [...new Set(uris)];
-      setPendingOptions((prev: any) => {
-        const prevUris: string[] = Array.isArray(prev?.photoUris) ? prev.photoUris : [];
-        const same =
-          prevUris.length === deduped.length &&
-          prevUris.every((u, i) => u === deduped[i]);
-        if (same) return prev; // avoid useless re-renders
-        return { ...prev, photoUris: deduped };
-      });
-    } catch (e) {
-      console.error('handlePhotosChange error:', e);
-    }
-  }, [setPendingOptions]);
+  // ─── handlePhotosChange (PhotoMeta[] → flat string[]) ──────────────
+  // Defensive fallback in case onUrisChange is not wired.
+  const handlePhotosChange = useCallback(
+    (photos: any[]) => {
+      try {
+        const uris = Array.isArray(photos)
+          ? (photos as unknown[])
+              .flat(Infinity)
+              .map((p: any) => (typeof p === 'string' ? p : p?.uri))
+              .filter(
+                (u: unknown): u is string =>
+                  typeof u === 'string' && u.length > 0
+              )
+          : [];
+        const deduped = [...new Set(uris)];
+        setPendingOptions((prev: any) => {
+          const prevUris: string[] = Array.isArray(prev?.photoUris)
+            ? prev.photoUris.filter(
+                (u: unknown): u is string =>
+                  typeof u === 'string' && u.length > 0
+              )
+            : [];
+          const same =
+            prevUris.length === deduped.length &&
+            prevUris.every((u, i) => u === deduped[i]);
+          if (same) return prev;
+          return { ...prev, photoUris: deduped };
+        });
+      } catch (e) {
+        console.error('handlePhotosChange error:', e);
+      }
+    },
+    [setPendingOptions]
+  );
 
   // ─── REPLACED: confirmSave (sanitized photoUris + null-safe options) ──────
 
   const confirmSave = useCallback(async () => {
     if (!tracker) return;
     try {
-      // Sanitize and deduplicate photo URIs before sending to the database
-      const safePhotoUris = [...new Set(
-        ((pendingOptions?.photoUris || []) as unknown[])
-          .filter((u): u is string => typeof u === 'string' && u.length > 0)
-      )];
+      // Sanitize and deduplicate photo URIs before sending to the database.
+      // Flatten in case any nested arrays snuck through.
+      const safePhotoUris = [
+        ...new Set(
+          ((pendingOptions?.photoUris || []) as unknown[])
+            .flat(Infinity)
+            .map((u: any) =>
+              typeof u === 'string' ? u : u?.uri
+            )
+            .filter(
+              (u: unknown): u is string =>
+                typeof u === 'string' && u.length > 0
+            )
+        ),
+      ];
 
       // Ensure tags is always an array
       const safeTags = Array.isArray(pendingOptions?.tags) 
@@ -1678,31 +1711,56 @@ function TrackerContent({
           {/* Smart Photo Documentation — single source of truth for photoUris */}
           <View style={[styles.sectionMargin, { marginBottom: DESIGN.spacing.lg }]}>
             <SmartPhotoField
-              field={{
-                id: 'photo',
-                label: 'Photo Documentation',
-                type: 'photo',
-                max: 3,
-              } as any}
-              value={pendingOptions.photoUris || []}
-              onChange={(uris) => {
-                const list = Array.isArray(uris)
-                  ? uris.filter((u): u is string => typeof u === 'string' && u.length > 0)
-                  : [];
-                const deduped = [...new Set(list)];
-                setPendingOptions((prev: any) => ({ ...prev, photoUris: deduped }));
-              }}
-              onPhotosChange={handlePhotosChange}
-              initialPhotoUris={pendingOptions.photoUris || []}
-              trackerColor={tracker.gradient?.[0] || '#667eea'}
-              colors={fullThemeColors}
-              fontSizeMultiplier={fontSizeMultiplier}
-              borderRadiusValue={borderRadiusValue}
-              maxPhotos={3}
+              // ── Identity ───────────────────────────────────────────
               label="Photo Documentation"
               trackerContext={tracker.id}
+              babyId={currentBaby?.id}
+              // ── Behaviour ──────────────────────────────────────────
+              maxPhotos={3}
               allowAnnotation={true}
               allowCompare={true}
+              allowShare={true}
+              autoAnalyze={true}
+              uploadToSupabase={true}
+              // ── Current value (first URI, so component knows what's selected)
+              value={Array.isArray(pendingOptions.photoUris)
+                ? pendingOptions.photoUris[0]
+                : undefined}
+              // ── Authoritative sink: a flat string[] of URIs ───────
+              onUrisChange={(uris) => {
+                const clean = Array.isArray(uris)
+                  ? uris
+                      .flat(Infinity)
+                      .map((u: any) =>
+                        typeof u === 'string' ? u : u?.uri
+                      )
+                      .filter(
+                        (u: unknown): u is string =>
+                          typeof u === 'string' && u.length > 0
+                      )
+                  : [];
+                const deduped = [...new Set(clean)];
+                setPendingOptions((prev: any) => {
+                  const prevUris: string[] = Array.isArray(prev?.photoUris)
+                    ? prev.photoUris.filter(
+                        (u: unknown): u is string =>
+                          typeof u === 'string' && u.length > 0
+                      )
+                    : [];
+                  const same =
+                    prevUris.length === deduped.length &&
+                    prevUris.every((u, i) => u === deduped[i]);
+                  return same ? prev : { ...prev, photoUris: deduped };
+                });
+              }}
+              // ── Full metadata sink (optional — used for advanced UI) ─
+              onPhotosChange={handlePhotosChange}
+              // ── Seed from existing entry (edit mode) ──────────────
+              initialPhotoUris={
+                Array.isArray(pendingOptions.photoUris)
+                  ? pendingOptions.photoUris
+                  : []
+              }
             />
           </View>
 
@@ -1804,15 +1862,33 @@ function TrackerContent({
       </KeyboardAvoidingView>
 
       {/* Modals */}
-      <ConfirmModal visible={showConfirm} onClose={() => setShowConfirm(false)} onConfirm={confirmSave}
+      <ConfirmModal
+        visible={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        onConfirm={confirmSave}
         data={{ ...pendingData }}
-        photoUris={pendingOptions.photoUris || []}
+        photoUris={
+          Array.isArray(pendingOptions.photoUris)
+            ? pendingOptions.photoUris.filter(
+                (u: unknown): u is string =>
+                  typeof u === 'string' && u.length > 0
+              )
+            : []
+        }
         tracker={tracker}
-        babyName={currentBaby?.name || 'Baby'} 
-        babyAvatar={currentBaby?.avatar} 
+        babyName={currentBaby?.name || 'Baby'}
+        babyAvatar={currentBaby?.avatar}
         date={date}
-        notes={pendingOptions.notes} 
-        tags={pendingOptions.tags || []} />
+        notes={pendingOptions.notes}
+        tags={
+          Array.isArray(pendingOptions.tags)
+            ? pendingOptions.tags.filter(
+                (t: unknown): t is string =>
+                  typeof t === 'string' && t.length > 0
+              )
+            : []
+        }
+      />
 
       <YesterdayEntriesModal visible={showYesterdayModal} onClose={() => setShowYesterdayModal(false)}
         entries={yesterdayEntries} tracker={tracker} onCopyEntry={handleCopyYesterdayEntry}

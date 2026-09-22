@@ -72,11 +72,21 @@ export function sanitizePayload(value: unknown): unknown {
   }
 }
 
-function sanitizePhotoUris(uris?: string[] | null): string[] {
+function sanitizePhotoUris(uris?: unknown): string[] {
   if (!Array.isArray(uris)) return [];
-  return uris.filter(
-    (u): u is string => typeof u === 'string' && u.length > 0
-  );
+  // Flatten any nested arrays and coerce objects with .uri to strings
+  const flat = (uris as unknown[]).flat(Infinity);
+  const strings = flat
+    .map((u) => {
+      if (typeof u === 'string') return u;
+      if (u && typeof u === 'object' && typeof (u as any).uri === 'string') {
+        return (u as any).uri as string;
+      }
+      return '';
+    })
+    .filter((u): u is string => u.length > 0);
+  // Dedupe while preserving order
+  return [...new Set(strings)];
 }
 
 function sanitizeTags(tags?: string[] | null): string[] {
@@ -114,11 +124,23 @@ export function mapRowToEntry(row: any): TrackerEntry {
   const timestamp = Number.isFinite(tsMs) ? tsMs : Date.now();
 
   // ── Photo URIs: jsonb array → clean string[] ─────────────────────
-  const photoUris: string[] | undefined = Array.isArray(row.photo_uris)
-    ? row.photo_uris.filter(
-        (u: unknown): u is string => typeof u === 'string' && u.length > 0
-      )
-    : undefined;
+  // Row values might be: string[], PhotoMeta[], nested arrays, or null.
+  // We flatten and coerce everything to a flat string[].
+  const photoUris: string[] | undefined = (() => {
+    if (!Array.isArray(row.photo_uris)) return undefined;
+    const flat = (row.photo_uris as unknown[]).flat(Infinity);
+    const strings = flat
+      .map((u) => {
+        if (typeof u === 'string') return u;
+        if (u && typeof u === 'object' && typeof (u as any).uri === 'string') {
+          return (u as any).uri as string;
+        }
+        return '';
+      })
+      .filter((u): u is string => u.length > 0);
+    const deduped = [...new Set(strings)];
+    return deduped.length > 0 ? deduped : undefined;
+  })();
 
   // ── Tags: jsonb array → clean string[] ───────────────────────────
   const tags: string[] | undefined = Array.isArray(row.tags)

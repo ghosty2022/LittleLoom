@@ -86,7 +86,24 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
           } else if (field.type === 'mood_emoji') {
             const moods = ['😭', '😟', '😐', '🙂', '😄'];
             displayValue = moods[Number(value) - 1] || '😐';
+          } else if (field.type === 'photo') {
+            // value may be string, string[], or PhotoMeta[] — summarize safely
+            if (Array.isArray(value)) {
+              const count = value.filter(
+                (v) => typeof v === 'string' || (v && typeof v === 'object' && typeof (v as any).uri === 'string')
+              ).length;
+              if (count === 0) return null;
+              displayValue = `📷 ${count} photo${count !== 1 ? 's' : ''}`;
+            } else if (typeof value === 'string' && value.length > 0) {
+              displayValue = '📷 1 photo';
+            } else {
+              return null;
+            }
           } else {
+            // Guard against arrays/objects leaking into text rendering
+            if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
+              return null;
+            }
             displayValue = String(value);
             if (field.unit) displayValue += ` ${field.unit}`;
           }
@@ -141,7 +158,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
             {timeString}
           </Text>
         </View>
-        {entry.photoUris && entry.photoUris.length > 0 && (
+        {Array.isArray(entry.photoUris) && entry.photoUris.length > 0 && (
           <View style={styles.photoIndicator}>
             <Ionicons name="image" size={12} color={fullThemeColors.textSecondary} />
           </View>
@@ -239,18 +256,31 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
         </View>
       )}
 
-      {entry.photoUris && entry.photoUris.length > 0 && (
-        <View style={styles.photoStrip}>
-          {entry.photoUris.slice(0, 3).map((uri, idx) => (
-            <Image key={idx} source={{ uri }} style={styles.thumbnail} resizeMode="cover" />
-          ))}
-          {entry.photoUris.length > 3 && (
-            <View style={[styles.photoCount, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-              <Text style={styles.photoCountText}>+{entry.photoUris.length - 3}</Text>
-            </View>
-          )}
-        </View>
-      )}
+      {(() => {
+        // Defensive: photoUris might be string[] OR PhotoMeta[] OR contain nested junk
+        const raw = entry.photoUris;
+        const flatUris: string[] = Array.isArray(raw)
+          ? (raw as unknown[])
+              .flat(Infinity)
+              .map((u) => (typeof u === 'string' ? u : u && typeof u === 'object' && typeof (u as any).uri === 'string' ? (u as any).uri : ''))
+              .filter((u): u is string => typeof u === 'string' && u.length > 0)
+          : [];
+
+        if (flatUris.length === 0) return null;
+
+        return (
+          <View style={styles.photoStrip}>
+            {flatUris.slice(0, 3).map((uri, idx) => (
+              <Image key={`${uri}-${idx}`} source={{ uri }} style={styles.thumbnail} resizeMode="cover" />
+            ))}
+            {flatUris.length > 3 && (
+              <View style={[styles.photoCount, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+                <Text style={styles.photoCountText}>+{flatUris.length - 3}</Text>
+              </View>
+            )}
+          </View>
+        );
+      })()}
 
       {entry.editedAt && (
         <Text style={[styles.editedText, { color: fullThemeColors.textSecondary, fontSize: 10 * fontSizeMultiplier }]}>

@@ -105,7 +105,10 @@ interface SmartPhotoFieldProps {
   allowCompare?: boolean;
   allowShare?: boolean;
   maxPhotos?: number;
+  /** Emits the full PhotoMeta[] (advanced consumers only) */
   onPhotosChange?: (photos: PhotoMeta[]) => void;
+  /** Emits a FLAT string[] of URIs — this is what most parents should use */
+  onUrisChange?: (uris: string[]) => void;
   initialPhotoUris?: string[];
   autoAnalyze?: boolean;
   babyId?: string;
@@ -363,6 +366,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   allowShare = true,
   maxPhotos = MAX_PHOTOS,
   onPhotosChange,
+  onUrisChange,
   initialPhotoUris,
   autoAnalyze = true,
   babyId,
@@ -441,7 +445,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   // ── Notify parent of photo changes ────────────────────────────────────
   useEffect(() => {
     try {
-      const currentPhotos = photos;
+      const currentPhotos = Array.isArray(photos) ? photos : [];
       const prevPhotos = prevPhotosRef.current;
 
       const sameLength = currentPhotos.length === prevPhotos.length;
@@ -457,12 +461,20 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
       if (changed) {
         prevPhotosRef.current = currentPhotos;
+
+        // Advanced consumers get full metadata
         onPhotosChange?.(currentPhotos);
+
+        // Most consumers get a flat string[] of URIs
+        const uris = currentPhotos
+          .map((p) => (typeof p?.uri === 'string' ? p.uri : ''))
+          .filter((u): u is string => u.length > 0);
+        onUrisChange?.(uris);
       }
     } catch (e) {
       console.error('onPhotosChange error:', e);
     }
-  }, [photos, onPhotosChange]);
+  }, [photos, onPhotosChange, onUrisChange]);
 
   // ── Permissions ─────────────────────────────────────────────────────
   useEffect(() => {
