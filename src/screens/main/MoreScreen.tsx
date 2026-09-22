@@ -1,6 +1,6 @@
-// screens/main/MoreScreen.tsx - COMPLETE FIXED BIOMETRIC TOGGLE
-// No skeleton loader, renders immediately with available data
-// Biometric toggle properly synced with SecurityContext
+// screens/main/MoreScreen.tsx — MODERN EDITION v3.0
+// Unified design language, subtle sync indicator, cleaner hierarchy
+// Fixed: stray duplicate callback that broke Babel parsing
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,7 +17,6 @@ import {
   RefreshControl,
   Share,
   Platform,
-  Alert,
   Linking,
   Pressable,
 } from 'react-native';
@@ -31,6 +30,8 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
   interpolate,
   Extrapolate,
   FadeInUp,
@@ -45,12 +46,10 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 // ─── Hooks ──────────────────────────────────────────────────────────
 import { useSupabase } from '../../hooks/useSupabase';
-import { useRealtimeSubscription } from '../../hooks/useRealtimeSubscription';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useCustomization } from '../../hooks/useCustomization';
 
 // ─── Contexts ──────────────────────────────────────────────────────
-import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';
@@ -77,7 +76,9 @@ type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// ─── Animated Components ──────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// ANIMATED PRESSABLE
+// ═════════════════════════════════════════════════════════════════════
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -117,9 +118,7 @@ const PressableScale = React.memo<PressableScaleProps>(({
 
   const handlePress = useCallback(() => {
     if (disabled) return;
-    if (hapticFeedback) {
-      triggerHaptic(hapticType).catch(() => {});
-    }
+    if (hapticFeedback) triggerHaptic(hapticType).catch(() => {});
     onPress?.();
   }, [disabled, hapticFeedback, triggerHaptic, hapticType, onPress]);
 
@@ -138,7 +137,9 @@ const PressableScale = React.memo<PressableScaleProps>(({
   );
 });
 
-// ─── Custom Modal Components ──────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// CUSTOM MODAL
+// ═════════════════════════════════════════════════════════════════════
 
 interface CustomModalProps {
   visible: boolean;
@@ -176,16 +177,14 @@ const CustomModal = React.memo<CustomModalProps>(({
       scale.value = withTiming(0.8, { duration: 150 });
       opacity.value = withTiming(0, { duration: 150 });
     }
-  }, [visible]);
+  }, [visible, scale, opacity]);
 
   const contentStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
   }));
 
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
   if (!visible) return null;
 
@@ -198,7 +197,12 @@ const CustomModal = React.memo<CustomModalProps>(({
           tint={isDark ? 'dark' : 'light'}
         >
           <Animated.View style={contentStyle}>
-            <View style={[styles.modalIconWrap, { backgroundColor: `${iconColor || primaryColor}15` }]}>
+            <View
+              style={[
+                styles.modalIconWrap,
+                { backgroundColor: `${iconColor || primaryColor}15` },
+              ]}
+            >
               <Ionicons name={icon as any} size={32} color={iconColor || primaryColor} />
             </View>
 
@@ -208,8 +212,14 @@ const CustomModal = React.memo<CustomModalProps>(({
             <View style={styles.modalButtons}>
               {secondaryAction && (
                 <TouchableOpacity
-                  style={[styles.modalSecondaryBtn, { borderColor: `${primaryColor}30`, borderWidth: 1 }]}
-                  onPress={() => { secondaryAction.onPress(); onClose(); }}
+                  style={[
+                    styles.modalSecondaryBtn,
+                    { borderColor: `${primaryColor}30`, borderWidth: 1 },
+                  ]}
+                  onPress={() => {
+                    secondaryAction.onPress();
+                    onClose();
+                  }}
                 >
                   <Text style={[styles.modalSecondaryBtnText, { color: primaryColor }]}>
                     {secondaryAction.label}
@@ -219,7 +229,10 @@ const CustomModal = React.memo<CustomModalProps>(({
               {primaryAction && (
                 <TouchableOpacity
                   style={[styles.modalPrimaryBtn, { backgroundColor: primaryColor }]}
-                  onPress={() => { primaryAction.onPress(); onClose(); }}
+                  onPress={() => {
+                    primaryAction.onPress();
+                    onClose();
+                  }}
                 >
                   <Text style={styles.modalPrimaryBtnText}>{primaryAction.label}</Text>
                 </TouchableOpacity>
@@ -232,7 +245,65 @@ const CustomModal = React.memo<CustomModalProps>(({
   );
 });
 
-// ─── Section Components ───────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// PULSING STATUS DOT — subtle "cloud active" indicator
+// ═════════════════════════════════════════════════════════════════════
+
+const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
+  const pulse = useSharedValue(1);
+  const halo = useSharedValue(1);
+
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(withTiming(1.15, { duration: 900 }), withTiming(1, { duration: 900 })),
+      -1,
+      true
+    );
+    halo.value = withRepeat(
+      withSequence(withTiming(1.8, { duration: 1400 }), withTiming(1, { duration: 1400 })),
+      -1,
+      true
+    );
+  }, [pulse, halo]);
+
+  const dotStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  const haloStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: halo.value }],
+    opacity: interpolate(halo.value, [1, 1.8], [0.35, 0]),
+  }));
+
+  return (
+    <View style={{ width: size * 2, height: size * 2, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: color,
+          },
+          haloStyle,
+        ]}
+      />
+      <Animated.View
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: color,
+          },
+          dotStyle,
+        ]}
+      />
+    </View>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════
+// SECTION HEADER
+// ═════════════════════════════════════════════════════════════════════
 
 interface SectionHeaderProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -264,9 +335,11 @@ const SectionHeader = React.memo<SectionHeaderProps>(({
   }, [isExpanded, rotation]);
 
   const chevronStyle = useAnimatedStyle(() => ({
-    transform: [{
-      rotate: `${interpolate(rotation.value, [0, 1], [0, 90], Extrapolate.CLAMP)}deg`,
-    }],
+    transform: [
+      {
+        rotate: `${interpolate(rotation.value, [0, 1], [0, 90], Extrapolate.CLAMP)}deg`,
+      },
+    ],
   }));
 
   return (
@@ -274,16 +347,12 @@ const SectionHeader = React.memo<SectionHeaderProps>(({
       <View style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>
         <View style={styles.sectionHeaderLeft}>
           <View style={[styles.sectionIconWrap, { backgroundColor: `${color}18` }]}>
-            <Ionicons name={icon} size={22} color={color} />
+            <Ionicons name={icon} size={20} color={color} />
           </View>
           <View style={styles.sectionHeaderText}>
-            <Text style={[styles.sectionTitle, isDark && styles.textLight]}>
-              {title}
-            </Text>
+            <Text style={[styles.sectionTitle, isDark && styles.textLight]}>{title}</Text>
             {subtitle && (
-              <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
-                {subtitle}
-              </Text>
+              <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>{subtitle}</Text>
             )}
           </View>
         </View>
@@ -295,17 +364,17 @@ const SectionHeader = React.memo<SectionHeaderProps>(({
           )}
           {rightAction}
           <Animated.View style={chevronStyle}>
-            <Ionicons
-              name="chevron-forward"
-              size={20}
-              color={isDark ? '#666' : '#999'}
-            />
+            <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#999'} />
           </Animated.View>
         </View>
       </View>
     </PressableScale>
   );
 });
+
+// ═════════════════════════════════════════════════════════════════════
+// MENU ITEM
+// ═════════════════════════════════════════════════════════════════════
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -346,10 +415,7 @@ const MenuItem = React.memo<MenuItemProps>(({
 
   const handlePress = useCallback(() => {
     if (disabled || loading) return;
-    // When onToggle exists, the Switch itself handles the value change.
-    // We only invoke onPress for navigation-style rows.
     if (onToggle) {
-      // Pressing the row (outside the switch) toggles it
       if (hapticFeedback) triggerHaptic('light').catch(() => {});
       onToggle(!isEnabled);
     } else if (onPress) {
@@ -359,7 +425,13 @@ const MenuItem = React.memo<MenuItemProps>(({
   }, [disabled, loading, onToggle, onPress, isEnabled, hapticFeedback, triggerHaptic]);
 
   const iconColor = isDestructive ? '#ef4444' : disabled ? '#999' : color;
-  const titleColor = isDestructive ? '#ef4444' : disabled ? '#999' : isDark ? '#fff' : '#1a1a1a';
+  const titleColor = isDestructive
+    ? '#ef4444'
+    : disabled
+    ? '#999'
+    : isDark
+    ? '#fff'
+    : '#1a1a1a';
   const subtitleColor = isDark ? '#888' : '#999';
 
   return (
@@ -370,13 +442,18 @@ const MenuItem = React.memo<MenuItemProps>(({
       style={!isLast ? styles.menuItemBorder : undefined}
     >
       <View style={[styles.menuItem, (disabled || loading) && styles.menuItemDisabled]}>
-        <View style={[styles.menuIconWrap, {
-          backgroundColor: isDestructive ? 'rgba(239,68,68,0.12)' : `${color}12`,
-        }]}>
+        <View
+          style={[
+            styles.menuIconWrap,
+            {
+              backgroundColor: isDestructive ? 'rgba(239,68,68,0.12)' : `${color}12`,
+            },
+          ]}
+        >
           {loading ? (
             <UniversalSpinner size={18} color={color} variant="liquid" section="settings" />
           ) : (
-            <Ionicons name={icon} size={22} color={iconColor} />
+            <Ionicons name={icon} size={20} color={iconColor} />
           )}
         </View>
 
@@ -405,9 +482,9 @@ const MenuItem = React.memo<MenuItemProps>(({
               onValueChange={
                 disabled || loading
                   ? undefined
-                  : (value) => {
+                  : (val) => {
                       if (hapticFeedback) triggerHaptic('light').catch(() => {});
-                      onToggle(value);
+                      onToggle(val);
                     }
               }
               trackColor={{
@@ -421,7 +498,7 @@ const MenuItem = React.memo<MenuItemProps>(({
           ) : showArrow ? (
             <Ionicons
               name="chevron-forward"
-              size={18}
+              size={16}
               color={disabled ? '#555' : isDark ? '#666' : '#bbb'}
             />
           ) : value ? (
@@ -433,7 +510,9 @@ const MenuItem = React.memo<MenuItemProps>(({
   );
 });
 
-// ─── Stat Card ─────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// STAT CARD
+// ═════════════════════════════════════════════════════════════════════
 
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -444,23 +523,27 @@ interface StatCardProps {
   onPress?: () => void;
 }
 
-const StatCard = React.memo<StatCardProps>(({ icon, value, label, color, isDark, onPress }) => (
-  <PressableScale onPress={onPress} activeScale={0.95} style={{ flex: 1 }}>
-    <BlurView
-      intensity={isDark ? 40 : 80}
-      style={[styles.statCard, isDark && styles.statCardDark]}
-      tint={isDark ? 'dark' : 'light'}
-    >
-      <View style={[styles.statIconWrap, { backgroundColor: `${color}15` }]}>
-        <Ionicons name={icon} size={20} color={color} />
-      </View>
-      <Text style={[styles.statValue, isDark && styles.textLight]}>{value}</Text>
-      <Text style={[styles.statLabel, isDark && styles.textMuted]}>{label}</Text>
-    </BlurView>
-  </PressableScale>
-));
+const StatCard = React.memo<StatCardProps>(
+  ({ icon, value, label, color, isDark, onPress }) => (
+    <PressableScale onPress={onPress} activeScale={0.95} style={{ flex: 1 }}>
+      <BlurView
+        intensity={isDark ? 40 : 80}
+        style={[styles.statCard, isDark && styles.statCardDark]}
+        tint={isDark ? 'dark' : 'light'}
+      >
+        <View style={[styles.statIconWrap, { backgroundColor: `${color}15` }]}>
+          <Ionicons name={icon} size={18} color={color} />
+        </View>
+        <Text style={[styles.statValue, isDark && styles.textLight]}>{value}</Text>
+        <Text style={[styles.statLabel, isDark && styles.textMuted]}>{label}</Text>
+      </BlurView>
+    </PressableScale>
+  )
+);
 
-// ─── Quick Action ─────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// QUICK ACTION
+// ═════════════════════════════════════════════════════════════════════
 
 interface QuickActionProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -470,16 +553,20 @@ interface QuickActionProps {
   onPress: () => void;
 }
 
-const QuickAction = React.memo<QuickActionProps>(({ icon, label, color, isDark, onPress }) => (
-  <PressableScale onPress={onPress} activeScale={0.9} style={styles.quickAction}>
-    <View style={[styles.quickActionIcon, { backgroundColor: `${color}15` }]}>
-      <Ionicons name={icon} size={22} color={color} />
-    </View>
-    <Text style={[styles.quickActionLabel, isDark && styles.textMuted]}>{label}</Text>
-  </PressableScale>
-));
+const QuickAction = React.memo<QuickActionProps>(
+  ({ icon, label, color, isDark, onPress }) => (
+    <PressableScale onPress={onPress} activeScale={0.9} style={styles.quickAction}>
+      <View style={[styles.quickActionIcon, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <Text style={[styles.quickActionLabel, isDark && styles.textMuted]}>{label}</Text>
+    </PressableScale>
+  )
+);
 
-// ─── Family Member Item ───────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// FAMILY MEMBER ITEM
+// ═════════════════════════════════════════════════════════════════════
 
 interface FamilyMemberProps {
   avatar?: string | number;
@@ -507,12 +594,7 @@ const FamilyMemberItem = React.memo<FamilyMemberProps>(({
   <PressableScale onPress={onPress} activeScale={0.92} style={styles.familyMember}>
     <View style={[styles.familyAvatarWrap, { borderColor: `${color}40` }]}>
       {isBaby ? (
-        <SafeBabyAvatar
-          avatar={avatar}
-          gender={gender}
-          size={48}
-          showBadge={false}
-        />
+        <SafeBabyAvatar avatar={avatar} gender={gender} size={48} showBadge={false} />
       ) : (
         <SafeAvatar
           avatar={avatar}
@@ -531,7 +613,9 @@ const FamilyMemberItem = React.memo<FamilyMemberProps>(({
   </PressableScale>
 ));
 
-// ─── Baby Selection Modal ─────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// BABY SELECTION MODAL
+// ═════════════════════════════════════════════════════════════════════
 
 interface BabySelectionModalProps {
   visible: boolean;
@@ -569,9 +653,7 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
     transform: [{ translateY: translateY.value }],
   }));
 
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
-  }));
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOpacity.value }));
 
   if (!visible) return null;
 
@@ -600,40 +682,33 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
             </Text>
             <PressableScale onPress={onClose} hapticType="light">
               <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
-                <Ionicons name="close" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+                <Ionicons name="close" size={20} color={isDark ? '#fff' : '#1a1a1a'} />
               </View>
             </PressableScale>
           </View>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.modalSheetContent}
-          >
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalSheetContent}>
             {babies.map((baby) => {
               const isActive = baby.id === currentBabyId;
               return (
-                <PressableScale
-                  key={baby.id}
-                  onPress={() => onSelectBaby(baby)}
-                  activeScale={0.98}
-                >
-                  <View style={[
-                    styles.babyOption,
-                    isDark && styles.babyOptionDark,
-                    isActive && [styles.babyOptionActive, { borderColor: primaryColor }],
-                    isActive && isDark && styles.babyOptionActiveDark,
-                  ]}>
-                    <SafeBabyAvatar
-                      avatar={baby.avatar}
-                      gender={baby.gender}
-                      size={52}
-                    />
+                <PressableScale key={baby.id} onPress={() => onSelectBaby(baby)} activeScale={0.98}>
+                  <View
+                    style={[
+                      styles.babyOption,
+                      isDark && styles.babyOptionDark,
+                      isActive && [styles.babyOptionActive, { borderColor: primaryColor }],
+                      isActive && isDark && styles.babyOptionActiveDark,
+                    ]}
+                  >
+                    <SafeBabyAvatar avatar={baby.avatar} gender={baby.gender} size={52} />
                     <View style={styles.babyOptionInfo}>
-                      <Text style={[
-                        styles.babyOptionName,
-                        isDark && styles.textLight,
-                        isActive && { color: primaryColor },
-                      ]}>
+                      <Text
+                        style={[
+                          styles.babyOptionName,
+                          isDark && styles.textLight,
+                          isActive && { color: primaryColor },
+                        ]}
+                      >
                         {baby.name}
                       </Text>
                       <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
@@ -658,7 +733,143 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
   );
 });
 
-// ─── Profile Header ───────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// AI LEARNING PROGRESS BAR
+// ═════════════════════════════════════════════════════════════════════
+
+interface AILearningProgressBarProps {
+  stats: {
+    totalSamples: number;
+    learnedCount: number;
+    partialCount: number;
+    notStartedCount: number;
+    healthScore: number;
+  };
+  isDark: boolean;
+  primaryColor: string;
+  onPress?: () => void;
+}
+
+const AILearningProgressBar = React.memo<AILearningProgressBarProps>(({
+  stats,
+  isDark,
+  primaryColor,
+  onPress,
+}) => {
+  const TOTAL_METRICS =
+    stats.learnedCount + stats.partialCount + stats.notStartedCount || 14;
+
+  const learnedPct = (stats.learnedCount / TOTAL_METRICS) * 100;
+  const partialPct = (stats.partialCount / TOTAL_METRICS) * 100;
+
+  const scoreColor =
+    stats.healthScore >= 80
+      ? '#10b981'
+      : stats.healthScore >= 60
+      ? '#f59e0b'
+      : stats.healthScore >= 40
+      ? '#f97316'
+      : '#ef4444';
+
+  const scoreLabel =
+    stats.healthScore >= 80
+      ? 'Excellent'
+      : stats.healthScore >= 60
+      ? 'Good'
+      : stats.healthScore >= 40
+      ? 'Fair'
+      : 'Getting Started';
+
+  const body = (
+    <BlurView
+      intensity={isDark ? 30 : 70}
+      style={[styles.aiProgressCard, isDark && styles.aiProgressCardDark]}
+      tint={isDark ? 'dark' : 'light'}
+    >
+      <View style={styles.aiProgressHeader}>
+        <View style={styles.aiProgressTitleRow}>
+          <View style={[styles.aiProgressIcon, { backgroundColor: `${scoreColor}18` }]}>
+            <Ionicons name="sparkles" size={16} color={scoreColor} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.aiProgressTitle, isDark && styles.textLight]} numberOfLines={1}>
+              AI Learning Progress
+            </Text>
+            <Text style={[styles.aiProgressSubtitle, isDark && styles.textMuted]} numberOfLines={1}>
+              {stats.totalSamples === 0
+                ? 'Start logging to train your AI'
+                : `${stats.totalSamples} samples · ${stats.learnedCount}/${TOTAL_METRICS} metrics learned`}
+            </Text>
+          </View>
+          <View style={[styles.aiScoreBadge, { backgroundColor: `${scoreColor}18` }]}>
+            <Text style={[styles.aiScoreValue, { color: scoreColor }]}>{stats.healthScore}</Text>
+            <Text style={[styles.aiScoreLabel, { color: scoreColor }]}>{scoreLabel}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View
+        style={[
+          styles.aiProgressTrack,
+          { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
+        ]}
+      >
+        <View
+          style={[
+            styles.aiProgressFillPartial,
+            { width: `${partialPct}%`, backgroundColor: '#f59e0b60' },
+          ]}
+        />
+        <View
+          style={[
+            styles.aiProgressFillLearned,
+            { width: `${learnedPct}%`, backgroundColor: scoreColor },
+          ]}
+        />
+      </View>
+
+      <View style={styles.aiProgressLegend}>
+        <View style={styles.aiLegendItem}>
+          <View style={[styles.aiLegendDot, { backgroundColor: scoreColor }]} />
+          <Text style={[styles.aiLegendText, isDark && styles.textMuted]}>
+            {stats.learnedCount} learned
+          </Text>
+        </View>
+        <View style={styles.aiLegendItem}>
+          <View style={[styles.aiLegendDot, { backgroundColor: '#f59e0b' }]} />
+          <Text style={[styles.aiLegendText, isDark && styles.textMuted]}>
+            {stats.partialCount} learning
+          </Text>
+        </View>
+        <View style={styles.aiLegendItem}>
+          <View
+            style={[
+              styles.aiLegendDot,
+              { backgroundColor: isDark ? '#444' : '#cbd5e1' },
+            ]}
+          />
+          <Text style={[styles.aiLegendText, isDark && styles.textMuted]}>
+            {stats.notStartedCount} pending
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={isDark ? '#666' : '#bbb'} />
+      </View>
+    </BlurView>
+  );
+
+  if (onPress) {
+    return (
+      <PressableScale onPress={onPress} activeScale={0.98} hapticType="light">
+        {body}
+      </PressableScale>
+    );
+  }
+  return body;
+});
+
+// ═════════════════════════════════════════════════════════════════════
+// HERO PROFILE CARD
+// ═════════════════════════════════════════════════════════════════════
 
 interface ProfileHeaderProps {
   navigation: any;
@@ -669,7 +880,6 @@ interface ProfileHeaderProps {
   currentBabyId: string | null;
   parent2Profile: FamilyMember | null;
   guardians: FamilyMember[];
-  onShowBabyModal: () => void;
   stats: { entries: number; streak: number; milestones: number };
   primaryColor: string;
   secondaryColor: string;
@@ -682,10 +892,8 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
   userProfile,
   babies,
   currentBaby,
-  currentBabyId,
   parent2Profile,
   guardians,
-  onShowBabyModal,
   stats,
   primaryColor,
   secondaryColor,
@@ -729,14 +937,17 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
     }
   }, [parent2Profile, hapticFeedback, triggerHaptic, navigation]);
 
-  const handleGuardianPress = useCallback((guardian: FamilyMember) => {
-    if (hapticFeedback) triggerHaptic('light').catch(() => {});
-    navigation.navigate('EditGuardian', {
-      guardianId: guardian.id,
-      mode: 'guardian',
-      fromChat: false,
-    });
-  }, [hapticFeedback, triggerHaptic, navigation]);
+  const handleGuardianPress = useCallback(
+    (guardian: FamilyMember) => {
+      if (hapticFeedback) triggerHaptic('light').catch(() => {});
+      navigation.navigate('EditGuardian', {
+        guardianId: guardian.id,
+        mode: 'guardian',
+        fromChat: false,
+      });
+    },
+    [hapticFeedback, triggerHaptic, navigation]
+  );
 
   const handleCommunityProfile = useCallback(() => {
     if (hapticFeedback) triggerHaptic('medium').catch(() => {});
@@ -744,99 +955,112 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
   }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
 
   return (
-    <BlurView
-      intensity={isDark ? 35 : 85}
-      style={styles.profileCard}
-      tint={isDark ? 'dark' : 'light'}
-    >
-      {/* User Info Row */}
-      <View style={styles.profileTopRow}>
-        <PressableScale onPress={handleCurrentUserPress} activeScale={0.92}>
-          <SafeAvatar
-            avatar={userProfile?.avatar}
-            size={72}
-            fallbackIcon="person"
-            fallbackColor={primaryColor}
-            showEditBadge={true}
-            borderWidth={3}
-            borderColor={isDark ? 'rgba(255,255,255,0.1)' : '#fff'}
-          />
-        </PressableScale>
+    <View style={styles.profileCardWrap}>
+      {/* Gradient hero card */}
+      <LinearGradient
+        colors={
+          isDark
+            ? [`${primaryColor}30`, `${secondaryColor}18`]
+            : [`${primaryColor}15`, `${secondaryColor}08`]
+        }
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.profileCard, isDark && styles.profileCardDark]}
+      >
+        {/* User row */}
+        <View style={styles.profileTopRow}>
+          <PressableScale onPress={handleCurrentUserPress} activeScale={0.92}>
+            <SafeAvatar
+              avatar={userProfile?.avatar}
+              size={68}
+              fallbackIcon="person"
+              fallbackColor={primaryColor}
+              showEditBadge={true}
+              borderWidth={3}
+              borderColor={isDark ? 'rgba(255,255,255,0.15)' : '#fff'}
+            />
+          </PressableScale>
 
-        <View style={styles.profileInfo}>
-          <Text style={[styles.profileName, isDark && styles.textLight]} numberOfLines={1}>
-            {userProfile?.fullName || 'Parent'}
-          </Text>
-          <Text style={[styles.profileEmail, isDark && styles.textMuted]} numberOfLines={1}>
-            {userProfile?.email || 'parent@littleloom.app'}
-          </Text>
-          {currentBaby && (
-            <View style={[styles.babyTag, { backgroundColor: `${secondaryColor}18` }]}>
-              <Ionicons name="heart" size={12} color={secondaryColor} />
-              <Text style={[styles.babyTagText, { color: secondaryColor }]}>
-                {currentBaby.name} · {currentBaby.age}
+          <View style={styles.profileInfo}>
+            <Text style={[styles.profileName, isDark && styles.textLight]} numberOfLines={1}>
+              {userProfile?.fullName || 'Parent'}
+            </Text>
+            <Text style={[styles.profileEmail, isDark && styles.textMuted]} numberOfLines={1}>
+              {userProfile?.email || 'parent@littleloom.app'}
+            </Text>
+            {currentBaby && (
+              <View style={[styles.babyTag, { backgroundColor: `${secondaryColor}20` }]}>
+                <Ionicons name="heart" size={11} color={secondaryColor} />
+                <Text style={[styles.babyTagText, { color: secondaryColor }]}>
+                  {currentBaby.name} · {currentBaby.age}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <PressableScale onPress={handleCurrentUserPress} activeScale={0.85}>
+            <View style={[styles.settingsBtn, isDark && styles.settingsBtnDark]}>
+              <Ionicons name="settings-outline" size={20} color={isDark ? '#fff' : '#1a1a1a'} />
+            </View>
+          </PressableScale>
+        </View>
+
+        {/* Community profile link */}
+        <PressableScale onPress={handleCommunityProfile} activeScale={0.98}>
+          <View
+            style={[
+              styles.communityLink,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)' },
+            ]}
+          >
+            <View style={[styles.communityIcon, { backgroundColor: `${primaryColor}18` }]}>
+              <Ionicons name="globe-outline" size={16} color={primaryColor} />
+            </View>
+            <View style={styles.communityLinkText}>
+              <Text style={[styles.communityLinkTitle, isDark && styles.textLight]}>
+                Community Profile
+              </Text>
+              <Text style={[styles.communityLinkSub, isDark && styles.textMuted]}>
+                Edit your public profile & bio
               </Text>
             </View>
-          )}
-        </View>
-
-        <PressableScale onPress={handleCurrentUserPress} activeScale={0.85}>
-          <View style={[styles.settingsBtn, isDark && styles.settingsBtnDark]}>
-            <Ionicons name="settings-outline" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+            <Ionicons name="chevron-forward" size={16} color={isDark ? '#666' : '#bbb'} />
           </View>
         </PressableScale>
-      </View>
 
-      {/* Community Profile Link */}
-      <PressableScale onPress={handleCommunityProfile} activeScale={0.98}>
-        <View style={[styles.communityLink, { backgroundColor: `${primaryColor}10` }]}>
-          <View style={[styles.communityIcon, { backgroundColor: `${primaryColor}18` }]}>
-            <Ionicons name="globe-outline" size={18} color={primaryColor} />
-          </View>
-          <View style={styles.communityLinkText}>
-            <Text style={[styles.communityLinkTitle, isDark && styles.textLight]}>
-              Community Profile
-            </Text>
-            <Text style={[styles.communityLinkSub, isDark && styles.textMuted]}>
-              Edit your public profile & bio
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#bbb'} />
+        {/* Stats row */}
+        <View style={styles.statsRow}>
+          <StatCard
+            icon="time-outline"
+            value={stats.entries}
+            label="Entries"
+            color="#4facfe"
+            isDark={isDark}
+            onPress={() => navigation.navigate('Timeline')}
+          />
+          <StatCard
+            icon="flame-outline"
+            value={stats.streak}
+            label="Streak"
+            color="#f59e0b"
+            isDark={isDark}
+            onPress={() => navigation.navigate('Achievements')}
+          />
+          <StatCard
+            icon="trophy-outline"
+            value={stats.milestones}
+            label="Milestones"
+            color={accentColor}
+            isDark={isDark}
+            onPress={() => navigation.navigate('Achievements', { highlightAchievement: 'milestones' })}
+          />
         </View>
-      </PressableScale>
+      </LinearGradient>
 
-      {/* Stats Row */}
-      <View style={styles.statsRow}>
-        <StatCard
-          icon="time-outline"
-          value={stats.entries}
-          label="Entries"
-          color="#4facfe"
-          isDark={isDark}
-          onPress={() => navigation.navigate('Timeline')}
-        />
-        <StatCard
-          icon="flame-outline"
-          value={stats.streak}
-          label="Day Streak"
-          color="#f59e0b"
-          isDark={isDark}
-          onPress={() => navigation.navigate('Achievements')}
-        />
-        <StatCard
-          icon="trophy-outline"
-          value={stats.milestones}
-          label="Milestones"
-          color={accentColor}
-          isDark={isDark}
-          onPress={() => navigation.navigate('Achievements', { highlightAchievement: 'milestones' })}
-        />
-      </View>
-
-      {/* Family Members Scroll */}
+      {/* Family members scroll */}
       <View style={styles.familySection}>
         <Text style={[styles.familySectionTitle, isDark && styles.textMuted]}>
-          FAMILY MEMBERS
+          FAMILY
         </Text>
         <ScrollView
           horizontal
@@ -851,7 +1075,15 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
             isDark={isDark}
             onPress={handleCurrentUserPress}
             badge={
-              <View style={[styles.onlineIndicator, { backgroundColor: accentColor, borderColor: isDark ? '#1a1a2e' : '#fff' }]} />
+              <View
+                style={[
+                  styles.onlineIndicator,
+                  {
+                    backgroundColor: accentColor,
+                    borderColor: isDark ? '#1a1a2e' : '#fff',
+                  },
+                ]}
+              />
             }
           />
 
@@ -864,11 +1096,13 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
             onPress={handleBabyPress}
             isBaby={true}
             gender={currentBaby?.gender}
-            badge={hasMultipleBabies ? (
-              <View style={[styles.babyCountBadge, { backgroundColor: primaryColor }]}>
-                <Text style={styles.babyCountText}>{safeBabies.length}</Text>
-              </View>
-            ) : undefined}
+            badge={
+              hasMultipleBabies ? (
+                <View style={[styles.babyCountBadge, { backgroundColor: primaryColor }]}>
+                  <Text style={styles.babyCountText}>{safeBabies.length}</Text>
+                </View>
+              ) : undefined
+            }
           />
 
           {parent2Profile && (
@@ -903,14 +1137,14 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
             onPress={() => navigation.navigate('FamilySharing')}
             badge={
               <View style={[styles.addBadge, isDark && styles.addBadgeDark]}>
-                <Ionicons name="add" size={18} color={primaryColor} />
+                <Ionicons name="add" size={16} color={primaryColor} />
               </View>
             }
           />
         </ScrollView>
       </View>
 
-      {/* Quick Actions */}
+      {/* Quick actions */}
       <View style={styles.quickActionsRow}>
         <QuickAction
           icon="person-outline"
@@ -942,15 +1176,17 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
         />
       </View>
 
-      {/* Switch Baby Row */}
+      {/* Switch baby */}
       {hasMultipleBabies && (
         <PressableScale
-          onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Settings' })}
+          onPress={() =>
+            navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Settings' })
+          }
           activeScale={0.98}
         >
           <View style={styles.switchBabyRow}>
             <View style={[styles.switchBabyIcon, { backgroundColor: `${primaryColor}12` }]}>
-              <Ionicons name="swap-horizontal" size={18} color={primaryColor} />
+              <Ionicons name="swap-horizontal" size={16} color={primaryColor} />
             </View>
             <Text style={[styles.switchBabyText, { color: primaryColor }]}>
               Switch Active Baby
@@ -958,29 +1194,24 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
             <View style={[styles.switchBabyBadge, { backgroundColor: primaryColor }]}>
               <Text style={styles.switchBabyBadgeText}>{safeBabies.length}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={primaryColor} />
+            <Ionicons name="chevron-forward" size={14} color={primaryColor} />
           </View>
         </PressableScale>
       )}
-    </BlurView>
+    </View>
   );
 });
 
-// ─── Main Component ───────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═════════════════════════════════════════════════════════════════════
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
 
   // ─── Contexts ────────────────────────────────────────────────────
-  const { signOut, userProfile, isLoading: authLoading } = useAuth();
-  const {
-    babies,
-    currentBaby,
-    currentBabyId,
-    isLoading: babyLoading,
-    getBabyStats,
-    loadBabies,
-  } = useBaby();
+  const { signOut, userProfile } = useAuth();
+  const { babies, currentBaby, currentBabyId, getBabyStats, loadBabies } = useBaby();
   const {
     settings: securitySettings,
     isBiometricEnabled,
@@ -993,13 +1224,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     getAvailableAuthMethods,
     getBiometricTypeName,
     getBiometricIcon,
-    checkBiometricCapabilities,
-    resetUnlockLock,
     refreshBiometricStatus,
     readBiometricEnabledFromStorage,
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
-  const { guardians, parent2: parent2Profile, familyMembers } = useFamily();
+  const { guardians, parent2: parent2Profile } = useFamily();
   const { entries, loadEntries } = useActivity();
   const {
     themeColors,
@@ -1009,11 +1238,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     hapticFeedback,
   } = useCustomization();
 
-  // ─── Supabase Hooks ─────────────────────────────────────────────
-  const { isConnected, user: supabaseUser } = useSupabase();
+  const { isConnected } = useSupabase();
   const { sync, isSyncing, getQueueStatus } = useOfflineSync();
-
-  // ─── SweetAlert ──────────────────────────────────────────────────
   const sweetAlert = useSweetAlert();
 
   // ─── State ──────────────────────────────────────────────────────
@@ -1025,18 +1251,41 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
-  
-  // ─── Custom Modal States ────────────────────────────────────────
+
+  const [aiStats, setAiStats] = useState<{
+    totalSamples: number;
+    learnedCount: number;
+    partialCount: number;
+    notStartedCount: number;
+    healthScore: number;
+  }>({
+    totalSamples: 0,
+    learnedCount: 0,
+    partialCount: 0,
+    notStartedCount: 0,
+    healthScore: 0,
+  });
+
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showBiometricModal, setShowBiometricModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
-  const [showSyncModal, setShowSyncModal] = useState(false);
   const [modalConfig, setModalConfig] = useState<any>(null);
+  const [localBiometricEnabled, setLocalBiometricEnabled] = useState<boolean>(false);
 
   // ─── Refs ──────────────────────────────────────────────────────
   const scrollY = useSharedValue(0);
   const isMounted = useRef(true);
   const focusLoadTimeout = useRef<NodeJS.Timeout | null>(null);
+  const biometricToggleLockRef = useRef(false);
+  const hasHydratedFromServerRef = useRef(false);
+
+  // Mount tracking
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // ─── Computed ──────────────────────────────────────────────────
   const isDark = customizationIsDark;
@@ -1048,57 +1297,15 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const availableMethods = getAvailableAuthMethods();
   const biometricTypeName = getBiometricTypeName();
   const biometricIcon = getBiometricIcon();
-  
-  // ─── LOCAL STATE for biometric toggle (synced from context + storage) ──
-  const [localBiometricEnabled, setLocalBiometricEnabled] = useState<boolean>(false);
-  
-  // Sync local state from context whenever it changes
-  useEffect(() => {
-    setLocalBiometricEnabled(isBiometricEnabled ?? false);
-  }, [isBiometricEnabled]);
 
-  // On mount: read directly from storage as source of truth
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const stored = await readBiometricEnabledFromStorage();
-        if (mounted && stored !== localBiometricEnabled) {
-          setLocalBiometricEnabled(stored);
-        }
-      } catch {}
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [readBiometricEnabledFromStorage]); // Intentionally NOT depending on localBiometricEnabled
-  
   const bioEnabled = localBiometricEnabled;
   const hasHardware = isBiometricHardwareAvailable || false;
   const isEnrolled = isBiometricEnrolled || false;
-  // ✅ FIXED: Properly compute biometric availability
   const biometricAvailable = hasHardware && isEnrolled;
 
-  // ─── Optional: read from Supabase app_settings as source of truth ──
-  useEffect(() => {
-    (async () => {
-      try {
-        const userId = userProfile?.id;
-        if (!userId) return;
-        const { data } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'biometric_enabled')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (data?.value === 'true' || data?.value === 'false') {
-          setLocalBiometricEnabled(data.value === 'true');
-        }
-      } catch {}
-    })();
-  }, [userProfile?.id]);
-
-  const babyStats = currentBaby ? getBabyStats() : { streak: 0, milestones: 0, photos: 0, entries: 0 };
+  const babyStats = currentBaby
+    ? getBabyStats()
+    : { streak: 0, milestones: 0, photos: 0, entries: 0 };
   const activityStats = {
     entries: entries?.length || 0,
     streak: babyStats.streak || 0,
@@ -1120,8 +1327,60 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     ];
   }, [isDark, fullThemeColors]);
 
-  // ─── Helper Functions ──────────────────────────────────────────
+  // ─── Load AI stats ─────────────────────────────────────────────
+  const loadAIStats = useCallback(async () => {
+    if (!currentBaby?.id) return;
+    try {
+      const { getAllLearnedRanges } = await import('../../services/ai/BayesianEngine');
 
+      const METRICS = [
+        'temperature_c', 'feeding_ml', 'feed_interval_min',
+        'sleep_duration_min', 'sleep_interval_min', 'diaper_interval_min',
+        'weight_kg', 'height_cm', 'head_cm', 'mood_score',
+        'heart_rate_bpm', 'blood_oxygen', 'poop_interval_hr', 'wake_window_min',
+      ] as const;
+
+      const LEARNED = 15;
+      const PARTIAL = 5;
+
+      const ranges = await getAllLearnedRanges(currentBaby.id, METRICS as any);
+
+      let totalSamples = 0;
+      let learnedCount = 0;
+      let partialCount = 0;
+      let notStartedCount = 0;
+      let confidenceSum = 0;
+
+      ranges.forEach((r) => {
+        const n = r?.samples || 0;
+        totalSamples += n;
+        confidenceSum += r?.confidence || 0;
+        if (n >= LEARNED) learnedCount++;
+        else if (n >= PARTIAL) partialCount++;
+        else notStartedCount++;
+      });
+
+      const avgConfidence = ranges.length > 0 ? confidenceSum / ranges.length : 0;
+      const learningProgress = (learnedCount / METRICS.length) * 60;
+      const confidenceScore = avgConfidence * 30;
+      const sampleScore = Math.min(10, (totalSamples / 200) * 10);
+      const healthScore = Math.round(learningProgress + confidenceScore + sampleScore);
+
+      if (isMounted.current) {
+        setAiStats({
+          totalSamples,
+          learnedCount,
+          partialCount,
+          notStartedCount,
+          healthScore,
+        });
+      }
+    } catch (err) {
+      if (__DEV__) console.warn('[MoreScreen] loadAIStats failed:', err);
+    }
+  }, [currentBaby?.id]);
+
+  // ─── Helpers ───────────────────────────────────────────────────
   const formatTimeout = useCallback((minutes: number) => {
     if (minutes < 60) return `${minutes} min`;
     const hours = Math.floor(minutes / 60);
@@ -1137,18 +1396,20 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     setShowTimeoutModal(true);
   }, [securitySettings.isAppLockEnabled, sweetAlert]);
 
+  const toggleSection = useCallback(
+    (section: string) => {
+      if (hapticFeedback) triggerHaptic('light').catch(() => {});
+      setExpandedSections((prev) => {
+        const next = new Set(prev);
+        if (next.has(section)) next.delete(section);
+        else next.add(section);
+        return next;
+      });
+    },
+    [hapticFeedback, triggerHaptic]
+  );
+
   // ─── Handlers ──────────────────────────────────────────────────
-
-  const toggleSection = useCallback((section: string) => {
-    if (hapticFeedback) triggerHaptic('light').catch(() => {});
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(section)) next.delete(section);
-      else next.add(section);
-      return next;
-    });
-  }, [hapticFeedback, triggerHaptic]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -1156,6 +1417,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         loadBabies(),
         loadEntries?.(),
         refreshBiometricStatus(),
+        loadAIStats(),
       ]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -1163,9 +1425,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, loadEntries, refreshBiometricStatus]);
+  }, [loadBabies, loadEntries, refreshBiometricStatus, loadAIStats]);
 
-  // ─── Handle Sign Out ────────────────────────────────────────────
   const handleLogout = useCallback(async () => {
     setShowLogoutModal(true);
   }, []);
@@ -1174,27 +1435,21 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     setShowLogoutModal(false);
     try {
       triggerHaptic('medium');
-      
       await AsyncStorage.setItem('littleloom_security_lock', 'false');
-      
       await AsyncStorage.multiRemove([
         'littleloom_nav_state_v4',
         '@littleloom_nav_state_v4',
         'littleloom_last_auth_state',
         'littleloom_security_lock',
       ]);
-      
       await signOut();
-      
       navigation.reset({
         index: 0,
         routes: [{ name: 'Login' as never }],
       });
-      
       sweetAlert.success('Signed Out', 'You have been signed out successfully');
     } catch (error) {
       console.error('Sign out error:', error);
-      
       try {
         navigation.reset({
           index: 0,
@@ -1203,12 +1458,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       } catch (navError) {
         console.error('Navigation reset error:', navError);
       }
-      
       sweetAlert.error('Error', 'Failed to sign out. Please try again.');
     }
   }, [signOut, triggerHaptic, navigation, sweetAlert]);
 
-  // ─── Handle Sync with Cloud ─────────────────────────────────────
   const handleSync = useCallback(async () => {
     if (isSyncing) {
       sweetAlert.info('Sync in Progress', 'Please wait for the current sync to complete.');
@@ -1221,9 +1474,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (result.success) {
         setSyncStatus('success');
         triggerHaptic('success');
-        
+
         try {
-          const backupResult = await createBackup({ 
+          const backupResult = await createBackup({
             encrypted: false,
             includePhotos: true,
           });
@@ -1233,7 +1486,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         } catch (backupError) {
           console.warn('Backup creation error (non-critical):', backupError);
         }
-        
+
         sweetAlert.success('✅ Synced!', 'Your data is now in sync with the cloud');
       } else {
         setSyncStatus('error');
@@ -1248,114 +1501,170 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [isSyncing, sync, triggerHaptic, sweetAlert]);
 
-  // ─── FIXED: Handle Biometric Toggle ─────────────────────────────
-  const handleBiometricToggle = useCallback(async (enabled: boolean) => {
-    if (enabled) {
-      // Trying to enable biometric - first check if hardware is available
-      await refreshBiometricStatus();
-      
-      const hasHardwareNow = isBiometricHardwareAvailable;
-      const isEnrolledNow = isBiometricEnrolled;
-      
-      if (!hasHardwareNow) {
-        sweetAlert.warning(
-          'Biometric Not Available',
-          'This device does not support biometric authentication. You can use PIN instead.'
-        );
-        return;
-      }
-      
-      if (!isEnrolledNow) {
-        sweetAlert.confirm(
-          'Biometric Not Enrolled',
-          'Please set up biometrics in your device settings first, or continue to setup.',
-          () => {
-            navigation.navigate('BiometricSetup');
-          },
-          undefined,
-          'Go to Setup',
-          'Cancel',
-          false
-        );
-        return;
-      }
-      
-      // Navigate to BiometricSetup to enable
-      navigation.navigate('BiometricSetup');
-    } else {
-      // Disable - show confirmation
-      setShowBiometricModal(true);
-    }
-  }, [isBiometricHardwareAvailable, isBiometricEnrolled, navigation, refreshBiometricStatus, sweetAlert]);
+  // ─── Biometric toggle ──────────────────────────────────────────
+  const handleBiometricToggle = useCallback(
+    async (enabled: boolean) => {
+      if (biometricToggleLockRef.current) return;
+      biometricToggleLockRef.current = true;
 
-  // ─── Confirm disable biometric ──────────────────────────────────
+      try {
+        if (enabled) {
+          let hasHardwareNow = false;
+          let isEnrolledNow = false;
+          try {
+            const LocalAuth = require('expo-local-authentication');
+            hasHardwareNow = await LocalAuth.hasHardwareAsync();
+            isEnrolledNow = await LocalAuth.isEnrolledAsync();
+          } catch {}
+
+          if (!hasHardwareNow) {
+            setLocalBiometricEnabled(false);
+            sweetAlert.warning(
+              'Biometric Not Available',
+              'This device does not support biometric authentication. You can use PIN instead.'
+            );
+            return;
+          }
+
+          if (!isEnrolledNow) {
+            setLocalBiometricEnabled(false);
+            sweetAlert.confirm(
+              'Biometric Not Enrolled',
+              'No fingerprints or Face ID are enrolled on this device. Set them up in device settings, then come back.',
+              () => {
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('App-Prefs:Face ID & Passcode');
+                } else {
+                  Linking.openSettings();
+                }
+              },
+              () => {},
+              'Open Settings',
+              'Cancel',
+              false
+            );
+            return;
+          }
+
+          const ok = await toggleBiometric(true);
+          if (ok) {
+            setLocalBiometricEnabled(true);
+            await refreshBiometricStatus();
+            triggerHaptic('success');
+            sweetAlert.success(
+              `${biometricTypeName} Enabled`,
+              'You can now unlock LittleLoom with biometrics.'
+            );
+          } else {
+            setLocalBiometricEnabled(false);
+          }
+        } else {
+          setShowBiometricModal(true);
+        }
+      } catch (err) {
+        console.error('[MoreScreen] handleBiometricToggle error:', err);
+        try {
+          const stored = await readBiometricEnabledFromStorage();
+          setLocalBiometricEnabled(stored);
+        } catch {
+          setLocalBiometricEnabled(false);
+        }
+        sweetAlert.error('Error', 'Could not update biometric setting.');
+      } finally {
+        setTimeout(() => {
+          biometricToggleLockRef.current = false;
+        }, 500);
+      }
+    },
+    [
+      toggleBiometric,
+      refreshBiometricStatus,
+      biometricTypeName,
+      triggerHaptic,
+      sweetAlert,
+      readBiometricEnabledFromStorage,
+    ]
+  );
+
   const confirmDisableBiometric = useCallback(async () => {
     setShowBiometricModal(false);
     try {
-      const success = await toggleBiometric(false);
-      if (success) {
+      const ok = await toggleBiometric(false);
+      if (ok) {
         setLocalBiometricEnabled(false);
         await refreshBiometricStatus();
+        triggerHaptic('success');
         sweetAlert.success('Biometric Disabled', 'Biometric authentication has been turned off.');
       } else {
+        setLocalBiometricEnabled(true);
         sweetAlert.error('Error', 'Could not disable biometric authentication.');
       }
     } catch (error) {
       console.error('Disable biometric error:', error);
+      setLocalBiometricEnabled(true);
       sweetAlert.error('Error', 'An error occurred while disabling biometric authentication.');
     }
-  }, [toggleBiometric, refreshBiometricStatus, sweetAlert]);
+  }, [toggleBiometric, refreshBiometricStatus, triggerHaptic, sweetAlert]);
+
+  const cancelDisableBiometric = useCallback(() => {
+    setShowBiometricModal(false);
+    setLocalBiometricEnabled(true);
+  }, []);
 
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
   }, [navigation]);
 
-  // ─── Handle Lock Now ─────────────────────────────────────────────
   const handleLockNow = useCallback(async () => {
-    const hasAnySecurity = securitySettings.isPinEnabled || 
-                           (isBiometricEnabled && biometricAvailable) || 
-                           securitySettings.isAppLockEnabled;
-    
+    const hasAnySecurity =
+      securitySettings.isPinEnabled ||
+      (isBiometricEnabled && biometricAvailable) ||
+      securitySettings.isAppLockEnabled;
+
     if (!hasAnySecurity) {
       setShowSecurityModal(true);
       return;
     }
-    
+
     try {
       await lockApp();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
       sweetAlert.success('🔒 App Locked', 'LittleLoom has been secured.');
-      
       navigation.navigate('SecurityLock');
     } catch (error) {
       console.error('Lock error:', error);
       sweetAlert.error('Error', 'Could not lock the app. Please try again.');
     }
   }, [
-    securitySettings.isPinEnabled, 
+    securitySettings.isPinEnabled,
     securitySettings.isAppLockEnabled,
-    isBiometricEnabled, 
+    isBiometricEnabled,
     biometricAvailable,
-    lockApp, 
-    navigation, 
-    sweetAlert
+    lockApp,
+    navigation,
+    sweetAlert,
   ]);
 
-  const handleSelectTimeout = useCallback(async (minutes: number) => {
-    setShowTimeoutModal(false);
-    try {
-      await updateAutoLockTimeout(minutes);
-      sweetAlert.success('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`);
-    } catch (err) {
-      sweetAlert.error('Update Failed', 'Could not update auto-lock timeout.');
-    }
-  }, [updateAutoLockTimeout, formatTimeout, sweetAlert]);
+  const handleSelectTimeout = useCallback(
+    async (minutes: number) => {
+      setShowTimeoutModal(false);
+      try {
+        await updateAutoLockTimeout(minutes);
+        sweetAlert.success('Timeout Updated', `Auto-lock set to ${formatTimeout(minutes)}`);
+      } catch (err) {
+        sweetAlert.error('Update Failed', 'Could not update auto-lock timeout.');
+      }
+    },
+    [updateAutoLockTimeout, formatTimeout, sweetAlert]
+  );
 
-  const handleSelectBabyFromModal = useCallback((baby: any) => {
-    setShowBabyModal(false);
-    navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
-  }, [navigation]);
+  const handleSelectBabyFromModal = useCallback(
+    (baby: any) => {
+      setShowBabyModal(false);
+      navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
+    },
+    [navigation]
+  );
 
   const handleShare = useCallback(async () => {
     try {
@@ -1368,15 +1677,57 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [currentBaby]);
 
-  // ─── Scroll Handler ────────────────────────────────────────────
-
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       scrollY.value = event.contentOffset.y;
     },
   });
 
-  // ─── Effects ────────────────────────────────────────────────────
+  // ─── Effects ───────────────────────────────────────────────────
+
+  // Sync local biometric state from context
+  useEffect(() => {
+    setLocalBiometricEnabled(isBiometricEnabled ?? false);
+  }, [isBiometricEnabled]);
+
+  // Read from storage on mount
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const stored = await readBiometricEnabledFromStorage();
+        if (mounted) setLocalBiometricEnabled(stored);
+      } catch {}
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [readBiometricEnabledFromStorage]);
+
+  // Server hydration (once)
+  useEffect(() => {
+    if (hasHydratedFromServerRef.current) return;
+    hasHydratedFromServerRef.current = true;
+
+    (async () => {
+      try {
+        const userId = userProfile?.id;
+        if (!userId) return;
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'biometric_enabled')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (data?.value === 'true' || data?.value === 'false') {
+          const serverValue = data.value === 'true';
+          if (!biometricToggleLockRef.current) {
+            setLocalBiometricEnabled(serverValue);
+          }
+        }
+      } catch {}
+    })();
+  }, [userProfile?.id]);
 
   // Flush cohort queue on foreground
   useEffect(() => {
@@ -1396,53 +1747,51 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     return () => sub.remove();
   }, []);
 
-  // Load collaborative learning opt-in state
+  // Load collaborative learning opt-in
   useEffect(() => {
     import('../../services/ai/CohortPriors')
-      .then(({ isCollaborativeLearningEnabled }) =>
-        isCollaborativeLearningEnabled()
-      )
+      .then(({ isCollaborativeLearningEnabled }) => isCollaborativeLearningEnabled())
       .then(setCollaborativeEnabled)
       .catch(() => {});
   }, []);
 
+  // Load AI stats on baby change
+  useEffect(() => {
+    loadAIStats();
+  }, [loadAIStats]);
+
   // Refresh biometric status on mount
   useEffect(() => {
-    const checkBiometrics = async () => {
-      try {
-        await refreshBiometricStatus();
-      } catch (error) {
-        console.error('Error checking biometrics:', error);
-      }
-    };
-    
-    const timer = setTimeout(checkBiometrics, 500);
+    const timer = setTimeout(() => {
+      refreshBiometricStatus().catch(() => {});
+    }, 500);
     return () => clearTimeout(timer);
   }, [refreshBiometricStatus]);
 
   useFocusEffect(
     useCallback(() => {
-      if (focusLoadTimeout.current) {
-        clearTimeout(focusLoadTimeout.current);
-      }
+      if (focusLoadTimeout.current) clearTimeout(focusLoadTimeout.current);
       focusLoadTimeout.current = setTimeout(async () => {
-        console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
         loadBabies();
         loadEntries?.();
         await refreshBiometricStatus();
-        // Re-read biometric state from storage on focus
         try {
           const stored = await readBiometricEnabledFromStorage();
           setLocalBiometricEnabled(stored);
         } catch {}
+        loadAIStats();
       }, 300);
-      
+
       return () => {
-        if (focusLoadTimeout.current) {
-          clearTimeout(focusLoadTimeout.current);
-        }
+        if (focusLoadTimeout.current) clearTimeout(focusLoadTimeout.current);
       };
-    }, [loadBabies, loadEntries, refreshBiometricStatus, readBiometricEnabledFromStorage])
+    }, [
+      loadBabies,
+      loadEntries,
+      refreshBiometricStatus,
+      readBiometricEnabledFromStorage,
+      loadAIStats,
+    ])
   );
 
   useEffect(() => {
@@ -1452,19 +1801,30 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }
   }, [route.params?.babySwitched, loadBabies, navigation]);
 
-  // ─── Render Sections ───────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // SECTION RENDERERS
+  // ═══════════════════════════════════════════════════════════════
 
   const renderSecuritySection = useCallback(() => {
     const isExpanded = expandedSections.has('security');
     const bioAvailable = biometricAvailable;
-    const bioEnabled = localBiometricEnabled;
-    
+
     return (
-      <Animated.View entering={FadeInUp.delay(100)} layout={Layout.springify()} style={styles.section}>
+      <Animated.View
+        entering={FadeInUp.delay(100)}
+        layout={Layout.springify()}
+        style={styles.section}
+      >
         <SectionHeader
           icon="shield-checkmark"
           title="Security & Privacy"
-          subtitle={bioEnabled ? `${biometricTypeName} enabled` : bioAvailable ? `${biometricTypeName} available` : 'Protect your data'}
+          subtitle={
+            bioEnabled
+              ? `${biometricTypeName} enabled`
+              : bioAvailable
+              ? `${biometricTypeName} available`
+              : 'Protect your data'
+          }
           color={primary}
           isDark={isDark}
           isExpanded={isExpanded}
@@ -1479,10 +1839,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             <MenuItem
               icon={biometricIcon as any}
               title={`${biometricTypeName} Unlock`}
-              subtitle={bioEnabled ? 'Enabled' : bioAvailable ? 'Tap to enable' : 'Not Available'}
+              subtitle={
+                bioEnabled ? 'Enabled' : bioAvailable ? 'Tap to enable' : 'Not Available'
+              }
               isEnabled={bioEnabled}
               onToggle={(val) => {
-                // Do not toggle if hardware isn't available and it's currently off
                 if (!bioAvailable && !bioEnabled) {
                   sweetAlert.warning(
                     'Biometric Not Available',
@@ -1494,7 +1855,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               }}
               color={primary}
               isDark={isDark}
-              disabled={false}
             />
             <MenuItem
               icon="keypad"
@@ -1508,11 +1868,14 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             <MenuItem
               icon="lock-closed"
               title="Auto-Lock App"
-              subtitle={securitySettings.isAppLockEnabled ? `After ${formatTimeout(securitySettings.autoLockTimeout)}` : 'Disabled'}
+              subtitle={
+                securitySettings.isAppLockEnabled
+                  ? `After ${formatTimeout(securitySettings.autoLockTimeout)}`
+                  : 'Disabled'
+              }
               isEnabled={securitySettings.isAppLockEnabled}
               onToggle={async (val) => {
                 try {
-                  // Require at least one auth method to enable auto-lock
                   if (val && !securitySettings.isPinEnabled && !bioEnabled) {
                     sweetAlert.warning(
                       'Set Up Security First',
@@ -1556,15 +1919,12 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     );
   }, [
     expandedSections,
-    securitySettings,              // ← already there, keep it
-    securitySettings.isAppLockEnabled,       // ← NEW: re-render on toggle
-    securitySettings.isPinEnabled,           // ← NEW
-    securitySettings.autoLockTimeout,        // ← NEW
+    securitySettings,
     biometricTypeName,
     biometricIcon,
     biometricAvailable,
-    localBiometricEnabled,         // ← already there, keep it
-    isBiometricEnabled,            // ← NEW: context value
+    bioEnabled,
+    isBiometricEnabled,
     primary,
     secondary,
     accent,
@@ -1576,19 +1936,22 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     formatTimeout,
     handleAutoLockTimeout,
     handleLockNow,
-    sweetAlert,                    // ← NEW (used inside onToggle)
-    triggerHaptic,                 // ← NEW
-    currentBaby,                   // ← used by collaborative toggle (already in scope)
+    sweetAlert,
+    triggerHaptic,
   ]);
 
   const renderPreferencesSection = useCallback(() => {
     const isExpanded = expandedSections.has('preferences');
     return (
-      <Animated.View entering={FadeInUp.delay(150)} layout={Layout.springify()} style={styles.section}>
+      <Animated.View
+        entering={FadeInUp.delay(150)}
+        layout={Layout.springify()}
+        style={styles.section}
+      >
         <SectionHeader
           icon="options"
           title="Preferences"
-          subtitle="Themes, notifications, language"
+          subtitle="AI learning, notifications, themes"
           color="#11998e"
           isDark={isDark}
           isExpanded={isExpanded}
@@ -1601,21 +1964,21 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             tint={isDark ? 'dark' : 'light'}
           >
             <AILearningStatus />
+            <AILearningProgressBar
+              stats={aiStats}
+              isDark={isDark}
+              primaryColor={primary}
+              onPress={() => {
+                triggerHaptic('light');
+                navigation.navigate('AIManagement');
+              }}
+            />
             <MenuItem
               icon="sparkles-outline"
               title="AI Learning Management"
               subtitle="View what the AI has learned · manage privacy"
               onPress={() => navigation.navigate('AIManagement')}
               color="#8b5cf6"
-              isDark={isDark}
-              showArrow
-            />
-            <MenuItem
-              icon="trash-bin-outline"
-              title="Erase Cohort Contributions"
-              subtitle="Remove your device's AI learning from the shared pool"
-              onPress={() => navigation.navigate('AIManagement')}
-              color="#ef4444"
               isDark={isDark}
               showArrow
             />
@@ -1638,11 +2001,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                   triggerHaptic(val ? 'success' : 'light');
 
                   if (val && currentBaby?.id) {
-                    const { bootstrapAI } = await import(
-                      '@/services/ai/bootstrap'
-                    );
-                    bootstrapAI(currentBaby.id, true).catch(err => {
-                      if (__DEV__) console.warn('[MoreScreen] bootstrapAI after toggle failed:', err);
+                    const { bootstrapAI } = await import('@/services/ai/bootstrap');
+                    bootstrapAI(currentBaby.id, true).catch((err) => {
+                      if (__DEV__)
+                        console.warn('[MoreScreen] bootstrapAI after toggle failed:', err);
                     });
                     sweetAlert.success(
                       'Collaborative AI Enabled',
@@ -1657,14 +2019,12 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                 } catch (err) {
                   console.error('[MoreScreen] Failed to toggle collaborative learning:', err);
                   sweetAlert.error('Error', 'Could not update the setting. Please try again.');
-                  // Revert the UI on failure
                   setCollaborativeEnabled(!val);
                 }
               }}
               color="#8b5cf6"
               isDark={isDark}
             />
-
             <MenuItem
               icon="notifications"
               title="Notifications"
@@ -1706,13 +2066,28 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         )}
       </Animated.View>
     );
-  }, [expandedSections, isDark, toggleSection, navigation]);
+  }, [
+    expandedSections,
+    isDark,
+    toggleSection,
+    navigation,
+    aiStats,
+    primary,
+    triggerHaptic,
+    collaborativeEnabled,
+    currentBaby,
+    sweetAlert,
+  ]);
 
   const renderFamilySection = useCallback(() => {
     const isExpanded = expandedSections.has('family');
     const queueStatus = getQueueStatus();
     return (
-      <Animated.View entering={FadeInUp.delay(200)} layout={Layout.springify()} style={styles.section}>
+      <Animated.View
+        entering={FadeInUp.delay(200)}
+        layout={Layout.springify()}
+        style={styles.section}
+      >
         <SectionHeader
           icon="people"
           title="Family & Sharing"
@@ -1765,9 +2140,13 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               isDark={isDark}
               loading={isSyncing}
               value={
-                syncStatus === 'success' ? '✓ Synced' :
-                syncStatus === 'error' ? '✗ Failed' :
-                isConnected ? `🔄 ${queueStatus.pending}` : '📴 Offline'
+                syncStatus === 'success'
+                  ? '✓ Synced'
+                  : syncStatus === 'error'
+                  ? '✗ Failed'
+                  : isConnected
+                  ? `🔄 ${queueStatus.pending}`
+                  : '📴 Offline'
               }
               isLast
             />
@@ -1793,7 +2172,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const renderTrackingSection = useCallback(() => {
     const isExpanded = expandedSections.has('tracking');
     return (
-      <Animated.View entering={FadeInUp.delay(250)} layout={Layout.springify()} style={styles.section}>
+      <Animated.View
+        entering={FadeInUp.delay(250)}
+        layout={Layout.springify()}
+        style={styles.section}
+      >
         <SectionHeader
           icon="analytics"
           title="Tracking & Insights"
@@ -1846,7 +2229,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const renderSafetySection = useCallback(() => {
     const isExpanded = expandedSections.has('safety');
     return (
-      <Animated.View entering={FadeInUp.delay(300)} layout={Layout.springify()} style={styles.section}>
+      <Animated.View
+        entering={FadeInUp.delay(300)}
+        layout={Layout.springify()}
+        style={styles.section}
+      >
         <SectionHeader
           icon="shield-half"
           title="Safety"
@@ -1890,7 +2277,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const renderSupportSection = useCallback(() => {
     const isExpanded = expandedSections.has('support');
     return (
-      <Animated.View entering={FadeInUp.delay(350)} layout={Layout.springify()} style={styles.section}>
+      <Animated.View
+        entering={FadeInUp.delay(350)}
+        layout={Layout.springify()}
+        style={styles.section}
+      >
         <SectionHeader
           icon="help-circle"
           title="Support & About"
@@ -1949,29 +2340,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     );
   }, [expandedSections, secondary, isDark, toggleSection, navigation]);
 
-  // ─── INSTANT LOADING: No skeleton, always render ────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════
+
+  const cloudActive = isConnected && !isSyncing;
+  const cloudColor = isSyncing ? '#f59e0b' : cloudActive ? '#10b981' : '#94a3b8';
+  const cloudLabel = isSyncing ? 'Syncing…' : cloudActive ? 'Cloud sync active' : 'Offline';
 
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* ─── Sync Status Indicator ──────────────────────────────── */}
-      {isSyncing && (
-        <Animated.View entering={FadeIn.duration(300)} style={styles.syncStatusBar}>
-          <BlurView intensity={isDark ? 40 : 80} style={styles.syncStatusContent} tint={isDark ? 'dark' : 'light'}>
-            <UniversalSpinner size={16} color={primary} variant="liquid" section="settings" />
-            <Text style={[styles.syncStatusText, { color: isDark ? '#fff' : '#1a1a1a' }]}>
-              Syncing with cloud...
-            </Text>
-          </BlurView>
-        </Animated.View>
-      )}
-
       <Animated.ScrollView
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + 16,
+            paddingTop: insets.top + 12,
             paddingBottom: insets.bottom + 100,
           },
         ]}
@@ -1989,42 +2374,73 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {/* ─── Header ────────────────────────────────────────────── */}
+        {/* ═══ HEADER ═══ */}
         <Animated.View entering={FadeInUp.duration(400)} style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={[styles.headerTitle, isDark && styles.textLight]}>
-              Settings
-            </Text>
-            <Text style={[styles.headerSubtitle, isDark && styles.textMuted]}>
-              Manage your account, family, and preferences
-            </Text>
+            <Text style={[styles.headerTitle, isDark && styles.textLight]}>Settings</Text>
+            <View style={styles.cloudRow}>
+              {isSyncing ? (
+                <UniversalSpinner size={10} color={cloudColor} variant="liquid" section="settings" />
+              ) : (
+                <PulsingDot color={cloudColor} size={7} />
+              )}
+              <Text style={[styles.cloudText, { color: isDark ? '#888' : '#999' }]}>
+                {cloudLabel}
+              </Text>
+            </View>
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity
               onPress={handleShare}
-              style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}
+              style={[
+                styles.headerBtn,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255,255,255,0.05)'
+                    : 'rgba(0,0,0,0.04)',
+                },
+              ]}
+              activeOpacity={0.7}
             >
-              <Ionicons name="share-outline" size={20} color={isDark ? '#fff' : '#1a1a1a'} />
+              <Ionicons name="share-outline" size={18} color={isDark ? '#fff' : '#1a1a1a'} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSync}
-              style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}
+              style={[
+                styles.headerBtn,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255,255,255,0.05)'
+                    : 'rgba(0,0,0,0.04)',
+                },
+              ]}
               disabled={isSyncing}
+              activeOpacity={0.7}
             >
               <Ionicons
-                name={syncStatus === 'success' ? 'checkmark-circle' : isSyncing ? 'refresh' : 'cloud-upload-outline'}
-                size={20}
+                name={
+                  syncStatus === 'success'
+                    ? 'checkmark-circle'
+                    : syncStatus === 'error'
+                    ? 'alert-circle'
+                    : 'cloud-upload-outline'
+                }
+                size={18}
                 color={
-                  syncStatus === 'success' ? '#10b981' :
-                  syncStatus === 'error' ? '#ef4444' :
-                  isDark ? '#fff' : '#1a1a1a'
+                  syncStatus === 'success'
+                    ? '#10b981'
+                    : syncStatus === 'error'
+                    ? '#ef4444'
+                    : isDark
+                    ? '#fff'
+                    : '#1a1a1a'
                 }
               />
             </TouchableOpacity>
           </View>
         </Animated.View>
 
-        {/* ─── Profile Card ──────────────────────────────────────── */}
+        {/* ═══ PROFILE CARD ═══ */}
         <Animated.View entering={FadeInUp.delay(50).duration(500)}>
           <ProfileHeader
             navigation={navigation}
@@ -2035,7 +2451,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             currentBabyId={currentBabyId}
             parent2Profile={parent2Profile}
             guardians={guardians || []}
-            onShowBabyModal={() => setShowBabyModal(true)}
             stats={activityStats}
             primaryColor={primary}
             secondaryColor={secondary}
@@ -2043,7 +2458,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           />
         </Animated.View>
 
-        {/* ─── Sections ──────────────────────────────────────────── */}
+        {/* ═══ SECTIONS ═══ */}
         {renderSecuritySection()}
         {renderPreferencesSection()}
         {renderFamilySection()}
@@ -2051,7 +2466,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         {renderSafetySection()}
         {renderSupportSection()}
 
-        {/* ─── App Info ──────────────────────────────────────────── */}
+        {/* ═══ APP INFO ═══ */}
         <Animated.View entering={FadeInUp.delay(400)} style={styles.appInfo}>
           <View style={styles.appLogoFloatWrap}>
             <Image
@@ -2063,45 +2478,58 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           <Text style={[styles.appVersion, isDark && styles.textMuted]}>
             LittleLoom v1.0.0
           </Text>
-          <View style={[styles.securityBadge, {
-            backgroundColor: (availableMethods.hasBiometric || availableMethods.hasPin)
-              ? `${accent}15`
-              : 'rgba(245,158,11,0.15)',
-          }]}>
+          <View
+            style={[
+              styles.securityBadge,
+              {
+                backgroundColor:
+                  availableMethods.hasBiometric || availableMethods.hasPin
+                    ? `${accent}15`
+                    : 'rgba(245,158,11,0.15)',
+              },
+            ]}
+          >
             <Ionicons
-              name={availableMethods.hasBiometric || availableMethods.hasPin ? 'lock-closed' : 'lock-open'}
-              size={14}
-              color={availableMethods.hasBiometric || availableMethods.hasPin ? accent : '#f59e0b'}
+              name={
+                availableMethods.hasBiometric || availableMethods.hasPin
+                  ? 'lock-closed'
+                  : 'lock-open'
+              }
+              size={13}
+              color={
+                availableMethods.hasBiometric || availableMethods.hasPin ? accent : '#f59e0b'
+              }
             />
-            <Text style={{
-              fontSize: 13,
-              fontWeight: '700',
-              color: availableMethods.hasBiometric || availableMethods.hasPin ? accent : '#f59e0b',
-            }}>
-              {availableMethods.hasBiometric || availableMethods.hasPin ? 'Secured' : 'Standard Security'}
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color:
+                  availableMethods.hasBiometric || availableMethods.hasPin
+                    ? accent
+                    : '#f59e0b',
+              }}
+            >
+              {availableMethods.hasBiometric || availableMethods.hasPin
+                ? 'Secured'
+                : 'Standard Security'}
             </Text>
           </View>
-          {isConnected && (
-            <View style={[styles.onlineBadge, { backgroundColor: `${accent}15` }]}>
-              <View style={[styles.onlineDot, { backgroundColor: accent }]} />
-              <Text style={[styles.onlineText, { color: accent }]}>Connected to Supabase</Text>
-            </View>
-          )}
         </Animated.View>
 
-        {/* ─── Logout ────────────────────────────────────────────── */}
+        {/* ═══ LOGOUT ═══ */}
         <Animated.View entering={FadeInUp.delay(450)}>
           <PressableScale onPress={handleLogout} activeScale={0.97} hapticType="medium">
             <LinearGradient
-              colors={['rgba(239,68,68,0.08)', 'rgba(239,68,68,0.04)']}
+              colors={['rgba(239,68,68,0.08)', 'rgba(239,68,68,0.03)']}
               style={styles.logoutButton}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
               <View style={styles.logoutContent}>
-                <Ionicons name="log-out-outline" size={24} color="#ef4444" />
+                <Ionicons name="log-out-outline" size={22} color="#ef4444" />
                 <Text style={styles.logoutText}>Sign Out</Text>
-                <Ionicons name="chevron-forward" size={20} color="#ef4444" />
+                <Ionicons name="chevron-forward" size={18} color="#ef4444" />
               </View>
             </LinearGradient>
           </PressableScale>
@@ -2110,7 +2538,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         <View style={{ height: 30 }} />
       </Animated.ScrollView>
 
-      {/* ─── Timeout Modal ──────────────────────────────────────── */}
+      {/* ═══ MODALS ═══ */}
+
+      {/* Timeout Modal */}
       <Modal
         visible={showTimeoutModal}
         transparent
@@ -2129,7 +2559,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               </Text>
               <PressableScale onPress={() => setShowTimeoutModal(false)} hapticType="light">
                 <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
-                  <Ionicons name="close" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+                  <Ionicons name="close" size={20} color={isDark ? '#fff' : '#1a1a1a'} />
                 </View>
               </PressableScale>
             </View>
@@ -2153,29 +2583,38 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                     onPress={() => handleSelectTimeout(option.value)}
                     activeScale={0.98}
                   >
-                    <View style={[
-                      styles.timeoutOption,
-                      isDark && styles.timeoutOptionDark,
-                      isActive && [styles.timeoutOptionActive, { borderColor: primary }],
-                      isActive && isDark && styles.timeoutOptionActiveDark,
-                    ]}>
-                      <View style={[styles.timeoutOptionIcon, { backgroundColor: isActive ? `${primary}18` : 'transparent' }]}>
+                    <View
+                      style={[
+                        styles.timeoutOption,
+                        isDark && styles.timeoutOptionDark,
+                        isActive && [styles.timeoutOptionActive, { borderColor: primary }],
+                        isActive && isDark && styles.timeoutOptionActiveDark,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.timeoutOptionIcon,
+                          { backgroundColor: isActive ? `${primary}18` : 'transparent' },
+                        ]}
+                      >
                         <Ionicons
                           name={isActive ? 'time' : 'time-outline'}
-                          size={22}
+                          size={20}
                           color={isActive ? primary : isDark ? '#666' : '#999'}
                         />
                       </View>
-                      <Text style={[
-                        styles.timeoutOptionLabel,
-                        isDark && styles.textLight,
-                        isActive && { color: primary, fontWeight: '800' },
-                      ]}>
+                      <Text
+                        style={[
+                          styles.timeoutOptionLabel,
+                          isDark && styles.textLight,
+                          isActive && { color: primary, fontWeight: '800' },
+                        ]}
+                      >
                         {option.label}
                       </Text>
                       {isActive && (
                         <View style={[styles.activeCheck, { backgroundColor: primary }]}>
-                          <Ionicons name="checkmark" size={16} color="#fff" />
+                          <Ionicons name="checkmark" size={14} color="#fff" />
                         </View>
                       )}
                     </View>
@@ -2187,7 +2626,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         </View>
       </Modal>
 
-      {/* ─── Baby Selection Modal ────────────────────────────────── */}
+      {/* Baby Selection Modal */}
       <BabySelectionModal
         visible={showBabyModal}
         onClose={() => setShowBabyModal(false)}
@@ -2198,9 +2637,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         primaryColor={primary}
       />
 
-      {/* ─── Custom Modals ───────────────────────────────────────── */}
-
-      {/* Logout Confirmation Modal */}
+      {/* Logout Confirmation */}
       <CustomModal
         visible={showLogoutModal}
         onClose={() => setShowLogoutModal(false)}
@@ -2214,18 +2651,18 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         secondaryAction={{ label: 'Cancel', onPress: () => setShowLogoutModal(false) }}
       />
 
-      {/* Disable Biometric Confirmation Modal */}
+      {/* Disable Biometric Confirmation */}
       <CustomModal
         visible={showBiometricModal}
-        onClose={() => setShowBiometricModal(false)}
+        onClose={cancelDisableBiometric}
         title="Disable Biometric?"
-        message="Are you sure you want to disable biometric authentication?"
-        icon="finger-print"
+        message={`Are you sure you want to disable ${biometricTypeName}? You'll need to use your PIN or re-enable biometrics later.`}
+        icon={biometricIcon as any}
         iconColor="#f59e0b"
         isDark={isDark}
         primaryColor={primary}
         primaryAction={{ label: 'Disable', onPress: confirmDisableBiometric }}
-        secondaryAction={{ label: 'Cancel', onPress: () => setShowBiometricModal(false) }}
+        secondaryAction={{ label: 'Cancel', onPress: cancelDisableBiometric }}
       />
 
       {/* No Security Modal */}
@@ -2238,23 +2675,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         iconColor="#f59e0b"
         isDark={isDark}
         primaryColor={primary}
-        primaryAction={{ 
-          label: 'Set Up Security', 
+        primaryAction={{
+          label: 'Set Up Security',
           onPress: () => {
             navigation.navigate('SecurityCenter', { mode: 'setup' });
-          }
+          },
         }}
-        secondaryAction={{ 
-          label: 'Lock Anyway', 
+        secondaryAction={{
+          label: 'Lock Anyway',
           onPress: async () => {
             await lockApp(true);
             sweetAlert.info('🔒 App Locked', 'Locked without security. Tap unlock to enter.');
             navigation.navigate('SecurityLock');
-          }
+          },
         }}
       />
 
-      {/* Generic Modal for alerts */}
+      {/* Generic Modal */}
       {modalConfig && (
         <CustomModal
           visible={true}
@@ -2273,7 +2710,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+// STYLES
+// ═════════════════════════════════════════════════════════════════════
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -2282,26 +2721,31 @@ const styles = StyleSheet.create({
   textLight: { color: '#ffffff' },
   textMuted: { color: '#888' },
 
-  // ─── Header ────────────────────────────────────────────────────
+  // ─── Header ─────────────────────────────────────────────────────
   header: {
     marginBottom: 20,
     paddingHorizontal: 4,
     flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
   },
   headerLeft: { flex: 1 },
   headerTitle: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: '800',
     color: '#1a1a1a',
-    letterSpacing: -0.5,
+    letterSpacing: -0.6,
   },
-  headerSubtitle: {
-    fontSize: 15,
-    color: '#666',
-    fontWeight: '500',
-    marginTop: 2,
+  cloudRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  cloudText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   headerRight: {
     flexDirection: 'row',
@@ -2309,21 +2753,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerBtn: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // ─── Profile Card ─────────────────────────────────────────────
+  // ─── Profile Card ───────────────────────────────────────────────
+  profileCardWrap: {
+    borderRadius: 28,
+    marginBottom: 20,
+  },
   profileCard: {
     borderRadius: 28,
     padding: 20,
-    marginBottom: 20,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
+  },
+  profileCardDark: {
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   profileTopRow: {
     flexDirection: 'row',
@@ -2361,10 +2811,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   settingsBtn: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.7)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2375,27 +2825,27 @@ const styles = StyleSheet.create({
   communityLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 18,
+    padding: 12,
+    borderRadius: 16,
     marginBottom: 16,
     gap: 12,
   },
   communityIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   communityLinkText: { flex: 1 },
   communityLinkTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   communityLinkSub: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#888',
     fontWeight: '500',
   },
@@ -2403,57 +2853,57 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 18,
     gap: 10,
   },
   statCard: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.65)',
+    borderRadius: 18,
     padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: 'rgba(255,255,255,0.5)',
     overflow: 'hidden',
   },
   statCardDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-    borderColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(30,30,40,0.5)',
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   statIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   statValue: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#1a1a1a',
     marginBottom: 2,
+    letterSpacing: -0.5,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#666',
-    fontWeight: '600',
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
 
-  familySection: { marginBottom: 18 },
+  familySection: { marginTop: 16 },
   familySectionTitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: '#888',
-    marginBottom: 12,
+    marginBottom: 10,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
   familyScroll: {
     paddingRight: 16,
-    gap: 14,
+    gap: 12,
     flexDirection: 'row',
   },
   familyMember: {
@@ -2461,9 +2911,9 @@ const styles = StyleSheet.create({
     minWidth: 64,
   },
   familyAvatarWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -2471,14 +2921,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   familyName: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#1a1a1a',
     fontWeight: '700',
     maxWidth: 70,
     textAlign: 'center',
   },
   familyLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#888',
     fontWeight: '500',
     marginTop: 1,
@@ -2487,9 +2937,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 2,
     right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     borderWidth: 2,
   },
   babyCountBadge: {
@@ -2497,8 +2947,8 @@ const styles = StyleSheet.create({
     top: -4,
     right: -4,
     borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    minWidth: 18,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -2506,26 +2956,21 @@ const styles = StyleSheet.create({
   },
   babyCountText: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
   },
   addBadge: {
     position: 'absolute',
     bottom: -2,
     right: -2,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'rgba(102,126,234,0.2)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   addBadgeDark: {
     backgroundColor: '#1a1a2e',
@@ -2536,22 +2981,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingTop: 16,
+    marginTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.04)',
+    borderTopColor: 'rgba(0,0,0,0.05)',
   },
   quickAction: {
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   quickActionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickActionLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
     fontWeight: '600',
   },
@@ -2562,43 +3008,43 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.04)',
+    borderTopColor: 'rgba(0,0,0,0.05)',
     gap: 12,
   },
   switchBabyIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   switchBabyText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
   switchBabyBadge: {
     borderRadius: 10,
-    minWidth: 24,
-    height: 24,
+    minWidth: 22,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
   },
   switchBabyBadgeText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
 
-  // ─── Sections ──────────────────────────────────────────────────
+  // ─── Sections ───────────────────────────────────────────────────
   section: { marginBottom: 4 },
 
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 4,
     marginBottom: 2,
   },
@@ -2615,29 +3061,27 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionHeaderText: {
-    flex: 1,
-  },
+  sectionHeaderText: { flex: 1 },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1a1a1a',
     marginBottom: 2,
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#888',
     fontWeight: '500',
   },
 
   menuContainer: {
-    borderRadius: 24,
+    borderRadius: 22,
     overflow: 'hidden',
     marginBottom: 16,
     borderWidth: 1,
@@ -2647,21 +3091,19 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    gap: 12,
   },
   menuItemBorder: {
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.04)',
   },
-  menuItemDisabled: {
-    opacity: 0.5,
-  },
+  menuItemDisabled: { opacity: 0.5 },
   menuIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2675,11 +3117,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   menuTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   menuSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
   },
   menuRight: {
@@ -2688,7 +3130,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   menuValue: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#888',
     fontWeight: '600',
   },
@@ -2698,32 +3140,32 @@ const styles = StyleSheet.create({
 
   badge: {
     borderRadius: 10,
-    minWidth: 22,
-    height: 22,
+    minWidth: 20,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 7,
+    paddingHorizontal: 6,
   },
   badgeText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
   badgeSmall: {
     borderRadius: 8,
-    minWidth: 18,
-    height: 18,
+    minWidth: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 5,
   },
   badgeTextSmall: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
   },
 
-  // ─── App Info ──────────────────────────────────────────────────
+  // ─── App Info ───────────────────────────────────────────────────
   appInfo: {
     alignItems: 'center',
     marginTop: 24,
@@ -2731,23 +3173,18 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   appLogoFloatWrap: {
-    width: 140,
-    height: 140,
+    width: 120,
+    height: 120,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   appLogoImage: {
-    width: 120,
-    height: 120,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.18,
-    shadowRadius: 28,
-    elevation: 14,
+    width: 100,
+    height: 100,
   },
   appVersion: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#888',
     fontWeight: '600',
   },
@@ -2759,27 +3196,10 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 20,
   },
-  onlineBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-  },
-  onlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  onlineText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
 
-  // ─── Logout ────────────────────────────────────────────────────
+  // ─── Logout ─────────────────────────────────────────────────────
   logoutButton: {
-    borderRadius: 20,
+    borderRadius: 18,
     marginTop: 8,
     marginBottom: 16,
     overflow: 'hidden',
@@ -2788,45 +3208,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 12,
+    paddingVertical: 14,
+    gap: 10,
   },
   logoutText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#ef4444',
   },
 
-  // ─── Sync Status ──────────────────────────────────────────────
-  syncStatusBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingHorizontal: 16,
-  },
-  syncStatusContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 16,
-    gap: 10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  syncStatusText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // ─── Modal ────────────────────────────────────────────────────
-  modalBackdrop: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
+  // ─── Modal ──────────────────────────────────────────────────────
+  modalBackdrop: { backgroundColor: 'rgba(0,0,0,0.4)' },
   modalSheet: {
     position: 'absolute',
     bottom: 0,
@@ -2862,8 +3254,8 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
   },
   modalCloseBtn: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.05)',
     alignItems: 'center',
@@ -2877,7 +3269,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  // ─── Custom Modal Styles ──────────────────────────────────────
+  // ─── Custom Modal Styles ────────────────────────────────────────
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2976,9 +3368,7 @@ const styles = StyleSheet.create({
   babyOptionActiveDark: {
     backgroundColor: 'rgba(102,126,234,0.15)',
   },
-  babyOptionInfo: {
-    flex: 1,
-  },
+  babyOptionInfo: { flex: 1 },
   babyOptionName: {
     fontSize: 16,
     fontWeight: '700',
@@ -2991,14 +3381,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   activeCheck: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // ─── Timeout Modal ────────────────────────────────────────────
+  // ─── Timeout Modal ──────────────────────────────────────────────
   timeoutModal: {
     width: '100%',
     maxWidth: 360,
@@ -3055,17 +3445,119 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(102,126,234,0.15)',
   },
   timeoutOptionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
   timeoutOptionLabel: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#1a1a1a',
+  },
+
+  // ─── AI Learning Progress Bar ───────────────────────────────────
+  aiProgressCard: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    marginBottom: 6,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
+  },
+  aiProgressCardDark: {
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  aiProgressHeader: { marginBottom: 12 },
+  aiProgressTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  aiProgressIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiProgressTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  aiProgressSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#888',
+    marginTop: 2,
+  },
+  aiScoreBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignItems: 'center',
+    minWidth: 52,
+  },
+  aiScoreValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  aiScoreLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 1,
+  },
+  aiProgressTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    position: 'relative',
+  },
+  aiProgressFillLearned: {
+    height: '100%',
+    borderRadius: 4,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    zIndex: 2,
+  },
+  aiProgressFillPartial: {
+    height: '100%',
+    borderRadius: 4,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    zIndex: 1,
+  },
+  aiProgressLegend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 10,
+  },
+  aiLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  aiLegendDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  aiLegendText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#888',
   },
 });
 
