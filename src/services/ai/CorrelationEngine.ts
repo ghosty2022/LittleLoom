@@ -421,30 +421,48 @@ export async function invalidateCorrelationCacheIfStale(
   const key = `${LAST_INVALIDATE_KEY_PREFIX}${babyId}`;
   try {
     const raw = await AsyncStorage.getItem(key);
-    const lastCount = raw ? parseInt(raw, 10) : 0;
+    const lastTimestamp = raw ? parseInt(raw, 10) : 0;
 
-    // Count current entries since last invalidation
-    const { count, error } = await supabase
+    // Count entries CREATED since the last invalidation (by timestamp, not id).
+    // This is resilient to soft-deletes and edits.
+    let query = supabase
       .from('tracker_entries')
       .select('id', { count: 'exact', head: true })
       .eq('baby_id', babyId)
       .eq('is_deleted', false);
 
-    if (error) return false;
-    const currentCount = count ?? 0;
+    if (lastTimestamp > 0) {
+      query = query.gt('timestamp', lastTimestamp);
+    }
 
-    if (force || currentCount - lastCount >= INVALIDATE_THRESHOLD) {
+    const { count, error } = await query;
+    if (error) return false;
+    const newEntryCount = count ?? 0;
+
+    if (force || newEntryCount >= INVALIDATE_THRESHOLD) {
       // Delete cached rows so next read recomputes
       await supabase
         .from('ai_correlation_cache')
         .delete()
         .eq('baby_id', babyId);
 
-      await AsyncStorage.setItem(key, String(currentCount));
+      // Record the timestamp of the newest entry we just accounted for
+      const { data: newest } = await supabase
+        .from('tracker_entries')
+        .select('timestamp')
+        .eq('baby_id', babyId)
+        .eq('is_deleted', false)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const cutoff = newest?.timestamp ?? Date.now();
+      await AsyncStorage.setItem(key, String(cutoff));
+
       if (__DEV__) {
         console.log(
           `[Correlation] Cache invalidated for ${babyId} ` +
-          `(${currentCount - lastCount} new entries)`
+          `(${newEntryCount} new entries since last run)`
         );
       }
       return true;

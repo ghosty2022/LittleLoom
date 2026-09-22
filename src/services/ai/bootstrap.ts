@@ -58,6 +58,31 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
       if (__DEV__) console.warn('[AI Bootstrap] Queue flush failed:', e);
     }
 
+    // 0a. Cache baby meta EARLY so all engines can resolve cohort priors
+    //     on the very first launch (critical for cold-start).
+    try {
+      const metaKey = `@littleloom_baby_meta_v1:${babyId}`;
+      const cached = await AsyncStorage.getItem(metaKey);
+      if (!cached) {
+        const { data: babyRow } = await supabase
+          .from('babies')
+          .select('date_of_birth, gender')
+          .eq('id', babyId)
+          .maybeSingle();
+        if (babyRow?.date_of_birth) {
+          await AsyncStorage.setItem(
+            metaKey,
+            JSON.stringify({
+              birthDate: babyRow.date_of_birth,
+              gender: babyRow.gender,
+            })
+          );
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[AI Bootstrap] Early baby meta cache failed:', e);
+    }
+
     // 1. Backfill Bayesian learning (90 days) — idempotent, runs once per baby
     const bayesResult = await backfillBayesianIfNeeded(babyId, 90);
     if (bayesResult.ran) {
@@ -79,29 +104,7 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
     await featureEngineer.computeAndStoreFeatures(babyId, today);
     console.log('[AI Bootstrap] Today features stored');
 
-        // 3a. Cache baby meta EARLY so cold-start reads of BayesianEngine /
-    //     PredictorEngine find the cohort on the first try.
-    try {
-      const cached = await AsyncStorage.getItem(`@littleloom_baby_meta_v1:${babyId}`);
-      if (!cached) {
-        const { data: babyRow } = await supabase
-          .from('babies')
-          .select('date_of_birth, gender')
-          .eq('id', babyId)
-          .maybeSingle();
-        if (babyRow?.date_of_birth) {
-          await AsyncStorage.setItem(
-            `@littleloom_baby_meta_v1:${babyId}`,
-            JSON.stringify({
-              birthDate: babyRow.date_of_birth,
-              gender: babyRow.gender,
-            })
-          );
-        }
-      }
-    } catch (e) {
-      if (__DEV__) console.warn('[AI Bootstrap] Baby meta cache failed:', e);
-    }
+    // (baby meta is cached at step 0a — no duplicate here)
     // 4. On subsequent launches, backfill 7 days of features if stale
     const lastRun = await AsyncStorage.getItem(LAST_FEATURE_RUN);
     const lastRunTs = lastRun ? parseInt(lastRun, 10) : 0;
@@ -208,13 +211,6 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
           .maybeSingle();
 
         if (babyRow?.date_of_birth) {
-          // ⚠️  Cache birth date FIRST so BayesianEngine + PredictorEngine can
-          //     read it on cold start before any other publish attempt.
-          await AsyncStorage.setItem(
-            `@littleloom_baby_meta_v1:${babyId}`,
-            JSON.stringify({ birthDate: babyRow.date_of_birth })
-          );
-
           const metricsToPublish: MetricKey[] = [
             'temperature_c',
             'feeding_ml',

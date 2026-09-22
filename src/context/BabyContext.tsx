@@ -753,7 +753,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ['sleep', 'feed', 'diaper', 'medication'];
             Promise.all(
               babies.flatMap(b =>
-                types.map(t => backfillPredictor(b.id, t, 30).catch(() => null))
+                types.map(t =>
+                  backfillPredictor(b.id, t, 30)
+                    .then(r => {
+                      if (__DEV__ && r.samples > 0) {
+                        console.log(`[Predictor] ${b.id}/${t}: ${r.samples} intervals`);
+                      }
+                      return r;
+                    })
+                    .catch(() => null)
+                )
               )
             ).catch(() => {});
           })
