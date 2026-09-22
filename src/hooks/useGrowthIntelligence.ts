@@ -266,7 +266,7 @@ export const useGrowthIntelligence = () => {
       .filter(Boolean);
 
     return new Set([...fromContext, ...fromTracker]);
-  }, [milestones, getEntriesStable, entries]);
+  }, [milestones, getEntriesStable]);
 
   const nutritionScore = useMemo((): SubScore => {
     const feedEntries = getEntriesStable('feed', 30) || [];
@@ -326,7 +326,7 @@ export const useGrowthIntelligence = () => {
       trend: delta > 5 ? 'up' : delta < -5 ? 'down' : 'stable',
       delta: Math.round(delta),
     };
-  }, [getEntries, ageInMonths]);
+  }, [getEntriesStable, ageInMonths]);
 
   const restScore = useMemo((): SubScore => {
     const sleepEntries = getEntriesStable('sleep', 30) || [];
@@ -374,7 +374,7 @@ export const useGrowthIntelligence = () => {
       trend: delta > 0.5 ? 'up' : delta < -0.5 ? 'down' : 'stable',
       delta: Math.round(delta * 10) / 10,
     };
-  }, [getEntries, ageInMonths]);
+  }, [getEntriesStable, ageInMonths]);
 
   const physicalScore = useMemo((): SubScore => {
     const safeGrowthData = mergedGrowthData;
@@ -518,7 +518,7 @@ const medicationEntries = getEntriesStable('medication', 30) || [];
       trend: daysSinceFever > 14 ? 'up' : daysSinceFever < 3 ? 'down' : 'stable',
       delta: daysSinceFever,
     };
-  }, [entries, getEntriesStable]);
+  }, [getEntriesStable]);
 
   const milestoneReadiness = useMemo((): MilestoneReadiness[] => {
     const achievedTitles = achievedMilestoneIds;

@@ -982,12 +982,13 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
     //       hook for `getEntriesStable`.
     return built.map((a) => ({ ...a, unlockedAt: unlockedAtMap[a.id] }));
   }, [
-    // Fingerprint — NOT the full context objects
     achievementsFingerprint,
     baby?.currentBaby?.id,
     baby?.currentBaby?.birthDate,
-    growthIndex,
-    predictiveReminders,
+    // Score + reminder count are already hashed into achievementsFingerprint.
+    // We also include `growthIndex.lastUpdated` so the memo refreshes when
+    // the score actually recomputes (not just when it changes value).
+    growthIndex?.lastUpdated,
     unlockedHistory,
     unlockedAtMap,
     refreshToken,
