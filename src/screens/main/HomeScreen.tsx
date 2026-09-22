@@ -26,7 +26,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
-import { useActivity } from '../../context/ActivityContext';
+// REMOVED: useActivity — trackerEntries from useTracker is the single source of truth
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCommunity } from '../../context/CommunityContext';
@@ -1481,8 +1481,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     getTodayFeedCount,
     getTodayPottyCount,
   } = useBaby();
-  const { entries: activities, getRecentTimelineEvents, loadEntries: loadActivities, isLoading: activitiesLoading } = useActivity();
-  const { entries: trackerEntries } = useTracker();
+  const { entries: trackerEntries, refreshEntries: refreshTrackerEntries, isLoading: activitiesLoading } = useTracker();
+  const activities = trackerEntries;
+  const loadActivities = refreshTrackerEntries;
+  const getRecentTimelineEvents = (_limit?: number, _babyId?: string) => trackerEntries;
   const { lockApp, getAvailableAuthMethods } = useSecurity();
   const { getUnreadCount } = useCommunity();
 

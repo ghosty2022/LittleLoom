@@ -386,7 +386,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
   // REMOVED fontSizeMultiplier — unused in this screen
   const { userProfile } = useAuth();
   const { currentBaby, growthData, milestones, babies, getGrowthData, loadBabies } = useBaby();
-  const { getRecentTimelineEvents } = useActivity();
+  // REMOVED: useActivity — trackerEntries from useTracker is the single source of truth
   const { growthIndex } = useGrowthIntelligence();
   // Load TimelineCorrelations (UI patterns) AND discovered correlations (AI)
   const { correlations: timelineCorrelations } = useTimelineCorrelations();

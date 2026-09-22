@@ -49,7 +49,7 @@ import {
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks';
-import { useActivity } from '../../context/ActivityContext';
+// REMOVED: useActivity — trackerEntries from useTracker is the single source of truth
 import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -1557,8 +1557,8 @@ export default function UniversalTrackerHubScreen() {
   const insets = useSafeAreaInsets();
   const { fullThemeColors, themeColors, isDark, borderRadiusValue, triggerHaptic } = useCustomization();
   const tracker = useTracker();
-const { entries, getEntries, trackers } = tracker;
-const { getRecentTimelineEvents } = useActivity();
+  const { entries, getEntries, trackers } = tracker;
+  // REMOVED: useActivity — trackerEntries from useTracker is the single source of truth
   const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
   const { success: showSuccess, error: showError, confirm: showConfirm } = useSweetAlert();
   const achievements = useTrackerAchievements();
@@ -1649,42 +1649,11 @@ const { getRecentTimelineEvents } = useActivity();
     // ─── Combined timeline events (same as HomeScreen) ──────────────────────
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
-    
-    // Get entries from tracker context
-    const trackerList = (entries || []).filter((e: any) => e?.timestamp && e?.timestamp > 0);
-    
-    // Get activity events
-    let activityEvents: any[] = [];
-    try {
-      if (getRecentTimelineEvents) {
-        const events = getRecentTimelineEvents(50, currentBaby?.id);
-        activityEvents = Array.isArray(events) ? events : [];
-      }
-    } catch (e) {
-      console.warn('Failed to get recent timeline events:', e);
-    }
-    
-    // Merge and deduplicate by id
-    const merged = [...trackerList];
-    (activityEvents || []).forEach((ae: any) => {
-      if (ae && ae.id && !merged.find((me: any) => me?.id === ae.id)) {
-        merged.push(ae);
-      }
-    });
-    
-    // Sort by timestamp descending (newest first)
-    const sorted = merged
+    const sorted = (entries || [])
       .filter((e: any) => e?.timestamp && typeof e.timestamp === 'number' && e.timestamp > 0)
       .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
-    
-    // Log for debugging
-    console.log(`[UniversalTrackerHub] allTimelineEvents count: ${sorted.length}`);
-    if (sorted.length > 0) {
-      console.log(`[UniversalTrackerHub] Latest entry: ${new Date(sorted[0].timestamp).toISOString()}`);
-    }
-    
     return sorted.slice(0, 50);
-  }, [entries, currentBaby?.id, getRecentTimelineEvents]);
+  }, [entries, currentBaby?.id]);
   
   const trackerCards = useMemo(() => {
     if (!currentBaby) return [];
