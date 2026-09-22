@@ -34,6 +34,7 @@ import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 import { useBaby } from './BabyContext';
+import { observeValue } from '../services/ai/BayesianEngine';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { EntryService, mapRowToEntry } from '@/services/EntryService';
 
@@ -305,6 +306,49 @@ const getTrackerType = (trackerId: string): string => {
   return TRACKER_TYPE_MAP[trackerId] || 'custom';
 };
 
+// ─── Bayesian metric mapping ────────────────────────────────────────
+const BAYES_METRIC_MAP: Record<string, Partial<Record<string, string>>> = {
+  temperature: { value: 'temperature_c' },
+  feed: { amount_ml: 'feeding_ml', amount: 'feeding_ml', quantity: 'feeding_ml' },
+  sleep: { duration_minutes: 'sleep_duration_min', duration: 'sleep_duration_min' },
+  growth: {
+    weight: 'weight_kg', weight_kg: 'weight_kg',
+    height: 'height_cm', height_cm: 'height_cm',
+    head: 'head_cm', head_circumference: 'head_cm',
+  },
+  mood: { mood: 'mood_score', value: 'mood_score' },
+  heart_rate: { bpm: 'heart_rate_bpm', value: 'heart_rate_bpm' },
+};
+
+async function learnFromEntry(
+  babyId: string,
+  trackerId: string,
+  data: Record<string, unknown>
+): Promise<void> {
+  const fieldMap = BAYES_METRIC_MAP[trackerId];
+  if (!fieldMap) return;
+
+  const tasks: Promise<unknown>[] = [];
+  for (const [field, metric] of Object.entries(fieldMap)) {
+    if (!metric) continue;
+    const raw = data[field];
+    if (raw === undefined || raw === null) continue;
+    const num = typeof raw === 'number' ? raw : parseFloat(String(raw));
+    if (!Number.isFinite(num)) continue;
+
+    tasks.push(
+      observeValue(babyId, metric as any, num).catch(err => {
+        if (__DEV__)
+          console.warn(`[Bayes] observeValue failed for ${metric}:`, err?.message);
+      })
+    );
+  }
+
+  if (tasks.length > 0) {
+    await Promise.all(tasks);
+  }
+}
+
 /* ─── STREAK CALCULATION ───────────────────────────────────────────── */
 
 const calculateStreak = (
@@ -505,7 +549,11 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const { success, toast, alert: sweetAlert } = useSweetAlert();
   
   // ─── READ BABY FROM BABYCONTEXT ──────────────────────────────────────
-  const { getCurrentBabyId: getBabyIdFromContext, subscribeToBabyChanges } = useBaby();
+  const {
+    getCurrentBabyId: getBabyIdFromContext,
+    subscribeToBabyChanges,
+    hasPermissionForBaby,
+  } = useBaby();
 
   // ─── Offline queue for failed Supabase writes ────────────────────────
   const { enqueue: enqueueOffline } = useOfflineSync({
@@ -632,52 +680,86 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return me?.role || 'parent1';
   }, [userProfile, members]);
 
+  // ─── Granular permissions for the CURRENT baby ─────────────────────
+  // Reads JSON overrides from family_members.permissions (Phase 2.2).
+  const currentBabyIdForPerms = getCurrentBabyId();
+  const currentBabyPermissions = useMemo(() => {
+    if (!currentBabyIdForPerms) return null;
+    return {
+      canView:              hasPermissionForBaby(currentBabyIdForPerms, 'view'),
+      canAddEntry:          hasPermissionForBaby(currentBabyIdForPerms, 'addEntry'),
+      canEditEntry:         hasPermissionForBaby(currentBabyIdForPerms, 'editEntry'),
+      canEditOthersEntries: hasPermissionForBaby(currentBabyIdForPerms, 'editOthers'),
+      canDeleteEntry:       hasPermissionForBaby(currentBabyIdForPerms, 'deleteEntry'),
+      canEditBaby:          hasPermissionForBaby(currentBabyIdForPerms, 'editBaby'),
+      canInvite:            hasPermissionForBaby(currentBabyIdForPerms, 'invite'),
+      canExport:            hasPermissionForBaby(currentBabyIdForPerms, 'export'),
+      canManageFamily:      hasPermissionForBaby(currentBabyIdForPerms, 'manageFamily'),
+    };
+  }, [currentBabyIdForPerms, hasPermissionForBaby]);
+
   const canUseTracker = useCallback((trackerId: string): boolean => {
     const tracker = state.trackers.find(t => t.id === trackerId);
     if (!tracker || !myRole) return false;
+    if (currentBabyPermissions && !currentBabyPermissions.canView) return false;
     return tracker.permissions?.familyRoles?.includes(myRole as any) ?? false;
-  }, [state.trackers, myRole]);
+  }, [state.trackers, myRole, currentBabyPermissions]);
 
   const canCreateEntry = useCallback((trackerId: string): boolean => {
     const tracker = state.trackers.find(t => t.id === trackerId);
     if (!tracker || !myRole) return false;
+    if (currentBabyPermissions && currentBabyPermissions.canAddEntry === false) {
+      const trackerAllows = tracker.permissions?.allowGuardiansCreate ?? false;
+      if (!trackerAllows) return false;
+    }
     if (['parent1', 'parent2'].includes(myRole)) return true;
     return tracker.permissions?.allowGuardiansCreate ?? false;
-  }, [state.trackers, myRole]);
+  }, [state.trackers, myRole, currentBabyPermissions]);
 
 const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
   if (!userProfile || !myRole) return false;
 
-  // Parent1/Parent2 always have edit rights
-  if (['parent1', 'parent2'].includes(myRole)) return true;
-
-  // Read granular permissions
-  const perms = state.userPermissions[entry.babyId] || {};
   const isOwn = entry.loggedBy === userProfile.id;
 
-  if (isOwn) {
-    // Editing own entry
-    const ownEdit = perms.canEditEntry ?? perms.edit;
-    if (ownEdit === false) return false;
+  // ─── Granular JSON check ────────────────────────────────────────
+  if (currentBabyPermissions) {
+    if (isOwn && !currentBabyPermissions.canEditEntry) return false;
+    if (!isOwn && !currentBabyPermissions.canEditOthersEntries) return false;
   } else {
-    // Editing someone else's entry
-    const othersEdit = perms.canEditOthersEntries;
-    if (othersEdit !== true) return false;
+    if (!['parent1', 'parent2'].includes(myRole) && !isOwn) return false;
+  }
+
+  // Parent1/Parent2 always can edit
+  if (['parent1', 'parent2'].includes(myRole)) return true;
+
+  // Tracker-level override for guardians
+  if (isOwn) {
+    const tracker = state.trackers.find(t => t.id === entry.trackerId);
+    const trackerAllows = tracker?.permissions?.allowGuardiansEditOwn ?? false;
+    if (!trackerAllows) return false;
   }
 
   return true;
-}, [userProfile, myRole, state.userPermissions]);
+}, [userProfile, myRole, state.trackers, currentBabyPermissions]);
 
 const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
   if (!userProfile || !myRole) return false;
 
-  // Parent1/Parent2 always have delete rights
+  if (currentBabyPermissions && !currentBabyPermissions.canDeleteEntry) return false;
+
   if (['parent1', 'parent2'].includes(myRole)) return true;
 
-  // Granular check
-  const perms = state.userPermissions[entry.babyId] || {};
-  return perms.canDeleteEntry === true;
-}, [userProfile, myRole, state.userPermissions]);
+  if (myRole === 'guardian') {
+    const isOwn = entry.loggedBy === userProfile.id;
+    return (
+      isOwn &&
+      state.trackers.find(t => t.id === entry.trackerId)?.permissions
+        .allowGuardiansDeleteOwn === true
+    );
+  }
+
+  return false;
+}, [userProfile, myRole, state.trackers, currentBabyPermissions]);
   /* ─── Load helpers ───────────────────────────────────────────────── */
 
   const loadCustomTrackers = useCallback(async (): Promise<UnifiedTrackerConfig[]> => {
@@ -1233,6 +1315,9 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         lastTrackerId: trackerId,
       }));
 
+      // ─── Bayesian learning: feed the new value into the engine ────
+      learnFromEntry(babyId, trackerId, cleanData).catch(() => {});
+
       const streak = calculateStreak(trackerId, updatedEntries, babyId);
       if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
         triggerHaptic('success');
@@ -1257,6 +1342,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
   ): Promise<boolean> => {
     const entry = state.entries.find(e => e.id === entryId);
     if (!entry) return false;
+    const babyId = entry.babyId;
 
     if (!canEditEntry(entry)) {
       sweetAlert('Permission Denied', 'You cannot edit this entry', 'warning');
@@ -1330,6 +1416,12 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         entries: updatedEntries,
         entriesByTracker: updatedEntriesByTracker,
       }));
+
+      // ─── Bayesian learning: re-observe the corrected value ───────
+      if (updates.data && babyId) {
+        const merged = { ...entry.data, ...updates.data } as Record<string, unknown>;
+        learnFromEntry(babyId, entry.trackerId, merged).catch(() => {});
+      }
 
       return true;
     } catch (error) {

@@ -724,6 +724,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // ─── One-time Bayesian backfill for each baby ─────────────────
+      // Runs in the background — never blocks baby loading.
+      if (babies.length > 0) {
+        import('../services/ai/backfillBayesian')
+          .then(({ backfillBayesianIfNeeded }) => {
+            Promise.all(
+              babies.map(b => backfillBayesianIfNeeded(b.id).catch(() => null))
+            ).catch(() => {});
+          })
+          .catch(() => {});
+      }
+
       // ─── UPDATE STATE ─────────────────────────────────────────────────
       console.log(`[BabyContext] Setting state: ${babies.length} babies, current: ${currentId}`);
       
