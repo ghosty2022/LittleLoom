@@ -131,18 +131,16 @@ type ReportMode = 'generate' | 'templates' | 'upload' | 'share';
    The former inline GROWTH_REF table was invented; this uses the same
    LMS tables the app already uses for live percentile calculations.
    ═══════════════════════════════════════════════════════════════════════ */
+// Canonical WHO calculator — the single source of truth for LMS math.
+// (Merged into one import so `zScoreToPercentile` isn't declared twice.)
 import {
   WHO_BOY_LMS,
   WHO_GIRL_LMS,
   calculateZScore,
-  zScoreToPercentile,
-} from '@/hooks/useWHOGrowthCalculator';
-
-// Use the canonical WHO calculator — no local reimplementation.
-import {
-  calculatePercentilePrecise,
   calculateZScoreRestricted,
+  calculatePercentilePrecise,
   zScoreToPercentile,
+  zScoreToValue,
 } from '@/hooks/useWHOGrowthCalculator';
 
 // Backwards-compatible wrapper: previous callers used (median, sd) +
@@ -154,20 +152,15 @@ const getGrowthRef = (
 ): { med: number; sd: number } => {
   const g: 'boy' | 'girl' =
     gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
-  const percentile = calculatePercentilePrecise(50, ageMonths, type, g);
-  // The canonical calculator does not expose median/SD directly, so we
-  // reconstruct them for legacy callers by inverting at Z=0 and Z=1.
-  // Percentile at Z=0 is the median; the SD is then inferred from the
-  // difference between the 50th and ~84th percentile values.
-  const p50 = percentile; // 50
-  // Approximate median and 1-SD by sampling the inverse
-  // (this is only used for display; the *percentile* below is exact).
-  const { zScoreToValue } = require('@/hooks/useWHOGrowthCalculator');
-  const lms =
-    g === 'girl'
-      ? (require('@/hooks/useWHOGrowthCalculator').WHO_GIRL_LMS[Math.max(0, Math.min(24, Math.round(ageMonths)))]?.[type])
-      : (require('@/hooks/useWHOGrowthCalculator').WHO_BOY_LMS[Math.max(0, Math.min(24, Math.round(ageMonths)))]?.[type]);
+
+  // Clamp age to the LMS table range before lookup.
+  const clampedAge = Math.max(0, Math.min(24, Math.round(ageMonths)));
+  const table = g === 'girl' ? WHO_GIRL_LMS : WHO_BOY_LMS;
+  const lms = table[clampedAge]?.[type];
   if (!lms) return { med: 0, sd: 1 };
+
+  // Z=0 → median; Z=1 → +1 SD. Linear approximation is fine for the
+  // legacy display use-case; the *percentile* path uses the exact LMS.
   const med = zScoreToValue(0, lms);
   const plus1 = zScoreToValue(1, lms);
   return { med, sd: Math.max(0.01, plus1 - med) };
