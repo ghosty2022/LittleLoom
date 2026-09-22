@@ -184,22 +184,77 @@ export const useGrowthIntelligence = () => {
   const gender = useMemo(() => safeGender(currentBaby?.gender), [currentBaby?.gender]);
 
   const mergedGrowthData = useMemo(() => {
-    const fromEntries = (getEntries('growth', 200) || [])
-      .map(e => ({
-        type: String(e.data?.measurementType || ''),
-        value: safeNumber(e.data?.value, NaN),
-        date: new Date(e.timestamp).toISOString(),
-      }))
+    // ─── Primary source: tracker_entries (real Supabase data) ────
+    const fromEntries = (getEntries('growth', 500) || [])
+      .map(e => {
+        const d = (e.data || {}) as Record<string, unknown>;
+        // `measurementType` is the canonical field; fall back to `type`
+        const rawType = String(d.measurementType ?? d.type ?? '').toLowerCase();
+        // Normalize synonyms
+        const type =
+          rawType === 'length' ? 'height' :
+          rawType === 'hc' || rawType === 'headcircumference' ? 'head' :
+          rawType;
+        return {
+          id: e.id,
+          type,
+          value: safeNumber(d.value, NaN),
+          unit: String(d.unit ?? ''),
+          date: new Date(e.timestamp).toISOString(),
+          timestamp: e.timestamp,
+        };
+      })
+      .filter(g => ['height', 'weight', 'head'].includes(g.type) && Number.isFinite(g.value))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    // ─── Secondary source: BabyContext.growthData (legacy, may be empty) ───
+    const fromContext = (growthData || [])
+      .map((g: any) => {
+        const rawType = String(g?.type ?? '').toLowerCase();
+        const type =
+          rawType === 'length' ? 'height' :
+          rawType === 'hc' || rawType === 'headcircumference' ? 'head' :
+          rawType;
+        return {
+          id: g?.id ?? `ctx_${Math.random().toString(36).slice(2, 8)}`,
+          type,
+          value: safeNumber(g?.value, NaN),
+          unit: String(g?.unit ?? ''),
+          date: typeof g?.date === 'string' ? g.date : new Date(g?.date ?? Date.now()).toISOString(),
+          timestamp: new Date(g?.date ?? Date.now()).getTime(),
+        };
+      })
       .filter(g => ['height', 'weight', 'head'].includes(g.type) && Number.isFinite(g.value));
 
-    return [...(growthData || []), ...fromEntries].filter(g => g && g.type && g.date);
+    // ─── Merge, dedupe by (type, date), tracker_entries wins ───
+    const seen = new Set<string>();
+    const merged: typeof fromEntries = [];
+    for (const g of [...fromEntries, ...fromContext]) {
+      const key = `${g.type}|${g.date.slice(0, 10)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(g);
+    }
+    return merged;
   }, [growthData, getEntries]);
 
   const achievedMilestoneIds = useMemo(() => {
-    const fromContext = (milestones || []).map(m => slug(m.title));
-    const fromTracker = (getEntries('milestone', 100) || [])
-      .map(e => slug(String(e.data?.title ?? '')));
-    return new Set([...fromContext, ...fromTracker].filter(Boolean));
+    // ─── Primary source: tracker_entries with tracker_type='milestone' ──
+    const fromTracker = (getEntries('milestone', 300) || [])
+      .map(e => {
+        const d = (e.data || {}) as Record<string, unknown>;
+        // Try title → name → milestone fields
+        const raw = String(d.title ?? d.name ?? d.milestone ?? '').trim();
+        return raw ? slug(raw) : '';
+      })
+      .filter(Boolean);
+
+    // ─── Secondary: BabyContext.milestones (may be empty) ──
+    const fromContext = (milestones || [])
+      .map(m => slug(String(m?.title ?? m?.name ?? '')))
+      .filter(Boolean);
+
+    return new Set([...fromContext, ...fromTracker]);
   }, [milestones, getEntries, entries]);
 
   const nutritionScore = useMemo((): SubScore => {

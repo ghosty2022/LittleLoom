@@ -40,6 +40,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../../utils/supabase';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 // ─── Hooks ──────────────────────────────────────────────────────────
@@ -984,6 +985,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     checkBiometricCapabilities,
     resetUnlockLock,
     refreshBiometricStatus,
+    readBiometricEnabledFromStorage,
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
   const { guardians, parent2: parent2Profile, familyMembers } = useFamily();
@@ -1036,12 +1038,50 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const biometricTypeName = getBiometricTypeName();
   const biometricIcon = getBiometricIcon();
   
-  // ✅ FIXED: Use isBiometricEnabled from security context directly
-  const bioEnabled = isBiometricEnabled || false;
+  // ─── LOCAL STATE for biometric toggle (synced from context + storage) ──
+  const [localBiometricEnabled, setLocalBiometricEnabled] = useState<boolean>(false);
+  
+  // ✅ FIXED: Sync local state from context whenever it changes
+  useEffect(() => {
+    setLocalBiometricEnabled(isBiometricEnabled ?? false);
+  }, [isBiometricEnabled]);
+  
+  // ✅ FIXED: On mount, read directly from storage as a fallback
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await readBiometricEnabledFromStorage();
+        if (stored !== localBiometricEnabled) {
+          setLocalBiometricEnabled(stored);
+        }
+      } catch {}
+    })();
+  }, [readBiometricEnabledFromStorage]);
+  
+  const bioEnabled = localBiometricEnabled;
   const hasHardware = isBiometricHardwareAvailable || false;
   const isEnrolled = isBiometricEnrolled || false;
   // ✅ FIXED: Properly compute biometric availability
   const biometricAvailable = hasHardware && isEnrolled;
+
+  // ─── Optional: read from Supabase app_settings as source of truth ──
+  useEffect(() => {
+    (async () => {
+      try {
+        const userId = userProfile?.id;
+        if (!userId) return;
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'biometric_enabled')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (data?.value === 'true' || data?.value === 'false') {
+          setLocalBiometricEnabled(data.value === 'true');
+        }
+      } catch {}
+    })();
+  }, [userProfile?.id]);
 
   const babyStats = currentBaby ? getBabyStats() : { streak: 0, milestones: 0, photos: 0, entries: 0 };
   const activityStats = {
@@ -1239,6 +1279,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     try {
       const success = await toggleBiometric(false);
       if (success) {
+        setLocalBiometricEnabled(false);
         await refreshBiometricStatus();
         sweetAlert.success('Biometric Disabled', 'Biometric authentication has been turned off.');
       } else {
@@ -1369,11 +1410,16 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (focusLoadTimeout.current) {
         clearTimeout(focusLoadTimeout.current);
       }
-      focusLoadTimeout.current = setTimeout(() => {
+      focusLoadTimeout.current = setTimeout(async () => {
         console.log('🔄 [MoreScreen] Focus - loading babies (debounced)');
         loadBabies();
         loadEntries?.();
-        refreshBiometricStatus();
+        await refreshBiometricStatus();
+        // Re-read biometric state from storage on focus
+        try {
+          const stored = await readBiometricEnabledFromStorage();
+          setLocalBiometricEnabled(stored);
+        } catch {}
       }, 300);
       
       return () => {
@@ -1381,7 +1427,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           clearTimeout(focusLoadTimeout.current);
         }
       };
-    }, [loadBabies, loadEntries, refreshBiometricStatus])
+    }, [loadBabies, loadEntries, refreshBiometricStatus, readBiometricEnabledFromStorage])
   );
 
   useEffect(() => {
@@ -1396,7 +1442,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const renderSecuritySection = useCallback(() => {
     const isExpanded = expandedSections.has('security');
     const bioAvailable = biometricAvailable;
-    const bioEnabled = isBiometricEnabled || false;
+    const bioEnabled = localBiometricEnabled;
     
     return (
       <Animated.View entering={FadeInUp.delay(100)} layout={Layout.springify()} style={styles.section}>
@@ -1473,7 +1519,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     biometricTypeName,
     biometricIcon,
     biometricAvailable,
-    isBiometricEnabled,
+    localBiometricEnabled,
     primary,
     secondary,
     accent,

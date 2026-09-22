@@ -120,11 +120,17 @@ export const usePredictiveReminders = () => {
             priority: hoursSinceLast > avgInterval * 1.2 ? 'high' : 'medium',
             suggestedTime: addHours(new Date(lastFeed.timestamp), avgInterval),
             confidence: Math.min(95, 60 + hoursSinceLast * 5),
+            // Every dataPoint below is COMPUTED from real tracker_entries
             basedOn: [
               {
                 trackerId: 'feed',
-                dataPoint: 'average_interval',
-                value: `${avgInterval.toFixed(1)}h`,
+                dataPoint: 'last_feed_at',
+                value: new Date(lastFeed.timestamp).toLocaleString(),
+              },
+              {
+                trackerId: 'feed',
+                dataPoint: 'avg_interval_hours',
+                value: `${avgInterval.toFixed(1)}h (n=${feedEntries.length})`,
               },
             ],
             action: {
@@ -167,16 +173,18 @@ export const usePredictiveReminders = () => {
             priority: sleepScore < 50 ? 'high' : 'medium',
             suggestedTime: nextBedtime,
             confidence: Math.min(95, 70 + (70 - sleepScore)),
+            // sleepScore comes from growthIndex.restScore (real tracker_entries)
+            // avgBedtime comes from this session's sleepEntries query
             basedOn: [
               {
                 trackerId: 'sleep',
-                dataPoint: 'average_bedtime',
-                value: `${avgBedtime}:00`,
+                dataPoint: 'avg_bedtime_hour',
+                value: `${avgBedtime}:00 (n=${bedtimes.length})`,
               },
               {
                 trackerId: 'sleep',
-                dataPoint: 'sleep_score',
-                value: `${sleepScore}/100`,
+                dataPoint: 'rest_score',
+                value: `${sleepScore}/100 (composite)`,
               },
             ],
             action: {
@@ -205,6 +213,12 @@ export const usePredictiveReminders = () => {
       const recommendedInterval = ageInMonths < 6 ? 14 : ageInMonths < 12 ? 30 : 60;
 
       if (daysSince > recommendedInterval * 0.8) {
+        const growthEntriesForType = (getEntries('growth', 50) || []);
+        const measurementTypes = new Set(
+          growthEntriesForType
+            .map(e => String(e.data?.measurementType ?? '').toLowerCase())
+            .filter(Boolean)
+        );
         suggestions.push({
           id: 'growth_reminder',
           type: 'growth',
@@ -217,8 +231,13 @@ export const usePredictiveReminders = () => {
           basedOn: [
             {
               trackerId: 'growth',
-              dataPoint: 'days_since_last',
-              value: `${daysSince} days`,
+              dataPoint: 'last_measurement_date',
+              value: new Date(lastGrowth.date).toLocaleDateString(),
+            },
+            {
+              trackerId: 'growth',
+              dataPoint: 'measurements_on_file',
+              value: `${growthEntriesForType.length} entries (${Array.from(measurementTypes).join(', ') || 'none'})`,
             },
           ],
           action: {
@@ -277,6 +296,8 @@ export const usePredictiveReminders = () => {
       const symptomEntries = getEntries('symptom', 7);
 
       if (tempEntries.length > 0 || symptomEntries.length > 0) {
+        const lastTempEntry = tempEntries[0];
+        const lastSymptom = symptomEntries[0];
         suggestions.push({
           id: 'health_alert',
           type: 'symptom',
@@ -289,13 +310,18 @@ export const usePredictiveReminders = () => {
           basedOn: [
             {
               trackerId: 'temperature',
-              dataPoint: 'recent_entries',
-              value: `${tempEntries.length} in 7 days`,
+              dataPoint: 'temp_entries_7d',
+              value: `${tempEntries.length}${lastTempEntry ? ` (last: ${new Date(lastTempEntry.timestamp).toLocaleString()})` : ''}`,
+            },
+            {
+              trackerId: 'symptom',
+              dataPoint: 'symptom_entries_7d',
+              value: `${symptomEntries.length}${lastSymptom ? ` (last: ${String((lastSymptom.data as any)?.symptoms ?? 'n/a')})` : ''}`,
             },
             {
               trackerId: 'health',
-              dataPoint: 'health_stability',
-              value: `${healthScore}/100`,
+              dataPoint: 'health_stability_score',
+              value: `${healthScore}/100 (composite)`,
             },
           ],
           action: {

@@ -194,11 +194,18 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
   // ─── FIXED: Biometric check with proper debounce ────────────────
   const [forceUpdate, setForceUpdate] = useState(false);
+  const [localBioEnabled, setLocalBioEnabled] = useState<boolean>(false);
+
+  // Sync from context whenever it changes
+  useEffect(() => {
+    setLocalBioEnabled(isBiometricEnabled ?? false);
+  }, [isBiometricEnabled]);
 
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
         await checkBiometricCapabilities();
+        await refreshBiometricStatus();
         setForceUpdate(prev => !prev);
       } catch (error) {
         console.error('Error checking biometrics:', error);
@@ -214,9 +221,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       }
     }, 500);
 
-    const unsubscribe = navigation.addListener('focus', () => {
+    const unsubscribe = navigation.addListener('focus', async () => {
       if (isMounted.current) {
-        refreshBiometricStatus();
+        await refreshBiometricStatus();
+        setForceUpdate(prev => !prev);
       }
     });
 
@@ -508,6 +516,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       const result = await toggleBiometric(newState);
       
       if (result) {
+        setLocalBioEnabled(newState);
         await refreshBiometricStatus();
         sweetAlert.success(
           newState ? 'Biometric On' : 'Biometric Off',
@@ -978,7 +987,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const renderBiometricSection = () => {
     const bioName = getBiometricTypeName();
     const bioConfig = availableBiometricTypes[0];
-    const bioEnabled = isBiometricEnabled || false;
+    const bioEnabled = localBioEnabled;
     const hasHardware = isBiometricHardwareAvailable || false;
     const isEnrolled = isBiometricEnrolled || false;
 

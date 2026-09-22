@@ -114,6 +114,7 @@ interface SecurityContextType extends SecurityState {
   getBiometricHardwareAvailable: () => boolean;
   getBiometricEnrolled: () => boolean;
   getBiometricEnabled: () => boolean;
+  readBiometricEnabledFromStorage: () => Promise<boolean>;
 }
 
 const SecurityContext = createContext<SecurityContextType | null>(null);
@@ -311,6 +312,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       const isAppLockEnabled = appLockEnabled === 'true';
       const isBiometricEnabled = biometricEnabled === 'true';
       const hasSecurityEnabled = isBiometricEnabled || hasPin || isAppLockEnabled;
+
+      console.log('[Security] loadSecurityState - biometricEnabled from storage:', biometricEnabled);
+      console.log('[Security] loadSecurityState - isBiometricEnabled:', isBiometricEnabled);
 
       let securityQuestions: SecurityQuestion[] = [];
       let hasQuestions = false;
@@ -716,7 +720,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } catch {}
   }, []);
 
-  // ─── FIXED: Toggle biometric with proper persistence ──────────────
+  // ─── FIXED: Toggle biometric with proper persistence (uses fresh state) ──
   const toggleBiometric = useCallback(async (enabled: boolean): Promise<boolean> => {
     console.log('[Security] toggleBiometric called with:', enabled);
     console.log('[Security] Current state:', state.settings.isBiometricEnabled);
@@ -725,9 +729,15 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       // First check if biometric is available
       await refreshBiometricStatus();
       
-      // Double-check enrollment status after refresh
-      const hasHardware = state.isBiometricHardwareAvailable;
-      const isEnrolled = state.isBiometricEnrolled;
+      // Read FRESH state directly from device (not from closure)
+      let hasHardware = false;
+      let isEnrolled = false;
+      try {
+        hasHardware = await LocalAuthentication.hasHardwareAsync();
+        isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      } catch (e) {
+        console.warn('[Security] Fresh biometric check failed:', e);
+      }
       
       if (!hasHardware || !isEnrolled) {
         console.warn('[Security] Biometric not available - hardware:', hasHardware, 'enrolled:', isEnrolled);
@@ -749,6 +759,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
               ...prev.settings, 
               isBiometricEnabled: true 
             },
+            isBiometricHardwareAvailable: true,
             isBiometricEnrolled: true,
           }));
         }
@@ -776,7 +787,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       console.log('[Security] ❌ Biometric disabled');
       return true;
     }
-  }, [authenticateWithBiometric, state.isBiometricHardwareAvailable, state.isBiometricEnrolled, state.settings.isBiometricEnabled, refreshBiometricStatus]);
+  }, [authenticateWithBiometric, refreshBiometricStatus, state.settings.isBiometricEnabled]);
 
   const toggleAppLock = useCallback(async (enabled: boolean) => {
     await AsyncStorage.setItem(ASYNC_KEYS.APP_LOCK_ENABLED, enabled ? 'true' : 'false');
@@ -1019,6 +1030,16 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     return state.settings.isBiometricEnabled;
   }, [state.settings.isBiometricEnabled]);
 
+  // ─── NEW: Read biometric enabled directly from AsyncStorage ───────
+  const readBiometricEnabledFromStorage = useCallback(async (): Promise<boolean> => {
+    try {
+      const val = await AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED);
+      return val === 'true';
+    } catch {
+      return false;
+    }
+  }, []);
+
   const setSharingActive = useCallback(async (active: boolean) => {
     sharingActiveRef.current = active;
     if (active) {
@@ -1183,6 +1204,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     getBiometricHardwareAvailable,
     getBiometricEnrolled,
     getBiometricEnabled,
+    readBiometricEnabledFromStorage,
     isAppLocked: state.isSecurityLocked,
   }), [
     state,
@@ -1219,6 +1241,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     getBiometricHardwareAvailable,
     getBiometricEnrolled,
     getBiometricEnabled,
+    readBiometricEnabledFromStorage,
   ]);
 
   return (
