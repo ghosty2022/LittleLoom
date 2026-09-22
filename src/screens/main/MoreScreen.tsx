@@ -1563,8 +1563,29 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                   await setCollaborativeLearningEnabled(val);
                   setCollaborativeEnabled(val);
                   triggerHaptic(val ? 'success' : 'light');
+
+                  // Immediately run bootstrap so the first publish happens now,
+                  // not on next app launch.
+                  if (val && currentBaby?.id) {
+                    const { bootstrapAI } = await import(
+                      '@/services/ai/bootstrap'
+                    );
+                    bootstrapAI(currentBaby.id, true).catch(err => {
+                      if (__DEV__) console.warn('[MoreScreen] bootstrapAI after toggle failed:', err);
+                    });
+                    sweetAlert.success(
+                      'Collaborative AI Enabled',
+                      'Thanks for contributing. Your anonymized patterns will help other families.'
+                    );
+                  } else if (!val) {
+                    sweetAlert.info(
+                      'Collaborative AI Disabled',
+                      'Your patterns are no longer being shared.'
+                    );
+                  }
                 } catch (err) {
                   console.error('[MoreScreen] Failed to toggle collaborative learning:', err);
+                  sweetAlert.error('Error', 'Could not update the setting. Please try again.');
                 }
               }}
               color="#8b5cf6"

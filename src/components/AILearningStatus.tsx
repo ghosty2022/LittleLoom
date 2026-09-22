@@ -32,22 +32,34 @@ export const AILearningStatus: React.FC = () => {
         if (raw) enabled = JSON.parse(raw)?.learningEnabled !== false;
       } catch {}
 
-      // Count learned metrics
+      // Count learned metrics — hardened against corrupt entries
       try {
         const keys = await AsyncStorage.getAllKeys();
-        const babyKeys = keys.filter(k => k.startsWith(`${BAYES_PREFIX}${currentBaby.id}:`));
+        const babyKeys = keys.filter(k =>
+          typeof k === 'string' &&
+          k.startsWith(`${BAYES_PREFIX}${currentBaby.id}:`)
+        );
         let totalSamples = 0;
+        let validMetrics = 0;
         for (const key of babyKeys) {
           try {
             const val = await AsyncStorage.getItem(key);
             if (val) {
               const parsed = JSON.parse(val);
-              totalSamples += parsed?.n ?? 0;
+              const n = Number(parsed?.n);
+              if (Number.isFinite(n) && n > 0) {
+                totalSamples += n;
+                validMetrics += 1;
+              }
             }
-          } catch {}
+          } catch {
+            // Corrupt entry — skip silently
+          }
         }
-        setStats({ samples: totalSamples, metrics: babyKeys.length, enabled });
-      } catch {}
+        setStats({ samples: totalSamples, metrics: validMetrics, enabled });
+      } catch (err) {
+        if (__DEV__) console.warn('[AILearningStatus] count failed:', err);
+      }
     })();
   }, [currentBaby?.id]);
 

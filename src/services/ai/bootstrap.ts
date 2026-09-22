@@ -79,6 +79,29 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
     await featureEngineer.computeAndStoreFeatures(babyId, today);
     console.log('[AI Bootstrap] Today features stored');
 
+        // 3a. Cache baby meta EARLY so cold-start reads of BayesianEngine /
+    //     PredictorEngine find the cohort on the first try.
+    try {
+      const cached = await AsyncStorage.getItem(`@littleloom_baby_meta_v1:${babyId}`);
+      if (!cached) {
+        const { data: babyRow } = await supabase
+          .from('babies')
+          .select('date_of_birth, gender')
+          .eq('id', babyId)
+          .maybeSingle();
+        if (babyRow?.date_of_birth) {
+          await AsyncStorage.setItem(
+            `@littleloom_baby_meta_v1:${babyId}`,
+            JSON.stringify({
+              birthDate: babyRow.date_of_birth,
+              gender: babyRow.gender,
+            })
+          );
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[AI Bootstrap] Baby meta cache failed:', e);
+    }
     // 4. On subsequent launches, backfill 7 days of features if stale
     const lastRun = await AsyncStorage.getItem(LAST_FEATURE_RUN);
     const lastRunTs = lastRun ? parseInt(lastRun, 10) : 0;
@@ -185,7 +208,8 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
           .maybeSingle();
 
         if (babyRow?.date_of_birth) {
-          // Cache birth date locally so BayesianEngine can find it on cold start
+          // ⚠️  Cache birth date FIRST so BayesianEngine + PredictorEngine can
+          //     read it on cold start before any other publish attempt.
           await AsyncStorage.setItem(
             `@littleloom_baby_meta_v1:${babyId}`,
             JSON.stringify({ birthDate: babyRow.date_of_birth })

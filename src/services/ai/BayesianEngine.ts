@@ -287,8 +287,23 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
   try {
     const { getCohortPrior, ageToCohort } = await import('./CohortPriors');
 
-    // Look up baby's birth date — we cache it in AsyncStorage on first load
-    const babyMetaRaw = await AsyncStorage.getItem(`@littleloom_baby_meta_v1:${babyId}`);
+    // Look up baby's birth date — cache it if missing
+    let babyMetaRaw = await AsyncStorage.getItem(`@littleloom_baby_meta_v1:${babyId}`);
+    if (!babyMetaRaw) {
+      // Cold start — fetch from Supabase once
+      try {
+        const { data: babyRow } = await supabase
+          .from('babies')
+          .select('date_of_birth')
+          .eq('id', babyId)
+          .maybeSingle();
+        if (babyRow?.date_of_birth) {
+          const meta = JSON.stringify({ birthDate: babyRow.date_of_birth });
+          await AsyncStorage.setItem(`@littleloom_baby_meta_v1:${babyId}`, meta);
+          babyMetaRaw = meta;
+        }
+      } catch {}
+    }
     const birthDate = babyMetaRaw ? JSON.parse(babyMetaRaw).birthDate : null;
 
     if (birthDate) {

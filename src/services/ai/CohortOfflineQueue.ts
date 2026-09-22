@@ -44,14 +44,14 @@ export async function enqueueCohortOp(
   // Deduplicate by natural key
   const naturalKey =
     table === 'ai_cohort_priors'
-      ? `${payload.metric}:${payload.age_cohort}`
-      : `${payload.kind}:${payload.age_cohort}`;
+      ? `${payload.metric ?? ''}:${payload.age_cohort ?? ''}`
+      : `${payload.kind ?? payload.metric ?? ''}:${payload.age_cohort ?? ''}`;
 
   const existingIndex = queue.findIndex(item => {
     const key =
       item.table === 'ai_cohort_priors'
-        ? `${item.payload.metric}:${item.payload.age_cohort}`
-        : `${item.payload.kind}:${item.payload.age_cohort}`;
+        ? `${item.payload.metric ?? ''}:${item.payload.age_cohort ?? ''}`
+        : `${item.payload.kind ?? item.payload.metric ?? ''}:${item.payload.age_cohort ?? ''}`;
     return item.table === table && key === naturalKey;
   });
 
