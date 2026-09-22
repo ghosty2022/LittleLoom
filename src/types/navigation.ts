@@ -291,6 +291,7 @@ export type RootStackParamList = {
   LanguageSettings: undefined;
   UnitSettings: undefined;
   BackupRestore: undefined;
+  AIManagement: undefined;
 
   // ── Support ──
   HelpCenter: undefined;
@@ -495,7 +496,7 @@ export const isRootStackScreen = (name: string): name is RootStackRoute => {
     'FamilyDashboard', 'FamilyChatList', 'FamilyChat', 'EditGuardian',
     'Gallery', 'SoundMixer', 'SecurityLock', 'BiometricSetup',
     'SecurityCenter', 'SafetyCorner', 'Customize', 'LanguageSettings',
-    'UnitSettings', 'BackupRestore', 'HelpCenter', 'ContactSupport',
+    'UnitSettings', 'BackupRestore', 'AIManagement', 'HelpCenter', 'ContactSupport',
     'PrivacyPolicy', 'TermsOfService', 'About', 'Profile', 'More',
     'SyncSettings', 'CommunityMain', 'CommunityProfile',
     'CommunityMemberProfile', 'CommunityOnboarding', 'CommunityVerification',
