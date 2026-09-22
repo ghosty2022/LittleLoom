@@ -385,8 +385,9 @@ const CategoryFilter: React.FC<{
    MAIN INSIGHTS SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
 
-export default function InsightsScreen({ navigation }: InsightsScreenProps) {
+export default function InsightsScreen({ navigation, route }: InsightsScreenProps) {
   const insets = useSafeAreaInsets();
+  const focusCategory: string | undefined = (route.params as any)?.focusCategory;
   const { triggerHaptic, themeColors, darkMode } = useCustomization();
   // REMOVED fontSizeMultiplier — unused in this screen
   const { userProfile } = useAuth();

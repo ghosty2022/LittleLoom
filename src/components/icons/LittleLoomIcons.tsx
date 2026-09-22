@@ -206,9 +206,11 @@ export type BabyIconKey = {
   [K in keyof typeof BABY_ICONS]: keyof (typeof BABY_ICONS)[K];
 }[keyof typeof BABY_ICONS];
 
-export const getIconConfig = (category: IconCategory, key: string) => {
+export const getIconConfig = (category: IconCategory, key: string): { name: string; label: string; color: string } | null => {
   const cat = BABY_ICONS[category];
-  return cat?.[key as keyof typeof cat] || null;
+  const result = cat?.[key as keyof typeof cat];
+  if (!result) return null;
+  return result as { name: string; label: string; color: string };
 };
 
 export const getIconByName = (name: string): { name: string; label: string; color: string } | null => {

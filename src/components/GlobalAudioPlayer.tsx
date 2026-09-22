@@ -16,12 +16,12 @@ import Animated, {
   withTiming,
   interpolate,
   Extrapolate,
-  useAnimatedGestureHandler,
   runOnJS,
   FadeIn,
   FadeInUp,
   ZoomIn,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   PanGestureHandler,
   TapGestureHandler,
@@ -32,7 +32,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { useAudio } from '../context/AudioContext';
-import { useSafeApp, useSafeBaby, useSafeAuth, useUnifiedTheme } from '../hooks/useSafeContexts';
+import { useSafeBaby } from '../hooks/useSafeContexts';
 
 const { width, height } = Dimensions.get('window');
 
@@ -106,11 +106,11 @@ const FloatingBall = () => {
   const ballPosition = useSharedValue({ x: width - 80, y: height - 200 });
 
   const panGestureHandler = useAnimatedGestureHandler<PanGestureHandlerGestureEvent, { startX: number; startY: number }>({
-    onStart: (_, ctx) => {
+    onStart: (_: any, ctx: any) => {
       ctx.startX = ballPosition.value.x;
       ctx.startY = ballPosition.value.y;
     },
-    onActive: (event, ctx) => {
+    onActive: (event: any, ctx: any) => {
       ballPosition.value = {
         x: ctx.startX + event.translationX,
         y: ctx.startY + event.translationY,
@@ -162,7 +162,7 @@ const FloatingBall = () => {
 };
 
 const MiniPlayer = () => {
-  const { currentTrack, isPlaying, togglePlayback, expandPlayer, collapseToBall, progress } = useAudio();
+  const { currentTrack, isPlaying, togglePlayback, expandPlayer, collapseToBall } = useAudio();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -172,7 +172,7 @@ const MiniPlayer = () => {
     onActive: (event) => {
       if (event.translationY > 0) slideAnim.value = event.translationY;
     },
-    onEnd: (event) => {
+    onEnd: (event: any) => {
       if (event.translationY > 50) runOnJS(collapseToBall)();
       slideAnim.value = withSpring(0);
     },
@@ -271,7 +271,7 @@ const FullPlayer = () => {
     onActive: (event) => {
       if (event.translationY > 0) translateY.value = event.translationY;
     },
-    onEnd: (event) => {
+    onEnd: (event: any) => {
       if (event.translationY > 150) {
         if (event.velocityY > 500) runOnJS(closePlayer)();
         else runOnJS(minimizePlayer)();
@@ -486,7 +486,7 @@ const styles = StyleSheet.create({
   miniPlayGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   collapseButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(100,116,139,0.1)', alignItems: 'center', justifyContent: 'center' },
 
-  backdrop: { ...StyleSheet.absoluteFillObject, zIndex: 997 },
+  backdrop: { ...StyleSheet.absoluteFill, zIndex: 997 },
   fullPlayerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, height: height * 0.88, borderTopLeftRadius: 40, borderTopRightRadius: 40, overflow: 'hidden', zIndex: 998 },
   dragHandleContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },
   dragHandle: { width: 36, height: 5, borderRadius: 3, backgroundColor: 'rgba(120,120,120,0.3)' },

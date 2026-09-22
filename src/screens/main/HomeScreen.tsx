@@ -2094,6 +2094,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         )}
 
+        {/* ═══ AI CORRELATIONS ═══ */}
+        {hasBaby && (
+          <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
+            <CorrelationCard />
+          </View>
+        )}
+
 
         {/* ═══ GROWTH SNAPSHOT KPIs with Yesterday comparison ═══ */}
         {hasBaby && growthStats && (

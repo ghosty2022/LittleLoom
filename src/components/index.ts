@@ -12,7 +12,7 @@ export { default as ScreenWrapper } from './ScreenWrapper';
 export { default as SweetAlert } from './SweetAlert';
 export { default as TimelinePicker } from './trackers/TimelinePicker';
 export { default as DynamicTrackerForm } from './trackers/DynamicTrackerForm';
-export { default as TrackerEntryCard } from './trackers/TrackerEntryCard';
+export { TrackerEntryCard } from './trackers/TrackerEntryCard';
 export { default as LittleLoomAvatars } from './avatars/LittleLoomAvatars';
 export { default as LittleLoomIcons } from './icons/LittleLoomIcons';
 

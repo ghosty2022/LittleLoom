@@ -1,14 +1,12 @@
-import React, { memo, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { memo, useEffect } from 'react';
+import { Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import Animated, { 
   useAnimatedProps, 
   withSpring, 
   useSharedValue, 
-  withTiming,
   FadeIn,
   runOnJS,
-  Easing,
 } from 'react-native-reanimated';
 import { useCustomization } from '../hooks/useCustomization';
 

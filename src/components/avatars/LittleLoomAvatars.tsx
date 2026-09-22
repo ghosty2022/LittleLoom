@@ -1,23 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable, Dimensions, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
-const { width } = Dimensions.get('window');
+// Dimensions no longer needed
 
 export type AvatarType = 'photo' | 'emoji' | 'illustration' | 'gradient' | 'letter';
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | 'profile';
 export type BabyGender = 'boy' | 'girl' | 'other';
 export type AvatarTheme = 'pastel' | 'vibrant' | 'neutral' | 'warm' | 'cool';
 
-interface AvatarConfig {
-  type: AvatarType;
-  value: string;
-  gender?: BabyGender;
-  skinTone?: number;
-}
+// AvatarConfig removed - unused
 
 const SIZE_MAP: Record<AvatarSize, number> = {
   xs: 28,
@@ -263,10 +258,8 @@ export const LittleLoomAvatar: React.FC<LittleLoomAvatarProps> = ({
   onPress,
   onEdit,
   animated = true,
-  animationDelay = 0,
   style,
   gradient,
-  fallbackIcon = 'person',
 }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -275,7 +268,7 @@ export const LittleLoomAvatar: React.FC<LittleLoomAvatarProps> = ({
 
   const avatarSize = typeof size === 'string' ? SIZE_MAP[size] : size;
   const genderConfig = GENDER_CONFIG[gender];
-  const skinToneColor = SKIN_TONES[skinTone]?.color || SKIN_TONES[2].color;
+  // skinToneColor removed - unused
 
   const avatarType: AvatarType = useMemo(() => {
     if (isImageUri(source) && !hasError) return 'photo';
@@ -348,7 +341,7 @@ export const LittleLoomAvatar: React.FC<LittleLoomAvatarProps> = ({
       case 'letter':
         return (
           <LinearGradient
-            colors={gradient || genderConfig.defaultGradient}
+            colors={(gradient || genderConfig.defaultGradient) as [string, string]}
             style={[
               styles.letterContainer,
               {
@@ -367,7 +360,7 @@ export const LittleLoomAvatar: React.FC<LittleLoomAvatarProps> = ({
       default:
         return (
           <LinearGradient
-            colors={gradient || genderConfig.defaultGradient}
+            colors={(gradient || genderConfig.defaultGradient) as [string, string]}
             style={[
               styles.gradientContainer,
               {
@@ -960,7 +953,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   pickerBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   pickerContainer: {
     backgroundColor: '#fff',

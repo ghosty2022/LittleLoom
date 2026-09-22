@@ -169,7 +169,7 @@ interface InnerAppProps {
 }
 
 const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateChange }) => {
-  const { isDark, themeColors } = useTheme();
+  const { isDark, colors: themeColors } = useTheme();
   useAppLock();
   
   // Get sweetAlert instance and set it for ImageUtils
@@ -203,7 +203,7 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
 
 // ─── Main App ──────────────────────────────────────────────────────────
 
-export default function App(): JSX.Element | null {
+export default function App(): React.ReactElement | null {
   const systemScheme = useColorScheme();
 
   const [themeLoaded, setThemeLoaded] = useState(false);

@@ -37,7 +37,7 @@ try {
   Updates = require('expo-updates');
 } catch { /* fallback */ }
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const { height: SCREEN_H } = Dimensions.get('window');
 
 interface Props {
   children: ReactNode;
@@ -277,7 +277,7 @@ export function useErrorHandler() {
     }
   }, [error]);
 
-  return React.useCallback((err: Error) => {
+  return React.useCallback((err: Error): void => {
     setError(err);
   }, []);
 }
