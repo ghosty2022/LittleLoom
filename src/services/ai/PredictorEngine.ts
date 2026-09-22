@@ -171,22 +171,39 @@ async function loadState(
   } catch {}
 
   try {
-    const { data } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', supabaseKey(babyId, type))
-      .maybeSingle();
-    if (data?.value) {
-      const state = JSON.parse(data.value) as PredictorState;
-      memCache.set(key, state);
-      AsyncStorage.setItem(key, data.value).catch(() => {});
-      return state;
+    const userId = await getCurrentUserId();
+    if (userId) {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', supabaseKey(babyId, type))
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (data?.value) {
+        const state = JSON.parse(data.value) as PredictorState;
+        memCache.set(key, state);
+        AsyncStorage.setItem(key, data.value).catch(() => {});
+        return state;
+      }
     }
   } catch {}
 
   const fresh = initialState(babyId, type);
   memCache.set(key, fresh);
   return fresh;
+}
+
+async function getCurrentUserId(): Promise<string | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id) return session.user.id;
+  } catch {}
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function persistState(state: PredictorState): Promise<void> {
@@ -196,21 +213,28 @@ async function persistState(state: PredictorState): Promise<void> {
   const payload = JSON.stringify(state);
   AsyncStorage.setItem(key, payload).catch(() => {});
 
-  supabase
-    .from('app_settings')
-    .upsert(
-      {
-        key: supabaseKey(state.babyId, state.type),
-        value: payload,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'key,user_id' }
-    )
-    .then(({ error }) => {
-      if (error && __DEV__) {
-        console.warn('[Predictor] Supabase sync failed:', error.message);
-      }
-    });
+  // Fire-and-forget Supabase sync WITH user_id (RLS-safe)
+  getCurrentUserId()
+    .then((userId) => {
+      if (!userId) return;
+      supabase
+        .from('app_settings')
+        .upsert(
+          {
+            key: supabaseKey(state.babyId, state.type),
+            value: payload,
+            user_id: userId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'key,user_id' }
+        )
+        .then(({ error }) => {
+          if (error && __DEV__) {
+            console.warn('[Predictor] Supabase sync failed:', error.message);
+          }
+        });
+    })
+    .catch(() => {});
 }
 
 // ─── Core prediction math ────────────────────────────────────────────
@@ -340,10 +364,14 @@ export async function resetPredictor(
   } catch {}
 
   try {
-    await supabase
-      .from('app_settings')
-      .delete()
-      .eq('key', supabaseKey(babyId, type));
+    const userId = await getCurrentUserId();
+    if (userId) {
+      await supabase
+        .from('app_settings')
+        .delete()
+        .eq('key', supabaseKey(babyId, type))
+        .eq('user_id', userId);
+    }
   } catch {}
 
   if (__DEV__) {

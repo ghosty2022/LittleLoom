@@ -65,8 +65,22 @@ import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
-// ✅ FIX: Import Svg at the top before any usage
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+// Safe SVG import — degrades to a static ring if react-native-svg isn't installed
+let Svg: any = null;
+let Circle: any = null;
+let Defs: any = null;
+let SvgLinearGradient: any = null;
+let Stop: any = null;
+try {
+  const SvgModule = require('react-native-svg');
+  Svg = SvgModule.default ?? SvgModule;
+  Circle = SvgModule.Circle;
+  Defs = SvgModule.Defs;
+  SvgLinearGradient = SvgModule.LinearGradient;
+  Stop = SvgModule.Stop;
+} catch (e) {
+  console.warn('[Reminders] react-native-svg not available — using fallback ring');
+}
 
 const { width, height } = Dimensions.get('window');
 
@@ -332,6 +346,7 @@ const ReminderStatsRing = React.memo(({ total, active, isDark }: { total: number
   return (
     <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.statsRingContainer}>
       <View style={[styles.statsRingWrap, { width: size, height: size }]}>
+        {Svg ? (
         <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <Defs>
             <SvgLinearGradient id="statsRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -360,6 +375,13 @@ const ReminderStatsRing = React.memo(({ total, active, isDark }: { total: number
             transform={`rotate(-90 ${size / 2} ${size / 2})`}
           />
         </Svg>
+        ) : (
+          <View style={{
+            width: size, height: size, borderRadius: size / 2,
+            borderWidth: strokeWidth, borderColor: '#6366f1',
+            alignItems: 'center', justifyContent: 'center',
+          }} />
+        )}
         <View style={styles.statsRingInner}>
           <Text style={[styles.statsRingValue, { color: isDark ? '#fff' : '#1e293b' }]}>{active}</Text>
           <Text style={[styles.statsRingLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>active</Text>

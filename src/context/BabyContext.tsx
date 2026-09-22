@@ -1538,6 +1538,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getBabyStats = useCallback(() => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }), []);
   const updateBabyStats = useCallback(async () => {}, []);
   const entries: ActivityEntry[] = [];
+  // NOTE: BabyContext.entries is intentionally empty — use useTracker().entries
+  //       or useActivity().entries as the source of truth.
   const loadEntries = useCallback(async () => {}, []);
   const deleteEntry = useCallback(async () => false, []);
   const addEntry = useCallback(async () => false, []);

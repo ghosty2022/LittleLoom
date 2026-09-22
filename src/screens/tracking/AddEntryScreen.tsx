@@ -1616,18 +1616,31 @@ function TrackerContent({
           {/* Smart Photo Documentation — single source of truth for photoUris */}
           <View style={[styles.sectionMargin, { marginBottom: DESIGN.spacing.lg }]}>
             <SmartPhotoField
-              value={pendingOptions.photoUris?.length ? pendingOptions.photoUris[pendingOptions.photoUris.length - 1] : undefined}
-              onChange={() => {
-                // Intentionally empty: photoUris are synced via onPhotosChange only.
-                // This prevents duplicate URIs from being appended.
+              field={{
+                id: 'photo',
+                label: 'Photo Documentation',
+                type: 'photo',
+                max: 3,
+              } as any}
+              value={pendingOptions.photoUris || []}
+              onChange={(uris) => {
+                const list = Array.isArray(uris)
+                  ? uris.filter((u): u is string => typeof u === 'string' && u.length > 0)
+                  : [];
+                const deduped = [...new Set(list)];
+                setPendingOptions((prev: any) => ({ ...prev, photoUris: deduped }));
               }}
               onPhotosChange={handlePhotosChange}
               initialPhotoUris={pendingOptions.photoUris || []}
+              trackerColor={tracker.gradient?.[0] || '#667eea'}
+              colors={fullThemeColors}
+              fontSizeMultiplier={fontSizeMultiplier}
+              borderRadiusValue={borderRadiusValue}
+              maxPhotos={3}
               label="Photo Documentation"
               trackerContext={tracker.id}
               allowAnnotation={true}
               allowCompare={true}
-              maxPhotos={3}
             />
           </View>
 

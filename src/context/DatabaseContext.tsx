@@ -27,6 +27,7 @@ const DatabaseContext = createContext<DatabaseContextType>({
 });
 
 export const useDatabase = () => useContext(DatabaseContext);
+export const useSafeDatabase = useDatabase; // alias for compatibility
 
 export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isReady, setIsReady] = useState(true);

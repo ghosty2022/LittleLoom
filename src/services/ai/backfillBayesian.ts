@@ -27,8 +27,9 @@ const markBackfilled = async (babyId: string): Promise<void> => {
 
 const METRIC_FIELD_MAP: Record<string, Partial<Record<string, MetricKey>>> = {
   temperature: { value: 'temperature_c' },
-  feed: { amount_ml: 'feeding_ml', amount: 'feeding_ml', quantity: 'feeding_ml' },
+  feed: { amount_ml: 'feeding_ml', amount: 'feeding_ml', quantity: 'feeding_ml', value: 'feeding_ml' },
   sleep: { duration_minutes: 'sleep_duration_min', duration: 'sleep_duration_min' },
+  nap: { duration_minutes: 'sleep_duration_min', duration: 'sleep_duration_min' },
   growth: {
     weight: 'weight_kg', weight_kg: 'weight_kg',
     height: 'height_cm', height_cm: 'height_cm',
@@ -36,6 +37,11 @@ const METRIC_FIELD_MAP: Record<string, Partial<Record<string, MetricKey>>> = {
   },
   mood: { mood: 'mood_score', value: 'mood_score' },
   heart_rate: { bpm: 'heart_rate_bpm', value: 'heart_rate_bpm' },
+  blood_oxygen: { spo2: 'blood_oxygen', value: 'blood_oxygen' },
+  diaper: { duration: 'diaper_interval_min', minutes: 'diaper_interval_min' },
+  potty: { duration: 'diaper_interval_min', minutes: 'diaper_interval_min' },
+  wake_time: { minutes: 'wake_window_min' },
+  poop: { duration: 'poop_interval_hr', minutes: 'poop_interval_hr' },
 };
 
 export async function backfillBayesianIfNeeded(

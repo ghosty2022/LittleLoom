@@ -1335,13 +1335,13 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <LinearGradient
-  colors={
-    isDark
-      ? [appColors.background, appColors.surface, appColors.card]
-      : ['#f8fafc', '#e0e7ff', '#ddd6fe']
-  }
-  style={StyleSheet.absoluteFill}
-/>
+        colors={
+          (isDark
+            ? [appColors.background, appColors.surface, appColors.card]
+            : ['#f8fafc', '#e0e7ff', '#ddd6fe']) as [string, string, ...string[]]
+        }
+        style={StyleSheet.absoluteFill}
+      />
 
       {/* Sticky Header */}
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>

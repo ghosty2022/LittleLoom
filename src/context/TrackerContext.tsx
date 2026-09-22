@@ -309,8 +309,9 @@ const getTrackerType = (trackerId: string): string => {
 // ─── Bayesian metric mapping ────────────────────────────────────────
 const BAYES_METRIC_MAP: Record<string, Partial<Record<string, string>>> = {
   temperature: { value: 'temperature_c' },
-  feed: { amount_ml: 'feeding_ml', amount: 'feeding_ml', quantity: 'feeding_ml' },
+  feed: { amount_ml: 'feeding_ml', amount: 'feeding_ml', quantity: 'feeding_ml', value: 'feeding_ml' },
   sleep: { duration_minutes: 'sleep_duration_min', duration: 'sleep_duration_min' },
+  nap: { duration_minutes: 'sleep_duration_min', duration: 'sleep_duration_min' },
   growth: {
     weight: 'weight_kg', weight_kg: 'weight_kg',
     height: 'height_cm', height_cm: 'height_cm',
@@ -318,6 +319,11 @@ const BAYES_METRIC_MAP: Record<string, Partial<Record<string, string>>> = {
   },
   mood: { mood: 'mood_score', value: 'mood_score' },
   heart_rate: { bpm: 'heart_rate_bpm', value: 'heart_rate_bpm' },
+  blood_oxygen: { spo2: 'blood_oxygen', value: 'blood_oxygen' },
+  diaper: { duration: 'diaper_interval_min', minutes: 'diaper_interval_min' },
+  potty: { duration: 'diaper_interval_min', minutes: 'diaper_interval_min' },
+  wake_time: { minutes: 'wake_window_min' },
+  poop: { duration: 'poop_interval_hr', minutes: 'poop_interval_hr' },
 };
 
 async function learnFromEntry(
@@ -821,6 +827,31 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     }
   }, []);
 
+  /* ─── Helper: map a Supabase row → TrackerEntry (declared FIRST) ─── */
+  const mapRowToEntry = useCallback((row: any): TrackerEntry => ({
+    id: row.id,
+    babyId: row.baby_id,
+    trackerId: row.tracker_id,
+    timestamp: row.timestamp,
+    title: row.title || '',
+    data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+    loggedBy: row.logged_by || '',
+    loggedByName: row.logged_by_name || '',
+    loggedByRole: (row.logged_by_role as any) || 'parent1',
+    notes: row.notes || undefined,
+    photoUris: row.photo_uris || undefined,
+    tags: row.tags || undefined,
+    location: row.location ? { name: row.location } : undefined,
+    mood: row.mood || undefined,
+    notificationId: row.notification_id || undefined,
+    reminderScheduled: row.reminder_scheduled || false,
+    syncedAt: row.synced_at || undefined,
+    editedBy: row.edited_by || undefined,
+    editedAt: row.edited_at || undefined,
+    isDeleted: row.is_deleted || false,
+    linkedEntries: [],
+  }), []);
+
   /* ─── REAL-TIME SYNC ─────────────────────────────────────────────── */
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
@@ -891,30 +922,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     };
   }, [getCurrentBabyId]);
 
-  // Helper to convert a Supabase row to a TrackerEntry (extract this so we don't duplicate logic)
-  const mapRowToEntry = (row: any): TrackerEntry => ({
-    id: row.id,
-    babyId: row.baby_id,
-    trackerId: row.tracker_id,
-    timestamp: row.timestamp,
-    title: row.title || '',
-    data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
-    loggedBy: row.logged_by || '',
-    loggedByName: row.logged_by_name || '',
-    loggedByRole: (row.logged_by_role as any) || 'parent1',
-    notes: row.notes || undefined,
-    photoUris: row.photo_uris || undefined,
-    tags: row.tags || undefined,
-    location: row.location ? { name: row.location } : undefined,
-    mood: row.mood || undefined,
-    notificationId: row.notification_id || undefined,
-    reminderScheduled: row.reminder_scheduled || false,
-    syncedAt: row.synced_at || undefined,
-    editedBy: row.edited_by || undefined,
-    editedAt: row.edited_at || undefined,
-    isDeleted: row.is_deleted || false,
-    linkedEntries: [],
-  });
+  // NOTE: mapRowToEntry is declared above the realtime effect — do not re-declare.
 
   /* ─── Initialize ──────────────────────────────────────────────────── */
 
