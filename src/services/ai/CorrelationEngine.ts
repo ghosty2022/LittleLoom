@@ -399,6 +399,57 @@ export async function discoverCorrelations(
 
 // ─── Read from cache (instant, no query) ────────────────────────────
 
+// ─── Invalidate cache after N new entries ──────────────────────────
+
+const INVALIDATE_THRESHOLD = 5; // refresh after 5 new entries
+const LAST_INVALIDATE_KEY_PREFIX = '@littleloom_corr_invalidate_v1:';
+
+export async function invalidateCorrelationCacheIfStale(
+  babyId: string,
+  force: boolean = false
+): Promise<boolean> {
+  if (!babyId) return false;
+
+  const key = `${LAST_INVALIDATE_KEY_PREFIX}${babyId}`;
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    const raw = await AsyncStorage.getItem(key);
+    const lastCount = raw ? parseInt(raw, 10) : 0;
+
+    // Count current entries since last invalidation
+    const { data, error } = await supabase
+      .from('tracker_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('baby_id', babyId)
+      .eq('is_deleted', false);
+
+    if (error) return false;
+    const currentCount = data?.length ?? 0;
+
+    if (force || currentCount - lastCount >= INVALIDATE_THRESHOLD) {
+      // Delete cached rows so next read recomputes
+      await supabase
+        .from('ai_correlation_cache')
+        .delete()
+        .eq('baby_id', babyId);
+
+      await AsyncStorage.setItem(key, String(currentCount));
+      if (__DEV__) {
+        console.log(
+          `[Correlation] Cache invalidated for ${babyId} ` +
+          `(${currentCount - lastCount} new entries)`
+        );
+      }
+      return true;
+    }
+
+    return false;
+  } catch (e) {
+    if (__DEV__) console.warn('[Correlation] Invalidation failed:', e);
+    return false;
+  }
+}
+
 export async function getCachedCorrelations(
   babyId: string
 ): Promise<DiscoveredCorrelation[]> {

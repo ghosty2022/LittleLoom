@@ -188,9 +188,80 @@ async function loadState(
     }
   } catch {}
 
+  // 4. Cohort prior injection (opt-in, cross-family aggregate)
+  try {
+    const { getPredictorCohortPrior } = await import('./PredictorCohort');
+    const { ageToCohort } = await import('./CohortPriors');
+
+    const babyMetaRaw = await AsyncStorage.getItem(
+      `@littleloom_baby_meta_v1:${babyId}`
+    );
+    const birthDate = babyMetaRaw ? JSON.parse(babyMetaRaw).birthDate : null;
+
+    if (birthDate) {
+      const cohort = ageToCohort(birthDate);
+      const prior = await getPredictorCohortPrior(type, cohort);
+
+      if (prior && prior.sampleCount >= 30) {
+        const fallback = FALLBACK_INTERVALS[type];
+        // Sanity: prior level must be within bounds for this kind
+        if (
+          prior.level >= fallback * 0.3 &&
+          prior.level <= fallback * 3
+        ) {
+          const cohortState: PredictorState = {
+            babyId,
+            type,
+            n: 0, // local observations only
+            level: prior.level,
+            trend: prior.trend,
+            seasonal: prior.seasonal.length === 6
+              ? prior.seasonal
+              : Array(6).fill(0),
+            variance: 0,
+            lastInterval: 0,
+            lastObservedAt: 0,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+
+          if (__DEV__) {
+            console.log(
+              `[Predictor] Loaded cohort prior for ${type} @ ${cohort}: ` +
+              `level=${prior.level.toFixed(1)} trend=${prior.trend.toFixed(2)} ` +
+              `n=${prior.sampleCount}`
+            );
+          }
+
+          memCache.set(key, cohortState);
+          return cohortState;
+        }
+      }
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[Predictor] Cohort prior load failed:', e);
+  }
+
+  // 5. Generic fallback
   const fresh = initialState(babyId, type);
   memCache.set(key, fresh);
   return fresh;
+}
+
+// ─── Read all local predictor states (for cohort publishing) ────────
+
+export async function getAllPredictorStates(
+  babyId: string,
+  kinds: PredictorType[]
+): Promise<Array<{ kind: PredictorType; state: PredictorState }>> {
+  const out: Array<{ kind: PredictorType; state: PredictorState }> = [];
+  for (const kind of kinds) {
+    try {
+      const state = await loadState(babyId, kind);
+      out.push({ kind, state });
+    } catch {}
+  }
+  return out;
 }
 
 async function getCurrentUserId(): Promise<string | null> {

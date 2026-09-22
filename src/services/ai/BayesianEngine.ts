@@ -257,12 +257,24 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
     if (userId) {
       const { data } = await supabase
         .from('app_settings')
-        .select('value')
+        .select('value, updated_at')
         .eq('key', supabaseKey(babyId, metric))
         .eq('user_id', userId)
         .maybeSingle();
 
-      if (data?.value) {
+      // TTL: reject rows older than 90 days (client-side safety net)
+      if (data?.updated_at) {
+        const age = Date.now() - new Date(data.updated_at).getTime();
+        if (age > 90 * 24 * 60 * 60 * 1000) {
+          if (__DEV__) console.log('[Bayes] Ignoring stale Supabase row:', metric);
+          // fall through to prior
+        } else if (data.value) {
+          const post = JSON.parse(data.value) as Posterior;
+          memoryCache.set(key, post);
+          AsyncStorage.setItem(key, data.value).catch(() => {});
+          return post;
+        }
+      } else if (data?.value) {
         const post = JSON.parse(data.value) as Posterior;
         memoryCache.set(key, post);
         AsyncStorage.setItem(key, data.value).catch(() => {});
@@ -271,7 +283,55 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
     }
   } catch {}
 
-  // 4. Prior
+  } catch {}
+
+  // 4. Prior — try cohort prior first, fall back to generic
+  try {
+    const { getCohortPrior, ageToCohort } = await import('./CohortPriors');
+
+    // Look up baby's birth date — we cache it in AsyncStorage on first load
+    const babyMetaRaw = await AsyncStorage.getItem(`@littleloom_baby_meta_v1:${babyId}`);
+    const birthDate = babyMetaRaw ? JSON.parse(babyMetaRaw).birthDate : null;
+
+    if (birthDate) {
+      const cohort = ageToCohort(birthDate);
+      const cohortPrior = await getCohortPrior(metric, cohort);
+
+      if (cohortPrior && cohortPrior.sampleCount >= 20) {
+        const spec = PRIORS[metric];
+        const cohortPost: Posterior = {
+          mu: cohortPrior.mu,
+          lambda: cohortPrior.lambda,
+          alpha: cohortPrior.alpha,
+          beta: cohortPrior.beta,
+          n: 0, // local observations only
+          updatedAt: Date.now(),
+        };
+
+        // Sanity-check cohort prior against generic prior bounds
+        if (
+          cohortPost.mu >= spec.min &&
+          cohortPost.mu <= spec.max &&
+          Math.sqrt(cohortPost.beta / Math.max(cohortPost.alpha - 1, 0.1)) >=
+            spec.sigmaFloor
+        ) {
+          if (__DEV__) {
+            console.log(
+              `[Bayes] Loaded cohort prior for ${metric} @ ${cohort}: ` +
+              `μ=${cohortPrior.mu.toFixed(2)} σ=${cohortPrior.sigma.toFixed(2)} ` +
+              `n=${cohortPrior.sampleCount}`
+            );
+          }
+          memoryCache.set(key, cohortPost);
+          return cohortPost;
+        }
+      }
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[Bayes] Cohort prior load failed:', e);
+  }
+
+  // 5. Generic prior fallback
   const post = priorFromSpec(PRIORS[metric]);
   memoryCache.set(key, post);
   return post;
@@ -601,6 +661,21 @@ export function extractMetricValue(
     }
     default:
       return null;
+  }
+}
+
+// ─── Reset memory cache for a baby ──────────────────────────────────
+// Called when age cohort changes — forces fresh prior load on next read.
+
+export async function resetLocalCacheForBaby(babyId: string): Promise<void> {
+  const prefix = `${STORAGE_PREFIX}${babyId}:`;
+  const toDelete: string[] = [];
+  for (const key of memoryCache.keys()) {
+    if (key.startsWith(prefix)) toDelete.push(key);
+  }
+  for (const key of toDelete) memoryCache.delete(key);
+  if (__DEV__) {
+    console.log(`[Bayes] Cleared ${toDelete.length} memory cache entries for ${babyId}`);
   }
 }
 

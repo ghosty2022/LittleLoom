@@ -41,6 +41,23 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
   try {
     console.log(`[AI Bootstrap] Starting for baby ${babyId}...`);
 
+    // 0. Flush any pending cohort operations from prior offline sessions
+    try {
+      const { flushCohortQueue, getCohortQueueSize } = await import(
+        './CohortOfflineQueue'
+      );
+      const size = await getCohortQueueSize();
+      if (size > 0) {
+        const result = await flushCohortQueue();
+        console.log(
+          `[AI Bootstrap] Cohort queue flush: ${result.flushed} ok, ` +
+          `${result.failed} failed, ${result.dropped} dropped`
+        );
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[AI Bootstrap] Queue flush failed:', e);
+    }
+
     // 1. Backfill Bayesian learning (90 days) — idempotent, runs once per baby
     const bayesResult = await backfillBayesianIfNeeded(babyId, 90);
     if (bayesResult.ran) {
@@ -69,6 +86,89 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
     if (Date.now() - lastRunTs > dayMs) {
       await featureEngineer.backfillRange(babyId, 7).catch(() => {});
       await AsyncStorage.setItem(LAST_FEATURE_RUN, String(Date.now()));
+    }
+
+    // 4a. Check for age-cohort boundary crossing
+    try {
+      const { checkAndHandleCohortChange } = await import('./CohortPriors');
+      const { data: babyRow } = await supabase
+        .from('babies')
+        .select('date_of_birth')
+        .eq('id', babyId)
+        .maybeSingle();
+
+      if (babyRow?.date_of_birth) {
+        const metricsToCheck: MetricKey[] = [
+          'temperature_c', 'feeding_ml', 'feed_interval_min',
+          'sleep_duration_min', 'sleep_interval_min', 'diaper_interval_min',
+          'weight_kg', 'height_cm', 'head_cm', 'mood_score',
+        ];
+        const cohortCheck = await checkAndHandleCohortChange(
+          babyId,
+          babyRow.date_of_birth,
+          metricsToCheck
+        );
+        if (cohortCheck.changed) {
+          console.log(
+            `[AI Bootstrap] Cohort changed ${cohortCheck.fromCohort} → ${cohortCheck.toCohort}`
+          );
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[AI Bootstrap] Cohort check failed:', e);
+    }
+
+    // 4b. Refresh correlation cache if stale (>24h old)
+    try {
+      const { getCachedCorrelations, discoverCorrelations } =
+        await import('./CorrelationEngine');
+      const cached = await getCachedCorrelations(babyId);
+      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+      const needsRefresh =
+        cached.length === 0 ||
+        (cached[0] as any).computed_at < oneDayAgo;
+
+      if (needsRefresh) {
+        await discoverCorrelations(babyId, 45);
+        console.log('[AI Bootstrap] Correlations refreshed');
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[AI Bootstrap] Correlation refresh failed:', e);
+    }
+
+    // 4c. Publish predictor states to cohort pool
+    try {
+      const { publishPredictorToCohort } = await import('./PredictorCohort');
+      const { getAllPredictorStates } = await import('./PredictorEngine');
+      const { isCollaborativeLearningEnabled } = await import('./CohortPriors');
+
+      if (await isCollaborativeLearningEnabled()) {
+        const { data: babyRow } = await supabase
+          .from('babies')
+          .select('date_of_birth')
+          .eq('id', babyId)
+          .maybeSingle();
+
+        if (babyRow?.date_of_birth) {
+          const states = await getAllPredictorStates(babyId, [
+            'sleep', 'feed', 'diaper', 'medication',
+          ]);
+          const result = await publishPredictorToCohort(
+            babyId,
+            babyRow.date_of_birth,
+            states,
+            { minSamples: 30 }
+          );
+          if (result.published > 0) {
+            console.log(
+              `[AI Bootstrap] Published ${result.published} predictor states to cohort`
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[AI Bootstrap] Predictor cohort publish failed:', e);
     }
 
     // 5. Publish local posteriors to cohort pool (opt-in, throttled)
