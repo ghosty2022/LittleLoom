@@ -1368,6 +1368,38 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       // ─── Predictor learning: feed the timestamp into Holt-Winters ──
       predictFromEntry(babyId, trackerId, timestamp).catch(() => {});
 
+      // ─── Cohort publishing: opportunistically push to aggregate pool ─
+      //     Throttled to once per 12h per device by CohortPriors
+      (async () => {
+        try {
+          const { isCollaborativeLearningEnabled, publishToCohort } =
+            await import('@/services/ai/CohortPriors');
+          if (!(await isCollaborativeLearningEnabled())) return;
+
+          const { data: babyRow } = await supabase
+            .from('babies')
+            .select('date_of_birth')
+            .eq('id', babyId)
+            .maybeSingle();
+
+          if (babyRow?.date_of_birth) {
+            const { extractMetricValue } = await import('@/services/ai/BayesianEngine');
+            const metric = extractMetricValue(
+              (BAYES_METRIC_MAP[trackerId] ? Object.values(BAYES_METRIC_MAP[trackerId])[0] : null) as any,
+              cleanData
+            );
+            if (metric !== null) {
+              await publishToCohort(
+                babyId,
+                babyRow.date_of_birth,
+                [Object.values(BAYES_METRIC_MAP[trackerId] || {})[0] as any].filter(Boolean),
+                { minSamples: 30 }
+              );
+            }
+          }
+        } catch {}
+      })();
+
       const streak = calculateStreak(trackerId, updatedEntries, babyId);
       if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
         triggerHaptic('success');

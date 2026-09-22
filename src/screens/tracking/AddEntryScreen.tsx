@@ -63,6 +63,7 @@ import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
 import { useDashboardIntelligence } from '../../hooks/useDashboardIntelligence';
 import SmartPhotoField from '../../screens/gallery/SmartPhotoField';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
+import { useAnomalyFeedback } from '../../hooks/useAnomalyFeedback';
 import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/useTrackerProgressive';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -993,6 +994,11 @@ function TrackerContent({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [anomalyWarning, setAnomalyWarning] = useState<string | null>(null);
+  const [anomalyMetric, setAnomalyMetric] = useState<string | null>(null);
+  const [anomalyValue, setAnomalyValue] = useState<number | null>(null);
+  const [anomalyZ, setAnomalyZ] = useState<number | null>(null);
+
+  const anomalyFeedback = useAnomalyFeedback();
 
   const progressive = useTrackerProgressive(selectedTrackerId || '');
 
@@ -1222,10 +1228,16 @@ function TrackerContent({
           const result = await detectAnomaly(currentBaby.id, metric, value);
           if (result.isAnomaly && result.severity !== 'low') {
             setAnomalyWarning(result.explanation || 'Value looks unusual for this baby.');
+            setAnomalyMetric(metric);
+            setAnomalyValue(value);
+            setAnomalyZ(result.zScore);
             return;
           }
         }
         setAnomalyWarning(null);
+        setAnomalyMetric(null);
+        setAnomalyValue(null);
+        setAnomalyZ(null);
       } catch {
         setAnomalyWarning(null);
       }
@@ -1707,7 +1719,62 @@ function TrackerContent({
                   {anomalyWarning}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setAnomalyWarning(null)}>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (currentBaby?.id && anomalyMetric) {
+                      await anomalyFeedback.recordFeedback(
+                        currentBaby.id,
+                        anomalyMetric,
+                        anomalyValue ?? 0,
+                        anomalyZ ?? 0,
+                        'dismissed_normal'
+                      );
+                    }
+                    setAnomalyWarning(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(16,185,129,0.15)',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#10b981', fontWeight: '700', fontSize: 12 }}>
+                    Normal for us
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (currentBaby?.id && anomalyMetric) {
+                      await anomalyFeedback.recordFeedback(
+                        currentBaby.id,
+                        anomalyMetric,
+                        anomalyValue ?? 0,
+                        anomalyZ ?? 0,
+                        'confirmed_anomaly'
+                      );
+                    }
+                    setAnomalyWarning(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(239,68,68,0.15)',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#ef4444', fontWeight: '700', fontSize: 12 }}>
+                    Concern
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                onPress={() => setAnomalyWarning(null)}
+                style={{ position: 'absolute', top: 8, right: 8 }}
+              >
                 <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
               </TouchableOpacity>
             </Animated.View>

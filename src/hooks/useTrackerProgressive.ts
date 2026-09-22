@@ -20,6 +20,7 @@ import { TrackerEntry, TrackerStreak, TrackerInsight, UnifiedTrackerConfig, Remi
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 import { useTimelineCorrelations } from './useTimelineCorrelations';
+import { getCachedCorrelations } from '../services/ai/CorrelationEngine';
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -184,6 +185,17 @@ export const useTrackerProgressive = (trackerId: string) => {
 
   const tc = useTimelineCorrelations();
   const timelineCorrelations = tc?.correlations ?? [];
+
+  // ─── AI-discovered correlations (cached, no recompute) ──────────
+  const [aiCorrelations, setAiCorrelations] = useState<any[]>([]);
+  useEffect(() => {
+    if (!baby.currentBaby?.id) return;
+    let cancelled = false;
+    getCachedCorrelations(baby.currentBaby.id).then(list => {
+      if (!cancelled) setAiCorrelations(list);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [baby.currentBaby?.id]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -571,7 +583,7 @@ export const useTrackerProgressive = (trackerId: string) => {
           confidence: Number.isFinite(c.confidence) ? c.confidence : 50,
         };
       });
-  }, [timelineCorrelations, trackerId, safeTrackers, tracker]);
+  }, [timelineCorrelations, aiCorrelations, trackerId, safeTrackers, tracker]);
 
   /* ═══════════════════════════════════════════════════════════
      REMINDERS

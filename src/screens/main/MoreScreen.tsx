@@ -1008,6 +1008,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     new Set(['security', 'preferences', 'family'])
   );
   const [showBabyModal, setShowBabyModal] = useState(false);
+  const [collaborativeEnabled, setCollaborativeEnabled] = useState(false);
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
@@ -1321,6 +1322,16 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Effects ────────────────────────────────────────────────────
 
+  // Load collaborative learning opt-in state
+  useEffect(() => {
+    import('../../services/ai/CohortPriors')
+      .then(({ isCollaborativeLearningEnabled }) =>
+        isCollaborativeLearningEnabled()
+      )
+      .then(setCollaborativeEnabled)
+      .catch(() => {});
+  }, []);
+
   // Refresh biometric status on mount
   useEffect(() => {
     const checkBiometrics = async () => {
@@ -1478,6 +1489,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             tint={isDark ? 'dark' : 'light'}
           >
             <AILearningStatus />
+            <MenuItem
+              icon="people-circle-outline"
+              title="Collaborative AI Learning"
+              subtitle={
+                collaborativeEnabled
+                  ? 'Sharing anonymized patterns with other families'
+                  : 'Off — your data stays on this device'
+              }
+              isEnabled={collaborativeEnabled}
+              onToggle={async (val) => {
+                await setCollaborativeLearningEnabled(val);
+                setCollaborativeEnabled(val);
+                triggerHaptic(val ? 'success' : 'light');
+              }}
+              color="#8b5cf6"
+              isDark={isDark}
+            />
 
             <MenuItem
               icon="notifications"

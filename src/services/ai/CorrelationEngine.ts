@@ -368,5 +368,63 @@ export async function discoverCorrelations(
       a.effectSize * Math.log(a.samples + 1)
   );
 
+  // ─── Persist to cache so subsequent reads are instant ─────────
+  if (results.length > 0) {
+    try {
+      const rows = results.map(r => ({
+        baby_id: babyId,
+        kind: r.kind,
+        headline: r.headline,
+        description: r.description,
+        effect_size: r.effectSize,
+        samples: r.samples,
+        direction: r.direction,
+        suggestion: r.suggestion,
+        emoji: r.emoji,
+        metric_a: r.metricA,
+        metric_b: r.metricB,
+        computed_at: new Date().toISOString(),
+      }));
+
+      await supabase
+        .from('ai_correlation_cache')
+        .upsert(rows, { onConflict: 'baby_id,kind' });
+    } catch (e) {
+      if (__DEV__) console.warn('[Correlation] Cache write failed:', e);
+    }
+  }
+
   return results;
+}
+
+// ─── Read from cache (instant, no query) ────────────────────────────
+
+export async function getCachedCorrelations(
+  babyId: string
+): Promise<DiscoveredCorrelation[]> {
+  try {
+    const { data, error } = await supabase
+      .from('ai_correlation_cache')
+      .select('*')
+      .eq('baby_id', babyId)
+      .order('effect_size', { ascending: false });
+
+    if (error || !data) return [];
+
+    return data.map(row => ({
+      id: row.kind,
+      kind: row.kind as CorrelationKind,
+      headline: row.headline,
+      description: row.description,
+      effectSize: Number(row.effect_size),
+      samples: Number(row.samples),
+      direction: row.direction as 'positive' | 'negative' | 'none',
+      suggestion: row.suggestion || '',
+      emoji: row.emoji || '🔗',
+      metricA: row.metric_a || '',
+      metricB: row.metric_b || '',
+    }));
+  } catch {
+    return [];
+  }
 }

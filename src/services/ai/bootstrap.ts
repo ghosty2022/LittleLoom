@@ -9,6 +9,7 @@ import { supabase } from '@/utils/supabase';
 import { backfillBayesianIfNeeded } from './backfillBayesian';
 import { backfillPredictor } from './PredictorEngine';
 import { observeValue, extractMetricValue, MetricKey } from './BayesianEngine';
+// CohortPriors is dynamically imported to avoid circular dependency
 import { featureEngineer } from './FeatureEngineer';
 
 const LAUNCH_FLAG = '@littleloom_ai_bootstrapped_v1';
@@ -68,6 +69,58 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
     if (Date.now() - lastRunTs > dayMs) {
       await featureEngineer.backfillRange(babyId, 7).catch(() => {});
       await AsyncStorage.setItem(LAST_FEATURE_RUN, String(Date.now()));
+    }
+
+    // 5. Publish local posteriors to cohort pool (opt-in, throttled)
+    try {
+      const { publishToCohort, isCollaborativeLearningEnabled } =
+        await import('./CohortPriors');
+
+      if (await isCollaborativeLearningEnabled()) {
+        // Need baby's birth date
+        const { data: babyRow } = await supabase
+          .from('babies')
+          .select('date_of_birth')
+          .eq('id', babyId)
+          .maybeSingle();
+
+        if (babyRow?.date_of_birth) {
+          // Cache birth date locally so BayesianEngine can find it on cold start
+          await AsyncStorage.setItem(
+            `@littleloom_baby_meta_v1:${babyId}`,
+            JSON.stringify({ birthDate: babyRow.date_of_birth })
+          );
+
+          const metricsToPublish: MetricKey[] = [
+            'temperature_c',
+            'feeding_ml',
+            'feed_interval_min',
+            'sleep_duration_min',
+            'sleep_interval_min',
+            'diaper_interval_min',
+            'weight_kg',
+            'height_cm',
+            'head_cm',
+            'mood_score',
+          ];
+
+          const result = await publishToCohort(
+            babyId,
+            babyRow.date_of_birth,
+            metricsToPublish,
+            { minSamples: 30 }
+          );
+
+          if (result.published > 0) {
+            console.log(
+              `[AI Bootstrap] Published ${result.published} metrics to cohort pool ` +
+              `(${result.skipped} skipped${result.reason ? `, ${result.reason}` : ''})`
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[AI Bootstrap] Cohort publish failed:', e);
     }
 
     bootstrappedFor = babyId;

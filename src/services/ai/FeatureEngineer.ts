@@ -338,8 +338,27 @@ export class FeatureEngineer {
       (hoursWithEntries.size / 24) * 100 * 2.5
     );
 
-    // Parent engagement: total entries logged today
-    const parentEngagement = Math.min(100, entries.length * 2);
+    // Parent engagement: weighted by role diversity and entry spread
+    //   - Multiple family members logging = higher engagement
+    //   - Entries spread across the day = higher engagement
+    //   - Rapid bursts (spam) get dampened
+    const uniqueLoggers = new Set(
+      entries.map(e => e.logged_by).filter(Boolean)
+    ).size;
+
+    const uniqueHours = hoursWithEntries.size;
+
+    // Diversity bonus: 1 logger = 1.0x, 2+ loggers = 1.3x, 3+ = 1.5x
+    const diversityMultiplier =
+      uniqueLoggers >= 3 ? 1.5 : uniqueLoggers >= 2 ? 1.3 : 1.0;
+
+    // Spread bonus: more distinct hours = richer data
+    const spreadBonus = Math.min(20, uniqueHours * 1.5);
+
+    const rawEngagement = entries.length * 2 * diversityMultiplier + spreadBonus;
+
+    // Clamp to [0, 100]
+    const parentEngagement = Math.min(100, Math.round(rawEngagement));
 
     return {
       feed_count: feedCount,
