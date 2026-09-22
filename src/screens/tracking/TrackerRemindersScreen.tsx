@@ -110,13 +110,10 @@ const DESIGN = {
    NOTIFICATION HANDLER
    ═══════════════════════════════════════════════════════════════ */
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// NOTE: setNotificationHandler must be called exactly once per app launch.
+// It is now registered centrally in `src/services/notifications.ts`.
+// import { configureNotificationHandler } from '../../services/notifications';
+// configureNotificationHandler(); // called in App.tsx instead
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES

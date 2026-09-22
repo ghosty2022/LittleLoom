@@ -992,6 +992,7 @@ function TrackerContent({
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [anomalyWarning, setAnomalyWarning] = useState<string | null>(null);
 
   const progressive = useTrackerProgressive(selectedTrackerId || '');
 
@@ -1198,6 +1199,41 @@ function TrackerContent({
       });
     }
   }, [editEntryId, tracker, getEntries, setDate, setPendingData, setPendingOptions]);
+
+  // ─── ✅ AI Anomaly Detection — moved here from module scope ──
+  useEffect(() => {
+    if (!currentBaby?.id || !tracker) return;
+
+    const checkAnomalies = async () => {
+      try {
+        const { detectAnomaly, extractMetricValue } = require('../../services/ai/BayesianEngine');
+
+        const checks: Array<{ metric: any; }> = [];
+        if (tracker.id === 'temperature') checks.push({ metric: 'temperature_c' });
+        if (tracker.id === 'growth') {
+          checks.push({ metric: 'weight_kg' });
+          checks.push({ metric: 'height_cm' });
+        }
+        if (tracker.id === 'feed') checks.push({ metric: 'feeding_ml' });
+
+        for (const { metric } of checks) {
+          const value = extractMetricValue(metric, pendingData);
+          if (value === null) continue;
+          const result = await detectAnomaly(currentBaby.id, metric, value);
+          if (result.isAnomaly && result.severity !== 'low') {
+            setAnomalyWarning(result.explanation || 'Value looks unusual for this baby.');
+            return;
+          }
+        }
+        setAnomalyWarning(null);
+      } catch {
+        setAnomalyWarning(null);
+      }
+    };
+
+    const timeout = setTimeout(checkAnomalies, 500);
+    return () => clearTimeout(timeout);
+  }, [pendingData, currentBaby?.id, tracker?.id]);
 
   // ─── Callbacks ────────────────────────────────────────────────
 
@@ -1644,6 +1680,38 @@ function TrackerContent({
               allowCompare={true}
             />
           </View>
+
+          {/* AI Anomaly Warning */}
+          {anomalyWarning && (
+            <Animated.View
+              entering={FadeInUp.springify()}
+              style={{
+                marginHorizontal: 16,
+                marginBottom: 12,
+                padding: 14,
+                borderRadius: borderRadiusValue,
+                backgroundColor: 'rgba(245,158,11,0.10)',
+                borderLeftWidth: 3,
+                borderLeftColor: '#f59e0b',
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+              }}
+            >
+              <Ionicons name="sparkles" size={20} color="#f59e0b" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#f59e0b', fontWeight: '700', marginBottom: 2 }}>
+                  AI noticed something
+                </Text>
+                <Text style={{ color: fullThemeColors.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                  {anomalyWarning}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setAnomalyWarning(null)}>
+                <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
+              </TouchableOpacity>
+            </Animated.View>
+          )}
 
           {/* Form */}
           <View style={styles.formWrapper}>

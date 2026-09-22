@@ -60,6 +60,7 @@ import { useUser } from '../../context/UserContext';
 // ─── Components ────────────────────────────────────────────────────
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
+import { AILearningStatus } from '../../components/AILearningStatus';
 
 // ─── Types ─────────────────────────────────────────────────────────
 import type { RootStackParamList } from '../../types/navigation';
@@ -1476,6 +1477,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             style={styles.menuContainer}
             tint={isDark ? 'dark' : 'light'}
           >
+            <AILearningStatus />
+
             <MenuItem
               icon="notifications"
               title="Notifications"
