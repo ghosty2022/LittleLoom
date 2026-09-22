@@ -711,7 +711,11 @@ export default function EntryDetailScreen() {
   }, [entry, babies, currentBaby]);
 
   const entryDate = entry ? new Date(entry.timestamp) : null;
-  const photos = useMemo(() => entry?.photoUris ?? [], [entry]);
+  const photos = useMemo(() => {
+    const raw = entry?.photoUris;
+    if (!Array.isArray(raw)) return [] as string[];
+    return raw.filter((u): u is string => typeof u === 'string' && u.length > 0);
+  }, [entry]);
   const tags = useMemo(() => entry?.tags ?? [], [entry]);
   const locationName = typeof entry?.location?.name === 'string' ? entry.location.name : '';
 
@@ -1127,7 +1131,9 @@ export default function EntryDetailScreen() {
                   </View>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoStrip}>
-                  {photos.map((uri: string, idx: number) => (
+                  {photos
+                    .filter((uri): uri is string => typeof uri === 'string' && uri.length > 0)
+                    .map((uri: string, idx: number) => (
                     <TouchableOpacity
                       key={`${uri}-${idx}`}
                       style={styles.photoThumb}
@@ -1465,7 +1471,9 @@ export default function EntryDetailScreen() {
             contentOffset={{ x: (viewerIndex ?? 0) * SCREEN_W, y: 0 }}
             onMomentumScrollEnd={(e) => setViewerIndex(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}
           >
-            {photos.map((uri: string, idx: number) => (
+            {photos
+              .filter((uri): uri is string => typeof uri === 'string' && uri.length > 0)
+              .map((uri: string, idx: number) => (
               <View key={`viewer-${uri}-${idx}`} style={{ width: SCREEN_W, flex: 1, justifyContent: 'center' }}>
                 <Image source={{ uri }} style={{ width: SCREEN_W, height: '80%' }} resizeMode="contain" />
               </View>

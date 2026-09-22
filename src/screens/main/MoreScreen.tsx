@@ -67,7 +67,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import type { FamilyMember } from '../../types/roles';
 
 // ─── Services ─────────────────────────────────────────────────────
-import { createBackup } from '../../utils/backupService';
+import backupService, { createBackup } from '../../utils/backupService';
 
 // ─── SweetAlert ────────────────────────────────────────────────────
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -1475,13 +1475,22 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         setSyncStatus('success');
         triggerHaptic('success');
 
+        // ─── Ensure the backup service knows who the user is ─────
+        //     MoreScreen might mount before AuthContext has hydrated
+        //     the profile, so push the ID explicitly.
         try {
-          const backupResult = await createBackup({
-            encrypted: false,
-            includePhotos: true,
-          });
-          if (backupResult.success) {
-            console.log('✅ Backup created successfully');
+          const uid = userProfile?.id;
+          if (uid) {
+            backupService.setUserId(uid);
+            const backupResult = await createBackup({
+              encrypted: false,
+              includePhotos: true,
+            });
+            if (backupResult.success) {
+              console.log('✅ Backup created successfully:', backupResult.filePath);
+            } else {
+              console.warn('⚠️ Backup failed:', backupResult.error);
+            }
           }
         } catch (backupError) {
           console.warn('Backup creation error (non-critical):', backupError);
@@ -1499,7 +1508,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     } finally {
       setTimeout(() => setSyncStatus('idle'), 3000);
     }
-  }, [isSyncing, sync, triggerHaptic, sweetAlert]);
+  }, [isSyncing, sync, triggerHaptic, sweetAlert, userProfile?.id]);
 
   // ─── Biometric toggle ──────────────────────────────────────────
   const handleBiometricToggle = useCallback(
