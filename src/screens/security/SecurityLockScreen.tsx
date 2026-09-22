@@ -97,6 +97,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     getBiometricTypeName,
     getBiometricIcon,
     toggleBiometric,
+    settings: securitySettings,   // ← ADD THIS
   } = useSecurity();
 
   // ── Track biometric readiness, reading directly from storage to avoid races ──
@@ -135,9 +136,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   
   const sweetAlert = useSweetAlert();
 
-  const availableMethods = getAvailableAuthMethods();
-  const hasBiometric = availableMethods.hasBiometric || (isBiometricHardwareAvailable && isBiometricEnrolled && isBiometricEnabled);
-  const hasPin = availableMethods.hasPin;
+  const hasBiometric = biometricReady;   // uses the storage-backed `biometricReady`
+  const hasPin = !!securitySettings?.isPinEnabled || getAvailableAuthMethods().hasPin;
 
   const userName = userProfile?.fullName || 'Welcome Back';
   const userAvatar = userProfile?.avatar || '👶';

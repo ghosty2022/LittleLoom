@@ -207,22 +207,31 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     const unsubscribe = navigation.addListener('focus', async () => {
       if (!isMounted.current) return;
       await refreshBiometricStatus();
-      // Pull the freshest value via a fresh read of storage (belt & suspenders)
+
+      // Read the freshest value directly from AsyncStorage — never trust
+      // the context closure here, because the SecurityContext may have
+      // been updated on a different screen while we were backgrounded.
+      let enabledFromStorage = false;
       try {
-        const { readBiometricEnabledFromStorage } = require('../../context/SecurityContext');
+        const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
+        enabledFromStorage = stored === 'true';
       } catch {}
-      setLocalBioEnabled(isBiometricEnabled ?? false);
+
+      if (!isMounted.current) return;
+      setLocalBioEnabled(enabledFromStorage);
       setForceUpdate(prev => !prev);
     });
     return unsubscribe;
-  }, [navigation, refreshBiometricStatus, isBiometricEnabled]);
+  }, [navigation, refreshBiometricStatus]);
 
   useEffect(() => {
+    // One-time capability check on mount (debounced) — focus listener
+    // is already handled by the previous effect, so we don't add another.
     const checkBiometrics = async () => {
       try {
         await checkBiometricCapabilities();
         await refreshBiometricStatus();
-        setForceUpdate(prev => !prev);
+        if (isMounted.current) setForceUpdate(prev => !prev);
       } catch (error) {
         console.error('Error checking biometrics:', error);
       }
@@ -237,21 +246,13 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       }
     }, 500);
 
-    const unsubscribe = navigation.addListener('focus', async () => {
-      if (isMounted.current) {
-        await refreshBiometricStatus();
-        setForceUpdate(prev => !prev);
-      }
-    });
-
     return () => {
-      unsubscribe();
       if (biometricCheckTimer.current) {
         clearTimeout(biometricCheckTimer.current);
         biometricCheckTimer.current = null;
       }
     };
-  }, [navigation, checkBiometricCapabilities, refreshBiometricStatus]);
+  }, [checkBiometricCapabilities, refreshBiometricStatus]);
 
   useEffect(() => {
     resetUnlockLock();
@@ -750,6 +751,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             const newValue = !securitySettings.isAppLockEnabled;
             await toggleAppLock(newValue);
             triggerHaptic(newValue ? 'success' : 'light');
+            // Force a re-render so MoreScreen sees the new value on return
+            setForceUpdate(prev => !prev);
             sweetAlert.success(
               newValue ? 'App Lock On' : 'App Lock Off',
               newValue ? 'App will lock when launched' : 'App will no longer lock on launch'
