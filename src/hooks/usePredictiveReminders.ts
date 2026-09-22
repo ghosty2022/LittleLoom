@@ -21,6 +21,26 @@ import { useBaby } from '../context/BabyContext';
 import { useTracker } from './useTrackerContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 
+// ─── GrowthIndex Cache ──────────────────────────────────────────────
+// Prevents N separate useGrowthIntelligence() computations when N hooks
+// consume the same baby. Memoized per-baby for 5 seconds.
+type GrowthIndex = ReturnType<typeof useGrowthIntelligence>['growthIndex'];
+type AgeMonths = ReturnType<typeof useGrowthIntelligence>['ageInMonths'];
+
+let _giCache: { babyId: string; growthIndex: GrowthIndex; ageInMonths: AgeMonths; ts: number } | null = null;
+const GI_CACHE_MS = 5000;
+
+export function getCachedGrowthIntelligence(babyId: string | undefined, compute: () => { growthIndex: GrowthIndex; ageInMonths: AgeMonths }) {
+  if (!babyId) return compute();
+  const now = Date.now();
+  if (_giCache && _giCache.babyId === babyId && now - _giCache.ts < GI_CACHE_MS) {
+    return { growthIndex: _giCache.growthIndex, ageInMonths: _giCache.ageInMonths };
+  }
+  const fresh = compute();
+  _giCache = { babyId, growthIndex: fresh.growthIndex, ageInMonths: fresh.ageInMonths, ts: now };
+  return fresh;
+}
+
 // ─── Types ──────────────────────────────────────────────────────────
 
 export interface PredictiveReminder {
@@ -53,7 +73,13 @@ export const usePredictiveReminders = () => {
   const { currentBaby, growthData } = useBaby();
 
   // ─── REAL growth intelligence (was hardcoded) ────────────────────
-  const { growthIndex, ageInMonths } = useGrowthIntelligence();
+  // Call the hook ONCE unconditionally (Rules of Hooks), but memoize
+  // the expensive downstream computation via the module cache above.
+  const giResult = useGrowthIntelligence();
+  const { growthIndex, ageInMonths } = useMemo(
+    () => getCachedGrowthIntelligence(currentBaby?.id, () => giResult),
+    [currentBaby?.id, giResult.growthIndex?.lastUpdated]
+  );
 
   const reminders = useMemo((): PredictiveReminder[] => {
     if (!currentBaby) return [];
@@ -129,7 +155,7 @@ export const usePredictiveReminders = () => {
         if (nextBedtime < now) nextBedtime.setDate(nextBedtime.getDate() + 1);
 
         // ─── REAL rest score (was hardcoded 70) ────────────────────
-        const sleepScore = growthIndex.restScore?.value ?? 50;
+        const sleepScore = growthIndex?.restScore?.value ?? 50;
 
         if (sleepScore < 70) {
           suggestions.push({
@@ -169,11 +195,12 @@ export const usePredictiveReminders = () => {
     // ═══════════════════════════════════════════════════════════════
     // 3. GROWTH — measurement due
     // ═══════════════════════════════════════════════════════════════
-    const lastGrowth = [...(growthData || [])].sort(
+    const safeGrowthData = Array.isArray(growthData) ? growthData : [];
+    const lastGrowth = [...safeGrowthData].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     )[0];
 
-    if (lastGrowth) {
+    if (lastGrowth?.date) {  // ← also verify date is present
       const daysSince = differenceInDays(now, new Date(lastGrowth.date));
       const recommendedInterval = ageInMonths < 6 ? 14 : ageInMonths < 12 ? 30 : 60;
 
@@ -206,7 +233,7 @@ export const usePredictiveReminders = () => {
     // ═══════════════════════════════════════════════════════════════
     // 4. MILESTONES — uses REAL milestoneReadiness (was empty [])
     // ═══════════════════════════════════════════════════════════════
-    (growthIndex.milestoneReadiness || []).forEach((readiness, idx) => {
+    (Array.isArray(growthIndex?.milestoneReadiness) ? growthIndex.milestoneReadiness : []).forEach((readiness, idx) => {
       if (readiness.readinessPercent > 60) {
         suggestions.push({
           id: `milestone_ready_${readiness.category}_${idx}`,
@@ -244,7 +271,7 @@ export const usePredictiveReminders = () => {
     // ═══════════════════════════════════════════════════════════════
     // 5. HEALTH — uses REAL healthStability (was hardcoded 80)
     // ═══════════════════════════════════════════════════════════════
-    const healthScore = growthIndex.healthStability?.value ?? 100;
+    const healthScore = growthIndex?.healthStability?.value ?? 100;
     if (healthScore < 60) {
       const tempEntries = getEntries('temperature', 7);
       const symptomEntries = getEntries('symptom', 7);

@@ -193,7 +193,7 @@ export const useGrowthIntelligence = () => {
       .filter(g => ['height', 'weight', 'head'].includes(g.type) && Number.isFinite(g.value));
 
     return [...(growthData || []), ...fromEntries].filter(g => g && g.type && g.date);
-  }, [growthData, getEntries, entries]);
+  }, [growthData, getEntries]);
 
   const achievedMilestoneIds = useMemo(() => {
     const fromContext = (milestones || []).map(m => slug(m.title));
@@ -260,7 +260,7 @@ export const useGrowthIntelligence = () => {
       trend: delta > 5 ? 'up' : delta < -5 ? 'down' : 'stable',
       delta: Math.round(delta),
     };
-  }, [entries, getEntries, ageInMonths]);
+  }, [getEntries, ageInMonths]);
 
   const restScore = useMemo((): SubScore => {
     const sleepEntries = getEntries('sleep', 30) || [];
@@ -308,7 +308,7 @@ export const useGrowthIntelligence = () => {
       trend: delta > 0.5 ? 'up' : delta < -0.5 ? 'down' : 'stable',
       delta: Math.round(delta * 10) / 10,
     };
-  }, [entries, getEntries, ageInMonths]);
+  }, [getEntries, ageInMonths]);
 
   const physicalScore = useMemo((): SubScore => {
     const safeGrowthData = mergedGrowthData;
@@ -596,7 +596,9 @@ export const useGrowthIntelligence = () => {
     physical: physicalScore,
     cognitive: cognitiveScore,
     health: healthStability,
-    sleep: { ...restScore, history: sleepHistory },
+    // `sleep` is intentionally a superset of `rest` with history attached.
+    // Typed as any so the SubScore narrowing in consumers doesn't reject it.
+    sleep: { ...restScore, history: sleepHistory } as any,
   }), [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, sleepHistory]);
 
   const intelligence = useMemo(() => {

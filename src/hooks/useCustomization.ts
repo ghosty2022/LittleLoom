@@ -316,17 +316,41 @@ export const DEFAULT_SETTINGS: CustomizationSettings = {
 const STORAGE_KEY = '@littleloom_customization_v3';
 
 // ─── Module-level cache for instant first read ─────────────────
-let _settingsCache: CustomizationSettings | null = null;
+// Initialized to DEFAULT_SETTINGS so the FIRST render of any component
+// sees a consistent, non-null object. AsyncStorage hydration happens
+// asynchronously and updates the cache + notifies subscribers.
+let _settingsCache: CustomizationSettings = { ...DEFAULT_SETTINGS };
 let _cacheInitialized = false;
+const _subscribers = new Set<(s: CustomizationSettings) => void>();
 
-const getCachedSettings = (): CustomizationSettings | null => {
-  return _settingsCache;
-};
+const getCachedSettings = (): CustomizationSettings => _settingsCache;
 
 const setCachedSettings = (settings: CustomizationSettings) => {
   _settingsCache = settings;
   _cacheInitialized = true;
+  _subscribers.forEach(cb => {
+    try { cb(settings); } catch { /* ignore */ }
+  });
 };
+
+// ─── Bootstrap the cache from AsyncStorage (once per process) ───
+let _bootstrapStarted = false;
+const _bootstrapPromise = (async (): Promise<void> => {
+  if (_bootstrapStarted) return;
+  _bootstrapStarted = true;
+  try {
+    const saved = await AsyncStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+      setCachedSettings(parsed);
+    } else {
+      setCachedSettings({ ...DEFAULT_SETTINGS });
+    }
+  } catch (e) {
+    console.warn('[useCustomization] bootstrap failed:', e);
+    setCachedSettings({ ...DEFAULT_SETTINGS });
+  }
+})();
 
 export const getThemeColorsById = (themeId: string): ThemeColors => {
   return THEME_MAP[themeId] || THEME_MAP.purple;
@@ -441,41 +465,39 @@ export interface UseCustomizationReturn {
 export function useCustomization(): UseCustomizationReturn {
   const systemColorScheme = useColorScheme();
 
-  // ─── Initialize from cache if available, else defaults ───────
-  const [settings, setSettings] = useState<CustomizationSettings>(() => {
-    return getCachedSettings() ?? DEFAULT_SETTINGS;
-  });
+  // ─── Initialize from cache (always non-null now) ─────────────
+  const [settings, setSettings] = useState<CustomizationSettings>(() => getCachedSettings());
   const [isLoaded, setIsLoaded] = useState(() => _cacheInitialized);
 
   useEffect(() => {
     let mounted = true;
 
-    // If already cached, skip loading
-    if (_cacheInitialized && _settingsCache) {
+    // If cache is already primed, we're done.
+    if (_cacheInitialized) {
       if (mounted) {
-        setSettings(_settingsCache);
+        setSettings(getCachedSettings());
         setIsLoaded(true);
       }
-      return;
+    } else {
+      // Wait for the module bootstrap, then sync.
+      _bootstrapPromise.then(() => {
+        if (mounted) {
+          setSettings(getCachedSettings());
+          setIsLoaded(true);
+        }
+      });
     }
 
-    const load = async () => {
-      try {
-        const saved = await AsyncStorage.getItem(STORAGE_KEY);
-        if (saved && mounted) {
-          const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-          setSettings(parsed);
-          setCachedSettings(parsed);
-        }
-      } catch (e) {
-        console.warn('Failed to load customization:', e);
-      } finally {
-        if (mounted) setIsLoaded(true);
-      }
+    // Subscribe to cross-component updates
+    const unsub = (next: CustomizationSettings) => {
+      if (mounted) setSettings(next);
     };
+    _subscribers.add(unsub);
 
-    load();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      _subscribers.delete(unsub);
+    };
   }, []);
 
   const updateSettings = useCallback(async (newSettings: Partial<CustomizationSettings>) => {

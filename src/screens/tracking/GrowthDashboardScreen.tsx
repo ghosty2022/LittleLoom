@@ -1307,8 +1307,12 @@ export default function GrowthDashboardScreen({ navigation }: any) {
           action: { label: 'Track Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' } }, timestamp: now,
         });
       }
-      if (growthIndex.milestoneReadiness?.length > 0) {
-        const top = growthIndex.milestoneReadiness[0];
+      const readiness = Array.isArray(growthIndex.milestoneReadiness)
+        ? growthIndex.milestoneReadiness
+        : [];
+      if (readiness.length > 0) {
+        const top = readiness[0];
+        
         items.push({
           id: 'gi-milestone', type: 'milestone', title: `${top.category} Milestone Ready!`,
           description: `${top.readinessPercent}% readiness for ${top.category} milestones.`,

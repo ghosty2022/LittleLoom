@@ -10,7 +10,24 @@ import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
-import { computeStreak } from '../utils/streak';
+// Defensive import — the streak util may not exist in all build targets.
+let computeStreak: (entries: any[], trackerId?: string) => { currentStreak: number; longestStreak: number; lastLoggedAt: number; isAtRisk: boolean } = () => ({
+  currentStreak: 0,
+  longestStreak: 0,
+  lastLoggedAt: 0,
+  isAtRisk: false,
+});
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const streakUtil = require('../utils/streak');
+  if (typeof streakUtil?.computeStreak === 'function') {
+    computeStreak = streakUtil.computeStreak;
+  }
+} catch {
+  if (__DEV__) {
+    console.warn('[useTrackerAchievements] streak util missing — achievements will use 0 streak');
+  }
+}
 
 // ... rest of the file remains the same ...
 // Type definitions

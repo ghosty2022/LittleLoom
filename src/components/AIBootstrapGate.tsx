@@ -14,7 +14,7 @@ export const AIBootstrapGate: React.FC = () => {
   const { currentBaby } = useBaby();
   const lastBabyIdRef = useRef<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
-
+  const bootstrappedIdsRef = useRef<Set<string>>(new Set());
   // Baby change → bootstrap (non-forced; bootstrapAI is idempotent)
   useEffect(() => {
     const id = currentBaby?.id ?? null;
@@ -22,9 +22,17 @@ export const AIBootstrapGate: React.FC = () => {
     if (lastBabyIdRef.current === id) return;
 
     lastBabyIdRef.current = id;
-    bootstrapAI(id).catch((err) => {
-      if (__DEV__) console.warn('[AIBootstrapGate] bootstrapAI failed:', err);
-    });
+
+    // First time we see a baby: force a warm-up so backfill runs immediately.
+    // Subsequent switches are non-forced (idempotent, throttled internally).
+    const isFirstSeen = lastBabyIdRef.current === null || bootstrappedIdsRef.current.size === 0;
+    bootstrapAI(id, isFirstSeen)
+      .then(() => {
+        bootstrappedIdsRef.current.add(id);
+      })
+      .catch((err) => {
+        if (__DEV__) console.warn('[AIBootstrapGate] bootstrapAI failed:', err);
+      });
   }, [currentBaby?.id]);
 
   // App foreground → opportunistically re-run bootstrap (throttled internally)

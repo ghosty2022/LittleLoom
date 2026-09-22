@@ -34,6 +34,41 @@ const DEFAULT_APP_COLORS = {
   shadowColor: '#667eea',
 };
 
+const DEFAULT_FULL_THEME = {
+  // Base theme colors (matches ThemeColors shape)
+  primary: '#667eea',
+  secondary: '#764ba2',
+  accent: '#fa709a',
+  colors: ['#e0e7ff', '#d1d5ff', '#c7b8ff'],
+  spinnerColor: '#667eea',
+  darkText: '#4338ca',
+  lightText: '#ffffff',
+
+  // FullThemeColors additions
+  background: '#f4f6fa',
+  surface: '#ffffff',
+  surfaceElevated: '#ffffff',
+  surfaceGlass: 'rgba(255,255,255,0.94)',
+  card: '#ffffff',
+  text: '#111827',
+  textSecondary: '#6b7280',
+  textMuted: '#9ca3af',
+  border: 'rgba(0,0,0,0.04)',
+  borderLight: 'rgba(0,0,0,0.02)',
+  success: '#10b981',
+  warning: '#f59e0b',
+  error: '#ef4444',
+  info: '#3b82f6',
+  glassBg: 'rgba(255,255,255,0.96)',
+  glassBackground: 'rgba(255,255,255,0.95)',
+  glassBorder: 'rgba(255,255,255,0.5)',
+  navBackground: '#ffffff',
+  handleBar: 'rgba(0,0,0,0.15)',
+  shadow: '#000',
+  shadowColor: '#667eea',
+  primaryLight: '#a3bffa',
+} as const;
+
 const DEFAULT_CUSTOMIZATION = {
   settings: {
     theme: 'purple',
@@ -54,6 +89,8 @@ const DEFAULT_CUSTOMIZATION = {
     hapticFeedback: true,
     soundEffects: true,
     notifications: true,
+    language: 'en',
+    units: 'metric' as const,
   },
   isLoaded: true,
   themeColors: {
@@ -65,6 +102,7 @@ const DEFAULT_CUSTOMIZATION = {
     darkText: '#4338ca',
     lightText: '#ffffff',
   },
+  fullThemeColors: DEFAULT_FULL_THEME,
   avatar: '👶',
   isDark: false,
   isTrueBlack: false,
@@ -73,6 +111,19 @@ const DEFAULT_CUSTOMIZATION = {
   fontSizeMultiplier: 1,
   borderRadiusValue: 14,
   animationDuration: 300,
+  hapticFeedback: true,
+  soundEffects: true,
+  reduceMotion: false,
+  compactView: false,
+  darkMode: false,
+  useGradients: true,
+  useBlur: true,
+  showShadows: true,
+  highContrast: false,
+  boldText: false,
+  notifications: true,
+  language: 'en',
+  units: 'metric' as const,
   updateSettings: async () => {},
   reset: async () => {},
   triggerHaptic: async () => {},
@@ -289,12 +340,16 @@ function useSafeCustomization() {
   try {
     return useCustomizationOriginal();
   } catch (e) {
+    // Match the exact return shape of useCustomization() so consumers
+    // never see `undefined.fullThemeColors` etc.
     return DEFAULT_CUSTOMIZATION;
   }
 }
 
 // ─── SAFE TRACKER ─────────────────────────────────────────────────────
 
+// ✅ SINGLE SOURCE OF TRUTH — mirrored exactly in
+//    `src/hooks/useTrackerContext.ts`. Keep the two in sync.
 function getFallbackTrackerContext() {
   return {
     isLoading: false,
@@ -327,7 +382,7 @@ function getFallbackTrackerContext() {
     getEntriesByDate: () => [],
     getEntryById: () => undefined,
     getTrackerStats: () => ({ totalEntries: 0, thisWeek: 0, thisMonth: 0, lastEntry: null, streakDays: 0 }),
-    getTodaySummary: () => [],
+    getTodaySummary: () => [],          // ← ADDED (ActivityContext needs this)
     canUseTracker: () => false,
     canCreateEntry: () => false,
     canEditEntry: () => false,
@@ -351,6 +406,7 @@ function getFallbackTrackerContext() {
     refreshTrackers: async () => {},
     refreshEntries: async () => {},
     setCurrentBabyId: () => {},
+    getCurrentBabyId: () => null,       // ← ADDED (ActivityContext needs this)
     getCustomTrackers: () => [],
     getSystemTrackers: () => [],
     getTrackerById: () => undefined,

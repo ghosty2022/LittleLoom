@@ -315,7 +315,11 @@ export class FeatureEngineer {
           0,
           (n.getFullYear() - b.getFullYear()) * 12 + (n.getMonth() - b.getMonth())
         );
-        const g = baby.gender === 'girl' ? 'girl' : 'boy';
+        // babies.gender is 'male' | 'female' | 'other' in the DB.
+        // The WHO calculator expects 'boy' | 'girl'.
+        const genderRaw = String(baby.gender || '').toLowerCase();
+        const g =
+          genderRaw === 'female' || genderRaw === 'girl' ? 'girl' : 'boy';
         weightPercentile = getPercentile(weightKgSafe, ageMonths, 'weight', g);
       } catch {
         // calculator unavailable — keep null
