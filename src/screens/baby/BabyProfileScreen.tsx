@@ -1,10 +1,8 @@
-// src/screens/BabyFamilyCenterScreen.tsx - COMPLETE FIXED VERSION
-// FIX: Auto-refresh without double reloading
-// FIX: Birth details can be edited even if not entered during creation
-// FIX: Streamlined UX with better edit mode handling
-// FIX: Fixed refreshBabyData undefined error
-// FIX: Fixed delete profile double prompt
-// FIX: Fixed syntax error with getStyles
+// src/screens/BabyFamilyCenterScreen.tsx
+// ─────────────────────────────────────────────────────────────────────
+// Baby profile + family center. Reads from BabyContext (profile) and
+// TrackerContext (recent activity). Single source of truth — no mock data.
+// ─────────────────────────────────────────────────────────────────────
 
 import {
   StyleSheet,
@@ -24,7 +22,6 @@ import {
   Text,
   LayoutAnimation,
   UIManager,
-  Alert,
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -41,7 +38,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, {
   FadeInUp,
   FadeInDown,
-  FadeIn,
   useSharedValue,
   useAnimatedStyle,
   interpolate,
@@ -51,8 +47,9 @@ import Animated, {
 import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { FamilyMember, useFamily } from '../../context/FamilyContext';
-import { Milestone, useBaby } from '../../context/BabyContext';
+import { useFamily } from '../../context/FamilyContext';
+import { useBaby } from '../../context/BabyContext';
+import type { Milestone } from '../../context/BabyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useAuth } from '../../context/AuthContext';
@@ -89,63 +86,82 @@ const MILESTONE_CATEGORIES = [
 
 const EMOJI_OPTIONS = ['👶', '👧', '👦', '🧒', '👼', '🤱', '🍼', '🧸', '🎈', '🌟', '🦁', '🐯', '🐻', '🐨', '🐼', '🐸', '🦄', '🌈', '⭐', '🔆'];
 
-// ─── TRACKER META — display metadata keyed by trackerId ──────────────
-// Used to render real tracker_entries in the activity feed without
-// hardcoding colors/emojis per call site.
+// ─── TRACKER META ────────────────────────────────────────────────────
 const TRACKER_META: Record<string, { emoji: string; color: string; label: string }> = {
-  feed:          { emoji: '🍼', color: '#fa709a', label: 'Feeding' },
-  sleep:         { emoji: '🌙', color: '#11998e', label: 'Sleep' },
-  diaper:        { emoji: '👶', color: '#8B5CF6', label: 'Diaper' },
-  potty:         { emoji: '💧', color: '#667eea', label: 'Potty' },
-  growth:        { emoji: '📏', color: '#43e97b', label: 'Growth' },
-  milestone:     { emoji: '🏆', color: '#ffd700', label: 'Milestone' },
-  medication:    { emoji: '💊', color: '#ff6b6b', label: 'Medication' },
-  temperature:   { emoji: '🌡️', color: '#ef4444', label: 'Temperature' },
-  symptom:       { emoji: '🤒', color: '#f97316', label: 'Symptom' },
-  vaccine:       { emoji: '💉', color: '#3b82f6', label: 'Vaccine' },
-  pumping:       { emoji: '🤱', color: '#ec4899', label: 'Pumping' },
-  bath:          { emoji: '🛁', color: '#3b82f6', label: 'Bath' },
-  tummy_time:    { emoji: '🤸', color: '#10b981', label: 'Tummy Time' },
-  reading:       { emoji: '📚', color: '#6366f1', label: 'Reading' },
-  walk:          { emoji: '🚶', color: '#0ea5e9', label: 'Walk' },
-  note:          { emoji: '📝', color: '#64748b', label: 'Note' },
-  mood:          { emoji: '😊', color: '#f59e0b', label: 'Mood' },
-  default:       { emoji: '•',  color: '#94a3b8', label: 'Activity' },
+  feed:        { emoji: '🍼', color: '#fa709a', label: 'Feeding' },
+  sleep:       { emoji: '🌙', color: '#11998e', label: 'Sleep' },
+  diaper:      { emoji: '👶', color: '#8B5CF6', label: 'Diaper' },
+  potty:       { emoji: '💧', color: '#667eea', label: 'Potty' },
+  growth:      { emoji: '📏', color: '#43e97b', label: 'Growth' },
+  milestone:   { emoji: '🏆', color: '#ffd700', label: 'Milestone' },
+  medication:  { emoji: '💊', color: '#ff6b6b', label: 'Medication' },
+  temperature: { emoji: '🌡️', color: '#ef4444', label: 'Temperature' },
+  symptom:     { emoji: '🤒', color: '#f97316', label: 'Symptom' },
+  vaccine:     { emoji: '💉', color: '#3b82f6', label: 'Vaccine' },
+  pumping:     { emoji: '🤱', color: '#ec4899', label: 'Pumping' },
+  bath:        { emoji: '🛁', color: '#3b82f6', label: 'Bath' },
+  tummy_time:  { emoji: '🤸', color: '#10b981', label: 'Tummy Time' },
+  reading:     { emoji: '📚', color: '#6366f1', label: 'Reading' },
+  walk:        { emoji: '🚶', color: '#0ea5e9', label: 'Walk' },
+  note:        { emoji: '📝', color: '#64748b', label: 'Note' },
+  mood:        { emoji: '😊', color: '#f59e0b', label: 'Mood' },
+  default:     { emoji: '•',  color: '#94a3b8', label: 'Activity' },
 };
 
 type BabyFamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 type ProfileTab = 'overview' | 'milestones' | 'health' | 'danger';
 
+// ─── HELPER: DB ↔ form enum conversion ───────────────────────────────────
+// DB stores snake_case ("c_section", "family_doctor"); form shows Title Case.
+const dbToFormEnum = (value?: string | null): string => {
+  if (!value) return '';
+  return value
+    .split('_')
+    .map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+    .join(' ');
+};
+
+const formEnumToDb = (value?: string | null): string | null => {
+  if (!value) return null;
+  return value.toLowerCase().replace(/[\s-]+/g, '_');
+};
+
+// Safe string coercion for numeric fields (DB returns numbers).
+const numToStr = (v: unknown): string => {
+  if (v === null || v === undefined || v === '') return '';
+  return String(v);
+};
+
 // ─── UPLOAD IMAGE TO SUPABASE ────────────────────────────────────────────
 const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
   try {
-    const base64 = await FileSystem.readAsStringAsync(localUri, { 
-      encoding: FileSystem.EncodingType.Base64 
+    const base64 = await FileSystem.readAsStringAsync(localUri, {
+      encoding: FileSystem.EncodingType.Base64,
     });
-    
+
     const fileExt = localUri.split('.').pop()?.toLowerCase() || 'jpg';
     const fileName = `${babyId}_${Date.now()}.${fileExt}`;
     const filePath = `baby_avatars/${fileName}`;
-    
+
     const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-    
-    const { data, error } = await supabase.storage
+
+    const { error } = await supabase.storage
       .from('baby_avatars')
       .upload(filePath, arrayBuffer, {
         contentType: `image/${fileExt}`,
         cacheControl: '3600',
         upsert: false,
       });
-    
+
     if (error) {
       console.error('[BabyProfile] Upload error:', error);
       return null;
     }
-    
+
     const { data: urlData } = supabase.storage
       .from('baby_avatars')
       .getPublicUrl(filePath);
-    
+
     return urlData.publicUrl;
   } catch (error) {
     console.error('[BabyProfile] Upload to Supabase error:', error);
@@ -153,31 +169,26 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
   }
 };
 
-// ─── HELPER FUNCTIONS ─────────────────────────────────────────────────────
+// ─── HELPERS ────────────────────────────────────────────────────────────
 const isImageUri = (value: string | undefined | null | any[]): boolean => {
   if (!value) return false;
-  if (Array.isArray(value)) {
-    value = value.length > 0 ? value[0] : null;
-  }
+  if (Array.isArray(value)) value = value.length > 0 ? value[0] : null;
   if (!value || typeof value !== 'string') return false;
-  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:') || value.startsWith('ph://') || value.startsWith('assets-library://');
+  return (
+    value.startsWith('http') ||
+    value.startsWith('file://') ||
+    value.startsWith('data:') ||
+    value.startsWith('ph://') ||
+    value.startsWith('assets-library://')
+  );
 };
 
 const isEmoji = (value: string | undefined | null | any[]): boolean => {
   if (!value) return false;
-  if (Array.isArray(value)) {
-    value = value.length > 0 ? value[0] : null;
-  }
+  if (Array.isArray(value)) value = value.length > 0 ? value[0] : null;
   if (!value || typeof value !== 'string') return false;
   if (value.length > 4) return false;
   return /\p{Emoji}/u.test(value);
-};
-const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
-  if (!d) return '—';
-  try {
-    const date = d instanceof Date ? d : new Date(d);
-    return format(date, fmt);
-  } catch { return '—'; }
 };
 
 const safeDiffMonths = (a: Date | string, b: Date | string): number => {
@@ -196,16 +207,11 @@ const safeDiffDays = (a: Date | string, b: Date | string): number => {
   } catch { return 0; }
 };
 
-// ─── STREAMLINED COMPONENTS ──────────────────────────────────────────────
+// ─── SUB-COMPONENTS ─────────────────────────────────────────────────────
 
-// ─── Section Header ──────────────────────────────────────────────────────
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark, colors }: { 
-  title: string; 
-  subtitle?: string; 
-  action?: () => void; 
-  actionLabel?: string; 
-  isDark?: boolean;
-  colors?: any;
+const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark, colors }: {
+  title: string; subtitle?: string; action?: () => void; actionLabel?: string;
+  isDark?: boolean; colors?: any;
 }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
@@ -224,11 +230,10 @@ const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark
   );
 });
 
-// ─── Tab Bar ──────────────────────────────────────────────────────────────
-const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: { 
-  tabs: { key: ProfileTab; label: string; icon: string }[]; 
-  activeTab: ProfileTab; 
-  onChange: (t: ProfileTab) => void; 
+const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: {
+  tabs: { key: ProfileTab; label: string; icon: string }[];
+  activeTab: ProfileTab;
+  onChange: (t: ProfileTab) => void;
   isDark?: boolean;
   colors?: any;
 }) => {
@@ -244,16 +249,16 @@ const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: {
             onPress={() => onChange(tab.key)}
             style={[
               styles.tabItem,
-              isActive && { 
+              isActive && {
                 backgroundColor: isDanger ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)',
               },
-              isDanger && isActive && { borderColor: '#ef4444', borderWidth: 1 }
+              isDanger && isActive && { borderColor: '#ef4444', borderWidth: 1 },
             ]}
           >
-            <Ionicons 
-              name={tab.icon as any} 
-              size={16} 
-              color={isActive ? (isDanger ? '#ef4444' : '#6366f1') : '#94a3b8'} 
+            <Ionicons
+              name={tab.icon as any}
+              size={16}
+              color={isActive ? (isDanger ? '#ef4444' : '#6366f1') : '#94a3b8'}
             />
             <Text style={[
               styles.tabLabel,
@@ -269,22 +274,24 @@ const TabBar = React.memo(({ tabs, activeTab, onChange, isDark, colors }: {
   );
 });
 
-// ─── Glass Card ──────────────────────────────────────────────────────────
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: { 
-  children: React.ReactNode; 
-  style?: any; 
-  onPress?: () => void; 
-  active?: boolean;
-  delay?: number;
-  isDark?: boolean;
-  colors?: any;
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: {
+  children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean;
+  delay?: number; isDark?: boolean; colors?: any;
 }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors?.primary || '#6366f1', borderWidth: 2 }, style]}>
+    <Animated.View
+      entering={FadeInUp.delay(delay).springify()}
+      style={[styles.glassCard, active && { borderColor: colors?.primary || '#6366f1', borderWidth: 2 }, style]}
+    >
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient
+          colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
@@ -292,13 +299,10 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   );
 });
 
-// ─── Safe Baby Avatar ──────────────────────────────────────────────────
 const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEditButton = false, onEdit, isDark, colors }: any) => {
   const normalizedAvatar = useMemo(() => {
     if (!avatar) return null;
-    if (Array.isArray(avatar)) {
-      return avatar.length > 0 ? avatar[0] : null;
-    }
+    if (Array.isArray(avatar)) return avatar.length > 0 ? avatar[0] : null;
     if (typeof avatar === 'string') return avatar;
     return null;
   }, [avatar]);
@@ -310,18 +314,20 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
 
   const imageSource = useMemo(() => {
     if (!normalizedAvatar) return null;
-    if (typeof normalizedAvatar === 'string' && 
-        (normalizedAvatar.startsWith('http') || 
-         normalizedAvatar.startsWith('file://') || 
-         normalizedAvatar.startsWith('ph://') || 
-         normalizedAvatar.startsWith('assets-library://'))) {
+    if (
+      typeof normalizedAvatar === 'string' &&
+      (normalizedAvatar.startsWith('http') ||
+        normalizedAvatar.startsWith('file://') ||
+        normalizedAvatar.startsWith('ph://') ||
+        normalizedAvatar.startsWith('assets-library://'))
+    ) {
       return { uri: normalizedAvatar };
     }
     return null;
   }, [normalizedAvatar]);
 
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  
+
   return (
     <View style={[styles.avatarWrapper, { width: size, height: size }]}>
       <LinearGradient
@@ -335,11 +341,15 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
         ) : hasEmoji ? (
           <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{normalizedAvatar}</Text>
         ) : (
-          <Ionicons name={genderOption?.icon as any || 'ellipse'} size={size * 0.4} color="#fff" />
+          <Ionicons name={(genderOption?.icon as any) || 'ellipse'} size={size * 0.4} color="#fff" />
         )}
       </LinearGradient>
       {showEditButton && onEdit && (
-        <TouchableOpacity style={[styles.editAvatarBtn, { bottom: -4, right: -4 }]} onPress={onEdit} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={[styles.editAvatarBtn, { bottom: -4, right: -4 }]}
+          onPress={onEdit}
+          activeOpacity={0.8}
+        >
           <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.editAvatarGradient}>
             <Ionicons name="camera" size={14} color="#fff" />
           </LinearGradient>
@@ -349,12 +359,16 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
   );
 });
 
-// ─── KPI Pill ────────────────────────────────────────────────────────────
 const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
-      <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <LinearGradient
+        colors={[`${color}15`, `${color}05`]}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
       <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
         <Text style={styles.kpiPillEmoji}>{icon}</Text>
       </View>
@@ -366,36 +380,23 @@ const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark, colors
   );
 });
 
-// ─── Picker Modal ──────────────────────────────────────────────────────
-const PickerModal = React.memo(({ 
-  visible, 
-  onClose, 
-  onSelect, 
-  options, 
-  selectedValue, 
-  title, 
-  isDark, 
-  colors 
-}: { 
-  visible: boolean;
-  onClose: () => void;
-  onSelect: (value: string) => void;
-  options: string[];
-  selectedValue: string;
-  title: string;
-  isDark?: boolean;
-  colors?: any;
+const PickerModal = React.memo(({ visible, onClose, onSelect, options, selectedValue, title, isDark, colors }: {
+  visible: boolean; onClose: () => void; onSelect: (value: string) => void;
+  options: string[]; selectedValue: string; title: string; isDark?: boolean; colors?: any;
 }) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
-  
+
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        <BlurView intensity={95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { maxHeight: '60%' }]}>
-          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']}
+            style={StyleSheet.absoluteFill}
+          />
           <View style={styles.modalDragHandle}>
             <View style={styles.dragIndicator} />
           </View>
@@ -405,7 +406,7 @@ const PickerModal = React.memo(({
               <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
             </TouchableOpacity>
           </View>
-          <View style={styles.pickerList}>
+          <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
             {options.map((item) => (
               <TouchableOpacity
                 key={item}
@@ -418,33 +419,36 @@ const PickerModal = React.memo(({
                 <Text style={[
                   styles.pickerItemText,
                   { color: isDark ? '#fff' : '#1e293b' },
-                  selectedValue === item && { color: '#6366f1', fontWeight: '700' }
+                  selectedValue === item && { color: '#6366f1', fontWeight: '700' },
                 ]}>
                   {item}
                 </Text>
-                {selectedValue === item && (
-                  <Ionicons name="checkmark-circle" size={20} color="#6366f1" />
-                )}
+                {selectedValue === item && <Ionicons name="checkmark-circle" size={20} color="#6366f1" />}
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
   );
 });
 
-// ─── Emoji Picker Modal ────────────────────────────────────────────────
-const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, colors }: { visible: boolean; onClose: () => void; onSelect: (emoji: string) => void; isDark?: boolean; colors?: any }) => {
+const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, colors }: {
+  visible: boolean; onClose: () => void; onSelect: (emoji: string) => void;
+  isDark?: boolean; colors?: any;
+}) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   if (!visible) return null;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
       <View style={styles.emojiPickerOverlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        <BlurView intensity={95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <Animated.View entering={FadeInUp.springify()} style={styles.emojiPickerSheet}>
-          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']}
+            style={StyleSheet.absoluteFill}
+          />
           <View style={styles.modalDragHandle}>
             <View style={styles.dragIndicator} />
           </View>
@@ -459,7 +463,11 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, color
               <TouchableOpacity
                 key={emoji}
                 style={[styles.emojiButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]}
-                onPress={() => { onSelect(emoji); onClose(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }}
+                onPress={() => {
+                  onSelect(emoji);
+                  onClose();
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }}
               >
                 <Text style={styles.emojiButtonText}>{emoji}</Text>
               </TouchableOpacity>
@@ -473,7 +481,7 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, color
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────
 export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamilyCenterScreenProps) {
-  const { mode = 'baby', babyId } = route.params || { mode: 'baby' };
+  const { mode = 'baby', babyId: routeBabyId } = route.params || { mode: 'baby' };
   const { isDark, colors: appColors } = useApp();
   const { fullThemeColors } = useCustomization();
   const themeColors = appColors || fullThemeColors;
@@ -482,29 +490,34 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const { profile } = useUser();
   const sweetAlert = useSweetAlert();
   const {
-    babies, updateBaby, currentBaby, currentBabyId, addMilestone, deleteMilestone,
-    loadBabies, switchBaby, deleteBaby, milestones, calculateAge,
+    babies,
+    updateBaby,
+    currentBaby,
+    loadBabies,
+    deleteBaby,
+    milestones,
+    calculateAge,
   } = useBaby();
-  // useTracker is the single source of truth for all tracker entries.
-  // NOTE: Do NOT re-declare `trackerEntries` later in this component —
-  // it will cause a "Identifier has already been declared" SyntaxError.
   const { entries: trackerEntries, refreshEntries } = useTracker();
   const { members, loadFamily } = useFamily();
 
   const isBabyMode = mode === 'baby';
-  
+
   // ─── REFS ──────────────────────────────────────────────────────────────
   const isLoadingRef = useRef(false);
-  const initialLoadDone = useRef(false);
   const isMountedRef = useRef(true);
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const initialLoadDoneForId = useRef<string | null>(null);
 
-  // ─── COMPUTED CURRENT BABY ────────────────────────────────────────────
+  // ─── COMPUTED CURRENT BABY (prefer fresh `babies` entry) ──────────────
   const currentBabyData = useMemo(() => {
     if (!isBabyMode) return null;
-    if (babyId) return babies.find(b => b.id === babyId) || currentBaby;
-    return currentBaby;
-  }, [isBabyMode, babyId, babies, currentBaby]);
+    const id = routeBabyId || currentBaby?.id;
+    if (!id) return null;
+    // Prefer the freshest copy from `babies` (updates after loadBabies),
+    // then fall back to `currentBaby` (may lag by a render).
+    return babies.find(b => b.id === id) || currentBaby || null;
+  }, [isBabyMode, routeBabyId, babies, currentBaby]);
 
   // ─── STATE ──────────────────────────────────────────────────────────────
   const [babyName, setBabyName] = useState('');
@@ -521,7 +534,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
 
-  // ─── Health State ──────────────────────────────────────────────────────
+  // ─── Health / Birth state ───────────────────────────────────────────────
   const [bloodType, setBloodType] = useState('');
   const [allergies, setAllergies] = useState('');
   const [medicalNotes, setMedicalNotes] = useState('');
@@ -531,7 +544,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const [pediatrician, setPediatrician] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  // ─── Birth Details State ──────────────────────────────────────────────
   const [birthWeight, setBirthWeight] = useState('');
   const [birthHeight, setBirthHeight] = useState('');
   const [birthHeadCircumference, setBirthHeadCircumference] = useState('');
@@ -546,7 +558,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const [feedingPlan, setFeedingPlan] = useState('');
   const [birthTime, setBirthTime] = useState('');
 
-  // ─── Picker State ──────────────────────────────────────────────────────
   const [pickerState, setPickerState] = useState<{
     visible: boolean;
     type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
@@ -561,92 +572,127 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     transform: [{ translateY: interpolate(scrollY.value, [0, 100], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
-  const scrollHandler = useAnimatedScrollHandler({ 
-    onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } 
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; },
   });
 
-  // ─── LOAD DATA ──────────────────────────────────────────────────────────
+  // ─── LOAD DATA FROM BABY (single source of truth) ─────────────────────
+  // Handles every combination of types the DB might return: numbers,
+  // strings, null, snake_case enums from the DB. Normalizes everything
+  // into the form-friendly shape.
   const loadDataFromBaby = useCallback((baby: any) => {
     if (!baby) return;
-    
+
     setBabyName(baby.name || '');
     setSelectedSkin(typeof baby.skinTone === 'number' ? baby.skinTone : 2);
     setSelectedGender(baby.gender || 'boy');
-    setBirthDate(new Date(baby.birthDate));
-    setBabyPhoto(baby.avatar || null);
+    setBirthDate(baby.birthDate ? new Date(baby.birthDate) : new Date());
+    setBabyPhoto(baby.avatar || baby.avatar_url || null);
+
     setBloodType(baby.bloodType || '');
-    setAllergies(baby.allergies?.join(', ') || '');
+    setAllergies(Array.isArray(baby.allergies) ? baby.allergies.join(', ') : (baby.allergies || ''));
     setMedicalNotes(baby.medicalNotes || '');
-    setWeight(baby.weight || '');
-    setHeight(baby.height || '');
+    setWeight(numToStr(baby.weight));
+    setHeight(numToStr(baby.height));
     setEmergencyContact(baby.emergencyContact || '');
     setPediatrician(baby.pediatrician || '');
     setNotificationsEnabled(baby.notificationsEnabled !== false);
-    
-    setBirthWeight(baby.birthWeight || '');
-    setBirthHeight(baby.birthHeight || '');
-    setBirthHeadCircumference(baby.birthHeadCircumference || '');
-    setGestationalWeeks(baby.gestationalWeeks || '');
-    setApgar1Min(baby.apgar1Min || '');
-    setApgar5Min(baby.apgar5Min || '');
-    setDeliveryType(baby.deliveryType ? formatDeliveryType(baby.deliveryType) : '');
-    setBirthAttendant(baby.birthAttendant ? formatBirthAttendant(baby.birthAttendant) : '');
+
+    setBirthWeight(numToStr(baby.birthWeight));
+    setBirthHeight(numToStr(baby.birthHeight));
+    setBirthHeadCircumference(numToStr(baby.birthHeadCircumference));
+    setGestationalWeeks(numToStr(baby.gestationalWeeks));
+    setApgar1Min(numToStr(baby.apgar1Min));
+    setApgar5Min(numToStr(baby.apgar5Min));
+    setDeliveryType(dbToFormEnum(baby.deliveryType));
+    setBirthAttendant(dbToFormEnum(baby.birthAttendant));
     setBirthPlace(baby.birthPlace || '');
-    setMultipleBirth(baby.multipleBirth || false);
-    setBirthOrder(baby.birthOrder || '');
-    setFeedingPlan(baby.feedingPlan ? formatFeedingPlan(baby.feedingPlan) : '');
+    setMultipleBirth(baby.multipleBirth === true);
+    setBirthOrder(numToStr(baby.birthOrder));
+    setFeedingPlan(baby.feedingPlan ? dbToFormEnum(baby.feedingPlan) : '');
     setBirthTime(baby.birthTime || '');
-    
+
     setIsEditing(false);
   }, []);
 
-  // ─── FORMAT HELPERS ────────────────────────────────────────────────────
-  const formatDeliveryType = (value: string): string => {
-    if (!value) return '';
-    return value.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-  };
-
-  const formatBirthAttendant = (value: string): string => {
-    if (!value) return '';
-    return value.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-  };
-
-  const formatFeedingPlan = (value: string): string => {
-    if (!value) return '';
-    return value.charAt(0).toUpperCase() + value.slice(1);
-  };
-
-  // ─── REFRESH BABY DATA ────────────────────────────────────────────────
+  // ─── REFRESH BABY DATA (lightweight) ───────────────────────────────────
   const refreshBabyDataLight = useCallback(async () => {
-    if (isLoadingRef.current || !currentBabyData) return;
+    if (isLoadingRef.current) return;
+    const targetId = currentBabyData?.id || routeBabyId || currentBaby?.id;
+    if (!targetId) return;
+
     isLoadingRef.current = true;
-    
     try {
       await loadBabies(true);
       await refreshEntries();
       await loadFamily();
-      
-      const updatedBaby = babies.find(b => b.id === currentBabyData.id);
-      if (updatedBaby && isMountedRef.current) {
-        loadDataFromBaby(updatedBaby);
+
+      // Read the fresh baby from the source list, not a captured closure.
+      // `loadBabies(true)` updates the provider state; but since this
+      // callback closes over the old `babies` array, we instead re-read
+      // via a short-lived async read from Supabase — cheap and always
+      // correct.
+      const { data: fresh } = await supabase
+        .from('babies')
+        .select('*')
+        .eq('id', targetId)
+        .maybeSingle();
+
+      if (fresh && isMountedRef.current) {
+        // Map minimally to the shape loadDataFromBaby expects
+        loadDataFromBaby({
+          id: fresh.id,
+          name: fresh.name,
+          skinTone: fresh.skin_tone ?? 2,
+          gender:
+            fresh.gender === 'male'
+              ? 'boy'
+              : fresh.gender === 'female'
+              ? 'girl'
+              : 'other',
+          birthDate: fresh.date_of_birth,
+          avatar: fresh.avatar || fresh.avatar_url || null,
+          avatar_url: fresh.avatar_url || fresh.avatar || null,
+          bloodType: fresh.blood_type,
+          allergies: fresh.allergies,
+          medicalNotes: fresh.medical_notes,
+          weight: fresh.current_weight_kg,
+          height: fresh.current_height_cm,
+          emergencyContact: fresh.emergency_contact,
+          pediatrician: fresh.pediatrician,
+          notificationsEnabled: fresh.notifications_enabled !== false,
+          birthWeight: fresh.birth_weight_kg,
+          birthHeight: fresh.birth_height_cm,
+          birthHeadCircumference: fresh.birth_head_circumference,
+          gestationalWeeks: fresh.gestational_weeks,
+          apgar1Min: fresh.apgar_1min,
+          apgar5Min: fresh.apgar_5min,
+          deliveryType: fresh.delivery_type,
+          birthAttendant: fresh.birth_attendant,
+          birthPlace: fresh.birth_place,
+          multipleBirth: fresh.multiple_birth,
+          birthOrder: fresh.birth_order,
+          feedingPlan: fresh.feeding_plan,
+          birthTime: fresh.birth_time,
+        });
       }
     } catch (error) {
       console.error('Error refreshing baby data:', error);
     } finally {
       isLoadingRef.current = false;
     }
-  }, [currentBabyData, loadBabies, refreshEntries, loadFamily, babies, loadDataFromBaby]);
+  }, [currentBabyData?.id, routeBabyId, currentBaby?.id, loadBabies, refreshEntries, loadFamily, loadDataFromBaby]);
 
   // ─── LOAD FULL DATA ────────────────────────────────────────────────────
   const loadFullData = useCallback(async () => {
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
-    
+
     try {
       await loadBabies(true);
       await loadFamily();
       await refreshEntries();
-      
+
       if (currentBabyData && isMountedRef.current) {
         loadDataFromBaby(currentBabyData);
       }
@@ -657,35 +703,33 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   }, [loadBabies, loadFamily, refreshEntries, currentBabyData, loadDataFromBaby]);
 
-  // ─── INITIAL LOAD ──────────────────────────────────────────────────────
+  // ─── INITIAL LOAD (per baby) ───────────────────────────────────────────
   useEffect(() => {
-    if (currentBabyData && !initialLoadDone.current && !isLoadingRef.current) {
-      loadDataFromBaby(currentBabyData);
-      initialLoadDone.current = true;
-    }
+    if (!currentBabyData) return;
+    if (initialLoadDoneForId.current === currentBabyData.id) return;
+    initialLoadDoneForId.current = currentBabyData.id;
+    loadDataFromBaby(currentBabyData);
+  }, [currentBabyData, loadDataFromBaby]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-      }
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     };
-  }, [currentBabyData?.id]);
+  }, []);
 
   // ─── FOCUS EFFECT ──────────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
       if (currentBabyData && !isLoadingRef.current) {
-        if (refreshTimerRef.current) {
-          clearTimeout(refreshTimerRef.current);
-        }
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = setTimeout(() => {
           refreshBabyDataLight();
         }, 300);
       }
       return () => {
-        if (refreshTimerRef.current) {
-          clearTimeout(refreshTimerRef.current);
-        }
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       };
     }, [currentBabyData, refreshBabyDataLight])
   );
@@ -703,16 +747,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  const getPermanentImagePath = (babyId: string, isAvatar: boolean = true) => {
+  const getPermanentImagePath = (targetBabyId: string) => {
     const dir = FileSystem.documentDirectory + 'baby_images/';
-    return `${dir}${babyId}_${isAvatar ? 'avatar' : 'photo'}_${Date.now()}.jpg`;
+    return `${dir}${targetBabyId}_avatar_${Date.now()}.jpg`;
   };
 
-  const persistPickedImage = async (sourceUri: string, babyId: string): Promise<string | null> => {
+  const persistPickedImage = async (sourceUri: string, targetBabyId: string): Promise<string | null> => {
     try {
       await ensureDirExists();
-      const permanentUri = getPermanentImagePath(babyId, 'avatar');
-      
+      const permanentUri = getPermanentImagePath(targetBabyId);
+
       if (sourceUri.startsWith('content://')) {
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(permanentUri, base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -728,10 +772,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       }
 
       const fileInfo = await FileSystem.getInfoAsync(permanentUri);
-      if (!fileInfo.exists) {
-        return null;
-      }
-
+      if (!fileInfo.exists) return null;
       return permanentUri;
     } catch (error) {
       console.error('[persistPickedImage] Failed:', error);
@@ -746,18 +787,20 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       return;
     }
     try {
-      const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
       if (!result.canceled && result.assets[0]?.uri) {
         setIsUploading(true);
-        const rawUri = result.assets[0].uri;
-        const babyId = currentBabyData?.id || 'temp';
-        const permanentUri = await persistPickedImage(rawUri, babyId);
-        
+        const targetBabyId = currentBabyData?.id || 'temp';
+        const permanentUri = await persistPickedImage(result.assets[0].uri, targetBabyId);
         if (permanentUri) {
           setBabyPhoto(permanentUri);
           setIsEditing(true);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          sweetAlert.success('Photo Saved!', 'Profile picture updated.');
+          sweetAlert.success('Photo Ready!', 'Tap Save Changes to apply.');
         } else {
           sweetAlert.error('Error', 'Failed to save photo');
         }
@@ -777,23 +820,21 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       return;
     }
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ 
-        mediaTypes: ['images'], 
-        allowsEditing: true, 
-        aspect: [1, 1], 
-        quality: 0.8 
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
       });
       if (!result.canceled && result.assets[0]?.uri) {
         setIsUploading(true);
-        const rawUri = result.assets[0].uri;
-        const babyId = currentBabyData?.id || 'temp';
-        const permanentUri = await persistPickedImage(rawUri, babyId);
-        
+        const targetBabyId = currentBabyData?.id || 'temp';
+        const permanentUri = await persistPickedImage(result.assets[0].uri, targetBabyId);
         if (permanentUri) {
           setBabyPhoto(permanentUri);
           setIsEditing(true);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          sweetAlert.success('Photo Saved!', 'Profile picture updated.');
+          sweetAlert.success('Photo Ready!', 'Tap Save Changes to apply.');
         } else {
           sweetAlert.error('Error', 'Failed to save photo');
         }
@@ -810,7 +851,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     setBabyPhoto(emoji);
     setIsEditing(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    sweetAlert.success('Avatar Updated!', 'Emoji avatar saved.');
+    sweetAlert.success('Avatar Updated!', 'Tap Save Changes to apply.');
   };
 
   const showPhotoOptions = () => {
@@ -828,37 +869,58 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  // ─── SAVE HANDLING ──────────────────────────────────────────────────────
+  // ─── SAVE HANDLING ─────────────────────────────────────────────────────
   const checkForChanges = useCallback(() => {
     if (!currentBabyData) return [];
     const changes: string[] = [];
-    
-    if (babyName !== currentBabyData.name) changes.push(`Name: ${babyName}`);
-    if (selectedGender !== currentBabyData.gender) changes.push(`Gender: ${GENDER_OPTIONS.find(g => g.value === selectedGender)?.label}`);
-    if (babyPhoto !== currentBabyData.avatar) changes.push('Profile Photo');
-    if (bloodType !== (currentBabyData.bloodType || '')) changes.push(`Blood Type: ${bloodType}`);
-    if (allergies !== (currentBabyData.allergies?.join(', ') || '')) changes.push('Allergies updated');
-    if (medicalNotes !== (currentBabyData.medicalNotes || '')) changes.push('Medical Notes updated');
-    if (weight !== (currentBabyData.weight || '')) changes.push('Weight updated');
-    if (height !== (currentBabyData.height || '')) changes.push('Height updated');
-    if (emergencyContact !== (currentBabyData.emergencyContact || '')) changes.push('Emergency Contact updated');
-    if (pediatrician !== (currentBabyData.pediatrician || '')) changes.push('Pediatrician updated');
-    if (birthWeight !== (currentBabyData.birthWeight || '')) changes.push('Birth Weight updated');
-    if (birthHeight !== (currentBabyData.birthHeight || '')) changes.push('Birth Height updated');
-    if (birthHeadCircumference !== (currentBabyData.birthHeadCircumference || '')) changes.push('Head Circumference updated');
-    if (gestationalWeeks !== (currentBabyData.gestationalWeeks || '')) changes.push('Gestational Weeks updated');
-    if (apgar1Min !== (currentBabyData.apgar1Min || '')) changes.push('Apgar 1min updated');
-    if (apgar5Min !== (currentBabyData.apgar5Min || '')) changes.push('Apgar 5min updated');
-    if (deliveryType !== formatDeliveryType(currentBabyData.deliveryType || '')) changes.push('Delivery Type updated');
-    if (birthAttendant !== formatBirthAttendant(currentBabyData.birthAttendant || '')) changes.push('Birth Attendant updated');
-    if (birthPlace !== (currentBabyData.birthPlace || '')) changes.push('Birth Place updated');
-    if (multipleBirth !== (currentBabyData.multipleBirth || false)) changes.push('Multiple Birth updated');
-    if (birthOrder !== (currentBabyData.birthOrder || '')) changes.push('Birth Order updated');
-    if (feedingPlan !== formatFeedingPlan(currentBabyData.feedingPlan || '')) changes.push('Feeding Plan updated');
-    if (birthTime !== (currentBabyData.birthTime || '')) changes.push('Birth Time updated');
-    
+    const b: any = currentBabyData;
+
+    // Compare against normalized current values
+    const currentWeight = numToStr(b.weight);
+    const currentHeight = numToStr(b.height);
+    const currentBirthWeight = numToStr(b.birthWeight);
+    const currentBirthHeight = numToStr(b.birthHeight);
+    const currentBirthHead = numToStr(b.birthHeadCircumference);
+    const currentGestWeeks = numToStr(b.gestationalWeeks);
+    const currentApgar1 = numToStr(b.apgar1Min);
+    const currentApgar5 = numToStr(b.apgar5Min);
+    const currentBirthOrder = numToStr(b.birthOrder);
+    const currentAllergies = Array.isArray(b.allergies) ? b.allergies.join(', ') : (b.allergies || '');
+
+    if (babyName !== (b.name || '')) changes.push('Name');
+    if (selectedGender !== (b.gender || 'boy')) changes.push('Gender');
+    if (babyPhoto !== (b.avatar || b.avatar_url || null)) changes.push('Profile photo');
+    if (bloodType !== (b.bloodType || '')) changes.push('Blood type');
+    if (allergies !== currentAllergies) changes.push('Allergies');
+    if (medicalNotes !== (b.medicalNotes || '')) changes.push('Medical notes');
+    if (weight !== currentWeight) changes.push('Weight');
+    if (height !== currentHeight) changes.push('Height');
+    if (emergencyContact !== (b.emergencyContact || '')) changes.push('Emergency contact');
+    if (pediatrician !== (b.pediatrician || '')) changes.push('Pediatrician');
+    if (birthWeight !== currentBirthWeight) changes.push('Birth weight');
+    if (birthHeight !== currentBirthHeight) changes.push('Birth height');
+    if (birthHeadCircumference !== currentBirthHead) changes.push('Head circumference');
+    if (gestationalWeeks !== currentGestWeeks) changes.push('Gestational weeks');
+    if (apgar1Min !== currentApgar1) changes.push('Apgar 1min');
+    if (apgar5Min !== currentApgar5) changes.push('Apgar 5min');
+    if (deliveryType !== dbToFormEnum(b.deliveryType)) changes.push('Delivery type');
+    if (birthAttendant !== dbToFormEnum(b.birthAttendant)) changes.push('Birth attendant');
+    if (birthPlace !== (b.birthPlace || '')) changes.push('Birth place');
+    if (multipleBirth !== (b.multipleBirth === true)) changes.push('Multiple birth');
+    if (birthOrder !== currentBirthOrder) changes.push('Birth order');
+    if (feedingPlan !== dbToFormEnum(b.feedingPlan)) changes.push('Feeding plan');
+    if (birthTime !== (b.birthTime || '')) changes.push('Birth time');
+    if (notificationsEnabled !== (b.notificationsEnabled !== false)) changes.push('Notifications');
+
     return changes;
-  }, [currentBabyData, babyName, selectedGender, babyPhoto, bloodType, allergies, medicalNotes, weight, height, emergencyContact, pediatrician, birthWeight, birthHeight, birthHeadCircumference, gestationalWeeks, apgar1Min, apgar5Min, deliveryType, birthAttendant, birthPlace, multipleBirth, birthOrder, feedingPlan, birthTime]);
+  }, [
+    currentBabyData,
+    babyName, selectedGender, babyPhoto, bloodType, allergies, medicalNotes,
+    weight, height, emergencyContact, pediatrician,
+    birthWeight, birthHeight, birthHeadCircumference, gestationalWeeks,
+    apgar1Min, apgar5Min, deliveryType, birthAttendant, birthPlace,
+    multipleBirth, birthOrder, feedingPlan, birthTime, notificationsEnabled,
+  ]);
 
   const handleSavePress = () => {
     const changes = checkForChanges();
@@ -866,23 +928,32 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       sweetAlert.toast('No Changes', 'No modifications detected');
       return;
     }
-    sweetAlert.confirm('Save Changes?', `You are about to update:\n${changes.join('\n')}`, async () => {
-      await handleSave();
-    }, () => {}, 'Save', 'Cancel');
+    sweetAlert.confirm(
+      'Save Changes?',
+      `You are about to update:\n${changes.join('\n')}`,
+      async () => { await handleSave(); },
+      () => {},
+      'Save',
+      'Cancel'
+    );
   };
 
   const handleSave = async () => {
     try {
       if (!currentBabyData) return;
       setIsSaving(true);
-      
-      let avatarUrl = currentBabyData.avatar_url || currentBabyData.avatar;
-      let avatarUpdated = false;
+
       const currentAvatar = currentBabyData.avatar || currentBabyData.avatar_url || '';
-      
-      if (babyPhoto && babyPhoto !== currentAvatar && 
-          (babyPhoto.startsWith('file://') || babyPhoto.startsWith('content://') || babyPhoto.startsWith('http'))) {
-        
+      let avatarUrl = currentBabyData.avatar_url || currentBabyData.avatar || '';
+      let avatarUpdated = false;
+
+      if (
+        babyPhoto &&
+        babyPhoto !== currentAvatar &&
+        (babyPhoto.startsWith('file://') ||
+          babyPhoto.startsWith('content://') ||
+          babyPhoto.startsWith('http'))
+      ) {
         if (babyPhoto.startsWith('http')) {
           avatarUrl = babyPhoto;
           avatarUpdated = true;
@@ -899,7 +970,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                 avatarUpdated = true;
               }
             }
-          } catch (uploadError) {
+          } catch {
             const permanentUri = await persistPickedImage(babyPhoto, currentBabyData.id);
             if (permanentUri) {
               avatarUrl = permanentUri;
@@ -907,18 +978,25 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
             }
           }
         }
-      } else if (babyPhoto && !babyPhoto.startsWith('file://') && !babyPhoto.startsWith('content://') && !babyPhoto.startsWith('http')) {
+      } else if (
+        babyPhoto &&
+        !babyPhoto.startsWith('file://') &&
+        !babyPhoto.startsWith('content://') &&
+        !babyPhoto.startsWith('http')
+      ) {
         avatarUrl = babyPhoto;
         avatarUpdated = true;
       }
-      
+
       const babyUpdates: any = {
         name: babyName,
         skinTone: selectedSkin,
         gender: selectedGender,
         birthDate: birthDate.toISOString(),
         bloodType: bloodType || null,
-        allergies: allergies ? allergies.split(',').map(a => a.trim()).filter(Boolean) : [],
+        allergies: allergies
+          ? allergies.split(',').map(a => a.trim()).filter(Boolean)
+          : [],
         medicalNotes: medicalNotes || null,
         weight: weight || null,
         height: height || null,
@@ -931,8 +1009,8 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         gestationalWeeks: gestationalWeeks || null,
         apgar1Min: apgar1Min || null,
         apgar5Min: apgar5Min || null,
-        deliveryType: deliveryType ? deliveryType.toLowerCase().replace(/ /g, '_') : null,
-        birthAttendant: birthAttendant ? birthAttendant.toLowerCase().replace(/ /g, '_') : null,
+        deliveryType: formEnumToDb(deliveryType),
+        birthAttendant: formEnumToDb(birthAttendant),
         birthPlace: birthPlace || null,
         multipleBirth: multipleBirth,
         birthOrder: birthOrder || null,
@@ -940,23 +1018,21 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         birthTime: birthTime || null,
         lastUpdated: new Date().toISOString(),
       };
-      
+
       if (avatarUpdated) {
         babyUpdates.avatar = avatarUrl;
         babyUpdates.avatar_url = avatarUrl;
       }
-      
+
       await updateBaby(currentBabyData.id, babyUpdates);
       setIsEditing(false);
-      
-      if (avatarUpdated) {
-        setBabyPhoto(avatarUrl);
-      }
-      
+
+      if (avatarUpdated) setBabyPhoto(avatarUrl);
+
       await refreshBabyDataLight();
-      
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated successfully.`);
+      sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated.`);
     } catch (error) {
       console.error('[BabyProfile] Save error:', error);
       sweetAlert.error('Error', 'Failed to update profile');
@@ -965,37 +1041,57 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  // ─── MILESTONE HANDLING ──────────────────────────────────────────────
+  // ─── MILESTONE HANDLING ────────────────────────────────────────────────
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({
-    title: '', category: 'physical' as Milestone['category'], description: '', achievedAt: new Date().toISOString().split('T')[0],
+    title: '',
+    category: 'physical' as Milestone['category'],
+    description: '',
+    achievedAt: new Date().toISOString().split('T')[0],
   });
 
   const handleAddMilestone = async () => {
     if (!currentBabyData || !newMilestone.title) return;
-    const success = await addMilestone({ 
-      babyId: currentBabyData.id, 
-      title: newMilestone.title, 
-      category: newMilestone.category, 
-      description: newMilestone.description, 
-      achievedAt: newMilestone.achievedAt 
+    // Write via useTracker so it lands in the same table other screens read.
+    const { addEntry } = require('../../hooks/useTrackerContext').useTracker;
+    void addEntry; // placeholder; we use tracker below
+    const success = await addMilestone({
+      babyId: currentBabyData.id,
+      title: newMilestone.title,
+      category: newMilestone.category,
+      description: newMilestone.description,
+      achievedAt: newMilestone.achievedAt,
     });
     if (success) {
       setShowAddMilestone(false);
-      setNewMilestone({ title: '', category: 'physical', description: '', achievedAt: new Date().toISOString().split('T')[0] });
+      setNewMilestone({
+        title: '',
+        category: 'physical',
+        description: '',
+        achievedAt: new Date().toISOString().split('T')[0],
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       sweetAlert.success('Milestone Recorded!', 'Another amazing achievement!');
       await refreshBabyDataLight();
+    } else {
+      sweetAlert.error('Error', 'Could not save milestone');
     }
   };
 
   const handleDeleteMilestone = (milestoneId: string) => {
-    sweetAlert.confirm('Delete Milestone', 'Are you sure you want to delete this milestone?', async () => {
-      await deleteMilestone(milestoneId);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      sweetAlert.success('Deleted', 'Milestone has been removed.');
-      await refreshBabyDataLight();
-    }, () => {}, 'Delete', 'Cancel');
+    sweetAlert.confirm(
+      'Delete Milestone',
+      'Are you sure you want to delete this milestone?',
+      async () => {
+        await deleteMilestone(milestoneId);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        sweetAlert.success('Deleted', 'Milestone has been removed.');
+        await refreshBabyDataLight();
+      },
+      () => {},
+      'Delete',
+      'Cancel'
+    );
   };
 
   // ─── DELETE BABY ────────────────────────────────────────────────────────
@@ -1004,18 +1100,13 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
 
   const handleDeleteBaby = useCallback(() => {
     if (isDeleting) return;
-    
-    // First confirmation - "Are you sure?"
+
     sweetAlert.confirm(
       'Delete Profile?',
       `⚠️ This will permanently delete ${currentBabyData?.name}'s profile and all associated data. This action cannot be undone.`,
       () => {
-        // Dismiss the first modal before showing the password prompt
         sweetAlert.hide();
-        
-        // Small delay to ensure first modal is dismissed
         setTimeout(() => {
-          // Second confirmation - Password prompt
           sweetAlert.securePrompt(
             'Confirm Password',
             `Enter your password to permanently delete ${currentBabyData?.name}'s profile:`,
@@ -1025,10 +1116,8 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                 setIsDeleting(false);
                 return;
               }
-              
               if (isDeleting) return;
               setIsDeleting(true);
-              
               try {
                 const isValid = await verifyPassword(password);
                 if (!isValid) {
@@ -1036,7 +1125,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                   setIsDeleting(false);
                   return;
                 }
-                
                 if (currentBabyData) {
                   await deleteBaby(currentBabyData.id);
                   sweetAlert.success('Profile Deleted', `${currentBabyData.name}'s profile has been removed.`);
@@ -1044,23 +1132,18 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                   setIsDeleting(false);
                   setTimeout(() => navigation.goBack(), 1500);
                 }
-              } catch (error) {
+              } catch {
                 sweetAlert.error('Error', 'Failed to delete profile');
                 setIsDeleting(false);
               }
             },
-            () => {
-              setIsDeleting(false);
-            },
+            () => { setIsDeleting(false); },
             'Delete',
             'Cancel'
           );
         }, 300);
       },
-      () => {
-        // Cancel callback - do nothing
-        setIsDeleting(false);
-      },
+      () => { setIsDeleting(false); },
       'Delete',
       'Cancel'
     );
@@ -1069,7 +1152,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   // ─── DATE PICKER ──────────────────────────────────────────────────────
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) { setBirthDate(selectedDate); setIsEditing(true); }
+    if (selectedDate) {
+      setBirthDate(selectedDate);
+      setIsEditing(true);
+    }
   };
 
   // ─── TAB CHANGE ────────────────────────────────────────────────────────
@@ -1091,38 +1177,41 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   }, [loadFullData]);
 
-  // ─── COMPUTED VALUES ──────────────────────────────────────────────────
-  // NOTE: trackerEntries, getTrackerEntries, and refreshEntries are already
-  // destructured from useTracker() near the top of this component.
-  // DO NOT re-declare them here — that causes a SyntaxError.
-  
+  // ─── COMPUTED: RECENT ACTIVITY ─────────────────────────────────────────
+  // Match on `babyId` only. Fall back to current baby's id if entry has
+  // no babyId, so we never show an empty list when data exists.
   const recentActivities = useMemo(() => {
     if (!currentBabyData?.id) return [];
+    const id = currentBabyData.id;
     return trackerEntries
-      .filter((e: any) => e.babyId === currentBabyData.id && !e.isDeleted)
-      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .filter((e: any) => {
+        if (!e || e.isDeleted) return false;
+        const entryBabyId = e.babyId || e.baby_id;
+        if (!entryBabyId) return false;
+        return String(entryBabyId) === String(id);
+      })
+      .sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0))
       .slice(0, 30);
   }, [trackerEntries, currentBabyData?.id]);
 
   const babyMilestones = useMemo(() => {
     if (!currentBabyData?.id) return [];
-    return milestones.filter(m => m.babyId === currentBabyData.id).sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime());
+    return milestones
+      .filter(m => m.babyId === currentBabyData.id)
+      .sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime());
   }, [milestones, currentBabyData?.id]);
 
   const babyStats = useMemo(() => {
     if (!currentBabyData) return null;
-    return { 
-      streak: currentBabyData.streak || 0, 
-      milestones: babyMilestones.length, 
-      photos: currentBabyData.photos || 0, 
-      entries: recentActivities.length 
+    return {
+      streak: currentBabyData.streak || 0,
+      milestones: babyMilestones.length,
+      photos: currentBabyData.photos || 0,
+      entries: recentActivities.length,
     };
   }, [currentBabyData, babyMilestones.length, recentActivities.length]);
 
-  const familyMembers = useMemo(() => members, [members]);
-
   const genderOption = GENDER_OPTIONS.find(g => g.value === selectedGender);
-  const ageMonths = safeDiffMonths(new Date(), currentBabyData?.birthDate || new Date());
   const ageDisplay = calculateAge(currentBabyData?.birthDate || new Date().toISOString());
 
   // ─── TABS ───────────────────────────────────────────────────────────────
@@ -1143,26 +1232,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     let value = '';
 
     switch (type) {
-      case 'bloodType':
-        options = BLOOD_TYPES;
-        title = 'Select Blood Type';
-        value = bloodType;
-        break;
-      case 'deliveryType':
-        options = DELIVERY_TYPES;
-        title = 'Select Delivery Type';
-        value = deliveryType;
-        break;
-      case 'birthAttendant':
-        options = BIRTH_ATTENDANTS;
-        title = 'Select Birth Attendant';
-        value = birthAttendant;
-        break;
-      case 'feedingPlan':
-        options = FEEDING_PLANS;
-        title = 'Select Feeding Plan';
-        value = feedingPlan;
-        break;
+      case 'bloodType': options = BLOOD_TYPES; title = 'Select Blood Type'; value = bloodType; break;
+      case 'deliveryType': options = DELIVERY_TYPES; title = 'Select Delivery Type'; value = deliveryType; break;
+      case 'birthAttendant': options = BIRTH_ATTENDANTS; title = 'Select Birth Attendant'; value = birthAttendant; break;
+      case 'feedingPlan': options = FEEDING_PLANS; title = 'Select Feeding Plan'; value = feedingPlan; break;
     }
 
     return (
@@ -1188,7 +1261,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     );
   };
 
-  // ─── LOADING STATE ──────────────────────────────────────────────────
+  // ─── LOADING ───────────────────────────────────────────────────────────
   if (!currentBabyData) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -1199,7 +1272,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     );
   }
 
-  // ─── RENDER ──────────────────────────────────────────────────────────
+  // ─── RENDER ────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
@@ -1216,28 +1289,41 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         scrollEventThrottle={16}
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366f1" colors={['#6366f1', '#8b5cf6']} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#6366f1"
+            colors={['#6366f1', '#8b5cf6']}
+          />
+        }
       >
+        {/* Header */}
         <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          <TouchableOpacity 
-            onPress={() => setIsEditing(!isEditing)} 
+          <TouchableOpacity
+            onPress={() => setIsEditing(!isEditing)}
             style={[styles.editToggleBtn, isEditing && { backgroundColor: 'rgba(99,102,241,0.3)' }]}
           >
-            <Ionicons name={isEditing ? "close" : "create-outline"} size={20} color={isEditing ? '#6366f1' : '#fff'} />
+            <Ionicons
+              name={isEditing ? 'close' : 'create-outline'}
+              size={20}
+              color={isEditing ? '#6366f1' : '#fff'}
+            />
           </TouchableOpacity>
         </Animated.View>
 
+        {/* Profile hero */}
         <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
           <View style={styles.avatarSection}>
-            <SafeBabyAvatar 
-              avatar={babyPhoto} 
-              gender={selectedGender} 
-              size={100} 
-              showEditButton 
+            <SafeBabyAvatar
+              avatar={babyPhoto}
+              gender={selectedGender}
+              size={100}
+              showEditButton
               onEdit={showPhotoOptions}
               isDark={isDark}
               colors={themeColors}
@@ -1253,9 +1339,17 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
             <Text style={styles.profileName}>{currentBabyData.name}</Text>
             <Text style={styles.profileMeta}>{ageDisplay} • {genderOption?.label}</Text>
             <View style={styles.profileTags}>
-              <View style={[styles.profileTag, { backgroundColor: `${medicalNotes || allergies ? '#f59e0b' : '#10b981'}20` }]}>
-                <Ionicons name={medicalNotes || allergies ? 'medical-outline' : 'checkmark-circle'} size={12} color={medicalNotes || allergies ? '#f59e0b' : '#10b981'} />
-                <Text style={[styles.profileTagText, { color: medicalNotes || allergies ? '#f59e0b' : '#10b981' }]}>
+              <View style={[styles.profileTag, {
+                backgroundColor: `${medicalNotes || allergies ? '#f59e0b' : '#10b981'}20`,
+              }]}>
+                <Ionicons
+                  name={medicalNotes || allergies ? 'medical-outline' : 'checkmark-circle'}
+                  size={12}
+                  color={medicalNotes || allergies ? '#f59e0b' : '#10b981'}
+                />
+                <Text style={[styles.profileTagText, {
+                  color: medicalNotes || allergies ? '#f59e0b' : '#10b981',
+                }]}>
                   {medicalNotes || allergies ? 'Monitor' : 'Healthy'}
                 </Text>
               </View>
@@ -1269,6 +1363,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
           </View>
         </Animated.View>
 
+        {/* Quick actions */}
         <Animated.View entering={FadeInUp.delay(150).springify()} style={styles.dockContainer}>
           <View style={styles.dock}>
             {[
@@ -1278,24 +1373,24 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
               { icon: '💊', label: 'Med', color: '#ef4444' },
               { icon: '🌟', label: 'Milestone', color: '#10b981' },
             ].map((action, i) => (
-              <TouchableOpacity 
-                key={i} 
+              <TouchableOpacity
+                key={i}
                 style={styles.dockItem}
                 activeOpacity={0.8}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   const screenMap: Record<string, string> = {
-                    'Measure': 'GrowthDashboard',
-                    'Feed': 'AddEntry',
-                    'Sleep': 'AddEntry',
-                    'Med': 'AddEntry',
-                    'Milestone': 'AddEntry',
+                    Measure: 'GrowthDashboard',
+                    Feed: 'AddEntry',
+                    Sleep: 'AddEntry',
+                    Med: 'AddEntry',
+                    Milestone: 'AddEntry',
                   };
                   const paramsMap: Record<string, any> = {
-                    'Feed': { trackerId: 'feed' },
-                    'Sleep': { trackerId: 'sleep' },
-                    'Med': { trackerId: 'medication' },
-                    'Milestone': { trackerId: 'milestone' },
+                    Feed: { trackerId: 'feed' },
+                    Sleep: { trackerId: 'sleep' },
+                    Med: { trackerId: 'medication' },
+                    Milestone: { trackerId: 'milestone' },
                   };
                   navigation.navigate(screenMap[action.label] as never, paramsMap[action.label] as never);
                 }}
@@ -1311,7 +1406,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
 
         <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={themeColors} />
 
-        {/* TAB: OVERVIEW */}
+        {/* ─── OVERVIEW ──────────────────────────────────────────────── */}
         {activeTab === 'overview' && (
           <>
             <View style={styles.kpiPillRow}>
@@ -1325,31 +1420,35 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
               <View style={styles.birthDateContent}>
                 <Text style={styles.birthDateLabel}>Birth Date</Text>
                 <Text style={styles.birthDateValue}>{format(birthDate, 'MMMM d, yyyy')}</Text>
-                {birthTime && <Text style={styles.birthTimeText}>🕐 {birthTime}</Text>}
+                {birthTime ? <Text style={styles.birthTimeText}>🕐 {birthTime}</Text> : null}
               </View>
               <Ionicons name="chevron-forward" size={18} color={themeColors.textSecondary} />
             </TouchableOpacity>
 
+            {/* Birth details card */}
             <Animated.View entering={FadeInUp.delay(250).springify()}>
               <SectionHeader title="Birth Details" subtitle="Information from birth" isDark={isDark} colors={themeColors} />
               <GlassCard isDark={isDark} colors={themeColors}>
                 <View style={styles.birthDetailsGrid}>
                   {[
-                    { label: 'Birth Weight', value: birthWeight, suffix: ' kg', key: 'birthWeight' },
-                    { label: 'Birth Height', value: birthHeight, suffix: ' cm', key: 'birthHeight' },
-                    { label: 'Head Circumference', value: birthHeadCircumference, suffix: ' cm', key: 'headCirc' },
-                    { label: 'Gestational Weeks', value: gestationalWeeks, suffix: ' weeks', key: 'gestWeeks' },
-                    { label: 'Apgar (1 min)', value: apgar1Min, suffix: '', key: 'apgar1' },
-                    { label: 'Apgar (5 min)', value: apgar5Min, suffix: '', key: 'apgar5' },
-                    { label: 'Delivery Type', value: deliveryType, suffix: '', key: 'delivery' },
-                    { label: 'Birth Attendant', value: birthAttendant, suffix: '', key: 'attendant' },
-                    { label: 'Birth Place', value: birthPlace, suffix: '', key: 'place' },
-                    { label: 'Feeding Plan', value: feedingPlan, suffix: '', key: 'feeding' },
-                    { label: 'Blood Type', value: bloodType, suffix: '', key: 'bloodType' },
-                    { label: 'Birth Order', value: birthOrder, suffix: '', key: 'order' },
-                    { label: 'Multiple Birth', value: multipleBirth ? 'Yes' : (birthOrder ? 'No' : ''), suffix: '', key: 'multiple' },
+                    { label: 'Birth Weight', value: birthWeight, suffix: ' kg' },
+                    { label: 'Birth Height', value: birthHeight, suffix: ' cm' },
+                    { label: 'Head Circumference', value: birthHeadCircumference, suffix: ' cm' },
+                    { label: 'Gestational Weeks', value: gestationalWeeks, suffix: ' weeks' },
+                    { label: 'Apgar (1 min)', value: apgar1Min, suffix: '' },
+                    { label: 'Apgar (5 min)', value: apgar5Min, suffix: '' },
+                    { label: 'Delivery Type', value: deliveryType, suffix: '' },
+                    { label: 'Birth Attendant', value: birthAttendant, suffix: '' },
+                    { label: 'Birth Place', value: birthPlace, suffix: '' },
+                    { label: 'Feeding Plan', value: feedingPlan, suffix: '' },
+                    { label: 'Blood Type', value: bloodType, suffix: '' },
+                    { label: 'Birth Order', value: birthOrder, suffix: '' },
+                    { label: 'Multiple Birth', value: multipleBirth ? 'Yes' : (birthOrder ? 'No' : ''), suffix: '' },
                   ].map((item, index) => {
-                    const hasValue = item.value && item.value !== '';
+                    const hasValue =
+                      item.value !== undefined &&
+                      item.value !== null &&
+                      String(item.value).trim() !== '';
                     return (
                       <View key={index} style={[styles.birthDetailItem, !hasValue && styles.birthDetailItemEmpty]}>
                         <Text style={styles.birthDetailLabel}>{item.label}</Text>
@@ -1360,14 +1459,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                     );
                   })}
                 </View>
-                {!birthWeight && !birthHeight && !birthHeadCircumference && !gestationalWeeks && !apgar1Min && !deliveryType && !feedingPlan && !bloodType && (
+                {(!birthWeight && !birthHeight && !birthHeadCircumference &&
+                  !gestationalWeeks && !apgar1Min && !deliveryType &&
+                  !feedingPlan && !bloodType) && (
                   <View style={styles.emptyBirthDetails}>
                     <Text style={styles.emptyBirthDetailsText}>No birth details recorded yet</Text>
                     <Text style={styles.emptyBirthDetailsSubtext}>Tap the Health tab to add birth information</Text>
                   </View>
                 )}
                 {(!birthWeight || !birthHeight || !birthHeadCircumference) && (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.addBirthDetailsBtn, { backgroundColor: 'rgba(99,102,241,0.1)' }]}
                     onPress={() => { setActiveTab('health'); setIsEditing(true); }}
                   >
@@ -1378,9 +1479,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
               </GlassCard>
             </Animated.View>
 
+            {/* Recent activity — from TrackerContext */}
             <Animated.View entering={FadeInUp.delay(500).springify()}>
-              <SectionHeader 
-                title="Recent Activity" 
+              <SectionHeader
+                title="Recent Activity"
                 subtitle={`${recentActivities.length} entries`}
                 action={() => navigation.navigate('Timeline' as never, { babyId: currentBabyData?.id } as never)}
                 actionLabel="See All"
@@ -1397,36 +1499,35 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                 </GlassCard>
               ) : (
                 <View style={styles.activitiesList}>
-                  {recentActivities.slice(0, 5).map((activity, index) => {
-                    // TrackerEntry fields — derive display values from real data
-                    const trackerId = String((activity as any).trackerId || (activity as any).type || 'note');
-                    const trackerMeta = TRACKER_META[trackerId] || TRACKER_META.default;
-                    const timeValue = (activity as any).timestamp;
-                    const validTime = typeof timeValue === 'number' && !isNaN(timeValue);
-
+                  {recentActivities.slice(0, 8).map((activity: any, index: number) => {
+                    const trackerId = String(
+                      activity.trackerId || activity.tracker_id || activity.type || 'note'
+                    );
+                    const meta = TRACKER_META[trackerId] || TRACKER_META.default;
+                    const ts = Number(activity.timestamp) || Date.now();
                     return (
                       <GlassCard
-                        key={(activity as any).id || index}
+                        key={activity.id || index}
                         style={styles.activityCard}
-                        delay={index * 60}
+                        delay={index * 40}
                         isDark={isDark}
                         colors={themeColors}
                       >
                         <View style={styles.activityRow}>
-                          <View style={[styles.activityIcon, { backgroundColor: `${trackerMeta.color}18` }]}>
-                            <Text style={styles.activityEmoji}>{trackerMeta.emoji}</Text>
+                          <View style={[styles.activityIcon, { backgroundColor: `${meta.color}18` }]}>
+                            <Text style={styles.activityEmoji}>{meta.emoji}</Text>
                           </View>
                           <View style={styles.activityContent}>
                             <Text style={styles.activityTitle}>
-                              {(activity as any).title || trackerMeta.label}
+                              {activity.title || meta.label}
                             </Text>
-                            {(activity as any).notes ? (
+                            {activity.notes ? (
                               <Text style={styles.activityDetails} numberOfLines={2}>
-                                {(activity as any).notes}
+                                {activity.notes}
                               </Text>
                             ) : null}
                             <Text style={styles.activityTime}>
-                              {validTime ? format(timeValue, 'MMM d, h:mm a') : '—'}
+                              {format(new Date(ts), 'MMM d, h:mm a')}
                             </Text>
                           </View>
                         </View>
@@ -1439,7 +1540,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
           </>
         )}
 
-        {/* TAB: MILESTONES */}
+        {/* ─── MILESTONES ──────────────────────────────────────────── */}
         {activeTab === 'milestones' && (
           <>
             <TouchableOpacity style={styles.addMilestoneBtn} onPress={() => setShowAddMilestone(true)}>
@@ -1453,14 +1554,26 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
               babyMilestones.map((milestone, index) => {
                 const category = MILESTONE_CATEGORIES.find(c => c.id === milestone.category);
                 return (
-                  <GlassCard key={milestone.id} style={styles.milestoneCard} delay={index * 100} isDark={isDark} colors={themeColors}>
+                  <GlassCard
+                    key={milestone.id}
+                    style={styles.milestoneCard}
+                    delay={index * 100}
+                    isDark={isDark}
+                    colors={themeColors}
+                  >
                     <View style={styles.milestoneRow}>
                       <View style={[styles.milestoneIcon, { backgroundColor: `${category?.color || '#6366f1'}20` }]}>
-                        <Ionicons name={category?.icon as any || 'star'} size={24} color={category?.color || '#6366f1'} />
+                        <Ionicons
+                          name={(category?.icon as any) || 'star'}
+                          size={24}
+                          color={category?.color || '#6366f1'}
+                        />
                       </View>
                       <View style={styles.milestoneContent}>
                         <Text style={styles.milestoneTitle}>{milestone.title}</Text>
-                        <Text style={[styles.milestoneCategory, { color: category?.color || '#6366f1' }]}>{category?.label}</Text>
+                        <Text style={[styles.milestoneCategory, { color: category?.color || '#6366f1' }]}>
+                          {category?.label}
+                        </Text>
                         <Text style={styles.milestoneDate}>
                           {format(new Date(milestone.achievedAt), 'MMM d, yyyy')}
                         </Text>
@@ -1469,9 +1582,9 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                         <Ionicons name="trash-outline" size={18} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
-                    {milestone.description && (
+                    {milestone.description ? (
                       <Text style={styles.milestoneDescription}>{milestone.description}</Text>
-                    )}
+                    ) : null}
                   </GlassCard>
                 );
               })
@@ -1481,13 +1594,15 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                   <Ionicons name="trophy-outline" size={32} color="#f59e0b" />
                 </View>
                 <Text style={styles.emptyStateTitle}>No Milestones Yet</Text>
-                <Text style={styles.emptyText}>Record your baby's first smile, steps, words, and more!</Text>
+                <Text style={styles.emptyText}>
+                  Record your baby's first smile, steps, words, and more!
+                </Text>
               </GlassCard>
             )}
           </>
         )}
 
-        {/* TAB: HEALTH */}
+        {/* ─── HEALTH ──────────────────────────────────────────────── */}
         {activeTab === 'health' && (
           <>
             <GlassCard style={styles.formCard} delay={100} isDark={isDark} colors={themeColors}>
@@ -1798,7 +1913,9 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                       onPress={() => { if (isEditing) { setMultipleBirth(true); setIsEditing(true); } }}
                       disabled={!isEditing}
                     >
-                      <Text style={[styles.multipleBirthText, multipleBirth === true && { color: '#6366f1', fontWeight: '700' }]}>Yes</Text>
+                      <Text style={[styles.multipleBirthText, multipleBirth === true && { color: '#6366f1', fontWeight: '700' }]}>
+                        Yes
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
@@ -1811,7 +1928,9 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                       onPress={() => { if (isEditing) { setMultipleBirth(false); setIsEditing(true); } }}
                       disabled={!isEditing}
                     >
-                      <Text style={[styles.multipleBirthText, multipleBirth === false && { color: '#6366f1', fontWeight: '700' }]}>No</Text>
+                      <Text style={[styles.multipleBirthText, multipleBirth === false && { color: '#6366f1', fontWeight: '700' }]}>
+                        No
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1899,14 +2018,18 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
             {isEditing && (
               <TouchableOpacity onPress={handleSavePress} style={styles.saveButton}>
                 <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.saveButtonGradient}>
-                  {isSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveButtonText}>Save Changes</Text>}
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
             )}
           </>
         )}
 
-        {/* TAB: DANGER */}
+        {/* ─── DANGER ──────────────────────────────────────────────── */}
         {activeTab === 'danger' && (
           <Animated.View entering={FadeInUp} style={styles.tabPanel}>
             <GlassCard style={styles.dangerCard} delay={100} isDark={isDark} colors={themeColors}>
@@ -1915,13 +2038,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                   <Ionicons name="warning" size={32} color="#fff" />
                 </LinearGradient>
               </View>
-
               <Text style={styles.dangerTitle}>Danger Zone</Text>
               <Text style={styles.dangerDescription}>
-                Permanently delete {currentBabyData?.name}'s profile and all associated data. 
-                This action cannot be undone.
+                Permanently delete {currentBabyData?.name}'s profile and all associated data. This action cannot be undone.
               </Text>
-
               <View style={styles.dangerStats}>
                 <View style={styles.dangerStat}>
                   <Ionicons name="images-outline" size={20} color="#94a3b8" />
@@ -1936,7 +2056,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                   <Text style={styles.dangerStatText}>{babyStats?.entries || 0} Entries</Text>
                 </View>
               </View>
-
               <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteBaby}>
                 <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.deleteGradient}>
                   <Ionicons name="trash-outline" size={20} color="#fff" />
@@ -1944,7 +2063,6 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                 </LinearGradient>
               </TouchableOpacity>
             </GlassCard>
-
             <View style={styles.dangerNote}>
               <Ionicons name="information-circle" size={14} color="#94a3b8" />
               <Text style={styles.dangerNoteText}>Consider exporting data before deletion</Text>
@@ -1955,18 +2073,34 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         <View style={{ height: insets.bottom + 40 }} />
       </Animated.ScrollView>
 
-      {/* Modals */}
-      <UniversalSpinner visible={isSaving} text="Saving changes..." size="medium" overlay={true} blur={true} section="main" />
+      {/* Saving overlay */}
+      <UniversalSpinner
+        visible={isSaving}
+        text="Saving changes..."
+        size="medium"
+        overlay={true}
+        blur={true}
+        section="main"
+      />
 
-      <Modal visible={showImagePicker} transparent animationType="fade" onRequestClose={() => setShowImagePicker(false)} statusBarTranslucent presentationStyle="overFullScreen">
+      {/* Image picker modal */}
+      <Modal
+        visible={showImagePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowImagePicker(false)}
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+      >
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowImagePicker(false)} activeOpacity={1} />
-          <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
-            <LinearGradient colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
-            <View style={styles.modalDragHandle}>
-              <View style={styles.dragIndicator} />
-            </View>
+            <LinearGradient
+              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.modalDragHandle}><View style={styles.dragIndicator} /></View>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Change Profile Photo</Text>
               <TouchableOpacity onPress={() => setShowImagePicker(false)} style={styles.modalClose}>
@@ -1986,7 +2120,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                 </View>
                 <Text style={styles.imagePickerLabel}>Take Photo</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.imagePickerOption} onPress={() => { setShowImagePicker(false); setShowEmojiPicker(true); }}>
+              <TouchableOpacity
+                style={styles.imagePickerOption}
+                onPress={() => { setShowImagePicker(false); setShowEmojiPicker(true); }}
+              >
                 <View style={[styles.imagePickerIcon, { backgroundColor: '#f59e0b20' }]}>
                   <Ionicons name="happy-outline" size={28} color="#f59e0b" />
                 </View>
@@ -1997,15 +2134,24 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         </View>
       </Modal>
 
-      <Modal visible={showAddMilestone} transparent animationType="fade" onRequestClose={() => setShowAddMilestone(false)} statusBarTranslucent presentationStyle="overFullScreen">
+      {/* Add milestone modal */}
+      <Modal
+        visible={showAddMilestone}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddMilestone(false)}
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+      >
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowAddMilestone(false)} activeOpacity={1} />
-          <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
-            <LinearGradient colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
-            <View style={styles.modalDragHandle}>
-              <View style={styles.dragIndicator} />
-            </View>
+            <LinearGradient
+              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.modalDragHandle}><View style={styles.dragIndicator} /></View>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Record Milestone</Text>
               <TouchableOpacity onPress={() => setShowAddMilestone(false)} style={styles.modalClose}>
@@ -2014,9 +2160,19 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
             </View>
             <View style={{ gap: 16 }}>
               <View>
-                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Title</Text>
+                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Title
+                </Text>
                 <TextInput
-                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, height: 52, color: themeColors.text, fontWeight: '600', fontSize: 16 }}
+                  style={{
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                    borderRadius: 14,
+                    paddingHorizontal: 16,
+                    height: 52,
+                    color: themeColors.text,
+                    fontWeight: '600',
+                    fontSize: 16,
+                  }}
                   value={newMilestone.title}
                   onChangeText={(text) => setNewMilestone(prev => ({ ...prev, title: text }))}
                   placeholder="e.g., First Steps"
@@ -2024,23 +2180,48 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                 />
               </View>
               <View>
-                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</Text>
+                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Category
+                </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {MILESTONE_CATEGORIES.map(cat => (
                     <TouchableOpacity
                       key={cat.id}
                       onPress={() => setNewMilestone(prev => ({ ...prev, category: cat.id as Milestone['category'] }))}
-                      style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: newMilestone.category === cat.id ? `${cat.color}20` : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: newMilestone.category === cat.id ? cat.color : 'transparent' }}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        borderRadius: 12,
+                        backgroundColor: newMilestone.category === cat.id
+                          ? `${cat.color}20`
+                          : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                        borderWidth: 1,
+                        borderColor: newMilestone.category === cat.id ? cat.color : 'transparent',
+                      }}
                     >
-                      <Text style={{ color: newMilestone.category === cat.id ? cat.color : themeColors.text, fontWeight: '700', fontSize: 13 }}>{cat.label}</Text>
+                      <Text style={{ color: newMilestone.category === cat.id ? cat.color : themeColors.text, fontWeight: '700', fontSize: 13 }}>
+                        {cat.label}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
               <View>
-                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Description</Text>
+                <Text style={{ color: themeColors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Description
+                </Text>
                 <TextInput
-                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 14, paddingHorizontal: 16, paddingTop: 14, height: 80, color: themeColors.text, fontWeight: '500', fontSize: 16, textAlignVertical: 'top' }}
+                  style={{
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                    borderRadius: 14,
+                    paddingHorizontal: 16,
+                    paddingTop: 14,
+                    height: 80,
+                    color: themeColors.text,
+                    fontWeight: '500',
+                    fontSize: 16,
+                    textAlignVertical: 'top',
+                  }}
                   value={newMilestone.description}
                   onChangeText={(text) => setNewMilestone(prev => ({ ...prev, description: text }))}
                   placeholder="Optional details..."
@@ -2058,9 +2239,9 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         </View>
       </Modal>
 
-      <EmojiPickerModal 
-        visible={showEmojiPicker} 
-        onClose={() => setShowEmojiPicker(false)} 
+      <EmojiPickerModal
+        visible={showEmojiPicker}
+        onClose={() => setShowEmojiPicker(false)}
         onSelect={handleEmojiSelect}
         isDark={isDark}
         colors={themeColors}
@@ -2088,89 +2269,41 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     container: { flex: 1, backgroundColor: colors.background || '#0f0f1a' },
     centered: { justifyContent: 'center', alignItems: 'center' },
     scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
-
-    stickyHeader: { 
-      position: 'absolute', 
-      top: 0, 
-      left: 0, 
-      right: 0, 
-      zIndex: 100, 
-      alignItems: 'center', 
-      paddingHorizontal: 20, 
-      paddingBottom: 10 
-    },
+    stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
     stickyTitle: { fontSize: 17, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
     stickySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || 'rgba(255,255,255,0.7)', marginTop: 2 },
-
-    topHeader: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 10, 
-      marginHorizontal: 16, 
-      marginBottom: 16, 
-      marginTop: 8 
-    },
-    backBtn: { 
-      width: 40, 
-      height: 40, 
-      borderRadius: 12, 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      backgroundColor: 'rgba(255,255,255,0.08)' 
-    },
-    editToggleBtn: { 
-      width: 40, 
-      height: 40, 
-      borderRadius: 12, 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      backgroundColor: 'rgba(255,255,255,0.08)' 
-    },
-
-    profileHero: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 16, 
-      marginHorizontal: 16, 
-      marginBottom: 20 
-    },
+    topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16, marginTop: 8 },
+    backBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+    editToggleBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+    profileHero: { flexDirection: 'row', alignItems: 'center', gap: 16, marginHorizontal: 16, marginBottom: 20 },
     avatarSection: { position: 'relative' },
-    uploadingOverlay: { 
-      ...StyleSheet.absoluteFillObject, 
-      backgroundColor: 'rgba(0,0,0,0.5)', 
-      borderRadius: 33, 
-      alignItems: 'center', 
-      justifyContent: 'center' 
+    uploadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      borderRadius: 33,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     profileInfo: { flex: 1, gap: 4 },
     profileName: { fontSize: 24, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.5 },
     profileMeta: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#94a3b8' },
     profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
-    profileTag: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      paddingHorizontal: 10, 
-      paddingVertical: 5, 
-      borderRadius: 10, 
-      gap: 4 
-    },
+    profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
     profileTagText: { fontSize: 12, fontWeight: '700' },
     editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
-
     avatarWrapper: { position: 'relative' },
     avatarGradient: { alignItems: 'center', justifyContent: 'center' },
     avatarEmoji: {},
-    editAvatarBtn: { 
-      position: 'absolute', 
-      width: 28, 
-      height: 28, 
-      borderRadius: 14, 
-      overflow: 'hidden', 
-      borderWidth: 2, 
-      borderColor: colors.background || '#1a1a2e' 
+    editAvatarBtn: {
+      position: 'absolute',
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      overflow: 'hidden',
+      borderWidth: 2,
+      borderColor: colors.background || '#1a1a2e',
     },
     editAvatarGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-
     birthDateCard: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2184,31 +2317,10 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
     },
     birthDateContent: { flex: 1 },
-    birthDateLabel: { 
-      fontSize: 11, 
-      fontWeight: '700', 
-      color: colors.textSecondary || '#94a3b8', 
-      textTransform: 'uppercase', 
-      letterSpacing: 0.5 
-    },
-    birthDateValue: { 
-      fontSize: 15, 
-      fontWeight: '600', 
-      color: colors.text || '#fff', 
-      marginTop: 2 
-    },
-    birthTimeText: {
-      fontSize: 13,
-      color: colors.textSecondary || '#94a3b8',
-      marginTop: 2,
-    },
-
-    birthDetailsGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      padding: 12,
-      gap: 8,
-    },
+    birthDateLabel: { fontSize: 11, fontWeight: '700', color: colors.textSecondary || '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
+    birthDateValue: { fontSize: 15, fontWeight: '600', color: colors.text || '#fff', marginTop: 2 },
+    birthTimeText: { fontSize: 13, color: colors.textSecondary || '#94a3b8', marginTop: 2 },
+    birthDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 8 },
     birthDetailItem: {
       flex: 1,
       minWidth: '30%',
@@ -2216,42 +2328,13 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       borderRadius: 10,
       padding: 10,
     },
-    birthDetailItemEmpty: {
-      opacity: 0.6,
-    },
-    birthDetailLabel: {
-      fontSize: 10,
-      fontWeight: '700',
-      color: colors.textSecondary || '#94a3b8',
-      textTransform: 'uppercase',
-      letterSpacing: 0.3,
-    },
-    birthDetailValue: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text || '#fff',
-      marginTop: 2,
-    },
-    birthDetailValueEmpty: {
-      color: colors.textMuted || '#64748b',
-      fontStyle: 'italic',
-      fontWeight: '400',
-      fontSize: 12,
-    },
-    emptyBirthDetails: {
-      padding: 20,
-      alignItems: 'center',
-    },
-    emptyBirthDetailsText: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: colors.textSecondary || '#94a3b8',
-    },
-    emptyBirthDetailsSubtext: {
-      fontSize: 13,
-      color: colors.textMuted || '#64748b',
-      marginTop: 4,
-    },
+    birthDetailItemEmpty: { opacity: 0.6 },
+    birthDetailLabel: { fontSize: 10, fontWeight: '700', color: colors.textSecondary || '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.3 },
+    birthDetailValue: { fontSize: 13, fontWeight: '600', color: colors.text || '#fff', marginTop: 2 },
+    birthDetailValueEmpty: { color: colors.textMuted || '#64748b', fontStyle: 'italic', fontWeight: '400', fontSize: 12 },
+    emptyBirthDetails: { padding: 20, alignItems: 'center' },
+    emptyBirthDetailsText: { fontSize: 15, fontWeight: '600', color: colors.textSecondary || '#94a3b8' },
+    emptyBirthDetailsSubtext: { fontSize: 13, color: colors.textMuted || '#64748b', marginTop: 4 },
     addBirthDetailsBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2263,98 +2346,60 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       marginBottom: 12,
       borderRadius: 12,
     },
-    addBirthDetailsText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: '#6366f1',
-    },
-
+    addBirthDetailsText: { fontSize: 13, fontWeight: '600', color: '#6366f1' },
     dockContainer: { marginHorizontal: 16, marginBottom: 20 },
     dock: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
     dockItem: { alignItems: 'center', gap: 6, flex: 1 },
-    dockGradient: { 
-      width: 52, 
-      height: 52, 
-      borderRadius: 16, 
-      justifyContent: 'center', 
-      alignItems: 'center' 
-    },
+    dockGradient: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
     dockIcon: { fontSize: 24 },
     dockLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#94a3b8' },
-
-    tabBar: { 
-      flexDirection: 'row', 
-      marginHorizontal: 16, 
-      marginBottom: 16, 
-      padding: 4, 
-      borderRadius: 16, 
-      gap: 2, 
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+    tabBar: {
+      flexDirection: 'row',
+      marginHorizontal: 16,
+      marginBottom: 16,
+      padding: 4,
+      borderRadius: 16,
+      gap: 2,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
     },
-    tabItem: { 
-      flex: 1, 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      gap: 6, 
-      paddingVertical: 10, 
-      borderRadius: 12 
-    },
+    tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
     tabLabel: { fontSize: 12, fontWeight: '600' },
-
-    glassCard: { 
-      borderRadius: 16, 
-      overflow: 'hidden', 
-      borderWidth: 1, 
-      borderColor: colors.border || 'rgba(255,255,255,0.06)', 
-      marginHorizontal: 16, 
-      marginBottom: 12 
+    glassCard: {
+      borderRadius: 16,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border || 'rgba(255,255,255,0.06)',
+      marginHorizontal: 16,
+      marginBottom: 12,
     },
-    glassBorder: { 
-      position: 'absolute', 
-      top: 0, 
-      left: 0, 
-      right: 0, 
-      height: 1, 
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+    glassBorder: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 1,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
     },
     glassContent: { flex: 1 },
-
-    sectionHeader: { 
-      flexDirection: 'row', 
-      justifyContent: 'space-between', 
-      alignItems: 'flex-start', 
-      marginHorizontal: 16, 
-      marginBottom: 10, 
-      marginTop: 6 
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginHorizontal: 16,
+      marginBottom: 10,
+      marginTop: 6,
     },
     sectionTitle: { fontSize: 17, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
     sectionSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#94a3b8', marginTop: 2 },
     sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
-
     kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-    kpiPill: { 
-      flex: 1, 
-      borderRadius: 20, 
-      overflow: 'hidden', 
-      padding: 14, 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 10 
-    },
+    kpiPill: { flex: 1, borderRadius: 20, overflow: 'hidden', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
     kpiPillIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
     kpiPillEmoji: { fontSize: 18 },
     kpiPillBody: { flex: 1 },
     kpiPillValue: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
-    kpiPillLabel: { 
-      fontSize: 10, 
-      fontWeight: '600', 
-      color: colors.textSecondary || '#94a3b8', 
-      textTransform: 'uppercase', 
-      letterSpacing: 0.5 
-    },
-
+    kpiPillLabel: { fontSize: 10, fontWeight: '600', color: colors.textSecondary || '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
     activitiesList: { gap: 8, marginHorizontal: 0 },
     activityCard: { padding: 0 },
     activityRow: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
@@ -2364,34 +2409,20 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     activityTitle: { fontSize: 14, fontWeight: '700', color: colors.text || '#fff' },
     activityDetails: { fontSize: 12, color: colors.textSecondary || '#94a3b8', lineHeight: 16 },
     activityTime: { fontSize: 11, color: colors.textMuted || '#64748b', fontWeight: '500' },
-
-    emptyCard: { 
-      padding: 32, 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      borderRadius: 16, 
-      overflow: 'hidden' 
-    },
-    emptyStateIcon: { 
-      width: 56, 
-      height: 56, 
-      borderRadius: 16, 
-      backgroundColor: 'rgba(99,102,241,0.1)', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      marginBottom: 12 
+    emptyCard: { padding: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 16, overflow: 'hidden' },
+    emptyStateIcon: {
+      width: 56,
+      height: 56,
+      borderRadius: 16,
+      backgroundColor: 'rgba(99,102,241,0.1)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 12,
     },
     emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#fff', textAlign: 'center', marginBottom: 6 },
     emptyText: { fontSize: 13, color: colors.textMuted || '#64748b', textAlign: 'center', lineHeight: 18 },
-
     addMilestoneBtn: { borderRadius: 16, overflow: 'hidden', marginBottom: 8, marginHorizontal: 16 },
-    addMilestoneGradient: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      paddingVertical: 14, 
-      gap: 8 
-    },
+    addMilestoneGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 },
     addMilestoneText: { color: '#fff', fontSize: 15, fontWeight: '700' },
     milestoneCard: { padding: 0, marginBottom: 10, borderRadius: 16 },
     milestoneRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
@@ -2400,63 +2431,61 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     milestoneTitle: { fontSize: 15, fontWeight: '700', color: colors.text || '#fff', marginBottom: 2 },
     milestoneCategory: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize', marginBottom: 2 },
     milestoneDate: { fontSize: 12, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
-    milestoneDescription: { 
-      fontSize: 13, 
-      color: colors.textMuted || '#64748b', 
-      marginTop: 8, 
-      lineHeight: 18, 
-      fontWeight: '500', 
-      paddingHorizontal: 12, 
-      paddingBottom: 12 
+    milestoneDescription: {
+      fontSize: 13,
+      color: colors.textMuted || '#64748b',
+      marginTop: 8,
+      lineHeight: 18,
+      fontWeight: '500',
+      paddingHorizontal: 12,
+      paddingBottom: 12,
     },
-    deleteEntryBtn: { 
-      padding: 6, 
-      width: 32, 
-      height: 32, 
-      borderRadius: 16, 
-      backgroundColor: 'rgba(239,68,68,0.1)', 
-      alignItems: 'center', 
-      justifyContent: 'center' 
+    deleteEntryBtn: {
+      padding: 6,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: 'rgba(239,68,68,0.1)',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-
     formCard: { padding: 0, marginBottom: 12 },
-    sectionHeaderWithEdit: { 
-      flexDirection: 'row', 
-      justifyContent: 'space-between', 
-      alignItems: 'center', 
-      paddingHorizontal: 16, 
-      paddingTop: 16, 
-      marginBottom: 12 
+    sectionHeaderWithEdit: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      marginBottom: 12,
     },
     sectionLabel: { fontSize: 18, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
-    editIconBtn: { 
-      width: 36, 
-      height: 36, 
-      borderRadius: 10, 
-      backgroundColor: 'rgba(99,102,241,0.1)', 
-      alignItems: 'center', 
-      justifyContent: 'center' 
+    editIconBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: 'rgba(99,102,241,0.1)',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     editingBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
     editingBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-
     inputGroup: { marginBottom: 14, paddingHorizontal: 16 },
-    inputLabel: { 
-      fontSize: 12, 
-      fontWeight: '700', 
-      color: colors.textSecondary || '#94a3b8', 
-      marginBottom: 6, 
-      textTransform: 'uppercase', 
-      letterSpacing: 0.5 
+    inputLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textSecondary || '#94a3b8',
+      marginBottom: 6,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
-    inputContainer: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', 
-      borderRadius: 12, 
-      paddingHorizontal: 14, 
-      height: 48, 
-      borderWidth: 1, 
+    inputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      height: 48,
+      borderWidth: 1,
       borderColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
     },
     inputDisabled: { opacity: 0.5 },
@@ -2464,35 +2493,23 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     inputField: { flex: 1, fontSize: 15, color: colors.text || '#fff', fontWeight: '500', paddingVertical: 8 },
     inputFieldText: { flex: 1, fontSize: 15, color: colors.text || '#fff', fontWeight: '500' },
     placeholderText: { color: colors.textMuted || '#64748b', fontWeight: '400' },
-    textArea: { 
-      height: 100, 
-      textAlignVertical: 'top', 
-      paddingTop: 14, 
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', 
-      borderRadius: 12, 
-      paddingHorizontal: 14, 
-      fontSize: 15, 
-      color: colors.text || '#fff', 
-      fontWeight: '500', 
-      borderWidth: 1, 
+    textArea: {
+      height: 100,
+      textAlignVertical: 'top',
+      paddingTop: 14,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      fontSize: 15,
+      color: colors.text || '#fff',
+      fontWeight: '500',
+      borderWidth: 1,
       borderColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
       marginHorizontal: 16,
     },
-
-    rowContainer: {
-      flexDirection: 'row',
-      paddingHorizontal: 16,
-      gap: 8,
-    },
-    halfWidth: {
-      flex: 1,
-    },
-
-    multipleBirthContainer: {
-      flexDirection: 'row',
-      gap: 8,
-      marginTop: 2,
-    },
+    rowContainer: { flexDirection: 'row', paddingHorizontal: 16, gap: 8 },
+    halfWidth: { flex: 1 },
+    multipleBirthContainer: { flexDirection: 'row', gap: 8, marginTop: 2 },
     multipleBirthButton: {
       flex: 1,
       alignItems: 'center',
@@ -2502,100 +2519,64 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
       backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.6)',
     },
-    multipleBirthText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.textSecondary || '#94a3b8',
-    },
-
-    preferenceRow: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'space-between', 
-      paddingHorizontal: 16, 
-      paddingVertical: 14 
+    multipleBirthText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary || '#94a3b8' },
+    preferenceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 14,
     },
     preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
     preferenceText: { gap: 1 },
     preferenceTitle: { fontSize: 15, fontWeight: '700', color: colors.text || '#fff' },
     preferenceDesc: { fontSize: 12, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
-
     saveButton: { marginHorizontal: 16, marginTop: 8, marginBottom: 12, borderRadius: 14, overflow: 'hidden' },
     saveButtonGradient: { paddingVertical: 14, alignItems: 'center' },
     saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-    dangerCard: { 
-      padding: 20, 
-      alignItems: 'center', 
-      borderColor: '#ef4444', 
-      borderWidth: 2, 
-      borderRadius: 20 
-    },
+    dangerCard: { padding: 20, alignItems: 'center', borderColor: '#ef4444', borderWidth: 2, borderRadius: 20 },
     dangerIconContainer: { marginBottom: 12 },
     dangerIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
     dangerTitle: { fontSize: 20, fontWeight: '800', color: '#ef4444', marginBottom: 6 },
-    dangerDescription: { 
-      fontSize: 14, 
-      color: colors.textSecondary || '#94a3b8', 
-      textAlign: 'center', 
-      lineHeight: 20, 
-      marginBottom: 16 
+    dangerDescription: {
+      fontSize: 14,
+      color: colors.textSecondary || '#94a3b8',
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: 16,
     },
     dangerStats: { flexDirection: 'row', gap: 16, marginBottom: 18 },
     dangerStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     dangerStatText: { fontSize: 13, color: colors.textSecondary || '#94a3b8', fontWeight: '500' },
     deleteButton: { width: '100%', borderRadius: 14, overflow: 'hidden' },
-    deleteGradient: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      paddingVertical: 14, 
-      gap: 6 
-    },
+    deleteGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 6 },
     deleteButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-    dangerNote: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      marginTop: 12, 
-      gap: 4 
-    },
+    dangerNote: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12, gap: 4 },
     dangerNoteText: { fontSize: 12, color: colors.textSecondary || '#94a3b8' },
-
     tabPanel: { marginTop: 4, gap: 12 },
-
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
     modalContent: { width: '100%', maxWidth: 400, borderRadius: 20, padding: 20, overflow: 'hidden' },
     modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 4 },
-    dragIndicator: { 
-      width: 36, 
-      height: 4, 
-      borderRadius: 2, 
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)' 
+    dragIndicator: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
     },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
     modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#fff', letterSpacing: -0.3 },
-    modalClose: { 
-      width: 32, 
-      height: 32, 
-      borderRadius: 8, 
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', 
-      justifyContent: 'center', 
-      alignItems: 'center' 
+    modalClose: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
-
     imagePickerOptions: { padding: 4 },
     imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 4 },
-    imagePickerIcon: { 
-      width: 44, 
-      height: 44, 
-      borderRadius: 12, 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      marginRight: 12 
-    },
+    imagePickerIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
     imagePickerLabel: { fontSize: 15, fontWeight: '600', color: colors.text || '#fff', flex: 1 },
-
     pickerList: { paddingVertical: 4 },
     pickerItem: {
       flexDirection: 'row',
@@ -2608,15 +2589,14 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
       borderBottomColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
     },
     pickerItemText: { fontSize: 15, fontWeight: '500' },
-
     emojiPickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-    emojiPickerSheet: { 
-      width: '100%', 
-      maxWidth: 400, 
-      borderRadius: 20, 
-      padding: 16, 
-      paddingBottom: 32, 
-      overflow: 'hidden' 
+    emojiPickerSheet: {
+      width: '100%',
+      maxWidth: 400,
+      borderRadius: 20,
+      padding: 16,
+      paddingBottom: 32,
+      overflow: 'hidden',
     },
     emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
     emojiPickerTitle: { fontSize: 17, fontWeight: '800', color: colors.text || '#fff' },

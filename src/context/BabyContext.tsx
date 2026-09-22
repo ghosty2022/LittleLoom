@@ -1,22 +1,23 @@
 // src/context/BabyContext.tsx
 // ─────────────────────────────────────────────────────────────────────
-// FIXES in this version:
-//   ✓ mapBabyRowToProfile is now declared BEFORE useRealtimeSubscription
-//     (was a TDZ ReferenceError on any realtime event)
-//   ✓ broadcastBabyChange only fires when the baby id ACTUALLY changes
-//     (dedupe via lastBroadcastedBabyIdRef) — kills downstream churn
-//   ✓ loadBabies uses try/finally to GUARANTEE loadInProgressRef resets
-//   ✓ initRef resets on SIGNED_OUT so a re-login re-runs initial load
-//   ✓ Realtime subscription for `babies` is enabled whenever the user is
-//     authed (was gated on currentBabyId, so a freshly-created baby on
-//     another device never showed up)
-//   ✓ Age-refresh interval is always cleaned up (no leak)
-//   ✓ Auto-refresh on app focus / 5-min interval now compares state hash
-//     before hammering Supabase
+// Baby profile + family membership context.
+//
+// RESPONSIBILITIES:
+//   • Load and cache babies the current user has access to
+//   • Track the "current baby" selection
+//   • Expose role/permission helpers (parent1, parent2, guardian, viewer)
+//   • Provide baby CRUD (create, update, delete, switch)
+//
+// NOT RESPONSIBLE FOR:
+//   • Tracker entries → use `useTracker()` from `@/hooks/useTrackerContext`
+//
+// The entry-related methods below are SILENT STUBS kept only for
+// backward compatibility with older screens. They return safe defaults
+// (false / [] / 0 / null) and log nothing. New code must use useTracker().
 // ─────────────────────────────────────────────────────────────────────
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Alert, Platform } from 'react-native';
+import { AppState, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -138,7 +139,8 @@ interface BabyContextType extends BabyState {
   canEditBaby: (babyId?: string) => boolean;
   getCurrentBabyId: () => string | null;
   subscribeToBabyChanges: (callback: (babyId: string | null) => void) => () => void;
-  // Stub methods
+
+  // ─── Deprecated stubs (kept for backward compat, no-op) ──────────
   addGrowthMeasurement: (measurement: any) => Promise<boolean>;
   getGrowthData: (type?: any) => any[];
   getLatestMeasurements: () => Record<string, any | null>;
@@ -166,6 +168,8 @@ interface BabyContextType extends BabyState {
   deleteActivity: (id: string) => Promise<boolean>;
   getBabyStats: () => { streak: number; milestones: number; photos: number; entries: number };
   updateBabyStats: (updates: Partial<BabyProfile>) => Promise<void>;
+
+  // ─── Deprecated entry methods (kept for backward compat, no-op) ──
   entries: ActivityEntry[];
   isLoadingEntries: boolean;
   loadEntries: () => Promise<void>;
@@ -215,7 +219,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     userPermissions: {},
   });
 
-  const [isLoadingEntries, setIsLoadingEntries] = useState(false);
+  const [isLoadingEntries] = useState(false);
 
   // ─── Refs ──────────────────────────────────────────────────────────
   const loadBabiesRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
@@ -231,15 +235,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const maxLoadAttempts = 5;
   const currentUserIdRef = useRef<string | null>(null);
   const authStateListenerRef = useRef<any>(null);
-
-  // ─── Dedupe broadcast ──────────────────────────────────────────────
-  // Every loadBabies() call used to unconditionally fire
-  // broadcastBabyChange(currentId) after a 100ms setTimeout, even if the
-  // id was identical. That drove every subscriber's callback → context
-  // churn → re-render storm. We now compare against the last broadcast.
   const lastBroadcastedBabyIdRef = useRef<string | null>(null);
 
-  // ─── Age calculation (declared FIRST so mapBabyRowToProfile can use it) ──
+  // ─── Age calculation ────────────────────────────────────────────────
   const calculateAge = useCallback((birthDate: string): string => {
     const birth = new Date(birthDate);
     const now = new Date();
@@ -271,9 +269,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // ─── Map database row to BabyProfile ──────────────────────────────
-  // ⚠️ MUST be declared before useRealtimeSubscription below, otherwise
-  //    the realtime callback captures it in a Temporal Dead Zone and
-  //    any realtime event throws "Cannot access before initialization".
   const mapBabyRowToProfile = useCallback(
     (
       row: any,
@@ -333,10 +328,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   // ─── Realtime: babies ──────────────────────────────────────────────
-  // ⚠️ enabled is now `!!currentUserIdRef.current` instead of
-  //    `!!state.currentBabyId` — otherwise a user with ZERO babies at
-  //    launch never subscribes, and a baby created on another device
-  //    never appears until manual refresh.
   useRealtimeSubscription({
     table: 'babies',
     enabled: true,
@@ -414,7 +405,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ─── Broadcast helpers ─────────────────────────────────────────────
   const broadcastBabyChange = useCallback((babyId: string | null) => {
-    // Dedupe: never notify subscribers with the same id they already have
     if (lastBroadcastedBabyIdRef.current === babyId) return;
     lastBroadcastedBabyIdRef.current = babyId;
     babyChangeSubscribers.forEach(callback => {
@@ -426,13 +416,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
-  // Stable ref-backed subscribe (identity never changes)
   const currentBabyIdForSubsRef = useRef<string | null>(state.currentBabyId);
   currentBabyIdForSubsRef.current = state.currentBabyId;
 
   const subscribeToBabyChanges = useCallback((callback: BabyChangeCallback) => {
     babyChangeSubscribers.push(callback);
-    // Fire once with the current value — "current state" handshake.
     try {
       callback(currentBabyIdForSubsRef.current);
     } catch {
@@ -636,7 +624,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   const role = member?.role || 'viewer';
                   userRoles[baby.id] = role;
 
-                  // Parse permissions JSON safely
                   let jsonPerms: Record<string, boolean> = {};
                   if (member?.permissions) {
                     try {
@@ -656,7 +643,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   const isGuardian = role === 'guardian';
 
                   userPermissions[baby.id] = {
-                    // Legacy aliases
                     view: jsonPerms.canView ?? true,
                     edit: jsonPerms.canEditEntry ?? (isParent || isGuardian),
                     delete: jsonPerms.canDeleteEntry ?? isParent,
@@ -664,7 +650,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     invite: jsonPerms.canInvite ?? isParent,
                     export: jsonPerms.canExport ?? isParent,
 
-                    // Granular flags
                     canView: jsonPerms.canView ?? true,
                     canAddEntry: jsonPerms.canAddEntry ?? (isParent || isGuardian),
                     canEditEntry: jsonPerms.canEditEntry ?? (isParent || isGuardian),
@@ -938,7 +923,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userPermissions,
       }));
 
-      // Broadcast on next frame (dedupe inside handles equality)
       requestAnimationFrame(() => {
         broadcastBabyChange(currentId);
       });
@@ -983,12 +967,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
       }
     } finally {
-      // ─── GUARANTEED reset, even if the body threw ────────────────
       loadInProgressRef.current = false;
     }
   }, [mapBabyRowToProfile, getCurrentUserId, broadcastBabyChange]);
 
-  // Keep ref in sync
   useEffect(() => {
     loadBabiesRef.current = loadBabies;
   }, [loadBabies]);
@@ -1005,9 +987,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (__DEV__) console.log('[BabyContext] Auth state changed:', event);
 
         if (event === 'SIGNED_IN' && session?.user) {
-          if (__DEV__) console.log('[BabyContext] User signed in, loading babies');
           currentUserIdRef.current = session.user.id;
-          // Reset one-shot guards so a re-login re-runs backfill & init
           initRef.current = false;
           backfillRanRef.current = false;
           setTimeout(() => {
@@ -1016,9 +996,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }, 500);
         } else if (event === 'SIGNED_OUT') {
-          if (__DEV__) console.log('[BabyContext] User signed out, resetting state');
           currentUserIdRef.current = null;
-          // Reset init guard so a subsequent login re-initializes
           initRef.current = false;
           backfillRanRef.current = false;
           lastBroadcastedBabyIdRef.current = null;
@@ -1035,7 +1013,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }));
           }
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          if (__DEV__) console.log('[BabyContext] Token refreshed');
           currentUserIdRef.current = session.user.id;
         }
       }
@@ -1062,18 +1039,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (session?.user) {
           hasSession = true;
           currentUserIdRef.current = session.user.id;
-          if (__DEV__) {
-            console.log('[BabyContext] Found existing session on init');
-          }
         }
       } catch (e) {
         console.warn('[BabyContext] Session check on init failed:', e);
       }
 
       if (hasSession) {
-        if (__DEV__) {
-          console.log('[BabyContext] Loading babies on init (existing session)');
-        }
         await loadBabies();
         return;
       }
@@ -1088,9 +1059,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             currentUserIdRef.current = session.user.id;
-            if (__DEV__) {
-              console.log('[BabyContext] Session found on retry', attempts);
-            }
             await loadBabies();
             return;
           }
@@ -1138,7 +1106,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (nextAppState === 'active') {
         if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
         syncTimeoutRef.current = setTimeout(() => {
-          if (__DEV__) console.log('[BabyContext] Auto-refresh on app focus');
           if (isMounted.current) {
             loadBabiesRef.current?.(true);
           }
@@ -1165,7 +1132,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     intervalRef.current = setInterval(() => {
-      if (__DEV__) console.log('[BabyContext] Auto-refresh interval');
       if (isMounted.current) {
         loadBabiesRef.current?.(true);
       }
@@ -1382,10 +1348,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
         }
 
-        if (__DEV__) {
-          console.log('[BabyContext] Creating baby with parent1_id:', userId);
-        }
-
         const babyData = {
           id: newId,
           name: data.name,
@@ -1450,10 +1412,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error('[BabyContext] Create baby error:', error);
           isCreatingRef.current = false;
           return null;
-        }
-
-        if (__DEV__) {
-          console.log('[BabyContext] Baby created successfully:', result.id);
         }
 
         const newBaby: BabyProfile = {
@@ -1657,10 +1615,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return false;
         }
 
-        if (__DEV__) {
-          console.log('[BabyContext] Baby deleted from Supabase:', id);
-        }
-
         const userId = await getCurrentUserId();
 
         const updatedBabies = state.babies.filter(b => b.id !== id);
@@ -1853,194 +1807,76 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getCurrentUserId,
   ]);
 
-  // ─── DERIVED FROM TRACKER CONTEXT (no stubs, no mock data) ──────────
-  // BabyContext now delegates all entry-related operations to TrackerContext.
-  // These are placeholders that return empty/null — consumers should use
-  // useTracker() directly for entry data.
+  // ─── DEPRECATED ENTRY STUBS (silent, no warnings) ───────────────────
+  // These exist ONLY so old screens that still call useBaby().<method>()
+  // don't crash. They return safe defaults and log nothing.
+  // New code must use useTracker() as the source of truth.
 
   const entries = useMemo<ActivityEntry[]>(() => [], []);
-  const loadEntries = useCallback(async () => {
-    // No-op: use useTracker().refreshEntries() instead
-  }, []);
-  const deleteEntry = useCallback(async () => {
-    console.warn('[BabyContext] deleteEntry is deprecated. Use useTracker().deleteEntry()');
-    return false;
-  }, []);
-  const addEntry = useCallback(async () => {
-    console.warn('[BabyContext] addEntry is deprecated. Use useTracker().addEntry()');
-    return false;
-  }, []);
-  const updateEntry = useCallback(async () => {
-    console.warn('[BabyContext] updateEntry is deprecated. Use useTracker().updateEntry()');
-    return false;
-  }, []);
+
+  const loadEntries = useCallback(async () => {}, []);
+  const deleteEntry = useCallback(async () => false, []);
+  const addEntry = useCallback(async () => false, []);
+  const updateEntry = useCallback(async () => false, []);
   const getEntryById = useCallback(() => undefined, []);
   const getDateTitle = useCallback(() => '', []);
   const syncWithActivityContext = useCallback(async () => {}, []);
   const scheduleActivityReminder = useCallback(async () => null, []);
   const cancelActivityReminder = useCallback(async () => {}, []);
+
   const getCurrentBabyId = useCallback(
     (): string | null => state.currentBabyId,
     [state.currentBabyId]
   );
-  
-  // ─── DEPRECATED STUBS ───────────────────────────────────────────────
-  // These exist ONLY for backward compatibility with older screens that
-  // still call `useBaby().<method>()`. New code MUST use `useTracker()`
-  // as the single source of truth for entries.
-  //
-  // Every stub logs a `__DEV__` warning the first time it is called, then
-  // returns a safe default (false / [] / 0 / null). They never touch
-  // Supabase, never fabricate data, and never throw.
 
-  const _warnDeprecated = (method: string) => {
-    if (__DEV__) {
-      console.warn(
-        `[BabyContext] ${method}() is deprecated. Use useTracker() instead.`
-      );
-    }
-  };
+  // ── Growth stubs (silent) ────────────────────────────────────────
+  const addGrowthMeasurement = useCallback(async () => false, []);
+  const getGrowthData = useCallback(() => [] as any[], []);
+  const getLatestMeasurements = useCallback(
+    () => ({ height: null, weight: null, head: null, temperature: null }) as Record<string, any | null>,
+    []
+  );
+  const deleteGrowthMeasurement = useCallback(async () => false, []);
 
-  // ── Growth ────────────────────────────────────────────────────────
-  const addGrowthMeasurement = useCallback(async (_measurement?: any) => {
-    _warnDeprecated('addGrowthMeasurement');
-    return false;
-  }, []);
+  // ── Milestone stubs (silent) ─────────────────────────────────────
+  const addMilestone = useCallback(async () => false, []);
+  const getMilestones = useCallback(() => [] as any[], []);
+  const deleteMilestone = useCallback(async () => false, []);
 
-  const getGrowthData = useCallback((_type?: any) => {
-    _warnDeprecated('getGrowthData');
-    return [] as any[];
-  }, []);
+  // ── Sleep stubs (silent) ─────────────────────────────────────────
+  const addSleepLog = useCallback(async () => false, []);
+  const getSleepLogs = useCallback(() => [] as any[], []);
+  const endSleepSession = useCallback(async () => false, []);
+  const getTodaySleepCount = useCallback(() => 0, []);
 
-  const getLatestMeasurements = useCallback(() => {
-    _warnDeprecated('getLatestMeasurements');
-    return { height: null, weight: null, head: null, temperature: null } as Record<string, any | null>;
-  }, []);
+  // ── Feeding stubs (silent) ───────────────────────────────────────
+  const addFeedingLog = useCallback(async () => false, []);
+  const getFeedingLogs = useCallback(() => [] as any[], []);
+  const getTodayFeedCount = useCallback(() => 0, []);
 
-  const deleteGrowthMeasurement = useCallback(async (_id?: string) => {
-    _warnDeprecated('deleteGrowthMeasurement');
-    return false;
-  }, []);
+  // ── Potty stubs (silent) ─────────────────────────────────────────
+  const addPottyLog = useCallback(async () => false, []);
+  const getPottyLogs = useCallback(() => [] as any[], []);
+  const getPottyStreak = useCallback(() => 0, []);
+  const getTodayPottyCount = useCallback(() => 0, []);
+  const getPottySuccessRate = useCallback(() => 0, []);
 
-  // ── Milestones ────────────────────────────────────────────────────
-  const addMilestone = useCallback(async (_milestone?: any) => {
-    _warnDeprecated('addMilestone');
-    return false;
-  }, []);
+  // ── Medication stubs (silent) ────────────────────────────────────
+  const addMedicationLog = useCallback(async () => false, []);
+  const getMedicationLogs = useCallback(() => [] as any[], []);
 
-  const getMilestones = useCallback((_category?: any) => {
-    _warnDeprecated('getMilestones');
-    return [] as any[];
-  }, []);
+  // ── Generic activity stubs (silent) ──────────────────────────────
+  const addActivity = useCallback(async () => false, []);
+  const getRecentActivities = useCallback(() => [] as ActivityEntry[], []);
+  const getActivitiesByType = useCallback(() => [] as ActivityEntry[], []);
+  const deleteActivity = useCallback(async () => false, []);
 
-  const deleteMilestone = useCallback(async (_id?: string) => {
-    _warnDeprecated('deleteMilestone');
-    return false;
-  }, []);
-
-  // ── Sleep ─────────────────────────────────────────────────────────
-  const addSleepLog = useCallback(async (_log?: any) => {
-    _warnDeprecated('addSleepLog');
-    return false;
-  }, []);
-
-  const getSleepLogs = useCallback((_days?: number) => {
-    _warnDeprecated('getSleepLogs');
-    return [] as any[];
-  }, []);
-
-  const endSleepSession = useCallback(async (_logId?: string, _endTime?: string) => {
-    _warnDeprecated('endSleepSession');
-    return false;
-  }, []);
-
-  const getTodaySleepCount = useCallback(() => {
-    _warnDeprecated('getTodaySleepCount');
-    return 0;
-  }, []);
-
-  // ── Feeding ───────────────────────────────────────────────────────
-  const addFeedingLog = useCallback(async (_log?: any) => {
-    _warnDeprecated('addFeedingLog');
-    return false;
-  }, []);
-
-  const getFeedingLogs = useCallback((_days?: number) => {
-    _warnDeprecated('getFeedingLogs');
-    return [] as any[];
-  }, []);
-
-  const getTodayFeedCount = useCallback(() => {
-    _warnDeprecated('getTodayFeedCount');
-    return 0;
-  }, []);
-
-  // ── Potty ─────────────────────────────────────────────────────────
-  const addPottyLog = useCallback(async (_log?: any) => {
-    _warnDeprecated('addPottyLog');
-    return false;
-  }, []);
-
-  const getPottyLogs = useCallback((_days?: number) => {
-    _warnDeprecated('getPottyLogs');
-    return [] as any[];
-  }, []);
-
-  const getPottyStreak = useCallback(() => {
-    _warnDeprecated('getPottyStreak');
-    return 0;
-  }, []);
-
-  const getTodayPottyCount = useCallback(() => {
-    _warnDeprecated('getTodayPottyCount');
-    return 0;
-  }, []);
-
-  const getPottySuccessRate = useCallback(() => {
-    _warnDeprecated('getPottySuccessRate');
-    return 0;
-  }, []);
-
-  // ── Medication ────────────────────────────────────────────────────
-  const addMedicationLog = useCallback(async (_log?: any) => {
-    _warnDeprecated('addMedicationLog');
-    return false;
-  }, []);
-
-  const getMedicationLogs = useCallback((_days?: number) => {
-    _warnDeprecated('getMedicationLogs');
-    return [] as any[];
-  }, []);
-
-  // ── Generic activities ────────────────────────────────────────────
-  const addActivity = useCallback(async (_entry?: any) => {
-    _warnDeprecated('addActivity');
-    return false;
-  }, []);
-
-  const getRecentActivities = useCallback((_limit?: number) => {
-    _warnDeprecated('getRecentActivities');
-    return [] as ActivityEntry[];
-  }, []);
-
-  const getActivitiesByType = useCallback((_type?: string) => {
-    _warnDeprecated('getActivitiesByType');
-    return [] as ActivityEntry[];
-  }, []);
-
-  const deleteActivity = useCallback(async (_id?: string) => {
-    _warnDeprecated('deleteActivity');
-    return false;
-  }, []);
-
-  // ── Stats ─────────────────────────────────────────────────────────
-  const getBabyStats = useCallback(() => {
-    return { streak: 0, milestones: 0, photos: 0, entries: 0 };
-  }, []);
-
-  const updateBabyStats = useCallback(async (_updates?: Partial<BabyProfile>) => {
-    _warnDeprecated('updateBabyStats');
-  }, []);
+  // ── Stats stubs (silent) ─────────────────────────────────────────
+  const getBabyStats = useCallback(
+    () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
+    []
+  );
+  const updateBabyStats = useCallback(async () => {}, []);
 
   // ─── MEMOIZED VALUE ─────────────────────────────────────────────────
   const value = useMemo<BabyContextType>(
