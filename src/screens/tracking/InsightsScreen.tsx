@@ -773,7 +773,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     return filtered;
   }, [allInsights, dismissedIds, activeCategory]);
 
-  /* ── Weekly pattern data ── */
+  /* ── Weekly pattern data — derived from real tracker entries ── */
   const weeklyPattern = useMemo((): PatternData[] => {
     if (!trackerEntries.length) return [];
     const last7Days = Array.from({ length: 7 }, (_, i) => subDays(new Date(), 6 - i));
@@ -786,9 +786,9 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
 
       return {
         day: format(day, 'EEE'),
-        feeds: dayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length,
-        sleep: dayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep').length,
-        diapers: dayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length,
+        feeds: dayActivities.filter((a: any) => a.trackerId === 'feed').length,
+        sleep: dayActivities.filter((a: any) => a.trackerId === 'sleep').length,
+        diapers: dayActivities.filter((a: any) => a.trackerId === 'diaper' || a.trackerId === 'potty').length,
         total: dayActivities.length,
       };
     });

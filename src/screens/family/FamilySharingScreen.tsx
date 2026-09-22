@@ -1112,28 +1112,59 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
     customPermissions: [] as string[],
   });
 
-  // ── Demo data for new features (replace with real data sources) ──
-  const [dailyGoals, setDailyGoals] = useState<DailyGoal[]>([
-    { id: '1', title: 'Track Feeding', icon: '🍼', target: 6, current: 4, unit: 'times today', color: '#f59e0b', participants: ['p1', 'p2'] },
-    { id: '2', title: 'Log Sleep', icon: '😴', target: 3, current: 2, unit: 'naps today', color: '#8b5cf6', participants: ['p1'] },
-    { id: '3', title: 'Growth Check', icon: '📏', target: 1, current: 0, unit: 'measurement', color: '#10b981', participants: ['p1', 'p2', 'g1'] },
-    { id: '4', title: 'Family Photo', icon: '📸', target: 1, current: 1, unit: 'photo today', color: '#ec4899', participants: ['p2'] },
-  ]);
-
-  const smartSuggestions: SmartSuggestion[] = [
-    { id: '1', type: 'invite', title: 'Invite Grandma to track milestones', description: 'She can help log daily activities and view growth charts.', icon: '👵', color: '#667eea', actionLabel: 'Send Invite', priority: 'medium' },
-    { id: '2', type: 'activity', title: 'Schedule tummy time session', description: "Based on baby's age, tummy time is recommended 3x daily.", icon: '👶', color: '#10b981', actionLabel: 'Schedule', priority: 'high' },
-    { id: '3', type: 'milestone', title: 'First words milestone approaching', description: 'Baby is showing signs of verbal development. Be ready to record!', icon: '🗣️', color: '#f59e0b', actionLabel: 'Learn More', priority: 'medium' },
-    { id: '4', type: 'health', title: 'Vaccination due in 3 days', description: '6-month vaccination appointment should be scheduled soon.', icon: '💉', color: '#ef4444', actionLabel: 'Schedule', priority: 'high' },
-  ];
-  
-  // Real timeline events — synced with Timeline screen via TrackerContext
+  // ── Real data: daily goals derived from today's tracker entries ──
   const { entries: trackerEntries } = useTracker();
   
+  const dailyGoals = useMemo((): DailyGoal[] => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEntries = trackerEntries.filter(
+      (e: any) => e.timestamp >= todayStart.getTime() && !e.isDeleted
+    );
+    
+    const feedCount = todayEntries.filter((e: any) => e.trackerId === 'feed').length;
+    const sleepCount = todayEntries.filter((e: any) => e.trackerId === 'sleep').length;
+    const growthCount = todayEntries.filter((e: any) => e.trackerId === 'growth').length;
+    const photoCount = todayEntries.filter((e: any) => 
+      Array.isArray(e.photoUris) && e.photoUris.length > 0
+    ).length;
+    
+    return [
+      { id: 'feed', title: 'Track Feeding', icon: '🍼', target: 6, current: feedCount, unit: 'times today', color: '#f59e0b', participants: members.map(m => m.id).slice(0, 2) },
+      { id: 'sleep', title: 'Log Sleep', icon: '😴', target: 3, current: sleepCount, unit: 'naps today', color: '#8b5cf6', participants: members.map(m => m.id).slice(0, 1) },
+      { id: 'growth', title: 'Growth Check', icon: '📏', target: 1, current: growthCount, unit: 'measurement', color: '#10b981', participants: members.map(m => m.id).slice(0, 3) },
+      { id: 'photo', title: 'Family Photo', icon: '📸', target: 1, current: photoCount, unit: 'photo today', color: '#ec4899', participants: members.map(m => m.id).slice(0, 2) },
+    ];
+  }, [trackerEntries, members]);
+
+  // Smart suggestions derived from real data
+  const smartSuggestions = useMemo((): SmartSuggestion[] => {
+    const suggestions: SmartSuggestion[] = [];
+    
+    // Suggest inviting if no guardians
+    if (guardians.length === 0) {
+      suggestions.push({ id: 'invite-guardian', type: 'invite', title: 'Invite a Guardian', description: 'Add a grandparent or caregiver to help track activities.', icon: '👵', color: '#667eea', actionLabel: 'Send Invite', priority: 'medium' });
+    }
+    
+    // Suggest based on baby age
+    if (currentBaby) {
+      const ageMonths = differenceInMonths(new Date(), new Date(currentBaby.birthDate));
+      if (ageMonths >= 4 && ageMonths <= 8) {
+        suggestions.push({ id: 'tummy-time', type: 'activity', title: 'Schedule tummy time', description: `At ${ageMonths} months, tummy time is recommended 3x daily.`, icon: '👶', color: '#10b981', actionLabel: 'Schedule', priority: 'high' });
+      }
+      if (ageMonths >= 10 && ageMonths <= 14) {
+        suggestions.push({ id: 'first-words', type: 'milestone', title: 'First words approaching', description: 'Baby is at the age where first words typically emerge.', icon: '🗣️', color: '#f59e0b', actionLabel: 'Learn More', priority: 'medium' });
+      }
+    }
+    
+    return suggestions.slice(0, 4);
+  }, [guardians.length, currentBaby]);
+  
+  // Real timeline events — synced with Timeline screen via TrackerContext
   const timelineEvents: TimelineEvent[] = useMemo(() => {
     if (!trackerEntries || trackerEntries.length === 0) return [];
     return trackerEntries
-      .filter((e: any) => e?.timestamp && e?.trackerId)
+      .filter((e: any) => e?.timestamp && e?.trackerId && !e.isDeleted)
       .slice(0, 15)
       .map((e: any, i: number) => ({
         id: e.id || `event-${i}`,
@@ -1142,24 +1173,53 @@ export default function FamilySharingScreen({ navigation, route }: FamilySharing
         description: e.notes || e.details || '',
         timestamp: e.timestamp,
         actorName: e.loggedByName || 'You',
-        actorRole: UserRole.PARENT_1,
+        actorRole: (e.loggedByRole as UserRole) || UserRole.PARENT_1,
         metadata: e.data || {},
       }))
       .sort((a: TimelineEvent, b: TimelineEvent) => b.timestamp - a.timestamp);
   }, [trackerEntries]);
 
-  const chatPreviews: ChatPreview[] = [
-    { id: '1', name: 'Family Group', lastMessage: "Sarah: Just fed the baby, he's sleeping now 💤", timestamp: Date.now() - 300000, unreadCount: 3, isGroup: true, participants: 4 },
-    { id: '2', name: 'Mike', lastMessage: 'Can you pick up diapers on the way home?', timestamp: Date.now() - 1800000, unreadCount: 1, isGroup: false, participants: 2 },
-    { id: '3', name: 'Grandma', lastMessage: 'The baby smiled at me today! 🥰', timestamp: Date.now() - 3600000, unreadCount: 0, isGroup: false, participants: 2 },
-  ];
+  // Chat previews — derive from real members (no mock messages)
+  const chatPreviews: ChatPreview[] = useMemo(() => {
+    return members
+      .filter(m => m.id !== currentUserId)
+      .slice(0, 3)
+      .map(m => ({
+        id: m.id,
+        name: m.fullName,
+        avatar: m.avatar,
+        lastMessage: m.relationship ? `${m.relationship}` : 'Family member',
+        timestamp: m.lastActive ? new Date(m.lastActive).getTime() : Date.now(),
+        unreadCount: 0,
+        isGroup: false,
+        participants: 2,
+      }));
+  }, [members, currentUserId]);
 
-  const familyInsights: FamilyInsight[] = [
-    { id: '1', category: 'tip', title: 'Optimal feeding window', description: 'Based on patterns, 7:00 AM and 6:30 PM are the best times for solid food introduction.', icon: '💡', color: '#f59e0b', action: { label: 'Set Reminder', onPress: () => {} } },
-    { id: '2', category: 'health', title: 'Sleep quality improving', description: 'Average sleep duration increased by 45 minutes this week. Keep the current routine!', icon: '❤️', color: '#10b981' },
-    { id: '3', category: 'social', title: 'Family engagement up 23%', description: 'More family members are actively logging activities. Great teamwork!', icon: '👥', color: '#667eea' },
-    { id: '4', category: 'alert', title: 'Diaper stock running low', description: 'Based on tracking frequency, you may need diapers in 2 days.', icon: '⚠️', color: '#ef4444', action: { label: 'Add to List', onPress: () => {} } },
-  ];
+  // Family insights — derived from real tracker data
+  const familyInsights: FamilyInsight[] = useMemo((): FamilyInsight[] => {
+    const insights: FamilyInsight[] = [];
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const weekEntries = trackerEntries.filter((e: any) => e.timestamp >= weekAgo && !e.isDeleted);
+    
+    // Sleep insight
+    const sleepEntries = weekEntries.filter((e: any) => e.trackerId === 'sleep');
+    if (sleepEntries.length >= 3) {
+      const avgDuration = sleepEntries.reduce((sum: number, e: any) => sum + (e.data?.duration || 0), 0) / sleepEntries.length / 60;
+      if (avgDuration > 0) {
+        insights.push({ id: 'sleep-quality', category: 'health', title: 'Sleep tracking active', description: `Average sleep session: ${avgDuration.toFixed(0)} minutes across ${sleepEntries.length} sessions this week.`, icon: '❤️', color: '#10b981' });
+      }
+    }
+    
+    // Engagement insight
+    const activeMembers = members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > weekAgo);
+    if (activeMembers.length > 1) {
+      insights.push({ id: 'engagement', category: 'social', title: `${activeMembers.length} active members`, description: 'Multiple family members are logging activities. Great teamwork!', icon: '👥', color: '#667eea' });
+    }
+    
+    return insights.slice(0, 4);
+  }, [trackerEntries, members]);
 
   const currentUserId = useMemo(() => {
     return userProfile?.id || userProfile?.uid || profile?.id || '';

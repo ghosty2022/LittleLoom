@@ -11,24 +11,78 @@ import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
-// Defensive import — the streak util may not exist in all build targets.
-let computeStreak: (entries: any[], trackerId?: string) => { currentStreak: number; longestStreak: number; lastLoggedAt: number; isAtRisk: boolean } = () => ({
-  currentStreak: 0,
-  longestStreak: 0,
-  lastLoggedAt: 0,
-  isAtRisk: false,
-});
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const streakUtil = require('../utils/streak');
-  if (typeof streakUtil?.computeStreak === 'function') {
-    computeStreak = streakUtil.computeStreak;
+// Inline computeStreak — no external dependency, no fallback mock data.
+// Uses real tracker entries passed in.
+const computeStreak = (
+  entries: any[],
+  trackerId?: string
+): { currentStreak: number; longestStreak: number; lastLoggedAt: number; isAtRisk: boolean } => {
+  const filtered = (entries || [])
+    .filter((e: any) => e && e.timestamp && !e.isDeleted)
+    .filter((e: any) => (trackerId ? e.trackerId === trackerId : true))
+    .sort((a: any, b: any) => b.timestamp - a.timestamp);
+
+  if (filtered.length === 0) {
+    return { currentStreak: 0, longestStreak: 0, lastLoggedAt: 0, isAtRisk: false };
   }
-} catch {
-  if (__DEV__) {
-    console.warn('[useTrackerAchievements] streak util missing — achievements will use 0 streak');
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  let currentStreak = 0;
+  let longestStreak = 0;
+  const lastLoggedAt = filtered[0].timestamp;
+
+  // Count consecutive days with entries
+  const loggedDays = new Set(
+    filtered.map((e: any) => {
+      const d = new Date(e.timestamp);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    })
+  );
+
+  // Current streak: count backwards from today
+  let checkDate = todayTime;
+  while (loggedDays.has(checkDate)) {
+    currentStreak++;
+    checkDate -= 86400000;
   }
-}
+
+  // If no entry today but entry yesterday, streak is still "alive" but at risk
+  if (currentStreak === 0 && loggedDays.has(todayTime - 86400000)) {
+    currentStreak = 1;
+    checkDate = todayTime - 2 * 86400000;
+    while (loggedDays.has(checkDate)) {
+      currentStreak++;
+      checkDate -= 86400000;
+    }
+  }
+
+  // Longest streak
+  const sortedDays = [...loggedDays].sort((a, b) => a - b);
+  let tempStreak = 1;
+  longestStreak = 1;
+  for (let i = 1; i < sortedDays.length; i++) {
+    if (sortedDays[i] - sortedDays[i - 1] === 86400000) {
+      tempStreak++;
+      longestStreak = Math.max(longestStreak, tempStreak);
+    } else {
+      tempStreak = 1;
+    }
+  }
+
+  const hour = new Date().getHours();
+  const isAtRisk = !loggedDays.has(todayTime) && hour >= 18;
+
+  return {
+    currentStreak,
+    longestStreak: Math.max(longestStreak, currentStreak),
+    lastLoggedAt,
+    isAtRisk,
+  };
+};
 
 // ... rest of the file remains the same ...
 // Type definitions

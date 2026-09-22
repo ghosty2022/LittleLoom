@@ -44,7 +44,8 @@ import type { RootStackParamList } from '../../types/navigation';
 import { UserRole, ROLE_LABELS } from '../../types/roles';
 import { useFamily, FamilyMember } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
-import { useBaby, ActivityEntry } from '../../context/BabyContext';
+import { useBaby } from '../../context/BabyContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import * as ImagePicker from 'expo-image-picker';
@@ -1057,7 +1058,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const fromChat = params.fromChat ?? false;
   const { members, updateGuardianProfile, removeMember, loadFamily, refreshFamily } = useFamily();
   const { hasPermission, profile, updateProfile } = useUser();
-  const { currentBaby, getRecentActivities, milestones, refreshBabyData } = useBaby();
+  const { currentBaby, milestones, refreshBabyData } = useBaby();
+  const { entries: trackerEntries } = useTracker();
   const { userProfile } = useAuth();
   const { darkMode, triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
@@ -1082,7 +1084,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [memberActivities, setMemberActivities] = useState<ActivityEntry[]>([]);
+  const [memberActivities, setMemberActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
 
   const [formData, setFormData] = useState({ fullName: '', email: '', phoneNumber: '', relationship: '', avatar: '', notificationsEnabled: true });
@@ -1103,20 +1105,20 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const canRemove = useMemo(() => hasPermission('manageFamily') && roleConfig?.canRemove && !isCurrentUser, [hasPermission, roleConfig, isCurrentUser]);
   const canManagePermissions = useMemo(() => hasPermission('manageFamily') && !isCurrentUser, [hasPermission, isCurrentUser]);
 
-  // ─── LOAD MEMBER ACTIVITIES ───────────────────────────────────────────
+  // ─── LOAD MEMBER ACTIVITIES — from real TrackerContext entries ───────
   const loadMemberActivities = useCallback(async (memberId: string, memberUserId?: string, memberName?: string) => {
     if (!currentBaby) return;
     setIsLoadingActivities(true);
     try {
-      const allActivities = getRecentActivities(100);
-      const memberActs = allActivities.filter(a => {
+      const memberActs = trackerEntries.filter((a: any) => {
+        if (a.isDeleted) return false;
         if (a.loggedBy === memberId) return true;
         if (memberUserId && a.loggedBy === memberUserId) return true;
         if (memberName && a.loggedByName === memberName) return true;
         return false;
       });
       if (isMountedRef.current) {
-        setMemberActivities(memberActs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 30));
+        setMemberActivities(memberActs.sort((a: any, b: any) => b.timestamp - a.timestamp).slice(0, 30));
       }
     } catch (error) { 
       console.error('Error loading member activities:', error); 
@@ -1124,7 +1126,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     } finally { 
       if (isMountedRef.current) setIsLoadingActivities(false); 
     }
-  }, [currentBaby, getRecentActivities]);
+  }, [currentBaby, trackerEntries]);
 
   // ─── LOAD MEMBER DATA ─────────────────────────────────────────────────
   const loadMemberData = useCallback(async () => {

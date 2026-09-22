@@ -750,35 +750,42 @@ const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[
   const correlations = useMemo(() => {
     const sleepEntries = trackerEntries.filter((e: any) => e.trackerId === 'sleep' && e.babyId === baby?.id).slice(-7);
     const feedEntries = trackerEntries.filter((e: any) => e.trackerId === 'feed' && e.babyId === baby?.id).slice(-7);
+    const allEntries = trackerEntries.filter((e: any) => e.babyId === baby?.id);
     
     const avgSleep = sleepEntries.length > 0 
-      ? sleepEntries.reduce((sum, e) => sum + (e.duration || e.value || 0), 0) / sleepEntries.length 
+      ? sleepEntries.reduce((sum, e) => sum + (e.duration || e.data?.duration || 0), 0) / sleepEntries.length / 60
       : 0;
     const avgFeed = feedEntries.length > 0
-      ? feedEntries.reduce((sum, e) => sum + (e.amount || e.value || 0), 0) / feedEntries.length
+      ? feedEntries.reduce((sum, e) => sum + (e.amount || e.data?.amount || 0), 0) / feedEntries.length
       : 0;
+    const avgActivities = allEntries.length > 0 ? allEntries.length / 7 : 0;
+
+    // Calculate scores based on real data thresholds
+    const sleepScore = avgSleep > 12 ? 92 : avgSleep > 8 ? 78 : avgSleep > 4 ? 55 : avgSleep > 0 ? 30 : 0;
+    const feedScore = avgFeed > 150 ? 88 : avgFeed > 100 ? 72 : avgFeed > 50 ? 50 : avgFeed > 0 ? 25 : 0;
+    const activityScore = Math.min(100, Math.round(avgActivities * 20));
 
     return [
       {
         label: 'Sleep → Growth',
-        value: avgSleep > 12 ? 92 : avgSleep > 8 ? 78 : avgSleep > 4 ? 55 : 30,
+        value: sleepScore,
         icon: '😴',
         color: '#8b5cf6',
-        detail: `${avgSleep.toFixed(1)}h avg sleep`,
+        detail: avgSleep > 0 ? `${avgSleep.toFixed(1)}h avg sleep` : 'No sleep data',
       },
       {
         label: 'Feed → Growth',
-        value: avgFeed > 150 ? 88 : avgFeed > 100 ? 72 : avgFeed > 50 ? 50 : 25,
+        value: feedScore,
         icon: '🍼',
         color: '#f59e0b',
-        detail: `${avgFeed.toFixed(0)}ml avg feed`,
+        detail: avgFeed > 0 ? `${avgFeed.toFixed(0)}ml avg feed` : 'No feed data',
       },
       {
         label: 'Activity → Growth',
-        value: 76,
+        value: activityScore,
         icon: '🎾',
         color: '#10b981',
-        detail: '3 activities/day',
+        detail: avgActivities > 0 ? `${avgActivities.toFixed(1)} activities/day` : 'No activity data',
       },
     ];
   }, [trackerEntries, baby]);

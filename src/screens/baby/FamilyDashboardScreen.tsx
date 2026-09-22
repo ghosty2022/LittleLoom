@@ -38,6 +38,7 @@ import { useUser } from '../../context/UserContext';
 import { UserRole } from '../../types/roles';
 import type { ActivityEntry, Milestone } from '../../context/BabyContext';
 import { useBaby } from '../../context/BabyContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 import OptimizedImage from '../../components/OptimizedImage';
 
 const AnimatedScrollView = Animated.ScrollView;
@@ -553,9 +554,15 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     ];
   }, [members, hasUser, effectiveUser]);
 
+  // Use TrackerContext as the single source of truth
+  const { entries: trackerEntries } = useTracker();
+  
   const recentActivities = useMemo(
-    () => activities.sort((a, b) => b.timestamp - a.timestamp).slice(0, 5),
-    [activities]
+    () => trackerEntries
+      .filter((e: any) => !e.isDeleted)
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 5),
+    [trackerEntries]
   );
 
   const recentMilestones = useMemo(

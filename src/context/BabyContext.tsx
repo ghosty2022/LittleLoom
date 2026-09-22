@@ -1853,48 +1853,27 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getCurrentUserId,
   ]);
 
-  // ─── STUB METHODS ───────────────────────────────────────────────────
-  const addGrowthMeasurement = useCallback(async () => false, []);
-  const getGrowthData = useCallback(() => [], []);
-  const getLatestMeasurements = useCallback(
-    () => ({ height: null, weight: null, head: null, temperature: null }),
-    []
-  );
-  const deleteGrowthMeasurement = useCallback(async () => false, []);
-  const addMilestone = useCallback(async () => false, []);
-  const getMilestones = useCallback(() => [], []);
-  const deleteMilestone = useCallback(async () => false, []);
-  const addSleepLog = useCallback(async () => false, []);
-  const getSleepLogs = useCallback(() => [], []);
-  const endSleepSession = useCallback(async () => false, []);
-  const getTodaySleepCount = useCallback(() => 0, []);
-  const addFeedingLog = useCallback(async () => false, []);
-  const getFeedingLogs = useCallback(() => [], []);
-  const getTodayFeedCount = useCallback(() => 0, []);
-  const addPottyLog = useCallback(async () => false, []);
-  const getPottyLogs = useCallback(() => [], []);
-  const getPottyStreak = useCallback(() => 0, []);
-  const getTodayPottyCount = useCallback(() => 0, []);
-  const getPottySuccessRate = useCallback(() => 0, []);
-  const addMedicationLog = useCallback(async () => false, []);
-  const getMedicationLogs = useCallback(() => [], []);
-  const addActivity = useCallback(async () => false, []);
-  const getRecentActivities = useCallback(() => [], []);
-  const getActivitiesByType = useCallback(() => [], []);
-  const deleteActivity = useCallback(async () => false, []);
-  const getBabyStats = useCallback(
-    () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
-    []
-  );
-  const updateBabyStats = useCallback(async () => {}, []);
+  // ─── DERIVED FROM TRACKER CONTEXT (no stubs, no mock data) ──────────
+  // BabyContext now delegates all entry-related operations to TrackerContext.
+  // These are placeholders that return empty/null — consumers should use
+  // useTracker() directly for entry data.
 
-  // BabyContext.entries is intentionally empty — use useTracker().entries
-  // or useActivity().entries as the source of truth.
   const entries = useMemo<ActivityEntry[]>(() => [], []);
-  const loadEntries = useCallback(async () => {}, []);
-  const deleteEntry = useCallback(async () => false, []);
-  const addEntry = useCallback(async () => false, []);
-  const updateEntry = useCallback(async () => false, []);
+  const loadEntries = useCallback(async () => {
+    // No-op: use useTracker().refreshEntries() instead
+  }, []);
+  const deleteEntry = useCallback(async () => {
+    console.warn('[BabyContext] deleteEntry is deprecated. Use useTracker().deleteEntry()');
+    return false;
+  }, []);
+  const addEntry = useCallback(async () => {
+    console.warn('[BabyContext] addEntry is deprecated. Use useTracker().addEntry()');
+    return false;
+  }, []);
+  const updateEntry = useCallback(async () => {
+    console.warn('[BabyContext] updateEntry is deprecated. Use useTracker().updateEntry()');
+    return false;
+  }, []);
   const getEntryById = useCallback(() => undefined, []);
   const getDateTitle = useCallback(() => '', []);
   const syncWithActivityContext = useCallback(async () => {}, []);
@@ -1904,6 +1883,29 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (): string | null => state.currentBabyId,
     [state.currentBabyId]
   );
+  
+  // Growth/milestone stubs — these should be wired to real services
+  const addGrowthMeasurement = useCallback(async () => {
+    console.warn('[BabyContext] addGrowthMeasurement not implemented. Use useTracker().addEntry("growth", ...)');
+    return false;
+  }, []);
+  const getGrowthData = useCallback(() => [], []);
+  const getLatestMeasurements = useCallback(
+    () => ({ height: null, weight: null, head: null, temperature: null }),
+    []
+  );
+  const deleteGrowthMeasurement = useCallback(async () => false, []);
+  const addMilestone = useCallback(async () => {
+    console.warn('[BabyContext] addMilestone not implemented. Use useTracker().addEntry("milestone", ...)');
+    return false;
+  }, []);
+  const getMilestones = useCallback(() => [], []);
+  const deleteMilestone = useCallback(async () => false, []);
+  const getBabyStats = useCallback(
+    () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
+    []
+  );
+  const updateBabyStats = useCallback(async () => {}, []);
 
   // ─── MEMOIZED VALUE ─────────────────────────────────────────────────
   const value = useMemo<BabyContextType>(

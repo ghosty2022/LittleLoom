@@ -54,7 +54,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { FamilyMember, useFamily } from '../../context/FamilyContext';
 import { Milestone, useBaby } from '../../context/BabyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { useActivity } from '../../context/ActivityContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
@@ -461,7 +461,8 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     babies, updateBaby, currentBaby, currentBabyId, addMilestone, deleteMilestone,
     loadBabies, switchBaby, deleteBaby, milestones, calculateAge,
   } = useBaby();
-  const { entries: allActivities, getEntriesByBaby, refreshEntries } = useActivity();
+  // useTracker is the single source of truth - no useActivity
+  const { entries: trackerEntries, getEntries: getTrackerEntries, refreshEntries } = useTracker();
   const { members, loadFamily } = useFamily();
 
   const isBabyMode = mode === 'baby';
@@ -1065,10 +1066,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   }, [loadFullData]);
 
   // ─── COMPUTED VALUES ──────────────────────────────────────────────────
+  // Use TrackerContext as the single source of truth
+  const { entries: trackerEntries, getEntries: getTrackerEntries } = useTracker();
+  
   const recentActivities = useMemo(() => {
     if (!currentBabyData?.id) return [];
-    return getEntriesByBaby(currentBabyData.id).sort((a, b) => b.timestamp - a.timestamp).slice(0, 30);
-  }, [allActivities, currentBabyData?.id, getEntriesByBaby]);
+    return trackerEntries
+      .filter((e: any) => e.babyId === currentBabyData.id && !e.isDeleted)
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 30);
+  }, [trackerEntries, currentBabyData?.id]);
 
   const babyMilestones = useMemo(() => {
     if (!currentBabyData?.id) return [];
