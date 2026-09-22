@@ -18,13 +18,12 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { formatTimeShort, formatDateShort } from '@/utils/time';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { DynamicTrackerForm } from './DynamicTrackerForm';
 import type { UnifiedTrackerConfig, TrackerEntry } from '../../types/trackers';
-// import { SafeAvatar } from '../../components/SafeAvatar'; // UNUSED -- removed
-
 const { width: SCREEN_W } = Dimensions.get('window');
 
 interface SmartTrackerScreenProps {

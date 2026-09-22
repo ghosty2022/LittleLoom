@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { format } from 'date-fns';
 
 import { useCustomization } from '../../hooks/useCustomization';
-import { useTracker } from '../../hooks';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { TrackerEntry } from '../../types/trackers';
 
 interface TrackerEntryCardProps {

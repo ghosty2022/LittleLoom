@@ -180,7 +180,10 @@ export const useGrowthIntelligence = () => {
   // function on every provider render, which would thrash every memo
   // below. All call-sites and deps use `getEntriesStable`.
   const getEntriesStable = useCallback(
-    (...args: Parameters<typeof getEntries>) => getEntriesRef.current(...args),
+    (...args: Parameters<typeof getEntries>) =>
+      typeof getEntriesRef.current === 'function'
+        ? getEntriesRef.current(...args)
+        : [],
     []
   );
 
