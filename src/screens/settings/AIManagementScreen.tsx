@@ -51,7 +51,7 @@ import Animated, {
   Extrapolation,
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { format, subDays } from 'date-fns';
@@ -75,6 +75,7 @@ import {
   setCollaborativeLearningEnabled,
   isCohortContributionBlocked,
   deleteCohortContributions,
+  unblockCohortContributions,
   getCohortPrior,
   ageToCohort,
   AgeCohort,
@@ -995,27 +996,47 @@ export default function AIManagementScreen() {
     );
   }, [currentBaby, userProfile, loadSettings, triggerHaptic, sweetAlert]);
 
-  const handleUnblockCohort = useCallback(async () => {
-    if (!currentBaby?.id) return;
+const handleUnblockCohort = useCallback(async () => {
+  if (!currentBaby?.id || !userProfile?.id) {
+    sweetAlert.warning('No Baby Selected', 'Select a baby profile first.');
+    return;
+  }
 
-    setUnblocking(true);
-    try {
-      // Remove the GDPR blocklist flag
-      await AsyncStorage.removeItem(
-        `@littleloom_cohort_do_not_contribute_v1:${currentBaby.id}`
-      );
-      triggerHaptic('success');
-      await loadSettings();
-      sweetAlert.success(
-        'Unblocked',
-        'This baby can now contribute to the shared pool again.'
-      );
-    } catch (e) {
-      sweetAlert.error('Error', 'Failed to unblock contributions.');
-    } finally {
-      setUnblocking(false);
-    }
-  }, [currentBaby, loadSettings, triggerHaptic, sweetAlert]);
+  Alert.alert(
+    'Unblock Cohort Contributions?',
+    'This will re-enable sharing of anonymized statistical patterns for this baby. Your past local caches will start rebuilding immediately.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Unblock',
+        onPress: async () => {
+          setUnblocking(true);
+          try {
+            const res = await unblockCohortContributions(currentBaby.id, userProfile.id);
+            if (res.success) {
+              triggerHaptic('success');
+              await loadSettings();
+
+              // Re-run bootstrap so the next publish happens immediately
+              try {
+                const { bootstrapAI } = await import('../../services/ai/bootstrap');
+                bootstrapAI(currentBaby.id, true).catch(() => {});
+              } catch {}
+
+              sweetAlert.success('Unblocked', res.message);
+            } else {
+              sweetAlert.error('Error', res.message);
+            }
+          } catch (e) {
+            sweetAlert.error('Error', 'Failed to unblock contributions.');
+          } finally {
+            setUnblocking(false);
+          }
+        },
+      },
+    ]
+  );
+}, [currentBaby, userProfile, loadSettings, triggerHaptic, sweetAlert]);
 
   const handleToggleCollaborative = useCallback(
     async (value: boolean) => {

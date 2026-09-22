@@ -10,7 +10,7 @@ import { supabase } from '@/utils/supabase';
 import { AgeCohort, ageToCohort, isCollaborativeLearningEnabled } from './CohortPriors';
 
 const PREDICTOR_CACHE_PREFIX = '@littleloom_predictor_cohort_v1:';
-const PREDICTOR_LAST_PUBLISH_KEY = '@littleloom_predictor_last_publish_v1';
+export const PREDICTOR_LAST_PUBLISH_KEY = '@littleloom_predictor_last_publish_v1';
 
 export type PredictorKind = 'sleep' | 'feed' | 'diaper' | 'wake' | 'medication';
 
@@ -88,6 +88,15 @@ export async function publishPredictorToCohort(
   if (!allowed) {
     return { published: 0, skipped: states.length, reason: 'opt_out' };
   }
+
+  // Respect the per-baby GDPR blocklist
+  try {
+    const { isCohortContributionBlocked } = await import('./CohortPriors');
+    const blocked = await isCohortContributionBlocked(babyId);
+    if (blocked) {
+      return { published: 0, skipped: states.length, reason: 'gdpr_blocked' };
+    }
+  } catch {}
 
   const minSamples = options.minSamples ?? 30;
 

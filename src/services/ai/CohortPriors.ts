@@ -12,6 +12,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import { MetricKey, getLearnedRange } from './BayesianEngine';
+import { PREDICTOR_LAST_PUBLISH_KEY } from './PredictorCohort';
 
 const COLLABORATIVE_OPT_IN_KEY = '@littleloom_ai_collaborative_v1';
 const COHORT_CACHE_PREFIX = '@littleloom_cohort_prior_v1:';
@@ -405,6 +406,11 @@ export async function deleteCohortContributions(
       .delete()
       .eq('user_id', userId);
 
+    // 2a. Clear predictor publish throttle too
+    try {
+      await AsyncStorage.removeItem(PREDICTOR_LAST_PUBLISH_KEY);
+    } catch {}
+
     // 3. Blocklist this baby from future contributions
     await AsyncStorage.setItem(`${GDPR_BLOCKLIST_KEY}${babyId}`, 'true');
 
@@ -455,5 +461,54 @@ export async function isCohortContributionBlocked(
     return v === 'true';
   } catch {
     return false;
+  }
+}
+
+// ─── Unblock a baby from cohort contributions ──────────────────────
+// Reverses deleteCohortContributions. After calling this, the baby
+// can publish to the cohort pool again (assuming collaborative
+// learning is enabled globally).
+
+export async function unblockCohortContributions(
+  babyId: string,
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    // 1. Remove the blocklist flag
+    await AsyncStorage.removeItem(`${GDPR_BLOCKLIST_KEY}${babyId}`);
+
+    // 2. Clear BOTH publish throttles so the next bootstrap publishes immediately
+    await AsyncStorage.removeItem(LAST_PUBLISH_KEY);
+    try {
+      await AsyncStorage.removeItem(PREDICTOR_LAST_PUBLISH_KEY);
+    } catch {}
+
+    // 3. Audit log
+    try {
+      await supabase.from('audit_logs').insert({
+        user_id: userId,
+        action: 'gdpr_cohort_unblock',
+        resource_type: 'ai_cohort_priors',
+        resource_id: babyId,
+        details: {
+          timestamp: new Date().toISOString(),
+          note: 'User re-enabled cohort contributions after a previous erasure.',
+        },
+      });
+    } catch {}
+
+    if (__DEV__) {
+      console.log(`[Cohort] Unblocked contributions for ${babyId}`);
+    }
+
+    return {
+      success: true,
+      message: 'Cohort contributions re-enabled. Future learning will be shared.',
+    };
+  } catch (e) {
+    return {
+      success: false,
+      message: `Failed to unblock: ${e}`,
+    };
   }
 }

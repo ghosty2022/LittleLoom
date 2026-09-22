@@ -391,7 +391,15 @@ export async function discoverCorrelations(
   );
 
   // ─── Persist to cache so subsequent reads are instant ─────────
-  if (results.length > 0) {
+  //     Skip the write if the baby is GDPR-blocked, so we never
+  //     re-populate a table we were explicitly asked to clear.
+  let isBlocked = false;
+  try {
+    const { isCohortContributionBlocked } = await import('./CohortPriors');
+    isBlocked = await isCohortContributionBlocked(babyId);
+  } catch {}
+
+  if (results.length > 0 && !isBlocked) {
     try {
       const rows = results.map((r) => ({
         baby_id: babyId,

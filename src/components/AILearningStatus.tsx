@@ -15,13 +15,19 @@ interface LearningStats {
   samples: number;
   metrics: number;
   enabled: boolean;
+  blocked: boolean;
 }
 
 export const AILearningStatus: React.FC = () => {
   const navigation = useNavigation<any>();
   const { currentBaby } = useBaby();
   const { fullThemeColors, borderRadiusValue, themeColors } = useCustomization();
-  const [stats, setStats] = useState<LearningStats>({ samples: 0, metrics: 0, enabled: true });
+  const [stats, setStats] = useState<LearningStats>({
+    samples: 0,
+    metrics: 0,
+    enabled: true,
+    blocked: false,
+  });
 
   const loadStats = useCallback(async () => {
     if (!currentBaby?.id) return;
@@ -31,6 +37,17 @@ export const AILearningStatus: React.FC = () => {
       const raw = await AsyncStorage.getItem(CONSENT_KEY);
       if (raw) enabled = JSON.parse(raw)?.learningEnabled !== false;
     } catch {}
+
+    // If the baby was GDPR-blocked, the toggle is effectively OFF
+    // regardless of the consent flag. Surface that to the user.
+    let blocked = false;
+    try {
+      const blockRaw = await AsyncStorage.getItem(
+        `@littleloom_cohort_do_not_contribute_v1:${currentBaby.id}`
+      );
+      blocked = blockRaw === 'true';
+    } catch {}
+    if (blocked) enabled = false;
 
     try {
       const keys = await AsyncStorage.getAllKeys();
@@ -53,7 +70,7 @@ export const AILearningStatus: React.FC = () => {
           }
         } catch {}
       }
-      setStats({ samples: totalSamples, metrics: validMetrics, enabled });
+      setStats({ samples: totalSamples, metrics: validMetrics, enabled, blocked });
     } catch (err) {
       if (__DEV__) console.warn('[AILearningStatus] count failed:', err);
     }
@@ -72,6 +89,12 @@ export const AILearningStatus: React.FC = () => {
   };
 
   const handleToggle = async () => {
+    // When blocked, redirect to the management screen instead of
+    // silently flipping a toggle that has no effect.
+    if (!stats.enabled && stats.blocked) {
+      navigation.navigate('AIManagement');
+      return;
+    }
     try {
       await AsyncStorage.setItem(
         CONSENT_KEY,
@@ -105,13 +128,15 @@ export const AILearningStatus: React.FC = () => {
           <Text style={[styles.title, { color: fullThemeColors.text }]}>
             Personal AI Learning
           </Text>
-          <Text style={[styles.subtitle, { color: fullThemeColors.textSecondary }]}>
-            {stats.samples < 10
-              ? 'Just getting started — keep logging!'
-              : stats.samples < 50
-              ? `Learning your baby's patterns (${stats.samples} samples)`
-              : `Personalized (${stats.samples} samples across ${stats.metrics} metrics)`}
-          </Text>
+                  <Text style={[styles.subtitle, { color: fullThemeColors.textSecondary }]}>
+          {!stats.enabled
+            ? 'Contribution disabled — tap to manage'
+            : stats.samples < 10
+            ? 'Just getting started — keep logging!'
+            : stats.samples < 50
+            ? `Learning your baby's patterns (${stats.samples} samples)`
+            : `Personalized (${stats.samples} samples across ${stats.metrics} metrics)`}
+        </Text>
         </View>
         <TouchableOpacity onPress={handleToggle} style={styles.toggle} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons
