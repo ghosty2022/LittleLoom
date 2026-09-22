@@ -334,13 +334,27 @@ async function learnFromEntry(
   const fieldMap = BAYES_METRIC_MAP[trackerId];
   if (!fieldMap) return;
 
+  // Use the same robust extractor as the backfill path so strings like
+  // "120ml" and "2.5h" are handled identically.
+  const { extractMetricValue } = await import('./BayesianEngine').catch(() => ({ extractMetricValue: null as any }));
+
   const tasks: Promise<unknown>[] = [];
-  for (const [field, metric] of Object.entries(fieldMap)) {
+  for (const metric of Object.values(fieldMap)) {
     if (!metric) continue;
-    const raw = data[field];
-    if (raw === undefined || raw === null) continue;
-    const num = typeof raw === 'number' ? raw : parseFloat(String(raw));
-    if (!Number.isFinite(num)) continue;
+
+    // Try the robust extractor first; fall back to a plain numeric parse.
+    let num: number | null = null;
+    if (typeof extractMetricValue === 'function') {
+      try { num = extractMetricValue(metric as any, data); } catch { num = null; }
+    }
+    if (num === null) {
+      for (const key of Object.keys(data)) {
+        const v = data[key];
+        const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
+        if (Number.isFinite(n)) { num = n; break; }
+      }
+    }
+    if (num === null) continue;
 
     tasks.push(
       observeValue(babyId, metric as any, num).catch(err => {

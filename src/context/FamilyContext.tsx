@@ -287,14 +287,23 @@ const { data: dbMembers, error: membersError } = await supabase
         }
       }
 
-      const nextParent1 = members.find(m => m.role === UserRole.PARENT_1) || null;
-      const nextParent2 = members.find(m => m.role === UserRole.PARENT_2) || null;
-      const nextGuardians = members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
-      const nextPending = members.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1);
+      // De-duplicate by userId (or id fallback)
+      const seenIds = new Set<string>();
+      const uniqueMembers = members.filter(m => {
+        const key = m.userId || m.id;
+        if (seenIds.has(key)) return false;
+        seenIds.add(key);
+        return true;
+      });
+
+      const nextParent1 = uniqueMembers.find(m => m.role === UserRole.PARENT_1) || null;
+      const nextParent2 = uniqueMembers.find(m => m.role === UserRole.PARENT_2) || null;
+      const nextGuardians = uniqueMembers.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
+      const nextPending = uniqueMembers.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1);
 
       setState({
         isLoading: false,
-        members,
+        members: uniqueMembers,
         parent1: nextParent1,
         parent2: nextParent2,
         guardians: nextGuardians,

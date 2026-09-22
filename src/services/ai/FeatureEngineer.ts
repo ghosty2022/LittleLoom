@@ -137,7 +137,17 @@ export class FeatureEngineer {
       if (entries.length === 0) return;
 
       const previous = await this.getPreviousFeatures(babyId, date);
-      const features = this.computeFeatures(entries, previous);
+      // Load baby profile (for WHO percentile computation)
+      let baby: any = null;
+      try {
+        const { data: b } = await supabase
+          .from('babies')
+          .select('birth_date, gender')
+          .eq('id', babyId)
+          .maybeSingle();
+        baby = b;
+      } catch {}
+      const features = this.computeFeatures(entries, previous, baby);
 
       const { error } = await supabase
         .from('ai_features')
@@ -211,7 +221,7 @@ export class FeatureEngineer {
     return data || null;
   }
 
-  private computeFeatures(entries: RawEntry[], previous: any): ComputedFeatures {
+  private computeFeatures(entries: RawEntry[], previous: any, baby?: any): ComputedFeatures {
     // ─── Segment entries by tracker ──────────────────────────────
     const feedEntries = entries.filter((e) => e.tracker_id === 'feed');
     const sleepEntries = entries.filter((e) => e.tracker_id === 'sleep');
@@ -292,9 +302,22 @@ export class FeatureEngineer {
       if (Math.abs(weightVelocity) > 1) weightVelocity = null;
     }
 
-    // Weight percentile — computed elsewhere (WHO growth calculator)
-    // We just pass through what the previous feature row had, or leave null
-    const weightPercentile = previous?.weight_percentile ?? null;
+    // Compute WHO weight-for-age percentile inline (boy/girl curves, 0–24 months)
+    let weightPercentile: number | null = previous?.weight_percentile ?? null;
+    if (weightKgSafe !== null && currentBaby?.birthDate && currentBaby?.gender) {
+      try {
+        const { getPercentile } = require('@/hooks/useWHOGrowthCalculator');
+        const ageMonths = (() => {
+          const b = new Date(currentBaby.birthDate);
+          const n = new Date();
+          return Math.max(0, (n.getFullYear() - b.getFullYear()) * 12 + (n.getMonth() - b.getMonth()));
+        })();
+        const g = currentBaby.gender === 'girl' ? 'girl' : 'boy';
+        weightPercentile = getPercentile(weightKgSafe, ageMonths, 'weight', g);
+      } catch {
+        // calculator unavailable — keep null
+      }
+    }
 
     // ─── Health ──────────────────────────────────────────────────
     const temps = tempEntries

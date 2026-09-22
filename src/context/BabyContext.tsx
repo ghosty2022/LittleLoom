@@ -203,7 +203,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Stable ref so realtime callbacks can call loadBabies without
   // creating a circular dependency in useCallback deps.
   const loadBabiesRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
-
+  const backfillRanRef = useRef(false);
   const initRef = useRef(false);
   const isMounted = useRef(true);
   const isCreatingRef = useRef(false);
@@ -735,8 +735,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // ─── One-time Bayesian backfill for each baby ─────────────────
-      // Runs in the background — never blocks baby loading.
-      if (babies.length > 0) {
+      // Runs in the background ONCE per baby — the flag lives in AsyncStorage.
+      if (babies.length > 0 && !backfillRanRef.current) {
+        backfillRanRef.current = true;
         import('../services/ai/backfillBayesian')
           .then(({ backfillBayesianIfNeeded }) => {
             Promise.all(

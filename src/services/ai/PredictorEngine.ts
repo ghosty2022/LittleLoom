@@ -243,7 +243,12 @@ function predictNext(state: PredictorState): Prediction {
   const now = Date.now();
   const m = DEFAULT_PARAMS.seasonLength;
 
-  const slot = seasonSlot(now, m);
+  // Use the *predicted* future time's slot rather than the current slot,
+  // so we pick the seasonal component that actually applies to the
+  // predicted event's time of day.
+  const baseTime = state.lastObservedAt > 0 ? state.lastObservedAt : now;
+  const projectedAt = baseTime + Math.max(state.level, 30) * 60000;
+  const slot = seasonSlot(projectedAt, m);
   const seasonal = state.seasonal[slot] ?? 0;
 
   let predictedInterval = state.level + state.trend + seasonal;
@@ -265,8 +270,6 @@ function predictNext(state: PredictorState): Prediction {
   const bandMin = Math.max(5, predictedInterval - sigma);
   const bandMax = predictedInterval + sigma;
 
-  const baseTime =
-    state.lastObservedAt > 0 ? state.lastObservedAt : now;
   const predictedAt = baseTime + predictedInterval * 60000;
 
   const minutesUntil = Math.round((predictedAt - now) / 60000);

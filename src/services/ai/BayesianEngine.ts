@@ -19,7 +19,24 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase, getCurrentUserId } from '@/utils/supabase';
+import { supabase } from '@/utils/supabase';
+
+/**
+ * Safe user-id resolver — falls back to supabase.auth if the helper
+ * is not exported by utils/supabase.
+ */
+async function getCurrentUserId(): Promise<string | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id) return session.user.id;
+  } catch {}
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -391,9 +408,21 @@ export async function detectAnomaly(
 ): Promise<Anomaly> {
   const metric = resolveMetric(metricInput);
   const spec = PRIORS[metric];
-  const thresholdZ = options.thresholdZ ?? 2.5;
+  const thresholdZ = options.thresholdZ ?? 3.0;
 
   const learned = await getLearnedRange(babyId, metric);
+
+  // Not enough observations → never flag as anomaly
+  if (learned.samples < 5) {
+    return {
+      isAnomaly: false,
+      zScore: 0,
+      severity: 'low',
+      normalRange: [learned.mean - 2 * spec.sigmaPrior, learned.mean + 2 * spec.sigmaPrior],
+      confidence: learned.confidence,
+      explanation: `Not enough data yet (${learned.samples} samples) to flag this reading.`,
+    };
+  }
 
   // Blend prior sigma and learned sigma based on confidence
   const c = learned.confidence;
@@ -468,48 +497,88 @@ export async function resetLearningForBaby(babyId: string): Promise<void> {
  * Extract a numeric value from tracker entry data, per metric.
  * Handles unit conversions (F→C, oz→ml).
  */
+/**
+ * Parse a numeric value from an unknown input. Handles:
+ *  - numbers
+ *  - strings like "120", "120ml", "2.5h", "1h 30m", "4 oz"
+ */
+function coerceNumber(raw: unknown, preferUnit?: 'ml' | 'oz' | 'kg' | 'lb' | 'cm' | 'in' | 'sec' | 'min' | 'hr'): number | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+
+  const str = String(raw).trim().toLowerCase();
+  if (!str) return null;
+
+  // Plain numeric string
+  const plain = Number(str);
+  if (Number.isFinite(plain)) return plain;
+
+  // "1h 30m" | "90 min" | "2.5hr" | "120ml" | "4 oz" | "70cm"
+  const re = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds|ml|milliliter|milliliters|oz|ounce|ounces|kg|kilogram|kilograms|lb|lbs|pound|pounds|cm|centimeter|centimeters|in|inch|inches)?/gi;
+  let total = 0;
+  let matched = false;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(str)) !== null) {
+    const n = parseFloat(m[1]);
+    if (!Number.isFinite(n)) continue;
+    matched = true;
+    const u = (m[2] || '').toLowerCase();
+    if (!u) total += n;
+    else if (u.startsWith('h')) total += n * 60;             // hours → minutes
+    else if (u.startsWith('m') && !u.startsWith('ml')) total += n;
+    else if (u.startsWith('s')) total += n / 60;              // seconds → minutes
+    else if (u.startsWith('ml')) total += n;                  // ml already
+    else if (u.startsWith('oz') && preferUnit === 'oz') total += n;
+    else if (u === 'kg' || u === 'lb' || u === 'cm' || u === 'in') total += n;
+    else total += n;
+  }
+  return matched && Number.isFinite(total) ? total : null;
+}
+
 export function extractMetricValue(
   metric: MetricKey,
   data: Record<string, unknown> | undefined
 ): number | null {
   if (!data) return null;
 
+  const getNum = (key: string): number | null => coerceNumber(data[key]);
+
   switch (metric) {
     case 'temperature_c': {
-      const v = Number(data.value);
-      if (!Number.isFinite(v)) return null;
-      const unit = String(data.unit || 'celsius');
+      const v = getNum('value') ?? getNum('temperature');
+      if (v === null) return null;
+      const unit = String(data.unit || 'celsius').toLowerCase();
       return unit === 'fahrenheit' ? ((v - 32) * 5) / 9 : v;
     }
     case 'feeding_ml': {
-      const amount = Number(data.amount);
-      if (!Number.isFinite(amount) || amount <= 0) return null;
-      const unit = String(data.unit || 'ml');
+      const amount = getNum('amount_ml') ?? getNum('amount') ?? getNum('quantity') ?? getNum('value');
+      if (amount === null || amount <= 0) return null;
+      const unit = String(data.unit || 'ml').toLowerCase();
       return unit === 'oz' ? amount * 29.5735 : amount;
     }
     case 'weight_kg': {
-      const v = Number(data.value);
-      if (!Number.isFinite(v)) return null;
-      const unit = String(data.unit || 'kg');
+      const v = getNum('weight_kg') ?? getNum('weight') ?? getNum('value');
+      if (v === null) return null;
+      const unit = String(data.unit || 'kg').toLowerCase();
       return unit === 'lb' ? v * 0.453592 : v;
     }
     case 'height_cm': {
-      const v = Number(data.value);
-      if (!Number.isFinite(v)) return null;
-      const unit = String(data.unit || 'cm');
+      const v = getNum('height_cm') ?? getNum('height') ?? getNum('value');
+      if (v === null) return null;
+      const unit = String(data.unit || 'cm').toLowerCase();
       return unit === 'in' ? v * 2.54 : v;
     }
     case 'head_cm': {
-      const v = Number(data.value);
-      if (!Number.isFinite(v)) return null;
-      const unit = String(data.unit || 'cm');
+      const v = getNum('head_cm') ?? getNum('head') ?? getNum('head_circumference') ?? getNum('value');
+      if (v === null) return null;
+      const unit = String(data.unit || 'cm').toLowerCase();
       return unit === 'in' ? v * 2.54 : v;
     }
     case 'mood_score':
     case 'heart_rate_bpm':
     case 'blood_oxygen': {
-      const v = Number(data.value);
-      return Number.isFinite(v) ? v : null;
+      const v = getNum('value') ?? getNum('mood') ?? getNum('bpm') ?? getNum('spo2');
+      return v !== null ? v : null;
     }
     case 'feed_interval_min':
     case 'sleep_duration_min':
@@ -517,18 +586,18 @@ export function extractMetricValue(
     case 'diaper_interval_min':
     case 'poop_interval_hr':
     case 'wake_window_min': {
-      const duration = Number(data.duration);
-      if (Number.isFinite(duration) && duration > 0) {
-        // Duration is in seconds in your schema
-        return metric === 'poop_interval_hr'
-          ? duration / 3600
-          : duration / 60;
+      // Try duration first (seconds), then minutes, then a generic parse
+      const sec = getNum('duration');
+      const minFromField = getNum('minutes') ?? getNum('duration_minutes');
+      let minutes: number | null = null;
+      if (sec !== null && sec > 0) minutes = sec / 60;
+      else if (minFromField !== null) minutes = minFromField;
+      else {
+        const parsed = coerceNumber(data.duration ?? data.minutes);
+        if (parsed !== null) minutes = parsed;
       }
-      const mins = Number(data.minutes);
-      if (Number.isFinite(mins)) {
-        return metric === 'poop_interval_hr' ? mins / 60 : mins;
-      }
-      return null;
+      if (minutes === null) return null;
+      return metric === 'poop_interval_hr' ? minutes / 60 : minutes;
     }
     default:
       return null;

@@ -733,6 +733,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'littleloom_nav_state_v4',
         '@littleloom_nav_state_v4',
         'littleloom_last_active_global',
+        '@littleloom_cached_baby',
+        '@littleloom_cached_activities_v2',
+        '@littleloom_smart_notifications',
+        '@littleloom_bayes_backfilled_v1',
       ]);
 
       // Clear user ID cache
@@ -1656,23 +1660,10 @@ const signUpWithInviteCode = useCallback(async (
         };
       }
 
-      // Fallback to auth admin list
-      const { data: { users }, error } = await supabase.auth.admin.listUsers();
-      if (error) {
-        console.warn('[Auth] Admin list users error:', error.message);
-        return null;
-      }
-      
-      const user = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
-      if (!user) return null;
-      
-      const meta = user.user_metadata || {};
-      return {
-        userId: user.id,
-        email: user.email || '',
-        fullName: meta.full_name || meta.fullName || user.email?.split('@')[0] || '',
-        role: meta.role || 'parent1',
-      };
+      // NOTE: supabase.auth.admin.listUsers requires a service-role key and
+      // will 401 on the client. We therefore rely exclusively on the
+      // `profiles` table (queried above). If a profile is missing, return null.
+      return null;
     } catch (error) {
       console.error('Find user by email error:', error);
       return null;

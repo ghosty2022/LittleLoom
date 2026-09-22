@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Dimensions,
-  FlatList,
   Modal,
   Pressable,
   RefreshControl,
@@ -41,15 +39,15 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format, formatDistanceToNow, isSameDay, subDays, differenceInHours, differenceInDays, differenceInMonths, parseISO, isValid } from 'date-fns';
+import { format, formatDistanceToNow, isSameDay, subDays, differenceInDays, differenceInMonths, parseISO, isValid } from 'date-fns';
 
-import { SafeAvatar } from '../../components/SafeAvatar';
+
 import { useSweetAlert } from '../../components/SweetAlert';
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    DESIGN TOKENS — Match HomeScreen & GrowthDashboard exactly
@@ -91,11 +89,7 @@ const safeDiffMonths = (a: Date | string, b: Date | string): number => {
   return Math.max(0, differenceInMonths(left, right));
 };
 
-const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
-  const p = safeParseDate(typeof d === 'string' ? d : undefined) || (d instanceof Date ? d : null);
-  if (!p) return '—';
-  try { return format(p, fmt); } catch { return '—'; }
-};
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -136,14 +130,13 @@ interface WeeklyStats {
    SOLID CARD — HomeScreen style (NO BLUR, clean solid backgrounds)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SolidCard: React.FC<{
+const _SolidCard: React.FC<{
   children: React.ReactNode;
   style?: any;
   onPress?: () => void;
   active?: boolean;
   borderColor?: string;
 }> = React.memo(({ children, style, onPress, active, borderColor }) => {
-  const colorScheme = Platform.OS === 'ios' ? 'light' : 'light'; // simplified
   const isDark = false; // Will be overridden by theme prop in parent
 
   // We accept borderColor prop for theming
@@ -392,7 +385,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
   // REMOVED fontSizeMultiplier — unused in this screen
   const { userProfile } = useAuth();
   const { currentBaby, growthData, milestones, babies, getGrowthData, loadBabies } = useBaby();
-  const { entries: getRecentTimelineEvents } = useActivity();
+  const { getRecentTimelineEvents } = useActivity();
   const { growthIndex } = useGrowthIntelligence();
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { achievements, newlyUnlocked, streak: globalStreak } = useTrackerAchievements();
@@ -648,7 +641,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       });
     }
 
-    if (newlyUnlocked?.length > 0) {
+    if (Array.isArray(newlyUnlocked) && newlyUnlocked.length > 0) {
       items.push({
         id: 'new-achievement',
         type: 'achievement',

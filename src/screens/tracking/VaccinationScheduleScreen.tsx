@@ -1126,12 +1126,15 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
   );
 
   // Auto-prompt to create baby profile when none exists
+  const babyModalShownRef = useRef(false);
   useEffect(() => {
-    if (!currentBaby) {
+    if (!currentBaby && !babyModalShownRef.current && !isLoadingInitial) {
+      babyModalShownRef.current = true;
       const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
       return () => clearTimeout(timer);
     }
-  }, [currentBaby]);
+    if (currentBaby) babyModalShownRef.current = false;
+  }, [currentBaby, isLoadingInitial]);
 
   const loadRecords = useCallback(async () => {
     const baby = currentBabyRef.current;
