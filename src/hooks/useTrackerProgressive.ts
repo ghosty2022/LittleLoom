@@ -119,6 +119,10 @@ export interface TrackerProgressiveState {
   getAllYesterday: () => Record<string, unknown>;
   dismissInsight: (insightId: string) => void;
   refresh: () => void;
+
+  // ✅ NEW: expose growth-intelligence driven reminders
+  generateReminders: (entries: TrackerEntry[], trackers: any[], score: any) => any[];
+  checkNewAchievements: (entries: TrackerEntry[], score: any, unlocked: string[]) => any[];
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -531,7 +535,29 @@ export const useTrackerProgressive = (trackerId: string) => {
 
   const correlations = useMemo((): ProgressiveCorrelation[] => {
     const safeTimelineCorrelations = timelineCorrelations || [];
-    return safeTimelineCorrelations
+
+    // ─── Merge AI-discovered correlations into the timeline list ──
+    // DiscoveredCorrelation shape: { id, kind, headline, description,
+    //   effectSize, samples, direction, suggestion, emoji, metricA, metricB }
+    const aiAsTimeline: any[] = (aiCorrelations || [])
+      .filter((c: any) => c.metricA === trackerId || c.metricB === trackerId)
+      .map((c: any) => {
+        const otherTrackerId = c.metricA === trackerId ? c.metricB : c.metricA;
+        return {
+          id: `ai_${c.id}`,
+          type: 'ai_discovered' as any,
+          primaryEntry: { trackerId, title: '', timestamp: Date.now() },
+          relatedEntry: { trackerId: otherTrackerId, title: '', timestamp: Date.now() },
+          insight: c.headline || c.description,
+          confidence: Math.round((c.effectSize || 0.5) * 100),
+          color: c.direction === 'positive' ? '#10b981' : '#f59e0b',
+          _emoji: c.emoji,
+        };
+      });
+
+    const safeTimelineWithAI = [...safeTimelineCorrelations, ...aiAsTimeline];
+
+    return safeTimelineWithAI
       .filter((c) => {
         const primaryId = c.primaryEntry?.trackerId;
         const relatedId = c.relatedEntry?.trackerId;
@@ -787,6 +813,9 @@ export const useTrackerProgressive = (trackerId: string) => {
     todayEntries,
     yesterdayEntries,
     recentEntries,
+    // Pull these from growthIndex (they're already optional on GrowthIndex)
+    generateReminders: growthIndex?.generateReminders ?? (() => []),
+    checkNewAchievements: growthIndex?.checkNewAchievements ?? (() => []),
   };
 };
 

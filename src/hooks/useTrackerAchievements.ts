@@ -226,8 +226,9 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
     const usedTypes = new Set(allEntries.map((e: any) => e.trackerId)).size;
 
     const gi = growthIndex;
-    const restScore = gi?.restScore?.value || 50;
-    const healthStability = gi?.healthStability?.value || 50;
+    // ─── Use `??` not `||` so legitimate 0 values aren't overwritten ──
+    const restScore = gi?.restScore?.value ?? 0;
+    const healthStability = gi?.healthStability?.value ?? 0;
     const milestoneReadiness = gi?.milestoneReadiness || [];
     const readinessOver60 = milestoneReadiness.filter((r: any) => r.readinessPercent > 60).length;
     const readinessOver80 = milestoneReadiness.filter((r: any) => r.readinessPercent > 80).length;

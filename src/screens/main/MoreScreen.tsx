@@ -1322,6 +1322,24 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Effects ────────────────────────────────────────────────────
 
+  // Flush cohort queue on foreground
+  useEffect(() => {
+    const { AppState } = require('react-native');
+    const sub = AppState.addEventListener('change', async (state: string) => {
+      if (state === 'active') {
+        try {
+          const { flushCohortQueue, getCohortQueueSize } = await import(
+            '../../services/ai/CohortOfflineQueue'
+          );
+          if ((await getCohortQueueSize()) > 0) {
+            await flushCohortQueue();
+          }
+        } catch {}
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   // Load collaborative learning opt-in state
   useEffect(() => {
     import('../../services/ai/CohortPriors')
@@ -1490,6 +1508,45 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           >
             <AILearningStatus />
             <MenuItem
+              icon="trash-bin-outline"
+              title="Erase Cohort Contributions"
+              subtitle="Remove your device's AI learning from the shared pool"
+              onPress={async () => {
+                if (!userProfile?.id || !currentBaby?.id) {
+                  sweetAlert.warning(
+                    'No Baby Selected',
+                    'Select a baby profile first.'
+                  );
+                  return;
+                }
+                sweetAlert.confirm(
+                  'Erase Cohort Contributions?',
+                  'This removes your local AI caches and prevents future contributions. Already-aggregated priors cannot be reversed.',
+                  async () => {
+                    const { deleteCohortContributions } = await import(
+                      '../../services/ai/CohortPriors'
+                    );
+                    const res = await deleteCohortContributions(
+                      currentBaby.id,
+                      userProfile.id
+                    );
+                    if (res.success) {
+                      sweetAlert.success('Erased', res.message);
+                    } else {
+                      sweetAlert.error('Error', res.message);
+                    }
+                  },
+                  () => {},
+                  'Erase',
+                  'Cancel',
+                  true
+                );
+              }}
+              color="#ef4444"
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
               icon="people-circle-outline"
               title="Collaborative AI Learning"
               subtitle={
@@ -1499,9 +1556,16 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               }
               isEnabled={collaborativeEnabled}
               onToggle={async (val) => {
-                await setCollaborativeLearningEnabled(val);
-                setCollaborativeEnabled(val);
-                triggerHaptic(val ? 'success' : 'light');
+                try {
+                  const { setCollaborativeLearningEnabled } = await import(
+                    '@/services/ai/CohortPriors'
+                  );
+                  await setCollaborativeLearningEnabled(val);
+                  setCollaborativeEnabled(val);
+                  triggerHaptic(val ? 'success' : 'light');
+                } catch (err) {
+                  console.error('[MoreScreen] Failed to toggle collaborative learning:', err);
+                }
               }}
               color="#8b5cf6"
               isDark={isDark}

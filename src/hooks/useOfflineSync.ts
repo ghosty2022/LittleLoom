@@ -83,6 +83,9 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
   const isMountedRef = useRef(true);
   const onPermanentFailureRef = useRef(onPermanentFailure);
   const onSyncCompleteRef = useRef(onSyncComplete);
+  // Filled in after `performSync` is defined so the NetInfo listener
+  // always calls the latest version.
+  const performSyncRef = useRef<(() => Promise<SyncResult>) | null>(null);
 
   // Keep refs in sync with latest props/state
   useEffect(() => { queueRef.current = queue; }, [queue]);
@@ -172,21 +175,19 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
       // Subscribe to changes
       unsubscribe = NetInfo.addEventListener((state) => {
         const nowOnline = !!state.isConnected;
-        if (isMountedRef.current) {
-          setIsOnline((prev) => {
-            // Auto-sync when coming back online
-            if (!prev && nowOnline && autoSync) {
-              // Fire and forget — don't await in listener
-              setTimeout(() => {
-                // Avoid calling sync directly here to prevent circular deps
-                // The sync callback is stable via useCallback
-                // eslint-disable-next-line @typescript-eslint/no-use-before-define
-                performSync();
-              }, 100);
-            }
-            return nowOnline;
-          });
-        }
+        if (!isMountedRef.current) return;
+
+        setIsOnline((prev) => {
+          // Auto-sync when coming back online
+          if (!prev && nowOnline && autoSync) {
+            // Fire-and-forget; performSync is fetched from a ref
+            // so this listener doesn't capture a stale closure.
+            setTimeout(() => {
+              performSyncRef.current?.();
+            }, 100);
+          }
+          return nowOnline;
+        });
       });
     };
 
@@ -433,6 +434,11 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
 
     return result;
   }, [isOnline, persistQueue]);
+
+  // Keep the ref in sync with the latest performSync
+  useEffect(() => {
+    performSyncRef.current = performSync;
+  }, [performSync]);
 
   // ─── Public Sync ──────────────────────────────────────────────
 

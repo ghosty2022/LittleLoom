@@ -175,11 +175,21 @@ async function loadState(
     if (userId) {
       const { data } = await supabase
         .from('app_settings')
-        .select('value')
+        .select('value, updated_at')
         .eq('key', supabaseKey(babyId, type))
         .eq('user_id', userId)
         .maybeSingle();
-      if (data?.value) {
+
+      // TTL: reject rows older than 90 days
+      if (data?.updated_at) {
+        const age = Date.now() - new Date(data.updated_at).getTime();
+        if (age <= 90 * 24 * 60 * 60 * 1000 && data.value) {
+          const state = JSON.parse(data.value) as PredictorState;
+          memCache.set(key, state);
+          AsyncStorage.setItem(key, data.value).catch(() => {});
+          return state;
+        }
+      } else if (data?.value) {
         const state = JSON.parse(data.value) as PredictorState;
         memCache.set(key, state);
         AsyncStorage.setItem(key, data.value).catch(() => {});

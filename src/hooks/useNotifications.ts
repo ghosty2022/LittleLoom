@@ -4,9 +4,8 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useCustomization } from './useCustomization';
-
-// ... rest remains the same ...
+// (useCustomization was imported but never used — removed to prevent
+//  confusion with the dynamic AsyncStorage import below.)
 export const NOTIFICATION_CHANNELS = {
   DEFAULT: 'default',
   REMINDERS: 'reminders',
@@ -70,7 +69,9 @@ export async function initNotifications() {
             importance: config.importance,
             vibrationPattern: config.vibrationPattern,
             lightColor: config.lightColor,
-            sound: 'true',
+            // `sound: null` → use the system default sound
+            // (a plain string would be treated as a custom asset filename)
+            sound: null,
           })
         )
       );
@@ -244,11 +245,10 @@ export const notificationService = NotificationService.getInstance();
 export function useNotifications() {
   const [isEnabled, setIsEnabled] = useState(true);
 
- useEffect(() => {
+  useEffect(() => {
     const checkSettings = async () => {
       try {
-        // Use AsyncStorage directly to avoid hook rules violation
-        const { AsyncStorage } = await import('@react-native-async-storage/async-storage');
+        // AsyncStorage is already imported at the top of this file
         const saved = await AsyncStorage.getItem('@littleloom_customization_v3');
         if (saved) {
           const parsed = JSON.parse(saved);

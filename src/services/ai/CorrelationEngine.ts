@@ -15,6 +15,7 @@
 //   - Actionable (a parent can DO something about it)
 // ─────────────────────────────────────────────────────────────────────
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 
 export type CorrelationKind =
@@ -412,19 +413,18 @@ export async function invalidateCorrelationCacheIfStale(
 
   const key = `${LAST_INVALIDATE_KEY_PREFIX}${babyId}`;
   try {
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     const raw = await AsyncStorage.getItem(key);
     const lastCount = raw ? parseInt(raw, 10) : 0;
 
     // Count current entries since last invalidation
-    const { data, error } = await supabase
+    const { count, error } = await supabase
       .from('tracker_entries')
       .select('id', { count: 'exact', head: true })
       .eq('baby_id', babyId)
       .eq('is_deleted', false);
 
     if (error) return false;
-    const currentCount = data?.length ?? 0;
+    const currentCount = count ?? 0;
 
     if (force || currentCount - lastCount >= INVALIDATE_THRESHOLD) {
       // Delete cached rows so next read recomputes

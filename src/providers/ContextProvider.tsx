@@ -86,43 +86,8 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
     syncWithBabyContext(babyId);
   }, [babyId, syncWithBabyContext]);
 
-  // Poll for baby ID changes - FIXED: use refs to avoid re-renders
-  useEffect(() => {
-    let isMounted = true;
-    
-    const interval = setInterval(() => {
-      if (!isMounted) return;
-      
-      try {
-        // Try to get the baby context safely
-        let baby: any = null;
-        try {
-          const babyContext = useBaby();
-          baby = babyContext;
-        } catch {
-          // BabyContext not ready
-          return;
-        }
-        
-        const newId = baby.getCurrentBabyId ? baby.getCurrentBabyId() : null;
-        if (newId !== babyIdRef.current && newId) {
-          console.log('[ActivitySyncBridge] Poll detected baby change:', newId);
-          babyIdRef.current = newId;
-          if (!initRef.current) {
-            initRef.current = true;
-            syncWithBabyContext(newId);
-          }
-        }
-      } catch (e) {
-        // Ignore
-      }
-    }, 3000);
-    
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [syncWithBabyContext]);
+  // (Polling removed — subscribeToBabyChanges + realtime subscriptions
+  //  already handle baby changes without a busy-wait loop.)
 
   useEffect(() => {
     const init = async () => {
@@ -220,42 +185,7 @@ const TrackerBabySync: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   }, [trackerContext, babyId]);
 
-  // Poll for baby ID changes - FIXED: use refs to avoid re-renders
-  useEffect(() => {
-    let isMounted = true;
-    isMountedRef.current = true;
-    
-    const interval = setInterval(() => {
-      if (!isMounted) return;
-      
-      try {
-        let baby: any = null;
-        try {
-          const babyContext = useBaby();
-          baby = babyContext;
-        } catch {
-          return;
-        }
-        
-        const newId = baby.getCurrentBabyId ? baby.getCurrentBabyId() : null;
-        if (newId !== currentBabyIdRef.current && newId) {
-          console.log('[TrackerBabySync] Poll detected baby change:', newId);
-          currentBabyIdRef.current = newId;
-          if (trackerContext && trackerContext.setCurrentBabyId) {
-            trackerContext.setCurrentBabyId(newId);
-          }
-        }
-      } catch (e) {
-        // Ignore
-      }
-    }, 2000);
-    
-    return () => {
-      isMounted = false;
-      isMountedRef.current = false;
-      clearInterval(interval);
-    };
-  }, [trackerContext]);
+  // (Polling removed — subscribeToBabyChanges already handles this.)
 
   return <>{children}</>;
 };

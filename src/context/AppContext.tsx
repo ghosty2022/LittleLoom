@@ -10,7 +10,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as KeepAwake from 'expo-keep-awake';
 import * as Device from 'expo-device';
 import { supabase } from '@/utils/supabase';
-import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
+import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
 import { useCustomization, AppearanceMode } from '../hooks/useCustomization';
 
 // ─── TASK DEFINITION ──────────────────────────────────────────────
