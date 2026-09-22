@@ -26,10 +26,12 @@ export function usePhotoScanner() {
       setResult(scanResult);
       
       // Optionally store results in Supabase
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && scanResult.media.length > 0) {
-        // Store scan results or trigger sync
-        console.log(`[PhotoScanner] Found ${scanResult.media.length} photos`);
+      // NOTE: PhotoScanner surfaces local device media for the user to
+      // review. Persisting is left to the caller via `tracker.addEntry`
+      // with `photoUris` so AI observeEntry runs on the real tracker
+      // entry (not a synthetic one).
+      if (__DEV__ && scanResult.media.length > 0) {
+        console.log(`[PhotoScanner] Surfaced ${scanResult.media.length} local photos`);
       }
       
       return scanResult;

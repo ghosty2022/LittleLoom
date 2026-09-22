@@ -208,7 +208,20 @@ export const usePredictiveReminders = () => {
     // ═══════════════════════════════════════════════════════════════
     // 3. GROWTH — measurement due
     // ═══════════════════════════════════════════════════════════════
-    const safeGrowthData = Array.isArray(growthData) ? growthData : [];
+    // ─── Growth source: prefer tracker_entries, fall back to BabyContext ──
+    // BabyContext.growthData is empty in the current data model; the real
+    // measurements live in tracker_entries where `measurementType` is set.
+    const fromTracker = (getEntriesStable('growth', 50) || []).map((e) => ({
+      date: new Date(e.timestamp).toISOString(),
+      timestamp: e.timestamp,
+      type: String((e.data as any)?.measurementType ?? '').toLowerCase(),
+      value: Number((e.data as any)?.value),
+    })).filter((g) => Number.isFinite(g.value));
+
+    const safeGrowthData = fromTracker.length > 0
+      ? fromTracker
+      : (Array.isArray(growthData) ? growthData : []);
+
     const lastGrowth = [...safeGrowthData].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     )[0];

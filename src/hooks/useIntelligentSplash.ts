@@ -180,11 +180,16 @@ export function useIntelligentSplash(
 
   useEffect(() => {
     const init = async () => {
-      const [loadedConfig, state, splashCheck] = await Promise.all([
-        loadSplashConfig(),
-        getSectionState(section),
-        shouldShowSplash(section, DEFAULT_SPLASH_CONFIG, reduceMotion),
-      ]);
+      // Load config first — the previous version evaluated the splash
+      // decision against DEFAULT_SPLASH_CONFIG, ignoring the user's
+      // saved preference.
+      const loadedConfig = await loadSplashConfig();
+      const state = await getSectionState(section);
+      const splashCheck = await shouldShowSplash(
+        section,
+        loadedConfig,
+        reduceMotion
+      );
 
       if (isMounted.current) {
         setConfig(loadedConfig);

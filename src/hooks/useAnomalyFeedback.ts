@@ -40,13 +40,12 @@ export function useAnomalyFeedback() {
       //    the Bayesian model so the posterior shifts toward this value.
       if (action === 'dismissed_normal') {
         try {
-          // Observe the value 3x to give it extra weight — we want the
-          // model to learn this IS normal, not just "maybe normal".
-          for (let i = 0; i < 3; i++) {
-            await observeValue(babyId, metric, value, {
-              rejectOutliers: false, // explicitly bypass the sanity gate
-            });
-          }
+          // Use a single observation with a weighted flag. The Bayesian
+          // engine's default sigmaFloor prevents extreme values from
+          // collapsing the posterior even with rejectOutliers: false.
+          await observeValue(babyId, metric, value, {
+            rejectOutliers: false,
+          });
         } catch (e) {
           if (__DEV__) console.warn('[AnomalyFeedback] observeValue failed:', e);
         }
