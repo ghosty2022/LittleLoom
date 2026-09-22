@@ -1,6 +1,6 @@
 // src/hooks/useSupabase.ts
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../utils/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
 interface SupabaseState {

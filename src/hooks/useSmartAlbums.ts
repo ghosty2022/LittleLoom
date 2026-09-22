@@ -33,8 +33,9 @@ export function useSmartAlbums() {
       // Fetch photos from Supabase
       const { data: photos, error } = await supabase
         .from('tracker_entries')
-        .select('id, photo_uris, data, is_favorite, is_private, type, timestamp')
+        .select('id, photo_uris, data, tracker_type, timestamp, is_deleted')
         .not('photo_uris', 'is', null)
+        .eq('is_deleted', false)
         .order('timestamp', { ascending: false });
 
       if (error) {
@@ -52,7 +53,7 @@ export function useSmartAlbums() {
       });
 
       // Process photos
-      photos?.forEach(photo => {
+      photos?.forEach((photo: any) => {
         const photoData = typeof photo.data === 'string' ? JSON.parse(photo.data) : photo.data || {};
         const uris = typeof photo.photo_uris === 'string' ? JSON.parse(photo.photo_uris) : photo.photo_uris;
         const firstUri = Array.isArray(uris) ? uris[0] : null;
@@ -61,32 +62,32 @@ export function useSmartAlbums() {
         counts.album_all = (counts.album_all || 0) + 1;
         if (firstUri && !coverPhotos.album_all) coverPhotos.album_all = firstUri;
 
-        // Favorites
-        if (photo.is_favorite || photoData.isFavorite) {
+        // Favorites — flag inside data JSONB
+        if (photoData.isFavorite) {
           counts.album_favorites = (counts.album_favorites || 0) + 1;
           if (firstUri && !coverPhotos.album_favorites) coverPhotos.album_favorites = firstUri;
         }
 
-        // Screenshots
-        if (photo.is_screenshot || photoData.isScreenshot) {
+        // Screenshots — flag inside data JSONB
+        if (photoData.isScreenshot) {
           counts.album_screenshots = (counts.album_screenshots || 0) + 1;
           if (firstUri && !coverPhotos.album_screenshots) coverPhotos.album_screenshots = firstUri;
         }
 
-        // Auto import
-        if (photo.source === 'auto_import' || photoData.source === 'auto_import') {
+        // Auto import — flag inside data JSONB
+        if (photoData.source === 'auto_import') {
           counts.album_auto_import = (counts.album_auto_import || 0) + 1;
           if (firstUri && !coverPhotos.album_auto_import) coverPhotos.album_auto_import = firstUri;
         }
 
-        // Vault (private)
-        if (photo.is_private || photoData.isPrivate) {
+        // Vault — flag inside data JSONB
+        if (photoData.isPrivate) {
           counts.album_vault = (counts.album_vault || 0) + 1;
           if (firstUri && !coverPhotos.album_vault) coverPhotos.album_vault = firstUri;
         }
 
-        // Milestones
-        if (photo.type === 'milestone' || photoData.type === 'milestone') {
+        // Milestones — use tracker_type column
+        if (photo.tracker_type === 'milestone' || photoData.type === 'milestone') {
           counts.album_milestones = (counts.album_milestones || 0) + 1;
           if (firstUri && !coverPhotos.album_milestones) coverPhotos.album_milestones = firstUri;
         }

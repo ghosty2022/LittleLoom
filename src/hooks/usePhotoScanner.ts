@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { PhotoScanner, ScanProgress, ScanResult } from '../services/PhotoScanner';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../utils/supabase';
 
 export function usePhotoScanner() {
   const [isScanning, setIsScanning] = useState(false);

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { differenceInMonths, differenceInDays, differenceInHours, subDays, subMonths } from 'date-fns';
 
-// FIX: Direct imports from context sources
+// FIX: useTracker lives in useTrackerContext (safe wrapper), NOT useTrackerContext
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 

@@ -1,7 +1,7 @@
 // src/hooks/useRealtimeSubscription.ts
 
 import { useEffect, useRef, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../utils/supabase';
 
 interface UseRealtimeSubscriptionProps {
   table: string;

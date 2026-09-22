@@ -2,7 +2,15 @@
 // FIX: Use direct imports, not useSafeContexts
 
 import { useMemo, useCallback, useEffect, useState, useRef } from 'react';
-import { differenceInDays, differenceInHours, subDays, subHours, format, isSameDay, isToday } from 'date-fns';
+import {
+  differenceInDays,
+  differenceInHours,
+  subDays,
+  subHours,
+  format,
+  isSameDay,
+  isToday,
+} from 'date-fns';
 
 // FIX: Direct imports from context sources (NOT useSafeContexts)
 import { useTracker } from './useTrackerContext';
@@ -100,6 +108,16 @@ export interface TrackerProgressiveState {
 
   isLoading: boolean;
   lastUpdated: number;
+
+  // ✅ ADDED: entry collections returned by the hook
+  todayEntries: TrackerEntry[];
+  yesterdayEntries: TrackerEntry[];
+  recentEntries: TrackerEntry[];
+
+  // ✅ ADDED: helper methods
+  getAllYesterday: () => Record<string, unknown>;
+  dismissInsight: (insightId: string) => void;
+  refresh: () => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════
