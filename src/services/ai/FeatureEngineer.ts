@@ -26,6 +26,7 @@ interface RawEntry {
   timestamp: string;
   data: Record<string, unknown> | string;
   notes?: string | null;
+  logged_by?: string | null;
 }
 
 export interface ComputedFeatures {
@@ -142,10 +143,11 @@ export class FeatureEngineer {
       try {
         const { data: b } = await supabase
           .from('babies')
-          .select('birth_date, gender')
+          .select('date_of_birth, gender')
           .eq('id', babyId)
           .maybeSingle();
-        baby = b;
+        // Normalize so downstream code that reads `birth_date` still works
+        baby = b ? { ...b, birth_date: b.date_of_birth } : null;
       } catch {}
       const features = this.computeFeatures(entries, previous, baby);
 
@@ -194,7 +196,7 @@ export class FeatureEngineer {
 
     const { data, error } = await supabase
       .from('tracker_entries')
-      .select('id, baby_id, tracker_id, tracker_type, timestamp, data, notes')
+      .select('id, baby_id, tracker_id, tracker_type, timestamp, data, notes, logged_by')
       .eq('baby_id', babyId)
       .eq('is_deleted', false)
       .gte('timestamp', start.toISOString())

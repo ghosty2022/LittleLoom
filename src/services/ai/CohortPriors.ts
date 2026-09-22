@@ -16,6 +16,8 @@ import { MetricKey, getLearnedRange } from './BayesianEngine';
 const COLLABORATIVE_OPT_IN_KEY = '@littleloom_ai_collaborative_v1';
 const COHORT_CACHE_PREFIX = '@littleloom_cohort_prior_v1:';
 const LAST_PUBLISH_KEY = '@littleloom_cohort_last_publish_v1';
+const LAST_COHORT_KEY = '@littleloom_last_cohort_v1:';
+const GDPR_BLOCKLIST_KEY = '@littleloom_cohort_do_not_contribute_v1:';
 
 export type AgeCohort = '0-1mo' | '1-3mo' | '3-6mo' | '6-12mo' | '12-24mo' | '24mo+';
 
@@ -280,7 +282,7 @@ export async function tryLoadCohortPrior(
 // Called from bootstrap.ts. Detects when a baby has crossed an age
 // bucket boundary (e.g., 6mo → 12mo) and clears stale local caches.
 
-const LAST_COHORT_KEY = '@littleloom_last_cohort_v1:';
+// LAST_COHORT_KEY declared at top of file
 
 export interface CohortCheckResult {
   changed: boolean;
@@ -374,8 +376,6 @@ export async function checkAndHandleCohortChange(
 // The aggregate itself is irreversible — this is documented in the
 // privacy policy and matches the standard approach used by federated
 // learning systems.
-
-const GDPR_BLOCKLIST_KEY = '@littleloom_cohort_do_not_contribute_v1:';
 
 export async function deleteCohortContributions(
   babyId: string,

@@ -283,8 +283,6 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
     }
   } catch {}
 
-  } catch {}
-
   // 4. Prior — try cohort prior first, fall back to generic
   try {
     const { getCohortPrior, ageToCohort } = await import('./CohortPriors');
