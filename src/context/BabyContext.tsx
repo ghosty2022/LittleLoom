@@ -498,7 +498,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         const { data: familyMembers, error: fmError } = await supabase
           .from('family_members')
-          .select('baby_id, role, relationship')
+          .select('baby_id, role, relationship, permissions')
           .eq('user_id', userId)
           .eq('status', 'active')
           .is('deleted_at', null);
@@ -535,12 +535,21 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   const member = familyMembers.find((fm: any) => fm.baby_id === baby.id);
                   const role = member?.role || 'viewer';
                   userRoles[baby.id] = role;
-                  
-                  // ─── Read granular JSON permissions from family_members ──
-                  const jsonPerms = (member?.permissions as Record<string, boolean>) || {};
+
+                  // ─── FIX: parse permissions JSON safely ────────────
+                  let jsonPerms: Record<string, boolean> = {};
+                  if (member?.permissions) {
+                    try {
+                      jsonPerms = typeof member.permissions === 'string'
+                        ? JSON.parse(member.permissions)
+                        : member.permissions;
+                    } catch (e) {
+                      console.warn('[BabyContext] Failed to parse permissions JSON:', e);
+                    }
+                  }
 
                   userPermissions[baby.id] = {
-                    // Legacy aliases (for backward compat)
+                    // Legacy aliases
                     view: jsonPerms.canView ?? true,
                     edit: jsonPerms.canEditEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
                     delete: jsonPerms.canDeleteEntry ?? (role === 'parent1' || role === 'parent2'),
@@ -595,28 +604,29 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   allBabies.push(baby);
                   const role = inviteData.role || 'viewer';
                   userRoles[baby.id] = role;
-                  // ─── Read granular JSON permissions from family_members ──
-                  const jsonPerms = (member?.permissions as Record<string, boolean>) || {};
+
+                  // Invite-code fallback has no JSON permissions —
+                  // use role defaults.
+                  const isParent = role === 'parent1' || role === 'parent2';
+                  const isGuardian = role === 'guardian';
 
                   userPermissions[baby.id] = {
-                    // Legacy aliases (for backward compat)
-                    view: jsonPerms.canView ?? true,
-                    edit: jsonPerms.canEditEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
-                    delete: jsonPerms.canDeleteEntry ?? (role === 'parent1' || role === 'parent2'),
-                    manage: jsonPerms.canManageFamily ?? (role === 'parent1' || role === 'parent2'),
-                    invite: jsonPerms.canInvite ?? (role === 'parent1' || role === 'parent2'),
-                    export: jsonPerms.canExport ?? (role === 'parent1' || role === 'parent2'),
+                    view: true,
+                    edit: isParent || isGuardian,
+                    delete: isParent,
+                    manage: isParent,
+                    invite: isParent,
+                    export: isParent,
 
-                    // Granular flags
-                    canView: jsonPerms.canView ?? true,
-                    canAddEntry: jsonPerms.canAddEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
-                    canEditEntry: jsonPerms.canEditEntry ?? (role === 'parent1' || role === 'parent2' || role === 'guardian'),
-                    canEditOthersEntries: jsonPerms.canEditOthersEntries ?? (role === 'parent1' || role === 'parent2'),
-                    canDeleteEntry: jsonPerms.canDeleteEntry ?? (role === 'parent1' || role === 'parent2'),
-                    canEditBaby: jsonPerms.canEditBaby ?? (role === 'parent1' || role === 'parent2'),
-                    canInvite: jsonPerms.canInvite ?? (role === 'parent1' || role === 'parent2'),
-                    canExport: jsonPerms.canExport ?? (role === 'parent1' || role === 'parent2'),
-                    canManageFamily: jsonPerms.canManageFamily ?? (role === 'parent1' || role === 'parent2'),
+                    canView: true,
+                    canAddEntry: isParent || isGuardian,
+                    canEditEntry: isParent || isGuardian,
+                    canEditOthersEntries: isParent,
+                    canDeleteEntry: isParent,
+                    canEditBaby: isParent,
+                    canInvite: isParent,
+                    canExport: isParent,
+                    canManageFamily: isParent,
                   };
                 }
               });
@@ -731,6 +741,19 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .then(({ backfillBayesianIfNeeded }) => {
             Promise.all(
               babies.map(b => backfillBayesianIfNeeded(b.id).catch(() => null))
+            ).catch(() => {});
+          })
+          .catch(() => {});
+
+        // ─── Predictor backfill (sleep, feed, diaper, medication) ──
+        import('../services/ai/PredictorEngine')
+          .then(({ backfillPredictor }) => {
+            const types: Array<'sleep' | 'feed' | 'diaper' | 'medication'> =
+              ['sleep', 'feed', 'diaper', 'medication'];
+            Promise.all(
+              babies.flatMap(b =>
+                types.map(t => backfillPredictor(b.id, t, 30).catch(() => null))
+              )
             ).catch(() => {});
           })
           .catch(() => {});
@@ -1206,7 +1229,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userRoles: { ...prev.userRoles, [newCurrentId]: 'parent1' },
           userPermissions: { 
             ...prev.userPermissions, 
-            [newCurrentId]: { view: true, edit: true, delete: true, manage: true, invite: true, export: true }
+            [newCurrentId]: {
+              view: true, edit: true, delete: true, manage: true, invite: true, export: true,
+              canView: true, canAddEntry: true, canEditEntry: true, canEditOthersEntries: true,
+              canDeleteEntry: true, canEditBaby: true, canInvite: true, canExport: true, canManageFamily: true,
+            }
           },
         }));
       }

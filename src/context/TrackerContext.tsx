@@ -349,6 +349,31 @@ async function learnFromEntry(
   }
 }
 
+// ─── Predictor mapping — which trackers feed which predictors ──────
+const PREDICTOR_TRACKER_MAP: Record<string, 'sleep' | 'feed' | 'diaper' | 'wake' | 'medication'> = {
+  sleep: 'sleep',
+  feed: 'feed',
+  diaper: 'diaper',
+  medication: 'medication',
+};
+
+// ─── Feed an event timestamp to the Predictor Engine ────────────────
+async function predictFromEntry(
+  babyId: string,
+  trackerId: string,
+  timestamp: number
+): Promise<void> {
+  const predictorType = PREDICTOR_TRACKER_MAP[trackerId];
+  if (!predictorType) return;
+
+  try {
+    const { observeEvent } = await import('../services/ai/PredictorEngine');
+    await observeEvent(babyId, predictorType, timestamp);
+  } catch (err: any) {
+    if (__DEV__) console.warn(`[Predictor] observeEvent failed:`, err?.message);
+  }
+}
+
 /* ─── STREAK CALCULATION ───────────────────────────────────────────── */
 
 const calculateStreak = (
@@ -1317,6 +1342,9 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
       // ─── Bayesian learning: feed the new value into the engine ────
       learnFromEntry(babyId, trackerId, cleanData).catch(() => {});
+
+      // ─── Predictor learning: feed the timestamp into Holt-Winters ──
+      predictFromEntry(babyId, trackerId, timestamp).catch(() => {});
 
       const streak = calculateStreak(trackerId, updatedEntries, babyId);
       if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
