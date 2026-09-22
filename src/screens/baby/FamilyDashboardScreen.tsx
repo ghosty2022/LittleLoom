@@ -1,4 +1,7 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
+// src/screens/baby/FamilyDashboardScreen.tsx
+// Redesigned — deduped against Timeline/Growth/FamilySharing screens.
+
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   StyleSheet,
   InteractionManager,
@@ -16,13 +19,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format, formatDistanceToNow } from 'date-fns';
+import { differenceInMonths, format } from 'date-fns';
 import Animated, {
   FadeInUp,
+  FadeInRight,
+  FadeIn,
   useSharedValue,
   useAnimatedStyle,
   interpolate,
-  Extrapolate,
+  Extrapolation,
   useAnimatedScrollHandler,
   Layout,
 } from 'react-native-reanimated';
@@ -36,7 +41,6 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { useFamily } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
 import { UserRole } from '../../types/roles';
-import type { ActivityEntry, Milestone } from '../../context/BabyContext';
 import { useBaby } from '../../context/BabyContext';
 import { useTracker } from '../../hooks/useTrackerContext';
 import OptimizedImage from '../../components/OptimizedImage';
@@ -45,7 +49,56 @@ const AnimatedScrollView = Animated.ScrollView;
 
 type FamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
-// ─── Shared Utilities ─────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// DESIGN TOKENS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DESIGN = {
+  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+};
+
+const ROLE_CONFIG: Record<
+  UserRole,
+  {
+    label: string;
+    color: string;
+    gradient: [string, string];
+    icon: keyof typeof Ionicons.glyphMap;
+    badge: string;
+  }
+> = {
+  [UserRole.PARENT_1]: {
+    label: 'Primary Parent',
+    color: '#667eea',
+    gradient: ['#667eea', '#764ba2'],
+    icon: 'shield',
+    badge: 'Owner',
+  },
+  [UserRole.PARENT_2]: {
+    label: 'Co-Parent',
+    color: '#fa709a',
+    gradient: ['#fa709a', '#f5576c'],
+    icon: 'heart',
+    badge: 'Co-Parent',
+  },
+  [UserRole.GUARDIAN]: {
+    label: 'Guardian',
+    color: '#11998e',
+    gradient: ['#11998e', '#38ef7d'],
+    icon: 'shield-checkmark',
+    badge: 'Guardian',
+  },
+  [UserRole.VIEWER]: {
+    label: 'Viewer',
+    color: '#64748b',
+    gradient: ['#64748b', '#94a3b8'],
+    icon: 'eye',
+    badge: 'Viewer',
+  },
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────
 
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
@@ -58,7 +111,7 @@ const isEmoji = (value: string | undefined | null): boolean => {
   return /\p{Emoji}/u.test(value);
 };
 
-// ─── Shared Components (matching FamilySharingScreen) ─────────────────
+// ─── SafeAvatar ──────────────────────────────────────────────────────
 
 interface SafeAvatarProps {
   avatar?: string | null;
@@ -71,15 +124,7 @@ interface SafeAvatarProps {
 }
 
 const SafeAvatar = memo<SafeAvatarProps>(
-  ({
-    avatar,
-    gender = 'other',
-    size = 56,
-    showEditButton = false,
-    onEdit,
-    fallbackIcon,
-    fallbackColor,
-  }) => {
+  ({ avatar, gender = 'other', size = 56, showEditButton = false, onEdit, fallbackIcon, fallbackColor }) => {
     const [imageError, setImageError] = useState(false);
     const hasImage = isImageUri(avatar) && !imageError;
     const hasEmoji = isEmoji(avatar);
@@ -91,26 +136,16 @@ const SafeAvatar = memo<SafeAvatarProps>(
         ? ['#fa709a', '#fee140']
         : ['#11998e', '#38ef7d'];
 
-    const iconName =
-      fallbackIcon ||
-      (gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'person');
-    const color =
-      fallbackColor ||
-      (gender === 'boy' ? '#667eea' : gender === 'girl' ? '#fa709a' : '#11998e');
+    const iconName = fallbackIcon || (gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'person');
+    const color = fallbackColor || (gender === 'boy' ? '#667eea' : gender === 'girl' ? '#fa709a' : '#11998e');
 
-    // Normalize file URIs for better compatibility
     const normalizedUri = useMemo(() => {
       if (!avatar) return null;
-      // Handle Android file paths that may need normalization
-      if (avatar.startsWith('file://')) {
-        // On Android, sometimes the path needs to be decoded
-        if (Platform.OS === 'android') {
-          try {
-            // Remove any double slashes except for the protocol
-            return avatar.replace(/file:\/\//g, 'file://').replace('file://', 'file:///');
-          } catch {
-            return avatar;
-          }
+      if (avatar.startsWith('file://') && Platform.OS === 'android') {
+        try {
+          return avatar.replace(/file:\/\//g, 'file://').replace('file://', 'file:///');
+        } catch {
+          return avatar;
         }
       }
       return avatar;
@@ -120,10 +155,7 @@ const SafeAvatar = memo<SafeAvatarProps>(
       <View style={[styles.avatarWrapper, { width: size, height: size }]}>
         <LinearGradient
           colors={hasImage ? ['#f0f0f0', '#e0e0e0'] : gradientColors}
-          style={[
-            styles.avatarGradient,
-            { width: size, height: size, borderRadius: size / 2.8 },
-          ]}
+          style={[styles.avatarGradient, { width: size, height: size, borderRadius: size / 2.8 }]}
         >
           {hasImage && normalizedUri ? (
             <View
@@ -157,10 +189,7 @@ const SafeAvatar = memo<SafeAvatarProps>(
             onPress={onEdit}
             activeOpacity={0.8}
           >
-            <LinearGradient
-              colors={['#667eea', '#764ba2']}
-              style={styles.editAvatarGradient}
-            >
+            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.editAvatarGradient}>
               <Ionicons name="camera" size={14} color="#fff" />
             </LinearGradient>
           </TouchableOpacity>
@@ -170,173 +199,61 @@ const SafeAvatar = memo<SafeAvatarProps>(
   }
 );
 
+// ─── GlassCard ───────────────────────────────────────────────────────
+
 interface GlassCardProps {
   children: React.ReactNode;
   style?: any;
   onPress?: () => void;
-  intensity?: number;
+  isDark?: boolean;
+  radius?: number;
 }
 
-const GlassCard = memo<GlassCardProps>(
-  ({ children, style, onPress, intensity = 60 }) => {
-    const isDark = useColorScheme() === 'dark';
-    const Wrapper = onPress ? TouchableOpacity : View;
+const GlassCard = memo<GlassCardProps>(({ children, style, onPress, isDark = false, radius = DESIGN.radius.lg }) => {
+  const Wrapper: any = onPress ? TouchableOpacity : View;
 
-    return (
-      <Wrapper
-        onPress={onPress}
-        activeOpacity={0.85}
-        style={[styles.glassCard, style]}
-      >
-        <BlurView
-          intensity={intensity}
-          style={StyleSheet.absoluteFill}
-          tint={isDark ? 'dark' : 'light'}
-        />
-        <LinearGradient
-          colors={
-            isDark
-              ? ['rgba(40,40,45,0.6)', 'rgba(25,25,30,0.4)']
-              : ['rgba(255,255,255,0.8)', 'rgba(250,250,255,0.6)']
-          }
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.glassBorder} />
-        <View style={styles.glassContent}>{children}</View>
-      </Wrapper>
-    );
-  }
-);
+  return (
+    <Wrapper
+      onPress={onPress}
+      activeOpacity={onPress ? 0.85 : 1}
+      style={[styles.glassCard, { borderRadius: radius }, isDark && styles.glassCardDark, style]}
+    >
+      <LinearGradient
+        colors={
+          isDark
+            ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)']
+            : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']
+        }
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      {children}
+    </Wrapper>
+  );
+});
+
+// ─── StatBadge ───────────────────────────────────────────────────────
 
 interface StatBadgeProps {
   icon: string;
   value: number | string;
   label: string;
   color: string;
+  isDark: boolean;
 }
 
-const StatBadge = memo<StatBadgeProps>(({ icon, value, label, color }) => (
+const StatBadge = memo<StatBadgeProps>(({ icon, value, label, color, isDark }) => (
   <View style={styles.statBadge}>
     <View style={[styles.statIconBg, { backgroundColor: color + '15' }]}>
       <Text style={styles.statIcon}>{icon}</Text>
     </View>
     <Text style={[styles.statValue, { color }]}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
+    <Text style={[styles.statLabel, isDark && styles.textMuted]}>{label}</Text>
   </View>
 ));
 
-interface FamilyAvatarStackProps {
-  members: any[];
-  maxDisplay?: number;
-  onPress: () => void;
-}
-
-const FamilyAvatarStack = memo<FamilyAvatarStackProps>(
-  ({ members, maxDisplay = 4, onPress }) => {
-    const isDark = useColorScheme() === 'dark';
-    const displayMembers = members.slice(0, maxDisplay);
-    const remaining = members.length - maxDisplay;
-
-    const roleColors: Record<string, string[]> = {
-      [UserRole.PARENT_1]: ['#667eea', '#764ba2'],
-      [UserRole.PARENT_2]: ['#fa709a', '#fee140'],
-      [UserRole.GUARDIAN]: ['#11998e', '#38ef7d'],
-      [UserRole.VIEWER]: ['#64748b', '#94a3b8'],
-    };
-
-    return (
-      <TouchableOpacity onPress={onPress} style={styles.avatarStackContainer}>
-        <View style={styles.avatarStack}>
-          {displayMembers.map((member, index) => (
-            <LinearGradient
-              key={member.id}
-              colors={roleColors[member.role] || roleColors[UserRole.VIEWER]}
-              style={[
-                styles.stackAvatar,
-                { marginLeft: index > 0 ? -12 : 0, zIndex: maxDisplay - index },
-              ]}
-            >
-              <Text style={styles.stackAvatarText}>
-                {member.fullName?.charAt(0) || '?'}
-              </Text>
-            </LinearGradient>
-          ))}
-          {remaining > 0 && (
-            <View style={[styles.stackAvatar, styles.stackAvatarMore, { marginLeft: -12, zIndex: 0 }]}>
-              <Text style={styles.stackAvatarMoreText}>+{remaining}</Text>
-            </View>
-          )}
-        </View>
-        <Ionicons
-          name="chevron-forward"
-          size={18}
-          color={isDark ? '#667eea' : '#764ba2'}
-        />
-      </TouchableOpacity>
-    );
-  }
-);
-
-interface ActivityItemProps {
-  activity: ActivityEntry;
-  isDark: boolean;
-}
-
-const ActivityItem = memo<ActivityItemProps>(({ activity, isDark }) => {
-  const config = useMemo(() => {
-    const configs: Record<string, { icon: string; color: string }> = {
-      potty: { icon: '🚽', color: '#8b5cf6' },
-      feed: { icon: '🍼', color: '#f59e0b' },
-      sleep: { icon: '😴', color: '#3b82f6' },
-      growth: { icon: '📏', color: '#10b981' },
-      medication: { icon: '💊', color: '#ef4444' },
-      milestone: { icon: '🌟', color: '#f97316' },
-      diaper: { icon: '🧷', color: '#06b6d4' },
-      note: { icon: '📝', color: '#6b7280' },
-    };
-    return configs[activity.type] || { icon: '📝', color: '#6b7280' };
-  }, [activity.type]);
-
-  return (
-    <View style={styles.activityItem}>
-      <View style={[styles.activityIcon, { backgroundColor: config.color + '15' }]}>
-        <Text style={styles.activityEmoji}>{config.icon}</Text>
-      </View>
-      <View style={styles.activityContent}>
-        <Text style={[styles.activityTitle, isDark && styles.textDark]} numberOfLines={1}>
-          {activity.title}
-        </Text>
-        <Text style={styles.activityTime}>
-          {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
-        </Text>
-      </View>
-    </View>
-  );
-});
-
-interface MilestoneItemProps {
-  milestone: Milestone;
-  isDark: boolean;
-}
-
-const MilestoneItem = memo<MilestoneItemProps>(({ milestone, isDark }) => (
-  <View style={styles.milestoneItem}>
-    <LinearGradient colors={['#f59e0b', '#fbbf24']} style={styles.milestoneIcon}>
-      <Text style={styles.milestoneEmoji}>🌟</Text>
-    </LinearGradient>
-    <View style={styles.milestoneContent}>
-      <Text style={[styles.milestoneTitle, isDark && styles.textDark]} numberOfLines={1}>
-        {milestone.title}
-      </Text>
-      <Text style={styles.milestoneCategory}>{milestone.category}</Text>
-      <Text style={styles.milestoneDate}>
-        {format(new Date(milestone.achievedAt), 'MMM d, yyyy')}
-      </Text>
-    </View>
-  </View>
-));
-
-// ─── Action Modal (from FamilySharingScreen) ───────────────────────────
+// ─── ActionModal ─────────────────────────────────────────────────────
 
 interface ActionModalProps {
   visible: boolean;
@@ -345,7 +262,6 @@ interface ActionModalProps {
   children: React.ReactNode;
   isDark: boolean;
   showCloseButton?: boolean;
-  primaryColor?: string;
 }
 
 const ActionModal: React.FC<ActionModalProps> = ({
@@ -355,26 +271,35 @@ const ActionModal: React.FC<ActionModalProps> = ({
   children,
   isDark,
   showCloseButton = true,
-  primaryColor = '#667eea',
 }) => {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.modalOverlay}>
         <BlurView intensity={80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-        <Animated.View entering={FadeInUp} style={[styles.modalContent, isDark && styles.modalContentDark]}>
+        <Animated.View
+          entering={FadeInUp.springify()}
+          style={[styles.modalContent, isDark && styles.modalContentDark]}
+        >
           <LinearGradient
-            colors={isDark ? ['rgba(30,30,35,0.95)', 'rgba(20,20,25,0.98)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.98)']}
+            colors={
+              isDark
+                ? ['rgba(30,30,35,0.95)', 'rgba(20,20,25,0.98)']
+                : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.98)']
+            }
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, isDark && styles.textDark]}>{title}</Text>
             {showCloseButton && (
               <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
-                <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+                <Ionicons name="close" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
               </TouchableOpacity>
             )}
           </View>
-          <Animated.ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
+          <Animated.ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.modalScrollContent}
+          >
             {children}
           </Animated.ScrollView>
         </Animated.View>
@@ -383,10 +308,185 @@ const ActionModal: React.FC<ActionModalProps> = ({
   );
 };
 
-// ─── Main Screen ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW: Today at a Glance
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface TodayGlanceStat {
+  key: string;
+  icon: string;
+  label: string;
+  count: number;
+  color: string;
+}
+
+const TodayAtAGlance = memo<{
+  stats: TodayGlanceStat[];
+  isDark: boolean;
+  onPressStat: (key: string) => void;
+  shouldReduceMotion: boolean;
+}>(({ stats, isDark, onPressStat, shouldReduceMotion }) => (
+  <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
+    <View style={styles.sectionHeader}>
+      <View>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Today at a Glance</Text>
+        <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
+          Quick snapshot for {format(new Date(), 'EEEE, MMM d')}
+        </Text>
+      </View>
+    </View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.glanceScroll}
+    >
+      {stats.map((stat) => (
+        <TouchableOpacity
+          key={stat.key}
+          activeOpacity={0.85}
+          onPress={() => onPressStat(stat.key)}
+          style={[
+            styles.glanceCard,
+            isDark ? styles.glanceCardDark : styles.glanceCardLight,
+            { borderColor: stat.color + '30' },
+          ]}
+        >
+          <View style={[styles.glanceIconBg, { backgroundColor: stat.color + '15' }]}>
+            <Text style={styles.glanceIcon}>{stat.icon}</Text>
+          </View>
+          <Text style={[styles.glanceCount, { color: stat.color }]}>{stat.count}</Text>
+          <Text style={[styles.glanceLabel, isDark && styles.textMuted]}>{stat.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  </Animated.View>
+));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW: Smart Suggestion of the Day (single card, not a horizontal scroller)
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface SuggestionOfTheDayProps {
+  isDark: boolean;
+  suggestion: {
+    icon: string;
+    title: string;
+    description: string;
+    color: string;
+    actionLabel: string;
+  } | null;
+  onAction: () => void;
+  shouldReduceMotion: boolean;
+}
+
+const SuggestionOfTheDay = memo<SuggestionOfTheDayProps>(
+  ({ isDark, suggestion, onAction, shouldReduceMotion }) => {
+    if (!suggestion) return null;
+    return (
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100).springify()}>
+        <GlassCard isDark={isDark}>
+          <View style={styles.suggestionRow}>
+            <LinearGradient
+              colors={[suggestion.color, suggestion.color + 'AA']}
+              style={styles.suggestionIconBg}
+            >
+              <Text style={styles.suggestionIcon}>{suggestion.icon}</Text>
+            </LinearGradient>
+            <View style={styles.suggestionBody}>
+              <Text style={[styles.suggestionKicker, { color: suggestion.color }]}>
+                SUGGESTION OF THE DAY
+              </Text>
+              <Text style={[styles.suggestionTitle, isDark && styles.textDark]} numberOfLines={2}>
+                {suggestion.title}
+              </Text>
+              <Text style={[styles.suggestionDesc, isDark && styles.textMuted]} numberOfLines={2}>
+                {suggestion.description}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={onAction}
+            activeOpacity={0.85}
+            style={[styles.suggestionActionBtn, { backgroundColor: suggestion.color + '15' }]}
+          >
+            <Text style={[styles.suggestionActionText, { color: suggestion.color }]}>
+              {suggestion.actionLabel}
+            </Text>
+            <Ionicons name="arrow-forward" size={14} color={suggestion.color} />
+          </TouchableOpacity>
+        </GlassCard>
+      </Animated.View>
+    );
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW: Who's Active Today (compact, one line per contributor)
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface TodayContributor {
+  id: string;
+  name: string;
+  avatar?: string;
+  count: number;
+}
+
+const WhosActiveToday = memo<{
+  contributors: TodayContributor[];
+  isDark: boolean;
+  themeColors: any;
+  onPressSeeAll: () => void;
+  shouldReduceMotion: boolean;
+}>(({ contributors, isDark, themeColors, onPressSeeAll, shouldReduceMotion }) => {
+  if (contributors.length === 0) return null;
+  return (
+    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(150).springify()}>
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Active Today</Text>
+          <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
+            {contributors.length} {contributors.length === 1 ? 'contributor' : 'contributors'}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={onPressSeeAll} style={styles.seeAllBtn}>
+          <Text style={[styles.seeAll, { color: themeColors.primary }]}>Timeline</Text>
+          <Ionicons name="chevron-forward" size={14} color={themeColors.primary} />
+        </TouchableOpacity>
+      </View>
+      <GlassCard isDark={isDark}>
+        {contributors.map((c, i) => (
+          <View
+            key={c.id}
+            style={[
+              styles.contributorRow,
+              i > 0 && {
+                borderTopWidth: 1,
+                borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(100,116,139,0.08)',
+              },
+            ]}
+          >
+            <SafeAvatar avatar={c.avatar} size={32} />
+            <Text style={[styles.contributorName, isDark && styles.textDark]} numberOfLines={1}>
+              {c.name}
+            </Text>
+            <View style={[styles.contributorCountBadge, { backgroundColor: themeColors.primary + '15' }]}>
+              <Text style={[styles.contributorCountText, { color: themeColors.primary }]}>
+                {c.count} {c.count === 1 ? 'entry' : 'entries'}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </GlassCard>
+    </Animated.View>
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN SCREEN
+// ═══════════════════════════════════════════════════════════════════════════
 
 export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreenProps) {
-  const isDark = useColorScheme() === 'dark';
+  const systemDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
 
@@ -397,30 +497,23 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     currentBaby,
     currentBabyId,
     switchBaby,
-    deleteBaby,
     growthData,
     milestones,
     activities,
-    getBabyStats,
     loadBabies,
     getPottyStreak,
   } = useBaby();
-    const { members, parent1, parent2, guardians, loadFamily, removeMember } = useFamily();
+  const { members, loadFamily } = useFamily();
   const sweetAlert = useSweetAlert();
 
-  const {
-    darkMode,
-    themeColors,
-    triggerHaptic,
-    shouldReduceMotion,
-  } = useCustomization();
+  const { darkMode, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
+  const isDark = darkMode ?? systemDark;
 
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'family' | 'growth'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'growth'>('overview');
   const [showBabySelector, setShowBabySelector] = useState(false);
 
   const effectiveUser = useMemo(() => userProfile || profile, [userProfile, profile]);
-  const hasUser = !!effectiveUser;
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -428,6 +521,15 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
       scrollY.value = event.contentOffset.y;
     },
   });
+
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    backgroundColor: isDark
+      ? `rgba(10,10,10,${interpolate(scrollY.value, [0, 60, 120], [0, 0.7, 0.95], Extrapolation.CLAMP)})`
+      : `rgba(248,250,252,${interpolate(scrollY.value, [0, 60, 120], [0, 0.7, 0.95], Extrapolation.CLAMP)})`,
+    borderBottomColor: isDark
+      ? `rgba(255,255,255,${interpolate(scrollY.value, [0, 60, 120], [0, 0.05, 0.1], Extrapolation.CLAMP)})`
+      : `rgba(0,0,0,${interpolate(scrollY.value, [0, 60, 120], [0, 0.05, 0.1], Extrapolation.CLAMP)})`,
+  }));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -443,51 +545,10 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
       triggerHaptic('light');
       switchBaby(babyId);
     },
-    [currentBabyId, switchBaby]
+    [currentBabyId, switchBaby, triggerHaptic]
   );
 
-    const handleDeleteBaby = useCallback(
-    (baby: (typeof babies)[0]) => {
-      sweetAlert.confirm(
-        'Delete Profile',
-        `Remove ${baby.name}'s profile permanently?`,
-        async () => {
-          await deleteBaby(baby.id);
-          triggerHaptic('success');
-        },
-        undefined,
-        'Delete',
-        'Cancel',
-        true
-      );
-    },
-    [deleteBaby, sweetAlert, triggerHaptic]
-  );
-
-    const handleRemoveMember = useCallback(
-    (member: any) => {
-      sweetAlert.confirm(
-        'Remove Member',
-        `Remove ${member.fullName} from family?`,
-        () => removeMember(member.id),
-        undefined,
-        'Remove',
-        'Cancel',
-        true
-      );
-    },
-    [removeMember, sweetAlert]
-  );
-
-  const handleMemberPress = useCallback(
-    (member: any, isYou: boolean = false) => {
-      navigation.navigate('EditGuardian', {
-        guardianId: member.id,
-        mode: isYou || member.role === UserRole.PARENT_2 ? 'parent2' : 'guardian',
-      });
-    },
-    [navigation]
-  );
+  // ─── Handlers ────────────────────────────────────────────────────
 
   const handleBabyEdit = useCallback(
     (babyId: string) => {
@@ -498,115 +559,147 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
 
   const handleCurrentUserEdit = useCallback(() => {
     if (effectiveUser?.id) {
-      navigation.navigate('EditGuardian', {
-        guardianId: effectiveUser.id,
-        mode: 'parent2',
-      });
+      navigation.navigate('EditGuardian', { guardianId: effectiveUser.id, mode: 'parent2' });
     }
   }, [navigation, effectiveUser]);
 
-  const handleNavigateFamily = useCallback(() => {
-    navigation.navigate('FamilySharing');
-  }, [navigation]);
+  const handleNavigateFamily = useCallback(() => navigation.navigate('FamilySharing'), [navigation]);
+  const handleNavigateFamilySettings = useCallback(() => navigation.navigate('FamilySettings'), [navigation]);
+  const handleNavigateTimeline = useCallback(() => navigation.navigate('Timeline'), [navigation]);
+  const handleNavigateAchievements = useCallback(() => navigation.navigate('Achievements'), [navigation]);
+  const handleNavigateGrowthChart = useCallback(() => navigation.navigate('GrowthDashboard'), [navigation]);
+  const handleNavigateCreateBaby = useCallback(() => navigation.navigate('CreateBabyProfile'), [navigation]);
+  const handleNavigateInvite = useCallback(() => navigation.navigate('CoParentInviteScreen'), [navigation]);
 
-  const handleNavigateFamilySettings = useCallback(() => {
-    navigation.navigate('FamilySettings');
-  }, [navigation]);
-
-  const handleNavigateTimeline = useCallback(() => {
-    navigation.navigate('Timeline');
-  }, [navigation]);
-
-  const handleNavigateAchievements = useCallback(() => {
-    navigation.navigate('Achievements');
-  }, [navigation]);
-
-  const handleNavigateGrowthChart = useCallback(() => {
-    navigation.navigate('GrowthDashboard');
-  }, [navigation]);
-
-  const handleNavigateCreateBaby = useCallback(() => {
-    navigation.navigate('CreateBabyProfile');
-  }, [navigation]);
-
-  const handleNavigateInvite = useCallback(() => {
-    navigation.navigate('CoParentInviteScreen');
-  }, [navigation]);
-
-  const displayMembers = useMemo(() => {
-    if (members.length > 0) return members;
-    if (!hasUser) return [];
-    return [
-      {
-        id: effectiveUser.id || '1',
-        fullName: effectiveUser.fullName || 'You',
-        role: UserRole.PARENT_1,
-        relationship: 'Parent',
-        email: effectiveUser.email || '',
-        addedAt: new Date().toISOString(),
-        addedBy: '',
-        canBeRemoved: false,
-        permissions: {
-          read: true, write: true, delete: true,
-          manageFamily: true, manageSecurity: true, exportData: true,
-        },
-      },
-    ];
-  }, [members, hasUser, effectiveUser]);
-
-  // Use TrackerContext as the single source of truth
   const { entries: trackerEntries } = useTracker();
-  
-  const recentActivities = useMemo(
-    () => trackerEntries
-      .filter((e: any) => !e.isDeleted)
-      .sort((a: any, b: any) => b.timestamp - a.timestamp)
-      .slice(0, 5),
-    [trackerEntries]
+
+  // ─── Today at a Glance data ──────────────────────────────────────
+  const todayStats = useMemo<TodayGlanceStat[]>(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEntries = trackerEntries.filter(
+      (e: any) => e.timestamp >= todayStart.getTime() && !e.isDeleted
+    );
+    const countBy = (id: string) => todayEntries.filter((e: any) => e.trackerId === id).length;
+    return [
+      { key: 'feed', icon: '🍼', label: 'Feeds', count: countBy('feed'), color: '#f59e0b' },
+      { key: 'sleep', icon: '😴', label: 'Sleeps', count: countBy('sleep'), color: '#8b5cf6' },
+      { key: 'diaper', icon: '🧷', label: 'Diapers', count: countBy('diaper'), color: '#06b6d4' },
+      { key: 'potty', icon: '🚽', label: 'Potty', count: countBy('potty'), color: '#10b981' },
+      { key: 'medication', icon: '💊', label: 'Meds', count: countBy('medication'), color: '#ef4444' },
+    ].filter(s => s.count > 0 || ['feed', 'sleep', 'diaper'].includes(s.key));
+  }, [trackerEntries]);
+
+  // ─── Suggestion of the Day ───────────────────────────────────────
+  const suggestionOfTheDay = useMemo(() => {
+    if (currentBaby) {
+      const ageMonths = differenceInMonths(new Date(), new Date(currentBaby.birthDate || currentBaby.dateOfBirth || new Date()));
+      if (ageMonths >= 4 && ageMonths <= 8) {
+        return {
+          icon: '👶',
+          title: 'Tummy time matters',
+          description: `At ${ageMonths} months, aim for 3 short tummy-time sessions daily to build core strength.`,
+          color: '#10b981',
+          actionLabel: 'Learn More',
+        };
+      }
+      if (ageMonths >= 10 && ageMonths <= 14) {
+        return {
+          icon: '🗣️',
+          title: 'First words approaching',
+          description: 'Baby is near the age where first words typically emerge. Narrate your day to encourage speech.',
+          color: '#f59e0b',
+          actionLabel: 'Explore Milestones',
+        };
+      }
+      if (ageMonths < 3) {
+        return {
+          icon: '📸',
+          title: 'Capture this stage',
+          description: 'Newborn weeks fly by — a quick photo today becomes tomorrow\'s treasure.',
+          color: '#ec4899',
+          actionLabel: 'Open Gallery',
+        };
+      }
+    }
+    return {
+      icon: '📊',
+      title: 'Check your weekly insights',
+      description: 'See patterns in feeding, sleep, and growth this week.',
+      color: themeColors.primary,
+      actionLabel: 'View Insights',
+    };
+  }, [currentBaby, themeColors.primary]);
+
+  // ─── Who's active today ──────────────────────────────────────────
+  const todayContributors = useMemo<TodayContributor[]>(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const map = new Map<string, TodayContributor>();
+    trackerEntries.forEach((e: any) => {
+      if (e.isDeleted || e.timestamp < todayStart.getTime()) return;
+      const key = e.loggedBy || e.loggedByName || 'unknown';
+      const existing = map.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        // Try to match with a family member for avatar
+        const memberMatch = members.find(
+          (m) => m.userId === e.loggedBy || m.id === e.loggedBy || m.fullName === e.loggedByName
+        );
+        map.set(key, {
+          id: key,
+          name: e.loggedByName || memberMatch?.fullName || 'Someone',
+          avatar: memberMatch?.avatar,
+          count: 1,
+        });
+      }
+    });
+    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 4);
+  }, [trackerEntries, members]);
+
+  // ─── Suggestion action ───────────────────────────────────────────
+  const handleSuggestionAction = useCallback(() => {
+    triggerHaptic('medium');
+    if (suggestionOfTheDay.actionLabel === 'View Insights') {
+      navigation.navigate('Insights');
+    } else if (suggestionOfTheDay.actionLabel === 'Explore Milestones') {
+      navigation.navigate('Achievements');
+    } else if (suggestionOfTheDay.actionLabel === 'Open Gallery') {
+      navigation.navigate('Gallery');
+    } else {
+      sweetAlert.toast('Coming Soon', 'This tip will be actionable soon', 'info');
+    }
+  }, [suggestionOfTheDay, navigation, sweetAlert, triggerHaptic]);
+
+  // ─── Tap on Today stat ───────────────────────────────────────────
+  const handleTodayStatPress = useCallback(
+    (key: string) => {
+      triggerHaptic('light');
+      navigation.navigate('Timeline', { trackerId: key, filter: 'today' });
+    },
+    [navigation, triggerHaptic]
   );
-
-  const recentMilestones = useMemo(
-    () => milestones
-      .sort((a, b) => new Date(b.achievedAt).getTime() - new Date(a.achievedAt).getTime())
-      .slice(0, 3),
-    [milestones]
-  );
-
-  const babyStats = useMemo(() => (currentBaby ? getBabyStats() : null), [currentBaby, getBabyStats]);
-
-  // ─── Animated Header Styles ───────────────────────────────────────
-
-  const headerAnimatedStyle = useAnimatedStyle(() => ({
-    backgroundColor: isDark
-      ? `rgba(10,10,10,${interpolate(scrollY.value, [0, 100], [0, 1], Extrapolate.CLAMP)})`
-      : `rgba(248,250,252,${interpolate(scrollY.value, [0, 100], [0, 1], Extrapolate.CLAMP)})`,
-  }));
-
-  const blurAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 50], [0, 1], Extrapolate.CLAMP),
-  }));
 
   // ─── Render Header ───────────────────────────────────────────────
-
   const renderHeader = () => (
-    <Animated.View style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}>
-      <Animated.View style={[StyleSheet.absoluteFill, blurAnimatedStyle, { zIndex: -1 }]}>
-        <BlurView intensity={60} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-      </Animated.View>
-
+    <Animated.View
+      style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}
+      pointerEvents="box-none"
+    >
       <View style={styles.headerTop}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={[styles.headerBtn, isDark && styles.headerBtnDark]}
         >
-          <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+          <Ionicons name="arrow-back" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
         </TouchableOpacity>
 
         <View style={styles.headerTitleContainer}>
-          <Text style={[styles.headerTitle, isDark && styles.textDark]}>Family Center</Text>
+          <Text style={[styles.headerTitle, isDark && styles.textDark]}>Family</Text>
           {currentBaby && (
             <TouchableOpacity
-              style={[styles.babySelector, { backgroundColor: themeColors.colors[0] }]}
+              style={[styles.babySelectorChip, { backgroundColor: themeColors.colors[0] }]}
               onPress={() => setShowBabySelector(true)}
             >
               <Text style={[styles.babySelectorText, { color: themeColors.primary }]}>
@@ -616,75 +709,63 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
           )}
         </View>
 
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
-            onPress={handleNavigateFamily}
-          >
-            <Ionicons name="people" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
+          onPress={handleNavigateInvite}
+        >
+          <Ionicons name="person-add" size={18} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Quick Actions Row */}
       <View style={styles.quickActionsRow}>
         <TouchableOpacity style={styles.iconAction} onPress={handleNavigateTimeline}>
-          <Ionicons name="time" size={24} color="#10b981" />
+          <Ionicons name="time" size={22} color="#10b981" />
           <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Activity</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconAction} onPress={handleNavigateAchievements}>
-          <Ionicons name="trophy" size={24} color="#f59e0b" />
+          <Ionicons name="trophy" size={22} color="#f59e0b" />
           <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Milestones</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconAction} onPress={handleNavigateGrowthChart}>
-          <Ionicons name="trending-up" size={24} color={themeColors.primary} />
+          <Ionicons name="trending-up" size={22} color={themeColors.primary} />
           <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Growth</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconAction} onPress={handleNavigateFamilySettings}>
-          <Ionicons name="settings" size={24} color="#8b5cf6" />
-          <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Family Settings</Text>
+          <Ionicons name="settings" size={22} color="#8b5cf6" />
+          <Text style={[styles.iconActionLabel, isDark && styles.textMuted]}>Settings</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Tab Navigation */}
-      <View style={[styles.tabContainer, isDark && styles.tabContainerDark]}>
-        {(['overview', 'family', 'growth'] as const).map((tab) => {
+      {/* Modern Tab Bar — removed "family" tab (was just a redirect) */}
+      <View style={[styles.modernTabBar, isDark && styles.modernTabBarDark]}>
+        {(['overview', 'growth'] as const).map((tab) => {
           const isActive = activeTab === tab;
-          const tabConfig = {
-            overview: { icon: 'grid-outline', label: 'Overview' },
-            family: { icon: 'people-outline', label: 'Family' },
-            growth: { icon: 'trending-up-outline', label: 'Growth' },
-          };
+          const iconName = tab === 'overview' ? 'grid' : 'trending-up';
           return (
             <TouchableOpacity
               key={tab}
               style={[
-                styles.tab,
-                isActive && styles.tabActive,
-                isActive && { borderBottomColor: themeColors.primary, backgroundColor: themeColors.colors[0] },
+                styles.modernTab,
+                isActive && [styles.modernTabActive, { backgroundColor: themeColors.colors[0] }],
               ]}
               onPress={() => {
-                if (tab === 'family') {
-                  handleNavigateFamily();
-                  return;
-                }
                 triggerHaptic('light');
                 setActiveTab(tab);
               }}
             >
               <Ionicons
-                name={tabConfig[tab].icon as any}
-                size={18}
+                name={iconName as any}
+                size={16}
                 color={isActive ? themeColors.primary : isDark ? '#94a3b8' : '#64748b'}
               />
               <Text
                 style={[
-                  styles.tabLabel,
-                  isActive && [styles.tabLabelActive, { color: themeColors.primary }],
-                  isDark && !isActive && styles.textMuted,
+                  styles.modernTabText,
+                  isActive && [styles.modernTabTextActive, { color: themeColors.primary }],
                 ]}
               >
-                {tabConfig[tab].label}
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </Text>
             </TouchableOpacity>
           );
@@ -693,355 +774,198 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     </Animated.View>
   );
 
-  // ─── Render Baby Chips ────────────────────────────────────────────
-
-  const renderBabyChips = () => (
-    <View style={styles.babyChipsContainer}>
-      <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.babyChipsContent}>
-        {babies.map((baby) => (
-          <TouchableOpacity
-            key={baby.id}
-            onPress={() => handleSwitchBaby(baby.id)}
-            style={[styles.babyChip, currentBabyId === baby.id && styles.babyChipActive]}
-          >
-            <LinearGradient
-              colors={
-                currentBabyId === baby.id
-                  ? [themeColors.primary, themeColors.secondary]
-                  : isDark
-                  ? ['rgba(60,60,70,0.8)', 'rgba(40,40,50,0.6)']
-                  : ['rgba(255,255,255,0.9)', 'rgba(245,245,250,0.7)']
-              }
-              style={styles.babyChipGradient}
-            >
-              {isImageUri(baby.avatar) ? (
-                <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={26} />
-              ) : (
-                <Text style={styles.babyChipEmoji}>{baby.avatar || '👶'}</Text>
-              )}
-              <Text
-                style={[
-                  styles.babyChipName,
-                  currentBabyId === baby.id && styles.babyChipNameActive,
-                  isDark && currentBabyId !== baby.id && styles.textDark,
-                ]}
-              >
-                {baby.name}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        ))}
-
-        <TouchableOpacity style={styles.addBabyChip} onPress={handleNavigateCreateBaby}>
-          <View style={[styles.addBabyChipInner, isDark && { borderColor: '#475569', backgroundColor: 'rgba(60,60,70,0.5)' }]}>
-            <Ionicons name="add" size={20} color={themeColors.primary} />
-            <Text style={[styles.addBabyText, isDark && styles.textDark]}>Add</Text>
-          </View>
-        </TouchableOpacity>
-      </Animated.ScrollView>
-    </View>
-  );
-
-  // ─── Render Overview ──────────────────────────────────────────────
-
+  // ─── Overview Tab ────────────────────────────────────────────────
   const renderOverview = () => (
     <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.tabPanel}>
-      {/* Family Stats Summary */}
-      <View style={styles.familyStatsContainer}>
-        <LinearGradient
-          colors={[themeColors.colors[0], themeColors.colors[1]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.familyStatsGradient}
-        >
-          <View style={styles.familyStatsRow}>
-            <View style={styles.familyStat}>
-              <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{members.length}</Text>
-              <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>Members</Text>
-            </View>
-            <View style={styles.familyStatDivider} />
-            <View style={styles.familyStat}>
-              <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{babies.length}</Text>
-              <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>Babies</Text>
-            </View>
-            <View style={styles.familyStatDivider} />
-            <View style={styles.familyStat}>
-              <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{activities.length}</Text>
-              <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>Activities</Text>
-            </View>
-            <View style={styles.familyStatDivider} />
-            <View style={styles.familyStat}>
-              <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{milestones.length}</Text>
-              <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>Milestones</Text>
-            </View>
-          </View>
-        </LinearGradient>
-      </View>
+      {/* Stats Summary */}
+      <LinearGradient
+        colors={[themeColors.colors[0], themeColors.colors[1]]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.familyStatsGradient}
+      >
+        <View style={styles.familyStatsRow}>
+          {[
+            { value: members.length, label: 'Members' },
+            { value: babies.length, label: 'Babies' },
+            { value: activities.length, label: 'Activities' },
+            { value: milestones.length, label: 'Milestones' },
+          ].map((stat, i) => (
+            <React.Fragment key={stat.label}>
+              {i > 0 && (
+                <View
+                  style={[
+                    styles.familyStatDivider,
+                    { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' },
+                  ]}
+                />
+              )}
+              <View style={styles.familyStat}>
+                <Text style={[styles.familyStatValue, { color: themeColors.primary }]}>{stat.value}</Text>
+                <Text style={[styles.familyStatLabel, isDark && styles.textMuted]}>{stat.label}</Text>
+              </View>
+            </React.Fragment>
+          ))}
+        </View>
+      </LinearGradient>
 
+      {/* NEW: Today at a Glance */}
+      <TodayAtAGlance
+        stats={todayStats}
+        isDark={isDark}
+        onPressStat={handleTodayStatPress}
+        shouldReduceMotion={shouldReduceMotion}
+      />
+
+      {/* NEW: Suggestion of the Day */}
+      <SuggestionOfTheDay
+        isDark={isDark}
+        suggestion={suggestionOfTheDay}
+        onAction={handleSuggestionAction}
+        shouldReduceMotion={shouldReduceMotion}
+      />
+
+      {/* Slim Hero Card */}
       {currentBaby && (
-        <GlassCard style={styles.heroCard}>
+        <GlassCard isDark={isDark} style={styles.heroCard} radius={DESIGN.radius.xl}>
           <View style={styles.heroHeader}>
             <SafeAvatar
               avatar={currentBaby.avatar}
               gender={currentBaby.gender}
-              size={72}
+              size={64}
               showEditButton
               onEdit={() => handleBabyEdit(currentBaby.id)}
             />
             <View style={styles.heroInfo}>
               <Text style={[styles.heroName, isDark && styles.textDark]}>{currentBaby.name}</Text>
-              <Text style={styles.heroMeta}>
+              <Text style={[styles.heroMeta, isDark && styles.textMuted]}>
                 {currentBaby.age} • {currentBaby.gender}
               </Text>
               <View style={styles.heroTags}>
                 <View style={[styles.heroTag, { backgroundColor: '#fa709a20' }]}>
                   <Ionicons name="flame" size={12} color="#fa709a" />
-                  <Text style={[styles.heroTagText, { color: '#fa709a' }]}>{getPottyStreak()}d streak</Text>
+                  <Text style={[styles.heroTagText, { color: '#fa709a' }]}>
+                    {getPottyStreak()}d streak
+                  </Text>
                 </View>
               </View>
             </View>
-            <TouchableOpacity style={styles.editBtn} onPress={() => handleBabyEdit(currentBaby.id)}>
+            <TouchableOpacity
+              style={[styles.editBtn, { backgroundColor: themeColors.colors[0] }]}
+              onPress={() => handleBabyEdit(currentBaby.id)}
+            >
               <Ionicons name="create-outline" size={20} color={themeColors.primary} />
             </TouchableOpacity>
           </View>
-
-          <View style={styles.statsRow}>
-            <StatBadge icon="🌟" value={currentBaby.milestones || 0} label="Milestones" color="#f59e0b" />
-            <StatBadge icon="📸" value={currentBaby.photos || 0} label="Photos" color="#8b5cf6" />
-            <StatBadge icon="📏" value={growthData.length} label="Records" color="#10b981" />
-          </View>
-
-          {(currentBaby.weight || currentBaby.height) && (
-            <View style={styles.quickStats}>
-              {currentBaby.weight && (
-                <View style={styles.quickStat}>
-                  <Ionicons name="scale-outline" size={16} color="#fa709a" />
-                  <Text style={[styles.quickStatValue, isDark && styles.textDark]}>{currentBaby.weight}</Text>
-                </View>
-              )}
-              {currentBaby.height && (
-                <View style={styles.quickStat}>
-                  <Ionicons name="resize-outline" size={16} color={themeColors.primary} />
-                  <Text style={[styles.quickStatValue, isDark && styles.textDark]}>{currentBaby.height}</Text>
-                </View>
-              )}
-            </View>
-          )}
         </GlassCard>
       )}
 
-      <GlassCard style={styles.parentCard} onPress={handleCurrentUserEdit}>
-        <LinearGradient colors={['#11998e20', '#38ef7d10']} style={StyleSheet.absoluteFill} />
-        <View style={styles.parentRow}>
-          {isImageUri(effectiveUser?.avatar) ? (
-            <SafeAvatar avatar={effectiveUser?.avatar} size={52} />
-          ) : (
-            <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.parentAvatar}>
-              <Text style={styles.parentAvatarText}>{effectiveUser?.fullName?.charAt(0) || 'P'}</Text>
-            </LinearGradient>
-          )}
-          <View style={styles.parentInfo}>
-            <Text style={[styles.parentName, isDark && styles.textDark]}>
-              {effectiveUser?.fullName || 'Parent'}
+      {/* NEW: Active Today */}
+      <WhosActiveToday
+        contributors={todayContributors}
+        isDark={isDark}
+        themeColors={themeColors}
+        onPressSeeAll={handleNavigateTimeline}
+        shouldReduceMotion={shouldReduceMotion}
+      />
+
+      {/* Compact Family Stack — replaces the old member rows */}
+      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200).springify()}>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your Family</Text>
+            <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
+              {members.length} {members.length === 1 ? 'member' : 'members'}
             </Text>
-            <Text style={styles.parentRole}>Primary Parent</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={isDark ? '#667eea' : '#764ba2'} />
+          <TouchableOpacity onPress={handleNavigateFamily} style={styles.seeAllBtn}>
+            <Text style={[styles.seeAll, { color: themeColors.primary }]}>Manage</Text>
+            <Ionicons name="chevron-forward" size={14} color={themeColors.primary} />
+          </TouchableOpacity>
         </View>
-      </GlassCard>
-
-      {recentActivities.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Recent Activity</Text>
-            <TouchableOpacity onPress={handleNavigateTimeline}>
-              <Text style={styles.seeAll}>See All</Text>
-            </TouchableOpacity>
-          </View>
-          <GlassCard style={styles.activityCard}>
-            {recentActivities.slice(0, 3).map((activity) => (
-              <ActivityItem key={activity.id} activity={activity} isDark={isDark} />
-            ))}
-          </GlassCard>
-        </View>
-      )}
-    </Animated.View>
-  );
-
-  // ─── Render Family ────────────────────────────────────────────────
-
-  const renderFamily = () => (
-    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.tabPanel}>
-      {renderMemberSection('Primary Parent', members.filter((m) => m.role === UserRole.PARENT_1))}
-      {renderMemberSection('Co-Parent', members.filter((m) => m.role === UserRole.PARENT_2), 'No co-parent added yet')}
-      {renderMemberSection('Guardians', members.filter((m) => m.role === UserRole.GUARDIAN), 'No guardians added')}
-      {renderMemberSection('Viewers', members.filter((m) => m.role === UserRole.VIEWER), 'No viewers added')}
-
-      {/* Add Co-Parent Button */}
-      {!parent2 && (
-        <TouchableOpacity style={styles.addBtn} onPress={handleNavigateInvite}>
-          <LinearGradient colors={['#fa709a', '#fee140']} style={styles.addBtnGradient}>
-            <Ionicons name="person-add" size={20} color="#fff" />
-            <Text style={styles.addBtnText}>Add Co-Parent</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
-
-      {/* Add Guardian Button */}
-      <TouchableOpacity style={styles.addGuardianBtn} onPress={handleNavigateInvite}>
-        <View style={[styles.addGuardianInner, isDark && { borderColor: '#475569' }]}>
-          <Ionicons name="add-circle" size={22} color={themeColors.primary} />
-          <Text style={[styles.addGuardianText, isDark && styles.textDark]}>Add Guardian</Text>
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
-  const renderMemberSection = (title: string, data: any[], emptyText?: string) => (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{title}</Text>
-        <Text style={[styles.sectionCount, isDark && styles.textMuted]}>{data.length}</Text>
-      </View>
-
-      {data.length === 0 && emptyText ? (
-        <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
-          <Ionicons name="people-outline" size={32} color={isDark ? '#555' : '#ccc'} />
-          <Text style={[styles.emptyStateText, isDark && styles.textMuted]}>{emptyText}</Text>
-        </View>
-      ) : (
-        data.map((member, index) => (
-          <Animated.View
-            key={member.id}
-            entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 100)}
-            layout={shouldReduceMotion ? undefined : Layout.springify()}
-            style={styles.memberCardWrapper}
-          >
-            <GlassCard onPress={() => handleMemberPress(member, member.id === (userProfile?.id || profile?.id))}>
-              <View style={styles.memberRow}>
-                {isImageUri(member.avatar) ? (
-                  <SafeAvatar avatar={member.avatar} size={48} />
-                ) : isEmoji(member.avatar) ? (
-                  <View style={[styles.memberAvatar, { backgroundColor: '#e2e8f0' }]}>
-                    <Text style={{ fontSize: 22 }}>{member.avatar}</Text>
-                  </View>
-                ) : (
-                  <LinearGradient
-                    colors={
-                      member.role === UserRole.PARENT_1
-                        ? ['#667eea', '#764ba2']
-                        : member.role === UserRole.PARENT_2
-                        ? ['#fa709a', '#fee140']
-                        : ['#11998e', '#38ef7d']
-                    }
-                    style={styles.memberAvatar}
-                  >
-                    <Text style={styles.memberAvatarText}>{member.fullName?.charAt(0) || '?'}</Text>
-                  </LinearGradient>
-                )}
-                <View style={styles.memberDetails}>
-                  <Text style={[styles.memberName, isDark && styles.textDark]}>{member.fullName}</Text>
-                  <View
-                    style={[
-                      styles.rolePill,
-                      {
-                        backgroundColor:
-                          member.role === UserRole.PARENT_1
-                            ? '#667eea20'
-                            : member.role === UserRole.PARENT_2
-                            ? '#fa709a20'
-                            : '#11998e20',
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.rolePillText,
-                        {
-                          color:
-                            member.role === UserRole.PARENT_1
-                              ? '#667eea'
-                              : member.role === UserRole.PARENT_2
-                              ? '#fa709a'
-                              : '#11998e',
-                        },
-                      ]}
-                    >
-                      {member.role === UserRole.PARENT_1 ? 'Primary' : member.role === UserRole.PARENT_2 ? 'Co-Parent' : member.relationship}
-                    </Text>
-                  </View>
-                </View>
-                {member.canBeRemoved && (
-                  <TouchableOpacity onPress={() => handleRemoveMember(member)} style={styles.removeBtn}>
-                    <Ionicons name="close-circle" size={24} color="#ef4444" />
-                  </TouchableOpacity>
-                )}
-                <Ionicons name="chevron-forward" size={20} color={isDark ? '#667eea' : '#764ba2'} />
+        <GlassCard isDark={isDark} onPress={handleNavigateFamily}>
+          <View style={styles.familyStackRow}>
+            {members.slice(0, 5).map((member, i) => (
+              <View
+                key={member.id}
+                style={[
+                  styles.stackAvatar,
+                  {
+                    marginLeft: i > 0 ? -12 : 0,
+                    zIndex: members.length - i,
+                    borderColor: isDark ? '#1a1a2e' : '#fff',
+                  },
+                ]}
+              >
+                <SafeAvatar avatar={member.avatar} size={44} />
               </View>
-            </GlassCard>
-          </Animated.View>
-        ))
-      )}
-    </View>
+            ))}
+            {members.length > 5 && (
+              <View
+                style={[
+                  styles.stackAvatar,
+                  styles.stackAvatarMore,
+                  {
+                    marginLeft: -12,
+                    backgroundColor: isDark ? '#2a2a3c' : '#e2e8f0',
+                    borderColor: isDark ? '#1a1a2e' : '#fff',
+                  },
+                ]}
+              >
+                <Text style={[styles.stackAvatarMoreText, isDark && styles.textDark]}>
+                  +{members.length - 5}
+                </Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }} />
+            <Ionicons name="chevron-forward" size={20} color={themeColors.primary} />
+          </View>
+        </GlassCard>
+      </Animated.View>
+    </Animated.View>
   );
 
-  // ─── Render Growth ────────────────────────────────────────────────
-
+  // ─── Growth Tab ──────────────────────────────────────────────────
   const renderGrowth = () => (
     <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.tabPanel}>
-      <GlassCard style={styles.growthSummaryCard}>
+      <GlassCard isDark={isDark} style={styles.growthSummaryCard}>
         <View style={styles.growthStatsRow}>
-          <View style={styles.growthStatItem}>
-            <LinearGradient colors={['#667eea', '#764ba2']} style={styles.growthStatIcon}>
-              <Ionicons name="resize-outline" size={20} color="#fff" />
-            </LinearGradient>
-            <View>
-              <Text style={[styles.growthStatValue, isDark && styles.textDark]}>
-                {growthData.filter((g) => g.type === 'height').pop()?.value || '--'}
-                {growthData.filter((g) => g.type === 'height').pop()?.unit || ''}
-              </Text>
-              <Text style={styles.growthStatLabel}>Height</Text>
+          {[
+            {
+              icon: 'resize-outline',
+              gradient: ['#667eea', '#764ba2'] as [string, string],
+              value: `${growthData.filter((g) => g.type === 'height').pop()?.value || '--'}${
+                growthData.filter((g) => g.type === 'height').pop()?.unit || ''
+              }`,
+              label: 'Height',
+            },
+            {
+              icon: 'scale-outline',
+              gradient: ['#fa709a', '#fee140'] as [string, string],
+              value: `${growthData.filter((g) => g.type === 'weight').pop()?.value || '--'}${
+                growthData.filter((g) => g.type === 'weight').pop()?.unit || ''
+              }`,
+              label: 'Weight',
+            },
+            {
+              icon: 'analytics-outline',
+              gradient: ['#11998e', '#38ef7d'] as [string, string],
+              value: `${growthData.length}`,
+              label: 'Records',
+            },
+          ].map((stat) => (
+            <View key={stat.label} style={styles.growthStatItem}>
+              <LinearGradient colors={stat.gradient} style={styles.growthStatIcon}>
+                <Ionicons name={stat.icon as any} size={20} color="#fff" />
+              </LinearGradient>
+              <View>
+                <Text style={[styles.growthStatValue, isDark && styles.textDark]}>{stat.value}</Text>
+                <Text style={[styles.growthStatLabel, isDark && styles.textMuted]}>{stat.label}</Text>
+              </View>
             </View>
-          </View>
-          <View style={styles.growthStatItem}>
-            <LinearGradient colors={['#fa709a', '#fee140']} style={styles.growthStatIcon}>
-              <Ionicons name="scale-outline" size={20} color="#fff" />
-            </LinearGradient>
-            <View>
-              <Text style={[styles.growthStatValue, isDark && styles.textDark]}>
-                {growthData.filter((g) => g.type === 'weight').pop()?.value || '--'}
-                {growthData.filter((g) => g.type === 'weight').pop()?.unit || ''}
-              </Text>
-              <Text style={styles.growthStatLabel}>Weight</Text>
-            </View>
-          </View>
-          <View style={styles.growthStatItem}>
-            <LinearGradient colors={['#11998e', '#38ef7d']} style={styles.growthStatIcon}>
-              <Ionicons name="analytics-outline" size={20} color="#fff" />
-            </LinearGradient>
-            <View>
-              <Text style={[styles.growthStatValue, isDark && styles.textDark]}>{growthData.length}</Text>
-              <Text style={styles.growthStatLabel}>Records</Text>
-            </View>
-          </View>
+          ))}
         </View>
       </GlassCard>
-
-      {recentMilestones.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Latest Milestones</Text>
-            <TouchableOpacity onPress={handleNavigateAchievements}>
-              <Text style={styles.seeAll}>View All</Text>
-            </TouchableOpacity>
-          </View>
-          <GlassCard style={styles.milestonesCard}>
-            {recentMilestones.map((m) => (
-              <MilestoneItem key={m.id} milestone={m} isDark={isDark} />
-            ))}
-          </GlassCard>
-        </View>
-      )}
 
       <TouchableOpacity style={styles.fullChartBtn} onPress={handleNavigateGrowthChart}>
         <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.fullChartGradient}>
@@ -1050,11 +974,26 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
           <Ionicons name="arrow-forward" size={20} color="#fff" />
         </LinearGradient>
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.secondaryBtn} onPress={handleNavigateAchievements}>
+        <View
+          style={[
+            styles.secondaryBtnInner,
+            { borderColor: themeColors.primary + '30', backgroundColor: themeColors.primary + '08' },
+          ]}
+        >
+          <Ionicons name="trophy-outline" size={20} color={themeColors.primary} />
+          <Text style={[styles.secondaryBtnText, { color: themeColors.primary }]}>
+            View All Milestones
+          </Text>
+          <Ionicons name="chevron-forward" size={18} color={themeColors.primary} />
+        </View>
+      </TouchableOpacity>
     </Animated.View>
   );
 
   return (
-    <View style={[styles.container, { flex: 1 }]}>
+    <View style={[styles.container, isDark && styles.containerDark]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <LinearGradient
         colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0']}
@@ -1063,23 +1002,25 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
 
       {renderHeader()}
 
-      <View style={[styles.babyChipsWrapper, { top: insets.top + 180 }]}>
-        {renderBabyChips()}
-      </View>
-
       <AnimatedScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 250, paddingBottom: insets.bottom + 30 }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: 220 + insets.top, paddingBottom: insets.bottom + 30 },
+        ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.primary} colors={[themeColors.primary]} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={themeColors.primary}
+            colors={[themeColors.primary]}
+          />
         }
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
         {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'family' && renderFamily()}
         {activeTab === 'growth' && renderGrowth()}
-
         <View style={styles.bottomSpacer} />
       </AnimatedScrollView>
 
@@ -1089,58 +1030,62 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
         onClose={() => setShowBabySelector(false)}
         title="Select Baby"
         isDark={isDark}
-        primaryColor={themeColors.primary}
       >
         <View style={styles.babySelectorContent}>
-          {babies.map((baby) => (
-            <TouchableOpacity
-              key={baby.id}
-              style={[
-                styles.babyOption,
-                currentBaby?.id === baby.id && [
-                  styles.babyOptionActive,
-                  { borderColor: themeColors.primary, backgroundColor: themeColors.colors[0] },
-                ],
-                isDark && styles.babyOptionDark,
-              ]}
-              onPress={() => {
-                handleSwitchBaby(baby.id);
-                setShowBabySelector(false);
-              }}
-            >
-              <View
+          {babies.map((baby) => {
+            const isActive = currentBaby?.id === baby.id;
+            return (
+              <TouchableOpacity
+                key={baby.id}
                 style={[
-                  styles.babyOptionIcon,
-                  { backgroundColor: currentBaby?.id === baby.id ? themeColors.primary : isDark ? '#333' : '#e2e8f0' },
+                  styles.babyOption,
+                  isActive && [
+                    styles.babyOptionActive,
+                    { borderColor: themeColors.primary, backgroundColor: themeColors.colors[0] },
+                  ],
+                  isDark && styles.babyOptionDark,
                 ]}
+                onPress={() => {
+                  handleSwitchBaby(baby.id);
+                  setShowBabySelector(false);
+                }}
               >
-                {isImageUri(baby.avatar) ? (
-                  <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={36} />
-                ) : (
-                  <Text style={styles.babyOptionEmoji}>{baby.avatar || '👶'}</Text>
-                )}
-              </View>
-              <View style={styles.babyOptionInfo}>
-                <Text style={[styles.babyOptionName, isDark && styles.textDark]}>{baby.name}</Text>
-                <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
-                  {new Date(baby.dateOfBirth).toLocaleDateString()} • {baby.gender || 'Baby'}
-                </Text>
-              </View>
-              {currentBaby?.id === baby.id && <Ionicons name="checkmark" size={24} color={themeColors.primary} />}
-            </TouchableOpacity>
-          ))}
+                <View
+                  style={[
+                    styles.babyOptionIcon,
+                    { backgroundColor: isActive ? themeColors.primary : isDark ? '#333' : '#e2e8f0' },
+                  ]}
+                >
+                  {isImageUri(baby.avatar) ? (
+                    <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={36} />
+                  ) : (
+                    <Text style={styles.babyOptionEmoji}>{baby.avatar || '👶'}</Text>
+                  )}
+                </View>
+                <View style={styles.babyOptionInfo}>
+                  <Text style={[styles.babyOptionName, isDark && styles.textDark]}>{baby.name}</Text>
+                  <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
+                    {new Date(baby.dateOfBirth).toLocaleDateString()} • {baby.gender || 'Baby'}
+                  </Text>
+                </View>
+                {isActive && <Ionicons name="checkmark" size={24} color={themeColors.primary} />}
+              </TouchableOpacity>
+            );
+          })}
 
           <TouchableOpacity
             style={[styles.addBabyOption, isDark && styles.addBabyOptionDark]}
             onPress={() => {
               setShowBabySelector(false);
-              navigation.navigate('CreateBabyProfile');
+              handleNavigateCreateBaby();
             }}
           >
             <View style={[styles.addBabyIcon, { backgroundColor: themeColors.colors[0] }]}>
               <Ionicons name="add" size={24} color={themeColors.primary} />
             </View>
-            <Text style={[styles.addBabyText, isDark && styles.textDark, { color: themeColors.primary }]}>Add New Baby</Text>
+            <Text style={[styles.addBabyText, isDark && styles.textDark, { color: themeColors.primary }]}>
+              Add New Baby
+            </Text>
           </TouchableOpacity>
         </View>
       </ActionModal>
@@ -1148,40 +1093,22 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   );
 }
 
-// ─── Styles (Unified with FamilySharingScreen) ───────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// STYLES
+// ═══════════════════════════════════════════════════════════════════════════
 
 const styles = StyleSheet.create({
-  // ── Base ──────────────────────────────────────────────────────────
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  textDark: {
-    color: '#ffffff',
-  },
-  textMuted: {
-    color: '#94a3b8',
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-  },
-  bottomSpacer: {
-    height: 40,
-  },
+  // ── Base ──
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  containerDark: { backgroundColor: '#0a0a0a' },
+  textDark: { color: '#ffffff' },
+  textMuted: { color: '#94a3b8' },
+  scrollContent: { paddingHorizontal: DESIGN.spacing.lg },
+  bottomSpacer: { height: 40 },
 
-  // ── Avatar ────────────────────────────────────────────────────────
-  avatarWrapper: {
-    position: 'relative',
-  },
-  avatarGradient: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-  },
+  // ── Avatar ──
+  avatarWrapper: { position: 'relative', borderRadius: DESIGN.radius.md, overflow: 'hidden' },
+  avatarGradient: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarEmoji: {},
   editAvatarBtn: {
     position: 'absolute',
@@ -1191,26 +1118,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 2,
     borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
-  editAvatarGradient: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  editAvatarGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
-  // ── Header ────────────────────────────────────────────────────────
+  // ── Header ──
   headerContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 100,
-    backgroundColor: 'transparent',
     borderBottomWidth: 1,
     borderBottomColor: 'transparent',
   },
@@ -1218,265 +1135,147 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: DESIGN.spacing.lg,
+    paddingBottom: 8,
   },
   headerBtn: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
   },
-  headerBtnDark: {
-    backgroundColor: 'rgba(30,30,35,0.9)',
-  },
-  headerBtnAccent: {
-    backgroundColor: '#667eea',
-  },
-  headerTitleContainer: {
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  babySelector: {
-    marginTop: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    borderRadius: 12,
-  },
-  babySelectorText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#667eea',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  headerBtnDark: { backgroundColor: 'rgba(40,40,50,0.95)', borderColor: 'rgba(255,255,255,0.08)' },
+  headerBtnAccent: { borderWidth: 0 },
+  headerTitleContainer: { alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.3 },
+  babySelectorChip: { marginTop: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+  babySelectorText: { fontSize: 12, fontWeight: '700' },
+
+  // Quick Actions
   quickActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: DESIGN.spacing.lg,
+    paddingTop: 2,
+    paddingBottom: 10,
   },
-  iconAction: {
-    alignItems: 'center',
-    padding: 8,
-  },
-  iconActionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748b',
-    marginTop: 4,
-  },
+  iconAction: { alignItems: 'center', padding: 6, minWidth: 60 },
+  iconActionLabel: { fontSize: 11, fontWeight: '600', color: '#64748b', marginTop: 4 },
 
-  // ── Tabs ────────────────────────────────────────────────────────
-  tabContainer: {
+  // ── Modern Tab Bar ──
+  modernTabBar: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    marginHorizontal: 16,
-    borderRadius: 16,
+    marginHorizontal: DESIGN.spacing.lg,
+    marginBottom: DESIGN.spacing.md,
     padding: 4,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 },
-      android: { elevation: 2, backgroundColor: 'rgba(255,255,255,0.95)' },
-    }),
+    borderRadius: DESIGN.radius.lg,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    gap: 4,
   },
-  tabContainerDark: {
-    backgroundColor: 'rgba(30,30,35,0.8)',
-    ...Platform.select({
-      android: { backgroundColor: 'rgba(30,30,35,0.95)' },
-    }),
-  },
-  tab: {
+  modernTabBarDark: { backgroundColor: 'rgba(255,255,255,0.06)' },
+  modernTab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
     paddingVertical: 10,
     borderRadius: 12,
-    gap: 6,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
   },
-  tabActive: {
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    borderBottomColor: '#667eea',
-  },
-  tabLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  tabLabelActive: {
-    fontWeight: '700',
-  },
+  modernTabActive: {},
+  modernTabText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
+  modernTabTextActive: { fontWeight: '700' },
 
-  // ── Baby Chips ──────────────────────────────────────────────────
-  babyChipsWrapper: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 98,
-    paddingVertical: 12,
-  },
-  babyChipsContainer: {
-    marginTop: 8,
-  },
-  babyChipsContent: {
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  babyChip: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  babyChipActive: {
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  babyChipGradient: {
+  // ── Section headers ──
+  sectionHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  babyChipEmoji: {
-    fontSize: 18,
-  },
-  babyChipName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  babyChipNameActive: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  addBabyChip: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  addBabyChipInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 6,
-    backgroundColor: 'rgba(100,116,139,0.1)',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    borderStyle: 'dashed',
-    borderRadius: 16,
-  },
-  addBabyText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-
-  // ── Glass Card ──────────────────────────────────────────────────
-  glassCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
-      android: { elevation: 3, backgroundColor: 'rgba(255,255,255,0.95)' },
-    }),
-  },
-  glassBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-  },
-  glassContent: {
-    flex: 1,
-  },
-
-  // ── Tab Panel ───────────────────────────────────────────────────
-  tabPanel: {
-    marginTop: 16,
-    gap: 16,
-  },
-
-  // ── Family Stats Summary ───────────────────────────────────────
-  familyStatsContainer: {
-    marginBottom: 20,
-  },
-  familyStatsGradient: {
-    borderRadius: 20,
-    padding: 16,
-  },
-  familyStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-  },
-  familyStat: {
-    alignItems: 'center',
-  },
-  familyStatValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#667eea',
-  },
-  familyStatLabel: {
-    fontSize: 11,
-    color: '#64748b',
     marginTop: 4,
-    fontWeight: '600',
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
-  familyStatDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: 'rgba(0,0,0,0.1)',
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
+  seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  seeAll: { fontSize: 13, fontWeight: '700' },
+
+  // ── Glass Card ──
+  glassCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  glassCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
+
+  // ── Tab Panel ──
+  tabPanel: { marginTop: 8, gap: 16 },
+
+  // ── Family Stats ──
+  familyStatsGradient: { borderRadius: DESIGN.radius.lg, padding: 16 },
+  familyStatsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  familyStat: { alignItems: 'center', flex: 1 },
+  familyStatValue: { fontSize: 22, fontWeight: '800' },
+  familyStatLabel: { fontSize: 11, fontWeight: '600', color: '#64748b', marginTop: 4 },
+  familyStatDivider: { width: 1, height: 36 },
+
+  // ── Today at a Glance ──
+  glanceScroll: { gap: 10, paddingRight: 8, paddingBottom: 2 },
+  glanceCard: {
+    width: 96,
+    padding: 12,
+    borderRadius: DESIGN.radius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  glanceCardLight: { backgroundColor: 'rgba(255,255,255,0.98)' },
+  glanceCardDark: { backgroundColor: 'rgba(45,45,60,0.9)' },
+  glanceIconBg: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  glanceIcon: { fontSize: 20 },
+  glanceCount: { fontSize: 22, fontWeight: '800' },
+  glanceLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
 
-  // ── Hero Card ───────────────────────────────────────────────────
-  heroCard: {
-    padding: 20,
+  // ── Suggestion of the Day ──
+  suggestionRow: { flexDirection: 'row', gap: 12, padding: 16 },
+  suggestionIconBg: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  heroHeader: {
+  suggestionIcon: { fontSize: 26 },
+  suggestionBody: { flex: 1, gap: 4 },
+  suggestionKicker: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  suggestionTitle: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2 },
+  suggestionDesc: { fontSize: 13, fontWeight: '500', lineHeight: 19 },
+  suggestionActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
-  heroInfo: {
-    flex: 1,
-    marginLeft: 16,
-  },
-  heroName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: -0.5,
-  },
-  heroMeta: {
-    fontSize: 14,
-    color: '#64748b',
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  heroTags: {
-    flexDirection: 'row',
-    marginTop: 8,
-    gap: 8,
-  },
+  suggestionActionText: { fontSize: 13, fontWeight: '700' },
+
+  // ── Hero Card ──
+  heroCard: { padding: 16 },
+  heroHeader: { flexDirection: 'row', alignItems: 'center' },
+  heroInfo: { flex: 1, marginLeft: 14 },
+  heroName: { fontSize: 20, fontWeight: '800', color: '#1e293b', letterSpacing: -0.4 },
+  heroMeta: { fontSize: 13, color: '#64748b', marginTop: 2, fontWeight: '500' },
+  heroTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
   heroTag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1485,369 +1284,40 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 4,
   },
-  heroTagText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  editBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  heroTagText: { fontSize: 12, fontWeight: '700' },
+  editBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Stats Row ───────────────────────────────────────────────────
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(100,116,139,0.1)',
+  // ── Active Today contributors ──
+  contributorRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
+  contributorName: { flex: 1, fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+  contributorCountBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  contributorCountText: { fontSize: 12, fontWeight: '700' },
+
+  // ── Compact family stack ──
+  familyStackRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+  stackAvatar: {
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 2,
   },
-  statBadge: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  statIconBg: {
+  stackAvatarMore: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statIcon: {
-    fontSize: 22,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+  stackAvatarMoreText: { fontSize: 13, fontWeight: '800', color: '#1a1a1a' },
 
-  // ── Quick Stats ─────────────────────────────────────────────────
-  quickStats: {
-    flexDirection: 'row',
-    gap: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(100,116,139,0.1)',
-  },
-  quickStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  quickStatValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
+  // ── Growth Tab ──
+  growthSummaryCard: { padding: 20 },
+  growthStatsRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  growthStatItem: { alignItems: 'center', gap: 10 },
+  growthStatIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  growthStatValue: { fontSize: 18, fontWeight: '800', color: '#1e293b', textAlign: 'center' },
+  growthStatLabel: { fontSize: 12, color: '#64748b', marginTop: 2, fontWeight: '600' },
 
-  // ── Parent Card ─────────────────────────────────────────────────
-  parentCard: {
-    padding: 16,
-  },
-  parentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  parentAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  parentAvatarText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  parentInfo: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  parentName: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  parentRole: {
-    fontSize: 13,
-    color: '#64748b',
-    marginTop: 2,
-  },
-
-  // ── Section ─────────────────────────────────────────────────────
-  section: {
-    marginTop: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  sectionCount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  seeAll: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#667eea',
-  },
-
-  // ── Activity ────────────────────────────────────────────────────
-  activityCard: {
-    padding: 16,
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(100,116,139,0.08)',
-  },
-  activityIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  activityEmoji: {
-    fontSize: 20,
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 2,
-  },
-  activityTime: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-
-  // ── Member Section ──────────────────────────────────────────────
-  memberCardWrapper: {
-    marginBottom: 14,
-    borderRadius: 20,
-  },
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-  },
-  memberAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memberAvatarText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  memberDetails: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  memberName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  rolePill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  rolePillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  removeBtn: {
-    padding: 4,
-    marginRight: 8,
-  },
-
-  // ── Add Buttons ─────────────────────────────────────────────────
-  addBtn: {
-    marginTop: 8,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#fa709a',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  addBtnGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    gap: 10,
-  },
-  addBtnText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  addGuardianBtn: {
-    marginTop: 12,
-  },
-  addGuardianInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    gap: 10,
-    backgroundColor: 'rgba(100,116,139,0.08)',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    borderStyle: 'dashed',
-    borderRadius: 16,
-  },
-  addGuardianText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-
-  // ── Empty State ─────────────────────────────────────────────────
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 16,
-  },
-  emptyStateDark: {
-    backgroundColor: 'rgba(30,30,35,0.5)',
-  },
-  emptyStateText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#64748b',
-    marginTop: 8,
-  },
-
-  // ── Growth ──────────────────────────────────────────────────────
-  growthSummaryCard: {
-    padding: 20,
-  },
-  growthStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  growthStatItem: {
-    alignItems: 'center',
-    gap: 10,
-  },
-  growthStatIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  growthStatValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1e293b',
-    textAlign: 'center',
-  },
-  growthStatLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 2,
-    fontWeight: '600',
-  },
-
-  milestonesCard: {
-    padding: 16,
-  },
-  milestoneItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(100,116,139,0.08)',
-  },
-  milestoneIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  milestoneEmoji: {
-    fontSize: 22,
-  },
-  milestoneContent: {
-    flex: 1,
-  },
-  milestoneTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 2,
-  },
-  milestoneCategory: {
-    fontSize: 12,
-    color: '#f59e0b',
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  milestoneDate: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-
-  fullChartBtn: {
-    marginTop: 8,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-  },
+  fullChartBtn: { marginTop: 8, borderRadius: 16, overflow: 'hidden' },
   fullChartGradient: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1855,45 +1325,21 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 12,
   },
-  fullChartText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  fullChartText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // ── Avatar Stack ────────────────────────────────────────────────
-  avatarStackContainer: {
+  secondaryBtn: { marginTop: 4 },
+  secondaryBtnInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
   },
-  avatarStack: {
-    flexDirection: 'row',
-  },
-  stackAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  stackAvatarText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  stackAvatarMore: {
-    backgroundColor: '#64748b',
-  },
-  stackAvatarMoreText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
+  secondaryBtnText: { flex: 1, fontSize: 15, fontWeight: '700' },
 
-  // ── Modal ───────────────────────────────────────────────────────
+  // ── Modal ──
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -1903,14 +1349,12 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '90%',
-    maxHeight: '80%',
-    borderRadius: 20,
+    maxHeight: '85%',
+    borderRadius: DESIGN.radius.xl,
     overflow: 'hidden',
     backgroundColor: '#fff',
   },
-  modalContentDark: {
-    backgroundColor: '#1a1a2e',
-  },
+  modalContentDark: { backgroundColor: '#1a1a2e' },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1919,26 +1363,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
+  modalTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
   modalCloseBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
-  modalScrollContent: {
-    padding: 16,
-  },
+  modalScrollContent: { padding: 16 },
 
-  // ── Baby Selector Modal ─────────────────────────────────────────
-  babySelectorContent: {
-    padding: 16,
-  },
+  // ── Baby Selector ──
+  babySelectorContent: { padding: 16 },
   babyOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1949,13 +1386,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.02)',
     marginBottom: 8,
   },
-  babyOptionActive: {
-    borderWidth: 2,
-    backgroundColor: 'rgba(102,126,234,0.05)',
-  },
-  babyOptionDark: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
+  babyOptionActive: { borderWidth: 2, backgroundColor: 'rgba(102,126,234,0.05)' },
+  babyOptionDark: { backgroundColor: 'rgba(255,255,255,0.03)' },
   babyOptionIcon: {
     width: 48,
     height: 48,
@@ -1964,22 +1396,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 14,
   },
-  babyOptionEmoji: {
-    fontSize: 24,
-  },
-  babyOptionInfo: {
-    flex: 1,
-  },
-  babyOptionName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-  babyOptionMeta: {
-    fontSize: 13,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
+  babyOptionEmoji: { fontSize: 24 },
+  babyOptionInfo: { flex: 1 },
+  babyOptionName: { fontSize: 16, fontWeight: '700', color: '#1a1a1a', letterSpacing: -0.2 },
+  babyOptionMeta: { fontSize: 13, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
   addBabyOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1990,9 +1410,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.1)',
     marginTop: 8,
   },
-  addBabyOptionDark: {
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
+  addBabyOptionDark: { borderColor: 'rgba(255,255,255,0.08)' },
   addBabyIcon: {
     width: 48,
     height: 48,
@@ -2001,4 +1419,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 14,
   },
+  addBabyText: { fontSize: 16, fontWeight: '700' },
 });
