@@ -43,6 +43,7 @@ import { format, formatDistanceToNow, isSameDay, subDays, differenceInDays, diff
 
 
 import { useSweetAlert } from '../../components/SweetAlert';
+import type { DiscoveredCorrelation } from '../../services/ai/CorrelationEngine';
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -387,7 +388,22 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
   const { currentBaby, growthData, milestones, babies, getGrowthData, loadBabies } = useBaby();
   const { getRecentTimelineEvents } = useActivity();
   const { growthIndex } = useGrowthIntelligence();
+  // Load TimelineCorrelations (UI patterns) AND discovered correlations (AI)
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
+
+  const [aiCorrelations, setAiCorrelations] = useState<DiscoveredCorrelation[]>([]);
+  useEffect(() => {
+    if (!currentBaby?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { discoverCorrelations } = require('../services/ai/CorrelationEngine');
+        const list = await discoverCorrelations(currentBaby.id, 45);
+        if (!cancelled) setAiCorrelations(list);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [currentBaby?.id]);
   const { achievements, newlyUnlocked, streak: globalStreak } = useTrackerAchievements();
   const { getInsights: getEngineInsights, getEntries: getTrackerEntries, refreshEntries, entries: trackerEntries } = useTracker();
   const { getPercentile, getStatus } = useWHOGrowthCalculator();
@@ -526,7 +542,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       }
     }
 
-    // Timeline correlations
+    // Timeline correlations (UI patterns)
     timelineCorrelations.slice(0, 3).forEach((c, i) => {
       items.push({
         id: `corr-${c.id || i}`,
@@ -537,6 +553,23 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
         color: '#54A0FF',
         priority: 'low',
         timestamp: now - i * 3600000,
+      });
+    });
+
+    // AI-discovered correlations
+    aiCorrelations.slice(0, 5).forEach((c, i) => {
+      items.push({
+        id: `ai-corr-${c.id}`,
+        type: 'correlation',
+        title: c.headline,
+        description: c.description,
+        emoji: c.emoji || '🔍',
+        color: c.direction === 'positive' ? '#10b981' : '#f59e0b',
+        priority: c.effectSize > 0.6 ? 'medium' : 'low',
+        action: c.suggestion
+          ? { label: c.suggestion.substring(0, 30) + '…', screen: 'Timeline' }
+          : undefined,
+        timestamp: now - (i + 10) * 3600000,
       });
     });
 
@@ -720,7 +753,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       }
       return b.timestamp - a.timestamp;
     });
-  }, [growthIndex, timelineCorrelations, milestones, currentBaby, getGrowthData, globalStreak, newlyUnlocked, trackerEntries, getPercentile, getEngineInsights, getTrackerEntries]);
+  }, [growthIndex, timelineCorrelations, aiCorrelations, milestones, currentBaby, getGrowthData, globalStreak, newlyUnlocked, trackerEntries, getPercentile, getEngineInsights, getTrackerEntries]);
 
   /* ── Filtered insights ── */
   const filteredInsights = useMemo(() => {

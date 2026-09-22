@@ -1119,14 +1119,14 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     loadRecords();
   }, [currentBaby?.id]);
 
+  const babyModalShownRef = useRef(false);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
+
   useFocusEffect(
     useCallback(() => {
       loadRecords();
     }, [loadRecords])
   );
-
-  // Auto-prompt to create baby profile when none exists
-  const babyModalShownRef = useRef(false);
   useEffect(() => {
     if (!currentBaby && !babyModalShownRef.current && !isLoadingInitial) {
       babyModalShownRef.current = true;
@@ -1140,6 +1140,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     const baby = currentBabyRef.current;
     if (!baby) {
       setDoses([]);
+      setIsLoadingInitial(false);
       return;
     }
     try {
@@ -1197,6 +1198,8 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
       }));
     } catch (error) {
       console.error('Error loading vaccination records:', error);
+    } finally {
+      setIsLoadingInitial(false);
     }
   }, [currentBabyRef]);
 

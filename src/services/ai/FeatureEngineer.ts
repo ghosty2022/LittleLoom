@@ -302,17 +302,18 @@ export class FeatureEngineer {
       if (Math.abs(weightVelocity) > 1) weightVelocity = null;
     }
 
-    // Compute WHO weight-for-age percentile inline (boy/girl curves, 0–24 months)
+    // Compute WHO weight-for-age percentile using the `baby` param passed to computeFeatures
     let weightPercentile: number | null = previous?.weight_percentile ?? null;
-    if (weightKgSafe !== null && currentBaby?.birthDate && currentBaby?.gender) {
+    if (weightKgSafe !== null && baby?.birth_date && baby?.gender) {
       try {
         const { getPercentile } = require('@/hooks/useWHOGrowthCalculator');
-        const ageMonths = (() => {
-          const b = new Date(currentBaby.birthDate);
-          const n = new Date();
-          return Math.max(0, (n.getFullYear() - b.getFullYear()) * 12 + (n.getMonth() - b.getMonth()));
-        })();
-        const g = currentBaby.gender === 'girl' ? 'girl' : 'boy';
+        const b = new Date(baby.birth_date);
+        const n = new Date();
+        const ageMonths = Math.max(
+          0,
+          (n.getFullYear() - b.getFullYear()) * 12 + (n.getMonth() - b.getMonth())
+        );
+        const g = baby.gender === 'girl' ? 'girl' : 'boy';
         weightPercentile = getPercentile(weightKgSafe, ageMonths, 'weight', g);
       } catch {
         // calculator unavailable — keep null

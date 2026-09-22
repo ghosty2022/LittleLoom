@@ -20,6 +20,7 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useFamily } from '../../context/FamilyContext';
+import { supabase } from '../../utils/supabase';
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
 const { width, height } = Dimensions.get('window');
@@ -495,7 +496,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('medium');
 
     try {
-      const signUpResult = await signUpWithInviteCode(
+            const signUpResult = await signUpWithInviteCode(
         trimmedCode,
         joinFullName.trim(),
         joinEmail.trim(),
@@ -503,9 +504,12 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       );
 
       if (signUpResult.success && isMounted.current) {
+        // Fetch the newly created user to get their ID reliably
+        const { data: { user } } = await supabase.auth.getUser();
+        
         const recoveryResult = await recoverPartialSignup(
           trimmedCode,
-          userProfile?.id || '',
+          user?.id || '', // Use the freshly fetched user ID
           joinEmail.trim(),
           joinPhone.trim() || undefined,
           joinFullName.trim()

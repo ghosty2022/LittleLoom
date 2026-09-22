@@ -28,7 +28,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useCustomization } from '@/hooks/useCustomization';
-import { useSweetAlert } from '@/hooks/useSweetAlert';
+import { useSweetAlert } from '@/components/SweetAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useTracker } from '@/context/TrackerContext';
 import { useBaby } from '@/context/BabyContext';

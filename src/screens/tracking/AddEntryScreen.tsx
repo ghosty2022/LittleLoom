@@ -57,6 +57,7 @@ import { UnifiedTrackerConfig } from '../../types/trackers';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
+import { supabase } from '../../utils/supabase';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
 import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
 import { useDashboardIntelligence } from '../../hooks/useDashboardIntelligence';
