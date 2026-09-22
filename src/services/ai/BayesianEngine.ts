@@ -21,21 +21,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 
-/**
- * Safe user-id resolver — falls back to supabase.auth if the helper
- * is not exported by utils/supabase.
- */
+// Uses the canonical helper — keeps session cache consistent across the app.
+import { getCurrentUserId as getCanonicalUserId } from '@/database/dbHelpers';
+
 async function getCurrentUserId(): Promise<string | null> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) return session.user.id;
-  } catch {}
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.id ?? null;
-  } catch {
-    return null;
-  }
+  return getCanonicalUserId();
 }
 
 // ─── Types ──────────────────────────────────────────────────────────

@@ -14,7 +14,8 @@
 //   - backfillRange(babyId, daysBack): Promise<number>
 // ─────────────────────────────────────────────────────────────────────
 
-import { supabase, getCurrentUserId } from '@/utils/supabase';
+import { supabase } from '@/utils/supabase';
+import { calculatePercentilePrecise } from '@/hooks/useWHOGrowthCalculator';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -304,11 +305,10 @@ export class FeatureEngineer {
       if (Math.abs(weightVelocity) > 1) weightVelocity = null;
     }
 
-    // Compute WHO weight-for-age percentile using the `baby` param passed to computeFeatures
+    // Compute WHO weight-for-age percentile using the static import.
     let weightPercentile: number | null = previous?.weight_percentile ?? null;
     if (weightKgSafe !== null && baby?.birth_date && baby?.gender) {
       try {
-        const { getPercentile } = require('@/hooks/useWHOGrowthCalculator');
         const b = new Date(baby.birth_date);
         const n = new Date();
         const ageMonths = Math.max(
@@ -318,9 +318,14 @@ export class FeatureEngineer {
         // babies.gender is 'male' | 'female' | 'other' in the DB.
         // The WHO calculator expects 'boy' | 'girl'.
         const genderRaw = String(baby.gender || '').toLowerCase();
-        const g =
+        const g: 'boy' | 'girl' =
           genderRaw === 'female' || genderRaw === 'girl' ? 'girl' : 'boy';
-        weightPercentile = getPercentile(weightKgSafe, ageMonths, 'weight', g);
+        weightPercentile = calculatePercentilePrecise(
+          weightKgSafe,
+          ageMonths,
+          'weight',
+          g
+        );
       } catch {
         // calculator unavailable — keep null
       }
@@ -348,6 +353,9 @@ export class FeatureEngineer {
     //   - Multiple family members logging = higher engagement
     //   - Entries spread across the day = higher engagement
     //   - Rapid bursts (spam) get dampened
+    //
+    // NOTE: `logged_by` is a non-null UUID column, so `filter(Boolean)` is
+    // mostly redundant. We keep it for safety against legacy rows.
     const uniqueLoggers = new Set(
       entries.map(e => e.logged_by).filter(Boolean)
     ).size;

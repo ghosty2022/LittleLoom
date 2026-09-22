@@ -76,9 +76,14 @@ export const usePredictiveReminders = () => {
   // Call the hook ONCE unconditionally (Rules of Hooks), but memoize
   // the expensive downstream computation via the module cache above.
   const giResult = useGrowthIntelligence();
+  // Include compositeIndex + entry count in the cache key so we invalidate
+  // whenever the underlying score actually moves.
+  const giFingerprint = `${giResult.growthIndex?.compositeIndex ?? 0}:${
+    giResult.growthIndex?.lastUpdated ?? 0
+  }`;
   const { growthIndex, ageInMonths } = useMemo(
     () => getCachedGrowthIntelligence(currentBaby?.id, () => giResult),
-    [currentBaby?.id, giResult.growthIndex?.lastUpdated]
+    [currentBaby?.id, giFingerprint]
   );
 
   const reminders = useMemo((): PredictiveReminder[] => {

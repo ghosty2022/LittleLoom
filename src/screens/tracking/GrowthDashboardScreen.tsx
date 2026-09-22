@@ -472,17 +472,71 @@ const InsightCard = memo(({
    GROWTH-SPECIFIC COMPONENTS (kept, restyled to match)
    ═══════════════════════════════════════════════════════════════════════════ */
 
+import { predictGrowth } from '@/hooks/useWHOGrowthCalculator';
+
 const AIGrowthPredictor = memo(({ baby, growthIndex, onPress }: { baby: BabyProfile; growthIndex: any; onPress: () => void }) => {
   const theme = useDashboardTheme();
+
+  // ─── Real WHO-based predictions using the baby's own trajectory ──
+  // Uses the same LMS tables that power percentiles, so predictions are
+  // anchored to this baby's growth data instead of generic milestones.
   const predictions = useMemo(() => {
-    if (!growthIndex) return [];
+    if (!baby?.birthDate || !growthIndex) return [];
     const ageNow = safeDiffMonths(new Date(), baby.birthDate);
-    return [
-      { milestone: 'First Words', predictedAge: Math.round(ageNow + 2), confidence: 78, category: 'Cognitive', emoji: '🗣️' },
-      { milestone: 'Walking Unassisted', predictedAge: Math.round(ageNow + 4), confidence: 65, category: 'Physical', emoji: '🚶' },
-      { milestone: 'Potty Training', predictedAge: Math.round(ageNow + 8), confidence: 45, category: 'Independence', emoji: '🚽' },
-    ].filter(p => p.predictedAge > ageNow);
-  }, [growthIndex, baby]);
+    const gender: 'boy' | 'girl' = baby.gender === 'girl' ? 'girl' : 'boy';
+
+    // Pull this baby's most-recent measured value per metric
+    const dims = (growthIndex as any)?.velocityTrends || {};
+    const latestValue = (metric: 'height' | 'weight' | 'head'): number | null => {
+      const perMonth = dims?.[metric]?.perMonth;
+      if (typeof perMonth !== 'number' || !Number.isFinite(perMonth)) return null;
+      // Back-derive the current value from growth index if not exposed
+      // (the source of truth is useGrowthIntelligence.mergedGrowthData)
+      return null;
+    };
+
+    // Confidence is derived from how many measurements we have to learn
+    // from — more data → tighter band.
+    const nGrowth = (growthIndex as any)?.sampleCounts?.growth ?? 0;
+    const confidenceFromN = Math.max(30, Math.min(95, 30 + nGrowth * 5));
+
+    const makePrediction = (
+      metric: 'height' | 'weight' | 'head',
+      label: string,
+      emoji: string,
+      category: string,
+      monthsAhead: number,
+      currentValue: number | null,
+    ) => {
+      if (currentValue == null) return null;
+      const pred = predictGrowth(currentValue, ageNow, metric, gender, monthsAhead);
+      return {
+        milestone: label,
+        predictedAge: Math.round(ageNow + monthsAhead),
+        predictedValue: pred.predicted,
+        confidence: Math.round((confidenceFromN + pred.confidence) / 2),
+        category,
+        emoji,
+      };
+    };
+
+    // Note: we only render predictions we can back with data.
+    // If growthIndex doesn't expose latest measured values, we hide the card.
+    const heightNow = (growthIndex as any)?.latestValues?.height_cm ?? null;
+    const weightNow = (growthIndex as any)?.latestValues?.weight_kg ?? null;
+    const headNow   = (growthIndex as any)?.latestValues?.head_cm   ?? null;
+
+    const preds = [
+      makePrediction('height', 'Height in 3mo', '📏', 'Physical', 3, heightNow),
+      makePrediction('weight', 'Weight in 3mo', '⚖️', 'Physical', 3, weightNow),
+      makePrediction('head',   'Head in 3mo',   '🧠', 'Physical', 3, headNow),
+    ].filter(Boolean) as Array<{
+      milestone: string; predictedAge: number; predictedValue: number;
+      confidence: number; category: string; emoji: string;
+    }>;
+
+    return preds;
+  }, [growthIndex, baby?.birthDate, baby?.gender]);
 
   if (predictions.length === 0) return null;
 

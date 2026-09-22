@@ -274,17 +274,12 @@ export async function getAllPredictorStates(
   return out;
 }
 
+// Uses the canonical helper — keeps session cache consistent across the app
+// and avoids stale JWTs after token refresh.
+import { getCurrentUserId as getCanonicalUserId } from '@/database/dbHelpers';
+
 async function getCurrentUserId(): Promise<string | null> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) return session.user.id;
-  } catch {}
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.id ?? null;
-  } catch {
-    return null;
-  }
+  return getCanonicalUserId();
 }
 
 async function persistState(state: PredictorState): Promise<void> {

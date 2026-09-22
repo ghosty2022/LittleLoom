@@ -190,6 +190,13 @@ export const useTrackerProgressive = (trackerId: string) => {
   const tc = useTimelineCorrelations();
   const timelineCorrelations = tc?.correlations ?? [];
 
+  // ─── Stable fingerprint: re-run the AI-correlation memo only when the
+  //     underlying score or entry count actually moves. Prevents the
+  //     progressive state from thrashing on every render.
+  const aiFingerprint = `${growthIndex?.compositeIndex ?? 0}:${
+    growthIndex?.lastUpdated ?? 0
+  }:${tracker.entries?.length ?? 0}`;
+
   // ─── AI-discovered correlations (cached, no recompute) ──────────
   const [aiCorrelations, setAiCorrelations] = useState<any[]>([]);
   useEffect(() => {
@@ -199,7 +206,12 @@ export const useTrackerProgressive = (trackerId: string) => {
       if (!cancelled) setAiCorrelations(list);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [baby.currentBaby?.id]);
+  }, [
+    baby.currentBaby?.id,
+    // Re-read whenever the tracker entries change — TrackerContext
+    // invalidates the server cache after INVALIDATE_THRESHOLD new logs.
+    tracker.entries?.length,
+  ]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -215,12 +227,15 @@ export const useTrackerProgressive = (trackerId: string) => {
     return () => clearInterval(interval);
   }, []);
 
+  // Extract stable reference — the tracker context object is recreated
+  // by React on every provider render.
+  const getTemplatesFn = tracker.getTemplates;
   useEffect(() => {
-    if (trackerId) {
-      tracker.getTemplates(trackerId)
+    if (trackerId && typeof getTemplatesFn === 'function') {
+      getTemplatesFn(trackerId)
         .then((templates: any[]) => {
           setUserSavedTemplates(
-            templates.map((t) => ({
+            (templates || []).map((t) => ({
               ...t,
               source: 'user_saved' as const,
             }))
@@ -230,7 +245,7 @@ export const useTrackerProgressive = (trackerId: string) => {
     } else {
       setUserSavedTemplates([]);
     }
-  }, [trackerId, tracker]);
+  }, [trackerId, getTemplatesFn]);
 
   useEffect(() => {
     if (isLoading) {
@@ -530,7 +545,7 @@ export const useTrackerProgressive = (trackerId: string) => {
         (i.type === 'correlation' && i.description?.toLowerCase().includes(trackerId))
     );
     return filtered;
-  }, [tracker, trackerId, refreshToken, contextTick]);
+  }, [tracker, trackerId, refreshToken, contextTick, aiFingerprint]);
 
   const hasNewInsights = useMemo(
     () => insights.some((i) => !i.dismissedAt && i.generatedAt > Date.now() - 24 * 60 * 60 * 1000),
@@ -617,7 +632,7 @@ export const useTrackerProgressive = (trackerId: string) => {
           confidence: Number.isFinite(c.confidence) ? c.confidence : 50,
         };
       });
-  }, [timelineCorrelations, aiCorrelations, trackerId, safeTrackers, tracker, refreshToken]);
+  }, [timelineCorrelations, aiCorrelations, trackerId, safeTrackers, tracker, refreshToken, aiFingerprint]);
 
   /* ═══════════════════════════════════════════════════════════
      REMINDERS
@@ -628,11 +643,14 @@ export const useTrackerProgressive = (trackerId: string) => {
 
     const safePredictiveReminders = predictiveReminders || [];
     const predictive = safePredictiveReminders
-      .filter(
-        (r: any) =>
-          r.basedOn?.some((b: any) => b.trackerId === trackerId) ||
-          r.suggestedTrackerId === trackerId
-      )
+      .filter((r: any) => {
+        // Canonical shape: basedOn is { trackerId, dataPoint, value }[]
+        if (Array.isArray(r?.basedOn)) {
+          return r.basedOn.some((b: any) => b?.trackerId === trackerId);
+        }
+        // Legacy/alternative shape: suggestedTrackerId (optional)
+        return r?.suggestedTrackerId === trackerId;
+      })
       .map(
         (r: any): ProgressiveReminder => ({
           id: `pred_${r.id}`,

@@ -10,22 +10,25 @@ import { useTracker } from './TrackerContext';
 import { useBaby, GrowthMeasurement } from './BabyContext';
 import { useAuth } from './AuthContext';
 
-// FIX: Use safe dynamic requires for hooks that may cause circular deps
+// Static imports — Rules of Hooks requires the same hook order every render.
+// If these modules ever need to be optional, gate them with a build-time
+// feature flag, not a runtime try/catch.
+import { useGrowthIntelligence } from '../hooks/useGrowthIntelligence';
+import { usePredictiveReminders } from '../hooks/usePredictiveReminders';
+
 const useGrowthIntelligenceSafe = () => {
   try {
-    const { useGrowthIntelligence } = require('../hooks/useGrowthIntelligence');
     return useGrowthIntelligence();
   } catch {
-    return { growthIndex: null, isLoading: false };
+    return { growthIndex: null, isLoading: false } as ReturnType<typeof useGrowthIntelligence>;
   }
 };
 
 const usePredictiveRemindersSafe = () => {
   try {
-    const { usePredictiveReminders } = require('../hooks/usePredictiveReminders');
     return usePredictiveReminders();
   } catch {
-    return { reminders: [], isLoading: false };
+    return { reminders: [] } as ReturnType<typeof usePredictiveReminders>;
   }
 };
 
@@ -79,7 +82,10 @@ interface IntegratedTrackerContextType extends IntegratedTrackerState {
 
 const IntegratedTrackerContext = createContext<IntegratedTrackerContextType | null>(null);
 
-const ACHIEVEMENT_STORAGE_KEY = '@littleloom_unlocked_achievements_v2';
+// Canonical storage key — matches useTrackerAchievements so both hooks
+// read/write the SAME unlocked set.
+const ACHIEVEMENT_STORAGE_KEY = '@littleloom_achievements_unlocked_v2';
+const ACHIEVEMENT_UNLOCKED_AT_KEY = '@littleloom_achievements_unlocked_at';
 const REMINDER_DISMISSED_KEY = '@littleloom_dismissed_reminders';
 const CORRELATIONS_KEY = '@littleloom_tracker_correlations';
 
@@ -414,7 +420,32 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
   /* ── Dismiss achievement ── */
   const dismissAchievement = useCallback(async (id: string) => {
     const updated = [...state.unlockedAchievements, id];
-    await setAppSetting(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(updated));
+    const updatedAt = { ...(state as any).unlockedAtMap };
+    if (!updatedAt[id]) updatedAt[id] = Date.now();
+
+    // Local cache
+    await AsyncStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(ACHIEVEMENT_UNLOCKED_AT_KEY, JSON.stringify(updatedAt));
+
+    // Cloud sync (matches useTrackerAchievements)
+    try {
+      const { supabase } = await import('@/utils/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) {
+        await supabase.from('app_settings').upsert(
+          [
+            { key: 'achievements_unlocked_v2', value: JSON.stringify(updated),
+              user_id: user.id, updated_at: new Date().toISOString() },
+            { key: 'achievements_unlocked_at_v2', value: JSON.stringify(updatedAt),
+              user_id: user.id, updated_at: new Date().toISOString() },
+          ],
+          { onConflict: 'key, user_id' }
+        );
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[IntegratedTracker] Achievement cloud sync failed:', e);
+    }
+
     setState(prev => ({
       ...prev,
       unlockedAchievements: updated,

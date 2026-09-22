@@ -34,7 +34,7 @@ import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 import { useBaby } from './BabyContext';
-import { observeValue } from '@/services/ai/BayesianEngine';
+// observeValue is now reached transitively via bootstrap.observeEntry
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { EntryService } from '@/services/EntryService';
 
@@ -306,66 +306,23 @@ const getTrackerType = (trackerId: string): string => {
   return TRACKER_TYPE_MAP[trackerId] || 'custom';
 };
 
-// ─── Bayesian metric mapping ────────────────────────────────────────
-const BAYES_METRIC_MAP: Record<string, Partial<Record<string, string>>> = {
-  temperature: { value: 'temperature_c' },
-  feed: { amount_ml: 'feeding_ml', amount: 'feeding_ml', quantity: 'feeding_ml', value: 'feeding_ml' },
-  sleep: { duration_minutes: 'sleep_duration_min', duration: 'sleep_duration_min' },
-  nap: { duration_minutes: 'sleep_duration_min', duration: 'sleep_duration_min' },
-  growth: {
-    weight: 'weight_kg', weight_kg: 'weight_kg',
-    height: 'height_cm', height_cm: 'height_cm',
-    head: 'head_cm', head_circumference: 'head_cm',
-  },
-  mood: { mood: 'mood_score', value: 'mood_score' },
-  heart_rate: { bpm: 'heart_rate_bpm', value: 'heart_rate_bpm' },
-  blood_oxygen: { spo2: 'blood_oxygen', value: 'blood_oxygen' },
-  diaper: { duration: 'diaper_interval_min', minutes: 'diaper_interval_min' },
-  potty: { duration: 'diaper_interval_min', minutes: 'diaper_interval_min' },
-  wake_time: { minutes: 'wake_window_min' },
-  poop: { duration: 'poop_interval_hr', minutes: 'poop_interval_hr' },
-};
-
+// ─── Bayesian learning — delegates to the canonical bootstrap helper ──
+// There is exactly ONE metric map (TRACKER_TO_METRICS in bootstrap.ts).
+// Both add and update paths route through observeEntry, so BayesianEngine
+// always receives values extracted with the same rules.
 async function learnFromEntry(
   babyId: string,
   trackerId: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  timestamp: number = Date.now()
 ): Promise<void> {
-  const fieldMap = BAYES_METRIC_MAP[trackerId];
-  if (!fieldMap) return;
-
-  // Use the same robust extractor as the backfill path so strings like
-  // "120ml" and "2.5h" are handled identically.
-  const { extractMetricValue } = await import('@/services/ai/BayesianEngine').catch(() => ({ extractMetricValue: null as any }));
-
-  const tasks: Promise<unknown>[] = [];
-  for (const metric of Object.values(fieldMap)) {
-    if (!metric) continue;
-
-    // Try the robust extractor first; fall back to a plain numeric parse.
-    let num: number | null = null;
-    if (typeof extractMetricValue === 'function') {
-      try { num = extractMetricValue(metric as any, data); } catch { num = null; }
+  try {
+    const { observeEntry } = await import('@/services/ai/bootstrap');
+    await observeEntry(babyId, trackerId, data, timestamp);
+  } catch (err: any) {
+    if (__DEV__) {
+      console.warn(`[Bayes] learnFromEntry failed for ${trackerId}:`, err?.message);
     }
-    if (num === null) {
-      for (const key of Object.keys(data)) {
-        const v = data[key];
-        const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
-        if (Number.isFinite(n)) { num = n; break; }
-      }
-    }
-    if (num === null) continue;
-
-    tasks.push(
-      observeValue(babyId, metric as any, num).catch(err => {
-        if (__DEV__)
-          console.warn(`[Bayes] observeValue failed for ${metric}:`, err?.message);
-      })
-    );
-  }
-
-  if (tasks.length > 0) {
-    await Promise.all(tasks);
   }
 }
 
@@ -827,8 +784,16 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
       return entries;
     } catch (error) {
-      console.error('[Tracker] loadEntries error:', error);
-      return [];
+      console.warn('[Tracker] loadEntries failed, trying cache:', error);
+      // Offline fallback: EntryService.getEntries already reads the cache
+      // on network failure (see EntryService), but if that throws too,
+      // return an empty list rather than crashing the tree.
+      try {
+        const cached = await EntryService.getCachedEntries?.(babyId);
+        return Array.isArray(cached) ? cached : [];
+      } catch {
+        return [];
+      }
     }
   }, []);
 
@@ -1470,7 +1435,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       // ─── Bayesian learning: re-observe the corrected value ───────
       if (updates.data && babyId) {
         const merged = { ...entry.data, ...updates.data } as Record<string, unknown>;
-        learnFromEntry(babyId, entry.trackerId, merged).catch(() => {});
+        learnFromEntry(babyId, entry.trackerId, merged, entry.timestamp).catch(() => {});
       }
 
       return true;

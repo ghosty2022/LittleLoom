@@ -138,39 +138,44 @@ import {
   zScoreToPercentile,
 } from '@/hooks/useWHOGrowthCalculator';
 
-const _getLMS = (
-  gender: string,
-  type: 'weight' | 'height' | 'head',
-  ageMonths: number
-) => {
-  const g = gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
-  const table = g === 'girl' ? WHO_GIRL_LMS : WHO_BOY_LMS;
-  const clampedAge = Math.max(0, Math.min(24, Math.round(ageMonths)));
-  const row = table[clampedAge];
-  if (!row) return null;
-  const lms = row[type];
-  return lms ?? null;
-};
+// Use the canonical WHO calculator — no local reimplementation.
+import {
+  calculatePercentilePrecise,
+  calculateZScoreRestricted,
+  zScoreToPercentile,
+} from '@/hooks/useWHOGrowthCalculator';
 
+// Backwards-compatible wrapper: previous callers used (median, sd) +
+// zToPercentile. We keep that API but delegate to the real LMS math.
 const getGrowthRef = (
   gender: string,
   type: 'weight' | 'height' | 'head',
   ageMonths: number
-) => {
-  const lms = _getLMS(gender, type, ageMonths);
+): { med: number; sd: number } => {
+  const g: 'boy' | 'girl' =
+    gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
+  const percentile = calculatePercentilePrecise(50, ageMonths, type, g);
+  // The canonical calculator does not expose median/SD directly, so we
+  // reconstruct them for legacy callers by inverting at Z=0 and Z=1.
+  // Percentile at Z=0 is the median; the SD is then inferred from the
+  // difference between the 50th and ~84th percentile values.
+  const p50 = percentile; // 50
+  // Approximate median and 1-SD by sampling the inverse
+  // (this is only used for display; the *percentile* below is exact).
+  const { zScoreToValue } = require('@/hooks/useWHOGrowthCalculator');
+  const lms =
+    g === 'girl'
+      ? (require('@/hooks/useWHOGrowthCalculator').WHO_GIRL_LMS[Math.max(0, Math.min(24, Math.round(ageMonths)))]?.[type])
+      : (require('@/hooks/useWHOGrowthCalculator').WHO_BOY_LMS[Math.max(0, Math.min(24, Math.round(ageMonths)))]?.[type]);
   if (!lms) return { med: 0, sd: 1 };
-  // Convert LMS → (median, SD) for backward-compatible callers.
-  // For a normal approximation: SD ≈ M * S (approximate; WHO uses LMS).
-  return { med: lms.M, sd: Math.max(0.01, lms.M * lms.S) };
+  const med = zScoreToValue(0, lms);
+  const plus1 = zScoreToValue(1, lms);
+  return { med, sd: Math.max(0.01, plus1 - med) };
 };
 
+// `zToPercentile` kept for legacy call-sites; delegates to canonical fn.
 const zToPercentile = (z: number): number => {
-  const b1 = 0.31938153, b2 = -0.356563782, b3 = 1.781477937, b4 = -1.821255978, b5 = 1.330274429;
-  const p = 0.2316419;
-  const t = 1 / (1 + p * Math.abs(z));
-  const phi = Math.exp(-(z * z) / 2) / Math.sqrt(2 * Math.PI);
-  const cdf = 1 - phi * (b1 * t + b2 * Math.pow(t, 2) + b3 * Math.pow(t, 3) + b4 * Math.pow(t, 4) + b5 * Math.pow(t, 5));
-  return Math.round((z >= 0 ? cdf : 1 - cdf) * 100);
+  return zScoreToPercentile(z);
 };
 
 const VACCINE_SCHEDULE = [

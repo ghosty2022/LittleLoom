@@ -386,12 +386,13 @@ export async function deleteCohortContributions(
   try {
     // 1. Clear all local cohort caches
     const keys = await AsyncStorage.getAllKeys();
+    // Note: LAST_PUBLISH_KEY is a full key, not a prefix. Use equality for it.
     const cohortKeys = keys.filter(
       k =>
         k.startsWith(COHORT_CACHE_PREFIX) ||
         k.startsWith('@littleloom_predictor_cohort_v1:') ||
-        k.startsWith(LAST_PUBLISH_KEY) ||
-        k.startsWith('@littleloom_predictor_last_publish_v1')
+        k === LAST_PUBLISH_KEY ||
+        k === '@littleloom_predictor_last_publish_v1'
     );
     if (cohortKeys.length > 0) {
       await AsyncStorage.multiRemove(cohortKeys);
