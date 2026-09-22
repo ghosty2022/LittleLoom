@@ -1865,7 +1865,7 @@ export default function UniversalTrackerHubScreen() {
               style={[styles.addBtn, { backgroundColor: themeColors?.primary || '#667eea' }]} 
               onPress={() => {
                 HAPTIC_MEDIUM();
-                navigation.navigate('TimelinePicker');
+                navigation.navigate('AddEntry' as never);
               }}
               activeOpacity={0.8}
             >

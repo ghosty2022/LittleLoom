@@ -204,6 +204,7 @@ export type RootStackParamList = {
   // ── Tracking ──
   UniversalTrackerHub: undefined;
   AllTrackers: undefined;
+  TimelinePicker: undefined;
   Timeline: { trackerId?: string; type?: string; babyId?: string; filter?: string } | undefined;
   AddEntry: {
     trackerId?: string;
@@ -488,7 +489,7 @@ export const isRootStackScreen = (name: string): name is RootStackRoute => {
     'Splash', 'Onboarding', 'Login', 'SignUp', 'ForgotPassword',
     'QRScanner',
     'CoParentInviteScreen', 'BabyOptional', 'CreateBabyProfile',
-    'SwitchBaby', 'Main', 'UniversalTrackerHub', 'AllTrackers',
+    'SwitchBaby', 'Main', 'UniversalTrackerHub', 'AllTrackers', 'TimelinePicker',
     'Timeline', 'AddEntry', 'EntryDetail', 'CreateCustomTracker',
     'PottyTracker', 'FeedTracker', 'SleepTracker', 'GrowthDashboard',
     'VaccinationSchedule', 'PediatricianPDFExport', 'Achievements',

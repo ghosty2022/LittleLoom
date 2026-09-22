@@ -1903,7 +1903,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   /* ── ★ Real per-tracker today counts (BabyContext stubs return 0) ── */
   const todayCounts = useMemo(() => {
-    if (!hasBaby) return { feeds: 0, sleep: 0, diapers: 0, potty: 0 };
+    if (!hasBaby) {
+      return {
+        feeds: 0, sleep: 0, diapers: 0, potty: 0,
+        medication: 0, temperature: 0, note: 0, milestone: 0,
+      };
+    }
     const today = new Date();
     const todayEvents = allTimelineEvents.filter(
       (a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today)
@@ -1915,7 +1920,40 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       sleep: countOf(['sleep']),
       diapers: countOf(['diaper']),
       potty: countOf(['potty']),
+      medication: countOf(['medication']),
+      temperature: countOf(['temperature']),
+      note: countOf(['note']),
+      milestone: countOf(['milestone']),
     };
+  }, [allTimelineEvents, hasBaby]);
+
+  /* ── ★ Real potty-day streak (consecutive calendar days with any log) ── */
+  const trackingStreakDays = useMemo(() => {
+    if (!hasBaby || allTimelineEvents.length === 0) return 0;
+    const dayKeys = new Set<string>();
+    allTimelineEvents.forEach((a: any) => {
+      if (!a?.timestamp) return;
+      const d = new Date(a.timestamp);
+      d.setHours(0, 0, 0, 0);
+      dayKeys.add(String(d.getTime()));
+    });
+    if (dayKeys.size === 0) return 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTime = today.getTime();
+    const DAY = 86400000;
+
+    // If nothing logged today, start counting from yesterday (streak still alive)
+    let cursor = dayKeys.has(String(todayTime)) ? todayTime : todayTime - DAY;
+    if (!dayKeys.has(String(cursor))) return 0;
+
+    let streak = 0;
+    while (dayKeys.has(String(cursor))) {
+      streak++;
+      cursor -= DAY;
+    }
+    return streak;
   }, [allTimelineEvents, hasBaby]);
 
   /* ── Daily summary with yesterday counts ── */
@@ -1932,14 +1970,38 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     const todayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today));
     const yesterdayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), yesterday));
 
+    // Helper: pull duration seconds from entry.data.duration OR entry.duration.
+    // DynamicTrackerForm saves to entry.data.duration as seconds.
+    const getDurationSeconds = (a: any): number => {
+      const raw =
+        a?.data?.duration ??
+        a?.duration ??
+        a?.data?.value ??
+        0;
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+      const s = String(raw ?? '').trim().toLowerCase();
+      if (!s) return 0;
+      const asNum = Number(s);
+      if (Number.isFinite(asNum)) return asNum;
+      let total = 0;
+      const re = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(s)) !== null) {
+        const n = parseFloat(m[1]);
+        const u = m[2][0];
+        total += u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
+      }
+      return total;
+    };
+
     const feeds = todayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length;
     const sleepEntries = todayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
-    const sleepHours = sleepEntries.reduce((sum: number, a: any) => sum + (a.duration || a.value || 0), 0) / 60;
+    const sleepHours = sleepEntries.reduce((sum: number, a: any) => sum + getDurationSeconds(a), 0) / 3600;
     const diapers = todayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
 
     const yesterdayFeeds = yesterdayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length;
     const yesterdaySleepEntries = yesterdayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
-    const yesterdaySleepHours = yesterdaySleepEntries.reduce((sum: number, a: any) => sum + (a.duration || a.value || 0), 0) / 60;
+    const yesterdaySleepHours = yesterdaySleepEntries.reduce((sum: number, a: any) => sum + getDurationSeconds(a), 0) / 3600;
     const yesterdayDiapers = yesterdayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
 
     const lastFeed = allTimelineEvents.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed')[0];
@@ -2122,7 +2184,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                 </View>
                 <LinearGradient colors={[secondary, '#fee140']} style={[styles.streakBadge, { borderRadius: borderRadiusValue }]}>
                   <Ionicons name="flame-outline" size={Math.round(13 * fontSizeMultiplier)} color="#fff" />
-                  <Text style={[styles.streakText, { fontSize: Math.round(11 * fontSizeMultiplier) }]}>{getPottyStreak()}d</Text>
+                  <Text style={[styles.streakText, { fontSize: Math.round(11 * fontSizeMultiplier) }]}>
+                    {trackingStreakDays}d
+                  </Text>
                 </LinearGradient>
               </View>
             </GlassCard>
@@ -2222,7 +2286,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               isDark={isDark}
               theme={theme}
               onPress={handleDailySummaryPress}
-              streakDays={getPottyStreak()}
+              streakDays={trackingStreakDays}
             />
 
             {/* Yesterday comparison — real deltas */}
@@ -2358,21 +2422,52 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               let badgeCount: number | undefined;
               let badgeLabel: string | undefined;
 
-              // Real per-tracker today counts (BabyContext helpers are stubs)
-              if (a.id === 'feed') {
-                badgeCount = todayCounts.feeds;
-              } else if (a.id === 'sleep') {
-                badgeCount = todayCounts.sleep;
-              } else if (a.id === 'diaper') {
-                badgeCount = todayCounts.diapers;
-              } else if (a.id === 'potty') {
-                badgeCount = todayCounts.potty;
-              } else if (a.id === 'growth' && growthStats?.height) {
-                badgeLabel = growthStats.height.value + 'cm';
-              } else if (a.id === 'growth' && growthStats?.weight && !badgeLabel) {
-                badgeLabel = growthStats.weight.value + 'kg';
-              } else if (a.id === 'milestone' && milestones.length > 0) {
-                badgeCount = milestones.length;
+              switch (a.id) {
+                case 'feed':
+                  badgeCount = todayCounts.feeds;
+                  break;
+                case 'sleep':
+                  badgeCount = todayCounts.sleep;
+                  break;
+                case 'diaper':
+                  badgeCount = todayCounts.diapers;
+                  break;
+                case 'potty':
+                  badgeCount = todayCounts.potty;
+                  break;
+                case 'medication':
+                  badgeCount = todayCounts.medication;
+                  break;
+                case 'temperature':
+                  badgeCount = todayCounts.temperature;
+                  break;
+                case 'note':
+                  badgeCount = todayCounts.note;
+                  break;
+                case 'growth':
+                  if (growthStats?.height) badgeLabel = growthStats.height.value + 'cm';
+                  else if (growthStats?.weight) badgeLabel = growthStats.weight.value + 'kg';
+                  break;
+                case 'milestone':
+                  if (milestones.length > 0) badgeCount = milestones.length;
+                  break;
+                case 'vaccine':
+                  if (vaccinationReminders.length > 0) {
+                    badgeCount = vaccinationReminders.length;
+                  }
+                  break;
+                case 'reminders':
+                  if (activeSmartNotifications.length > 0) {
+                    badgeCount = activeSmartNotifications.filter(
+                      n => n.priority === 'urgent' || n.priority === 'high'
+                    ).length || undefined;
+                  }
+                  break;
+                case 'family_chat':
+                  if (unreadCommunityCount > 0) badgeCount = unreadCommunityCount;
+                  break;
+                default:
+                  break;
               }
 
               return { ...a, badgeCount, badgeLabel };
