@@ -60,7 +60,7 @@ import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { supabase } from '../../utils/supabase';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
 import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
-import { useDashboardIntelligence } from '../../hooks/useDashboardIntelligence';
+
 import SmartPhotoField from '../../components/trackers/SmartPhotoField';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useAnomalyFeedback } from '../../hooks/useAnomalyFeedback';
@@ -1447,7 +1447,11 @@ function TrackerContent({
         triggerHaptic('success');
         setShowConfirm(false);
         success('Saved!', `${tracker.name} entry added successfully.`);
-        navigation.goBack();
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('UniversalTrackerHub' as never);
+        }
       }
     } catch (err) {
       console.error('Save error:', err);
@@ -1536,7 +1540,18 @@ function TrackerContent({
 
           {/* Top Nav Row */}
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown.springify()} style={styles.headerRow}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.iconBtn, { borderRadius: borderRadiusValue }]} activeOpacity={0.8}>
+            <TouchableOpacity
+              onPress={() => {
+                HAPTIC_LIGHT();
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.navigate('UniversalTrackerHub' as never);
+                }
+              }}
+              style={[styles.iconBtn, { borderRadius: borderRadiusValue }]}
+              activeOpacity={0.8}
+            >
               <BlurView intensity={isDark ? 40 : 80} style={[styles.iconBlur, { borderRadius: borderRadiusValue }]} tint={isDark ? 'dark' : 'light'}>
                 <Ionicons name="arrow-back" size={22} color={fullThemeColors.text} />
               </BlurView>
@@ -1853,8 +1868,19 @@ function TrackerContent({
 
           {/* Form */}
           <View style={styles.formWrapper}>
-            <DynamicTrackerForm tracker={tracker} initialData={pendingData} progressiveState={progressiveState}
-              onSubmit={handleFormSubmit} onCancel={() => navigation.goBack()} />
+            <DynamicTrackerForm
+              tracker={tracker}
+              initialData={pendingData}
+              progressiveState={progressiveState}
+              onSubmit={handleFormSubmit}
+              onCancel={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  setShowPicker(true);
+                }
+              }}
+            />
           </View>
 
           <View style={styles.bottomPadding} />
@@ -1989,13 +2015,18 @@ export default function AddEntryScreen() {
     }, 50);
   }, []);
 
-  const handlePickerClose = useCallback(() => {
-    if (!selectedTrackerId) {
+const handlePickerClose = useCallback(() => {
+  if (!selectedTrackerId) {
+    if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      setShowPicker(false);
+      // Root entry — no screen to go back to, so push the hub instead
+      navigation.navigate('UniversalTrackerHub' as never);
     }
-  }, [selectedTrackerId, navigation]);
+  } else {
+    setShowPicker(false);
+  }
+}, [selectedTrackerId, navigation]);
 
   if (showPicker) {
     return (

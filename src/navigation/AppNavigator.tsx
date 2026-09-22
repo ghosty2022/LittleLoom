@@ -59,6 +59,7 @@ import CreateCustomTrackerScreen from '../screens/tracking/CreateCustomTrackerSc
 import VaccinationScheduleScreen from '../screens/tracking/VaccinationScheduleScreen';
 import PediatricianPDFExport from '../screens/tracking/PediatricianPDFExport';
 import QRScannerScreen from '../screens/tracking/QRScannerScreen';
+import { TimelinePicker } from '../components/trackers/TimelinePicker';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
 import { InlineSpinner } from '../components/UniversalSpinner';
@@ -91,7 +92,7 @@ const MAIN_FLOW_SCREENS = new Set([
   'TermsOfService', 'About', 'LanguageSettings', 'UnitSettings', 'AIManagement',
   'UniversalTrackerHub', 'CreateCustomTracker', 'AllTrackers',
   'VaccinationSchedule', 'SafetyCorner', 'RealtimeDebug',
-  'SecureAccessList',
+  'SecureAccessList', 'TimelinePicker',
 ]);
 
 const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword']);
@@ -152,6 +153,33 @@ function MainTabs() {
     </Tab.Navigator>
   );
 }
+
+// ─── TIMELINE PICKER ROUTE WRAPPER ──────────────────────────────────
+// TimelinePicker expects `visible`, `onClose`, `onSelect` — wrap it so it
+// can be used as a full-screen route.
+const TimelinePickerRoute = React.memo(({ navigation }: any) => {
+  const { currentBaby } = useSafeBaby();
+  const handleClose = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    }
+  }, [navigation]);
+  const handleSelect = useCallback((trackerId: string) => {
+    // Replace the picker with AddEntry so back-stack is clean
+    navigation.replace('AddEntry', { trackerId });
+  }, [navigation]);
+
+  return (
+    <TimelinePicker
+      visible={true}
+      onClose={handleClose}
+      onSelect={handleSelect}
+      currentBabyName={currentBaby?.name}
+      currentBabyAvatar={currentBaby?.avatar}
+    />
+  );
+});
+TimelinePickerRoute.displayName = 'TimelinePickerRoute';
 
 // ─── LOADING SCREEN ─────────────────────────────────────────────────
 const AppLoadingScreen = React.memo(() => {
@@ -664,6 +692,13 @@ function NavigationContent({
           <Stack.Screen name="AllTrackers" component={AllTrackersScreen} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
           <Stack.Screen name="More" component={MoreScreen} options={{ animation: 'none' }} />
+
+          {/* TRACKER PICKER (full-screen) */}
+          <Stack.Screen
+            name="TimelinePicker"
+            component={TimelinePickerRoute}
+            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+          />
         </Stack.Navigator>
       </View>
     </NavigationContainer>
