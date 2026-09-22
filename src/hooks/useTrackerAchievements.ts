@@ -977,9 +977,9 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
       ...predictiveAchievements,
     ];
 
-    // NOTE: `getEntries` below is called via the stable ref captured at
-    //       the top of the hook so the memo doesn't thrash. See top of
-    //       hook for `getEntriesStable`.
+    // NOTE: `getEntries` is called via the stable ref captured at the top
+    //       of the hook so the memo doesn't thrash. See top of hook for
+    //       `getEntriesStable`.
     return built.map((a) => ({ ...a, unlockedAt: unlockedAtMap[a.id] }));
   }, [
     achievementsFingerprint,

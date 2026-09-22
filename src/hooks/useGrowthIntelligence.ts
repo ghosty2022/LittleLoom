@@ -308,11 +308,11 @@ export const useGrowthIntelligence = () => {
 
     const value = ageInMonths < 6 ? volumeScore : (volumeScore * 0.6 + varietyScore * 0.4);
 
-    const prevWeek = feedEntries.filter(e => 
-      e.timestamp > subDays(new Date(), 14).getTime() && 
+    const prevWeek = feedEntries.filter(e =>
+      e.timestamp > subDays(new Date(), 14).getTime() &&
       e.timestamp <= subDays(new Date(), 7).getTime()
     );
-    const prevAvg = prevWeek.length > 0 ? 
+    const prevAvg = prevWeek.length > 0 ?
       prevWeek.reduce((sum, e) => sum + safeNumber(e.data?.amount, 0), 0) / prevWeek.length : 0;
     const currentAvg = feedEntries.length > 0 ?
       feedEntries.slice(0, 7).reduce((sum, e) => sum + safeNumber(e.data?.amount, 0), 0) / Math.min(7, feedEntries.length) : 0;
@@ -347,7 +347,7 @@ export const useGrowthIntelligence = () => {
       }
     });
 
-    const avgSleep = nightlySleep.length > 0 ? 
+    const avgSleep = nightlySleep.length > 0 ?
       nightlySleep.reduce((a, b) => a + b, 0) / nightlySleep.length : 0;
     const sleepScore = Math.min(100, (avgSleep / guideline.maxHours) * 100);
 
@@ -358,11 +358,11 @@ export const useGrowthIntelligence = () => {
 
     const value = Math.min(100, sleepScore + qualityBonus);
 
-    const prevWeek = sleepEntries.filter(e => 
-      e.timestamp > subDays(new Date(), 14).getTime() && 
+    const prevWeek = sleepEntries.filter(e =>
+      e.timestamp > subDays(new Date(), 14).getTime() &&
       e.timestamp <= subDays(new Date(), 7).getTime()
     );
-    const prevAvg = prevWeek.length > 0 ? 
+    const prevAvg = prevWeek.length > 0 ?
       prevWeek.reduce((sum, e) => sum + parseDurationSeconds(e.data?.duration), 0) / prevWeek.length / 3600 : 0;
     const delta = avgSleep - prevAvg;
 
@@ -379,10 +379,10 @@ export const useGrowthIntelligence = () => {
   const physicalScore = useMemo((): SubScore => {
     const safeGrowthData = mergedGrowthData;
 
-    const heightData = safeGrowthData.filter(g => g.type === 'height').sort((a, b) => 
+    const heightData = safeGrowthData.filter(g => g.type === 'height').sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
-    const weightData = safeGrowthData.filter(g => g.type === 'weight').sort((a, b) => 
+    const weightData = safeGrowthData.filter(g => g.type === 'weight').sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
@@ -432,8 +432,8 @@ export const useGrowthIntelligence = () => {
 
     const rawValue = (heightScore + weightScore) / 2;
 
-    const velocityTrend = heightData.length >= 2 ? 
-      (safeNumber(heightData[0].value, 0) - safeNumber(heightData[1].value, 0)) / 
+    const velocityTrend = heightData.length >= 2 ?
+      (safeNumber(heightData[0].value, 0) - safeNumber(heightData[1].value, 0)) /
       Math.max(differenceInMonths(
         safeParseDate(heightData[0].date) || new Date(),
         safeParseDate(heightData[1].date) || new Date()
@@ -455,14 +455,15 @@ export const useGrowthIntelligence = () => {
 
   const cognitiveScore = useMemo((): SubScore => {
     const milestoneEntries = getEntriesStable('milestone', 50) || [];
-const playEntries = getEntriesStable('play', 30) || [];
-const readingEntries = getEntriesStable('reading', 30) || [];
+    const playEntries = getEntriesStable('play', 30) || [];
+    const readingEntries = getEntriesStable('reading', 30) || [];
+
     const expectedMilestones = Object.entries(MILESTONE_CALENDAR)
       .filter(([_, data]) => data.window.start <= ageInMonths)
       .map(([name, _]) => name);
 
     const achievedCount = expectedMilestones.filter(m => achievedMilestoneIds.has(m)).length;
-    const milestoneScore = expectedMilestones.length > 0 ? 
+    const milestoneScore = expectedMilestones.length > 0 ?
       (achievedCount / expectedMilestones.length) * 100 : 100;
 
     const activityTypes = new Set([
@@ -471,7 +472,7 @@ const readingEntries = getEntriesStable('reading', 30) || [];
     ].filter(Boolean));
     const diversityBonus = Math.min(20, activityTypes.size * 5);
 
-    const readingScore = readingEntries.length > 0 ? 
+    const readingScore = readingEntries.length > 0 ?
       Math.min(15, readingEntries.length * 3) : 0;
 
     const value = Math.min(100, milestoneScore + diversityBonus + readingScore);
@@ -488,8 +489,9 @@ const readingEntries = getEntriesStable('reading', 30) || [];
 
   const healthStability = useMemo((): SubScore => {
     const tempEntries = getEntriesStable('temperature', 30) || [];
-const symptomEntries = getEntriesStable('symptom', 30) || [];
-const medicationEntries = getEntriesStable('medication', 30) || [];
+    const symptomEntries = getEntriesStable('symptom', 30) || [];
+    const medicationEntries = getEntriesStable('medication', 30) || [];
+
     const feverEntries = tempEntries.filter(e => {
       const val = safeNumber(e.data?.value, 0);
       const unit = String(e.data?.unit || '');
@@ -500,12 +502,12 @@ const medicationEntries = getEntriesStable('medication', 30) || [];
     const daysSinceFever = feverEntries.length > 0 ?
       differenceInDays(new Date(), new Date(feverEntries[0].timestamp)) : 30;
 
-    const symptomDays = new Set(symptomEntries.map(e => 
+    const symptomDays = new Set(symptomEntries.map(e =>
       new Date(e.timestamp).toDateString()
     ));
     const symptomScore = Math.max(0, 100 - (symptomDays.size * 10));
 
-    const medScore = medicationEntries.length > 0 ? 
+    const medScore = medicationEntries.length > 0 ?
       Math.max(60, 100 - (medicationEntries.length * 2)) : 100;
 
     const value = (daysSinceFever / 30) * 40 + symptomScore * 0.35 + medScore * 0.25;
@@ -526,7 +528,7 @@ const medicationEntries = getEntriesStable('medication', 30) || [];
 
     return Object.entries(MILESTONE_CALENDAR)
       .filter(([name, data]) => {
-        return !achievedTitles.has(name) && 
+        return !achievedTitles.has(name) &&
           data.window.start <= currentAge + 1 &&
           data.window.end >= currentAge;
       })
@@ -535,9 +537,9 @@ const medicationEntries = getEntriesStable('medication', 30) || [];
         const windowProgress = Math.max(0, (currentAge - data.window.start) / (data.window.end - data.window.start));
 
         const relatedEntries = data.category === 'physical' ? getEntriesStable('tummy_time', 14) :
-  data.category === 'language' ? getEntriesStable('reading', 14) :
-  data.category === 'social' ? getEntriesStable('mood', 14) :
-  data.category === 'cognitive' ? getEntriesStable('play', 14) : [];
+          data.category === 'language' ? getEntriesStable('reading', 14) :
+          data.category === 'social' ? getEntriesStable('mood', 14) :
+          data.category === 'cognitive' ? getEntriesStable('play', 14) : [];
 
         const activityBonus = Math.min(20, (relatedEntries || []).length * 5);
         const readiness = Math.min(100, (windowProgress * 60) + (prerequisitesMet ? 20 : 0) + activityBonus);
@@ -561,13 +563,13 @@ const medicationEntries = getEntriesStable('medication', 30) || [];
   const velocityTrends = useMemo(() => {
     const safeGrowthData = mergedGrowthData;
 
-    const heightData = safeGrowthData.filter(g => g.type === 'height').sort((a, b) => 
+    const heightData = safeGrowthData.filter(g => g.type === 'height').sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
-    const weightData = safeGrowthData.filter(g => g.type === 'weight').sort((a, b) => 
+    const weightData = safeGrowthData.filter(g => g.type === 'weight').sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
-    const headData = safeGrowthData.filter(g => g.type === 'head').sort((a, b) => 
+    const headData = safeGrowthData.filter(g => g.type === 'head').sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
@@ -610,7 +612,7 @@ const medicationEntries = getEntriesStable('medication', 30) || [];
     const cVal = safeNumber(cognitiveScore.value, 0);
     const hVal = safeNumber(healthStability.value, 0);
 
-    const weighted = 
+    const weighted =
       nVal * safeNumber(nutritionScore.weight, 0) +
       rVal * safeNumber(restScore.weight, 0) +
       pVal * safeNumber(physicalScore.weight, 0) +
@@ -622,7 +624,7 @@ const medicationEntries = getEntriesStable('medication', 30) || [];
 
   const predictedNextCheckup = useMemo(() => {
     const safeGrowthData = mergedGrowthData;
-    const lastGrowth = safeGrowthData.sort((a, b) => 
+    const lastGrowth = safeGrowthData.sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     )[0];
 
@@ -722,8 +724,8 @@ const medicationEntries = getEntriesStable('medication', 30) || [];
     const dimScores = { nutritionScore, restScore, physicalScore, cognitiveScore, healthStability };
     const thirtyDaysAgo = subDays(new Date(), 30).getTime();
     const entries30d = typeof getEntriesStable === 'function'
-  ? (getEntriesStable(trackerId, 200) || []).filter(e => e.timestamp > thirtyDaysAgo).length
-  : 0;
+      ? (getEntriesStable(trackerId, 200) || []).filter(e => e.timestamp > thirtyDaysAgo).length
+      : 0;
     const score = Math.round(dimScores[key].value * 0.6 + Math.min(100, (entries30d / 14) * 100) * 0.4);
     return { trackerId, dimension: key, score: Math.max(0, Math.min(100, score)), entries30d };
   }, [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, getEntriesStable]);

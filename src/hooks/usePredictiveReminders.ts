@@ -402,7 +402,15 @@ export const usePredictiveReminders = () => {
         priorityWeight[b.priority] * b.confidence -
         priorityWeight[a.priority] * a.confidence
     );
-  }, [getEntriesStable, currentBaby, growthData, growthIndex, ageInMonths]);
+  }, [
+    getEntriesStable,
+    currentBaby,
+    growthData,
+    // growthIndex identity churns; use its updatedAt stamp so we only
+    // recompute when the underlying score actually recomputes.
+    growthIndex?.lastUpdated,
+    ageInMonths,
+  ]);
 
   return { reminders };
 };
