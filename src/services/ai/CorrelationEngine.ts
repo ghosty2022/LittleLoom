@@ -74,8 +74,8 @@ const pearson = (xs: number[], ys: number[]): number => {
   const my = ys.slice(0, n).reduce((a, b) => a + b, 0) / n;
   let num = 0, dx = 0, dy = 0;
   for (let i = 0; i < n; i++) {
-    const dxv = xs[i] - mx;
-    const dyv = ys[i] - my;
+    const dxv = (xs[i] ?? 0) - mx;
+    const dyv = (ys[i] ?? 0) - my;
     num += dxv * dyv;
     dx += dxv * dxv;
     dy += dyv * dyv;
@@ -224,6 +224,7 @@ function detectNightWakingsVsFeed(
 
     if (feeds.length === 0 || nightWakings === 0) continue;
     const lastFeed = feeds[0];
+    if (!lastFeed) continue;
     const hour = new Date(lastFeed.timestamp).getHours();
     days.push({ lastFeedHour: hour, wakings: nightWakings });
   }

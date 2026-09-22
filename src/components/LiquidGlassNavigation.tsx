@@ -1,5 +1,5 @@
 // src/components/LiquidGlassNavigation.tsx
-import React, { useCallback, useEffect, useMemo, memo, useRef } from 'react';
+import React, { useCallback, useEffect, memo } from 'react';
 import {
   View,
   StyleSheet,
@@ -24,14 +24,12 @@ import Animated, {
   interpolate,
   Extrapolation,
   Easing,
-  useAnimatedReaction,
-  runOnJS,
 } from 'react-native-reanimated';
 import { useTheme } from '../context/AppContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouteBasedNavVisibility } from '../hooks/useRouteBasedNavVisibility';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────
 const PILL_WIDTH = Math.min(SCREEN_WIDTH - 32, 360);
@@ -129,15 +127,11 @@ const TabButton = memo(({
   isActive, 
   onPress, 
   isDark,
-  index,
-  activeIndex,
 }: {
   tab: typeof TABS[0];
   isActive: boolean;
   onPress: () => void;
   isDark: boolean;
-  index: number;
-  activeIndex: number;
 }) => {
   const scale = useSharedValue(1);
   const glowOpacity = useSharedValue(0);
@@ -165,9 +159,7 @@ const TabButton = memo(({
     }
   }, [isActive]);
 
-  const containerStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
+  // containerStyle removed - unused
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity: glowOpacity.value,
@@ -261,7 +253,7 @@ const ActiveColorWash = memo(({ activeIndex, isDark }: { activeIndex: number; is
   useEffect(() => {
     washOpacity.value = withTiming(1, { duration: 350 });
     translateX.value = withSpring(0, { damping: 25, stiffness: 400 });
-  }, [activeIndex]);
+  }, [activeIndex, washOpacity, translateX]);
 
   const washStyle = useAnimatedStyle(() => ({
     opacity: interpolate(washOpacity.value, [0, 1], [0, isDark ? 0.1 : 0.07], Extrapolation.CLAMP),
@@ -469,8 +461,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
                 isActive={index === activeIndex}
                 onPress={() => handlePress(tab.route, tab)}
                 isDark={isDark}
-                index={index}
-                activeIndex={activeIndex}
               />
             ))}
           </View>

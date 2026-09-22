@@ -25,7 +25,7 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
     emotional: ['#FF6B6B', '#FF9FF3'],
   };
 
-  const colors = categoryColors[readiness.category] || ['#667eea', '#764ba2'];
+  const colors: [string, string] = categoryColors[readiness.category] ?? ['#667eea', '#764ba2'];
 
   return (
     <Animated.View entering={FadeInUp.delay(index * 100)} style={styles.container}>
@@ -39,20 +39,20 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
             borderWidth: 1.5,
           },
         ]}
-        onPress={() => navigation.navigate('Insights', {
+        onPress={() => navigation.navigate('Insights' as never, {
           focusCategory: readiness.category,
         } as never)}
         activeOpacity={0.85}
       >
         <LinearGradient
-          colors={[`${colors[0]}08`, `${colors[1]}04`]}
+          colors={[`${colors[0]}08`, `${colors[1]}04`] as [string, string]}
           style={[StyleSheet.absoluteFill, { borderRadius: borderRadiusValue }]}
         />
 
         {/* ─── Log shortcut ─────────────────────────────────────── */}
         <TouchableOpacity
           onPress={() =>
-            navigation.navigate('AddEntry', {
+            navigation.navigate('AddEntry' as never, {
               trackerId: 'milestone',
               presetData: { category: readiness.category },
             } as never)
@@ -121,11 +121,11 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
 
         {/* Related Trackers */}
         <View style={styles.trackersRow}>
-          {(readiness.relatedTrackerIds || []).map((trackerId) => (
+          {(readiness.relatedTrackerIds || []).map((trackerId: string) => (
             <TouchableOpacity
               key={trackerId}
               style={[styles.trackerChip, { backgroundColor: `${colors[0]}15` }]}
-              onPress={() => navigation.navigate('AddEntry', { trackerId })}
+              onPress={() => navigation.navigate('AddEntry' as never, { trackerId } as never)}
             >
               <Ionicons name="add-circle" size={14} color={colors[0]} />
               <Text style={[styles.trackerText, { color: colors[0] }]}>

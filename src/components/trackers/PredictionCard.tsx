@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+// Ionicons removed - unused
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 
@@ -108,7 +108,7 @@ export default function PredictionCard() {
         </Text>
       </View>
 
-      {predictions.map((p, idx) => {
+      {predictions.map((p) => {
         const meta = TYPE_META[p.type];
         const conf = Math.round(p.confidence * 100);
         const confidenceColor =

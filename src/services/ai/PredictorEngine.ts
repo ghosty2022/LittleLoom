@@ -103,7 +103,7 @@ const updateHoltWinters = (
 
   const L_prev = state.level;
   const T_prev = state.trend;
-  const S_slot = seasonal[slot] || 0;
+  const S_slot = seasonal[slot] ?? 0;
 
   const L_new =
     params.alpha * (observedInterval - S_slot) +
@@ -220,7 +220,7 @@ function predictNext(state: PredictorState): Prediction {
   const m = DEFAULT_PARAMS.seasonLength;
 
   const slot = seasonSlot(now, m);
-  const seasonal = state.seasonal[slot] || 0;
+  const seasonal = state.seasonal[slot] ?? 0;
 
   let predictedInterval = state.level + state.trend + seasonal;
 
@@ -386,8 +386,11 @@ export async function backfillPredictor(
 
   const intervals: Array<{ interval: number; at: number }> = [];
   for (let i = 1; i < data.length; i++) {
-    const prev = data[i - 1].timestamp;
-    const curr = data[i].timestamp;
+    const prevRow = data[i - 1];
+    const currRow = data[i];
+    if (!prevRow || !currRow) continue;
+    const prev = prevRow.timestamp;
+    const curr = currRow.timestamp;
     const intervalMin = (curr - prev) / 60000;
     if (intervalMin > 1 && intervalMin < 24 * 60) {
       intervals.push({ interval: intervalMin, at: curr });
