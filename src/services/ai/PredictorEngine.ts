@@ -18,6 +18,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
+import { getCurrentUserId as getCanonicalUserId } from '@/database/dbHelpers';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -274,10 +275,7 @@ export async function getAllPredictorStates(
   return out;
 }
 
-// Uses the canonical helper — keeps session cache consistent across the app
-// and avoids stale JWTs after token refresh.
-import { getCurrentUserId as getCanonicalUserId } from '@/database/dbHelpers';
-
+// Canonical helper — defined at top of file to avoid TDZ errors
 async function getCurrentUserId(): Promise<string | null> {
   return getCanonicalUserId();
 }

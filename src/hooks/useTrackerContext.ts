@@ -75,6 +75,8 @@ function getFallbackTrackerContext() {
     getStreakForTracker: () => 0,
     getLastEntryForTracker: () => null,
     getTodayEntriesForTracker: () => [],
+    applyAllYesterday: () => ({}),
+    
   };
 }
 

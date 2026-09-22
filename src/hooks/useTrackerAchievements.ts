@@ -233,7 +233,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
                 user_id: user.id,
                 updated_at: new Date().toISOString(),
               },
-              { onConflict: 'key, user_id' }
+              { onConflict: 'key,user_id' }
             );
           await supabase
             .from('app_settings')
@@ -244,7 +244,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
                 user_id: user.id,
                 updated_at: new Date().toISOString(),
               },
-              { onConflict: 'key, user_id' }
+              { onConflict: 'key,user_id' }
             );
         }
       } catch (e) {

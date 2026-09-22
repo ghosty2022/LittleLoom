@@ -272,7 +272,7 @@ export const useTrackerProgressive = (trackerId: string) => {
 
   /* ── All entries for this tracker ── */
   const trackerEntries = useMemo(
-    () => (trackerId ? tracker.getEntries(trackerId) || [] : []),
+    () => (trackerId && typeof tracker.getEntries === 'function' ? tracker.getEntries(trackerId) || [] : []),
     [trackerFingerprint, trackerId, refreshToken]
   );
 
@@ -347,7 +347,7 @@ export const useTrackerProgressive = (trackerId: string) => {
      ═══════════════════════════════════════════════════════════ */
 
   const streakData = useMemo(() => {
-    const s = tracker.getStreak(trackerId);
+    const s = typeof tracker.getStreak === 'function' ? tracker.getStreak(trackerId) : null;
     if (!s) return null;
 
     const hoursUntilBreak = s.isAtRisk ? Math.max(0, 24 - now.getHours()) : 0;
@@ -546,7 +546,7 @@ export const useTrackerProgressive = (trackerId: string) => {
   }, [tracker.insights, tracker.entries]);
 
   const insights = useMemo(() => {
-    const allInsights = tracker.getInsights() || [];
+    const allInsights = (typeof tracker.getInsights === 'function' ? tracker.getInsights() : []) || [];
     const filtered = allInsights.filter(
       (i) =>
         i.trackerId === trackerId ||
@@ -648,7 +648,7 @@ export const useTrackerProgressive = (trackerId: string) => {
      ═══════════════════════════════════════════════════════════ */
 
   const activeReminders = useMemo((): ProgressiveReminder[] => {
-    const pending = tracker.getPendingReminders() || [];
+    const pending = (typeof tracker.getPendingReminders === 'function' ? tracker.getPendingReminders() : []) || [];
 
     const safePredictiveReminders = predictiveReminders || [];
     const predictive = safePredictiveReminders
@@ -843,6 +843,7 @@ export const useTrackerProgressive = (trackerId: string) => {
   return {
     ...state,
     getAllYesterday,
+    applyAllYesterday: getAllYesterday,
     dismissInsight: dismissInsightById,
     refresh,
     todayEntries,

@@ -23,7 +23,13 @@ import { RootStackParamList } from '../../types/navigation';
 import { CATEGORY_CONFIG } from './trackerConstants';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+// Only enable on old architecture — New Architecture (Fabric) makes this a no-op
+// and spams the console with warnings on every render.
+if (
+  Platform.OS === 'android' &&
+  typeof UIManager.setLayoutAnimationEnabledExperimental === 'function' &&
+  !(global as any).nativeFabricUIManager
+) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
