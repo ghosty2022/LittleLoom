@@ -1,4 +1,6 @@
-// src/screens/main/HomeScreen.tsx - COMPLETE FIXED VERSION
+// src/screens/main/HomeScreen.tsx - COMPLETE FIXED V3.0
+// Instant render (cached), Timeline-style activity, theme-safe text,
+// correct navigation, real per-tracker badge counts, modern header.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -59,7 +61,7 @@ import { formatDistanceToNow, format, subDays, eachDayOfInterval, isSameDay, dif
 
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { SkeletonLoader, ShimmerLoader, ShimmerPresets } from '../../components/UniversalSpinner';
+import { ShimmerLoader } from '../../components/UniversalSpinner';
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
@@ -73,7 +75,7 @@ const SCREEN_H = height;
 const littleLoomLogo = require('../../../assets/logo 4.png');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   INSTANT-RENDER CACHE KEYS — Baby + activities cached so first paint has data
+   INSTANT-RENDER CACHE KEYS
    ═══════════════════════════════════════════════════════════════════════════ */
 const CACHE_KEYS = {
   BABY: '@littleloom_cached_baby',
@@ -81,7 +83,7 @@ const CACHE_KEYS = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN SYSTEM — Ultra-Refined, Cohesive Tokens
+   DESIGN SYSTEM
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const DESIGN = {
@@ -96,7 +98,7 @@ const DESIGN = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TRACKER VISUAL CONFIG — Single source of truth (used by every list)
+   TRACKER VISUAL CONFIG
    ═══════════════════════════════════════════════════════════════════════════ */
 const TRACKER_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string; label: string; emoji: string }> = {
   potty: { icon: 'water-outline', color: '#06b6d4', label: 'Potty', emoji: '💧' },
@@ -202,7 +204,7 @@ interface VaccinationReminder {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   NAVIGATION MAP — Aliases only; DIRECT_SCREENS handles real screen names
+   NAVIGATION MAP
    ═══════════════════════════════════════════════════════════════════════════ */
 const NAVIGATION_MAP: Record<string, { screen: keyof RootStackParamList; params?: Record<string, any> }> = {
   'Settings': { screen: 'Customize', params: {} },
@@ -227,11 +229,11 @@ const DIRECT_SCREENS = new Set<string>([
   'CommunityMemberProfile', 'CommunityOnboarding', 'CommunityVerification',
   'Topic', 'TopicMembers', 'CreatePost', 'PostDetail', 'ChatList',
   'Chat', 'Notifications', 'Followers', 'Following', 'SearchUsers',
-  'BlockedUsers', 'Report',
+  'BlockedUsers', 'Report', 'SecurityLock',
 ]);
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   QUICK ACTIONS — Log actions route to AddEntry (the correct logging screen)
+   QUICK ACTIONS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const QUICK_ACTIONS: QuickAction[] = [
@@ -267,7 +269,7 @@ const FEATURE_CARDS: FeatureCard[] = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GLASS CARD — Solid gradient, theme aware
+   GLASS CARD
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const GlassCard: React.FC<{ children: React.ReactNode; style?: any; onPress?: () => void }> =
@@ -326,25 +328,24 @@ const SectionHeader: React.FC<{
 (SectionHeader as any).displayName = 'SectionHeader';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SKELETON LOADERS — Ultra-Soft, Modern Glass-Morphism
+   SKELETON LOADERS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// Ultra-soft shimmer with glass-morphism effect
-const SoftShimmer: React.FC<{ 
-  width?: number | string; 
-  height?: number | string; 
-  borderRadius?: number; 
-  style?: any; 
+const SoftShimmer: React.FC<{
+  width?: number | string;
+  height?: number | string;
+  borderRadius?: number;
+  style?: any;
   isDark?: boolean;
   shimmerColor?: string;
 }> = ({ width = '100%', height = 16, borderRadius = 12, style, isDark = false, shimmerColor }) => {
-  const baseColor = isDark 
-    ? shimmerColor || 'rgba(255,255,255,0.06)' 
+  const baseColor = isDark
+    ? shimmerColor || 'rgba(255,255,255,0.06)'
     : shimmerColor || 'rgba(200,210,230,0.25)';
-  const highlightColor = isDark 
-    ? 'rgba(255,255,255,0.12)' 
+  const highlightColor = isDark
+    ? 'rgba(255,255,255,0.12)'
     : 'rgba(255,255,255,0.5)';
-  
+
   return (
     <View style={[
       {
@@ -356,9 +357,9 @@ const SoftShimmer: React.FC<{
       },
       style
     ]}>
-      <ShimmerLoader 
-        width="100%" 
-        height="100%" 
+      <ShimmerLoader
+        width="100%"
+        height="100%"
         borderRadius={borderRadius}
         colors={[baseColor, highlightColor, baseColor]}
         style={{ opacity: 0.7 }}
@@ -367,10 +368,9 @@ const SoftShimmer: React.FC<{
   );
 };
 
-// Glass-morphism skeleton card
-const GlassSkeletonCard: React.FC<{ 
-  children: React.ReactNode; 
-  style?: any; 
+const GlassSkeletonCard: React.FC<{
+  children: React.ReactNode;
+  style?: any;
   isDark?: boolean;
 }> = ({ children, style, isDark = false }) => (
   <View style={[
@@ -380,14 +380,13 @@ const GlassSkeletonCard: React.FC<{
       backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.5)',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.3)',
-      backdropFilter: 'blur(10px)',
       overflow: 'hidden',
     },
     style
   ]}>
     <LinearGradient
-      colors={isDark 
-        ? ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.01)'] 
+      colors={isDark
+        ? ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.01)']
         : ['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.1)']}
       style={StyleSheet.absoluteFill}
     />
@@ -464,9 +463,24 @@ const RecentTimelineSkeleton = ({ isDark }: { isDark: boolean }) => (
   </View>
 );
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   HOME SKELETON — Ultra-Soft, Modern Glass-Morphism
-   ═══════════════════════════════════════════════════════════════════════════ */
+// ⚠️ Must be declared BEFORE HomeSkeleton (which uses it).
+const FeatureCardsSkeleton = ({ isDark }: { isDark: boolean }) => (
+  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featureCardsScroll}>
+    {[1, 2, 3, 4].map((i) => (
+      <View key={i} style={styles.featureCardTouchable}>
+        <GlassSkeletonCard isDark={isDark} style={{ padding: 14, borderRadius: 18 }}>
+          <View style={styles.featureCardTop}>
+            <SoftShimmer width={40} height={40} borderRadius={12} isDark={isDark} />
+            <SoftShimmer width={30} height={20} borderRadius={8} isDark={isDark} />
+          </View>
+          <SoftShimmer width="80%" height={18} borderRadius={6} style={{ marginBottom: 4 }} isDark={isDark} />
+          <SoftShimmer width="60%" height={14} borderRadius={4} style={{ marginBottom: 8 }} isDark={isDark} />
+          <SoftShimmer width="50%" height={16} borderRadius={4} isDark={isDark} />
+        </GlassSkeletonCard>
+      </View>
+    ))}
+  </ScrollView>
+);
 
 const HomeSkeleton: React.FC<{
   isDark: boolean;
@@ -507,24 +521,6 @@ const HomeSkeleton: React.FC<{
   );
 });
 (HomeSkeleton as any).displayName = 'HomeSkeleton';
-
-const FeatureCardsSkeleton = ({ isDark }: { isDark: boolean }) => (
-  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featureCardsScroll}>
-    {[1, 2, 3, 4].map((i) => (
-      <View key={i} style={styles.featureCardTouchable}>
-        <GlassSkeletonCard isDark={isDark} style={{ padding: 14, borderRadius: 18 }}>
-          <View style={styles.featureCardTop}>
-            <SoftShimmer width={40} height={40} borderRadius={12} isDark={isDark} />
-            <SoftShimmer width={30} height={20} borderRadius={8} isDark={isDark} />
-          </View>
-          <SoftShimmer width="80%" height={18} borderRadius={6} style={{ marginBottom: 4 }} isDark={isDark} />
-          <SoftShimmer width="60%" height={14} borderRadius={4} style={{ marginBottom: 8 }} isDark={isDark} />
-          <SoftShimmer width="50%" height={16} borderRadius={4} isDark={isDark} />
-        </GlassSkeletonCard>
-      </View>
-    ))}
-  </ScrollView>
-);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    FEATURE 1: DAILY SUMMARY WIDGET
@@ -1087,7 +1083,7 @@ const FeatureCardsRow: React.FC<{
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ★★★ RECENT ACTIVITY — TIMELINE-STYLE (matches EnhancedTimelineScreen)
+   RECENT ACTIVITY — TIMELINE-STYLE
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface DayGroup {
@@ -1316,7 +1312,7 @@ const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme:
   });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STICKY HEADER — Bigger Logo
+   STICKY HEADER — modern, trimmed
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface StickyAppHeaderProps {
@@ -1345,10 +1341,10 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 
   const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
   const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
-  const textColor = isDark ? (fullTheme?.text || '#f0f0f7') : (fullTheme?.text || '#111827');
 
-  // Bigger logo size - increased from 0.14 to 0.18
-  const logoSize = Math.min(SCREEN_W * 0.18, 72);
+  // Slightly smaller logo since the right cluster has 4 icons.
+  // Still bigger than the original (0.14) but respects small phones.
+  const logoSize = Math.min(SCREEN_W * 0.16, 64);
 
   return (
     <Animated.View
@@ -1381,50 +1377,123 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </View>
         </View>
 
-        <View style={[styles.stickyHeaderRight, { gap: 10 }]}>
+        <View style={[styles.stickyHeaderRight, { gap: compactSpacing ? 6 : 8 }]}>
+          {/* Notifications */}
           <TouchableOpacity
-            style={[styles.stickyHeaderIconBtn, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]}
+            style={[
+              styles.stickyHeaderIconBtn,
+              {
+                width: Math.round(36 * fontSizeMultiplier),
+                height: Math.round(36 * fontSizeMultiplier),
+                borderRadius: Math.round(18 * fontSizeMultiplier),
+              },
+            ]}
             onPress={onNotificationPress}
           >
-            <Ionicons name="notifications-outline" size={Math.round(17 * fontSizeMultiplier)} color={isDark ? '#fff' : primaryColor} />
+            <Ionicons
+              name="notifications-outline"
+              size={Math.round(17 * fontSizeMultiplier)}
+              color={isDark ? '#fff' : primaryColor}
+            />
             {unreadCount > 0 && (
-              <View style={[styles.stickyHeaderBadge, { minWidth: Math.round(14 * fontSizeMultiplier), height: Math.round(14 * fontSizeMultiplier), borderRadius: Math.round(7 * fontSizeMultiplier) }]}>
-                <Text style={[styles.stickyHeaderBadgeText, { fontSize: Math.round(9 * fontSizeMultiplier) }]}>
+              <View
+                style={[
+                  styles.stickyHeaderBadge,
+                  {
+                    minWidth: Math.round(14 * fontSizeMultiplier),
+                    height: Math.round(14 * fontSizeMultiplier),
+                    borderRadius: Math.round(7 * fontSizeMultiplier),
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.stickyHeaderBadgeText,
+                    { fontSize: Math.round(9 * fontSizeMultiplier) },
+                  ]}
+                >
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </Text>
               </View>
             )}
           </TouchableOpacity>
 
+          {/* Settings — routes to the More screen */}
           <TouchableOpacity
-            style={[styles.stickyHeaderIconBtn, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]}
+            style={[
+              styles.stickyHeaderIconBtn,
+              {
+                width: Math.round(36 * fontSizeMultiplier),
+                height: Math.round(36 * fontSizeMultiplier),
+                borderRadius: Math.round(18 * fontSizeMultiplier),
+              },
+            ]}
             onPress={onSettingsPress}
           >
-            <Ionicons name="settings-outline" size={Math.round(17 * fontSizeMultiplier)} color={isDark ? '#fff' : primaryColor} />
+            <Ionicons
+              name="settings-outline"
+              size={Math.round(17 * fontSizeMultiplier)}
+              color={isDark ? '#fff' : primaryColor}
+            />
           </TouchableOpacity>
 
+          {/* Baby avatar / add baby */}
           {currentBaby ? (
             <TouchableOpacity
-              style={[styles.stickyHeaderBaby, { width: Math.round(36 * fontSizeMultiplier), height: Math.round(36 * fontSizeMultiplier), borderRadius: Math.round(18 * fontSizeMultiplier) }]}
+              style={[
+                styles.stickyHeaderBaby,
+                {
+                  width: Math.round(36 * fontSizeMultiplier),
+                  height: Math.round(36 * fontSizeMultiplier),
+                  borderRadius: Math.round(18 * fontSizeMultiplier),
+                },
+              ]}
               onPress={onBabyPress}
             >
-              <SafeBabyAvatar avatar={currentBaby.avatar || '👶'} gender={currentBaby.gender} size={Math.round(30 * fontSizeMultiplier)} />
+              <SafeBabyAvatar
+                avatar={currentBaby.avatar || '👶'}
+                gender={currentBaby.gender}
+                size={Math.round(30 * fontSizeMultiplier)}
+              />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={[styles.stickyHeaderIconBtn, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]}
+              style={[
+                styles.stickyHeaderIconBtn,
+                {
+                  width: Math.round(36 * fontSizeMultiplier),
+                  height: Math.round(36 * fontSizeMultiplier),
+                  borderRadius: Math.round(18 * fontSizeMultiplier),
+                },
+              ]}
               onPress={onAddBabyPress}
             >
-              <Ionicons name="add-circle-outline" size={Math.round(19 * fontSizeMultiplier)} color={primaryColor} />
+              <Ionicons
+                name="add-circle-outline"
+                size={Math.round(19 * fontSizeMultiplier)}
+                color={primaryColor}
+              />
             </TouchableOpacity>
           )}
 
+          {/* Lock — one-tap safety action */}
           <TouchableOpacity style={styles.stickyHeaderLockBtn} onPress={onLockPress}>
             <LinearGradient
               colors={['#ff6b6b', '#ee5a5a']}
-              style={[styles.stickyHeaderLockGradient, { width: Math.round(32 * fontSizeMultiplier), height: Math.round(32 * fontSizeMultiplier), borderRadius: Math.round(16 * fontSizeMultiplier) }]}
+              style={[
+                styles.stickyHeaderLockGradient,
+                {
+                  width: Math.round(34 * fontSizeMultiplier),
+                  height: Math.round(34 * fontSizeMultiplier),
+                  borderRadius: Math.round(17 * fontSizeMultiplier),
+                },
+              ]}
             >
-              <Ionicons name="lock-closed-outline" size={Math.round(12 * fontSizeMultiplier)} color="#fff" />
+              <Ionicons
+                name="lock-closed-outline"
+                size={Math.round(14 * fontSizeMultiplier)}
+                color="#fff"
+              />
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -1434,8 +1503,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN HOMESCREEN — Instant render (cached), Timeline-style activity,
-   theme-safe text, correct navigation
+   MAIN HOMESCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
@@ -1477,9 +1545,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     growthData,
     milestones,
     getGrowthData,
-    getTodaySleepCount,
-    getTodayFeedCount,
-    getTodayPottyCount,
   } = useBaby();
   const { entries: trackerEntries, refreshEntries: refreshTrackerEntries, isLoading: activitiesLoading } = useTracker();
   const activities = trackerEntries;
@@ -1499,7 +1564,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [pendingAction, setPendingAction] = useState<{ label: string; screen: keyof RootStackParamList; params?: Record<string, any> } | null>(null);
   const [smartNotifications, setSmartNotifications] = useState<SmartNotification[]>([]);
 
-  /* ── ★ INSTANT RENDER: cached baby + activities so first paint has data ── */
+  /* ── INSTANT RENDER: cached baby + activities ── */
   const [cachedBaby, setCachedBaby] = useState<any>(null);
   const [cachedActivities, setCachedActivities] = useState<any[]>([]);
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
@@ -1641,17 +1706,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   /* ── Navigation ── */
   const navigateToScreen = useCallback((screenName: string, params?: Record<string, any>) => {
-    console.log('[HomeScreen] Navigating to:', screenName, params);
+    if (__DEV__) console.log('[HomeScreen] Navigating to:', screenName, params);
 
-    // Always navigate from the ROOT stack via navigationRef. HomeScreen's own
-    // `navigation` prop belongs to the bottom-tab navigator, so navigating to
-    // root-stack routes (e.g. 'CommunityMain') from it throws
-    // "The action 'NAVIGATE' ... was not handled by any navigator."
     const nav: any = navigationRef.current?.isReady()
       ? navigationRef.current
       : (navigation as any);
 
-    // Community screens live inside Main > Connect(tab) > CommunityNavigator(stack)
     const COMMUNITY_SCREENS = new Set([
       'CommunityMain', 'CommunityProfile', 'CommunityMemberProfile',
       'CommunityOnboarding', 'CommunityVerification', 'Topic', 'TopicMembers',
@@ -1666,7 +1726,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           params: { screen: screenName, params: params || {} },
         });
       } catch (e) {
-        console.warn('[HomeScreen] Community navigation failed:', screenName, e);
+        if (__DEV__) console.warn('[HomeScreen] Community navigation failed:', screenName, e);
       }
       return;
     }
@@ -1675,19 +1735,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       try {
         nav.navigate(screenName, params || {});
       } catch (e) {
-        console.warn('[HomeScreen] Navigation failed:', screenName, e);
+        if (__DEV__) console.warn('[HomeScreen] Navigation failed:', screenName, e);
       }
       return;
     }
     const navConfig = NAVIGATION_MAP[screenName];
     if (!navConfig) {
-      console.warn(`Navigation target "${screenName}" not found`);
+      if (__DEV__) console.warn(`Navigation target "${screenName}" not found`);
       return;
     }
     try {
       nav.navigate(navConfig.screen, { ...navConfig.params, ...params });
     } catch (e) {
-      console.warn('[HomeScreen] Navigation failed:', navConfig.screen, e);
+      if (__DEV__) console.warn('[HomeScreen] Navigation failed:', navConfig.screen, e);
     }
   }, [navigation]);
 
@@ -1726,48 +1786,38 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const handleQuickAction = useCallback((action: QuickAction) => {
     triggerHaptic('medium');
-    
-    // Fix for milestone - navigate to AddEntry with milestone tracker
+
     if (action.id === 'milestone') {
       if (!requireBaby(action.label, 'AddEntry', { trackerId: 'milestone' })) return;
       navigateToScreen('AddEntry', { trackerId: 'milestone' });
       return;
     }
-    
-    // For growth, navigate directly to GrowthDashboard
     if (action.id === 'growth') {
       if (!requireBaby(action.label, 'GrowthDashboard', action.params)) return;
       navigateToScreen('GrowthDashboard', action.params);
       return;
     }
-    
-    // For vaccine, navigate directly to VaccinationSchedule
     if (action.id === 'vaccine') {
       if (!requireBaby(action.label, 'VaccinationSchedule', action.params)) return;
       navigateToScreen('VaccinationSchedule', action.params);
       return;
     }
-    
-    // For settings, no baby required
     if (action.id === 'settings') {
       navigateToScreen('More', action.params);
       return;
     }
-    
-    // For all other actions that require a baby
     if (!requireBaby(action.label, action.screen, action.params)) return;
     navigateToScreen(action.screen, action.params);
   }, [requireBaby, navigateToScreen, triggerHaptic]);
 
   const handleFeaturePress = useCallback((item: FeatureCard) => {
     triggerHaptic('light');
-    
-    // Handle Community navigation
+
     if (item.id === 'chat') {
       navigateToScreen('FamilyChatList');
       return;
     }
-    
+
     const babyRequired = new Set(['growth', 'milestones', 'reminders', 'family', 'gallery', 'chat', 'vaccine']);
     if (babyRequired.has(item.id) && !requireBaby(item.label, item.screen, item.params)) return;
     navigateToScreen(item.screen, item.params);
@@ -1782,7 +1832,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
     await lockApp();
     toast('App Locked', 'LittleLoom has been secured.', 'info');
-  }, [lockApp, getAvailableAuthMethods, toast, triggerHaptic]);
+    // Show the unlock UI immediately so the user sees the confirmation
+    navigateToScreen('SecurityLock');
+  }, [lockApp, getAvailableAuthMethods, toast, triggerHaptic, navigateToScreen]);
 
   const handleSmartNotifDismiss = useCallback((id: string) => {
     setSmartNotifications(prev => prev.map(n => n.id === id ? { ...n, dismissed: true } : n));
@@ -1816,7 +1868,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     navigateToScreen(screen, params);
   }, [requireBaby, navigateToScreen]);
 
-  /* ── ★ Entry press: go to EntryDetail ── */
+  /* ── Entry press ── */
   const handleEntryPress = useCallback((entry: any) => {
     if (!hasBaby) {
       setPendingAction({ label: 'Activity Details', screen: 'Timeline', params: {} });
@@ -1849,38 +1901,55 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
   }, [allTimelineEvents]);
 
+  /* ── ★ Real per-tracker today counts (BabyContext stubs return 0) ── */
+  const todayCounts = useMemo(() => {
+    if (!hasBaby) return { feeds: 0, sleep: 0, diapers: 0, potty: 0 };
+    const today = new Date();
+    const todayEvents = allTimelineEvents.filter(
+      (a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today)
+    );
+    const countOf = (ids: string[]) =>
+      todayEvents.filter((a: any) => ids.includes(a.type) || ids.includes(a.trackerId)).length;
+    return {
+      feeds: countOf(['feed']),
+      sleep: countOf(['sleep']),
+      diapers: countOf(['diaper']),
+      potty: countOf(['potty']),
+    };
+  }, [allTimelineEvents, hasBaby]);
+
   /* ── Daily summary with yesterday counts ── */
   const dailySummary = useMemo((): DailySummary => {
-    if (!hasBaby) return { 
+    if (!hasBaby) return {
       feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null,
-      yesterdayFeeds: 0, yesterdaySleepHours: 0, yesterdayDiapers: 0 
+      yesterdayFeeds: 0, yesterdaySleepHours: 0, yesterdayDiapers: 0
     };
-    
+
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    
+
     const todayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today));
     const yesterdayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), yesterday));
-    
+
     const feeds = todayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length;
     const sleepEntries = todayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
     const sleepHours = sleepEntries.reduce((sum: number, a: any) => sum + (a.duration || a.value || 0), 0) / 60;
     const diapers = todayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
-    
+
     const yesterdayFeeds = yesterdayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length;
     const yesterdaySleepEntries = yesterdayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
     const yesterdaySleepHours = yesterdaySleepEntries.reduce((sum: number, a: any) => sum + (a.duration || a.value || 0), 0) / 60;
     const yesterdayDiapers = yesterdayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
-    
+
     const lastFeed = allTimelineEvents.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed')[0];
     const lastSleep = allTimelineEvents.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep')[0];
-    
-    return { 
-      feeds, sleepHours, diapers, 
-      lastFeedTime: lastFeed ? new Date(lastFeed.timestamp) : null, 
+
+    return {
+      feeds, sleepHours, diapers,
+      lastFeedTime: lastFeed ? new Date(lastFeed.timestamp) : null,
       lastSleepTime: lastSleep ? new Date(lastSleep.timestamp) : null,
-      yesterdayFeeds, yesterdaySleepHours, yesterdayDiapers 
+      yesterdayFeeds, yesterdaySleepHours, yesterdayDiapers
     };
   }, [allTimelineEvents, hasBaby]);
 
@@ -1933,7 +2002,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     ? (settings.compactSpacing ? 110 : 130)
     : (settings.compactSpacing ? 100 : 115);
 
-  /* ── Instant render: no blocking loading screen — skeletons render inline ── */
   const showSkeletons = isLoadingInitial || (authLoading && !cachedBaby && allTimelineEvents.length === 0);
 
   return (
@@ -2093,8 +2161,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </View>
         )}
 
-
-        {/* ═══ GROWTH SNAPSHOT KPIs with Yesterday comparison ═══ */}
+        {/* ═══ GROWTH SNAPSHOT KPIs ═══ */}
         {hasBaby && growthStats && (
           <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
             <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20, marginTop: 6 }]}>
@@ -2147,33 +2214,97 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </Animated.View>
         )}
 
-        {/* ═══ DAILY SUMMARY with yesterday counts ═══ */}
+        {/* ═══ DAILY SUMMARY ═══ */}
         {hasBaby ? (
           <View style={{ marginHorizontal: settings.compactSpacing ? 16 : 20, marginBottom: 14 }}>
-            <DailySummaryWidget 
-              summary={dailySummary} 
-              isDark={isDark} 
-              theme={theme} 
-              onPress={handleDailySummaryPress} 
-              streakDays={getPottyStreak()} 
+            <DailySummaryWidget
+              summary={dailySummary}
+              isDark={isDark}
+              theme={theme}
+              onPress={handleDailySummaryPress}
+              streakDays={getPottyStreak()}
             />
-            
-            {/* Yesterday comparison */}
-            <View style={[styles.yesterdayComparison, { marginTop: 8 }]}>
-              <Text style={[styles.yesterdayTitle, { color: theme.textMuted }]}>Yesterday vs Today</Text>
+
+            {/* Yesterday comparison — real deltas */}
+            <View style={[styles.yesterdayComparison, { marginTop: 10 }]}>
+              <Text style={[styles.yesterdayTitle, { color: theme.textMuted }]}>
+                Today vs Yesterday
+              </Text>
               <View style={styles.yesterdayGrid}>
-                <View style={styles.yesterdayItem}>
-                  <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>Feeds</Text>
-                  <Text style={[styles.yesterdayValue, { color: theme.text }]}>{dailySummary.feeds} <Text style={{ color: theme.textMuted, fontSize: 12 }}>↑ {dailySummary.yesterdayFeeds}</Text></Text>
-                </View>
-                <View style={styles.yesterdayItem}>
-                  <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>Sleep</Text>
-                  <Text style={[styles.yesterdayValue, { color: theme.text }]}>{dailySummary.sleepHours.toFixed(1)}h <Text style={{ color: theme.textMuted, fontSize: 12 }}>↑ {dailySummary.yesterdaySleepHours.toFixed(1)}h</Text></Text>
-                </View>
-                <View style={styles.yesterdayItem}>
-                  <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>Diapers</Text>
-                  <Text style={[styles.yesterdayValue, { color: theme.text }]}>{dailySummary.diapers} <Text style={{ color: theme.textMuted, fontSize: 12 }}>↑ {dailySummary.yesterdayDiapers}</Text></Text>
-                </View>
+                {(() => {
+                  const renderDelta = (today: number, yesterday: number, unit = '') => {
+                    const diff = today - yesterday;
+                    if (yesterday === 0 && today === 0) {
+                      return <Text style={{ color: theme.textMuted, fontSize: 11 }}>—</Text>;
+                    }
+                    if (diff === 0) {
+                      return <Text style={{ color: theme.textMuted, fontSize: 11 }}>same</Text>;
+                    }
+                    const isUp = diff > 0;
+                    return (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                        <Ionicons
+                          name={isUp ? 'arrow-up' : 'arrow-down'}
+                          size={10}
+                          color={isUp ? '#10b981' : '#ef4444'}
+                        />
+                        <Text
+                          style={{
+                            color: isUp ? '#10b981' : '#ef4444',
+                            fontSize: 11,
+                            fontWeight: '700',
+                          }}
+                        >
+                          {Math.abs(Number(diff.toFixed(1)))}{unit}
+                        </Text>
+                      </View>
+                    );
+                  };
+
+                  return (
+                    <>
+                      <View style={styles.yesterdayItem}>
+                        <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>
+                          Feeds
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
+                          <Text style={[styles.yesterdayValue, { color: theme.text }]}>
+                            {dailySummary.feeds}
+                          </Text>
+                          {renderDelta(dailySummary.feeds, dailySummary.yesterdayFeeds)}
+                        </View>
+                      </View>
+
+                      <View style={styles.yesterdayItem}>
+                        <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>
+                          Sleep
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
+                          <Text style={[styles.yesterdayValue, { color: theme.text }]}>
+                            {dailySummary.sleepHours.toFixed(1)}h
+                          </Text>
+                          {renderDelta(
+                            Number(dailySummary.sleepHours.toFixed(1)),
+                            Number(dailySummary.yesterdaySleepHours.toFixed(1)),
+                            'h'
+                          )}
+                        </View>
+                      </View>
+
+                      <View style={styles.yesterdayItem}>
+                        <Text style={[styles.yesterdayLabel, { color: theme.textSecondary }]}>
+                          Diapers
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
+                          <Text style={[styles.yesterdayValue, { color: theme.text }]}>
+                            {dailySummary.diapers}
+                          </Text>
+                          {renderDelta(dailySummary.diapers, dailySummary.yesterdayDiapers)}
+                        </View>
+                      </View>
+                    </>
+                  );
+                })()}
               </View>
             </View>
           </View>
@@ -2226,13 +2357,24 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             actions={QUICK_ACTIONS.map((a) => {
               let badgeCount: number | undefined;
               let badgeLabel: string | undefined;
-              if (a.id === 'feed') badgeCount = getTodayFeedCount();
-              if (a.id === 'sleep') badgeCount = getTodaySleepCount();
-              if (a.id === 'diaper') badgeCount = getTodayPottyCount();
-              if (a.id === 'potty') badgeCount = getTodayPottyCount();
-              if (a.id === 'growth' && growthStats?.height) badgeLabel = growthStats.height.value + 'cm';
-              if (a.id === 'growth' && growthStats?.weight && !badgeLabel) badgeLabel = growthStats.weight.value + 'kg';
-              if (a.id === 'milestone' && milestones.length > 0) badgeCount = milestones.length;
+
+              // Real per-tracker today counts (BabyContext helpers are stubs)
+              if (a.id === 'feed') {
+                badgeCount = todayCounts.feeds;
+              } else if (a.id === 'sleep') {
+                badgeCount = todayCounts.sleep;
+              } else if (a.id === 'diaper') {
+                badgeCount = todayCounts.diapers;
+              } else if (a.id === 'potty') {
+                badgeCount = todayCounts.potty;
+              } else if (a.id === 'growth' && growthStats?.height) {
+                badgeLabel = growthStats.height.value + 'cm';
+              } else if (a.id === 'growth' && growthStats?.weight && !badgeLabel) {
+                badgeLabel = growthStats.weight.value + 'kg';
+              } else if (a.id === 'milestone' && milestones.length > 0) {
+                badgeCount = milestones.length;
+              }
+
               return { ...a, badgeCount, badgeLabel };
             })}
             onPress={handleQuickAction}
@@ -2277,7 +2419,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           <SoundMixerSection onPress={() => navigateToScreen('SoundMixer')} isDark={isDark} theme={theme} />
         </View>
 
-        {/* ═══ ★ RECENT ACTIVITY — TIMELINE-STYLE ═══ */}
+        {/* ═══ RECENT ACTIVITY ═══ */}
         <View style={styles.sectionFullWidth}>
           <View style={[styles.sectionHeader, { paddingHorizontal: settings.compactSpacing ? 16 : 20 }]}>
             <View style={styles.sectionTitleRow}>
@@ -2423,6 +2565,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                 setShowSecurityModal(false);
                 await lockApp();
                 toast('App Locked', 'Locked without security. Tap unlock to enter.', 'warning');
+                navigateToScreen('SecurityLock');
               }}
             >
               <Text style={[styles.modalSecondaryBtnText, { color: primary }]}>Lock Anyway</Text>
@@ -2443,26 +2586,13 @@ const styles = StyleSheet.create({
   backgroundGradient: { ...StyleSheet.absoluteFillObject },
   scrollContent: { paddingBottom: 24 },
 
-  /* ── Loading ── */
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingGradient: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { fontWeight: '800', marginBottom: 20, color: '#fff' },
-  loadingDots: { flexDirection: 'row', gap: 8 },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' },
-  dot1: { opacity: 0.4 },
-  dot2: { opacity: 0.7 },
-  dot3: { opacity: 1 },
-
   /* ── Sticky Header ── */
   stickyHeaderContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1000, paddingHorizontal: 16 },
   stickyHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stickyHeaderLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   stickyHeaderCenter: { flex: 2, alignItems: 'center', justifyContent: 'center' },
-  stickyHeaderTitle: { fontWeight: '900', letterSpacing: -0.3 },
-  stickyHeaderUnderline: { alignSelf: 'center' },
   logoFloatWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerLogoImage: { zIndex: 2, backgroundColor: 'transparent' },
-  logoTextColumn: { alignItems: 'flex-start', justifyContent: 'center' },
   stickyHeaderRight: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   stickyHeaderIconBtn: { alignItems: 'center', justifyContent: 'center', position: 'relative' },
   stickyHeaderBadge: { position: 'absolute', top: 0, right: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', borderWidth: 2, borderColor: 'white' },
@@ -2671,7 +2801,7 @@ const styles = StyleSheet.create({
   bar: { width: 2.5, height: 10, borderRadius: 1 },
   barMiddle: { height: 16 },
 
-  /* ── ★ Recent Timeline ── */
+  /* ── Recent Timeline ── */
   daySection: { marginBottom: 20 },
   dateHeaderContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   dateHeader: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
