@@ -1,6 +1,15 @@
-// PediatricianPDFExport.tsx — v4.0
+// PediatricianPDFExport.tsx — v4.1
 // Professional PDF Template System with Shareable Templates
 // Full Microsoft Forms-style sharing and response collection
+//
+// FIXES in v4.1:
+//   ✓ presetId state renamed (no longer shadows ReportTemplate interface)
+//   ✓ applyTemplate typed with PresetId string literals
+//   ✓ Full report renders REAL WHO percentile data (was a stub)
+//   ✓ GrowthPercentileCard reads canonical measurementType entries
+//   ✓ guardians rendered in family section
+//   ✓ Removed dead code: simulateResponse, showPreview, formatDate
+//   ✓ Single canonical WHO LMS import (no duplicate zScoreToPercentile)
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
@@ -17,7 +26,6 @@ import {
   Image,
   Alert,
   Modal,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Clipboard,
@@ -46,9 +54,40 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, differenceInMonths, subDays } from 'date-fns';
-import { supabase } from '@/utils/supabase';
 
 const { width: SCREEN_W } = Dimensions.get('window');
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CLINICAL DATA — Canonical WHO LMS tables from useWHOGrowthCalculator
+   ═══════════════════════════════════════════════════════════════════════ */
+import {
+  WHO_BOY_LMS,
+  WHO_GIRL_LMS,
+  calculateZScore,
+  calculateZScoreRestricted,
+  calculatePercentilePrecise,
+  zScoreToPercentile,
+  zScoreToValue,
+} from '@/hooks/useWHOGrowthCalculator';
+
+// Backwards-compatible wrapper: previous callers used (median, sd) + zToPercentile.
+const getGrowthRef = (
+  gender: string,
+  type: 'weight' | 'height' | 'head',
+  ageMonths: number
+): { med: number; sd: number } => {
+  const g: 'boy' | 'girl' =
+    gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
+  const clampedAge = Math.max(0, Math.min(24, Math.round(ageMonths)));
+  const table = g === 'girl' ? WHO_GIRL_LMS : WHO_BOY_LMS;
+  const lms = table[clampedAge]?.[type];
+  if (!lms) return { med: 0, sd: 1 };
+  const med = zScoreToValue(0, lms);
+  const plus1 = zScoreToValue(1, lms);
+  return { med, sd: Math.max(0.01, plus1 - med) };
+};
+
+const zToPercentile = (z: number): number => zScoreToPercentile(z);
 
 /* ═══════════════════════════════════════════════════════════════════════
    TYPES
@@ -124,53 +163,11 @@ interface ShareableTemplateResponse {
 }
 
 type ReportMode = 'generate' | 'templates' | 'upload' | 'share';
+type PresetId = 'full' | 'visit' | 'growth' | 'development' | 'emergency';
 
 /* ═══════════════════════════════════════════════════════════════════════
-   CLINICAL DATA — Real WHO LMS Reference (imported from the canonical
-   useWHOGrowthCalculator — the single source of truth for percentiles).
-   The former inline GROWTH_REF table was invented; this uses the same
-   LMS tables the app already uses for live percentile calculations.
+   CONSTANTS
    ═══════════════════════════════════════════════════════════════════════ */
-// Canonical WHO calculator — the single source of truth for LMS math.
-// (Merged into one import so `zScoreToPercentile` isn't declared twice.)
-import {
-  WHO_BOY_LMS,
-  WHO_GIRL_LMS,
-  calculateZScore,
-  calculateZScoreRestricted,
-  calculatePercentilePrecise,
-  zScoreToPercentile,
-  zScoreToValue,
-} from '@/hooks/useWHOGrowthCalculator';
-
-// Backwards-compatible wrapper: previous callers used (median, sd) +
-// zToPercentile. We keep that API but delegate to the real LMS math.
-const getGrowthRef = (
-  gender: string,
-  type: 'weight' | 'height' | 'head',
-  ageMonths: number
-): { med: number; sd: number } => {
-  const g: 'boy' | 'girl' =
-    gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
-
-  // Clamp age to the LMS table range before lookup.
-  const clampedAge = Math.max(0, Math.min(24, Math.round(ageMonths)));
-  const table = g === 'girl' ? WHO_GIRL_LMS : WHO_BOY_LMS;
-  const lms = table[clampedAge]?.[type];
-  if (!lms) return { med: 0, sd: 1 };
-
-  // Z=0 → median; Z=1 → +1 SD. Linear approximation is fine for the
-  // legacy display use-case; the *percentile* path uses the exact LMS.
-  const med = zScoreToValue(0, lms);
-  const plus1 = zScoreToValue(1, lms);
-  return { med, sd: Math.max(0.01, plus1 - med) };
-};
-
-// `zToPercentile` kept for legacy call-sites; delegates to canonical fn.
-const zToPercentile = (z: number): number => {
-  return zScoreToPercentile(z);
-};
-
 const VACCINE_SCHEDULE = [
   { name: 'Hepatitis B', code: 'hepB', doses: [{ ageMo: 0, label: 'Birth' }, { ageMo: 1, label: '1-2 mo' }, { ageMo: 6, label: '6-18 mo' }] },
   { name: 'DTaP', code: 'dtap', doses: [{ ageMo: 2, label: '2 mo' }, { ageMo: 4, label: '4 mo' }, { ageMo: 6, label: '6 mo' }, { ageMo: 15, label: '15-18 mo' }] },
@@ -206,10 +203,6 @@ const MILESTONE_EXPECTATIONS = [
 /* ═══════════════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════════════ */
-const formatDate = (iso: string | number) => {
-  try { return format(new Date(iso), 'MMM d, yyyy h:mm a'); } catch { return 'Invalid date'; }
-};
-
 const escapeHtml = (str: string) =>
   str?.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') || '';
 
@@ -217,6 +210,9 @@ const getBabyAgeMonths = (birthDate?: string) => {
   if (!birthDate) return 0;
   return differenceInMonths(new Date(), new Date(birthDate));
 };
+
+const genderToLMS: (g?: string) => 'boy' | 'girl' = (g) =>
+  g === 'girl' || g === 'female' ? 'girl' : 'boy';
 
 /* ═══════════════════════════════════════════════════════════════════════
    TEMPLATE DEFINITIONS
@@ -428,45 +424,97 @@ const BabyProfileHeader = ({ baby }: { baby: any }) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   INTELLIGENCE FEATURES (simplified for space)
+   GROWTH PERCENTILE CARD
+   Reads canonical tracker_entries shape: { measurementType, value, unit }
    ═══════════════════════════════════════════════════════════════════════ */
 const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
   const theme = useReportTheme();
   const ageMo = getBabyAgeMonths(baby?.birthDate);
-  const gender = baby?.gender === 'girl' || baby?.gender === 'female' ? 'girl' : 'boy';
+  const gender = genderToLMS(baby?.gender);
 
   const percentiles = useMemo(() => {
-    const growth = entries.filter(e => e.trackerId === 'growth').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const growth = entries
+      .filter((e) => e.trackerId === 'growth')
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     if (!growth.length || ageMo < 0) return null;
 
-    const latest = growth[0];
+    // Cluster by measurementType (canonical) with legacy fallback
+    const byType: Record<string, TrackerEntry> = {};
+    for (const e of growth) {
+      const t = String(e.data?.measurementType ?? '').toLowerCase();
+      const normalized =
+        t === 'length' ? 'height' :
+        t === 'hc' || t === 'headcircumference' ? 'head' :
+        t;
+      if (['weight', 'height', 'head'].includes(normalized) && !byType[normalized]) {
+        byType[normalized] = e;
+      }
+    }
+
     const result: any[] = [];
-    ['weight', 'height', 'head'].forEach((type: string) => {
-      const val = parseFloat(latest.data?.[type]);
-      if (!val || isNaN(val)) return;
-      const ref = getGrowthRef(gender, type as any, ageMo);
-      const z = (val - ref.med) / ref.sd;
-      const p = Math.max(1, Math.min(99, zToPercentile(z)));
-      const status = z < -2 ? 'concern' : z < -1 ? 'watch' : z > 2 ? 'watch' : 'normal';
-      result.push({ type, value: val, unit: latest.data?.unit || (type === 'weight' ? 'kg' : 'cm'), percentile: p, z: z.toFixed(1), status });
+    (['weight', 'height', 'head'] as const).forEach((type) => {
+      let val: number | null = null;
+      let unit = type === 'weight' ? 'kg' : 'cm';
+
+      const entry = byType[type];
+      if (entry) {
+        const parsed = parseFloat(String(entry.data?.value ?? ''));
+        if (Number.isFinite(parsed) && parsed > 0) {
+          val = parsed;
+          if (entry.data?.unit) unit = String(entry.data.unit);
+        }
+      }
+      // Legacy fallback: read directly from per-key field
+      if (val === null) {
+        const legacy = growth.find((e) => {
+          const v = parseFloat(String(e.data?.[type] ?? ''));
+          return Number.isFinite(v) && v > 0;
+        });
+        if (legacy) {
+          val = parseFloat(String(legacy.data[type]));
+          if (legacy.data?.unit) unit = String(legacy.data.unit);
+        }
+      }
+      if (val === null || !Number.isFinite(val) || val <= 0) return;
+
+      const percentile = calculatePercentilePrecise(val, ageMo, type, gender);
+      const status =
+        percentile < 3 || percentile > 97 ? 'concern' :
+        percentile < 16 || percentile > 84 ? 'watch' :
+        'normal';
+
+      result.push({
+        type,
+        value: val,
+        unit,
+        percentile,
+        status,
+      });
     });
-    return result;
+
+    return result.length > 0 ? result : null;
   }, [entries, ageMo, gender]);
 
   if (!percentiles?.length) return null;
 
   return (
     <Animated.View entering={FadeInUp.delay(80).springify()}>
-      <SectionHeader title="Clinical Growth Percentiles" icon="analytics-outline" subtitle="WHO/CDC reference curves" />
+      <SectionHeader title="Clinical Growth Percentiles" icon="analytics-outline" subtitle="WHO reference curves" />
       <GlassCard>
         <View style={styles.percGrid}>
           {percentiles.map((p: any) => (
             <View key={p.type} style={styles.percItem}>
               <View style={styles.percTop}>
                 <Text style={[styles.percLabel, { color: theme.text.muted }]}>{p.type.toUpperCase()}</Text>
-                <Badge text={`Z: ${p.z}`} color={p.status === 'normal' ? '#10b981' : p.status === 'watch' ? '#f59e0b' : '#ef4444'} bg={`${p.status === 'normal' ? '#10b981' : p.status === 'watch' ? '#f59e0b' : '#ef4444'}12`} />
+                <Badge
+                  text={p.status === 'normal' ? '✓ Normal' : p.status === 'watch' ? '👀 Watch' : '⚠️ Concern'}
+                  color={p.status === 'normal' ? '#10b981' : p.status === 'watch' ? '#f59e0b' : '#ef4444'}
+                  bg={`${p.status === 'normal' ? '#10b981' : p.status === 'watch' ? '#f59e0b' : '#ef4444'}12`}
+                />
               </View>
-              <Text style={[styles.percValue, { color: theme.text.primary }]}>{p.value} <Text style={{ fontSize: 13, color: theme.text.muted }}>{p.unit}</Text></Text>
+              <Text style={[styles.percValue, { color: theme.text.primary }]}>
+                {p.value} <Text style={{ fontSize: 13, color: theme.text.muted }}>{p.unit}</Text>
+              </Text>
               <View style={styles.percBarWrap}>
                 <View style={[styles.percBarTrack, { backgroundColor: `${theme.primary}10` }]}>
                   <View style={[styles.percBarFill, { width: `${p.percentile}%`, backgroundColor: p.status === 'normal' ? '#10b981' : p.status === 'watch' ? '#f59e0b' : '#ef4444' }]} />
@@ -476,23 +524,24 @@ const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby
             </View>
           ))}
         </View>
-        <Text style={[styles.percDisclaimer, { color: theme.text.muted }]}>Percentiles are approximate using WHO/CDC reference data. Always consult your pediatrician for clinical interpretation.</Text>
+        <Text style={[styles.percDisclaimer, { color: theme.text.muted }]}>Percentiles use WHO LMS reference data. Consult your pediatrician for clinical interpretation.</Text>
       </GlassCard>
     </Animated.View>
   );
 };
 
-// ─── TEMPLATE FIELD COMPONENT ──────────────────────────────────────────────
-
-const TemplateFieldComponent = ({ 
-  field, 
-  value, 
-  onChange, 
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE FIELD COMPONENT
+   ═══════════════════════════════════════════════════════════════════════ */
+const TemplateFieldComponent = ({
+  field,
+  value,
+  onChange,
   theme,
   readonly = false,
-}: { 
-  field: TemplateField; 
-  value: string; 
+}: {
+  field: TemplateField;
+  value: string;
   onChange: (id: string, value: string) => void;
   theme: any;
   readonly?: boolean;
@@ -514,7 +563,7 @@ const TemplateFieldComponent = ({
       case 'textarea':
         return (
           <TextInput
-            style={[styles.templateTextArea, { 
+            style={[styles.templateTextArea, {
               color: theme.text.primary,
               backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
               borderColor: isFocused ? theme.primary : theme.border,
@@ -530,10 +579,10 @@ const TemplateFieldComponent = ({
             textAlignVertical="top"
           />
         );
-      
+
       case 'select':
         return (
-          <View style={[styles.templateSelectContainer, { 
+          <View style={[styles.templateSelectContainer, {
             borderColor: isFocused ? theme.primary : theme.border,
             backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
           }]}>
@@ -549,11 +598,11 @@ const TemplateFieldComponent = ({
             <Ionicons name="chevron-down" size={18} color={theme.text.muted} style={{ position: 'absolute', right: 12, top: 14 }} />
           </View>
         );
-      
+
       case 'date':
         return (
           <TouchableOpacity
-            style={[styles.templateDateInput, { 
+            style={[styles.templateDateInput, {
               borderColor: isFocused ? theme.primary : theme.border,
               backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
             }]}
@@ -568,24 +617,22 @@ const TemplateFieldComponent = ({
             <Ionicons name="calendar-outline" size={18} color={theme.text.muted} />
           </TouchableOpacity>
         );
-      
+
       case 'signature':
         return (
           <TouchableOpacity
-            style={[styles.templateSignatureInput, { 
+            style={[styles.templateSignatureInput, {
               borderColor: isFocused ? theme.primary : theme.border,
               backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
             }]}
             onPress={() => {
-              // In a real app, open signature pad
               Alert.alert('Signature', 'Please enter your signature:', [
                 { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'OK', 
+                {
+                  text: 'OK',
                   onPress: () => {
-                    // For now, just set a placeholder
                     onChange(field.id, `Dr. ${Date.now().toString().slice(-4)}`);
-                  } 
+                  },
                 },
               ]);
             }}
@@ -596,11 +643,11 @@ const TemplateFieldComponent = ({
             <Ionicons name="create-outline" size={18} color={theme.text.muted} />
           </TouchableOpacity>
         );
-      
+
       default:
         return (
           <TextInput
-            style={[styles.templateInput, { 
+            style={[styles.templateInput, {
               color: theme.text.primary,
               backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
               borderColor: isFocused ? theme.primary : theme.border,
@@ -652,13 +699,12 @@ export const PediatricianPDFExport: React.FC = () => {
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
-  const [template, setTemplate] = useState<ReportTemplate>('full');
+  const [presetId, setPresetId] = useState<PresetId>('full');
   const [customNotes, setCustomNotes] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
   const [reportHistory, setReportHistory] = useState<DoctorReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<DoctorReport | null>(null);
   const [showReportDetail, setShowReportDetail] = useState(false);
-  
+
   // ─── Template Form State ───────────────────────────────────────────────
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
@@ -674,7 +720,7 @@ export const PediatricianPDFExport: React.FC = () => {
     { id: 'babyInfo', label: 'Child Profile', emoji: '👶', enabled: true, description: 'Name, age, blood type, allergies, photo' },
     { id: 'family', label: 'Family Contacts', emoji: '👨‍👩‍👧', enabled: true, description: 'Parents and guardians info' },
     { id: 'growth', label: 'Growth Charts', emoji: '📈', enabled: true, description: 'Weight, height, head circumference trends' },
-    { id: 'percentiles', label: 'Clinical Percentiles', emoji: '📊', enabled: true, description: 'WHO/CDC percentile analysis' },
+    { id: 'percentiles', label: 'Clinical Percentiles', emoji: '📊', enabled: true, description: 'WHO percentile analysis' },
     { id: 'vaccines', label: 'Vaccination Compliance', emoji: '💉', enabled: true, description: 'Due, overdue, and upcoming vaccines' },
     { id: 'development', label: 'Developmental Check', emoji: '🧠', enabled: true, description: 'Milestone red flag scanner' },
     { id: 'correlations', label: 'Medical Correlations', emoji: '🔗', enabled: true, description: 'Symptom-medication pattern detection' },
@@ -687,7 +733,7 @@ export const PediatricianPDFExport: React.FC = () => {
   ]);
 
   const scrollY = useSharedValue(0);
-  const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { scrollY.value = e.contentOffset.y; } });
+  const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
     transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
@@ -782,11 +828,9 @@ export const PediatricianPDFExport: React.FC = () => {
     try {
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
       if (!reportsDir.exists) reportsDir.create();
-      
       const file = new File(reportsDir, `${report.id}.json`);
       file.create({ overwrite: true });
       file.write(JSON.stringify(report));
-      
       await loadReports();
     } catch (error) {
       console.error('Failed to save report:', error);
@@ -797,11 +841,9 @@ export const PediatricianPDFExport: React.FC = () => {
     try {
       const templatesDir = new Directory(Paths.document, 'ShareableTemplates');
       if (!templatesDir.exists) templatesDir.create();
-      
       const file = new File(templatesDir, `${template.id}.json`);
       file.create({ overwrite: true });
       file.write(JSON.stringify(template));
-      
       await loadShareableTemplates();
     } catch (error) {
       console.error('Failed to save shareable template:', error);
@@ -812,11 +854,9 @@ export const PediatricianPDFExport: React.FC = () => {
     try {
       const responsesDir = new Directory(Paths.document, 'ShareResponses');
       if (!responsesDir.exists) responsesDir.create();
-      
       const file = new File(responsesDir, `${response.id}.json`);
       file.create({ overwrite: true });
       file.write(JSON.stringify(response));
-      
       await loadShareResponses();
     } catch (error) {
       console.error('Failed to save share response:', error);
@@ -835,32 +875,38 @@ export const PediatricianPDFExport: React.FC = () => {
   };
 
   // ─── Toggle sections ──────────────────────────────────────────────────
-  const toggleSection = (id: string) => setSections(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
+  const toggleSection = (id: string) =>
+    setSections(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
 
-  const applyTemplate = (t: ReportTemplate) => {
-    setTemplate(t);
-    const presets: Record<ReportTemplate, string[]> = {
+  const applyTemplate = (preset: PresetId) => {
+    setPresetId(preset);
+    const presets: Record<PresetId, string[]> = {
       full: sections.map(s => s.id),
       visit: ['summary', 'babyInfo', 'family', 'growth', 'percentiles', 'vaccines', 'health', 'medications', 'notes'],
       growth: ['babyInfo', 'growth', 'percentiles', 'feeding', 'sleep', 'development', 'forecast'],
       emergency: ['babyInfo', 'family', 'health', 'medications', 'correlations', 'notes'],
       development: ['babyInfo', 'growth', 'percentiles', 'development', 'sleep', 'forecast', 'notes'],
     };
-    setSections(prev => prev.map(s => ({ ...s, enabled: presets[t].includes(s.id) })));
+    setSections(prev => prev.map(s => ({ ...s, enabled: presets[preset].includes(s.id) })));
   };
 
   // ─── Filter entries ────────────────────────────────────────────────────
   const filteredEntries = useMemo(() => {
-    if (dateRange === 'all') return entries;
+    if (dateRange === 'all') return entries as TrackerEntry[];
     const days = { '7d': 7, '30d': 30, '90d': 90 };
     const cutoff = subDays(new Date(), days[dateRange]).getTime();
-    return entries.filter((e: TrackerEntry) => new Date(e.timestamp).getTime() > cutoff);
+    return (entries as TrackerEntry[]).filter((e) => new Date(e.timestamp).getTime() > cutoff);
   }, [entries, dateRange]);
 
   const stats = useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const todayEntries = filteredEntries.filter((e: TrackerEntry) => new Date(e.timestamp) >= today);
-    return { total: filteredEntries.length, today: todayEntries.length, trackers: new Set(filteredEntries.map((e: TrackerEntry) => e.trackerId)).size };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayEntries = filteredEntries.filter((e) => new Date(e.timestamp) >= today);
+    return {
+      total: filteredEntries.length,
+      today: todayEntries.length,
+      trackers: new Set(filteredEntries.map((e) => e.trackerId)).size,
+    };
   }, [filteredEntries]);
 
   // ─── Template Handlers ─────────────────────────────────────────────────
@@ -888,7 +934,7 @@ export const PediatricianPDFExport: React.FC = () => {
     const missing = selectedTemplate.sections
       .filter(f => f.required && !templateValues[f.id]?.trim())
       .map(f => f.label);
-    
+
     if (missing.length > 0) {
       sweetAlert?.alert?.('Missing Fields', `Please fill in: ${missing.join(', ')}`);
       return;
@@ -898,11 +944,11 @@ export const PediatricianPDFExport: React.FC = () => {
     try {
       const html = generateTemplateHTML(selectedTemplate, templateValues);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
-      
+
       const fileName = `${(currentBaby.name || 'Baby').replace(/\s+/g, '_')}_${selectedTemplate.name.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.pdf`;
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
       if (!reportsDir.exists) reportsDir.create();
-      
+
       const sourceFile = new File(uri);
       const destFile = new File(reportsDir, fileName);
       sourceFile.move(destFile);
@@ -924,11 +970,11 @@ export const PediatricianPDFExport: React.FC = () => {
       await saveReport(report);
       setShowTemplateForm(false);
       sweetAlert?.success('Template Generated!', `${selectedTemplate.name} report created successfully.`);
-    } catch (err) { 
-      console.error(err); 
-      sweetAlert?.alert?.('Failed', 'Could not generate template PDF. Please try again.'); 
-    } finally { 
-      setGenerating(false); 
+    } catch (err) {
+      console.error(err);
+      sweetAlert?.alert?.('Failed', 'Could not generate template PDF. Please try again.');
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -1019,19 +1065,114 @@ export const PediatricianPDFExport: React.FC = () => {
       const y = Math.floor(ageMo / 12); const m = ageMo % 12;
       return y > 0 ? `${y}y ${m}m` : `${m} months`;
     })() : 'N/A';
-    const gender = baby?.gender === 'girl' || baby?.gender === 'female' ? 'girl' : 'boy';
+    const gender = genderToLMS(baby?.gender);
     const enabledIds = new Set(sections.filter(s => s.enabled).map(s => s.id));
-    const rangeLabel = dateRange === '7d' ? 'Last 7 Days' : dateRange === '30d' ? 'Last 30 Days' : dateRange === '90d' ? 'Last 90 Days' : 'All Time';
+    const rangeLabel =
+      dateRange === '7d' ? 'Last 7 Days' :
+      dateRange === '30d' ? 'Last 30 Days' :
+      dateRange === '90d' ? 'Last 90 Days' : 'All Time';
 
-    // Simple family HTML (reuse from earlier)
+    // ─── Family HTML (parents + guardians) ─────────────────────────────
     const familyHTML = () => {
       const contacts: string[] = [];
       if (parent1) contacts.push(`<div class="contact-card"><strong>${escapeHtml(parent1.fullName || 'Parent 1')}</strong><br/>${escapeHtml(parent1.relationship || 'Parent')}${parent1.phoneNumber ? `<br/>📞 ${escapeHtml(parent1.phoneNumber)}` : ''}${parent1.email ? `<br/>✉️ ${escapeHtml(parent1.email)}` : ''}</div>`);
       if (parent2) contacts.push(`<div class="contact-card"><strong>${escapeHtml(parent2.fullName || 'Parent 2')}</strong><br/>${escapeHtml(parent2.relationship || 'Parent')}${parent2.phoneNumber ? `<br/>📞 ${escapeHtml(parent2.phoneNumber)}` : ''}${parent2.email ? `<br/>✉️ ${escapeHtml(parent2.email)}` : ''}</div>`);
-      return contacts.length ? `<div class="grid-2">${contacts.join('')}</div>` : '<p class="muted">No family contacts recorded.</p>';
+      (guardians || []).forEach((g: any) => {
+        contacts.push(`<div class="contact-card"><strong>${escapeHtml(g.fullName || 'Guardian')}</strong><br/>${escapeHtml(g.relationship || 'Guardian')}${g.phoneNumber ? `<br/>📞 ${escapeHtml(g.phoneNumber)}` : ''}${g.email ? `<br/>✉️ ${escapeHtml(g.email)}` : ''}</div>`);
+      });
+      return contacts.length
+        ? `<div class="grid-2">${contacts.join('')}</div>`
+        : '<p class="muted">No family contacts recorded.</p>';
     };
 
-    // ─── Full Report Content ────────────────────────────────────────────
+    // ─── Real growth percentile table ─────────────────────────────────
+    const growthPercentileHTML = () => {
+      if (!baby?.birthDate) return '<p class="muted">No birth date on file — percentiles cannot be computed.</p>';
+
+      const growthEntries = filteredEntries
+        .filter((e) => e.trackerId === 'growth')
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      if (growthEntries.length === 0) {
+        return '<p class="muted">No growth measurements in this period.</p>';
+      }
+
+      // Cluster by measurementType with legacy fallback
+      const byType: Record<string, TrackerEntry> = {};
+      for (const e of growthEntries) {
+        const t = String(e.data?.measurementType ?? '').toLowerCase();
+        const normalized =
+          t === 'length' ? 'height' :
+          t === 'hc' || t === 'headcircumference' ? 'head' :
+          t;
+        if (['weight', 'height', 'head'].includes(normalized) && !byType[normalized]) {
+          byType[normalized] = e;
+        }
+      }
+
+      const rows: string[] = [];
+      (['weight', 'height', 'head'] as const).forEach((metric) => {
+        const entry = byType[metric];
+        let raw: number | null = null;
+        let unit = metric === 'weight' ? 'kg' : 'cm';
+        if (entry) {
+          const parsed = parseFloat(String(entry.data?.value ?? ''));
+          if (Number.isFinite(parsed) && parsed > 0) {
+            raw = parsed;
+            if (entry.data?.unit) unit = String(entry.data.unit);
+          }
+        }
+        if (raw === null) {
+          const legacy = growthEntries.find((e) => {
+            const v = parseFloat(String(e.data?.[metric] ?? ''));
+            return Number.isFinite(v) && v > 0;
+          });
+          if (legacy) {
+            raw = parseFloat(String(legacy.data[metric]));
+            if (legacy.data?.unit) unit = String(legacy.data.unit);
+          }
+        }
+        if (raw === null) return;
+
+        const p = calculatePercentilePrecise(raw, ageMo, metric, gender);
+        const status =
+          p < 3 || p > 97 ? '⚠️ Concern' :
+          p < 16 || p > 84 ? '👀 Watch' : '✓ Normal';
+
+        rows.push(
+          `<tr>` +
+            `<td style="padding:8px;border:1px solid #e2e8f0;"><strong>${metric.toUpperCase()}</strong></td>` +
+            `<td style="padding:8px;border:1px solid #e2e8f0;">${raw.toFixed(1)} ${unit}</td>` +
+            `<td style="padding:8px;border:1px solid #e2e8f0;">${p}th percentile</td>` +
+            `<td style="padding:8px;border:1px solid #e2e8f0;">${status}</td>` +
+          `</tr>`
+        );
+      });
+
+      if (rows.length === 0) return '<p class="muted">No valid measurements to compute percentiles.</p>';
+
+      const latestTs = growthEntries[0]?.timestamp;
+      const latestLine = latestTs
+        ? `<p style="color:#64748b;font-size:12px;margin-bottom:12px;">Latest measurement: ${format(new Date(latestTs), 'MMM d, yyyy')}</p>`
+        : '';
+
+      return `
+        ${latestLine}
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Metric</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Value</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">WHO Percentile</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Status</th>
+            </tr>
+          </thead>
+          <tbody>${rows.join('')}</tbody>
+        </table>
+      `;
+    };
+
+    // ─── Baby profile block ───────────────────────────────────────────
     const babyProfileHTML = () => `
       <div class="grid-3">
         <div class="metric"><div class="metric-value">${escapeHtml(babyName)}</div><div class="metric-label">Name</div></div>
@@ -1044,23 +1185,25 @@ export const PediatricianPDFExport: React.FC = () => {
       ${baby?.medicalNotes ? `<div class="info-box"><strong>Medical Notes:</strong> ${escapeHtml(baby.medicalNotes)}</div>` : ''}
     `;
 
+    // ─── Summary block ────────────────────────────────────────────────
     const summaryHTML = () => {
-      const recentVisits = filteredEntries.filter((e: TrackerEntry) => ['doctor_visit', 'dental_visit', 'therapy'].includes(e.trackerId));
-      const recentMeds = filteredEntries.filter((e: TrackerEntry) => e.trackerId === 'medication');
-      const recentSymptoms = filteredEntries.filter((e: TrackerEntry) => ['symptom', 'temperature', 'allergy'].includes(e.trackerId));
+      const recentVisits = filteredEntries.filter((e) => ['doctor_visit', 'dental_visit', 'therapy'].includes(e.trackerId));
+      const recentMeds = filteredEntries.filter((e) => e.trackerId === 'medication');
+      const recentSymptoms = filteredEntries.filter((e) => ['symptom', 'temperature', 'allergy'].includes(e.trackerId));
       return `<div class="section"><h2>📋 Visit Summary</h2><p style="color:#64748b;font-size:13px;margin-bottom:16px;">Report period: <strong>${rangeLabel}</strong> | Generated: ${format(new Date(), 'MMM d, yyyy h:mm a')}</p><div class="grid-2"><div class="card"><strong>Total Entries</strong><br/><span style="font-size:24px;font-weight:800;color:#667eea;">${filteredEntries.length}</span></div><div class="card"><strong>Health Events</strong><br/><span style="font-size:24px;font-weight:800;color:#ef4444;">${recentVisits.length}</span></div><div class="card"><strong>Medications</strong><br/><span style="font-size:24px;font-weight:800;color:#f59e0b;">${recentMeds.length}</span></div><div class="card"><strong>Symptoms</strong><br/><span style="font-size:24px;font-weight:800;color:#8b5cf6;">${recentSymptoms.length}</span></div></div></div>`;
     };
 
-    const notesHTML = customNotes.trim() ? `<div class="section"><h2>📝 Notes for Pediatrician</h2><div class="info-box" style="white-space:pre-wrap;">${escapeHtml(customNotes)}</div></div>` : '';
+    const notesHTML = customNotes.trim()
+      ? `<div class="section"><h2>📝 Notes for Pediatrician</h2><div class="info-box" style="white-space:pre-wrap;">${escapeHtml(customNotes)}</div></div>`
+      : '';
 
     const sectionsHTML = [
       enabledIds.has('summary') ? summaryHTML() : '',
       enabledIds.has('babyInfo') ? `<div class="section"><h2>👶 Child Profile</h2>${babyProfileHTML()}</div>` : '',
       enabledIds.has('family') ? `<div class="section"><h2>👨‍👩‍👧 Family Contacts</h2>${familyHTML()}</div>` : '',
-      enabledIds.has('growth') ? `<div class="section"><h2>📈 Growth & Development</h2><p class="muted">Growth chart data available in full report.</p></div>` : '',
-      enabledIds.has('percentiles') ? `<div class="section"><h2>📊 Clinical Growth Percentiles</h2><p class="muted">Percentile data available in full report.</p></div>` : '',
-      enabledIds.has('vaccines') ? `<div class="section"><h2>💉 Vaccination Compliance</h2><p class="muted">Vaccination data available in full report.</p></div>` : '',
-      enabledIds.has('development') ? `<div class="section"><h2>🧠 Developmental Check</h2><p class="muted">Developmental data available in full report.</p></div>` : '',
+      (enabledIds.has('growth') || enabledIds.has('percentiles'))
+        ? `<div class="section"><h2>📈 Growth & WHO Percentiles</h2>${growthPercentileHTML()}</div>`
+        : '',
       enabledIds.has('notes') ? notesHTML : '',
     ].filter(Boolean).join('');
 
@@ -1134,7 +1277,7 @@ export const PediatricianPDFExport: React.FC = () => {
   </div>
 </body>
 </html>`;
-  }, [currentBaby, filteredEntries, sections, dateRange, customNotes, parent1, parent2]);
+  }, [currentBaby, filteredEntries, sections, dateRange, customNotes, parent1, parent2, guardians]);
 
   // ─── Generate Full Report PDF ─────────────────────────────────────────
   const generateFullReportPDF = useCallback(async () => {
@@ -1146,11 +1289,11 @@ export const PediatricianPDFExport: React.FC = () => {
     try {
       const html = generateFullReportHTML();
       const { uri } = await Print.printToFileAsync({ html, base64: false });
-      
+
       const fileName = `${(currentBaby.name || 'Baby').replace(/\s+/g, '_')}_Report_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.pdf`;
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
       if (!reportsDir.exists) reportsDir.create();
-      
+
       const sourceFile = new File(uri);
       const destFile = new File(reportsDir, fileName);
       sourceFile.move(destFile);
@@ -1163,13 +1306,13 @@ export const PediatricianPDFExport: React.FC = () => {
         size: destFile.size,
         uploadedAt: new Date().toISOString(),
         status: 'pending',
-        templateType: template,
+        templateType: presetId,
         isDoctorFilled: false,
       };
-      
+
       await saveReport(report);
       sweetAlert?.success('Report Ready!', 'Your PDF report has been generated and saved.');
-      
+
       sweetAlert?.confirm?.('Share Report?', 'Would you like to share this report with your pediatrician?',
         async () => {
           if (await Sharing.isAvailableAsync()) {
@@ -1178,13 +1321,13 @@ export const PediatricianPDFExport: React.FC = () => {
         },
         () => {}
       );
-    } catch (err) { 
-      console.error(err); 
-      sweetAlert?.alert?.('Failed', 'Could not create PDF. Please try again.'); 
-    } finally { 
-      setGenerating(false); 
+    } catch (err) {
+      console.error(err);
+      sweetAlert?.alert?.('Failed', 'Could not create PDF. Please try again.');
+    } finally {
+      setGenerating(false);
     }
-  }, [generateFullReportHTML, sections, currentBaby, sweetAlert, template]);
+  }, [generateFullReportHTML, sections, currentBaby, sweetAlert, presetId]);
 
   // ─── Upload Doctor-Filled Report ──────────────────────────────────────
   const uploadDoctorReport = useCallback(async () => {
@@ -1206,10 +1349,10 @@ export const PediatricianPDFExport: React.FC = () => {
       }
 
       const asset = result.assets[0];
-      
+
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
       if (!reportsDir.exists) reportsDir.create();
-      
+
       const sourceFile = new File(asset.uri);
       const fileName = `${(currentBaby.name || 'Baby').replace(/\s+/g, '_')}_DoctorFilled_${format(new Date(), 'yyyy-MM-dd_HHmmss')}.pdf`;
       const destFile = new File(reportsDir, fileName);
@@ -1238,7 +1381,6 @@ export const PediatricianPDFExport: React.FC = () => {
 
   // ─── SHAREABLE TEMPLATE SYSTEM ────────────────────────────────────────
 
-  // Generate a shareable link for a template
   const createShareableTemplate = useCallback(async (template: ReportTemplate) => {
     if (!userProfile) {
       sweetAlert?.alert?.('Error', 'Please sign in to create shareable templates.');
@@ -1257,7 +1399,6 @@ export const PediatricianPDFExport: React.FC = () => {
     sweetAlert?.success('Shareable Link Created!', 'Your template is now ready to share.');
   }, [userProfile, sweetAlert]);
 
-  // Share the template link via native share or copy
   const shareTemplateLink = useCallback(async (template: ReportTemplate) => {
     const link = template.shareableLink || `https://littleloom.app/share/template/${template.id}`;
     setShareLink(link);
@@ -1265,7 +1406,6 @@ export const PediatricianPDFExport: React.FC = () => {
     setShowShareModal(true);
   }, []);
 
-  // Copy link to clipboard
   const copyLinkToClipboard = useCallback(async (link: string) => {
     try {
       await Clipboard.setString(link);
@@ -1275,7 +1415,6 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   }, [sweetAlert]);
 
-  // Share via native share dialog
   const shareViaNative = useCallback(async (link: string, templateName: string) => {
     try {
       const message = `📋 ${templateName} Template\n\nPlease fill out this template at:\n${link}\n\nThis is a secure, shareable form for pediatric records.`;
@@ -1288,38 +1427,6 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   }, []);
 
-  // Simulate receiving a response (in production, this would be from a server)
-  const simulateResponse = useCallback(async (templateId: string) => {
-    const template = shareableTemplates.find(t => t.id === templateId);
-    if (!template) return;
-
-    const response: ShareableTemplateResponse = {
-      id: `response_${Date.now()}`,
-      templateId: templateId,
-      respondentName: 'Dr. Sarah Johnson',
-      respondentEmail: 'sarah.johnson@pediatrics.com',
-      submittedAt: new Date().toISOString(),
-      responses: {
-        visit_date: new Date().toISOString().split('T')[0],
-        chief_complaint: 'Routine wellness check. Parent reports good appetite and development.',
-        history: 'No significant medical history. Birth history unremarkable.',
-        medications: 'None currently.',
-        allergies: 'No known allergies.',
-        physical_exam: 'Vital signs normal. Age-appropriate development.',
-        assessment: 'Healthy child, meeting all developmental milestones.',
-        plan: 'Continue current routine. Next visit in 3 months.',
-        doctor_name: 'Dr. Sarah Johnson',
-        doctor_signature: 'Dr. Sarah Johnson, MD',
-        doctor_email: 'sarah.johnson@pediatrics.com',
-      },
-      status: 'pending',
-    };
-
-    await saveShareResponse(response);
-    sweetAlert?.success('Response Received!', 'A doctor has completed your template.');
-  }, [shareableTemplates, sweetAlert]);
-
-  // View all responses for a template
   const viewResponses = useCallback((templateId: string) => {
     const responses = shareResponses.filter(r => r.templateId === templateId);
     if (responses.length === 0) {
@@ -1327,10 +1434,9 @@ export const PediatricianPDFExport: React.FC = () => {
       return;
     }
 
-    // Show responses in a modal or navigation
     Alert.alert(
       'Responses',
-      `${responses.length} response(s) received:\n\n${responses.map(r => 
+      `${responses.length} response(s) received:\n\n${responses.map(r =>
         `• ${r.respondentName} (${new Date(r.submittedAt).toLocaleDateString()}) - ${r.status}`
       ).join('\n')}`,
       [{ text: 'OK' }]
@@ -1363,8 +1469,8 @@ export const PediatricianPDFExport: React.FC = () => {
             </View>
 
             <View style={styles.shareActions}>
-              <TouchableOpacity 
-                style={[styles.shareActionBtn, { backgroundColor: theme.primary }]} 
+              <TouchableOpacity
+                style={[styles.shareActionBtn, { backgroundColor: theme.primary }]}
                 onPress={() => {
                   if (selectedTemplateForShare) {
                     shareViaNative(shareLink, selectedTemplateForShare.name);
@@ -1375,8 +1481,8 @@ export const PediatricianPDFExport: React.FC = () => {
                 <Text style={styles.shareActionBtnText}>Share via App</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={[styles.shareActionBtn, { backgroundColor: '#10b981' }]} 
+              <TouchableOpacity
+                style={[styles.shareActionBtn, { backgroundColor: '#10b981' }]}
                 onPress={() => {
                   sweetAlert?.alert(
                     'Share via Email/SMS',
@@ -1413,10 +1519,10 @@ export const PediatricianPDFExport: React.FC = () => {
                 <Text style={[styles.shareTemplateDesc, { color: theme.text.muted }]}>
                   {selectedTemplateForShare.description}
                 </Text>
-                <Badge 
-                  text={`${selectedTemplateForShare.sections.length} fields`} 
-                  color={selectedTemplateForShare.color} 
-                  bg={`${selectedTemplateForShare.color}15`} 
+                <Badge
+                  text={`${selectedTemplateForShare.sections.length} fields`}
+                  color={selectedTemplateForShare.color}
+                  bg={`${selectedTemplateForShare.color}15`}
                 />
               </View>
             )}
@@ -1494,10 +1600,10 @@ export const PediatricianPDFExport: React.FC = () => {
         <Text style={[styles.stickySubtitle, { color: theme.text.muted }]}>Pediatric Documents</Text>
       </Animated.View>
 
-      <Animated.ScrollView 
-        onScroll={scrollHandler} 
-        scrollEventThrottle={16} 
-        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }} 
+      <Animated.ScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
       >
         <BabyProfileHeader baby={currentBaby} />
@@ -1505,34 +1611,24 @@ export const PediatricianPDFExport: React.FC = () => {
         {/* ─── Mode Selector ────────────────────────────────────────────── */}
         <Animated.View entering={FadeInUp.delay(40).springify()}>
           <View style={styles.modeSelector}>
-            <TouchableOpacity
-              style={[styles.modeBtn, mode === 'generate' && { backgroundColor: theme.primary }]}
-              onPress={() => setMode('generate')}
-            >
-              <Ionicons name="create-outline" size={18} color={mode === 'generate' ? '#fff' : theme.text.primary} />
-              <Text style={[styles.modeBtnText, { color: mode === 'generate' ? '#fff' : theme.text.primary }]}>Generate</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeBtn, mode === 'templates' && { backgroundColor: theme.primary }]}
-              onPress={() => setMode('templates')}
-            >
-              <Ionicons name="document-text-outline" size={18} color={mode === 'templates' ? '#fff' : theme.text.primary} />
-              <Text style={[styles.modeBtnText, { color: mode === 'templates' ? '#fff' : theme.text.primary }]}>Templates</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeBtn, mode === 'share' && { backgroundColor: theme.primary }]}
-              onPress={() => setMode('share')}
-            >
-              <Ionicons name="share-social-outline" size={18} color={mode === 'share' ? '#fff' : theme.text.primary} />
-              <Text style={[styles.modeBtnText, { color: mode === 'share' ? '#fff' : theme.text.primary }]}>Share</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeBtn, mode === 'upload' && { backgroundColor: theme.primary }]}
-              onPress={() => setMode('upload')}
-            >
-              <Ionicons name="cloud-upload-outline" size={18} color={mode === 'upload' ? '#fff' : theme.text.primary} />
-              <Text style={[styles.modeBtnText, { color: mode === 'upload' ? '#fff' : theme.text.primary }]}>Upload</Text>
-            </TouchableOpacity>
+            {([
+              { id: 'generate' as ReportMode, label: 'Generate', icon: 'create-outline' },
+              { id: 'templates' as ReportMode, label: 'Templates', icon: 'document-text-outline' },
+              { id: 'share' as ReportMode, label: 'Share', icon: 'share-social-outline' },
+              { id: 'upload' as ReportMode, label: 'Upload', icon: 'cloud-upload-outline' },
+            ]).map((m) => {
+              const active = mode === m.id;
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[styles.modeBtn, active && { backgroundColor: theme.primary }]}
+                  onPress={() => setMode(m.id)}
+                >
+                  <Ionicons name={m.icon as any} size={18} color={active ? '#fff' : theme.text.primary} />
+                  <Text style={[styles.modeBtnText, { color: active ? '#fff' : theme.text.primary }]}>{m.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </Animated.View>
 
@@ -1560,18 +1656,25 @@ export const PediatricianPDFExport: React.FC = () => {
               <SectionHeader title="Report Template" icon="layers-outline" subtitle="Choose a starting preset" />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateScroll}>
                 {([
-                  { id: 'full', label: 'Full Report', icon: 'document-text', desc: 'Everything' },
-                  { id: 'visit', label: 'Visit Summary', icon: 'medical', desc: 'Essentials' },
-                  { id: 'growth', label: 'Growth Focus', icon: 'trending-up', desc: 'Charts & %iles' },
-                  { id: 'development', label: 'Development', icon: 'body', desc: 'Milestones' },
-                  { id: 'emergency', label: 'Emergency', icon: 'warning', desc: 'Health & contacts' },
-                ] as const).map(t => (
-                  <TouchableOpacity key={t.id} onPress={() => applyTemplate(t.id as ReportTemplate)} style={[styles.templateChip, template === t.id && { borderColor: theme.primary, backgroundColor: `${theme.primary}15` }]}>
-                    <Ionicons name={t.icon as any} size={20} color={template === t.id ? theme.primary : theme.text.muted} />
-                    <Text style={[styles.templateLabel, { color: template === t.id ? theme.primary : theme.text.primary }]}>{t.label}</Text>
-                    <Text style={[styles.templateDesc, { color: theme.text.muted }]}>{t.desc}</Text>
-                  </TouchableOpacity>
-                ))}
+                  { id: 'full' as PresetId, label: 'Full Report', icon: 'document-text', desc: 'Everything' },
+                  { id: 'visit' as PresetId, label: 'Visit Summary', icon: 'medical', desc: 'Essentials' },
+                  { id: 'growth' as PresetId, label: 'Growth Focus', icon: 'trending-up', desc: 'Charts & %iles' },
+                  { id: 'development' as PresetId, label: 'Development', icon: 'body', desc: 'Milestones' },
+                  { id: 'emergency' as PresetId, label: 'Emergency', icon: 'warning', desc: 'Health & contacts' },
+                ]).map(t => {
+                  const active = presetId === t.id;
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      onPress={() => applyTemplate(t.id)}
+                      style={[styles.templateChip, active && { borderColor: theme.primary, backgroundColor: `${theme.primary}15` }]}
+                    >
+                      <Ionicons name={t.icon as any} size={20} color={active ? theme.primary : theme.text.muted} />
+                      <Text style={[styles.templateLabel, { color: active ? theme.primary : theme.text.primary }]}>{t.label}</Text>
+                      <Text style={[styles.templateDesc, { color: theme.text.muted }]}>{t.desc}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </Animated.View>
 
@@ -1580,7 +1683,9 @@ export const PediatricianPDFExport: React.FC = () => {
               <View style={styles.rangeRow}>
                 {(['7d', '30d', '90d', 'all'] as const).map(r => (
                   <TouchableOpacity key={r} onPress={() => setDateRange(r)} style={[styles.rangeBtn, dateRange === r && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
-                    <Text style={[styles.rangeBtnText, { color: dateRange === r ? '#fff' : theme.text.primary }]}>{r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : r === '90d' ? '90 Days' : 'All Time'}</Text>
+                    <Text style={[styles.rangeBtnText, { color: dateRange === r ? '#fff' : theme.text.primary }]}>
+                      {r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : r === '90d' ? '90 Days' : 'All Time'}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -1599,7 +1704,12 @@ export const PediatricianPDFExport: React.FC = () => {
                         <Text style={[styles.sectionRowDesc, { color: theme.text.muted }]}>{sec.description}</Text>
                       </View>
                     </View>
-                    <Switch value={sec.enabled} onValueChange={() => toggleSection(sec.id)} trackColor={{ false: '#767577', true: `${theme.primary}80` }} thumbColor={sec.enabled ? theme.primary : '#f4f3f4'} />
+                    <Switch
+                      value={sec.enabled}
+                      onValueChange={() => toggleSection(sec.id)}
+                      trackColor={{ false: '#767577', true: `${theme.primary}80` }}
+                      thumbColor={sec.enabled ? theme.primary : '#f4f3f4'}
+                    />
                   </View>
                 ))}
               </GlassCard>
@@ -1609,23 +1719,32 @@ export const PediatricianPDFExport: React.FC = () => {
             <Animated.View entering={FadeInUp.delay(140).springify()}>
               <SectionHeader title="Notes for Doctor" icon="create-outline" subtitle="Concerns or questions" />
               <GlassCard style={styles.notesCard}>
-                <TextInput 
-                  value={customNotes} 
-                  onChangeText={setCustomNotes} 
-                  placeholder="e.g., Fussy after feeds, rash on neck..." 
-                  placeholderTextColor={theme.text.muted} 
-                  multiline 
-                  numberOfLines={4} 
-                  style={[styles.notesInput, { color: theme.text.primary }]} 
-                  textAlignVertical="top" 
+                <TextInput
+                  value={customNotes}
+                  onChangeText={setCustomNotes}
+                  placeholder="e.g., Fussy after feeds, rash on neck..."
+                  placeholderTextColor={theme.text.muted}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.notesInput, { color: theme.text.primary }]}
+                  textAlignVertical="top"
                 />
               </GlassCard>
             </Animated.View>
 
             {/* ─── Generate Button ──────────────────────────────────────── */}
             <Animated.View entering={FadeInUp.delay(160).springify()}>
-              <TouchableOpacity onPress={generateFullReportPDF} disabled={generating} style={[styles.generateBtn, { backgroundColor: generating ? theme.text.muted : theme.primary }]}>
-                {generating ? <ActivityIndicator color="#fff" /> : <><Ionicons name="download-outline" size={22} color="#fff" /><Text style={styles.generateBtnText}>Generate PDF Report</Text></>}
+              <TouchableOpacity
+                onPress={generateFullReportPDF}
+                disabled={generating}
+                style={[styles.generateBtn, { backgroundColor: generating ? theme.text.muted : theme.primary }]}
+              >
+                {generating
+                  ? <ActivityIndicator color="#fff" />
+                  : <>
+                      <Ionicons name="download-outline" size={22} color="#fff" />
+                      <Text style={styles.generateBtnText}>Generate PDF Report</Text>
+                    </>}
               </TouchableOpacity>
               <Text style={[styles.disclaimer, { color: theme.text.muted }]}>Reports are generated locally. No data leaves your device.</Text>
             </Animated.View>
@@ -1681,10 +1800,10 @@ export const PediatricianPDFExport: React.FC = () => {
               </GlassCard>
             </Animated.View>
 
-            <SectionHeader 
-              title="Your Shareable Templates" 
-              icon="share-social-outline" 
-              subtitle={`${shareableTemplates.length} templates shared`} 
+            <SectionHeader
+              title="Your Shareable Templates"
+              icon="share-social-outline"
+              subtitle={`${shareableTemplates.length} templates shared`}
             />
 
             {shareableTemplates.length === 0 ? (
@@ -1713,20 +1832,20 @@ export const PediatricianPDFExport: React.FC = () => {
                       </View>
                     </View>
                     <View style={styles.shareTemplateActions}>
-                      <TouchableOpacity 
-                        onPress={() => createShareableTemplate(t)} 
+                      <TouchableOpacity
+                        onPress={() => createShareableTemplate(t)}
                         style={[styles.shareTemplateAction, { backgroundColor: `${t.color}15` }]}
                       >
                         <Ionicons name="link-outline" size={16} color={t.color} />
                       </TouchableOpacity>
-                      <TouchableOpacity 
-                        onPress={() => shareTemplateLink(t)} 
+                      <TouchableOpacity
+                        onPress={() => shareTemplateLink(t)}
                         style={[styles.shareTemplateAction, { backgroundColor: `${theme.primary}15` }]}
                       >
                         <Ionicons name="share-outline" size={16} color={theme.primary} />
                       </TouchableOpacity>
-                      <TouchableOpacity 
-                        onPress={() => viewResponses(t.id)} 
+                      <TouchableOpacity
+                        onPress={() => viewResponses(t.id)}
                         style={[styles.shareTemplateAction, { backgroundColor: '#10b98115' }]}
                       >
                         <Ionicons name="chatbubbles-outline" size={16} color="#10b981" />
@@ -1740,13 +1859,13 @@ export const PediatricianPDFExport: React.FC = () => {
             {/* ─── Recent Responses ─────────────────────────────────────── */}
             {shareResponses.length > 0 && (
               <>
-                <SectionHeader 
-                  title="Recent Responses" 
-                  icon="chatbubbles-outline" 
-                  subtitle={`${shareResponses.length} total responses`} 
+                <SectionHeader
+                  title="Recent Responses"
+                  icon="chatbubbles-outline"
+                  subtitle={`${shareResponses.length} total responses`}
                 />
                 {shareResponses.slice(0, 5).map((response) => {
-                  const template = shareableTemplates.find(t => t.id === response.templateId);
+                  const tpl = shareableTemplates.find(t => t.id === response.templateId);
                   return (
                     <GlassCard key={response.id} style={styles.responseCard}>
                       <View style={styles.responseRow}>
@@ -1755,18 +1874,20 @@ export const PediatricianPDFExport: React.FC = () => {
                             {response.respondentName}
                           </Text>
                           <Text style={[styles.responseMeta, { color: theme.text.muted }]}>
-                            {template?.name || 'Unknown template'} • {new Date(response.submittedAt).toLocaleDateString()}
+                            {tpl?.name || 'Unknown template'} • {new Date(response.submittedAt).toLocaleDateString()}
                           </Text>
                         </View>
-                        <View style={[styles.responseStatusBadge, { 
-                          backgroundColor: response.status === 'approved' ? '#10b98115' : 
-                                         response.status === 'reviewed' ? '#3b82f615' : '#f59e0b15' 
+                        <View style={[styles.responseStatusBadge, {
+                          backgroundColor:
+                            response.status === 'approved' ? '#10b98115' :
+                            response.status === 'reviewed' ? '#3b82f615' : '#f59e0b15',
                         }]}>
-                          <Text style={[styles.responseStatusText, { 
-                            color: response.status === 'approved' ? '#10b981' : 
-                                   response.status === 'reviewed' ? '#3b82f6' : '#f59e0b' 
+                          <Text style={[styles.responseStatusText, {
+                            color:
+                              response.status === 'approved' ? '#10b981' :
+                              response.status === 'reviewed' ? '#3b82f6' : '#f59e0b',
                           }]}>
-                            {response.status === 'approved' ? 'Approved' : 
+                            {response.status === 'approved' ? 'Approved' :
                              response.status === 'reviewed' ? 'Reviewed' : 'Pending'}
                           </Text>
                         </View>
@@ -1788,26 +1909,30 @@ export const PediatricianPDFExport: React.FC = () => {
                   <Ionicons name="cloud-upload" size={36} color="#fff" />
                   <Text style={styles.uploadHeroTitle}>Upload Completed Report</Text>
                   <Text style={styles.uploadHeroSub}>Upload the PDF report filled out by your pediatrician</Text>
-                  
-                  <TouchableOpacity 
-                    onPress={uploadDoctorReport} 
-                    disabled={uploading} 
+
+                  <TouchableOpacity
+                    onPress={uploadDoctorReport}
+                    disabled={uploading}
                     style={[styles.uploadHeroBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
                   >
-                    {uploading ? <ActivityIndicator color="#fff" /> : <><Ionicons name="cloud-upload-outline" size={20} color="#fff" /><Text style={styles.uploadHeroBtnText}>Upload Report</Text></>}
+                    {uploading
+                      ? <ActivityIndicator color="#fff" />
+                      : <>
+                          <Ionicons name="cloud-upload-outline" size={20} color="#fff" />
+                          <Text style={styles.uploadHeroBtnText}>Upload Report</Text>
+                        </>}
                   </TouchableOpacity>
                 </LinearGradient>
               </GlassCard>
             </Animated.View>
 
-            {/* ─── Report List ──────────────────────────────────────────── */}
             <Animated.View entering={FadeInUp.delay(80).springify()}>
-              <SectionHeader 
-                title="All Reports" 
-                icon="document-text-outline" 
-                subtitle={`${reportHistory.length} reports saved`} 
+              <SectionHeader
+                title="All Reports"
+                icon="document-text-outline"
+                subtitle={`${reportHistory.length} reports saved`}
               />
-              
+
               {reportHistory.length === 0 ? (
                 <GlassCard>
                   <View style={styles.emptyReportsContainer}>
@@ -1821,13 +1946,13 @@ export const PediatricianPDFExport: React.FC = () => {
                   <GlassCard key={report.id} style={styles.reportCard}>
                     <View style={styles.reportCardRow}>
                       <View style={styles.reportCardLeft}>
-                        <View style={[styles.reportCardIcon, { 
-                          backgroundColor: report.isDoctorFilled ? '#10b98115' : '#667eea15' 
+                        <View style={[styles.reportCardIcon, {
+                          backgroundColor: report.isDoctorFilled ? '#10b98115' : '#667eea15',
                         }]}>
-                          <Ionicons 
-                            name={report.isDoctorFilled ? 'medical-outline' : 'document-text'} 
-                            size={24} 
-                            color={report.isDoctorFilled ? '#10b981' : '#667eea'} 
+                          <Ionicons
+                            name={report.isDoctorFilled ? 'medical-outline' : 'document-text'}
+                            size={24}
+                            color={report.isDoctorFilled ? '#10b981' : '#667eea'}
                           />
                         </View>
                         <View style={styles.reportCardInfo}>
@@ -1835,16 +1960,17 @@ export const PediatricianPDFExport: React.FC = () => {
                             {report.name}
                           </Text>
                           <Text style={[styles.reportCardMeta, { color: theme.text.muted }]}>
-                            {new Date(report.uploadedAt).toLocaleDateString()} • 
+                            {new Date(report.uploadedAt).toLocaleDateString()} •
                             {report.isDoctorFilled ? ' 👨‍⚕️ Filled' : ' 📄 Generated'}
                           </Text>
                           <View style={styles.reportCardStatus}>
-                            <View style={[styles.reportStatusDot, { 
-                              backgroundColor: report.status === 'approved' ? '#10b981' : 
-                                             report.status === 'reviewed' ? '#3b82f6' : '#f59e0b' 
+                            <View style={[styles.reportStatusDot, {
+                              backgroundColor:
+                                report.status === 'approved' ? '#10b981' :
+                                report.status === 'reviewed' ? '#3b82f6' : '#f59e0b',
                             }]} />
                             <Text style={[styles.reportCardStatusText, { color: theme.text.muted }]}>
-                              {report.status === 'approved' ? 'Approved' : 
+                              {report.status === 'approved' ? 'Approved' :
                                report.status === 'reviewed' ? 'Reviewed' : 'Pending'}
                             </Text>
                           </View>
@@ -1874,8 +2000,8 @@ export const PediatricianPDFExport: React.FC = () => {
 
       {/* ─── Template Form Modal ────────────────────────────────────────── */}
       <Modal visible={showTemplateForm} transparent animationType="slide" onRequestClose={() => setShowTemplateForm(false)}>
-        <KeyboardAvoidingView 
-          style={styles.templateFormOverlay} 
+        <KeyboardAvoidingView
+          style={styles.templateFormOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={[styles.templateFormContent, { backgroundColor: theme.bg }]}>
@@ -1894,7 +2020,7 @@ export const PediatricianPDFExport: React.FC = () => {
                   <Text style={[styles.templateFormDesc, { color: theme.text.muted }]}>
                     {selectedTemplate.description}
                   </Text>
-                  
+
                   {selectedTemplate.sections.map((field) => (
                     <TemplateFieldComponent
                       key={field.id}
@@ -1953,21 +2079,21 @@ export const PediatricianPDFExport: React.FC = () => {
                 <Ionicons name="close" size={24} color={theme.text.primary} />
               </TouchableOpacity>
             </View>
-            
+
             {selectedReport && (
               <ScrollView style={styles.detailModalBody} showsVerticalScrollIndicator={false}>
-                <View style={[styles.detailIconWrap, { 
-                  backgroundColor: selectedReport.isDoctorFilled ? '#10b98115' : '#667eea15' 
+                <View style={[styles.detailIconWrap, {
+                  backgroundColor: selectedReport.isDoctorFilled ? '#10b98115' : '#667eea15',
                 }]}>
-                  <Ionicons 
-                    name={selectedReport.isDoctorFilled ? 'medical-outline' : 'document-text'} 
-                    size={48} 
-                    color={selectedReport.isDoctorFilled ? '#10b981' : '#667eea'} 
+                  <Ionicons
+                    name={selectedReport.isDoctorFilled ? 'medical-outline' : 'document-text'}
+                    size={48}
+                    color={selectedReport.isDoctorFilled ? '#10b981' : '#667eea'}
                   />
                 </View>
-                
+
                 <Text style={[styles.detailFileName, { color: theme.text.primary }]}>{selectedReport.name}</Text>
-                
+
                 <View style={styles.detailMetaGrid}>
                   <View style={styles.detailMetaItem}>
                     <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Uploaded</Text>
@@ -1977,28 +2103,30 @@ export const PediatricianPDFExport: React.FC = () => {
                   </View>
                   <View style={styles.detailMetaItem}>
                     <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Status</Text>
-                    <View style={[styles.detailStatusBadge, { 
-                      backgroundColor: selectedReport.status === 'approved' ? '#10b98115' : 
-                                     selectedReport.status === 'reviewed' ? '#3b82f615' : '#f59e0b15' 
+                    <View style={[styles.detailStatusBadge, {
+                      backgroundColor:
+                        selectedReport.status === 'approved' ? '#10b98115' :
+                        selectedReport.status === 'reviewed' ? '#3b82f615' : '#f59e0b15',
                     }]}>
-                      <Text style={[styles.detailStatusText, { 
-                        color: selectedReport.status === 'approved' ? '#10b981' : 
-                               selectedReport.status === 'reviewed' ? '#3b82f6' : '#f59e0b' 
+                      <Text style={[styles.detailStatusText, {
+                        color:
+                          selectedReport.status === 'approved' ? '#10b981' :
+                          selectedReport.status === 'reviewed' ? '#3b82f6' : '#f59e0b',
                       }]}>
-                        {selectedReport.status === 'approved' ? '✅ Approved' : 
+                        {selectedReport.status === 'approved' ? '✅ Approved' :
                          selectedReport.status === 'reviewed' ? '📋 Reviewed' : '⏳ Pending'}
                       </Text>
                     </View>
                   </View>
                 </View>
-                
+
                 <View style={[styles.detailMetaItem, { marginTop: 8 }]}>
                   <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Type</Text>
                   <Text style={[styles.detailMetaValue, { color: theme.text.primary }]}>
                     {selectedReport.isDoctorFilled ? '👨‍⚕️ Doctor-Filled Report' : '📄 Generated Report'}
                   </Text>
                 </View>
-                
+
                 {selectedReport.doctorNotes && (
                   <View style={styles.detailNotes}>
                     <Text style={[styles.detailNotesLabel, { color: theme.text.muted }]}>Doctor's Notes</Text>
@@ -2007,10 +2135,10 @@ export const PediatricianPDFExport: React.FC = () => {
                     </Text>
                   </View>
                 )}
-                
+
                 <View style={styles.detailActions}>
-                  <TouchableOpacity 
-                    style={[styles.detailActionBtn, { backgroundColor: theme.primary }]} 
+                  <TouchableOpacity
+                    style={[styles.detailActionBtn, { backgroundColor: theme.primary }]}
                     onPress={() => {
                       if (selectedReport) shareReport(selectedReport);
                     }}
@@ -2018,9 +2146,9 @@ export const PediatricianPDFExport: React.FC = () => {
                     <Ionicons name="share-outline" size={18} color="#fff" />
                     <Text style={styles.detailActionBtnText}>Share</Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.detailActionBtn, { backgroundColor: selectedReport.isDoctorFilled ? theme.secondary : '#667eea' }]} 
+
+                  <TouchableOpacity
+                    style={[styles.detailActionBtn, { backgroundColor: selectedReport.isDoctorFilled ? theme.secondary : '#667eea' }]}
                     onPress={() => {
                       if (selectedReport) {
                         Linking.openURL(selectedReport.uri);
@@ -2030,9 +2158,9 @@ export const PediatricianPDFExport: React.FC = () => {
                     <Ionicons name="eye-outline" size={18} color="#fff" />
                     <Text style={styles.detailActionBtnText}>Open</Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.detailActionBtn, { backgroundColor: '#ef4444' }]} 
+
+                  <TouchableOpacity
+                    style={[styles.detailActionBtn, { backgroundColor: '#ef4444' }]}
                     onPress={() => {
                       if (selectedReport) {
                         deleteReport(selectedReport);
@@ -2058,7 +2186,7 @@ export const PediatricianPDFExport: React.FC = () => {
    ═══════════════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  
+
   /* Sticky Header */
   stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 8 },
   stickyTitle: { fontSize: 17, fontWeight: '800' },
