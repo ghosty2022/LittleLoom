@@ -27,7 +27,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useActivity } from '../../context/ActivityContext';
-import { useTracker } from '../../context/TrackerContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCommunity } from '../../context/CommunityContext';
 import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';

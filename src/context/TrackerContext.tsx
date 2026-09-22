@@ -1965,11 +1965,14 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
   );
 };
 
-export const useTracker = (): TrackerContextType => {
-  const context = useContext(TrackerContext);
-  if (!context) throw new Error('useTracker must be used within TrackerProvider');
-  return context;
-};
-
+// ⚠️ Do NOT export useTracker here. The canonical hook lives in
+//    `src/hooks/useTrackerContext.ts` and returns a safe fallback
+//    instead of throwing (so components that mount before
+//    TrackerProvider finishes can still render).
+//
+//    Any file that needs the hook should import:
+//        import { useTracker } from '@/hooks/useTrackerContext';
+//    or  import { useTracker } from '@/hooks';
+//
 export { TrackerContext };
 export default TrackerProvider;

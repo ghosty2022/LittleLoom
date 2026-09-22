@@ -27,7 +27,7 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/types/navigation';
 
-import { useTracker } from '@/context/TrackerContext';
+import { useTracker } from '@/hooks/useTrackerContext';
 import { useBaby } from '@/context/BabyContext';
 import { TrackerEntry, UnifiedTrackerConfig } from '@/types/trackers';
 import { SafeAvatar } from '@/components/SafeAvatar';

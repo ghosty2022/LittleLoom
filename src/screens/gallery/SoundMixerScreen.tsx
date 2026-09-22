@@ -34,7 +34,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { useAudio, AudioTrack, SOUND_TRACKS } from '../../context/AudioContext';
 import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { useTracker } from '@/context/TrackerContext';
+import { useTracker } from '@/hooks/useTrackerContext';
 import { differenceInMinutes, parseISO } from 'date-fns';
 
 /* ═══════════════════════════════════════════════════════════════════════════
