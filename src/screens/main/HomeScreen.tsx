@@ -1238,21 +1238,11 @@ const RecentTimeline: React.FC<{
 
 const SoundMixerSection: React.FC<{ onPress: () => void; isDark: boolean; theme: any }> =
   React.memo(({ onPress, isDark, theme }) => {
-    let audioContext: any = null;
-    let playTrack: any = null;
-    let currentTrack: any = null;
-    let isPlaying = false;
-    let togglePlayback: any = null;
-
-    try {
-      audioContext = useAudio();
-      playTrack = audioContext.playTrack;
-      currentTrack = audioContext.currentTrack;
-      isPlaying = audioContext.isPlaying;
-      togglePlayback = audioContext.togglePlayback;
-    } catch (e) {
-      console.warn('[SoundMixerSection] Audio context not available');
-    }
+    const audioContext = useAudio();
+    const playTrack = audioContext?.playTrack;
+    const currentTrack = audioContext?.currentTrack;
+    const isPlaying = audioContext?.isPlaying ?? false;
+    const togglePlayback = audioContext?.togglePlayback;
 
     const handlePlayTrack = (track: typeof SOUND_TRACKS[0]) => {
       if (!playTrack) return;
