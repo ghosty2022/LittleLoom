@@ -13,6 +13,13 @@
 //   - Statistically meaningful (|r| > 0.3 or |d| > 0.5)
 //   - Well-sampled (n >= 8)
 //   - Actionable (a parent can DO something about it)
+//
+// FIXES in this version:
+//   ✓ All `.gte('timestamp', cutoff)` / `.gt(...)` calls now convert the
+//     numeric millisecond value to an ISO string. Supabase's PostgREST
+//     layer expects timestamptz strings, not raw numbers — sending a
+//     number produced "date/time field value out of range" on every
+//     query.
 // ─────────────────────────────────────────────────────────────────────
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -73,7 +80,9 @@ const pearson = (xs: number[], ys: number[]): number => {
   if (n < 3) return 0;
   const mx = xs.slice(0, n).reduce((a, b) => a + b, 0) / n;
   const my = ys.slice(0, n).reduce((a, b) => a + b, 0) / n;
-  let num = 0, dx = 0, dy = 0;
+  let num = 0,
+    dx = 0,
+    dy = 0;
   for (let i = 0; i < n; i++) {
     const dxv = (xs[i] ?? 0) - mx;
     const dyv = (ys[i] ?? 0) - my;
@@ -100,8 +109,8 @@ const cohensD = (a: number[], b: number[]): number => {
 // ─── Detectors ───────────────────────────────────────────────────────
 
 function detectFeedBeforeSleep(entries: Entry[]): DiscoveredCorrelation | null {
-  const sleeps = entries.filter(e => e.tracker_id === 'sleep');
-  const feeds = entries.filter(e => e.tracker_id === 'feed');
+  const sleeps = entries.filter((e) => e.tracker_id === 'sleep');
+  const feeds = entries.filter((e) => e.tracker_id === 'feed');
   if (sleeps.length < 8 || feeds.length < 8) return null;
 
   const sleepDurations: number[] = [];
@@ -113,7 +122,7 @@ function detectFeedBeforeSleep(entries: Entry[]): DiscoveredCorrelation | null {
     );
     if (!Number.isFinite(duration) || duration <= 0) continue;
 
-    const recentFeed = feeds.find(f => {
+    const recentFeed = feeds.find((f) => {
       const delta = sleep.timestamp - f.timestamp;
       return delta > 0 && delta <= 30 * 60 * 1000;
     });
@@ -167,11 +176,11 @@ function detectFeedCountVsMood(entries: Entry[]): DiscoveredCorrelation | null {
   const days: { feeds: number; mood: number }[] = [];
 
   for (const dayEntries of byDay.values()) {
-    const feeds = dayEntries.filter(e => e.tracker_id === 'feed').length;
+    const feeds = dayEntries.filter((e) => e.tracker_id === 'feed').length;
     const moods = dayEntries
-      .filter(e => e.tracker_id === 'mood')
-      .map(e => Number(e.data?.mood ?? e.data?.value))
-      .filter(n => Number.isFinite(n) && n > 0);
+      .filter((e) => e.tracker_id === 'mood')
+      .map((e) => Number(e.data?.mood ?? e.data?.value))
+      .filter((n) => Number.isFinite(n) && n > 0);
     if (feeds === 0 || moods.length === 0) continue;
     const avgMood = moods.reduce((a, b) => a + b, 0) / moods.length;
     days.push({ feeds, mood: avgMood });
@@ -180,8 +189,8 @@ function detectFeedCountVsMood(entries: Entry[]): DiscoveredCorrelation | null {
   if (days.length < 8) return null;
 
   const r = pearson(
-    days.map(d => d.feeds),
-    days.map(d => d.mood)
+    days.map((d) => d.feeds),
+    days.map((d) => d.mood)
   );
   if (Math.abs(r) < 0.3) return null;
 
@@ -216,9 +225,9 @@ function detectNightWakingsVsFeed(
 
   for (const [, dayEntries] of byDay) {
     const feeds = dayEntries
-      .filter(e => e.tracker_id === 'feed')
+      .filter((e) => e.tracker_id === 'feed')
       .sort((a, b) => b.timestamp - a.timestamp);
-    const nightWakings = dayEntries.filter(e => {
+    const nightWakings = dayEntries.filter((e) => {
       const h = new Date(e.timestamp).getHours();
       return e.tracker_id === 'sleep' && (h >= 22 || h < 6);
     }).length;
@@ -233,8 +242,8 @@ function detectNightWakingsVsFeed(
   if (days.length < 8) return null;
 
   const r = pearson(
-    days.map(d => d.lastFeedHour),
-    days.map(d => d.wakings)
+    days.map((d) => d.lastFeedHour),
+    days.map((d) => d.wakings)
   );
   if (Math.abs(r) < 0.3) return null;
 
@@ -271,7 +280,7 @@ function detectOutdoorVsSleep(entries: Entry[]): DiscoveredCorrelation | null {
 
   for (const [, dayEntries] of byDay) {
     const outdoor = dayEntries
-      .filter(e => OUTDOOR_IDS.has(e.tracker_id))
+      .filter((e) => OUTDOOR_IDS.has(e.tracker_id))
       .reduce((sum, e) => {
         const d = e.data || {};
         // Duration is stored in SECONDS per the schema
@@ -282,7 +291,7 @@ function detectOutdoorVsSleep(entries: Entry[]): DiscoveredCorrelation | null {
         return sum + mins;
       }, 0);
     const sleepMin = dayEntries
-      .filter(e => e.tracker_id === 'sleep')
+      .filter((e) => e.tracker_id === 'sleep')
       .reduce(
         (sum, e) =>
           sum + Number(e.data?.duration ?? e.data?.duration_minutes ?? 0),
@@ -296,8 +305,8 @@ function detectOutdoorVsSleep(entries: Entry[]): DiscoveredCorrelation | null {
   if (days.length < 8) return null;
 
   const r = pearson(
-    days.map(d => d.outdoor),
-    days.map(d => d.sleep)
+    days.map((d) => d.outdoor),
+    days.map((d) => d.sleep)
   );
   if (Math.abs(r) < 0.3) return null;
 
@@ -339,12 +348,14 @@ export async function discoverCorrelations(
 ): Promise<DiscoveredCorrelation[]> {
   const cutoff = Date.now() - daysBack * 86400000;
 
+  // FIX: PostgREST timestamptz filters expect ISO strings, not raw
+  // millisecond numbers.
   const { data, error } = await supabase
     .from('tracker_entries')
     .select('tracker_id, timestamp, data')
     .eq('baby_id', babyId)
     .eq('is_deleted', false)
-    .gte('timestamp', cutoff)
+    .gte('timestamp', new Date(cutoff).toISOString())
     .order('timestamp', { ascending: true });
 
   if (error || !data) {
@@ -354,9 +365,12 @@ export async function discoverCorrelations(
     return [];
   }
 
-  const entries: Entry[] = data.map(row => ({
+  const entries: Entry[] = data.map((row) => ({
     tracker_id: row.tracker_id,
-    timestamp: row.timestamp,
+    // Normalize: Supabase returns timestamptz as an ISO string OR as a
+    // parsed Date depending on config. Coerce to ms number for the
+    // detectors, which work in epoch ms.
+    timestamp: new Date(row.timestamp).getTime(),
     data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {},
   }));
 
@@ -379,7 +393,7 @@ export async function discoverCorrelations(
   // ─── Persist to cache so subsequent reads are instant ─────────
   if (results.length > 0) {
     try {
-      const rows = results.map(r => ({
+      const rows = results.map((r) => ({
         baby_id: babyId,
         kind: r.kind,
         headline: r.headline,
@@ -432,7 +446,8 @@ export async function invalidateCorrelationCacheIfStale(
       .eq('is_deleted', false);
 
     if (lastTimestamp > 0) {
-      query = query.gt('timestamp', lastTimestamp);
+      // FIX: ISO string, not raw ms.
+      query = query.gt('timestamp', new Date(lastTimestamp).toISOString());
     }
 
     const { count, error } = await query;
@@ -456,13 +471,15 @@ export async function invalidateCorrelationCacheIfStale(
         .limit(1)
         .maybeSingle();
 
-      const cutoff = newest?.timestamp ?? Date.now();
+      const cutoff = newest?.timestamp
+        ? new Date(newest.timestamp).getTime()
+        : Date.now();
       await AsyncStorage.setItem(key, String(cutoff));
 
       if (__DEV__) {
         console.log(
           `[Correlation] Cache invalidated for ${babyId} ` +
-          `(${newEntryCount} new entries since last run)`
+            `(${newEntryCount} new entries since last run)`
         );
       }
       return true;
@@ -487,7 +504,7 @@ export async function getCachedCorrelations(
 
     if (error || !data) return [];
 
-    return data.map(row => ({
+    return data.map((row) => ({
       id: row.kind,
       kind: row.kind as CorrelationKind,
       headline: row.headline,

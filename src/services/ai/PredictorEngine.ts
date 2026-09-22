@@ -7,13 +7,13 @@
 // between events) rather than absolute timestamps — that's what
 // actually varies with age, feeding schedule, and routine.
 //
-// Public API:
-//   observeEvent(babyId, type, eventTimestamp) → Prediction
-//   getPrediction(babyId, type) → Prediction
-//   getPredictions(babyId, types[]) → Prediction[]
-//   resetPredictor(babyId, type) → void
-//   backfillPredictor(babyId, type, daysBack) → { samples: number }
-//   formatMinutes(mins) → string
+// FIXES in this version:
+//   ✓ `.gte('timestamp', ISO)` — PostgREST requires timestamptz strings,
+//     not raw ms numbers. Was causing "date/time field value out of range".
+//   ✓ Normalize `row.timestamp` (string | Date | number) to epoch ms
+//     before arithmetic. Previously `curr - prev` produced NaN when
+//     Supabase returned ISO strings, so backfill silently produced 0
+//     intervals and the predictor stayed at the fallback state.
 // ─────────────────────────────────────────────────────────────────────
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -82,6 +82,34 @@ const supabaseKey = (babyId: string, type: PredictorType) =>
   `${SUPABASE_PREFIX}${babyId}:${type}`;
 
 const memCache = new Map<string, PredictorState>();
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+/**
+ * Normalize any timestamp representation to epoch milliseconds.
+ * Supabase returns timestamptz as an ISO string; the predictor works
+ * in ms numbers, so every read must go through this.
+ */
+function toMs(ts: unknown): number {
+  if (typeof ts === 'number' && Number.isFinite(ts)) {
+    // Heuristic: values below ~1e12 are seconds, above are ms.
+    return ts < 1e12 ? ts * 1000 : ts;
+  }
+  if (typeof ts === 'string') {
+    const parsed = new Date(ts).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (ts instanceof Date) return ts.getTime();
+  return 0;
+}
+
+/**
+ * PostgREST expects ISO strings for timestamptz comparisons. Convert
+ * the ms cutoff once, at the call site, so we don't forget.
+ */
+function toISO(ms: number): string {
+  return new Date(ms).toISOString();
+}
 
 // ─── Math ────────────────────────────────────────────────────────────
 
@@ -181,7 +209,6 @@ async function loadState(
         .eq('user_id', userId)
         .maybeSingle();
 
-      // TTL: reject rows older than 90 days
       if (data?.updated_at) {
         const age = Date.now() - new Date(data.updated_at).getTime();
         if (age <= 90 * 24 * 60 * 60 * 1000 && data.value) {
@@ -199,7 +226,6 @@ async function loadState(
     }
   } catch {}
 
-  // 4. Cohort prior injection (opt-in, cross-family aggregate)
   try {
     const { getPredictorCohortPrior } = await import('./PredictorCohort');
     const { ageToCohort } = await import('./CohortPriors');
@@ -215,20 +241,17 @@ async function loadState(
 
       if (prior && prior.sampleCount >= 30) {
         const fallback = FALLBACK_INTERVALS[type];
-        // Sanity: prior level must be within bounds for this kind
-        if (
-          prior.level >= fallback * 0.3 &&
-          prior.level <= fallback * 3
-        ) {
+        if (prior.level >= fallback * 0.3 && prior.level <= fallback * 3) {
           const cohortState: PredictorState = {
             babyId,
             type,
-            n: 0, // local observations only
+            n: 0,
             level: prior.level,
             trend: prior.trend,
-            seasonal: prior.seasonal.length === 6
-              ? prior.seasonal
-              : Array(6).fill(0),
+            seasonal:
+              prior.seasonal.length === 6
+                ? prior.seasonal
+                : Array(6).fill(0),
             variance: 0,
             lastInterval: 0,
             lastObservedAt: 0,
@@ -239,8 +262,8 @@ async function loadState(
           if (__DEV__) {
             console.log(
               `[Predictor] Loaded cohort prior for ${type} @ ${cohort}: ` +
-              `level=${prior.level.toFixed(1)} trend=${prior.trend.toFixed(2)} ` +
-              `n=${prior.sampleCount}`
+                `level=${prior.level.toFixed(1)} trend=${prior.trend.toFixed(2)} ` +
+                `n=${prior.sampleCount}`
             );
           }
 
@@ -253,7 +276,6 @@ async function loadState(
     if (__DEV__) console.warn('[Predictor] Cohort prior load failed:', e);
   }
 
-  // 5. Generic fallback
   const fresh = initialState(babyId, type);
   memCache.set(key, fresh);
   return fresh;
@@ -275,7 +297,7 @@ export async function getAllPredictorStates(
   return out;
 }
 
-// Canonical helper — defined at top of file to avoid TDZ errors
+// Canonical helper — defined before use to avoid TDZ errors.
 async function getCurrentUserId(): Promise<string | null> {
   return getCanonicalUserId();
 }
@@ -287,7 +309,6 @@ async function persistState(state: PredictorState): Promise<void> {
   const payload = JSON.stringify(state);
   AsyncStorage.setItem(key, payload).catch(() => {});
 
-  // Fire-and-forget Supabase sync WITH user_id (RLS-safe)
   getCurrentUserId()
     .then((userId) => {
       if (!userId) return;
@@ -317,9 +338,6 @@ function predictNext(state: PredictorState): Prediction {
   const now = Date.now();
   const m = DEFAULT_PARAMS.seasonLength;
 
-  // Use the *predicted* future time's slot rather than the current slot,
-  // so we pick the seasonal component that actually applies to the
-  // predicted event's time of day.
   const baseTime = state.lastObservedAt > 0 ? state.lastObservedAt : now;
   const projectedAt = baseTime + Math.max(state.level, 30) * 60000;
   const slot = seasonSlot(projectedAt, m);
@@ -363,12 +381,18 @@ function predictNext(state: PredictorState): Prediction {
 function labelFor(type: PredictorType, minutesUntil: number): string {
   const inText = formatMinutes(minutesUntil);
   switch (type) {
-    case 'sleep': return `Next sleep likely in ${inText}`;
-    case 'feed': return `Next feed likely in ${inText}`;
-    case 'diaper': return `Next diaper change likely in ${inText}`;
-    case 'wake': return `Baby may wake in ${inText}`;
-    case 'medication': return `Next dose due in ${inText}`;
-    default: return `Next ${type} in ${inText}`;
+    case 'sleep':
+      return `Next sleep likely in ${inText}`;
+    case 'feed':
+      return `Next feed likely in ${inText}`;
+    case 'diaper':
+      return `Next diaper change likely in ${inText}`;
+    case 'wake':
+      return `Baby may wake in ${inText}`;
+    case 'medication':
+      return `Next dose due in ${inText}`;
+    default:
+      return `Next ${type} in ${inText}`;
   }
 }
 
@@ -426,7 +450,7 @@ export async function getPredictions(
   babyId: string,
   types: PredictorType[]
 ): Promise<Prediction[]> {
-  return Promise.all(types.map(t => getPrediction(babyId, t)));
+  return Promise.all(types.map((t) => getPrediction(babyId, t)));
 }
 
 export async function resetPredictor(
@@ -461,7 +485,7 @@ export async function backfillPredictor(
   type: PredictorType,
   daysBack: number = 30
 ): Promise<{ samples: number }> {
-  const cutoff = Date.now() - daysBack * 86400000;
+  const cutoffMs = Date.now() - daysBack * 86400000;
 
   const trackerMap: Record<PredictorType, string[]> = {
     sleep: ['sleep'],
@@ -473,13 +497,14 @@ export async function backfillPredictor(
 
   const trackerIds = trackerMap[type];
 
+  // FIX: PostgREST expects a timestamptz string, not raw ms.
   const { data, error } = await supabase
     .from('tracker_entries')
     .select('id, tracker_id, timestamp')
     .eq('baby_id', babyId)
     .in('tracker_id', trackerIds)
     .eq('is_deleted', false)
-    .gte('timestamp', cutoff)
+    .gte('timestamp', toISO(cutoffMs))
     .order('timestamp', { ascending: true });
 
   if (error || !data) {
@@ -494,11 +519,13 @@ export async function backfillPredictor(
     const prevRow = data[i - 1];
     const currRow = data[i];
     if (!prevRow || !currRow) continue;
-    const prev = prevRow.timestamp;
-    const curr = currRow.timestamp;
-    const intervalMin = (curr - prev) / 60000;
+    // FIX: normalize both timestamps to ms before subtracting.
+    const prevMs = toMs(prevRow.timestamp);
+    const currMs = toMs(currRow.timestamp);
+    if (prevMs === 0 || currMs === 0) continue;
+    const intervalMin = (currMs - prevMs) / 60000;
     if (intervalMin > 1 && intervalMin < 24 * 60) {
-      intervals.push({ interval: intervalMin, at: curr });
+      intervals.push({ interval: intervalMin, at: currMs });
     }
   }
 

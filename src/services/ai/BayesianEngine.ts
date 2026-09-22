@@ -9,13 +9,11 @@
 //   ✓ Consent gate — respects "Personal AI Learning" toggle
 //   ✓ Versioned storage keys — safe model upgrades
 //   ✓ Uses canonical Supabase client (utils/supabase)
-//
-// Public API (backward compatible with the old class-based version):
-//   - learnNormalRange(babyId, metric): Promise<NormalRange>
-//   - detectAnomaly(babyId, metric, value): Promise<Anomaly>
-//   - observeValue(babyId, metric, value): Promise<LearnedRange>   [NEW]
-//   - resetLearningForBaby(babyId): Promise<void>                  [NEW]
-//   - getAllLearnedRanges(babyId, metrics): Promise<LearnedRange[]> [NEW]
+//   ✓ VERIFIED: `extractMetricValue` duration parsing was ambiguous between
+//     seconds-vs-minutes when the tracker stored a raw number. Now the
+//     schema is documented inline: `duration` = SECONDS (matching the
+//     tracker_entries.data schema), `minutes` / `duration_minutes` =
+//     explicit minutes if the caller provides them.
 // ─────────────────────────────────────────────────────────────────────
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -190,7 +188,11 @@ const updatePosterior = (
   };
 };
 
-const posteriorToRange = (post: Posterior, spec: PriorSpec, metric: MetricKey): LearnedRange => {
+const posteriorToRange = (
+  post: Posterior,
+  spec: PriorSpec,
+  metric: MetricKey
+): LearnedRange => {
   const sigma = Math.max(
     Math.sqrt(post.beta / (post.alpha - 1)),
     spec.sigmaFloor
@@ -214,7 +216,7 @@ const posteriorToRange = (post: Posterior, spec: PriorSpec, metric: MetricKey): 
 async function isLearningAllowed(): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(CONSENT_KEY);
-    if (!raw) return true; // default on
+    if (!raw) return true;
     const consent = JSON.parse(raw);
     return consent?.learningEnabled !== false;
   } catch {
@@ -252,12 +254,10 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
         .eq('user_id', userId)
         .maybeSingle();
 
-      // TTL: reject rows older than 90 days (client-side safety net)
       if (data?.updated_at) {
         const age = Date.now() - new Date(data.updated_at).getTime();
         if (age > 90 * 24 * 60 * 60 * 1000) {
           if (__DEV__) console.log('[Bayes] Ignoring stale Supabase row:', metric);
-          // fall through to prior
         } else if (data.value) {
           const post = JSON.parse(data.value) as Posterior;
           memoryCache.set(key, post);
@@ -277,10 +277,8 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
   try {
     const { getCohortPrior, ageToCohort } = await import('./CohortPriors');
 
-    // Look up baby's birth date — cache it if missing
     let babyMetaRaw = await AsyncStorage.getItem(`@littleloom_baby_meta_v1:${babyId}`);
     if (!babyMetaRaw) {
-      // Cold start — fetch from Supabase once
       try {
         const { data: babyRow } = await supabase
           .from('babies')
@@ -307,11 +305,10 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
           lambda: cohortPrior.lambda,
           alpha: cohortPrior.alpha,
           beta: cohortPrior.beta,
-          n: 0, // local observations only
+          n: 0,
           updatedAt: Date.now(),
         };
 
-        // Sanity-check cohort prior against generic prior bounds
         if (
           cohortPost.mu >= spec.min &&
           cohortPost.mu <= spec.max &&
@@ -321,8 +318,8 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
           if (__DEV__) {
             console.log(
               `[Bayes] Loaded cohort prior for ${metric} @ ${cohort}: ` +
-              `μ=${cohortPrior.mu.toFixed(2)} σ=${cohortPrior.sigma.toFixed(2)} ` +
-              `n=${cohortPrior.sampleCount}`
+                `μ=${cohortPrior.mu.toFixed(2)} σ=${cohortPrior.sigma.toFixed(2)} ` +
+                `n=${cohortPrior.sampleCount}`
             );
           }
           memoryCache.set(key, cohortPost);
@@ -385,8 +382,6 @@ async function persistPosterior(
 /**
  * Feed a new observation into the learning model.
  * O(1) — updates persisted posterior state.
- *
- * Respects the consent gate: if "Personal AI Learning" is off, does nothing.
  */
 export async function observeValue(
   babyId: string,
@@ -397,14 +392,12 @@ export async function observeValue(
   const metric = resolveMetric(metricInput);
   const spec = PRIORS[metric];
 
-  // Consent check
   const allowed = await isLearningAllowed();
   if (!allowed) {
     const post = await loadPosterior(babyId, metric);
     return posteriorToRange(post, spec, metric);
   }
 
-  // Sanity gate
   if (!Number.isFinite(value)) {
     throw new Error(`[Bayes] Non-finite value for ${metric}: ${value}`);
   }
@@ -426,10 +419,6 @@ export async function observeValue(
   return posteriorToRange(updated, spec, metric);
 }
 
-/**
- * Get the current learned range without observing anything.
- * Backward compatible — accepts legacy metric names.
- */
 export async function learnNormalRange(
   babyId: string,
   metricInput: AnyMetric
@@ -446,9 +435,6 @@ export async function learnNormalRange(
   };
 }
 
-/**
- * Get the full learned range (with metric + bounds).
- */
 export async function getLearnedRange(
   babyId: string,
   metricInput: AnyMetric
@@ -459,10 +445,6 @@ export async function getLearnedRange(
   return posteriorToRange(post, spec, metric);
 }
 
-/**
- * Detect whether a value is anomalous for THIS baby.
- * Uses the learned posterior. Backward compatible.
- */
 export async function detectAnomaly(
   babyId: string,
   metricInput: AnyMetric,
@@ -475,19 +457,20 @@ export async function detectAnomaly(
 
   const learned = await getLearnedRange(babyId, metric);
 
-  // Not enough observations → never flag as anomaly
   if (learned.samples < 5) {
     return {
       isAnomaly: false,
       zScore: 0,
       severity: 'low',
-      normalRange: [learned.mean - 2 * spec.sigmaPrior, learned.mean + 2 * spec.sigmaPrior],
+      normalRange: [
+        learned.mean - 2 * spec.sigmaPrior,
+        learned.mean + 2 * spec.sigmaPrior,
+      ],
       confidence: learned.confidence,
       explanation: `Not enough data yet (${learned.samples} samples) to flag this reading.`,
     };
   }
 
-  // Blend prior sigma and learned sigma based on confidence
   const c = learned.confidence;
   const sigmaBlend = (1 - c) * spec.sigmaPrior + c * learned.stddev;
   const sigmaSafe = Math.max(sigmaBlend, spec.sigmaFloor);
@@ -498,7 +481,6 @@ export async function detectAnomaly(
   let severity: Anomaly['severity'] = 'low';
   if (absZ >= 3.5) severity = 'high';
   else if (absZ >= thresholdZ) severity = 'medium';
-  else severity = 'low';
 
   const isAnomaly = absZ >= thresholdZ;
 
@@ -519,9 +501,6 @@ export async function detectAnomaly(
   };
 }
 
-/**
- * Get all learned ranges for a set of metrics.
- */
 export async function getAllLearnedRanges(
   babyId: string,
   metrics: AnyMetric[]
@@ -529,9 +508,6 @@ export async function getAllLearnedRanges(
   return Promise.all(metrics.map((m) => getLearnedRange(babyId, m)));
 }
 
-/**
- * Reset all learning for a baby.
- */
 export async function resetLearningForBaby(babyId: string): Promise<void> {
   const metrics = Object.keys(PRIORS) as MetricKey[];
   const keys = metrics.map((m) => storageKey(babyId, m));
@@ -556,28 +532,23 @@ export async function resetLearningForBaby(babyId: string): Promise<void> {
   console.log(`[Bayes] Learning reset for baby ${babyId}`);
 }
 
-/**
- * Extract a numeric value from tracker entry data, per metric.
- * Handles unit conversions (F→C, oz→ml).
- */
-/**
- * Parse a numeric value from an unknown input. Handles:
- *  - numbers
- *  - strings like "120", "120ml", "2.5h", "1h 30m", "4 oz"
- */
-function coerceNumber(raw: unknown, preferUnit?: 'ml' | 'oz' | 'kg' | 'lb' | 'cm' | 'in' | 'sec' | 'min' | 'hr'): number | null {
+// ─── Numeric coercion ──────────────────────────────────────────────
+
+function coerceNumber(
+  raw: unknown,
+  preferUnit?: 'ml' | 'oz' | 'kg' | 'lb' | 'cm' | 'in' | 'sec' | 'min' | 'hr'
+): number | null {
   if (raw === undefined || raw === null) return null;
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
 
   const str = String(raw).trim().toLowerCase();
   if (!str) return null;
 
-  // Plain numeric string
   const plain = Number(str);
   if (Number.isFinite(plain)) return plain;
 
-  // "1h 30m" | "90 min" | "2.5hr" | "120ml" | "4 oz" | "70cm"
-  const re = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds|ml|milliliter|milliliters|oz|ounce|ounces|kg|kilogram|kilograms|lb|lbs|pound|pounds|cm|centimeter|centimeters|in|inch|inches)?/gi;
+  const re =
+    /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds|ml|milliliter|milliliters|oz|ounce|ounces|kg|kilogram|kilograms|lb|lbs|pound|pounds|cm|centimeter|centimeters|in|inch|inches)?/gi;
   let total = 0;
   let matched = false;
   let m: RegExpExecArray | null;
@@ -587,10 +558,10 @@ function coerceNumber(raw: unknown, preferUnit?: 'ml' | 'oz' | 'kg' | 'lb' | 'cm
     matched = true;
     const u = (m[2] || '').toLowerCase();
     if (!u) total += n;
-    else if (u.startsWith('h')) total += n * 60;             // hours → minutes
+    else if (u.startsWith('h')) total += n * 60;
     else if (u.startsWith('m') && !u.startsWith('ml')) total += n;
-    else if (u.startsWith('s')) total += n / 60;              // seconds → minutes
-    else if (u.startsWith('ml')) total += n;                  // ml already
+    else if (u.startsWith('s')) total += n / 60;
+    else if (u.startsWith('ml')) total += n;
     else if (u.startsWith('oz') && preferUnit === 'oz') total += n;
     else if (u === 'kg' || u === 'lb' || u === 'cm' || u === 'in') total += n;
     else total += n;
@@ -598,6 +569,16 @@ function coerceNumber(raw: unknown, preferUnit?: 'ml' | 'oz' | 'kg' | 'lb' | 'cm
   return matched && Number.isFinite(total) ? total : null;
 }
 
+/**
+ * Extract a numeric value from tracker entry data, per metric.
+ * Handles unit conversions (F→C, oz→ml).
+ *
+ * Schema notes:
+ *   - `data.duration` is stored in SECONDS by the tracker_entries schema.
+ *   - `data.minutes` / `data.duration_minutes` are explicit minute values
+ *     when the caller provides them.
+ *   - Strings like "1h 30m" / "90 min" are parsed by `coerceNumber`.
+ */
 export function extractMetricValue(
   metric: MetricKey,
   data: Record<string, unknown> | undefined
@@ -614,7 +595,8 @@ export function extractMetricValue(
       return unit === 'fahrenheit' ? ((v - 32) * 5) / 9 : v;
     }
     case 'feeding_ml': {
-      const amount = getNum('amount_ml') ?? getNum('amount') ?? getNum('quantity') ?? getNum('value');
+      const amount =
+        getNum('amount_ml') ?? getNum('amount') ?? getNum('quantity') ?? getNum('value');
       if (amount === null || amount <= 0) return null;
       const unit = String(data.unit || 'ml').toLowerCase();
       return unit === 'oz' ? amount * 29.5735 : amount;
@@ -632,7 +614,11 @@ export function extractMetricValue(
       return unit === 'in' ? v * 2.54 : v;
     }
     case 'head_cm': {
-      const v = getNum('head_cm') ?? getNum('head') ?? getNum('head_circumference') ?? getNum('value');
+      const v =
+        getNum('head_cm') ??
+        getNum('head') ??
+        getNum('head_circumference') ??
+        getNum('value');
       if (v === null) return null;
       const unit = String(data.unit || 'cm').toLowerCase();
       return unit === 'in' ? v * 2.54 : v;
@@ -668,7 +654,6 @@ export function extractMetricValue(
 }
 
 // ─── Reset memory cache for a baby ──────────────────────────────────
-// Called when age cohort changes — forces fresh prior load on next read.
 
 export async function resetLocalCacheForBaby(babyId: string): Promise<void> {
   const prefix = `${STORAGE_PREFIX}${babyId}:`;
@@ -683,10 +668,6 @@ export async function resetLocalCacheForBaby(babyId: string): Promise<void> {
 }
 
 // ─── Legacy class-shaped export ─────────────────────────────────────
-// Kept for backward compatibility. Existing code that did:
-//   import { bayesianEngine } from '@/services/ai/BayesianEngine';
-//   await bayesianEngine.learnNormalRange(...)
-// continues to work.
 
 export class BayesianEngine {
   learnNormalRange(babyId: string, metric: string): Promise<NormalRange> {

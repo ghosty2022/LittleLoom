@@ -68,7 +68,20 @@ import type { ProgressiveCorrelation, ProgressiveReminder } from '../../hooks/us
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+// New Architecture (Fabric) makes this a no-op and spams warnings on
+// every reload. Fabric is detected via global.nativeFabricUIManager OR
+// the presence of the concurrent rendering APIs on RN 0.74+.
+const IS_FABRIC =
+  (global as any).nativeFabricUIManager != null ||
+  typeof (global as any).RN$Bridgeless !== 'undefined' ||
+  // RN 0.76+ always has these on the new arch
+  typeof (global as any).__turboModuleProxy !== 'undefined';
+
+if (
+  Platform.OS === 'android' &&
+  !IS_FABRIC &&
+  typeof UIManager.setLayoutAnimationEnabledExperimental === 'function'
+) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
