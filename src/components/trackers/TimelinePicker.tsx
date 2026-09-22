@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useCustomization } from '../../hooks/useCustomization';
-import { useTracker } from '../../hooks';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { UnifiedTrackerConfig, TrackerCategory } from '../../types/trackers';
