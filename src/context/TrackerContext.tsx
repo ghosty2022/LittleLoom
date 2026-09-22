@@ -34,7 +34,7 @@ import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 import { useBaby } from './BabyContext';
-import { observeValue } from '../services/ai/BayesianEngine';
+import { observeValue } from '@/services/ai/BayesianEngine';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { EntryService, mapRowToEntry } from '@/services/EntryService';
 
@@ -336,7 +336,7 @@ async function learnFromEntry(
 
   // Use the same robust extractor as the backfill path so strings like
   // "120ml" and "2.5h" are handled identically.
-  const { extractMetricValue } = await import('./BayesianEngine').catch(() => ({ extractMetricValue: null as any }));
+  const { extractMetricValue } = await import('@/services/ai/BayesianEngine').catch(() => ({ extractMetricValue: null as any }));
 
   const tasks: Promise<unknown>[] = [];
   for (const metric of Object.values(fieldMap)) {
@@ -387,7 +387,7 @@ async function predictFromEntry(
   if (!predictorType) return;
 
   try {
-    const { observeEvent } = await import('../services/ai/PredictorEngine');
+    const { observeEvent } = await import('@/services/ai/PredictorEngine');
     await observeEvent(babyId, predictorType, timestamp);
   } catch (err: any) {
     if (__DEV__) console.warn(`[Predictor] observeEvent failed:`, err?.message);

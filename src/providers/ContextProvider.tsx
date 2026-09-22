@@ -15,7 +15,14 @@ import { AppProvider, useTheme } from '@/context/AppContext';
 import { TrackerProvider, TrackerContext } from '@/context/TrackerContext';
 import { SweetAlertProvider } from '@/components/SweetAlert';
 import useCustomization from '@/hooks/useCustomization';
-import { notificationService } from '@/services/NotificationService';
+// Lazy-load NotificationService so a bad export doesn't crash the whole app
+let notificationService: any = null;
+try {
+  const notifModule = require('@/services/NotificationService');
+  notificationService = notifModule?.notificationService ?? notifModule?.default ?? null;
+} catch (e) {
+  console.warn('[ContextProvider] NotificationService unavailable:', e);
+}
 
 interface ContextProviderProps {
   children: React.ReactNode;
@@ -118,6 +125,7 @@ const ActivitySyncBridge: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     const init = async () => {
+      if (!notificationService?.initialize) return;
       try {
         await notificationService.initialize();
       } catch (e) {
