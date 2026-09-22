@@ -494,7 +494,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     triggerHaptic('medium');
 
     try {
-      // ─── First, create the account via signUp ──────────────────────
+            // ─── First, create the account via signUp ──────────────────────
       const signUpResult = await signUp(
         joinFullName.trim(), 
         joinEmail.trim(), 
@@ -502,10 +502,13 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       );
 
       if (signUpResult.success && isMounted.current) {
+        // Fetch the newly created user to get their ID reliably
+        const { data: { user } } = await supabase.auth.getUser();
+        
         // ─── Now mark the partial signup as complete ──────────────────
         const recoveryResult = await recoverPartialSignup(
           trimmedCode,
-          userProfile?.id || '',
+          user?.id || '', // Use the freshly fetched user ID
           joinEmail.trim(),
           joinPhone.trim() || undefined,
           joinFullName.trim()
