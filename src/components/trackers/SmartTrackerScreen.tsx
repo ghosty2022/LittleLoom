@@ -18,8 +18,9 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
+import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
 import { useTracker } from '../../hooks/useTrackerContext';
-import { formatTimeShort, formatDateShort } from '@/utils/time';
+import { foFVrmatTimeShort, formatDateShort } from '@/utils/time';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { DynamicTrackerForm } from './DynamicTrackerForm';
@@ -72,6 +73,9 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     dismissInsight,
     refresh,
   } = progressive || {};
+
+  // Pull real streak data from achievements hook (single source of truth)
+  const { streak: globalStreak } = useTrackerAchievements();
 
   const [mode, setMode] = useState<'dashboard' | 'form' | 'history' | 'insights'>('dashboard');
   // NOTE: linkedEntryId is reserved for future correlation-driven linking.
@@ -174,7 +178,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
             </Animated.View>
           )}
 
-          {/* Streak - Now from progressive hook */}
+          {/* Streak - Real data from tracker entries */}
           {streak && streak.currentStreak > 0 && (
             <Animated.View entering={FadeIn} style={[styles.streakCard, { 
               backgroundColor: isAtRisk ? '#FF6B6B15' : `${tracker.color}15`,
