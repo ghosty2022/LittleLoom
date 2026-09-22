@@ -1,16 +1,28 @@
 // src/context/FamilyChatContext.tsx
 // Full Supabase real-time implementation with instant messaging
+// FIXED: ref-backed listeners, stable callbacks, no resubscribe storms
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+} from 'react';
 import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Share, Platform } from 'react-native';
+import { Share } from 'react-native';
 import { supabase } from '@/utils/supabase';
-import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import {
+  RealtimeChannel,
+  RealtimePostgresChangesPayload,
+} from '@supabase/supabase-js';
 
 import { useAuth } from './AuthContext';
 import { useBaby } from './BabyContext';
@@ -18,6 +30,10 @@ import { useFamily } from './FamilyContext';
 import type { FamilyMember } from './FamilyContext';
 import { useSweetAlert } from '../components/SweetAlert';
 import { notificationService } from '../services/NotificationService';
+
+/* ═══════════════════════════════════════════════════════════════════
+   TYPES
+   ═══════════════════════════════════════════════════════════════════ */
 
 export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
@@ -101,34 +117,41 @@ interface FamilyChatContextType extends FamilyChatState {
   createFamilyGroup: (name?: string, avatar?: string) => Promise<string>;
   getOrCreateDirectChat: (memberId: string, memberInfo?: Partial<FamilyMember>) => Promise<string>;
   getChatMessages: (chatId: string) => FamilyMessage[];
-  sendMessage: (chatId: string, content: string, type?: MessageType, mediaData?: string, fileMeta?: FileMetadata, replyToId?: string) => Promise<void>;
+  sendMessage: (
+    chatId: string,
+    content: string,
+    type?: MessageType,
+    mediaData?: string,
+    fileMeta?: FileMetadata,
+    replyToId?: string,
+  ) => Promise<void>;
   editMessage: (chatId: string, messageId: string, newContent: string) => Promise<void>;
   markChatRead: (chatId: string) => Promise<void>;
   deleteMessage: (chatId: string, messageId: string) => Promise<void>;
   clearChat: (chatId: string) => Promise<void>;
   resendMessage: (chatId: string, messageId: string) => Promise<void>;
-  
+
   pickAndSendImage: (chatId: string, fromCamera?: boolean) => Promise<void>;
   pickAndSendFile: (chatId: string) => Promise<void>;
-  
+
   setTypingStatus: (chatId: string, isTyping: boolean) => void;
   isUserTyping: (chatId: string, userId: string) => boolean;
   getTypingUsers: (chatId: string) => TypingStatus[];
-  
+
   addReaction: (chatId: string, messageId: string, emoji: string) => Promise<void>;
   removeReaction: (chatId: string, messageId: string, emoji: string) => Promise<void>;
-  
+
   muteChat: (chatId: string, muted: boolean) => Promise<void>;
   pinChat: (chatId: string, pinned: boolean) => Promise<void>;
   leaveChat: (chatId: string) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
   setChatBackground: (chatId: string, imageUri: string | null) => Promise<void>;
-  
+
   generateFamilyCode: () => string;
   getFamilyCode: () => string | null;
   shareFamilyCode: () => Promise<void>;
   joinFamilyByCode: (code: string) => Promise<boolean>;
-  
+
   getUnreadCount: (chatId?: string) => number;
   getChatById: (chatId: string) => FamilyChat | undefined;
   getMemberChatInfo: (memberId: string) => { name: string; avatar: string; role: string } | null;
@@ -141,35 +164,33 @@ interface FamilyChatContextType extends FamilyChatState {
   setCurrentChatId: (chatId: string | null) => void;
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════
    CONSTANTS
-   ═══════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════════════════ */
 
 const STORAGE_KEYS = {
   FAMILY_CODE: '@littleloom_current_family_code',
   TYPING_STATUS: '@littleloom_typing_status',
   DEVICE_ID: '@littleloom_device_id',
-};
+} as const;
 
 const FamilyChatContext = createContext<FamilyChatContextType | null>(null);
 
-const generateFamilyCode = (): string => {
+const generateFamilyCodeString = (): string => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = 'FAM-';
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
   return code;
 };
 
 const createSystemMessage = (
-  chatId: string, 
-  content: string, 
+  chatId: string,
+  content: string,
   familyCode: string,
   deviceId: string,
-  senderName: string = 'LittleLoom'
+  senderName = 'LittleLoom',
 ): FamilyMessage => ({
-  id: `sys_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+  id: `sys_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
   syncId: `sys_${Crypto.randomUUID()}`,
   deviceId,
   version: 1,
@@ -196,16 +217,34 @@ const getOrCreateDeviceId = async (): Promise<string> => {
   return id;
 };
 
-/* ═══════════════════════════════════════════════════════════
+const parseReactions = (raw: unknown): { emoji: string; userId: string; userName: string }[] => {
+  if (!raw) return [];
+  try {
+    if (typeof raw === 'string') return JSON.parse(raw);
+    if (Array.isArray(raw)) return raw;
+  } catch {}
+  return [];
+};
+
+const parseFileMeta = (raw: unknown): FileMetadata | undefined => {
+  if (!raw) return undefined;
+  try {
+    if (typeof raw === 'string') return JSON.parse(raw);
+    if (typeof raw === 'object') return raw as FileMetadata;
+  } catch {}
+  return undefined;
+};
+
+/* ═══════════════════════════════════════════════════════════════════
    PROVIDER
-   ═══════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════════════════ */
 
 export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { members, parent1, parent2, guardians, getCurrentBaby } = useFamily();
+  const { members, getCurrentBaby } = useFamily();
   const { userProfile } = useAuth();
   const { currentBaby: babyContext } = useBaby();
   const sweetAlert = useSweetAlert();
-  
+
   const [state, setState] = useState<FamilyChatState>({
     chats: [],
     messages: {},
@@ -219,488 +258,423 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     isSynced: false,
   });
 
+  /* ─── Refs (stable identity across renders) ──────────────────── */
   const deviceIdRef = useRef<string>('');
-  const typingTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const typingTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const isInitializedRef = useRef(false);
   const isSubscribedRef = useRef(false);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const currentChatIdRef = useRef<string | null>(null);
-  const notificationEnabledRef = useRef(true);
+  const isMountedRef = useRef(true);
 
-  /* ─── Initialize Device ID ──────────────────────────────────── */
+  // ⭐ Chat / message refs prevent stale closure bugs in realtime callbacks
+  const chatsRef = useRef<FamilyChat[]>([]);
+  const messagesRef = useRef<Record<string, FamilyMessage[]>>({});
+  const familyCodeRef = useRef<string | null>(null);
+  const userProfileRef = useRef(userProfile);
+
+  /* ─── Keep refs synchronised with state ─────────────────────── */
+  useEffect(() => { chatsRef.current = state.chats; }, [state.chats]);
+  useEffect(() => { messagesRef.current = state.messages; }, [state.messages]);
+  useEffect(() => { familyCodeRef.current = state.familyCode; }, [state.familyCode]);
+  useEffect(() => { userProfileRef.current = userProfile; }, [userProfile]);
+  useEffect(() => { currentChatIdRef.current = state.currentChatId; }, [state.currentChatId]);
+
+  /* ─── Mount / unmount ────────────────────────────────────────── */
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (realtimeChannelRef.current) {
+        try { realtimeChannelRef.current.unsubscribe(); } catch {}
+        realtimeChannelRef.current = null;
+      }
+      Object.values(typingTimeoutRef.current).forEach(t => clearTimeout(t));
+      typingTimeoutRef.current = {};
+    };
+  }, []);
+
+  /* ─── Load Family Code ──────────────────────────────────────── */
+  const loadFamilyCode = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value, user_id')
+        .eq('key', 'family_code')
+        .eq('user_id', userProfileRef.current?.id ?? '')
+        .maybeSingle();
+
+      if (data?.value) {
+        const code = data.value;
+        const blockedKey = `@littleloom_blocked_${code}`;
+        const savedBlocked = await AsyncStorage.getItem(blockedKey);
+        const blockedUsers = savedBlocked ? JSON.parse(savedBlocked) : [];
+        if (isMountedRef.current) {
+          familyCodeRef.current = code;
+          setState(prev => ({ ...prev, familyCode: code, blockedUsers }));
+        }
+        return;
+      }
+
+      if (babyContext) {
+        const newCode = `FAM-${babyContext.id.slice(0, 6).toUpperCase()}`;
+        await supabase
+          .from('app_settings')
+          .upsert(
+            {
+              key: 'family_code',
+              value: newCode,
+              user_id: userProfileRef.current?.id ?? null,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'key,user_id' },
+          );
+        if (isMountedRef.current) {
+          familyCodeRef.current = newCode;
+          setState(prev => ({ ...prev, familyCode: newCode }));
+        }
+      }
+    } catch (error) {
+      console.warn('[FamilyChat] Load family code error:', error);
+    }
+  }, [babyContext]);
+
+  /* ─── Initial Device ID + Notification Service ──────────────── */
   useEffect(() => {
     (async () => {
       deviceIdRef.current = await getOrCreateDeviceId();
       await loadFamilyCode();
-      
-      // Initialize notification service
       try {
         await notificationService.initialize();
       } catch (error) {
         console.warn('[FamilyChat] Notification init error:', error);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ─── Setup Realtime Listeners ──────────────────────────────── */
+  /**
+   * IMPORTANT: this callback must NOT depend on `state.chats` or `state.messages`.
+   * Everything dynamic is read from refs inside the callbacks.
+   */
   const setupRealtimeListeners = useCallback(() => {
-    if (!state.familyCode) return;
-    
-    // Unsubscribe from existing channel
+    const familyCode = familyCodeRef.current;
+    if (!familyCode) return;
+
+    // Tear down existing channel
     if (realtimeChannelRef.current) {
-      realtimeChannelRef.current.unsubscribe();
+      try { realtimeChannelRef.current.unsubscribe(); } catch {}
       realtimeChannelRef.current = null;
       isSubscribedRef.current = false;
     }
-
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
-    console.log('[FamilyChat] Setting up realtime channel for family:', state.familyCode);
-
-    // Create a channel for this family with proper config
-    const channel = supabase.channel(`family-chat-${state.familyCode}`, {
+    const channel = supabase.channel(`family-chat-${familyCode}`, {
       config: {
         broadcast: { ack: true, self: true },
         presence: { key: deviceIdRef.current },
       },
     });
 
-    // Listen for new messages - INSERT
+    /* ─── INSERT ─────────────────────────────────────────────── */
     channel.on(
       'postgres_changes',
       {
         event: 'INSERT',
         schema: 'public',
         table: 'family_messages',
-        filter: `family_code=eq.${state.familyCode}`,
+        filter: `family_code=eq.${familyCode}`,
       },
       (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-        console.log('[FamilyChat] Received INSERT payload:', payload);
-        const newMessage = payload.new as Record<string, unknown>;
-        if (!newMessage) return;
+        const raw = payload.new as Record<string, unknown>;
+        if (!raw) return;
 
-        // Don't ignore messages from this device - we want to show them too
-        // But we need to check if it's already in the state
-        const isFromThisDevice = newMessage.device_id === deviceIdRef.current;
+        const isFromThisDevice = raw.device_id === deviceIdRef.current;
 
         try {
-          // Parse reactions safely
-          let reactions = [];
-          try {
-            reactions = newMessage.reactions ? JSON.parse(newMessage.reactions as string) : [];
-          } catch (e) {
-            console.warn('[FamilyChat] Failed to parse reactions:', e);
-            reactions = [];
-          }
-
-          // Parse file metadata safely
-          let fileMetadata = undefined;
-          try {
-            if (newMessage.file_metadata) {
-              fileMetadata = typeof newMessage.file_metadata === 'string' 
-                ? JSON.parse(newMessage.file_metadata as string) 
-                : newMessage.file_metadata;
-            }
-          } catch (e) {
-            console.warn('[FamilyChat] Failed to parse file metadata:', e);
-          }
+          const reactions = parseReactions(raw.reactions);
+          const fileMetadata = parseFileMeta(raw.file_metadata);
 
           const message: FamilyMessage = {
-            id: newMessage.id as string,
-            syncId: newMessage.sync_id as string,
-            deviceId: newMessage.device_id as string,
-            version: newMessage.version as number || 1,
-            chatId: newMessage.chat_id as string,
-            senderId: newMessage.sender_id as string,
-            senderName: newMessage.sender_name as string,
-            senderRole: newMessage.sender_role as string,
-            senderAvatar: newMessage.sender_avatar as string || undefined,
-            receiverId: newMessage.receiver_id as string || undefined,
-            content: newMessage.content as string,
-            type: newMessage.type as MessageType || 'text',
-            imageUrl: newMessage.image_url as string || undefined,
-            fileUrl: newMessage.file_url as string || undefined,
-            voiceUrl: newMessage.voice_url as string || undefined,
-            fileMetadata: fileMetadata,
-            timestamp: newMessage.timestamp as string,
-            read: newMessage.read as boolean || false,
-            readBy: newMessage.read_by as string[] || [],
-            familyCode: newMessage.family_code as string,
-            reactions: reactions,
-            replyTo: newMessage.reply_to as string || undefined,
-            replyToPreview: newMessage.reply_to_preview as string || undefined,
-            isEdited: newMessage.is_edited as boolean || false,
-            editedAt: newMessage.edited_at as string || undefined,
+            id: raw.id as string,
+            syncId: raw.sync_id as string,
+            deviceId: raw.device_id as string,
+            version: (raw.version as number) || 1,
+            chatId: raw.chat_id as string,
+            senderId: raw.sender_id as string,
+            senderName: raw.sender_name as string,
+            senderRole: raw.sender_role as string,
+            senderAvatar: (raw.sender_avatar as string) || undefined,
+            receiverId: (raw.receiver_id as string) || undefined,
+            content: raw.content as string,
+            type: (raw.type as MessageType) || 'text',
+            imageUrl: (raw.image_url as string) || undefined,
+            fileUrl: (raw.file_url as string) || undefined,
+            voiceUrl: (raw.voice_url as string) || undefined,
+            fileMetadata,
+            timestamp: raw.timestamp as string,
+            read: (raw.read as boolean) || false,
+            readBy: (raw.read_by as string[]) || [],
+            familyCode: raw.family_code as string,
+            reactions,
+            replyTo: (raw.reply_to as string) || undefined,
+            replyToPreview: (raw.reply_to_preview as string) || undefined,
+            isEdited: (raw.is_edited as boolean) || false,
+            editedAt: (raw.edited_at as string) || undefined,
             deliveryStatus: 'sent',
           };
 
-          console.log('[FamilyChat] Processing new message:', message.id, 'from:', message.senderName, 'isFromThisDevice:', isFromThisDevice);
-
-          // Check if chat is muted
-          const chat = state.chats.find(c => c.id === message.chatId);
-          const isChatMuted = chat?.isMuted || false;
+          // ⭐ Read mutable state from refs — never from closure
+          const chat = chatsRef.current.find(c => c.id === message.chatId);
+          const isChatMuted = chat?.isMuted ?? false;
 
           setState(prev => {
-            const chatMessages = prev.messages[message.chatId] || [];
-            // Check if message already exists by ID or syncId
-            const exists = chatMessages.some(m => m.id === message.id || m.syncId === message.syncId);
-            if (exists) {
-              console.log('[FamilyChat] Message already exists, skipping');
+            const existing = prev.messages[message.chatId] ?? [];
+            if (existing.some(m => m.id === message.id || m.syncId === message.syncId)) {
               return prev;
             }
-
             const updatedMessages = {
               ...prev.messages,
-              [message.chatId]: [...chatMessages, message],
+              [message.chatId]: [...existing, message],
             };
-
-            // Update chat's last message
-            const updatedChats = prev.chats.map(chat => {
-              if (chat.id === message.chatId) {
-                return {
-                  ...chat,
-                  lastMessage: message,
-                  updatedAt: message.timestamp,
-                  // Only increment unread count if message is not from this device and not read
-                  unreadCount: isFromThisDevice 
-                    ? chat.unreadCount 
-                    : (chat.unreadCount || 0) + 1,
-                };
-              }
-              return chat;
-            });
-
-            console.log('[FamilyChat] Added message to state, chat:', message.chatId);
-
-            return {
-              ...prev,
-              messages: updatedMessages,
-              chats: updatedChats,
-            };
+            const updatedChats = prev.chats.map(c =>
+              c.id === message.chatId
+                ? {
+                    ...c,
+                    lastMessage: message,
+                    updatedAt: message.timestamp,
+                    unreadCount: isFromThisDevice ? c.unreadCount : (c.unreadCount || 0) + 1,
+                  }
+                : c,
+            );
+            return { ...prev, messages: updatedMessages, chats: updatedChats };
           });
 
-          // ─── SEND NOTIFICATION ──────────────────────────────────────
-          // Only send notification if:
-          // 1. Not from this device
-          // 2. Not in the current chat
-          // 3. Chat is not muted
-          // 4. Not a system message
-          const currentChatId = currentChatIdRef.current;
-          if (!isFromThisDevice && currentChatId !== message.chatId && !isChatMuted && message.type !== 'system') {
-            console.log('[FamilyChat] Sending notification for message from:', message.senderName);
-            
-            // Send notification using the notification service
-            notificationService.sendChatNotification(
-              message.senderName,
-              message.type === 'image' ? '📷 Sent a photo' :
-              message.type === 'file' ? '📎 Sent a file' :
-              message.type === 'voice' ? '🎤 Sent a voice message' :
-              message.content,
-              message.chatId
-            ).catch(error => {
-              console.warn('[FamilyChat] Failed to send notification:', error);
-            });
+          // Notification only when not self, not current chat, not muted
+          const activeChatId = currentChatIdRef.current;
+          if (
+            !isFromThisDevice &&
+            activeChatId !== message.chatId &&
+            !isChatMuted &&
+            message.type !== 'system'
+          ) {
+            notificationService
+              .sendChatNotification(
+                message.senderName,
+                message.type === 'image'
+                  ? '📷 Sent a photo'
+                  : message.type === 'file'
+                  ? '📎 Sent a file'
+                  : message.type === 'voice'
+                  ? '🎤 Sent a voice message'
+                  : message.content,
+                message.chatId,
+              )
+              .catch(err => console.warn('[FamilyChat] Notification failed:', err));
           }
-
         } catch (error) {
-          console.error('[FamilyChat] Error processing received message:', error);
+          console.error('[FamilyChat] Error processing INSERT:', error);
         }
-      }
+      },
     );
 
-    // Listen for message updates
+    /* ─── UPDATE ─────────────────────────────────────────────── */
     channel.on(
       'postgres_changes',
       {
         event: 'UPDATE',
         schema: 'public',
         table: 'family_messages',
-        filter: `family_code=eq.${state.familyCode}`,
+        filter: `family_code=eq.${familyCode}`,
       },
       (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-        console.log('[FamilyChat] Received UPDATE payload:', payload);
-        const updatedData = payload.new as Record<string, unknown>;
-        if (!updatedData) return;
-
-        const messageId = updatedData.id as string;
-        const chatId = updatedData.chat_id as string;
-
-        // Parse reactions safely
-        let reactions = [];
-        try {
-          reactions = updatedData.reactions ? JSON.parse(updatedData.reactions as string) : [];
-        } catch (e) {
-          console.warn('[FamilyChat] Failed to parse reactions in update:', e);
-        }
+        const raw = payload.new as Record<string, unknown>;
+        if (!raw) return;
+        const messageId = raw.id as string;
+        const chatId = raw.chat_id as string;
+        const reactions = parseReactions(raw.reactions);
 
         setState(prev => {
-          const chatMessages = prev.messages[chatId] || [];
-          const updatedMessages = chatMessages.map(msg => {
-            if (msg.id === messageId) {
-              return {
-                ...msg,
-                read: updatedData.read as boolean || false,
-                readBy: updatedData.read_by as string[] || [],
-                reactions: reactions.length > 0 ? reactions : msg.reactions,
-                content: updatedData.content as string || msg.content,
-                isEdited: updatedData.is_edited as boolean || msg.isEdited,
-                editedAt: updatedData.edited_at as string || msg.editedAt,
-              };
-            }
-            return msg;
-          });
-
-          return {
-            ...prev,
-            messages: {
-              ...prev.messages,
-              [chatId]: updatedMessages,
-            },
-          };
+          const chatMessages = prev.messages[chatId];
+          if (!chatMessages) return prev;
+          const updated = chatMessages.map(msg =>
+            msg.id === messageId
+              ? {
+                  ...msg,
+                  read: (raw.read as boolean) || false,
+                  readBy: (raw.read_by as string[]) || [],
+                  reactions: reactions.length > 0 ? reactions : msg.reactions,
+                  content: (raw.content as string) || msg.content,
+                  isEdited: (raw.is_edited as boolean) || msg.isEdited,
+                  editedAt: (raw.edited_at as string) || msg.editedAt,
+                }
+              : msg,
+          );
+          return { ...prev, messages: { ...prev.messages, [chatId]: updated } };
         });
-      }
+      },
     );
 
-    // Listen for typing status
-    channel.on(
-      'broadcast',
-      { event: 'typing' },
-      (payload: { payload: any }) => {
-        const data = payload.payload;
-        if (!data || data.userId === deviceIdRef.current) return;
+    /* ─── Typing Broadcast ───────────────────────────────────── */
+    channel.on('broadcast', { event: 'typing' }, (payload: { payload: any }) => {
+      const data = payload?.payload;
+      if (!data || data.userId === deviceIdRef.current) return;
 
-        setState(prev => {
-          const currentTypers = prev.typingUsers[data.chatId] || [];
-          const existingIndex = currentTypers.findIndex(t => t.userId === data.userId);
-          
-          let updatedTypers;
-          if (data.isTyping) {
-            const newStatus: TypingStatus = {
-              userId: data.userId,
-              userName: data.userName || 'Family Member',
-              chatId: data.chatId,
-              isTyping: true,
-              timestamp: data.timestamp || new Date().toISOString(),
-            };
-            if (existingIndex >= 0) {
-              updatedTypers = [...currentTypers];
-              updatedTypers[existingIndex] = newStatus;
-            } else {
-              updatedTypers = [...currentTypers, newStatus];
-            }
+      setState(prev => {
+        const current = prev.typingUsers[data.chatId] ?? [];
+        const existingIdx = current.findIndex(t => t.userId === data.userId);
+        let updated: TypingStatus[];
+        if (data.isTyping) {
+          const next: TypingStatus = {
+            userId: data.userId,
+            userName: data.userName || 'Family Member',
+            chatId: data.chatId,
+            isTyping: true,
+            timestamp: data.timestamp || new Date().toISOString(),
+          };
+          if (existingIdx >= 0) {
+            updated = [...current];
+            updated[existingIdx] = next;
           } else {
-            updatedTypers = currentTypers.filter(t => t.userId !== data.userId);
+            updated = [...current, next];
           }
-          
-          return {
-            ...prev,
-            typingUsers: { ...prev.typingUsers, [data.chatId]: updatedTypers },
-          };
-        });
-      }
-    );
-
-    // Listen for presence (online status)
-    channel.on('presence', { event: 'sync' }, () => {
-      const presenceState = channel.presenceState();
-      console.log('[FamilyChat] Presence sync:', presenceState);
+        } else {
+          updated = current.filter(t => t.userId !== data.userId);
+        }
+        return { ...prev, typingUsers: { ...prev.typingUsers, [data.chatId]: updated } };
+      });
     });
 
-    // Subscribe to the channel with retry logic
-    channel.subscribe((status, err) => {
-      console.log('[FamilyChat] Channel status:', status, err);
+    /* ─── Presence ───────────────────────────────────────────── */
+    channel.on('presence', { event: 'sync' }, () => {
+      // no-op; hook can be added later
+    });
+
+    /* ─── Subscribe ──────────────────────────────────────────── */
+    channel.subscribe(status => {
       if (status === 'SUBSCRIBED') {
-        console.log('[FamilyChat] Successfully subscribed to real-time channel');
         isSubscribedRef.current = true;
         reconnectAttemptsRef.current = 0;
-        
-        // Track presence
-        channel.track({
-          user_id: userProfile?.id,
-          user_name: userProfile?.fullName,
-          device_id: deviceIdRef.current,
-          online_at: new Date().toISOString(),
-        });
-      } else if (status === 'CHANNEL_ERROR') {
-        console.warn('[FamilyChat] Channel error:', err);
+        channel
+          .track({
+            user_id: userProfileRef.current?.id,
+            user_name: userProfileRef.current?.fullName,
+            device_id: deviceIdRef.current,
+            online_at: new Date().toISOString(),
+          })
+          .catch(err => console.warn('[FamilyChat] Presence track failed:', err));
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         isSubscribedRef.current = false;
-        // Retry with exponential backoff
         reconnectAttemptsRef.current += 1;
-        const delay = Math.min(5000 * Math.pow(1.5, reconnectAttemptsRef.current - 1), 30000);
-        console.log(`[FamilyChat] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
-        
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-        }
+        const delay = Math.min(
+          5000 * Math.pow(1.5, reconnectAttemptsRef.current - 1),
+          30_000,
+        );
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = setTimeout(() => {
-          if (realtimeChannelRef.current) {
+          if (realtimeChannelRef.current && !isSubscribedRef.current) {
             realtimeChannelRef.current.subscribe();
           }
         }, delay);
-      } else if (status === 'TIMED_OUT') {
-        console.warn('[FamilyChat] Channel timed out, will retry...');
-        isSubscribedRef.current = false;
-        setTimeout(() => {
-          if (realtimeChannelRef.current) {
-            realtimeChannelRef.current.subscribe();
-          }
-        }, 5000);
       }
     });
 
     realtimeChannelRef.current = channel;
-  }, [state.familyCode, state.chats, userProfile]);
-
-  /* ─── Load Family Code ────────────────────────────────────────── */
-  const loadFamilyCode = useCallback(async () => {
-    try {
-      const { data: settingsData } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'family_code')
-        .maybeSingle();
-
-      if (settingsData?.value) {
-        const code = settingsData.value;
-        // Load blocked users from AsyncStorage (since it's user-specific)
-        const blockedKey = `@littleloom_blocked_${code}`;
-        const savedBlocked = await AsyncStorage.getItem(blockedKey);
-        const blockedUsers = savedBlocked ? JSON.parse(savedBlocked) : [];
-        setState(prev => ({ ...prev, familyCode: code, blockedUsers }));
-      } else if (babyContext) {
-        const newCode = `FAM-${babyContext.id.slice(0, 6).toUpperCase()}`;
-        await supabase
-          .from('app_settings')
-          .upsert({
-            key: 'family_code',
-            value: newCode,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'key' });
-        setState(prev => ({ ...prev, familyCode: newCode }));
-      }
-    } catch (error) {
-      console.error('Error loading family code:', error);
-    }
-  }, [babyContext]);
+    // ⭐ Deliberately no state deps — reads from refs
+  }, []);
 
   /* ─── Perform Initial Sync ──────────────────────────────────── */
   const performInitialSync = useCallback(async () => {
-    if (!state.familyCode) return;
-    
+    const familyCode = familyCodeRef.current;
+    if (!familyCode) return;
+
     isInitializedRef.current = true;
     setState(prev => ({ ...prev, isLoading: true }));
-    
+
     try {
-      // Fetch chats
       const { data: chatsData, error: chatsError } = await supabase
         .from('family_chats')
         .select('*')
-        .eq('family_code', state.familyCode);
+        .eq('family_code', familyCode);
 
-      if (chatsError) {
-        console.warn('[FamilyChat] Chats fetch error:', chatsError.message);
-      }
+      if (chatsError) console.warn('[FamilyChat] Chats fetch error:', chatsError.message);
 
-      // Fetch messages for each chat
-      const messages: Record<string, FamilyMessage[]> = {};
       const chats: FamilyChat[] = [];
+      const messages: Record<string, FamilyMessage[]> = {};
 
-      if (chatsData) {
-        for (const chatData of chatsData) {
-          // Map to FamilyChat
-          const chat: FamilyChat = {
-            id: chatData.id,
-            type: chatData.type,
-            name: chatData.name,
-            participants: chatData.participants,
-            participantRoles: chatData.participant_roles || {},
-            participantNames: chatData.participant_names || {},
-            participantAvatars: chatData.participant_avatars || {},
-            unreadCount: chatData.unread_count || 0,
-            createdAt: chatData.created_at,
-            updatedAt: chatData.updated_at,
-            avatar: chatData.avatar || undefined,
-            isMuted: chatData.is_muted || false,
-            familyCode: chatData.family_code,
-            isPinned: chatData.is_pinned || false,
-            backgroundImage: chatData.background_image || undefined,
-          };
-          chats.push(chat);
+      for (const chatRow of chatsData ?? []) {
+        const chat: FamilyChat = {
+          id: chatRow.id,
+          type: chatRow.type,
+          name: chatRow.name,
+          participants: chatRow.participants ?? [],
+          participantRoles: chatRow.participant_roles || {},
+          participantNames: chatRow.participant_names || {},
+          participantAvatars: chatRow.participant_avatars || {},
+          unreadCount: chatRow.unread_count || 0,
+          createdAt: chatRow.created_at,
+          updatedAt: chatRow.updated_at,
+          avatar: chatRow.avatar || undefined,
+          isMuted: chatRow.is_muted || false,
+          familyCode: chatRow.family_code,
+          isPinned: chatRow.is_pinned || false,
+          backgroundImage: chatRow.background_image || undefined,
+        };
+        chats.push(chat);
 
-          // Fetch messages for this chat
-          const { data: msgData, error: msgError } = await supabase
-            .from('family_messages')
-            .select('*')
-            .eq('chat_id', chat.id)
-            .eq('family_code', state.familyCode)
-            .order('timestamp', { ascending: true })
-            .limit(100);
+        const { data: msgData, error: msgError } = await supabase
+          .from('family_messages')
+          .select('*')
+          .eq('chat_id', chat.id)
+          .eq('family_code', familyCode)
+          .order('timestamp', { ascending: true })
+          .limit(100);
 
-          if (!msgError && msgData) {
-            messages[chat.id] = msgData.map((row: any) => {
-              // Parse reactions safely
-              let reactions = [];
-              try {
-                reactions = row.reactions ? JSON.parse(row.reactions) : [];
-              } catch (e) {
-                console.warn('[FamilyChat] Failed to parse reactions:', e);
-              }
-              
-              // Parse file metadata safely
-              let fileMetadata = undefined;
-              try {
-                if (row.file_metadata) {
-                  fileMetadata = typeof row.file_metadata === 'string' 
-                    ? JSON.parse(row.file_metadata) 
-                    : row.file_metadata;
-                }
-              } catch (e) {
-                console.warn('[FamilyChat] Failed to parse file metadata:', e);
-              }
-
-              return {
-                id: row.id,
-                syncId: row.sync_id,
-                deviceId: row.device_id,
-                version: row.version || 1,
-                chatId: row.chat_id,
-                senderId: row.sender_id,
-                senderName: row.sender_name,
-                senderRole: row.sender_role,
-                senderAvatar: row.sender_avatar || undefined,
-                receiverId: row.receiver_id || undefined,
-                content: row.content,
-                type: row.type || 'text',
-                imageUrl: row.image_url || undefined,
-                fileUrl: row.file_url || undefined,
-                voiceUrl: row.voice_url || undefined,
-                fileMetadata: fileMetadata,
-                timestamp: row.timestamp,
-                read: row.read || false,
-                readBy: row.read_by || [],
-                familyCode: row.family_code,
-                reactions: reactions,
-                replyTo: row.reply_to || undefined,
-                replyToPreview: row.reply_to_preview || undefined,
-                isEdited: row.is_edited || false,
-                editedAt: row.edited_at || undefined,
-                deliveryStatus: 'sent',
-              };
-            });
-
-            // Set last message
-            if (msgData.length > 0) {
-              const last = msgData[msgData.length - 1];
-              chat.lastMessage = messages[chat.id][messages[chat.id].length - 1];
-            }
+        if (!msgError && msgData) {
+          messages[chat.id] = msgData.map(row => ({
+            id: row.id,
+            syncId: row.sync_id,
+            deviceId: row.device_id,
+            version: row.version || 1,
+            chatId: row.chat_id,
+            senderId: row.sender_id,
+            senderName: row.sender_name,
+            senderRole: row.sender_role,
+            senderAvatar: row.sender_avatar || undefined,
+            receiverId: row.receiver_id || undefined,
+            content: row.content,
+            type: row.type || 'text',
+            imageUrl: row.image_url || undefined,
+            fileUrl: row.file_url || undefined,
+            voiceUrl: row.voice_url || undefined,
+            fileMetadata: parseFileMeta(row.file_metadata),
+            timestamp: row.timestamp,
+            read: row.read || false,
+            readBy: row.read_by || [],
+            familyCode: row.family_code,
+            reactions: parseReactions(row.reactions),
+            replyTo: row.reply_to || undefined,
+            replyToPreview: row.reply_to_preview || undefined,
+            isEdited: row.is_edited || false,
+            editedAt: row.edited_at || undefined,
+            deliveryStatus: 'sent',
+          }));
+          if (messages[chat.id].length > 0) {
+            chat.lastMessage = messages[chat.id][messages[chat.id].length - 1];
           }
         }
       }
+
+      // Sync refs immediately (avoid a render-time race)
+      chatsRef.current = chats;
+      messagesRef.current = messages;
 
       setState(prev => ({
         ...prev,
@@ -710,83 +684,59 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isSynced: true,
       }));
 
-      // Setup real-time listeners after sync
       setupRealtimeListeners();
-
     } catch (error) {
       console.error('[FamilyChat] Initial sync error:', error);
       setState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [state.familyCode, setupRealtimeListeners]);
+  }, [setupRealtimeListeners]);
 
-  /* ─── Initialize ────────────────────────────────────────────────── */
+  /* ─── Kick off sync once family code is known ───────────────── */
   useEffect(() => {
     if (deviceIdRef.current && state.familyCode && !isInitializedRef.current) {
       performInitialSync();
     }
-  }, [deviceIdRef.current, state.familyCode, performInitialSync]);
+  }, [state.familyCode, performInitialSync]);
 
-  /* ─── Track current chat ID ─────────────────────────────────────── */
-  useEffect(() => {
-    currentChatIdRef.current = state.currentChatId;
-  }, [state.currentChatId]);
-
-  /* ─── Cleanup ────────────────────────────────────────────────────── */
-  useEffect(() => {
-    return () => {
-      if (realtimeChannelRef.current) {
-        realtimeChannelRef.current.unsubscribe();
-        realtimeChannelRef.current = null;
-        isSubscribedRef.current = false;
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  /* ─── Set Current Chat ID ────────────────────────────────────────── */
+  /* ─── Setters ────────────────────────────────────────────────── */
   const setCurrentChatId = useCallback((chatId: string | null) => {
     setState(prev => ({ ...prev, currentChatId: chatId }));
   }, []);
 
-  /* ─── Chat Management ────────────────────────────────────────────── */
+  /* ─── Chat Management ───────────────────────────────────────── */
 
-  const createFamilyGroup = useCallback(async (name?: string, avatar?: string): Promise<string> => {
-    if (!state.familyCode || !userProfile) return '';
+  const createFamilyGroup = useCallback(
+    async (name?: string, avatar?: string): Promise<string> => {
+      const familyCode = familyCodeRef.current;
+      const me = userProfileRef.current;
+      if (!familyCode || !me) return '';
 
-    const chatId = `family_group_${state.familyCode}`;
-    
-    // Check if group already exists
-    const { data: existing } = await supabase
-      .from('family_chats')
-      .select('id')
-      .eq('id', chatId)
-      .maybeSingle();
+      const chatId = `family_group_${familyCode}`;
 
-    if (existing) {
-      return chatId;
-    }
+      const { data: existing } = await supabase
+        .from('family_chats')
+        .select('id')
+        .eq('id', chatId)
+        .maybeSingle();
 
-    const participantNames: Record<string, string> = {};
-    const participantRoles: Record<string, string> = {};
-    const participantAvatars: Record<string, string> = {};
+      if (existing) return chatId;
 
-    members.forEach(m => {
-      participantRoles[m.id] = m.role;
-      participantNames[m.id] = m.fullName;
-      participantAvatars[m.id] = m.avatar || '👤';
-    });
+      const participantNames: Record<string, string> = {};
+      const participantRoles: Record<string, string> = {};
+      const participantAvatars: Record<string, string> = {};
+      members.forEach(m => {
+        participantRoles[m.id] = m.role;
+        participantNames[m.id] = m.fullName;
+        participantAvatars[m.id] = m.avatar || '👤';
+      });
 
-    const now = new Date().toISOString();
+      const now = new Date().toISOString();
+      const displayName = name || `${getCurrentBaby()?.name || 'Family'} Group`;
 
-    const { error } = await supabase
-      .from('family_chats')
-      .insert({
+      const { error } = await supabase.from('family_chats').insert({
         id: chatId,
         type: 'group',
-        name: name || `${getCurrentBaby()?.name || 'Family'} Group`,
+        name: displayName,
         participants: members.map(m => m.id),
         participant_roles: participantRoles,
         participant_names: participantNames,
@@ -796,27 +746,24 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updated_at: now,
         avatar: avatar || '👨‍👩‍👧‍👦',
         is_muted: false,
-        family_code: state.familyCode,
+        family_code: familyCode,
         is_pinned: true,
       });
 
-    if (error) {
-      console.error('[FamilyChat] Create group error:', error);
-      sweetAlert.alert('Error', 'Failed to create family group', 'error');
-      return '';
-    }
+      if (error) {
+        console.error('[FamilyChat] Create group error:', error);
+        sweetAlert.alert('Error', 'Failed to create family group', 'error');
+        return '';
+      }
 
-    // Add welcome message
-    const welcomeMsg = createSystemMessage(
-      chatId,
-      `Welcome to ${getCurrentBaby()?.name || 'your baby'}'s family chat! 💕\n\nShare updates, photos, and stay connected with your family.`,
-      state.familyCode,
-      deviceIdRef.current
-    );
+      const welcomeMsg = createSystemMessage(
+        chatId,
+        `Welcome to ${getCurrentBaby()?.name || 'your baby'}'s family chat! 💕`,
+        familyCode,
+        deviceIdRef.current,
+      );
 
-    await supabase
-      .from('family_messages')
-      .insert({
+      await supabase.from('family_messages').insert({
         id: welcomeMsg.id,
         sync_id: welcomeMsg.syncId,
         device_id: welcomeMsg.deviceId,
@@ -835,119 +782,109 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         delivery_status: welcomeMsg.deliveryStatus,
       });
 
-    // Add chat to state
-    const newChat: FamilyChat = {
-      id: chatId,
-      type: 'group',
-      name: name || `${getCurrentBaby()?.name || 'Family'} Group`,
-      participants: members.map(m => m.id),
-      participantRoles,
-      participantNames,
-      participantAvatars,
-      unreadCount: 0,
-      createdAt: now,
-      updatedAt: now,
-      avatar: avatar || '👨‍👩‍👧‍👦',
-      isMuted: false,
-      familyCode: state.familyCode,
-      isPinned: true,
-    };
+      const newChat: FamilyChat = {
+        id: chatId,
+        type: 'group',
+        name: displayName,
+        participants: members.map(m => m.id),
+        participantRoles,
+        participantNames,
+        participantAvatars,
+        unreadCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        avatar: avatar || '👨‍👩‍👧‍👦',
+        isMuted: false,
+        familyCode,
+        isPinned: true,
+      };
 
-    setState(prev => ({
-      ...prev,
-      chats: [newChat, ...prev.chats],
-      messages: {
-        ...prev.messages,
-        [chatId]: [welcomeMsg],
-      },
-    }));
+      setState(prev => ({
+        ...prev,
+        chats: [newChat, ...prev.chats],
+        messages: { ...prev.messages, [chatId]: [welcomeMsg] },
+      }));
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    return chatId;
-  }, [state.familyCode, userProfile, members, getCurrentBaby]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      return chatId;
+    },
+    [members, getCurrentBaby, sweetAlert],
+  );
 
-  const getOrCreateDirectChat = useCallback(async (memberId: string, memberInfo?: Partial<FamilyMember>): Promise<string> => {
-    if (!state.familyCode || !userProfile) return '';
+  const getOrCreateDirectChat = useCallback(
+    async (memberId: string, memberInfo?: Partial<FamilyMember>): Promise<string> => {
+      const familyCode = familyCodeRef.current;
+      const me = userProfileRef.current;
+      if (!familyCode || !me) return '';
 
-    // Get the actual user IDs - memberId might be a family_members.id (custom format)
-    // We need to find the actual user_id from the family_members table
-    let actualUserId = memberId;
-    let memberName = '';
-    let memberAvatar = '👤';
-    let memberRole = 'guardian';
+      let actualUserId = memberId;
+      let memberName = memberInfo?.fullName || '';
+      let memberAvatar = memberInfo?.avatar || '👤';
+      let memberRole = memberInfo?.role || 'guardian';
 
-    // Check if memberId is a UUID or a custom ID
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId);
-    
-    if (!isUUID) {
-      // It's a custom ID (like fm_xxx), try to find the actual user_id
-      const { data: memberData } = await supabase
-        .from('family_members')
-        .select('user_id, full_name, avatar, role')
-        .eq('id', memberId)
-        .maybeSingle();
+      const isUUID =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId);
 
-      if (memberData?.user_id) {
-        actualUserId = memberData.user_id;
-        memberName = memberData.full_name || '';
-        memberAvatar = memberData.avatar || '👤';
-        memberRole = memberData.role || 'guardian';
+      if (!isUUID) {
+        const { data: row } = await supabase
+          .from('family_members')
+          .select('user_id, full_name, avatar, role')
+          .eq('id', memberId)
+          .maybeSingle();
+        if (row?.user_id) {
+          actualUserId = row.user_id;
+          memberName = row.full_name || memberName;
+          memberAvatar = row.avatar || memberAvatar;
+          memberRole = row.role || memberRole;
+        } else {
+          const found = members.find(m => m.id === memberId);
+          if (found) {
+            actualUserId = found.userId || found.id;
+            memberName = found.fullName;
+            memberAvatar = found.avatar || '👤';
+            memberRole = found.role || 'guardian';
+          }
+        }
       } else {
-        // Try to find by memberInfo or in members list
-        const foundMember = members.find(m => m.id === memberId);
-        if (foundMember) {
-          actualUserId = foundMember.userId || foundMember.id;
-          memberName = foundMember.fullName;
-          memberAvatar = foundMember.avatar || '👤';
-          memberRole = foundMember.role || 'guardian';
+        const found = members.find(m => m.id === memberId || m.userId === memberId);
+        if (found) {
+          memberName = found.fullName;
+          memberAvatar = found.avatar || '👤';
+          memberRole = found.role || 'guardian';
         }
       }
-    } else {
-      // It's a UUID, find in members
-      const foundMember = members.find(m => m.id === memberId || m.userId === memberId);
-      if (foundMember) {
-        memberName = foundMember.fullName;
-        memberAvatar = foundMember.avatar || '👤';
-        memberRole = foundMember.role || 'guardian';
-      }
-    }
 
-    // Check if chat already exists using the actual user IDs
-    const { data: existing } = await supabase
-      .from('family_chats')
-      .select('*')
-      .eq('family_code', state.familyCode)
-      .eq('type', 'direct')
-      .contains('participants', [userProfile.id, actualUserId])
-      .maybeSingle();
+      const { data: existing } = await supabase
+        .from('family_chats')
+        .select('*')
+        .eq('family_code', familyCode)
+        .eq('type', 'direct')
+        .contains('participants', [me.id, actualUserId])
+        .maybeSingle();
 
-    if (existing) {
-      return existing.id;
-    }
+      if (existing) return existing.id;
 
-    const chatId = `direct_${[userProfile.id, actualUserId].sort().join('_')}`;
-    const now = new Date().toISOString();
+      const chatId = `direct_${[me.id, actualUserId].sort().join('_')}`;
+      const now = new Date().toISOString();
 
-    const participantRoles: Record<string, string> = {
-      [userProfile.id]: userProfile.role || 'parent1',
-      [actualUserId]: memberRole,
-    };
-    const participantNames: Record<string, string> = {
-      [userProfile.id]: userProfile.fullName,
-      [actualUserId]: memberName || 'Family Member',
-    };
-    const participantAvatars: Record<string, string> = {
-      [userProfile.id]: userProfile.avatar || '👤',
-      [actualUserId]: memberAvatar,
-    };
+      const participantRoles: Record<string, string> = {
+        [me.id]: me.role || 'parent1',
+        [actualUserId]: memberRole,
+      };
+      const participantNames: Record<string, string> = {
+        [me.id]: me.fullName,
+        [actualUserId]: memberName || 'Family Member',
+      };
+      const participantAvatars: Record<string, string> = {
+        [me.id]: me.avatar || '👤',
+        [actualUserId]: memberAvatar,
+      };
 
-    const { error } = await supabase
-      .from('family_chats')
-      .insert({
+      const { error } = await supabase.from('family_chats').insert({
         id: chatId,
         type: 'direct',
         name: memberName || 'Family Member',
-        participants: [userProfile.id, actualUserId],
+        participants: [me.id, actualUserId],
         participant_roles: participantRoles,
         participant_names: participantNames,
         participant_avatars: participantAvatars,
@@ -956,1110 +893,982 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updated_at: now,
         avatar: memberAvatar,
         is_muted: false,
-        family_code: state.familyCode,
+        family_code: familyCode,
         is_pinned: false,
       });
 
-    if (error) {
-      console.error('[FamilyChat] Create direct chat error:', error);
-      sweetAlert.alert('Error', 'Failed to create chat: ' + error.message, 'error');
-      return '';
-    }
+      if (error) {
+        console.error('[FamilyChat] Create direct chat error:', error);
+        sweetAlert.alert('Error', 'Failed to create chat: ' + error.message, 'error');
+        return '';
+      }
 
-    const newChat: FamilyChat = {
-      id: chatId,
-      type: 'direct',
-      name: memberName || 'Family Member',
-      participants: [userProfile.id, actualUserId],
-      participantRoles,
-      participantNames,
-      participantAvatars,
-      unreadCount: 0,
-      createdAt: now,
-      updatedAt: now,
-      avatar: memberAvatar,
-      isMuted: false,
-      familyCode: state.familyCode,
-      isPinned: false,
-    };
+      const newChat: FamilyChat = {
+        id: chatId,
+        type: 'direct',
+        name: memberName || 'Family Member',
+        participants: [me.id, actualUserId],
+        participantRoles,
+        participantNames,
+        participantAvatars,
+        unreadCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        avatar: memberAvatar,
+        isMuted: false,
+        familyCode,
+        isPinned: false,
+      };
 
-    setState(prev => ({
-      ...prev,
-      chats: [newChat, ...prev.chats],
-    }));
+      setState(prev => ({ ...prev, chats: [newChat, ...prev.chats] }));
+      return chatId;
+    },
+    [members, sweetAlert],
+  );
 
-    return chatId;
-  }, [state.familyCode, userProfile, members]);
+  /* ─── Send Message ──────────────────────────────────────────── */
 
-  /* ─── Send Message ────────────────────────────────────────────────── */
-
-  const sendMessage = useCallback(async (
-    chatId: string,
-    content: string,
-    type: MessageType = 'text',
-    mediaData?: string,
-    fileMeta?: FileMetadata,
-    replyToId?: string
-  ): Promise<void> => {
-    if (!state.familyCode || !userProfile) {
-      sweetAlert.alert('Error', 'You must be logged in to send messages', 'info');
-      return;
-    }
-
-    const chat = state.chats.find(c => c.id === chatId);
-    if (!chat) {
-      sweetAlert.alert('Error', 'Chat not found', 'error');
-      return;
-    }
-
-    // Check if user is blocked
-    if (chat.type === 'direct') {
-      const otherId = chat.participants.find(p => p !== userProfile.id);
-      if (otherId && state.blockedUsers.includes(otherId)) {
-        sweetAlert.alert('Blocked', 'You have blocked this user. Unblock to send messages.', 'warning');
+  const sendMessage = useCallback(
+    async (
+      chatId: string,
+      content: string,
+      type: MessageType = 'text',
+      mediaData?: string,
+      fileMeta?: FileMetadata,
+      replyToId?: string,
+    ): Promise<void> => {
+      const familyCode = familyCodeRef.current;
+      const me = userProfileRef.current;
+      if (!familyCode || !me) {
+        sweetAlert.alert('Error', 'You must be logged in to send messages', 'info');
         return;
       }
-    }
 
-    const syncId = Crypto.randomUUID();
-    const now = new Date().toISOString();
+      const chat = chatsRef.current.find(c => c.id === chatId);
+      if (!chat) {
+        sweetAlert.alert('Error', 'Chat not found', 'error');
+        return;
+      }
 
-    let replyToPreview: string | undefined;
-    if (replyToId) {
-      const repliedMsg = state.messages[chatId]?.find(m => m.id === replyToId);
-      replyToPreview = repliedMsg ? (repliedMsg.content.slice(0, 60) || 'Media') : undefined;
-    }
-
-    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    
-    const newMessage: FamilyMessage = {
-      id: messageId,
-      syncId,
-      deviceId: deviceIdRef.current,
-      version: 1,
-      chatId,
-      senderId: userProfile.id,
-      senderName: userProfile.fullName,
-      senderRole: userProfile.role || 'parent1',
-      senderAvatar: userProfile.avatar,
-      content,
-      type,
-      imageUrl: type === 'image' ? mediaData : undefined,
-      fileUrl: type === 'file' ? mediaData : undefined,
-      voiceUrl: type === 'voice' ? mediaData : undefined,
-      fileMetadata: type === 'file' ? fileMeta : undefined,
-      timestamp: now,
-      read: false,
-      readBy: [userProfile.id],
-      familyCode: state.familyCode,
-      reactions: [],
-      replyTo: replyToId,
-      replyToPreview,
-      deliveryStatus: 'sending',
-    };
-
-    // Add to local state immediately - this makes it appear instantly
-    setState(prev => {
-      const updatedChats = prev.chats.map(c => {
-        if (c.id === chatId) {
-          return { ...c, lastMessage: newMessage, updatedAt: now };
+      if (chat.type === 'direct') {
+        const otherId = chat.participants.find(p => p !== me.id);
+        if (otherId && state.blockedUsers.includes(otherId)) {
+          sweetAlert.alert('Blocked', 'You have blocked this user.', 'warning');
+          return;
         }
-        return c;
+      }
+
+      const syncId = Crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      let replyToPreview: string | undefined;
+      if (replyToId) {
+        const replied = messagesRef.current[chatId]?.find(m => m.id === replyToId);
+        replyToPreview = replied ? replied.content.slice(0, 60) || 'Media' : undefined;
+      }
+
+      const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+      const newMessage: FamilyMessage = {
+        id: messageId,
+        syncId,
+        deviceId: deviceIdRef.current,
+        version: 1,
+        chatId,
+        senderId: me.id,
+        senderName: me.fullName,
+        senderRole: me.role || 'parent1',
+        senderAvatar: me.avatar,
+        content,
+        type,
+        imageUrl: type === 'image' ? mediaData : undefined,
+        fileUrl: type === 'file' ? mediaData : undefined,
+        voiceUrl: type === 'voice' ? mediaData : undefined,
+        fileMetadata: type === 'file' ? fileMeta : undefined,
+        timestamp: now,
+        read: false,
+        readBy: [me.id],
+        familyCode,
+        reactions: [],
+        replyTo: replyToId,
+        replyToPreview,
+        deliveryStatus: 'sending',
+      };
+
+      // Optimistic local insert
+      setState(prev => {
+        const updatedChats = prev.chats.map(c =>
+          c.id === chatId ? { ...c, lastMessage: newMessage, updatedAt: now } : c,
+        );
+        return {
+          ...prev,
+          chats: updatedChats,
+          messages: {
+            ...prev.messages,
+            [chatId]: [...(prev.messages[chatId] ?? []), newMessage],
+          },
+        };
       });
-      return {
-        ...prev,
-        chats: updatedChats,
-        messages: {
-          ...prev.messages,
-          [chatId]: [...(prev.messages[chatId] || []), newMessage],
-        },
-      };
-    });
 
-    try {
-      // Prepare the insert data
-      const insertData: any = {
-        id: newMessage.id,
-        sync_id: newMessage.syncId,
-        device_id: newMessage.deviceId,
-        version: newMessage.version,
-        chat_id: newMessage.chatId,
-        sender_id: newMessage.senderId,
-        sender_name: newMessage.senderName,
-        sender_role: newMessage.senderRole,
-        sender_avatar: newMessage.senderAvatar || null,
-        content: newMessage.content,
-        type: newMessage.type,
-        timestamp: newMessage.timestamp,
-        read: newMessage.read,
-        read_by: newMessage.readBy,
-        family_code: newMessage.familyCode,
-        reactions: JSON.stringify(newMessage.reactions || []),
-        delivery_status: 'sent',
-        created_at: now,
-      };
+      try {
+        const insertData: Record<string, unknown> = {
+          id: newMessage.id,
+          sync_id: newMessage.syncId,
+          device_id: newMessage.deviceId,
+          version: newMessage.version,
+          chat_id: newMessage.chatId,
+          sender_id: newMessage.senderId,
+          sender_name: newMessage.senderName,
+          sender_role: newMessage.senderRole,
+          sender_avatar: newMessage.senderAvatar ?? null,
+          content: newMessage.content,
+          type: newMessage.type,
+          timestamp: newMessage.timestamp,
+          read: newMessage.read,
+          read_by: newMessage.readBy,
+          family_code: newMessage.familyCode,
+          reactions: JSON.stringify(newMessage.reactions ?? []),
+          delivery_status: 'sent',
+          created_at: now,
+        };
+        if (newMessage.imageUrl) insertData.image_url = newMessage.imageUrl;
+        if (newMessage.fileUrl) insertData.file_url = newMessage.fileUrl;
+        if (newMessage.voiceUrl) insertData.voice_url = newMessage.voiceUrl;
+        if (newMessage.fileMetadata) insertData.file_metadata = JSON.stringify(newMessage.fileMetadata);
+        if (newMessage.replyTo) insertData.reply_to = newMessage.replyTo;
+        if (newMessage.replyToPreview) insertData.reply_to_preview = newMessage.replyToPreview;
 
-      // Add optional fields only if they exist
-      if (newMessage.imageUrl) {
-        insertData.image_url = newMessage.imageUrl;
-      }
-      if (newMessage.fileUrl) {
-        insertData.file_url = newMessage.fileUrl;
-      }
-      if (newMessage.voiceUrl) {
-        insertData.voice_url = newMessage.voiceUrl;
-      }
-      if (newMessage.fileMetadata) {
-        insertData.file_metadata = JSON.stringify(newMessage.fileMetadata);
-      }
-      if (newMessage.replyTo) {
-        insertData.reply_to = newMessage.replyTo;
-      }
-      if (newMessage.replyToPreview) {
-        insertData.reply_to_preview = newMessage.replyToPreview;
-      }
+        const { error } = await supabase.from('family_messages').insert(insertData);
+        if (error) throw error;
 
-      console.log('[FamilyChat] Sending message with data:', JSON.stringify(insertData, null, 2));
+        await supabase
+          .from('family_chats')
+          .update({ last_message_id: newMessage.id, updated_at: now })
+          .eq('id', chatId);
 
-      // Insert into Supabase
-      const { data: insertedData, error } = await supabase
-        .from('family_messages')
-        .insert(insertData)
-        .select();
-
-      if (error) {
-        console.error('[FamilyChat] Send message error:', error);
-        // Update message as failed
         setState(prev => ({
           ...prev,
           messages: {
             ...prev.messages,
-            [chatId]: prev.messages[chatId]?.map(m =>
-              m.id === newMessage.id ? { ...m, deliveryStatus: 'failed' } : m
-            ) || [],
+            [chatId]: (prev.messages[chatId] ?? []).map(m =>
+              m.id === newMessage.id ? { ...m, deliveryStatus: 'sent' } : m,
+            ),
           },
         }));
-        sweetAlert.alert('Error', `Failed to send message: ${error.message}`, 'error');
+
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      } catch (error) {
+        console.error('[FamilyChat] Send message error:', error);
+        setState(prev => ({
+          ...prev,
+          messages: {
+            ...prev.messages,
+            [chatId]: (prev.messages[chatId] ?? []).map(m =>
+              m.id === newMessage.id ? { ...m, deliveryStatus: 'failed' } : m,
+            ),
+          },
+        }));
+        sweetAlert.alert('Error', 'Failed to send message. Please try again.', 'error');
+      }
+    },
+    [state.blockedUsers, sweetAlert],
+  );
+
+  /* ─── Resend / Edit / Delete / Clear ─────────────────────────── */
+
+  const resendMessage = useCallback(
+    async (chatId: string, messageId: string): Promise<void> => {
+      const message = messagesRef.current[chatId]?.find(m => m.id === messageId);
+      if (!message || message.deliveryStatus !== 'failed') return;
+
+      setState(prev => ({
+        ...prev,
+        messages: {
+          ...prev.messages,
+          [chatId]: (prev.messages[chatId] ?? []).map(m =>
+            m.id === messageId ? { ...m, deliveryStatus: 'sending' } : m,
+          ),
+        },
+      }));
+
+      try {
+        const { error } = await supabase
+          .from('family_messages')
+          .update({ delivery_status: 'sent', updated_at: new Date().toISOString() })
+          .eq('id', messageId);
+        if (error) throw error;
+
+        setState(prev => ({
+          ...prev,
+          messages: {
+            ...prev.messages,
+            [chatId]: (prev.messages[chatId] ?? []).map(m =>
+              m.id === messageId ? { ...m, deliveryStatus: 'sent' } : m,
+            ),
+          },
+        }));
+      } catch {
+        setState(prev => ({
+          ...prev,
+          messages: {
+            ...prev.messages,
+            [chatId]: (prev.messages[chatId] ?? []).map(m =>
+              m.id === messageId ? { ...m, deliveryStatus: 'failed' } : m,
+            ),
+          },
+        }));
+      }
+    },
+    [],
+  );
+
+  const editMessage = useCallback(
+    async (chatId: string, messageId: string, newContent: string) => {
+      const me = userProfileRef.current;
+      if (!me) return;
+      const now = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('family_messages')
+        .update({ content: newContent, is_edited: true, edited_at: now, updated_at: now })
+        .eq('id', messageId)
+        .eq('sender_id', me.id);
+
+      if (error) {
+        sweetAlert.alert('Error', 'Failed to edit message', 'error');
         return;
       }
 
-      console.log('[FamilyChat] Message sent successfully:', insertedData);
-
-      // Update chat last message
-      await supabase
-        .from('family_chats')
-        .update({
-          last_message_id: newMessage.id,
-          updated_at: now,
-        })
-        .eq('id', chatId);
-
-      // Update local state - mark as sent
       setState(prev => ({
         ...prev,
         messages: {
           ...prev.messages,
-          [chatId]: prev.messages[chatId]?.map(m =>
-            m.id === newMessage.id ? { ...m, deliveryStatus: 'sent' } : m
-          ) || [],
+          [chatId]: (prev.messages[chatId] ?? []).map(m =>
+            m.id === messageId ? { ...m, content: newContent, isEdited: true, editedAt: now } : m,
+          ),
         },
       }));
+    },
+    [sweetAlert],
+  );
 
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const markChatRead = useCallback(
+    async (chatId: string) => {
+      const me = userProfileRef.current;
+      if (!me) return;
 
-    } catch (error) {
-      console.error('[FamilyChat] Send message error:', error);
-      setState(prev => ({
-        ...prev,
-        messages: {
-          ...prev.messages,
-          [chatId]: prev.messages[chatId]?.map(m =>
-            m.id === newMessage.id ? { ...m, deliveryStatus: 'failed' } : m
-          ) || [],
-        },
-      }));
-      sweetAlert.alert('Error', 'Failed to send message. Please try again.', 'error');
-    }
-  }, [state.familyCode, state.chats, state.messages, state.blockedUsers, userProfile, sweetAlert]);
+      const msgs = messagesRef.current[chatId] ?? [];
+      const unread = msgs.filter(m => !m.readBy.includes(me.id));
+      if (unread.length === 0) {
+        // Still reset local unread badge
+        setState(prev => ({
+          ...prev,
+          chats: prev.chats.map(c => (c.id === chatId ? { ...c, unreadCount: 0 } : c)),
+        }));
+        return;
+      }
 
-  /* ─── Resend Message ────────────────────────────────────────────────── */
-
-  const resendMessage = useCallback(async (chatId: string, messageId: string): Promise<void> => {
-    const message = state.messages[chatId]?.find(m => m.id === messageId);
-    if (!message || message.deliveryStatus !== 'failed') return;
-
-    setState(prev => ({
-      ...prev,
-      messages: {
-        ...prev.messages,
-        [chatId]: prev.messages[chatId]?.map(m =>
-          m.id === messageId ? { ...m, deliveryStatus: 'sending' } : m
-        ) || [],
-      },
-    }));
-
-    try {
+      // ⭐ Batch: single update for all unread rows
+      const ids = unread.map(m => m.id);
       const { error } = await supabase
         .from('family_messages')
         .update({
-          delivery_status: 'sent',
-          updated_at: new Date().toISOString(),
+          read: true,
+          read_by: [...new Set([...unread.flatMap(m => m.readBy), me.id])],
         })
-        .eq('id', messageId);
+        .in('id', ids);
 
       if (error) {
-        throw error;
+        console.warn('[FamilyChat] markChatRead error:', error);
+      }
+
+      setState(prev => {
+        const updatedMessages = (prev.messages[chatId] ?? []).map(m =>
+          ids.includes(m.id) && !m.readBy.includes(me.id)
+            ? { ...m, read: true, readBy: [...m.readBy, me.id] }
+            : m,
+        );
+        const updatedChats = prev.chats.map(c =>
+          c.id === chatId ? { ...c, unreadCount: 0 } : c,
+        );
+        return { ...prev, chats: updatedChats, messages: { ...prev.messages, [chatId]: updatedMessages } };
+      });
+    },
+    [],
+  );
+
+  const deleteMessage = useCallback(
+    async (chatId: string, messageId: string) => {
+      const me = userProfileRef.current;
+      if (!me) return;
+      const message = messagesRef.current[chatId]?.find(m => m.id === messageId);
+      if (!message) return;
+
+      if (message.senderId !== me.id && me.role !== 'parent1') {
+        sweetAlert.alert('Permission Denied', 'You can only delete your own messages', 'warning');
+        return;
+      }
+
+      const { error } = await supabase.from('family_messages').delete().eq('id', messageId);
+      if (error) {
+        sweetAlert.alert('Error', 'Failed to delete message', 'error');
+        return;
       }
 
       setState(prev => ({
         ...prev,
         messages: {
           ...prev.messages,
-          [chatId]: prev.messages[chatId]?.map(m =>
-            m.id === messageId ? { ...m, deliveryStatus: 'sent' } : m
-          ) || [],
+          [chatId]: (prev.messages[chatId] ?? []).filter(m => m.id !== messageId),
         },
       }));
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        messages: {
-          ...prev.messages,
-          [chatId]: prev.messages[chatId]?.map(m =>
-            m.id === messageId ? { ...m, deliveryStatus: 'failed' } : m
-          ) || [],
-        },
-      }));
-    }
-  }, [state.messages]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    },
+    [sweetAlert],
+  );
 
-  /* ─── Edit Message ────────────────────────────────────────────────── */
+  const clearChat = useCallback(
+    async (chatId: string) => {
+      const familyCode = familyCodeRef.current;
+      const me = userProfileRef.current;
+      if (!familyCode || !me) return;
+      if (me.role !== 'parent1') {
+        sweetAlert.alert('Permission Denied', 'Only Parent 1 can clear the chat', 'warning');
+        return;
+      }
 
-  const editMessage = useCallback(async (chatId: string, messageId: string, newContent: string) => {
-    if (!state.familyCode || !userProfile) return;
-
-    const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from('family_messages')
-      .update({
-        content: newContent,
-        is_edited: true,
-        edited_at: now,
-        updated_at: now,
-      })
-      .eq('id', messageId)
-      .eq('sender_id', userProfile.id);
-
-    if (error) {
-      console.error('[FamilyChat] Edit message error:', error);
-      sweetAlert.alert('Error', 'Failed to edit message', 'error');
-      return;
-    }
-
-    setState(prev => ({
-      ...prev,
-      messages: {
-        ...prev.messages,
-        [chatId]: prev.messages[chatId]?.map(m =>
-          m.id === messageId ? { ...m, content: newContent, isEdited: true, editedAt: now } : m
-        ) || [],
-      },
-    }));
-  }, [state.familyCode, userProfile, sweetAlert]);
-
-  /* ─── Mark Chat Read ────────────────────────────────────────────────── */
-
-  const markChatRead = useCallback(async (chatId: string) => {
-    if (!userProfile) return;
-
-    const chat = state.chats.find(c => c.id === chatId);
-    if (!chat) return;
-
-    const messages = state.messages[chatId] || [];
-    const unreadMessages = messages.filter(m => !m.readBy.includes(userProfile.id));
-
-    if (unreadMessages.length === 0) return;
-
-    const messageIds = unreadMessages.map(m => m.id);
-
-    // Update Supabase
-    for (const msgId of messageIds) {
-      await supabase
+      const { error } = await supabase
         .from('family_messages')
-        .update({
-          read: true,
-          read_by: [...unreadMessages.find(m => m.id === msgId)!.readBy, userProfile.id],
-        })
-        .eq('id', msgId);
-    }
+        .delete()
+        .eq('chat_id', chatId)
+        .eq('family_code', familyCode);
 
-    // Update local state
-    const updatedMessages = messages.map(msg => {
-      if (messageIds.includes(msg.id)) {
-        return { ...msg, read: true, readBy: [...msg.readBy, userProfile.id] };
+      if (error) {
+        sweetAlert.alert('Error', 'Failed to clear chat', 'error');
+        return;
       }
-      return msg;
-    });
+      setState(prev => ({ ...prev, messages: { ...prev.messages, [chatId]: [] } }));
+    },
+    [sweetAlert],
+  );
 
-    const updatedChats = state.chats.map(c => {
-      if (c.id === chatId) {
-        return { ...c, unreadCount: 0 };
-      }
-      return c;
-    });
+  /* ─── Image / File Picker ───────────────────────────────────── */
 
-    setState(prev => ({
-      ...prev,
-      chats: updatedChats,
-      messages: { ...prev.messages, [chatId]: updatedMessages },
-    }));
-  }, [userProfile, state.chats, state.messages]);
+  const pickAndSendImage = useCallback(
+    async (chatId: string, fromCamera = false): Promise<void> => {
+      const familyCode = familyCodeRef.current;
+      if (!familyCode) return;
 
-  /* ─── Delete Message ────────────────────────────────────────────────── */
-
-  const deleteMessage = useCallback(async (chatId: string, messageId: string) => {
-    if (!state.familyCode || !userProfile) return;
-
-    const message = state.messages[chatId]?.find(m => m.id === messageId);
-    if (!message) return;
-
-    if (message.senderId !== userProfile.id && userProfile.role !== 'parent1') {
-      sweetAlert.alert('Permission Denied', 'You can only delete your own messages', 'warning');
-      return;
-    }
-
-    const { error } = await supabase
-      .from('family_messages')
-      .delete()
-      .eq('id', messageId);
-
-    if (error) {
-      console.error('[FamilyChat] Delete message error:', error);
-      sweetAlert.alert('Error', 'Failed to delete message', 'error');
-      return;
-    }
-
-    const updatedMessages = state.messages[chatId]?.filter(m => m.id !== messageId) || [];
-
-    setState(prev => ({
-      ...prev,
-      messages: { ...prev.messages, [chatId]: updatedMessages },
-    }));
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [state.familyCode, state.messages, userProfile, sweetAlert]);
-
-  /* ─── Clear Chat ────────────────────────────────────────────────────── */
-
-  const clearChat = useCallback(async (chatId: string) => {
-    if (!state.familyCode || !userProfile) return;
-
-    if (userProfile.role !== 'parent1') {
-      sweetAlert.alert('Permission Denied', 'Only Parent 1 can clear the chat', 'warning');
-      return;
-    }
-
-    const { error } = await supabase
-      .from('family_messages')
-      .delete()
-      .eq('chat_id', chatId)
-      .eq('family_code', state.familyCode);
-
-    if (error) {
-      console.error('[FamilyChat] Clear chat error:', error);
-      sweetAlert.alert('Error', 'Failed to clear chat', 'error');
-      return;
-    }
-
-    setState(prev => ({
-      ...prev,
-      messages: { ...prev.messages, [chatId]: [] },
-    }));
-  }, [state.familyCode, userProfile, sweetAlert]);
-
-  /* ─── Image/File Picker ────────────────────────────────────────────── */
-
-  const pickAndSendImage = useCallback(async (chatId: string, fromCamera: boolean = false): Promise<void> => {
-    try {
-      let result;
-
-      if (fromCamera) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-          sweetAlert.alert('Permission Required', 'Please allow camera access', 'info');
-          return;
+      try {
+        let result;
+        if (fromCamera) {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            sweetAlert.alert('Permission Required', 'Please allow camera access', 'info');
+            return;
+          }
+          result = await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+          });
+        } else {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            sweetAlert.alert('Permission Required', 'Please allow access to photos', 'info');
+            return;
+          }
+          result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+          });
         }
-        result = await ImagePicker.launchCameraAsync({
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
-      } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          sweetAlert.alert('Permission Required', 'Please allow access to photos', 'info');
-          return;
-        }
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images'],
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
-      }
 
-      if (!result.canceled && result.assets[0]) {
+        if (result.canceled || !result.assets?.[0]) return;
         const uri = result.assets[0].uri;
-        const fileName = `chat_img_${Date.now()}.jpg`;
-        const chatMediaDir = FileSystem.documentDirectory + 'chat_media/';
-        const permanentUri = chatMediaDir + fileName;
-        
-        // Check if directory exists, create if not
-        const dirInfo = await FileSystem.getInfoAsync(chatMediaDir);
-        if (!dirInfo.exists) {
-          await FileSystem.makeDirectoryAsync(chatMediaDir, { intermediates: true });
-        }
-        
-        await FileSystem.copyAsync({ from: uri, to: permanentUri });
+        const ext = uri.split('.').pop() || 'jpg';
+        const storagePath = `chat_images/${familyCode}/${Date.now()}.${ext}`;
 
-        const fileExt = uri.split('.').pop() || 'jpg';
-        const storagePath = `chat_images/${state.familyCode}/${Date.now()}.${fileExt}`;
+        const fileData = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
 
-        const fileData = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
         const { error: uploadError } = await supabase.storage
           .from('chat_media')
-          .upload(storagePath, fileData, {
-            contentType: `image/${fileExt}`,
-          });
+          .upload(storagePath, decode(fileData), { contentType: `image/${ext}` });
 
         if (uploadError) {
-          console.error('[FamilyChat] Image upload error:', uploadError);
           sweetAlert.alert('Error', 'Failed to upload image', 'error');
           return;
         }
 
-        const { data: urlData } = supabase.storage
-          .from('chat_media')
-          .getPublicUrl(storagePath);
-
+        const { data: urlData } = supabase.storage.from('chat_media').getPublicUrl(storagePath);
         await sendMessage(chatId, '📷 Photo', 'image', urlData.publicUrl);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      } catch (error) {
+        console.error('[FamilyChat] Pick image error:', error);
+        sweetAlert.alert('Error', 'Failed to send image', 'error');
       }
-    } catch (error) {
-      console.error('[FamilyChat] Pick image error:', error);
-      sweetAlert.alert('Error', 'Failed to send image: ' + (error as Error).message, 'error');
-    }
-  }, [state.familyCode, sendMessage, sweetAlert]);
+    },
+    [sendMessage, sweetAlert],
+  );
 
-  const pickAndSendFile = useCallback(async (chatId: string): Promise<void> => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
+  const pickAndSendFile = useCallback(
+    async (chatId: string): Promise<void> => {
+      const familyCode = familyCodeRef.current;
+      if (!familyCode) return;
 
-      if (result.canceled) return;
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: '*/*',
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled) return;
+        const asset = result.assets[0];
 
-      const asset = result.assets[0];
-      const chatFilesDir = FileSystem.documentDirectory + 'chat_files/';
-      
-      // Check if directory exists, create if not
-      const dirInfo = await FileSystem.getInfoAsync(chatFilesDir);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(chatFilesDir, { intermediates: true });
-      }
+        const info = await FileSystem.getInfoAsync(asset.uri);
+        const size = info.exists && 'size' in info ? info.size : 0;
 
-      const fileInfo = await FileSystem.getInfoAsync(asset.uri);
-      const size = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
-
-      const fileName = `chat_file_${Date.now()}_${asset.name}`;
-      const permanentUri = chatFilesDir + fileName;
-      await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
-
-      const storagePath = `chat_files/${state.familyCode}/${Date.now()}_${asset.name}`;
-      const fileData = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
-      const { error: uploadError } = await supabase.storage
-        .from('chat_files')
-        .upload(storagePath, fileData, {
-          contentType: asset.mimeType || 'application/octet-stream',
+        const storagePath = `chat_files/${familyCode}/${Date.now()}_${asset.name}`;
+        const fileData = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
         });
 
-      if (uploadError) {
-        console.error('[FamilyChat] File upload error:', uploadError);
-        sweetAlert.alert('Error', 'Failed to upload file', 'error');
-        return;
+        const { error: uploadError } = await supabase.storage
+          .from('chat_files')
+          .upload(storagePath, decode(fileData), {
+            contentType: asset.mimeType || 'application/octet-stream',
+          });
+
+        if (uploadError) {
+          sweetAlert.alert('Error', 'Failed to upload file', 'error');
+          return;
+        }
+
+        const { data: urlData } = supabase.storage.from('chat_files').getPublicUrl(storagePath);
+
+        const fileMeta: FileMetadata = {
+          name: asset.name || 'Unknown file',
+          size,
+          type: asset.mimeType || 'application/octet-stream',
+          uri: asset.uri,
+        };
+
+        await sendMessage(chatId, `📎 ${asset.name}`, 'file', urlData.publicUrl, fileMeta);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      } catch (error) {
+        console.error('[FamilyChat] File pick error:', error);
+        sweetAlert.alert('Error', 'Failed to send file', 'error');
       }
+    },
+    [sendMessage, sweetAlert],
+  );
 
-      const { data: urlData } = supabase.storage
-        .from('chat_files')
-        .getPublicUrl(storagePath);
+  /* ─── Reactions ─────────────────────────────────────────────── */
 
-      const fileMeta: FileMetadata = {
-        name: asset.name || 'Unknown file',
-        size,
-        type: asset.mimeType || 'application/octet-stream',
-        uri: permanentUri,
-      };
+  const addReaction = useCallback(
+    async (chatId: string, messageId: string, emoji: string) => {
+      const me = userProfileRef.current;
+      if (!me) return;
+      const message = messagesRef.current[chatId]?.find(m => m.id === messageId);
+      if (!message) return;
 
-      await sendMessage(chatId, `📎 ${asset.name}`, 'file', urlData.publicUrl, fileMeta);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      console.error('[FamilyChat] File pick error:', error);
-      sweetAlert.alert('Error', 'Failed to send file: ' + (error as Error).message, 'error');
-    }
-  }, [state.familyCode, sendMessage, sweetAlert]);
+      const existing = message.reactions ?? [];
+      const idx = existing.findIndex(r => r.userId === me.id && r.emoji === emoji);
+      const updated =
+        idx >= 0
+          ? existing.filter((_, i) => i !== idx)
+          : [...existing, { emoji, userId: me.id, userName: me.fullName }];
 
-  /* ─── Reactions ────────────────────────────────────────────────────── */
+      const { error } = await supabase
+        .from('family_messages')
+        .update({ reactions: JSON.stringify(updated), updated_at: new Date().toISOString() })
+        .eq('id', messageId);
 
-  const addReaction = useCallback(async (chatId: string, messageId: string, emoji: string) => {
-    if (!userProfile) return;
+      if (error) return;
 
-    const messages = state.messages[chatId] || [];
-    const message = messages.find(m => m.id === messageId);
-    if (!message) return;
+      setState(prev => ({
+        ...prev,
+        messages: {
+          ...prev.messages,
+          [chatId]: (prev.messages[chatId] ?? []).map(m =>
+            m.id === messageId ? { ...m, reactions: updated } : m,
+          ),
+        },
+      }));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    },
+    [],
+  );
 
-    const reactions = message.reactions || [];
-    const existingIndex = reactions.findIndex(r => r.userId === userProfile.id && r.emoji === emoji);
+  const removeReaction = useCallback(
+    async (chatId: string, messageId: string, emoji: string) => {
+      const me = userProfileRef.current;
+      if (!me) return;
+      const message = messagesRef.current[chatId]?.find(m => m.id === messageId);
+      if (!message) return;
 
-    let updatedReactions;
-    if (existingIndex >= 0) {
-      updatedReactions = reactions.filter((_, i) => i !== existingIndex);
-    } else {
-      updatedReactions = [...reactions, { emoji, userId: userProfile.id, userName: userProfile.fullName }];
-    }
+      const updated = (message.reactions ?? []).filter(
+        r => !(r.userId === me.id && r.emoji === emoji),
+      );
 
-    const { error } = await supabase
-      .from('family_messages')
-      .update({
-        reactions: JSON.stringify(updatedReactions),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', messageId);
+      const { error } = await supabase
+        .from('family_messages')
+        .update({ reactions: JSON.stringify(updated), updated_at: new Date().toISOString() })
+        .eq('id', messageId);
 
-    if (error) {
-      console.error('[FamilyChat] Add reaction error:', error);
-      return;
-    }
+      if (error) return;
 
-    const updatedMessages = messages.map(m =>
-      m.id === messageId ? { ...m, reactions: updatedReactions } : m
-    );
+      setState(prev => ({
+        ...prev,
+        messages: {
+          ...prev.messages,
+          [chatId]: (prev.messages[chatId] ?? []).map(m =>
+            m.id === messageId ? { ...m, reactions: updated } : m,
+          ),
+        },
+      }));
+    },
+    [],
+  );
 
-    setState(prev => ({
-      ...prev,
-      messages: { ...prev.messages, [chatId]: updatedMessages },
-    }));
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [userProfile, state.messages]);
-
-  const removeReaction = useCallback(async (chatId: string, messageId: string, emoji: string) => {
-    if (!userProfile) return;
-
-    const messages = state.messages[chatId] || [];
-    const message = messages.find(m => m.id === messageId);
-    if (!message) return;
-
-    const reactions = (message.reactions || []).filter(
-      r => !(r.userId === userProfile.id && r.emoji === emoji)
-    );
-
-    const { error } = await supabase
-      .from('family_messages')
-      .update({
-        reactions: JSON.stringify(reactions),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', messageId);
-
-    if (error) {
-      console.error('[FamilyChat] Remove reaction error:', error);
-      return;
-    }
-
-    const updatedMessages = messages.map(m =>
-      m.id === messageId ? { ...m, reactions } : m
-    );
-
-    setState(prev => ({
-      ...prev,
-      messages: { ...prev.messages, [chatId]: updatedMessages },
-    }));
-  }, [userProfile, state.messages]);
-
-  /* ─── Typing Status ────────────────────────────────────────────────── */
+  /* ─── Typing ────────────────────────────────────────────────── */
 
   const setTypingStatus = useCallback((chatId: string, isTyping: boolean) => {
-    if (!userProfile) return;
+    const me = userProfileRef.current;
+    if (!me) return;
 
-    const key = `${chatId}_${userProfile.id}`;
-
-    if (typingTimeoutRef.current[key]) {
-      clearTimeout(typingTimeoutRef.current[key]);
-    }
+    const key = `${chatId}_${me.id}`;
+    if (typingTimeoutRef.current[key]) clearTimeout(typingTimeoutRef.current[key]);
 
     setState(prev => {
-      const currentTypers = prev.typingUsers[chatId] || [];
-      const existingIndex = currentTypers.findIndex(t => t.userId === userProfile.id);
-
-      let updatedTypers;
+      const current = prev.typingUsers[chatId] ?? [];
+      const idx = current.findIndex(t => t.userId === me.id);
+      let updated: TypingStatus[];
       if (isTyping) {
-        const newStatus: TypingStatus = {
-          userId: userProfile.id,
-          userName: userProfile.fullName,
+        const next: TypingStatus = {
+          userId: me.id,
+          userName: me.fullName,
           chatId,
           isTyping: true,
           timestamp: new Date().toISOString(),
         };
-
-        if (existingIndex >= 0) {
-          updatedTypers = [...currentTypers];
-          updatedTypers[existingIndex] = newStatus;
+        if (idx >= 0) {
+          updated = [...current];
+          updated[idx] = next;
         } else {
-          updatedTypers = [...currentTypers, newStatus];
+          updated = [...current, next];
         }
       } else {
-        updatedTypers = currentTypers.filter(t => t.userId !== userProfile.id);
+        updated = current.filter(t => t.userId !== me.id);
       }
-
       return {
         ...prev,
-        typingUsers: { ...prev.typingUsers, [chatId]: updatedTypers },
+        typingUsers: { ...prev.typingUsers, [chatId]: updated },
         currentUserTyping: isTyping,
       };
     });
 
-    // Broadcast typing status via Supabase
-    if (state.familyCode && realtimeChannelRef.current && isSubscribedRef.current) {
-      realtimeChannelRef.current.send({
-        type: 'broadcast',
-        event: 'typing',
-        payload: {
-          userId: userProfile.id,
-          userName: userProfile.fullName,
-          chatId,
-          isTyping,
-          timestamp: new Date().toISOString(),
-        },
-      }).catch((error) => {
-        console.warn('[FamilyChat] Failed to send typing status:', error);
-      });
+    if (familyCodeRef.current && realtimeChannelRef.current && isSubscribedRef.current) {
+      realtimeChannelRef.current
+        .send({
+          type: 'broadcast',
+          event: 'typing',
+          payload: {
+            userId: me.id,
+            userName: me.fullName,
+            chatId,
+            isTyping,
+            timestamp: new Date().toISOString(),
+          },
+        })
+        .catch(() => {});
     }
 
     if (isTyping) {
-      typingTimeoutRef.current[key] = setTimeout(() => {
-        setTypingStatus(chatId, false);
-      }, 3000);
+      typingTimeoutRef.current[key] = setTimeout(() => setTypingStatus(chatId, false), 3000);
     }
-  }, [userProfile, state.familyCode]);
+  }, []);
 
-  const isUserTyping = useCallback((chatId: string, userId: string): boolean => {
-    return (state.typingUsers[chatId] || []).some(t => t.userId === userId && t.isTyping);
-  }, [state.typingUsers]);
+  const isUserTyping = useCallback(
+    (chatId: string, userId: string) =>
+      (state.typingUsers[chatId] ?? []).some(t => t.userId === userId && t.isTyping),
+    [state.typingUsers],
+  );
 
-  const getTypingUsers = useCallback((chatId: string): TypingStatus[] => {
-    return state.typingUsers[chatId] || [];
-  }, [state.typingUsers]);
+  const getTypingUsers = useCallback(
+    (chatId: string) => state.typingUsers[chatId] ?? [],
+    [state.typingUsers],
+  );
 
-  /* ─── Chat Settings ────────────────────────────────────────────────── */
+  /* ─── Chat Settings ─────────────────────────────────────────── */
 
   const muteChat = useCallback(async (chatId: string, muted: boolean) => {
-    if (!state.familyCode) return;
-
     const { error } = await supabase
       .from('family_chats')
-      .update({
-        is_muted: muted,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ is_muted: muted, updated_at: new Date().toISOString() })
       .eq('id', chatId);
-
-    if (error) {
-      console.error('[FamilyChat] Mute chat error:', error);
-      return;
-    }
-
+    if (error) return;
     setState(prev => ({
       ...prev,
-      chats: prev.chats.map(c => c.id === chatId ? { ...c, isMuted: muted } : c),
+      chats: prev.chats.map(c => (c.id === chatId ? { ...c, isMuted: muted } : c)),
     }));
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [state.familyCode]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, []);
 
   const pinChat = useCallback(async (chatId: string, pinned: boolean) => {
-    if (!state.familyCode) return;
-
     const { error } = await supabase
       .from('family_chats')
-      .update({
-        is_pinned: pinned,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ is_pinned: pinned, updated_at: new Date().toISOString() })
       .eq('id', chatId);
-
-    if (error) {
-      console.error('[FamilyChat] Pin chat error:', error);
-      return;
-    }
-
+    if (error) return;
     setState(prev => ({
       ...prev,
-      chats: prev.chats.map(c => c.id === chatId ? { ...c, isPinned: pinned } : c),
+      chats: prev.chats.map(c => (c.id === chatId ? { ...c, isPinned: pinned } : c)),
     }));
-  }, [state.familyCode]);
+  }, []);
 
   const setChatBackground = useCallback(async (chatId: string, imageUri: string | null) => {
-    if (!state.familyCode) return;
-
     const { error } = await supabase
       .from('family_chats')
-      .update({
-        background_image: imageUri,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ background_image: imageUri, updated_at: new Date().toISOString() })
       .eq('id', chatId);
-
-    if (error) {
-      console.error('[FamilyChat] Set background error:', error);
-      return;
-    }
-
+    if (error) return;
     setState(prev => ({
       ...prev,
-      chats: prev.chats.map(c => c.id === chatId ? { ...c, backgroundImage: imageUri || undefined } : c),
+      chats: prev.chats.map(c =>
+        c.id === chatId ? { ...c, backgroundImage: imageUri || undefined } : c,
+      ),
     }));
-  }, [state.familyCode]);
+  }, []);
 
-  const leaveChat = useCallback(async (chatId: string) => {
-    if (!state.familyCode || !userProfile) return;
+  const leaveChat = useCallback(
+    async (chatId: string) => {
+      const familyCode = familyCodeRef.current;
+      const me = userProfileRef.current;
+      if (!familyCode || !me) return;
+      const chat = chatsRef.current.find(c => c.id === chatId);
+      if (!chat || chat.type === 'group') {
+        sweetAlert.alert('Cannot Leave', 'You cannot leave the family group chat', 'info');
+        return;
+      }
+      const updatedParticipants = chat.participants.filter(p => p !== me.id);
+      const { error } = await supabase
+        .from('family_chats')
+        .update({ participants: updatedParticipants, updated_at: new Date().toISOString() })
+        .eq('id', chatId);
+      if (error) {
+        sweetAlert.alert('Error', 'Failed to leave chat', 'error');
+        return;
+      }
+      setState(prev => ({ ...prev, chats: prev.chats.filter(c => c.id !== chatId) }));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    },
+    [sweetAlert],
+  );
 
-    const chat = state.chats.find(c => c.id === chatId);
-    if (!chat || chat.type === 'group') {
-      sweetAlert.alert('Cannot Leave', 'You cannot leave the family group chat', 'info');
-      return;
-    }
+  const deleteChat = useCallback(
+    async (chatId: string) => {
+      const familyCode = familyCodeRef.current;
+      const me = userProfileRef.current;
+      if (!familyCode || !me) return;
+      if (me.role !== 'parent1') {
+        sweetAlert.alert('Permission Denied', 'Only Parent 1 can delete chats', 'warning');
+        return;
+      }
 
-    const updatedParticipants = chat.participants.filter(p => p !== userProfile.id);
+      const { error } = await supabase
+        .from('family_chats')
+        .delete()
+        .eq('id', chatId)
+        .eq('family_code', familyCode);
+      if (error) {
+        sweetAlert.alert('Error', 'Failed to delete chat', 'error');
+        return;
+      }
+      await supabase.from('family_messages').delete().eq('chat_id', chatId);
 
-    const { error } = await supabase
-      .from('family_chats')
-      .update({
-        participants: updatedParticipants,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', chatId);
+      setState(prev => {
+        const nextMessages = { ...prev.messages };
+        delete nextMessages[chatId];
+        return { ...prev, chats: prev.chats.filter(c => c.id !== chatId), messages: nextMessages };
+      });
+    },
+    [sweetAlert],
+  );
 
-    if (error) {
-      console.error('[FamilyChat] Leave chat error:', error);
-      sweetAlert.alert('Error', 'Failed to leave chat', 'error');
-      return;
-    }
-
-    setState(prev => ({
-      ...prev,
-      chats: prev.chats.filter(c => c.id !== chatId),
-    }));
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [state.familyCode, state.chats, userProfile, sweetAlert]);
-
-  const deleteChat = useCallback(async (chatId: string) => {
-    if (!state.familyCode || !userProfile) return;
-
-    if (userProfile.role !== 'parent1') {
-      sweetAlert.alert('Permission Denied', 'Only Parent 1 can delete chats', 'warning');
-      return;
-    }
-
-    const { error } = await supabase
-      .from('family_chats')
-      .delete()
-      .eq('id', chatId)
-      .eq('family_code', state.familyCode);
-
-    if (error) {
-      console.error('[FamilyChat] Delete chat error:', error);
-      sweetAlert.alert('Error', 'Failed to delete chat', 'error');
-      return;
-    }
-
-    await supabase
-      .from('family_messages')
-      .delete()
-      .eq('chat_id', chatId);
-
-    setState(prev => ({
-      ...prev,
-      chats: prev.chats.filter(c => c.id !== chatId),
-      messages: { ...prev.messages, [chatId]: undefined },
-    }));
-  }, [state.familyCode, userProfile, sweetAlert]);
-
-  /* ─── Family Code Management ───────────────────────────────────────── */
+  /* ─── Family Code ───────────────────────────────────────────── */
 
   const shareFamilyCode = useCallback(async () => {
-    const code = state.familyCode || generateFamilyCode();
+    const code = familyCodeRef.current || generateFamilyCodeString();
     try {
       await Share.share({
-        message: `Join my family on LittleLoom! Use code: ${code}\n\nTrack baby's moments together and chat with the family. Download the app and enter this code during setup.`,
+        message: `Join my family on LittleLoom! Use code: ${code}`,
         title: 'Join My Family on LittleLoom',
       });
     } catch (error) {
-      console.error('Error sharing family code:', error);
+      console.warn('[FamilyChat] Share error:', error);
     }
-  }, [state.familyCode]);
+  }, []);
 
-  const joinFamilyByCode = useCallback(async (code: string): Promise<boolean> => {
-    try {
-      const { data: chatData, error: chatError } = await supabase
-        .from('family_chats')
-        .select('*')
-        .eq('family_code', code)
-        .eq('type', 'group')
-        .maybeSingle();
+  const joinFamilyByCode = useCallback(
+    async (code: string): Promise<boolean> => {
+      try {
+        const { data: chatData, error: chatError } = await supabase
+          .from('family_chats')
+          .select('*')
+          .eq('family_code', code)
+          .eq('type', 'group')
+          .maybeSingle();
 
-      if (chatError || !chatData) {
-        sweetAlert.alert('Invalid Code', 'This family code does not exist', 'error');
+        if (chatError || !chatData) {
+          sweetAlert.alert('Invalid Code', 'This family code does not exist', 'error');
+          return false;
+        }
+
+        await supabase
+          .from('app_settings')
+          .upsert(
+            {
+              key: 'family_code',
+              value: code,
+              user_id: userProfileRef.current?.id ?? null,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'key,user_id' },
+          );
+
+        if (userProfileRef.current && !chatData.participants.includes(userProfileRef.current.id)) {
+          const me = userProfileRef.current;
+          const updatedNames = { ...chatData.participant_names, [me.id]: me.fullName };
+          const updatedRoles = { ...chatData.participant_roles, [me.id]: me.role || 'guardian' };
+          const updatedAvatars = { ...chatData.participant_avatars, [me.id]: me.avatar || '👤' };
+
+          await supabase
+            .from('family_chats')
+            .update({
+              participants: [...chatData.participants, me.id],
+              participant_names: updatedNames,
+              participant_roles: updatedRoles,
+              participant_avatars: updatedAvatars,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', chatData.id);
+
+          const welcome = createSystemMessage(
+            chatData.id,
+            `👋 ${me.fullName} joined the family`,
+            code,
+            deviceIdRef.current,
+          );
+          await supabase.from('family_messages').insert({
+            id: welcome.id,
+            sync_id: welcome.syncId,
+            device_id: welcome.deviceId,
+            version: welcome.version,
+            chat_id: welcome.chatId,
+            sender_id: welcome.senderId,
+            sender_name: welcome.senderName,
+            sender_role: welcome.senderRole,
+            sender_avatar: welcome.senderAvatar,
+            content: welcome.content,
+            type: welcome.type,
+            timestamp: welcome.timestamp,
+            read: welcome.read,
+            read_by: welcome.readBy,
+            family_code: welcome.familyCode,
+            delivery_status: welcome.deliveryStatus,
+          });
+        }
+
+        familyCodeRef.current = code;
+        setState(prev => ({ ...prev, familyCode: code }));
+        await performInitialSync();
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        return true;
+      } catch (error) {
+        console.error('[FamilyChat] Join family error:', error);
+        sweetAlert.alert('Error', 'Failed to join family', 'error');
         return false;
       }
+    },
+    [performInitialSync, sweetAlert],
+  );
 
-      await supabase
-        .from('app_settings')
-        .upsert({
-          key: 'family_code',
-          value: code,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
-
-      if (userProfile && !chatData.participants.includes(userProfile.id)) {
-        const updatedParticipants = [...chatData.participants, userProfile.id];
-        const updatedNames = { ...chatData.participant_names, [userProfile.id]: userProfile.fullName };
-        const updatedRoles = { ...chatData.participant_roles, [userProfile.id]: userProfile.role || 'guardian' };
-        const updatedAvatars = { ...chatData.participant_avatars, [userProfile.id]: userProfile.avatar || '👤' };
-
-        await supabase
-          .from('family_chats')
-          .update({
-            participants: updatedParticipants,
-            participant_names: updatedNames,
-            participant_roles: updatedRoles,
-            participant_avatars: updatedAvatars,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', chatData.id);
-
-        const welcomeMsg = createSystemMessage(
-          chatData.id,
-          `👋 ${userProfile.fullName} joined the family`,
-          code,
-          deviceIdRef.current
-        );
-
-        await supabase
-          .from('family_messages')
-          .insert({
-            id: welcomeMsg.id,
-            sync_id: welcomeMsg.syncId,
-            device_id: welcomeMsg.deviceId,
-            version: welcomeMsg.version,
-            chat_id: welcomeMsg.chatId,
-            sender_id: welcomeMsg.senderId,
-            sender_name: welcomeMsg.senderName,
-            sender_role: welcomeMsg.senderRole,
-            sender_avatar: welcomeMsg.senderAvatar,
-            content: welcomeMsg.content,
-            type: welcomeMsg.type,
-            timestamp: welcomeMsg.timestamp,
-            read: welcomeMsg.read,
-            read_by: welcomeMsg.readBy,
-            family_code: welcomeMsg.familyCode,
-            delivery_status: welcomeMsg.deliveryStatus,
-          });
-      }
-
-      setState(prev => ({ ...prev, familyCode: code }));
-      await performInitialSync();
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      return true;
-    } catch (error) {
-      console.error('[FamilyChat] Join family error:', error);
-      sweetAlert.alert('Error', 'Failed to join family', 'error');
-      return false;
-    }
-  }, [userProfile, performInitialSync, sweetAlert]);
-
-  /* ─── Block User ────────────────────────────────────────────────────── */
+  /* ─── Block User ────────────────────────────────────────────── */
 
   const blockUser = useCallback(async (userId: string) => {
-    let wasBlocked = false;
     setState(prev => {
       const isBlocked = prev.blockedUsers.includes(userId);
-      wasBlocked = isBlocked;
       const updated = isBlocked
         ? prev.blockedUsers.filter(id => id !== userId)
         : [...prev.blockedUsers, userId];
-      
+
       if (prev.familyCode) {
-        const blockedKey = `@littleloom_blocked_${prev.familyCode}`;
-        AsyncStorage.setItem(blockedKey, JSON.stringify(updated)).catch(console.error);
+        AsyncStorage.setItem(
+          `@littleloom_blocked_${prev.familyCode}`,
+          JSON.stringify(updated),
+        ).catch(() => {});
       }
-      
       return { ...prev, blockedUsers: updated };
     });
-    Haptics.notificationAsync(
-      wasBlocked
-        ? Haptics.NotificationFeedbackType.Success
-        : Haptics.NotificationFeedbackType.Warning
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+  }, []);
+
+  const isUserBlocked = useCallback(
+    (userId: string) => state.blockedUsers.includes(userId),
+    [state.blockedUsers],
+  );
+
+  /* ─── Getters ───────────────────────────────────────────────── */
+
+  const getChatMessages = useCallback(
+    (chatId: string) => messagesRef.current[chatId] ?? [],
+    [],
+  );
+
+  const getMessageById = useCallback(
+    (chatId: string, messageId: string) =>
+      messagesRef.current[chatId]?.find(m => m.id === messageId),
+    [],
+  );
+
+  const getChatById = useCallback(
+    (chatId: string) => chatsRef.current.find(c => c.id === chatId),
+    [],
+  );
+
+  const getFamilyCode = useCallback(() => familyCodeRef.current, []);
+
+  const getUnreadCount = useCallback(
+    (chatId?: string): number => {
+      if (chatId) {
+        const chat = chatsRef.current.find(c => c.id === chatId);
+        return chat?.isMuted ? 0 : chat?.unreadCount ?? 0;
+      }
+      return chatsRef.current.reduce(
+        (total, chat) => total + (chat.isMuted ? 0 : chat.unreadCount),
+        0,
+      );
+    },
+    [],
+  );
+
+  const getMemberChatInfo = useCallback(
+    (memberId: string): { name: string; avatar: string; role: string } | null => {
+      const member = members.find(m => m.id === memberId);
+      if (!member) return null;
+      return { name: member.fullName, avatar: member.avatar || '👤', role: member.role };
+    },
+    [members],
+  );
+
+  const searchMessages = useCallback((chatId: string, query: string) => {
+    const all = messagesRef.current[chatId] ?? [];
+    const q = query.toLowerCase();
+    return all.filter(
+      m => m.content.toLowerCase().includes(q) || m.senderName.toLowerCase().includes(q),
     );
   }, []);
 
-  const isUserBlocked = useCallback((userId: string): boolean => {
-    return state.blockedUsers.includes(userId);
-  }, [state.blockedUsers]);
-
-  /* ─── Getters ───────────────────────────────────────────────────────── */
-
-  const getChatMessages = useCallback((chatId: string): FamilyMessage[] => {
-    return state.messages[chatId] || [];
-  }, [state.messages]);
-
-  const getMessageById = useCallback((chatId: string, messageId: string): FamilyMessage | undefined => {
-    return state.messages[chatId]?.find(m => m.id === messageId);
-  }, [state.messages]);
-
-  const getChatById = useCallback((chatId: string): FamilyChat | undefined => {
-    return state.chats.find(c => c.id === chatId);
-  }, [state.chats]);
-
-  const getFamilyCode = useCallback((): string | null => state.familyCode, [state.familyCode]);
-
-  const getUnreadCount = useCallback((chatId?: string): number => {
-    if (chatId) {
-      const chat = state.chats.find(c => c.id === chatId);
-      return chat?.isMuted ? 0 : (chat?.unreadCount || 0);
-    }
-    return state.chats.reduce((total, chat) => total + (chat.isMuted ? 0 : chat.unreadCount), 0);
-  }, [state.chats]);
-
-  const getMemberChatInfo = useCallback((memberId: string): { name: string; avatar: string; role: string } | null => {
-    const member = members.find(m => m.id === memberId);
-    if (!member) return null;
-
-    return {
-      name: member.fullName,
-      avatar: member.avatar || '👤',
-      role: member.role,
-    };
-  }, [members]);
-
-  const searchMessages = useCallback((chatId: string, query: string): FamilyMessage[] => {
-    const messages = state.messages[chatId] || [];
-    const lowerQuery = query.toLowerCase();
-    return messages.filter(msg =>
-      msg.content.toLowerCase().includes(lowerQuery) ||
-      msg.senderName.toLowerCase().includes(lowerQuery)
-    );
-  }, [state.messages]);
-
-  const syncFamilyData = useCallback(async (): Promise<void> => {
+  const syncFamilyData = useCallback(async () => {
+    isInitializedRef.current = false;
     await performInitialSync();
   }, [performInitialSync]);
 
-  const forceSync = useCallback(async (): Promise<void> => {
+  const forceSync = useCallback(async () => {
+    isInitializedRef.current = false;
     isSubscribedRef.current = false;
     await performInitialSync();
-    setupRealtimeListeners();
-  }, [performInitialSync, setupRealtimeListeners]);
+  }, [performInitialSync]);
 
-  /* ─── Memoized Value ────────────────────────────────────────────────── */
+  /* ─── Context Value ─────────────────────────────────────────── */
 
-  const value = useMemo<FamilyChatContextType>(() => ({
-    ...state,
-    createFamilyGroup,
-    getOrCreateDirectChat,
-    getChatMessages,
-    sendMessage,
-    editMessage,
-    markChatRead,
-    deleteMessage,
-    clearChat,
-    resendMessage,
-    pickAndSendImage,
-    pickAndSendFile,
-    setTypingStatus,
-    isUserTyping,
-    getTypingUsers,
-    addReaction,
-    removeReaction,
-    muteChat,
-    pinChat,
-    leaveChat,
-    deleteChat,
-    setChatBackground,
-    generateFamilyCode,
-    getFamilyCode,
-    shareFamilyCode,
-    joinFamilyByCode,
-    getUnreadCount,
-    getChatById,
-    getMemberChatInfo,
-    syncFamilyData,
-    searchMessages,
-    getMessageById,
-    blockUser,
-    isUserBlocked,
-    forceSync,
-    setCurrentChatId,
-  }), [
-    state,
-    createFamilyGroup,
-    getOrCreateDirectChat,
-    getChatMessages,
-    sendMessage,
-    editMessage,
-    markChatRead,
-    deleteMessage,
-    clearChat,
-    resendMessage,
-    pickAndSendImage,
-    pickAndSendFile,
-    setTypingStatus,
-    isUserTyping,
-    getTypingUsers,
-    addReaction,
-    removeReaction,
-    muteChat,
-    pinChat,
-    leaveChat,
-    deleteChat,
-    setChatBackground,
-    generateFamilyCode,
-    getFamilyCode,
-    shareFamilyCode,
-    joinFamilyByCode,
-    getUnreadCount,
-    getChatById,
-    getMemberChatInfo,
-    syncFamilyData,
-    searchMessages,
-    getMessageById,
-    blockUser,
-    isUserBlocked,
-    forceSync,
-    setCurrentChatId,
-  ]);
-
-  return (
-    <FamilyChatContext.Provider value={value}>
-      {children}
-    </FamilyChatContext.Provider>
+  const value = useMemo<FamilyChatContextType>(
+    () => ({
+      ...state,
+      createFamilyGroup,
+      getOrCreateDirectChat,
+      getChatMessages,
+      sendMessage,
+      editMessage,
+      markChatRead,
+      deleteMessage,
+      clearChat,
+      resendMessage,
+      pickAndSendImage,
+      pickAndSendFile,
+      setTypingStatus,
+      isUserTyping,
+      getTypingUsers,
+      addReaction,
+      removeReaction,
+      muteChat,
+      pinChat,
+      leaveChat,
+      deleteChat,
+      setChatBackground,
+      generateFamilyCode: generateFamilyCodeString,
+      getFamilyCode,
+      shareFamilyCode,
+      joinFamilyByCode,
+      getUnreadCount,
+      getChatById,
+      getMemberChatInfo,
+      syncFamilyData,
+      searchMessages,
+      getMessageById,
+      blockUser,
+      isUserBlocked,
+      forceSync,
+      setCurrentChatId,
+    }),
+    [
+      state,
+      createFamilyGroup,
+      getOrCreateDirectChat,
+      getChatMessages,
+      sendMessage,
+      editMessage,
+      markChatRead,
+      deleteMessage,
+      clearChat,
+      resendMessage,
+      pickAndSendImage,
+      pickAndSendFile,
+      setTypingStatus,
+      isUserTyping,
+      getTypingUsers,
+      addReaction,
+      removeReaction,
+      muteChat,
+      pinChat,
+      leaveChat,
+      deleteChat,
+      setChatBackground,
+      getFamilyCode,
+      shareFamilyCode,
+      joinFamilyByCode,
+      getUnreadCount,
+      getChatById,
+      getMemberChatInfo,
+      syncFamilyData,
+      searchMessages,
+      getMessageById,
+      blockUser,
+      isUserBlocked,
+      forceSync,
+      setCurrentChatId,
+    ],
   );
+
+  return <FamilyChatContext.Provider value={value}>{children}</FamilyChatContext.Provider>;
 };
 
-export const useFamilyChat = () => {
+export const useFamilyChat = (): FamilyChatContextType => {
   const context = useContext(FamilyChatContext);
   if (!context) throw new Error('useFamilyChat must be used within FamilyChatProvider');
   return context;
