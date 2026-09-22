@@ -1556,11 +1556,15 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     );
   }, [
     expandedSections,
-    securitySettings,
+    securitySettings,              // ← already there, keep it
+    securitySettings.isAppLockEnabled,       // ← NEW: re-render on toggle
+    securitySettings.isPinEnabled,           // ← NEW
+    securitySettings.autoLockTimeout,        // ← NEW
     biometricTypeName,
     biometricIcon,
     biometricAvailable,
-    localBiometricEnabled,
+    localBiometricEnabled,         // ← already there, keep it
+    isBiometricEnabled,            // ← NEW: context value
     primary,
     secondary,
     accent,
@@ -1572,6 +1576,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     formatTimeout,
     handleAutoLockTimeout,
     handleLockNow,
+    sweetAlert,                    // ← NEW (used inside onToggle)
+    triggerHaptic,                 // ← NEW
+    currentBaby,                   // ← used by collaborative toggle (already in scope)
   ]);
 
   const renderPreferencesSection = useCallback(() => {

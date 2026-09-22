@@ -274,6 +274,26 @@ function NavigationContent({
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled, secSettings?.isAppLockEnabled]
   );
 
+  // ── React to `isSecurityLocked` flipping true while user is in-app ──
+  // This is what physically pushes the SecurityLock screen when the
+  // auto-lock timeout elapses mid-session.
+  useEffect(() => {
+    if (!isSecurityLocked) return;
+    if (!securityOn) return;
+    if (!isNavReady || !navRef.current?.isReady()) return;
+
+    const currentRoute = navRef.current.getCurrentRoute()?.name;
+    if (currentRoute === 'SecurityLock') return;
+    if (currentRoute === 'Login' || currentRoute === 'SignUp' || currentRoute === 'Onboarding') return;
+
+    console.log('[Navigation] 🔒 Locking — pushing SecurityLock');
+    resetUnlockLock();
+    navRef.current?.reset({
+      index: 0,
+      routes: [{ name: 'SecurityLock' as any }],
+    });
+  }, [isSecurityLocked, securityOn, isNavReady, resetUnlockLock]);
+
   // ─── CHECK FIRST OPEN ────────────────────────────────────────────
   useEffect(() => {
     if (firstOpenChecked.current) return;

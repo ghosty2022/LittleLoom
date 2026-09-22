@@ -820,20 +820,34 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   }, []);
 
   const lockApp = useCallback(async (force = false) => {
-    const hasSecurity = state.settings.isBiometricEnabled || state.settings.isPinEnabled || state.settings.isAppLockEnabled;
+    // Read FRESH state from AsyncStorage + SecureStore — never trust closure
+    let hasSecurity = false;
+    try {
+      const [bio, appLock, pin] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
+        AsyncStorage.getItem(ASYNC_KEYS.APP_LOCK_ENABLED),
+        secureStorage.getItem(SECURE_KEYS.PIN_HASH),
+      ]);
+      hasSecurity = bio === 'true' || appLock === 'true' || !!pin;
+    } catch {
+      hasSecurity = !!force;
+    }
+
     if (!hasSecurity && !force) {
-      console.warn('No security enabled');
+      console.warn('[Security] No security enabled — not locking');
       return;
     }
+
     manualLockTimeRef.current = Date.now();
     await AsyncStorage.setItem(ASYNC_KEYS.MANUAL_LOCK_TIME, manualLockTimeRef.current.toString());
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'true');
     await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
+
     if (isMounted.current) {
       setState(prev => ({ ...prev, isSecurityLocked: true }));
     }
     console.log('🔒 App locked');
-  }, [state.settings.isBiometricEnabled, state.settings.isPinEnabled, state.settings.isAppLockEnabled]);
+  }, []);  // ← no deps — reads everything fresh
 
   const unlockApp = useCallback(async (method: 'biometric' | 'pin', data?: string): Promise<boolean> => {
     if (unlockInProgressRef.current) {
@@ -895,7 +909,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } finally {
       setTimeout(() => { unlockInProgressRef.current = false; }, 300);
     }
-  }, [authenticateWithBiometric, verifyPin, state.isBiometricHardwareAvailable, state.settings.isBiometricEnabled, refreshBiometricStatus]);
+  }, [authenticateWithBiometric, verifyPin]);
 
   const forceUnlock = useCallback(async () => {
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'false');
@@ -964,8 +978,15 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         return;
       }
 
+      // Read auto-lock timeout FRESH from storage (in case it changed)
+      let timeoutMinutes = 5;
+      try {
+        const t = await AsyncStorage.getItem(ASYNC_KEYS.AUTO_LOCK_TIMEOUT);
+        timeoutMinutes = t ? parseInt(t, 10) : 5;
+      } catch {}
+
       const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : lastActiveRef.current;
-      const timeoutMs = state.settings.autoLockTimeout * 60 * 1000;
+      const timeoutMs = timeoutMinutes * 60 * 1000;
       const timeSinceLastActive = Date.now() - lastActive;
 
       console.log('[Security] Time since last active:', timeSinceLastActive, 'ms');
@@ -986,7 +1007,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } finally {
       securityCheckLockRef.current = false;
     }
-  }, [state.settings.autoLockTimeout, lockApp]);
+  }, [lockApp]);  // lockApp has no deps now; reads fresh
 
   const getBiometricTypeName = useCallback(() => {
     const types = state.settings.availableAuthTypes;
