@@ -1055,19 +1055,20 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 </View>
               ) : null}
 
-              {analysis && !analyzing && analysis.modelAvailable !== false ? (
-  <View
-    style={[
-      styles.analysisBadge,
-      { backgroundColor: severityColor + 'E6' },
-    ]}
-  >
-    <Ionicons name="sparkles" size={14} color="#FFF" />
-    <Text style={styles.analysisText}>{`AI ${Math.round(
-      (analysis.confidence || 0) * 100
-    )}%`}</Text>
-  </View>
-) : null}
+              {/* AI badge only shows when a REAL model is available */}
+              {analysis && !analyzing && analysis.modelAvailable === true && analysis.confidence > 0 ? (
+                <View
+                  style={[
+                    styles.analysisBadge,
+                    { backgroundColor: severityColor + 'E6' },
+                  ]}
+                >
+                  <Ionicons name="sparkles" size={14} color="#FFF" />
+                  <Text style={styles.analysisText}>
+                    {`AI ${Math.round(analysis.confidence * 100)}%`}
+                  </Text>
+                </View>
+              ) : null}
 
               {currentMeta ? (
                 <View
@@ -1233,7 +1234,8 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       </Text>
     </View>
 
-    {analysis.modelAvailable !== false && (
+    {/* Confidence bar only renders when a real ML model is available */}
+    {analysis.modelAvailable === true && analysis.confidence > 0 && (
       <>
         <View
           style={[
@@ -1255,7 +1257,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
             { color: COLORS.text.tertiary, marginBottom: SPACE.sm },
           ]}
         >
-          {`Confidence: ${Math.round((analysis.confidence || 0) * 100)}%`}
+          {`Confidence: ${Math.round(analysis.confidence * 100)}%`}
         </Text>
       </>
     )}

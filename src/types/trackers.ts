@@ -42,6 +42,47 @@ export type FieldType =
   | 'pair'              // Start/End time pair with auto-duration
   | 'repeat_schedule';  // "Mon, Wed, Fri at 8am" pattern
 
+// ─── Unit Sets ──────────────────────────────────────────────────────────
+// Different contexts need different unit options. This centralizes them.
+
+export interface UnitOption {
+  id: string;
+  label: string;
+}
+
+export const LIQUID_UNITS: UnitOption[] = [
+  { id: 'ml', label: 'ml' },
+  { id: 'oz', label: 'oz' },
+  { id: 'cups', label: 'cups' },
+];
+
+export const SOLID_UNITS: UnitOption[] = [
+  { id: 'g', label: 'g' },
+  { id: 'oz', label: 'oz' },
+  { id: 'tbsp', label: 'tbsp' },
+  { id: 'tsp', label: 'tsp' },
+  { id: 'servings', label: 'servings' },
+  { id: 'pieces', label: 'pieces' },
+];
+
+export const WEIGHT_UNITS: UnitOption[] = [
+  { id: 'kg', label: 'kg' },
+  { id: 'lb', label: 'lb' },
+  { id: 'g', label: 'g' },
+  { id: 'oz', label: 'oz' },
+];
+
+export const LENGTH_UNITS: UnitOption[] = [
+  { id: 'cm', label: 'cm' },
+  { id: 'in', label: 'in' },
+  { id: 'mm', label: 'mm' },
+];
+
+export const TEMPERATURE_UNITS: UnitOption[] = [
+  { id: 'celsius', label: '°C' },
+  { id: 'fahrenheit', label: '°F' },
+];
+
 export interface FieldOption {
   id: string;
   label: string;

@@ -175,6 +175,35 @@ export function mapRowToEntry(row: any): TrackerEntry {
     editedAt = Number.isFinite(parsed) ? parsed : undefined;
   }
 
+  // ── Normalize duration if present ────────────────────────────────
+  // Duration should always be in SECONDS for consistency
+  if (parsedData.duration !== undefined) {
+    const rawDur = parsedData.duration;
+    if (typeof rawDur === 'string') {
+      // Parse "1h 30m" / "90m" / "3600s" strings
+      const str = rawDur.trim().toLowerCase();
+      const asNum = Number(str);
+      if (Number.isFinite(asNum)) {
+        parsedData.duration = asNum;
+      } else {
+        let total = 0;
+        const re = /(\d+(?:\.\d+)?)\s*(h|hr|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
+        let match: RegExpExecArray | null;
+        while ((match = re.exec(str)) !== null) {
+          const n = parseFloat(match[1]);
+          const u = match[2][0];
+          total += u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
+        }
+        parsedData.duration = total > 0 ? total : undefined;
+      }
+    }
+    // Guard against absurd values
+    if (typeof parsedData.duration === 'number' && parsedData.duration > 86400) {
+      if (__DEV__) console.warn('[mapRowToEntry] Absurd duration:', parsedData.duration);
+      parsedData.duration = undefined;
+    }
+  }
+
   return {
     id: String(row.id),
     babyId: String(row.baby_id),

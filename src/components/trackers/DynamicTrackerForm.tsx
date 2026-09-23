@@ -1129,26 +1129,51 @@ const SmartQuantityField: React.FC<{
   fontSizeMultiplier,
 }) => {
   const unitKey = `${field.id}_unit`;
-  const unitOptions = (field as any).unitOptions || [
+  // Smart unit detection: solid food gets solid units, liquids get liquid units
+  const isSolidFood = 
+    field.id?.toLowerCase().includes('solid') ||
+    field.id?.toLowerCase().includes('food') ||
+    field.label?.toLowerCase().includes('solid') ||
+    field.label?.toLowerCase().includes('eaten');
+
+  const defaultSolidUnits = [
+    { id: 'g', label: 'g' },
+    { id: 'oz', label: 'oz' },
+    { id: 'tbsp', label: 'tbsp' },
+    { id: 'servings', label: 'servings' },
+    { id: 'pieces', label: 'pieces' },
+  ];
+
+  const defaultLiquidUnits = [
     { id: 'ml', label: 'ml' },
     { id: 'oz', label: 'oz' },
   ];
+
+  const unitOptions = (field as any).unitOptions || 
+    (isSolidFood ? defaultSolidUnits : defaultLiquidUnits);
 
   // Region-aware default unit
   const defaultUnit = useMemo(() => {
     try {
       const locale = Intl.NumberFormat().resolvedOptions().locale || 'en-US';
       const region = locale.split('-')[1] || 'US';
-      // US/UK/Liberia/Myanmar use imperial fluid ounces
-      if (
-        unitOptions.some((u: any) => u.id === 'oz') &&
-        (region === 'US' || region === 'GB' || region === 'LR' || region === 'MM')
-      ) {
+      const isImperialRegion = region === 'US' || region === 'GB' || region === 'LR' || region === 'MM';
+      
+      // For solid food, prefer grams as universal default; oz only in imperial regions
+      if (isSolidFood) {
+        if (isImperialRegion && unitOptions.some((u: any) => u.id === 'oz')) {
+          return 'oz';
+        }
+        return 'g';
+      }
+      
+      // For liquids, use oz in imperial regions, ml elsewhere
+      if (isImperialRegion && unitOptions.some((u: any) => u.id === 'oz')) {
         return 'oz';
       }
     } catch {}
     return unitOptions[0].id;
-  }, [unitOptions]);
+  }, [unitOptions, isSolidFood]);
 
   const selectedUnit = (data[unitKey] as string) || defaultUnit;
 
@@ -1319,12 +1344,18 @@ const SmartDateTimeField: React.FC<{
 
       {/* Ongoing hint when start is set but end is not */}
       {isStart && hasValue && !hasOtherValue && (
-        <View style={styles.ongoingHint}>
+        <TouchableOpacity
+          style={styles.ongoingHint}
+          onPress={() => {
+            // Set endTime to now to complete the session
+            updateField('endTime', new Date().toISOString());
+          }}
+        >
           <Ionicons name="time-outline" size={14} color={tracker.color} />
           <Text style={[styles.ongoingHintText, { color: tracker.color }]}>
-            Ongoing — tap "End Time" when finished
+            Ongoing — tap here to end now
           </Text>
-        </View>
+        </TouchableOpacity>
       )}
 
       {/* Show duration if both start and end are set */}

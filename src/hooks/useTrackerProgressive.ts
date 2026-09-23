@@ -184,8 +184,8 @@ const validateSuggestion = (
   value: unknown,
   confidence: number
 ): ProgressiveSuggestion | null => {
-  // Reject low-confidence suggestions
-  if (confidence < 60) return null;
+  // Require HIGH confidence — 70% minimum for actionable suggestions
+  if (confidence < 70) return null;
 
   // Reject empty/null/undefined values
   if (value === undefined || value === null || value === '') return null;
@@ -196,6 +196,23 @@ const validateSuggestion = (
 
   // Reject "0" as a value for fields that expect a positive number
   if (typeof value === 'number' && value === 0) return null;
+
+  // Reject negative numbers for measurements
+  if (typeof value === 'number' && value < 0) return null;
+
+  // Reject absurd durations (> 24 hours in seconds)
+  if (fieldId.toLowerCase().includes('duration') && typeof value === 'number' && value > 86400) {
+    return null;
+  }
+
+  // Reject absurd amounts (> 2000ml or > 500g)
+  if (
+    (fieldId.toLowerCase().includes('amount') || fieldId.toLowerCase().includes('quantity')) &&
+    typeof value === 'number' &&
+    value > 2000
+  ) {
+    return null;
+  }
 
   return { fieldId, value, source: 'pattern', confidence, label: '', emoji: '' } as ProgressiveSuggestion;
 };
@@ -424,10 +441,12 @@ export const useTrackerProgressive = (trackerId: string) => {
     }
 
     // ─── 2. Pattern suggestions (from tracker context) ───────────
-    const patternSuggestions = tracker.getSmartSuggestions(trackerId) || {};
+    //      Only surface suggestions when we have REAL data (>= 5 entries)
+    const entryCount = trackerEntries.length;
+    const patternSuggestions = entryCount >= 5 ? (tracker.getSmartSuggestions(trackerId) || {}) : {};
     Object.entries(patternSuggestions).forEach(([fieldId, value]) => {
       if (prefill[fieldId] === undefined && value !== undefined) {
-        // Validate before adding
+        // Validate before adding — require 80% confidence for patterns
         const validated = validateSuggestion(fieldId, value, 80);
         if (validated) {
           prefill[fieldId] = value;
@@ -442,11 +461,21 @@ export const useTrackerProgressive = (trackerId: string) => {
     });
 
     // ─── 3. Time-based suggestions for time/datetime fields ──────
+    //      Only prefill START times, never END times (so ongoing works)
     if (trackerConfig?.fields) {
       trackerConfig.fields.forEach((field) => {
         if (prefill[field.id] !== undefined) return;
 
         if (field.type === 'time' || field.type === 'datetime') {
+          // Never auto-fill endTime — that would make sessions instantly "complete"
+          const fieldIdLower = field.id.toLowerCase();
+          const isEndField = fieldIdLower.includes('end') || fieldIdLower === 'endtime';
+          
+          if (isEndField) {
+            // Skip endTime — leave it empty so "ongoing" state works
+            return;
+          }
+
           // For datetime, use ISO string; for time, use HH:mm
           if (field.type === 'datetime') {
             const isoNow = now.toISOString();
@@ -564,13 +593,28 @@ export const useTrackerProgressive = (trackerId: string) => {
     const result: Record<string, ProgressiveTrend> = {};
 
     if (todayEntries.length > 0 && yesterdayEntries.length > 0) {
+      // Average numeric values across all entries, not just the first
       const todayData = todayEntries[0].data || {};
       const yestData = yesterdayEntries[0].data || {};
 
+      // Only compute trends for numeric fields that make sense
+      const trendableFields = new Set([
+        'duration', 'amount', 'quantity', 'value', 'temperature',
+        'weight', 'height', 'head', 'bmi', 'percentile',
+      ]);
+
       Object.keys({ ...todayData, ...yestData }).forEach((fieldId) => {
+        // Skip non-numeric or non-trendable fields
+        if (!trendableFields.has(fieldId)) return;
+        
         const current = Number(todayData[fieldId]);
         const previous = Number(yestData[fieldId]);
-        if (Number.isFinite(current) && Number.isFinite(previous)) {
+        
+        // Both must be finite positive numbers
+        if (
+          Number.isFinite(current) && current > 0 &&
+          Number.isFinite(previous) && previous > 0
+        ) {
           result[fieldId] = computeTrend(current, previous);
         }
       });

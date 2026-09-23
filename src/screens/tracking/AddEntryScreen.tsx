@@ -2538,7 +2538,9 @@ function TrackerContent({
               : d.sleepType === 'night'
               ? 'Night Sleep'
               : d.sleepType || 'Sleep';
-          return `${sleepLabel}${dur ? ` • ${dur}` : ''}`;
+          // Duration only shown when it's a real computed value (> 60 seconds)
+          const durationText = dur && dur !== '0m' && dur !== '0s' ? ` • ${dur}` : '';
+          return `${sleepLabel}${durationText}`;
         }
         case 'growth': {
           const unit = d.value_unit || d.unit || '';
@@ -2596,15 +2598,40 @@ function TrackerContent({
     try {
       // Final data assembly — compute duration from start/end if missing
       const finalData: Record<string, unknown> = { ...pendingData };
-      if (
-        (tracker.id === 'sleep' || tracker.id === 'feed' || tracker.id === 'dream_feed') &&
-        finalData.startTime &&
-        finalData.endTime
-      ) {
-        const startMs = new Date(String(finalData.startTime)).getTime();
-        const endMs = new Date(String(finalData.endTime)).getTime();
-        if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-          finalData.duration = Math.round((endMs - startMs) / 1000);
+
+      // ─── Duration computation for sleep/feed ──────────────────────
+      const durationTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
+      if (durationTrackers.includes(tracker.id)) {
+        const hasStart = finalData.startTime && String(finalData.startTime).length > 0;
+        const hasEnd = finalData.endTime && String(finalData.endTime).length > 0;
+
+        if (hasStart && hasEnd) {
+          const startMs = new Date(String(finalData.startTime)).getTime();
+          const endMs = new Date(String(finalData.endTime)).getTime();
+          if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+            const durationSeconds = Math.round((endMs - startMs) / 1000);
+            // Only set duration if it's meaningful (>= 60 seconds)
+            if (durationSeconds >= 60) {
+              finalData.duration = durationSeconds;
+              finalData.status = 'completed';
+            } else {
+              // Too short — mark as ongoing or skip
+              delete finalData.duration;
+              finalData.status = hasEnd ? 'completed' : 'ongoing';
+            }
+          } else {
+            // Invalid times — mark ongoing
+            delete finalData.duration;
+            finalData.status = 'ongoing';
+          }
+        } else if (hasStart && !hasEnd) {
+          // Ongoing session — no duration yet
+          delete finalData.duration;
+          finalData.status = 'ongoing';
+        } else if (hasEnd && !hasStart) {
+          // End time without start — can't compute duration
+          delete finalData.duration;
+          finalData.status = 'completed';
         }
       }
 

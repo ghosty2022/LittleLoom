@@ -139,6 +139,22 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
+      // Status for tracking ongoing/completed feeds (esp. breastfeeding)
+      f.select(
+        'status',
+        'Status',
+        [
+          { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
+          { id: 'completed', label: 'Finished', emoji: '✅' },
+        ],
+        { showIf: { field: 'feedType', equals: 'breast' } }
+      ),
+      f.datetime('startTime', 'Start Time', {
+        showIf: { field: 'feedType', equals: 'breast' },
+      }),
+      f.datetime('endTime', 'End Time', {
+        showIf: { field: 'feedType', equals: 'breast' },
+      }),
 
       // ── Breast ────────────────────────────────────────────────
       f.select(

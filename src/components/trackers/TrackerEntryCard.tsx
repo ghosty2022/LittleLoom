@@ -27,11 +27,39 @@ interface TrackerEntryCardProps {
 }
 
 // ─── Duration formatter ─────────────────────────────────────────────────
-const formatDuration = (seconds: unknown): string | null => {
-  const s = Number(seconds);
+// Handles: raw seconds (3600), ISO strings, "1h 30m" strings, and minutes
+const formatDuration = (value: unknown): string | null => {
+  if (value === undefined || value === null || value === '') return null;
+
+  // String that's already formatted (e.g., "1h 30m")
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    // If it looks like a formatted duration, return as-is
+    if (/^\d+[hm](\s*\d+[m])?$/i.test(trimmed) || /^\d+h\s*\d+m$/i.test(trimmed)) {
+      return trimmed;
+    }
+    // Try parsing as number
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return formatDuration(parsed);
+    }
+    return null;
+  }
+
+  const s = Number(value);
   if (!Number.isFinite(s) || s <= 0) return null;
+
+  // Guard against absurd values (> 24 hours) — likely a bug
+  if (s > 86400) {
+    if (__DEV__) console.warn('[TrackerEntryCard] Absurd duration:', s);
+    return null;
+  }
+
   const mins = Math.floor(s / 60);
-  if (mins === 0) return null;
+  if (mins === 0) {
+    const secs = Math.floor(s);
+    return secs > 0 ? `${secs}s` : null;
+  }
   if (mins < 60) return `${mins}m`;
   const h = Math.floor(mins / 60);
   const m = mins % 60;
@@ -192,11 +220,20 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
 
   // ── Ongoing status detection ──────────────────────────────────────
   const isOngoing = useMemo(() => {
-    if (entry.trackerId !== 'sleep' && entry.trackerId !== 'feed') return false;
+    // Only sleep and feed (and dream_feed) support ongoing status
+    const ongoingTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
+    if (!ongoingTrackers.includes(entry.trackerId)) return false;
+
+    // Explicit status field wins
     const status = entry.data?.status;
     if (status === 'ongoing') return true;
-    // If startTime exists but endTime is missing, treat as ongoing
-    if (entry.data?.startTime && !entry.data?.endTime) return true;
+    if (status === 'completed') return false;
+
+    // If startTime exists but endTime is missing → ongoing
+    const hasStart = entry.data?.startTime && String(entry.data.startTime).length > 0;
+    const hasEnd = entry.data?.endTime && String(entry.data.endTime).length > 0;
+    if (hasStart && !hasEnd) return true;
+
     return false;
   }, [entry.trackerId, entry.data]);
 
