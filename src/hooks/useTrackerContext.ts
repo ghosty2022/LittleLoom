@@ -62,7 +62,7 @@ function getFallbackTrackerContext() {
     refreshTrackers: async () => {},
     refreshEntries: async () => {},
     setCurrentBabyId: () => {},
-    // ─── Mirrors useSafeContexts.getFallbackTrackerContext ───
+    // ─── Baby ID accessor ────────────────────────────────────
     getCurrentBabyId: () => null as string | null,
     getCustomTrackers: () => [],
     getSystemTrackers: () => [],
