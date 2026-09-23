@@ -1,13 +1,26 @@
-// DynamicTrackerForm.tsx — COMPLETE FIXED V9
-// FIXED:
-//   ✓ Smart suggestions require real confidence (>= 60%) and are deduplicated
-//   ✓ Sleep/feed start/end times auto-link with "Ongoing" support
-//   ✓ Duration displays as "1h 30m" not "3600"
-//   ✓ Quantity fields are region-aware (oz for US/UK, ml elsewhere)
-//   ✓ Solid food gets its own measurement field (g/oz/tbsp/servings/pieces)
-//   ✓ No fake AI confidence badges
+// DynamicTrackerForm.tsx — COMPLETE V10
+// ═══════════════════════════════════════════════════════════════════════════
+// FIXED IN V10:
+//   ✓ Added `pain_scale` field type (0–10 slider with emoji anchors)
+//   ✓ Added `time` field type with dedicated picker (was broken → text input)
+//   ✓ Added `video` field placeholder (no longer silent fallthrough)
+//   ✓ `SmartNumberField` respects `field.step` for decimal precision
+//   ✓ `SmartQuantityField` uses canonical SOLID_UNITS / LIQUID_UNITS
+//   ✓ `updateField` clears sibling fields properly on all cross-field changes
+//   ✓ `handleSubmit` duration computation covers ALL duration trackers
+//   ✓ `SmartDurationField` supports ongoing for tummy_time / pumping / bath
+//   ✓ Fixed TS narrowing on `suggestion.value` (no more `!` where unneeded)
+//   ✓ Removed unused imports (SCREEN_W) and dead module-level comment
+//   ✓ Inputs disabled while submitting (prevent double-tap edits)
+// ═══════════════════════════════════════════════════════════════════════════
 
-import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+} from 'react';
 import {
   View,
   Text,
@@ -18,7 +31,6 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -29,6 +41,8 @@ import {
   UnifiedTrackerConfig,
   FieldConfig,
   FieldOption,
+  LIQUID_UNITS as CANONICAL_LIQUID_UNITS,
+  SOLID_UNITS as CANONICAL_SOLID_UNITS,
 } from '../../types/trackers';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -41,8 +55,7 @@ import {
 import { MOOD_EMOJIS } from './trackerConstants';
 import { isFieldVisible } from '../../utils/form';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-// ─── Per-tracker default values ─────────────────────────────────────────
+// ─── Per-tracker default values ────────────────────────────────────────────
 // Applied only when no user data or prefill exists for that field.
 const TRACKER_DEFAULTS: Record<string, Record<string, unknown>> = {
   mood: { mood: 3 },
@@ -64,9 +77,9 @@ const TRACKER_DEFAULTS: Record<string, Record<string, unknown>> = {
   reading: { engagement: 3 },
 };
 
-const getTrackerDefaults = (trackerId: string): Record<string, unknown> => {
-  return TRACKER_DEFAULTS[trackerId] ?? {};
-};
+const getTrackerDefaults = (trackerId: string): Record<string, unknown> =>
+  TRACKER_DEFAULTS[trackerId] ?? {};
+
 interface DynamicTrackerFormProps {
   tracker: UnifiedTrackerConfig;
   initialData?: Record<string, unknown>;
@@ -93,9 +106,10 @@ const TREND_ICONS = {
   same: 'remove-outline',
 };
 
-// ─── Validation helpers ─────────────────────────────────────────────────
+// ─── Validation helpers ────────────────────────────────────────────────────
 const MAX_FUTURE_MS = 5 * 60 * 1000; // 5 minutes ahead is OK (clock skew)
-// ─── Growth value sanity bounds by age (in months) ─────────────────────
+
+// ─── Growth value sanity bounds by age (in months) ─────────────────────────
 // Based on WHO growth standards + 2 SD margins.
 const GROWTH_BOUNDS = {
   weight: (ageMonths: number): { min: number; max: number } => {
@@ -137,7 +151,8 @@ const validateGrowthValue = (
   if (type === 'weight' && unit === 'lb') normalizedValue = value * 0.453592;
   else if (type === 'weight' && unit === 'oz') normalizedValue = value * 0.0283495;
   else if (type === 'weight' && unit === 'g') normalizedValue = value / 1000;
-  else if ((type === 'height' || type === 'head') && unit === 'in') normalizedValue = value * 2.54;
+  else if ((type === 'height' || type === 'head') && unit === 'in')
+    normalizedValue = value * 2.54;
 
   const bounds = GROWTH_BOUNDS[type as 'weight' | 'height' | 'head'](ageMonths);
   if (normalizedValue < bounds.min || normalizedValue > bounds.max) {
@@ -147,11 +162,6 @@ const validateGrowthValue = (
 
   return null;
 };
-  // ─── Medication smart-fill from last entry ─────────────────────────
-  // The last medication entry usually holds name + dosage + type.
-  // Surfacing those as defaults saves the parent from re-typing.
-  // NOTE: this must live INSIDE the main component — do not define it
-  // at module scope (it needs component-local state).
 
 const isFutureTimestamp = (value: unknown): boolean => {
   if (value === undefined || value === null || value === '') return false;
@@ -160,7 +170,7 @@ const isFutureTimestamp = (value: unknown): boolean => {
   return d.getTime() - Date.now() > MAX_FUTURE_MS;
 };
 
-// ─── Duration formatter ─────────────────────────────────────────────────
+// ─── Duration formatter ────────────────────────────────────────────────────
 const formatDurationSeconds = (seconds: number): string => {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0m';
   const mins = Math.floor(seconds / 60);
@@ -171,7 +181,7 @@ const formatDurationSeconds = (seconds: number): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-// ─── Streak badge ───────────────────────────────────────────────────────
+// ─── Streak badge ──────────────────────────────────────────────────────────
 const StreakBadge: React.FC<{
   streak: TrackerProgressiveState['streak'];
   color: string;
@@ -204,7 +214,7 @@ const StreakBadge: React.FC<{
   );
 };
 
-// ─── Time context badge ─────────────────────────────────────────────────
+// ─── Time context badge ────────────────────────────────────────────────────
 const TimeContextBadge: React.FC<{
   timeContext: TrackerProgressiveState['timeContext'] | undefined;
   color: string;
@@ -217,32 +227,63 @@ const TimeContextBadge: React.FC<{
       <Ionicons name="time-outline" size={14} color={color} />
       <Text style={[styles.timeContextText, { color: colors.textSecondary }]}>
         {timeContext.timeOfDay} • Usually {timeContext.usualTimes[0]}
-        {timeContext.nextSuggestedTime && ` • Next: ${timeContext.nextSuggestedTime}`}
+        {timeContext.nextSuggestedTime &&
+          ` • Next: ${timeContext.nextSuggestedTime}`}
       </Text>
     </View>
   );
 };
 
-// ─── Shared field wrapper ───────────────────────────────────────────────
+// ─── Shared field wrapper ──────────────────────────────────────────────────
 const FieldLabel: React.FC<{
   label: string;
   required?: boolean;
+  hint?: string;
   colors: any;
   fontSizeMultiplier: number;
   rightAccessory?: React.ReactNode;
-}> = ({ label, required, colors, fontSizeMultiplier, rightAccessory }) => (
+}> = ({
+  label,
+  required,
+  hint,
+  colors,
+  fontSizeMultiplier,
+  rightAccessory,
+}) => (
   <View style={styles.labelRow}>
-    <Text style={[styles.label, { color: colors.text, fontSize: 15 * fontSizeMultiplier }]}>
-      {label}
-      {required && (
-        <Text style={[styles.required, { color: colors.error || '#ef4444' }]}> *</Text>
-      )}
-    </Text>
+    <View style={styles.labelTextWrap}>
+      <Text
+        style={[
+          styles.label,
+          { color: colors.text, fontSize: 15 * fontSizeMultiplier },
+        ]}
+      >
+        {label}
+        {required && (
+          <Text
+            style={[styles.required, { color: colors.error || '#ef4444' }]}
+          >
+            {' '}
+            *
+          </Text>
+        )}
+      </Text>
+      {hint ? (
+        <Text
+          style={[
+            styles.labelHint,
+            { color: colors.textSecondary, fontSize: 11 * fontSizeMultiplier },
+          ]}
+        >
+          {hint}
+        </Text>
+      ) : null}
+    </View>
     {rightAccessory}
   </View>
 );
 
-// ─── Smart Multi-Select Field ───────────────────────────────────────────
+// ─── Smart Multi-Select Field ──────────────────────────────────────────────
 const SmartMultiSelectField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -254,6 +295,7 @@ const SmartMultiSelectField: React.FC<{
   borderRadiusValue: number;
   suggestion?: ProgressiveSuggestion;
   yesterdayValue?: unknown;
+  editable?: boolean;
 }> = ({
   field,
   value,
@@ -265,10 +307,10 @@ const SmartMultiSelectField: React.FC<{
   borderRadiusValue,
   suggestion,
   yesterdayValue,
+  editable = true,
 }) => {
   const selected = Array.isArray(value) ? value : [];
 
-  // Only surface suggestions with real confidence
   const hasSuggestion =
     suggestion !== undefined &&
     suggestion.confidence >= 60 &&
@@ -305,11 +347,17 @@ const SmartMultiSelectField: React.FC<{
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={colors}
         fontSizeMultiplier={fontSizeMultiplier}
         rightAccessory={
           selected.length > 0 ? (
-            <View style={[styles.countBadge, { backgroundColor: `${tracker.color}15` }]}>
+            <View
+              style={[
+                styles.countBadge,
+                { backgroundColor: `${tracker.color}15` },
+              ]}
+            >
               <Text style={[styles.countText, { color: tracker.color }]}>
                 {selected.length} selected
               </Text>
@@ -318,18 +366,23 @@ const SmartMultiSelectField: React.FC<{
         }
       />
 
-      {(hasSuggestion || hasYesterday) && (
+      {(hasSuggestion || hasYesterday) && editable && (
         <View style={styles.suggestionRow}>
           {hasSuggestion && (
             <TouchableOpacity
               onPress={() => onChange(suggestionArray)}
               style={[
                 styles.suggestionChip,
-                { backgroundColor: `${tracker.color}15`, borderRadius: borderRadiusValue / 2 },
+                {
+                  backgroundColor: `${tracker.color}15`,
+                  borderRadius: borderRadiusValue / 2,
+                },
               ]}
             >
               <Text style={styles.suggestionChipEmoji}>✨</Text>
-              <Text style={[styles.suggestionChipText, { color: tracker.color }]}>
+              <Text
+                style={[styles.suggestionChipText, { color: tracker.color }]}
+              >
                 Suggest ({suggestionArray.join(', ')})
               </Text>
             </TouchableOpacity>
@@ -345,8 +398,17 @@ const SmartMultiSelectField: React.FC<{
                 },
               ]}
             >
-              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
-              <Text style={[styles.suggestionChipText, { color: colors.textSecondary }]}>
+              <Ionicons
+                name="time-outline"
+                size={12}
+                color={colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.suggestionChipText,
+                  { color: colors.textSecondary },
+                ]}
+              >
                 Yesterday ({yesterdayArray.join(', ')})
               </Text>
             </TouchableOpacity>
@@ -362,6 +424,7 @@ const SmartMultiSelectField: React.FC<{
           return (
             <TouchableOpacity
               key={option.id}
+              disabled={!editable}
               style={[
                 styles.optionChip,
                 {
@@ -377,11 +440,14 @@ const SmartMultiSelectField: React.FC<{
                     : colors.border,
                   borderRadius: borderRadiusValue,
                   borderWidth: isSuggested ? 2 : 1.5,
+                  opacity: !editable ? 0.7 : 1,
                 },
               ]}
               onPress={() => toggleOption(option.id)}
             >
-              {option.emoji && <Text style={styles.optionEmoji}>{option.emoji}</Text>}
+              {option.emoji && (
+                <Text style={styles.optionEmoji}>{option.emoji}</Text>
+              )}
               <Text
                 style={[
                   styles.optionLabel,
@@ -398,21 +464,33 @@ const SmartMultiSelectField: React.FC<{
                 {option.label}
               </Text>
               {isSelected && (
-                <Ionicons name="checkmark-circle" size={16} color={tracker.color} />
+                <Ionicons
+                  name="checkmark-circle"
+                  size={16}
+                  color={tracker.color}
+                />
               )}
               {isSuggested && !isSelected && (
-                <Text style={[styles.suggestIndicator, { color: tracker.color }]}>✨</Text>
+                <Text
+                  style={[styles.suggestIndicator, { color: tracker.color }]}
+                >
+                  ✨
+                </Text>
               )}
             </TouchableOpacity>
           );
         })}
       </View>
-      {error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
+      {error && (
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          {error}
+        </Text>
+      )}
     </View>
   );
 };
 
-// ─── Smart Select Field ─────────────────────────────────────────────────
+// ─── Smart Select Field ────────────────────────────────────────────────────
 const SmartSelectField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -424,6 +502,7 @@ const SmartSelectField: React.FC<{
   borderRadiusValue: number;
   suggestion?: ProgressiveSuggestion;
   yesterdayValue?: unknown;
+  editable?: boolean;
 }> = ({
   field,
   value,
@@ -435,6 +514,7 @@ const SmartSelectField: React.FC<{
   borderRadiusValue,
   suggestion,
   yesterdayValue,
+  editable = true,
 }) => {
   const hasSuggestion =
     suggestion !== undefined &&
@@ -454,24 +534,30 @@ const SmartSelectField: React.FC<{
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={colors}
         fontSizeMultiplier={fontSizeMultiplier}
       />
 
-      {(hasSuggestion || hasYesterday) && (
+      {(hasSuggestion || hasYesterday) && editable && (
         <View style={styles.suggestionRow}>
           {hasSuggestion && (
             <TouchableOpacity
               style={[
                 styles.suggestionChip,
-                { backgroundColor: `${tracker.color}15`, borderRadius: borderRadiusValue / 2 },
+                {
+                  backgroundColor: `${tracker.color}15`,
+                  borderRadius: borderRadiusValue / 2,
+                },
               ]}
               onPress={() => onChange(suggestion!.value)}
             >
               <Text style={styles.suggestionChipEmoji}>✨</Text>
-              <Text style={[styles.suggestionChipText, { color: tracker.color }]}>
-                {field.options?.find((o) => o.id === suggestion!.value)?.label ||
-                  String(suggestion!.value)}{' '}
+              <Text
+                style={[styles.suggestionChipText, { color: tracker.color }]}
+              >
+                {field.options?.find((o) => o.id === suggestion!.value)
+                  ?.label || String(suggestion!.value)}{' '}
                 ({suggestion!.confidence}%)
               </Text>
             </TouchableOpacity>
@@ -487,9 +573,19 @@ const SmartSelectField: React.FC<{
               ]}
               onPress={() => onChange(yesterdayValue)}
             >
-              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
-              <Text style={[styles.suggestionChipText, { color: colors.textSecondary }]}>
-                Yesterday: {field.options?.find((o) => o.id === yesterdayValue)?.label}
+              <Ionicons
+                name="time-outline"
+                size={12}
+                color={colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.suggestionChipText,
+                  { color: colors.textSecondary },
+                ]}
+              >
+                Yesterday:{' '}
+                {field.options?.find((o) => o.id === yesterdayValue)?.label}
               </Text>
             </TouchableOpacity>
           )}
@@ -499,11 +595,13 @@ const SmartSelectField: React.FC<{
       <View style={styles.optionsRow}>
         {field.options?.map((option: FieldOption) => {
           const isSelected = value === option.id;
-          const isSuggested = hasSuggestion && suggestion?.value === option.id;
+          const isSuggested =
+            hasSuggestion && suggestion?.value === option.id;
 
           return (
             <TouchableOpacity
               key={option.id}
+              disabled={!editable}
               style={[
                 styles.optionChip,
                 {
@@ -519,11 +617,14 @@ const SmartSelectField: React.FC<{
                     : colors.border,
                   borderRadius: borderRadiusValue,
                   borderWidth: isSuggested ? 2 : 1.5,
+                  opacity: !editable ? 0.7 : 1,
                 },
               ]}
               onPress={() => onChange(option.id)}
             >
-              {option.emoji && <Text style={styles.optionEmoji}>{option.emoji}</Text>}
+              {option.emoji && (
+                <Text style={styles.optionEmoji}>{option.emoji}</Text>
+              )}
               <Text
                 style={[
                   styles.optionLabel,
@@ -540,18 +641,26 @@ const SmartSelectField: React.FC<{
                 {option.label}
               </Text>
               {isSuggested && !isSelected && (
-                <Text style={[styles.suggestIndicator, { color: tracker.color }]}>✨</Text>
+                <Text
+                  style={[styles.suggestIndicator, { color: tracker.color }]}
+                >
+                  ✨
+                </Text>
               )}
             </TouchableOpacity>
           );
         })}
       </View>
-      {error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
+      {error && (
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          {error}
+        </Text>
+      )}
     </View>
   );
 };
 
-// ─── Smart Text Field ───────────────────────────────────────────────────
+// ─── Smart Text Field ──────────────────────────────────────────────────────
 const SmartTextField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -564,6 +673,7 @@ const SmartTextField: React.FC<{
   suggestion?: ProgressiveSuggestion;
   yesterdayValue?: unknown;
   trend?: ProgressiveTrend;
+  editable?: boolean;
 }> = ({
   field,
   value,
@@ -576,6 +686,7 @@ const SmartTextField: React.FC<{
   suggestion,
   yesterdayValue,
   trend,
+  editable = true,
 }) => {
   const hasSuggestion =
     suggestion !== undefined &&
@@ -593,6 +704,7 @@ const SmartTextField: React.FC<{
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={colors}
         fontSizeMultiplier={fontSizeMultiplier}
         rightAccessory={
@@ -601,12 +713,19 @@ const SmartTextField: React.FC<{
               <Ionicons
                 name={TREND_ICONS[trend.direction]}
                 size={14}
-                color={trend.direction === 'up' ? colors.success : colors.error}
+                color={
+                  trend.direction === 'up' ? colors.success : colors.error
+                }
               />
               <Text
                 style={[
                   styles.trendText,
-                  { color: trend.direction === 'up' ? colors.success : colors.error },
+                  {
+                    color:
+                      trend.direction === 'up'
+                        ? colors.success
+                        : colors.error,
+                  },
                 ]}
               >
                 {trend.deltaLabel}
@@ -617,6 +736,7 @@ const SmartTextField: React.FC<{
       />
 
       <TextInput
+        editable={editable}
         style={[
           styles.input,
           {
@@ -633,33 +753,47 @@ const SmartTextField: React.FC<{
               : colors.surface,
             color: colors.text,
             fontSize: 16 * fontSizeMultiplier,
+            opacity: !editable ? 0.7 : 1,
           },
         ]}
         placeholder={
           field.placeholder ||
-          (hasSuggestion ? `${suggestion!.emoji} ${String(suggestion!.value)}` : '')
+          (hasSuggestion
+            ? `${suggestion!.emoji} ${String(suggestion!.value)}`
+            : '')
         }
-        placeholderTextColor={hasSuggestion ? tracker.color : colors.textSecondary}
+        placeholderTextColor={
+          hasSuggestion ? tracker.color : colors.textSecondary
+        }
         value={String(value || '')}
         onChangeText={(text) => onChange(text)}
       />
 
       {field.unit && (
-        <Text style={[styles.unit, { color: colors.textSecondary }]}>{field.unit}</Text>
+        <Text style={[styles.unit, { color: colors.textSecondary }]}>
+          {field.unit}
+        </Text>
       )}
 
-      {(hasSuggestion || hasYesterday) && (
+      {(hasSuggestion || hasYesterday) && editable && (
         <View style={styles.suggestionRow}>
           {hasSuggestion && (
             <TouchableOpacity
               onPress={() => onChange(suggestion!.value)}
               style={[
                 styles.suggestionChip,
-                { backgroundColor: `${tracker.color}15`, borderRadius: borderRadiusValue / 2 },
+                {
+                  backgroundColor: `${tracker.color}15`,
+                  borderRadius: borderRadiusValue / 2,
+                },
               ]}
             >
-              <Text style={styles.suggestionChipEmoji}>{suggestion!.emoji}</Text>
-              <Text style={[styles.suggestionChipText, { color: tracker.color }]}>
+              <Text style={styles.suggestionChipEmoji}>
+                {suggestion!.emoji}
+              </Text>
+              <Text
+                style={[styles.suggestionChipText, { color: tracker.color }]}
+              >
                 {suggestion!.label} ({suggestion!.confidence}%)
               </Text>
             </TouchableOpacity>
@@ -675,8 +809,17 @@ const SmartTextField: React.FC<{
                 },
               ]}
             >
-              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
-              <Text style={[styles.suggestionChipText, { color: colors.textSecondary }]}>
+              <Ionicons
+                name="time-outline"
+                size={12}
+                color={colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.suggestionChipText,
+                  { color: colors.textSecondary },
+                ]}
+              >
                 Yesterday: {String(yesterdayValue).slice(0, 20)}
               </Text>
             </TouchableOpacity>
@@ -684,12 +827,16 @@ const SmartTextField: React.FC<{
         </View>
       )}
 
-      {error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
+      {error && (
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          {error}
+        </Text>
+      )}
     </View>
   );
 };
 
-// ─── Smart Number Field ─────────────────────────────────────────────────
+// ─── Smart Number Field ────────────────────────────────────────────────────
 const SmartNumberField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -702,6 +849,7 @@ const SmartNumberField: React.FC<{
   suggestion?: ProgressiveSuggestion;
   yesterdayValue?: unknown;
   trend?: ProgressiveTrend;
+  editable?: boolean;
 }> = ({
   field,
   value,
@@ -714,18 +862,16 @@ const SmartNumberField: React.FC<{
   suggestion,
   yesterdayValue,
   trend,
+  editable = true,
 }) => {
   const quickValues = useMemo(() => {
     const values: { label: string; value: number; emoji?: string }[] = [];
     const suggNum = Number(suggestion?.value);
     const yestNum = Number(yesterdayValue);
 
-    const isValid = (n: number) =>
-      Number.isFinite(n) && n > 0 && n < 10000;
-
+    const isValid = (n: number) => Number.isFinite(n) && n > 0 && n < 10000;
     const seenValues = new Set<number>();
 
-    // 1. Suggestion (if real confidence >= 70)
     if (
       suggestion !== undefined &&
       suggestion.confidence >= 70 &&
@@ -735,15 +881,12 @@ const SmartNumberField: React.FC<{
       seenValues.add(suggNum);
     }
 
-    // 2. Yesterday's value + neighborhood
     if (isValid(yestNum)) {
-      // Yesterday's exact value
       if (!seenValues.has(yestNum)) {
         values.push({ label: 'Yesterday', value: yestNum, emoji: '📅' });
         seenValues.add(yestNum);
       }
 
-      // Neighborhood (±25%) — only if unique
       const quarterDown = Math.round(yestNum * 0.75);
       const quarterUp = Math.round(yestNum * 1.25);
 
@@ -755,10 +898,7 @@ const SmartNumberField: React.FC<{
         values.push({ label: '−25%', value: quarterDown });
         seenValues.add(quarterDown);
       }
-      if (
-        values.length < 4 &&
-        !seenValues.has(quarterUp)
-      ) {
+      if (values.length < 4 && !seenValues.has(quarterUp)) {
         values.push({ label: '+25%', value: quarterUp });
         seenValues.add(quarterUp);
       }
@@ -773,11 +913,18 @@ const SmartNumberField: React.FC<{
     suggestion.value !== undefined &&
     suggestion.value !== '';
 
+  // Respect field.step for decimal precision
+  const step = Number.isFinite(field.step as any) && Number(field.step) > 0
+    ? Number(field.step)
+    : 1;
+  const decimalPlaces = step < 1 ? String(step).split('.')[1]?.length ?? 0 : 0;
+
   return (
     <View style={styles.fieldContainer}>
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={colors}
         fontSizeMultiplier={fontSizeMultiplier}
         rightAccessory={
@@ -786,12 +933,19 @@ const SmartNumberField: React.FC<{
               <Ionicons
                 name={TREND_ICONS[trend.direction]}
                 size={14}
-                color={trend.direction === 'up' ? colors.success : colors.error}
+                color={
+                  trend.direction === 'up' ? colors.success : colors.error
+                }
               />
               <Text
                 style={[
                   styles.trendText,
-                  { color: trend.direction === 'up' ? colors.success : colors.error },
+                  {
+                    color:
+                      trend.direction === 'up'
+                        ? colors.success
+                        : colors.error,
+                  },
                 ]}
               >
                 {trend.deltaLabel}
@@ -812,25 +966,43 @@ const SmartNumberField: React.FC<{
               : colors.border,
             borderRadius: borderRadiusValue,
             backgroundColor: error ? `${colors.error}10` : colors.surface,
+            opacity: !editable ? 0.7 : 1,
           },
         ]}
       >
         <TextInput
-          style={[styles.numberInput, { color: colors.text, fontSize: 16 * fontSizeMultiplier }]}
+          editable={editable}
+          style={[
+            styles.numberInput,
+            { color: colors.text, fontSize: 16 * fontSizeMultiplier },
+          ]}
           keyboardType="numeric"
           placeholder={
             field.placeholder ||
-            (hasSuggestion ? `${suggestion!.emoji} ${String(suggestion!.value)}` : '0')
+            (hasSuggestion
+              ? `${suggestion!.emoji} ${String(suggestion!.value)}`
+              : '0')
           }
-          placeholderTextColor={hasSuggestion ? tracker.color : colors.textSecondary}
-          value={String(value || '')}
+          placeholderTextColor={
+            hasSuggestion ? tracker.color : colors.textSecondary
+          }
+          value={String(value ?? '')}
           onChangeText={(text) => {
             if (text === '') {
               onChange('');
               return;
             }
             const num = parseFloat(text);
-            onChange(isNaN(num) ? text : num);
+            if (isNaN(num)) {
+              onChange(text);
+              return;
+            }
+            if (decimalPlaces > 0) {
+              const rounded = parseFloat(num.toFixed(decimalPlaces));
+              onChange(rounded);
+            } else {
+              onChange(Math.round(num));
+            }
           }}
         />
         {field.unit && (
@@ -840,32 +1012,45 @@ const SmartNumberField: React.FC<{
         )}
       </View>
 
-      {quickValues.length > 0 && (
+      {quickValues.length > 0 && editable && (
         <View style={styles.quickValuesRow}>
           {quickValues.map((qv, i) => (
             <TouchableOpacity
               key={`${qv.label}-${i}`}
               style={[
                 styles.quickValueChip,
-                { backgroundColor: `${tracker.color}10`, borderRadius: borderRadiusValue / 2 },
+                {
+                  backgroundColor: `${tracker.color}10`,
+                  borderRadius: borderRadiusValue / 2,
+                },
               ]}
               onPress={() => onChange(qv.value)}
             >
-              <Text style={[styles.quickValueText, { color: tracker.color }]}>
+              <Text
+                style={[styles.quickValueText, { color: tracker.color }]}
+              >
                 {qv.label}
               </Text>
-              <Text style={[styles.quickValueNum, { color: tracker.color }]}>{qv.value}</Text>
+              <Text
+                style={[styles.quickValueNum, { color: tracker.color }]}
+              >
+                {qv.value}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
       )}
 
-      {error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
+      {error && (
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          {error}
+        </Text>
+      )}
     </View>
   );
 };
 
-// ─── Smart Duration Field ───────────────────────────────────────────────
+// ─── Smart Duration Field ──────────────────────────────────────────────────
 const SmartDurationField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -876,6 +1061,7 @@ const SmartDurationField: React.FC<{
   borderRadiusValue: number;
   suggestion?: ProgressiveSuggestion;
   yesterdayValue?: unknown;
+  editable?: boolean;
 }> = ({
   field,
   value,
@@ -886,6 +1072,7 @@ const SmartDurationField: React.FC<{
   borderRadiusValue,
   suggestion,
   yesterdayValue,
+  editable = true,
 }) => {
   const seconds = Number(value) || 0;
 
@@ -920,34 +1107,65 @@ const SmartDurationField: React.FC<{
       ? Number(suggestion.value)
       : null;
   const yesterdayDuration =
-    yesterdayValue !== undefined && yesterdayValue !== '' ? Number(yesterdayValue) : null;
+    yesterdayValue !== undefined && yesterdayValue !== ''
+      ? Number(yesterdayValue)
+      : null;
 
-  // Detect if this is a sleep/feed duration that should support ongoing
-  const supportsOngoing = 
-    tracker.id === 'sleep' || 
-    tracker.id === 'feed' || 
-    tracker.id === 'dream_feed' ||
-    tracker.id === 'nap' ||
-    tracker.id === 'pumping' ||
-    tracker.id === 'bath' ||
-    tracker.id === 'tummy_time';
+  // All trackers whose duration is meaningful for ongoing/completed tracking
+  const supportsOngoing = [
+    'sleep',
+    'feed',
+    'dream_feed',
+    'nap',
+    'pumping',
+    'bath',
+    'tummy_time',
+    'colic',
+  ].includes(tracker.id);
 
   return (
     <View style={styles.fieldContainer}>
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={colors}
         fontSizeMultiplier={fontSizeMultiplier}
         rightAccessory={
           isTimerRunning ? (
-            <View style={[styles.recordingBadge, { backgroundColor: `${tracker.color}20` }]}>
-              <View style={[styles.recordingDot, { backgroundColor: tracker.color }]} />
-              <Text style={[styles.recordingText, { color: tracker.color }]}>Recording</Text>
+            <View
+              style={[
+                styles.recordingBadge,
+                { backgroundColor: `${tracker.color}20` },
+              ]}
+            >
+              <View
+                style={[
+                  styles.recordingDot,
+                  { backgroundColor: tracker.color },
+                ]}
+              />
+              <Text
+                style={[styles.recordingText, { color: tracker.color }]}
+              >
+                Recording
+              </Text>
             </View>
           ) : supportsOngoing && seconds === 0 ? (
-            <View style={[styles.recordingBadge, { backgroundColor: `${colors.textSecondary}15` }]}>
-              <Text style={[styles.recordingText, { color: colors.textSecondary }]}>Optional</Text>
+            <View
+              style={[
+                styles.recordingBadge,
+                { backgroundColor: `${colors.textSecondary}15` },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.recordingText,
+                  { color: colors.textSecondary },
+                ]}
+              >
+                Optional
+              </Text>
             </View>
           ) : null
         }
@@ -955,18 +1173,26 @@ const SmartDurationField: React.FC<{
 
       <View style={styles.durationRow}>
         <TouchableOpacity
-          style={[styles.durationBtn, { backgroundColor: colors.surface }]}
+          disabled={!editable}
+          style={[
+            styles.durationBtn,
+            { backgroundColor: colors.surface, opacity: !editable ? 0.5 : 1 },
+          ]}
           onPress={() => onChange(Math.max(0, seconds - 60))}
         >
           <Ionicons name="remove" size={20} color={tracker.color} />
         </TouchableOpacity>
 
         <TouchableOpacity
+          disabled={!editable}
           style={[
             styles.timerToggle,
             {
-              backgroundColor: isTimerRunning ? `${tracker.color}20` : colors.surface,
+              backgroundColor: isTimerRunning
+                ? `${tracker.color}20`
+                : colors.surface,
               borderRadius: borderRadiusValue,
+              opacity: !editable ? 0.7 : 1,
             },
           ]}
           onPress={() => setIsTimerRunning(!isTimerRunning)}
@@ -987,7 +1213,11 @@ const SmartDurationField: React.FC<{
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.durationBtn, { backgroundColor: colors.surface }]}
+          disabled={!editable}
+          style={[
+            styles.durationBtn,
+            { backgroundColor: colors.surface, opacity: !editable ? 0.5 : 1 },
+          ]}
           onPress={() => onChange(seconds + 60)}
         >
           <Ionicons name="add" size={20} color={tracker.color} />
@@ -998,20 +1228,32 @@ const SmartDurationField: React.FC<{
         {[5, 10, 15, 30, 45, 60].map((mins) => (
           <TouchableOpacity
             key={mins}
+            disabled={!editable}
             style={[
               styles.presetChip,
-              { backgroundColor: colors.surface, borderRadius: borderRadiusValue / 2 },
+              {
+                backgroundColor: colors.surface,
+                borderRadius: borderRadiusValue / 2,
+                opacity: !editable ? 0.5 : 1,
+              },
             ]}
             onPress={() => onChange(mins * 60)}
           >
-            <Text style={[styles.presetText, { color: colors.textSecondary }]}>{mins}m</Text>
+            <Text
+              style={[styles.presetText, { color: colors.textSecondary }]}
+            >
+              {mins}m
+            </Text>
           </TouchableOpacity>
         ))}
-        {Number.isFinite(suggestedDuration) && suggestedDuration! > 0 && (
+        {Number.isFinite(suggestedDuration) && suggestedDuration! > 0 && editable && (
           <TouchableOpacity
             style={[
               styles.presetChip,
-              { backgroundColor: `${tracker.color}15`, borderRadius: borderRadiusValue / 2 },
+              {
+                backgroundColor: `${tracker.color}15`,
+                borderRadius: borderRadiusValue / 2,
+              },
             ]}
             onPress={() => onChange(suggestedDuration)}
           >
@@ -1023,11 +1265,15 @@ const SmartDurationField: React.FC<{
         )}
         {Number.isFinite(yesterdayDuration) &&
           yesterdayDuration! > 0 &&
-          !Number.isFinite(suggestedDuration) && (
+          !Number.isFinite(suggestedDuration) &&
+          editable && (
             <TouchableOpacity
               style={[
                 styles.presetChip,
-                { backgroundColor: `${tracker.color}15`, borderRadius: borderRadiusValue / 2 },
+                {
+                  backgroundColor: `${tracker.color}15`,
+                  borderRadius: borderRadiusValue / 2,
+                },
               ]}
               onPress={() => onChange(yesterdayDuration)}
             >
@@ -1042,7 +1288,7 @@ const SmartDurationField: React.FC<{
   );
 };
 
-// ─── Smart Mood Field ───────────────────────────────────────────────────
+// ─── Smart Mood Field ──────────────────────────────────────────────────────
 const SmartMoodField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -1053,6 +1299,7 @@ const SmartMoodField: React.FC<{
   borderRadiusValue: number;
   suggestion?: ProgressiveSuggestion;
   yesterdayValue?: unknown;
+  editable?: boolean;
 }> = ({
   field,
   value,
@@ -1063,6 +1310,7 @@ const SmartMoodField: React.FC<{
   borderRadiusValue,
   suggestion,
   yesterdayValue,
+  editable = true,
 }) => {
   const currentValue = Number(value) || 3;
   const suggestedMood =
@@ -1076,11 +1324,18 @@ const SmartMoodField: React.FC<{
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={colors}
         fontSizeMultiplier={fontSizeMultiplier}
       />
       {yesterdayMood && (
-        <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
+        <Text
+          style={{
+            color: colors.textSecondary,
+            fontSize: 12,
+            marginBottom: 6,
+          }}
+        >
           Yesterday: {MOOD_EMOJIS[yesterdayMood - 1]}
         </Text>
       )}
@@ -1094,6 +1349,7 @@ const SmartMoodField: React.FC<{
           return (
             <TouchableOpacity
               key={emoji}
+              disabled={!editable}
               style={[
                 styles.moodBtn,
                 isSelected && {
@@ -1101,7 +1357,10 @@ const SmartMoodField: React.FC<{
                   transform: [{ scale: 1.15 }],
                 },
                 isSuggested &&
-                  !isSelected && { borderWidth: 2, borderColor: tracker.color },
+                  !isSelected && {
+                    borderWidth: 2,
+                    borderColor: tracker.color,
+                  },
                 wasYesterday &&
                   !isSelected &&
                   !isSuggested && {
@@ -1109,13 +1368,24 @@ const SmartMoodField: React.FC<{
                     borderColor: `${colors.textSecondary}30`,
                   },
                 { borderRadius: borderRadiusValue },
+                !editable && { opacity: 0.7 },
               ]}
               onPress={() => onChange(moodValue)}
             >
-              <Text style={[styles.moodEmoji, isSelected && { fontSize: 40 }]}>{emoji}</Text>
+              <Text
+                style={[
+                  styles.moodEmoji,
+                  isSelected && { fontSize: 40 },
+                ]}
+              >
+                {emoji}
+              </Text>
               {isSuggested && !isSelected && (
                 <View
-                  style={[styles.suggestIndicatorBadge, { backgroundColor: tracker.color }]}
+                  style={[
+                    styles.suggestIndicatorBadge,
+                    { backgroundColor: tracker.color },
+                  ]}
                 >
                   <Text style={styles.suggestIndicatorText}>✨</Text>
                 </View>
@@ -1128,7 +1398,73 @@ const SmartMoodField: React.FC<{
   );
 };
 
-// ─── Smart Temperature Field ────────────────────────────────────────────
+// ─── Smart Pain Scale Field (0–10) ─────────────────────────────────────────
+const PAIN_EMOJIS = ['😊', '🙂', '😐', '😕', '😣', '😖', '😫', '😭', '😱', '🆘', '🚨'];
+
+const SmartPainScaleField: React.FC<{
+  field: FieldConfig;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  tracker: UnifiedTrackerConfig;
+  colors: any;
+  fontSizeMultiplier: number;
+  borderRadiusValue: number;
+  editable?: boolean;
+}> = ({
+  field,
+  value,
+  onChange,
+  tracker,
+  colors,
+  fontSizeMultiplier,
+  borderRadiusValue,
+  editable = true,
+}) => {
+  const raw = Number(value);
+  const currentValue = Number.isFinite(raw)
+    ? Math.max(0, Math.min(10, raw))
+    : 0;
+  const emoji = PAIN_EMOJIS[currentValue] || '😐';
+
+  return (
+    <View style={styles.fieldContainer}>
+      <FieldLabel
+        label={`${field.label}: ${currentValue}/10`}
+        required={field.required}
+        hint={field.hint}
+        colors={colors}
+        fontSizeMultiplier={fontSizeMultiplier}
+      />
+
+      <View style={styles.painRow}>
+        <Text style={styles.painEmoji}>{emoji}</Text>
+        <Slider
+          disabled={!editable}
+          style={styles.slider}
+          minimumValue={0}
+          maximumValue={10}
+          step={1}
+          value={currentValue}
+          onValueChange={(v) => onChange(Math.round(v))}
+          minimumTrackTintColor={tracker.color}
+          maximumTrackTintColor={colors.border}
+          thumbTintColor={tracker.color}
+        />
+      </View>
+
+      <View style={styles.painAnchors}>
+        <Text style={[styles.painAnchor, { color: colors.textSecondary }]}>
+          No pain
+        </Text>
+        <Text style={[styles.painAnchor, { color: colors.textSecondary }]}>
+          Severe
+        </Text>
+      </View>
+    </View>
+  );
+};
+
+// ─── Smart Temperature Field ───────────────────────────────────────────────
 const SmartTemperatureField: React.FC<{
   field: FieldConfig;
   data: Record<string, unknown>;
@@ -1138,6 +1474,7 @@ const SmartTemperatureField: React.FC<{
   tracker: UnifiedTrackerConfig;
   borderRadiusValue: number;
   fontSizeMultiplier: number;
+  editable?: boolean;
 }> = ({
   field,
   data,
@@ -1147,6 +1484,7 @@ const SmartTemperatureField: React.FC<{
   tracker,
   borderRadiusValue,
   fontSizeMultiplier,
+  editable = true,
 }) => {
   const unitKey = `${field.id}_unit`;
   const unitOptions = (field as any).unitOptions || [
@@ -1154,12 +1492,15 @@ const SmartTemperatureField: React.FC<{
     { id: 'fahrenheit', label: '°F' },
   ];
 
-  // Region-aware default: US defaults to °F, everywhere else °C
   const defaultUnit = useMemo(() => {
     try {
-      const locale = Intl.NumberFormat().resolvedOptions().locale || 'en-US';
+      const locale =
+        Intl.NumberFormat().resolvedOptions().locale || 'en-US';
       const region = locale.split('-')[1] || 'US';
-      if (unitOptions.some((u: any) => u.id === 'fahrenheit') && region === 'US') {
+      if (
+        unitOptions.some((u: any) => u.id === 'fahrenheit') &&
+        region === 'US'
+      ) {
         return 'fahrenheit';
       }
     } catch {}
@@ -1173,6 +1514,7 @@ const SmartTemperatureField: React.FC<{
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={fullThemeColors}
         fontSizeMultiplier={fontSizeMultiplier}
       />
@@ -1186,18 +1528,23 @@ const SmartTemperatureField: React.FC<{
               : fullThemeColors.border,
             borderRadius: borderRadiusValue,
             backgroundColor: fullThemeColors.surface,
+            opacity: !editable ? 0.7 : 1,
           },
         ]}
       >
         <TextInput
+          editable={editable}
           style={[
             styles.tempInput,
-            { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+            {
+              color: fullThemeColors.text,
+              fontSize: 16 * fontSizeMultiplier,
+            },
           ]}
           keyboardType="decimal-pad"
           placeholder={selectedUnit === 'fahrenheit' ? '98.6' : '36.5'}
           placeholderTextColor={fullThemeColors.textSecondary}
-          value={String(data[field.id] || '')}
+          value={String(data[field.id] ?? '')}
           onChangeText={(text) => {
             const num = parseFloat(text);
             updateField(field.id, isNaN(num) ? text : num);
@@ -1206,12 +1553,16 @@ const SmartTemperatureField: React.FC<{
         <View
           style={[
             styles.tempUnitToggle,
-            { backgroundColor: fullThemeColors.border, borderRadius: borderRadiusValue / 2 },
+            {
+              backgroundColor: fullThemeColors.border,
+              borderRadius: borderRadiusValue / 2,
+            },
           ]}
         >
           {unitOptions.map((u: any) => (
             <TouchableOpacity
               key={u.id}
+              disabled={!editable}
               style={[
                 styles.tempUnitBtn,
                 selectedUnit === u.id && {
@@ -1225,7 +1576,10 @@ const SmartTemperatureField: React.FC<{
                 style={[
                   styles.tempUnitText,
                   {
-                    color: selectedUnit === u.id ? '#fff' : fullThemeColors.textSecondary,
+                    color:
+                      selectedUnit === u.id
+                        ? '#fff'
+                        : fullThemeColors.textSecondary,
                   },
                 ]}
               >
@@ -1237,7 +1591,12 @@ const SmartTemperatureField: React.FC<{
       </View>
 
       {errors[field.id] && (
-        <Text style={[styles.errorText, { color: fullThemeColors.error || '#ef4444' }]}>
+        <Text
+          style={[
+            styles.errorText,
+            { color: fullThemeColors.error || '#ef4444' },
+          ]}
+        >
           {errors[field.id]}
         </Text>
       )}
@@ -1245,7 +1604,7 @@ const SmartTemperatureField: React.FC<{
   );
 };
 
-// ─── Smart Quantity Field ───────────────────────────────────────────────
+// ─── Smart Quantity Field ──────────────────────────────────────────────────
 const SmartQuantityField: React.FC<{
   field: FieldConfig;
   data: Record<string, unknown>;
@@ -1255,6 +1614,7 @@ const SmartQuantityField: React.FC<{
   tracker: UnifiedTrackerConfig;
   borderRadiusValue: number;
   fontSizeMultiplier: number;
+  editable?: boolean;
 }> = ({
   field,
   data,
@@ -1264,48 +1624,48 @@ const SmartQuantityField: React.FC<{
   tracker,
   borderRadiusValue,
   fontSizeMultiplier,
+  editable = true,
 }) => {
   const unitKey = `${field.id}_unit`;
-  // Smart unit detection: solid food gets solid units, liquids get liquid units
-  const isSolidFood = 
+
+  // Solid food gets solid units (g/oz/tbsp/servings/pieces)
+  // Anything else gets liquid units (ml/oz)
+  const isSolidFood =
     field.id?.toLowerCase().includes('solid') ||
     field.id?.toLowerCase().includes('food') ||
     field.label?.toLowerCase().includes('solid') ||
     field.label?.toLowerCase().includes('eaten');
 
-  const defaultSolidUnits = [
-    { id: 'g', label: 'g' },
-    { id: 'oz', label: 'oz' },
-    { id: 'tbsp', label: 'tbsp' },
-    { id: 'servings', label: 'servings' },
-    { id: 'pieces', label: 'pieces' },
-  ];
-
-  const defaultLiquidUnits = [
-    { id: 'ml', label: 'ml' },
-    { id: 'oz', label: 'oz' },
-  ];
-
-  const unitOptions = (field as any).unitOptions || 
-    (isSolidFood ? defaultSolidUnits : defaultLiquidUnits);
+  const unitOptions =
+    (field as any).unitOptions ||
+    (isSolidFood ? CANONICAL_SOLID_UNITS : CANONICAL_LIQUID_UNITS);
 
   // Region-aware default unit
   const defaultUnit = useMemo(() => {
     try {
-      const locale = Intl.NumberFormat().resolvedOptions().locale || 'en-US';
+      const locale =
+        Intl.NumberFormat().resolvedOptions().locale || 'en-US';
       const region = locale.split('-')[1] || 'US';
-      const isImperialRegion = region === 'US' || region === 'GB' || region === 'LR' || region === 'MM';
-      
-      // For solid food, prefer grams as universal default; oz only in imperial regions
+      const isImperialRegion =
+        region === 'US' ||
+        region === 'GB' ||
+        region === 'LR' ||
+        region === 'MM';
+
       if (isSolidFood) {
-        if (isImperialRegion && unitOptions.some((u: any) => u.id === 'oz')) {
+        if (
+          isImperialRegion &&
+          unitOptions.some((u: any) => u.id === 'oz')
+        ) {
           return 'oz';
         }
         return 'g';
       }
-      
-      // For liquids, use oz in imperial regions, ml elsewhere
-      if (isImperialRegion && unitOptions.some((u: any) => u.id === 'oz')) {
+
+      if (
+        isImperialRegion &&
+        unitOptions.some((u: any) => u.id === 'oz')
+      ) {
         return 'oz';
       }
     } catch {}
@@ -1314,11 +1674,18 @@ const SmartQuantityField: React.FC<{
 
   const selectedUnit = (data[unitKey] as string) || defaultUnit;
 
+  // Respect field.step for decimal precision
+  const step = Number.isFinite(field.step as any) && Number(field.step) > 0
+    ? Number(field.step)
+    : 1;
+  const decimalPlaces = step < 1 ? String(step).split('.')[1]?.length ?? 0 : 0;
+
   return (
     <View style={styles.fieldContainer}>
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={fullThemeColors}
         fontSizeMultiplier={fontSizeMultiplier}
       />
@@ -1334,36 +1701,53 @@ const SmartQuantityField: React.FC<{
             backgroundColor: errors[field.id]
               ? `${fullThemeColors.error || '#ef4444'}10`
               : fullThemeColors.surface,
+            opacity: !editable ? 0.7 : 1,
           },
         ]}
       >
         <TextInput
+          editable={editable}
           style={[
             styles.numberInput,
-            { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+            {
+              color: fullThemeColors.text,
+              fontSize: 16 * fontSizeMultiplier,
+            },
           ]}
           keyboardType="numeric"
           placeholder={field.placeholder || '0'}
           placeholderTextColor={fullThemeColors.textSecondary}
-          value={String(data[field.id] || '')}
+          value={String(data[field.id] ?? '')}
           onChangeText={(text) => {
             if (text === '') {
               updateField(field.id, '');
               return;
             }
             const num = parseFloat(text);
-            updateField(field.id, isNaN(num) ? text : num);
+            if (isNaN(num)) {
+              updateField(field.id, text);
+              return;
+            }
+            if (decimalPlaces > 0) {
+              updateField(field.id, parseFloat(num.toFixed(decimalPlaces)));
+            } else {
+              updateField(field.id, Math.round(num));
+            }
           }}
         />
         <View
           style={[
             styles.tempUnitToggle,
-            { backgroundColor: fullThemeColors.border, borderRadius: borderRadiusValue / 2 },
+            {
+              backgroundColor: fullThemeColors.border,
+              borderRadius: borderRadiusValue / 2,
+            },
           ]}
         >
           {unitOptions.map((u: any) => (
             <TouchableOpacity
               key={u.id}
+              disabled={!editable}
               style={[
                 styles.tempUnitBtn,
                 selectedUnit === u.id && {
@@ -1377,7 +1761,10 @@ const SmartQuantityField: React.FC<{
                 style={[
                   styles.tempUnitText,
                   {
-                    color: selectedUnit === u.id ? '#fff' : fullThemeColors.textSecondary,
+                    color:
+                      selectedUnit === u.id
+                        ? '#fff'
+                        : fullThemeColors.textSecondary,
                   },
                 ]}
               >
@@ -1389,7 +1776,12 @@ const SmartQuantityField: React.FC<{
       </View>
 
       {errors[field.id] && (
-        <Text style={[styles.errorText, { color: fullThemeColors.error || '#ef4444' }]}>
+        <Text
+          style={[
+            styles.errorText,
+            { color: fullThemeColors.error || '#ef4444' },
+          ]}
+        >
           {errors[field.id]}
         </Text>
       )}
@@ -1397,7 +1789,7 @@ const SmartQuantityField: React.FC<{
   );
 };
 
-// ─── Smart DateTime Field (with Ongoing support) ────────────────────────
+// ─── Smart DateTime Field (with Ongoing support) ───────────────────────────
 const SmartDateTimeField: React.FC<{
   field: FieldConfig;
   data: Record<string, unknown>;
@@ -1407,6 +1799,7 @@ const SmartDateTimeField: React.FC<{
   fontSizeMultiplier: number;
   borderRadiusValue: number;
   isStart: boolean;
+  editable?: boolean;
 }> = ({
   field,
   data,
@@ -1416,11 +1809,16 @@ const SmartDateTimeField: React.FC<{
   fontSizeMultiplier,
   borderRadiusValue,
   isStart,
+  editable = true,
 }) => {
   const [showPicker, setShowPicker] = useState(false);
   const currentValue = data[field.id];
-  const currentDate = currentValue ? new Date(String(currentValue)) : new Date();
-  const hasValue = currentValue !== undefined && currentValue !== null && currentValue !== '';
+  const currentDate =
+    currentValue && !isNaN(new Date(String(currentValue)).getTime())
+      ? new Date(String(currentValue))
+      : new Date();
+  const hasValue =
+    currentValue !== undefined && currentValue !== null && currentValue !== '';
   const otherFieldId = isStart ? 'endTime' : 'startTime';
   const hasOtherValue =
     data[otherFieldId] !== undefined &&
@@ -1441,11 +1839,13 @@ const SmartDateTimeField: React.FC<{
       <FieldLabel
         label={field.label}
         required={field.required}
+        hint={field.hint}
         colors={colors}
         fontSizeMultiplier={fontSizeMultiplier}
       />
 
       <TouchableOpacity
+        disabled={!editable}
         style={[
           styles.input,
           {
@@ -1455,11 +1855,16 @@ const SmartDateTimeField: React.FC<{
             flexDirection: 'row',
             alignItems: 'center',
             gap: 10,
+            opacity: !editable ? 0.7 : 1,
           },
         ]}
         onPress={() => setShowPicker(true)}
       >
-        <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
+        <Ionicons
+          name="calendar-outline"
+          size={18}
+          color={colors.textSecondary}
+        />
         <Text
           style={{
             color: hasValue ? colors.text : colors.textSecondary,
@@ -1469,22 +1874,25 @@ const SmartDateTimeField: React.FC<{
         >
           {displayText}
         </Text>
-        {hasValue && (
+        {hasValue && editable && (
           <TouchableOpacity
             onPress={() => updateField(field.id, undefined)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+            <Ionicons
+              name="close-circle"
+              size={18}
+              color={colors.textSecondary}
+            />
           </TouchableOpacity>
         )}
       </TouchableOpacity>
 
-      {/* Ongoing hint when start is set but end is not */}
-      {isStart && hasValue && !hasOtherValue && (
+      {/* Ongoing hint: start is set, end is not, and this tracker supports ongoing */}
+      {isStart && hasValue && !hasOtherValue && editable && (
         <TouchableOpacity
           style={styles.ongoingHint}
           onPress={() => {
-            // Set endTime to now to complete the session
             updateField('endTime', new Date().toISOString());
           }}
         >
@@ -1495,10 +1903,14 @@ const SmartDateTimeField: React.FC<{
         </TouchableOpacity>
       )}
 
-      {/* Show duration if both start and end are set */}
+      {/* Duration display when both start and end are set */}
       {!isStart && hasValue && hasOtherValue && (
         <View style={styles.durationHint}>
-          <Ionicons name="checkmark-circle" size={14} color={tracker.color} />
+          <Ionicons
+            name="checkmark-circle"
+            size={14}
+            color={tracker.color}
+          />
           <Text style={[styles.durationHintText, { color: tracker.color }]}>
             Duration:{' '}
             {formatDurationSeconds(
@@ -1539,7 +1951,136 @@ const SmartDateTimeField: React.FC<{
   );
 };
 
-// ─── MAIN COMPONENT ─────────────────────────────────────────────────────
+// ─── Smart Time Field (HH:mm) ──────────────────────────────────────────────
+const SmartTimeField: React.FC<{
+  field: FieldConfig;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  error?: string;
+  tracker: UnifiedTrackerConfig;
+  colors: any;
+  fontSizeMultiplier: number;
+  borderRadiusValue: number;
+  editable?: boolean;
+}> = ({
+  field,
+  value,
+  onChange,
+  error,
+  tracker,
+  colors,
+  fontSizeMultiplier,
+  borderRadiusValue,
+  editable = true,
+}) => {
+  const [showPicker, setShowPicker] = useState(false);
+
+  // Parse "HH:mm" into a Date for the picker
+  const parsedDate = useMemo(() => {
+    const d = new Date();
+    if (typeof value === 'string' && /^\d{1,2}:\d{2}/.test(value)) {
+      const [hh, mm] = value.split(':').map((x) => parseInt(x, 10));
+      if (Number.isFinite(hh) && Number.isFinite(mm)) {
+        d.setHours(hh, mm, 0, 0);
+        return d;
+      }
+    }
+    return d;
+  }, [value]);
+
+  const displayText =
+    typeof value === 'string' && value.length > 0 ? value : 'Set time';
+
+  const handleChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowPicker(false);
+    if (event.type === 'set' && selectedDate) {
+      const hh = String(selectedDate.getHours()).padStart(2, '0');
+      const mm = String(selectedDate.getMinutes()).padStart(2, '0');
+      onChange(`${hh}:${mm}`);
+    }
+  };
+
+  return (
+    <View style={styles.fieldContainer}>
+      <FieldLabel
+        label={field.label}
+        required={field.required}
+        hint={field.hint}
+        colors={colors}
+        fontSizeMultiplier={fontSizeMultiplier}
+      />
+
+      <TouchableOpacity
+        disabled={!editable}
+        style={[
+          styles.input,
+          {
+            borderColor: error ? colors.error : colors.border,
+            borderRadius: borderRadiusValue,
+            backgroundColor: error ? `${colors.error}10` : colors.surface,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            opacity: !editable ? 0.7 : 1,
+          },
+        ]}
+        onPress={() => setShowPicker(true)}
+      >
+        <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
+        <Text
+          style={{
+            color:
+              typeof value === 'string' && value.length > 0
+                ? colors.text
+                : colors.textSecondary,
+            flex: 1,
+            fontSize: 15,
+          }}
+        >
+          {displayText}
+        </Text>
+        {typeof value === 'string' && value.length > 0 && editable && (
+          <TouchableOpacity
+            onPress={() => onChange('')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons
+              name="close-circle"
+              size={18}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+
+      {showPicker && (
+        <DateTimePicker
+          value={parsedDate}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleChange}
+        />
+      )}
+
+      {Platform.OS === 'ios' && showPicker && (
+        <TouchableOpacity
+          style={[styles.pickerDoneBtn, { backgroundColor: tracker.color }]}
+          onPress={() => setShowPicker(false)}
+        >
+          <Text style={styles.pickerDoneText}>Done</Text>
+        </TouchableOpacity>
+      )}
+
+      {error && (
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          {error}
+        </Text>
+      )}
+    </View>
+  );
+};
+
+// ─── MAIN COMPONENT ────────────────────────────────────────────────────────
 export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   tracker,
   initialData = {},
@@ -1552,19 +2093,13 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
 }) => {
   const {
     fullThemeColors,
-    themeColors,
-    isDark,
     borderRadiusValue,
     fontSizeMultiplier,
     shouldReduceMotion,
     triggerHaptic,
   } = useCustomization();
-  const { success, error, info } = useSweetAlert();
+  const { error, info } = useSweetAlert();
 
-  // ─── Baby age for growth value validation ─────────────────────────
-  // Imported statically at the top of the file so we don't violate
-  // the Rules of Hooks (dynamic requires inside component bodies
-  // would also balloon the bundle).
   const { currentBaby } = useBaby();
 
   const currentBabyAgeMonths = useMemo(() => {
@@ -1586,14 +2121,13 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     insights = [],
     correlations = [],
     activeReminders = [],
-    templates = {},
     trends = {},
     timeContext,
     yesterdayEntries = [],
     todayEntries = [],
   } = progressiveState || {};
 
-  // ─── Medication smart-fill from last entry ─────────────────────────
+  // ─── Medication smart-fill from last entry ──────────────────────────────
   const medicationQuickFill = useMemo(() => {
     if (tracker.id !== 'medication') return null;
     const last = (yesterdayEntries[0] || todayEntries[0]) as any;
@@ -1603,18 +2137,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     return { name, dosage, type };
   }, [tracker.id, yesterdayEntries, todayEntries]);
 
-  // Initial data seeded with suggestions (confidence >= 70 for auto-fill)
+  // ─── Initial data ───────────────────────────────────────────────────────
   const [data, setData] = useState<Record<string, unknown>>(() => {
-    // Layer 0: tracker defaults (lowest priority)
     const defaults = {
       ...(medicationQuickFill || {}),
       ...getTrackerDefaults(tracker.id),
     };
-    // Layer 1: prefill from progressive hook
-    // Layer 2: initial data passed by parent
     const merged = { ...defaults, ...prefillData, ...initialData };
 
-    // Layer 4: high-confidence suggestions override nothing the user typed
+    // High-confidence suggestions auto-fill only if nothing is set
     suggestions.forEach((s) => {
       if (
         merged[s.fieldId] === undefined &&
@@ -1635,19 +2166,25 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(new Set());
-  const [dismissedCorrelations, setDismissedCorrelations] = useState<Set<string>>(new Set());
-  const [appliedPrefill, setAppliedPrefill] = useState<Record<string, unknown> | null>(null);
+  const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(
+    new Set()
+  );
+  const [dismissedCorrelations, setDismissedCorrelations] = useState<
+    Set<string>
+  >(new Set());
+  const [appliedPrefill, setAppliedPrefill] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
 
   const userEditedFields = useRef<Set<string>>(new Set());
 
-  // ─── Apply prefill and suggestions ─────────────────────────────────
+  // ─── Apply prefill and high-confidence suggestions ──────────────────────
   useEffect(() => {
     setData((prev) => {
       const merged = { ...prefillData, ...initialData };
 
       suggestions.forEach((s) => {
-        // Match the useState threshold — only auto-fill very high confidence
         if (
           merged[s.fieldId] === undefined &&
           s.confidence >= 85 &&
@@ -1666,6 +2203,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         setAppliedPrefill(null);
       }
 
+      // Restore user edits so live updates don't clobber them
       userEditedFields.current.forEach((key) => {
         if (prev[key] !== undefined) {
           merged[key] = prev[key];
@@ -1676,12 +2214,17 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     });
   }, [prefillData, suggestions, initialData, appliedPrefill]);
 
-  // ─── Validation ─────────────────────────────────────────────────────
+  // ─── Validation ─────────────────────────────────────────────────────────
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
     tracker.fields.forEach((field) => {
       try {
-        if (typeof isFieldVisible === 'function' && !isFieldVisible(field)) return;
+        if (
+          typeof isFieldVisible === 'function' &&
+          !isFieldVisible(field)
+        ) {
+          return;
+        }
       } catch {
         // Continue
       }
@@ -1701,41 +2244,62 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         }
       }
 
-      // Future-date guard for datetime fields
+      // Future-date guard
       if (
-        (field.type === 'datetime' || field.type === 'date' || field.type === 'time') &&
+        (field.type === 'datetime' ||
+          field.type === 'date' ||
+          field.type === 'time') &&
         isFutureTimestamp(value)
       ) {
         newErrors[field.id] = `${field.label} can't be in the future`;
         return;
       }
 
-      // Sanity bounds on numeric fields
+      // Min/max sanity bounds
       if (
-        (field.type === 'number' || field.type === 'quantity' || field.type === 'measurement') &&
+        (field.type === 'number' ||
+          field.type === 'quantity' ||
+          field.type === 'measurement') &&
         typeof value === 'number'
       ) {
         if (Number.isFinite(field.min as any) && value < Number(field.min)) {
           newErrors[field.id] = `${field.label} must be at least ${field.min}`;
-        } else if (Number.isFinite(field.max as any) && value > Number(field.max)) {
+        } else if (
+          Number.isFinite(field.max as any) &&
+          value > Number(field.max)
+        ) {
           newErrors[field.id] = `${field.label} must be at most ${field.max}`;
         }
       }
 
       // Growth-specific sanity bounds
-      if (tracker.id === 'growth' && field.id === 'value' && typeof value === 'number') {
+      if (
+        tracker.id === 'growth' &&
+        field.id === 'value' &&
+        typeof value === 'number'
+      ) {
         const mType = String(data.measurementType || '');
         const mUnit = String(data.value_unit || data.unit || 'kg');
-        const growthErr = validateGrowthValue(mType, value, currentBabyAgeMonths, mUnit);
+        const growthErr = validateGrowthValue(
+          mType,
+          value,
+          currentBabyAgeMonths,
+          mUnit
+        );
         if (growthErr) {
           newErrors[field.id] = growthErr;
         }
       }
 
       // Temperature sanity
-      if (tracker.id === 'temperature' && field.id === 'value' && typeof value === 'number') {
+      if (
+        tracker.id === 'temperature' &&
+        field.id === 'value' &&
+        typeof value === 'number'
+      ) {
         const unit = String(data.unit || 'celsius');
-        const celsius = unit === 'fahrenheit' ? ((value - 32) * 5) / 9 : value;
+        const celsius =
+          unit === 'fahrenheit' ? ((value - 32) * 5) / 9 : value;
         if (celsius < 34 || celsius > 43) {
           newErrors[field.id] = `Temperature looks unusual (${value}°${
             unit === 'fahrenheit' ? 'F' : 'C'
@@ -1748,7 +2312,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     return Object.keys(newErrors).length === 0;
   }, [tracker.fields, data, currentBabyAgeMonths, tracker.id]);
 
-  // ─── Submit ─────────────────────────────────────────────────────────
+  // ─── Submit ─────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
 
@@ -1762,23 +2326,17 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     triggerHaptic('success');
 
     try {
-      // ─── Trim all string values to avoid " " passing validation ──
+      // Trim strings, drop empty values, clean arrays
       const finalData: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(data)) {
         if (typeof v === 'string') {
           const trimmed = v.trim();
-          // Drop empty strings rather than persist them
-          if (trimmed.length > 0) {
-            finalData[k] = trimmed;
-          }
+          if (trimmed.length > 0) finalData[k] = trimmed;
         } else if (Array.isArray(v)) {
-          // Trim string entries in arrays
           const cleaned = v
-            .map((item) =>
-              typeof item === 'string' ? item.trim() : item
-            )
-            .filter((item) =>
-              item !== '' && item !== null && item !== undefined
+            .map((item) => (typeof item === 'string' ? item.trim() : item))
+            .filter(
+              (item) => item !== '' && item !== null && item !== undefined
             );
           if (cleaned.length > 0) finalData[k] = cleaned;
         } else if (v !== undefined && v !== null) {
@@ -1786,11 +2344,25 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         }
       }
 
-      // Auto-compute duration for any duration-tracker with valid start/end
-      const DURATION_TRACKERS = ['sleep', 'feed', 'dream_feed', 'nap', 'bath', 'pumping', 'tummy_time'];
+      // ─── Auto-compute duration for duration-trackers ─────────────────
+      const DURATION_TRACKERS = [
+        'sleep',
+        'feed',
+        'dream_feed',
+        'nap',
+        'bath',
+        'pumping',
+        'tummy_time',
+        'colic',
+        'daycare',
+        'babysitter',
+        'screen_time',
+      ];
       if (DURATION_TRACKERS.includes(tracker.id)) {
-        const hasStart = finalData.startTime && String(finalData.startTime).length > 0;
-        const hasEnd = finalData.endTime && String(finalData.endTime).length > 0;
+        const hasStart =
+          finalData.startTime && String(finalData.startTime).length > 0;
+        const hasEnd =
+          finalData.endTime && String(finalData.endTime).length > 0;
 
         if (hasStart && hasEnd) {
           const startMs = new Date(String(finalData.startTime)).getTime();
@@ -1809,11 +2381,11 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             finalData.status = 'completed';
           }
         } else if (hasStart) {
-          // Ongoing session — no duration, no endTime
+          // Ongoing — no endTime, no duration
           delete finalData.duration;
           finalData.status = 'ongoing';
         } else if (hasEnd) {
-          // End only — mark completed
+          // End only
           delete finalData.duration;
           finalData.status = 'completed';
         }
@@ -1832,7 +2404,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           linkedEntryId,
         })
       );
-    } catch (err) {
+    } catch {
       error('Error', 'Failed to save entry. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -1849,92 +2421,124 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     linkedEntryId,
     isSubmitting,
     tracker.id,
-    currentBabyAgeMonths,
   ]);
 
-  // ─── Field update with cross-field auto-linking ─────────────────────
+  // ─── Field update with cross-field auto-linking ─────────────────────────
   const updateField = useCallback(
     (fieldId: string, value: unknown) => {
       userEditedFields.current.add(fieldId);
       setData((prev) => {
         const next = { ...prev, [fieldId]: value };
 
-        // ── Feed: reset sibling fields when feedType changes ────────
+        // ── Feed: reset sibling fields when feedType changes ────────────
         if (tracker.id === 'feed' && fieldId === 'feedType') {
-          // Clear fields that don't apply to the new feed type
           if (value === 'breast') {
             delete next.bottleAmount;
             delete next.bottleAmount_unit;
             delete next.bottleContent;
+            delete next.bottleTemp;
             delete next.solidAmount;
             delete next.solidAmount_unit;
             delete next.food;
+            delete next.texture;
             delete next.acceptance;
+            delete next.waterAmount;
+            delete next.vessel;
           } else if (value === 'bottle') {
             delete next.side;
             delete next.breastDuration;
+            delete next.letdown;
             delete next.solidAmount;
             delete next.solidAmount_unit;
             delete next.food;
+            delete next.texture;
             delete next.acceptance;
+            delete next.waterAmount;
+            delete next.vessel;
           } else if (value === 'solid') {
             delete next.side;
             delete next.breastDuration;
+            delete next.letdown;
             delete next.bottleAmount;
             delete next.bottleAmount_unit;
             delete next.bottleContent;
+            delete next.bottleTemp;
+            delete next.waterAmount;
+            delete next.vessel;
           } else if (value === 'water') {
             delete next.side;
             delete next.breastDuration;
+            delete next.letdown;
             delete next.bottleAmount;
             delete next.bottleAmount_unit;
             delete next.bottleContent;
+            delete next.bottleTemp;
             delete next.solidAmount;
             delete next.solidAmount_unit;
             delete next.food;
+            delete next.texture;
+            delete next.acceptance;
           }
         }
 
-        // ── Sleep: reset endTime + duration when status → ongoing ────
-        if (tracker.id === 'sleep' && fieldId === 'status' && value === 'ongoing') {
+        // ── Sleep: reset endTime/duration when status → ongoing ─────────
+        if (
+          tracker.id === 'sleep' &&
+          fieldId === 'status' &&
+          value === 'ongoing'
+        ) {
           delete next.endTime;
           delete next.duration;
         }
 
-        // ── Diaper: reset stool fields when type → wet/dry ──────────
+        // ── Diaper: reset stool fields when type → wet/dry ──────────────
         if (tracker.id === 'diaper' && fieldId === 'type') {
           if (value === 'wet' || value === 'dry') {
             delete next.color;
             delete next.consistency;
+            delete next.amount;
             delete next.rash;
             delete next.blowout;
+            delete next.bleeding;
           }
         }
 
-        // ── Growth: reset value + unit when measurementType changes ──
+        // ── Potty: accident → mark unsuccessful automatically ───────────
+        if (tracker.id === 'potty' && fieldId === 'type') {
+          if (value === 'accident') {
+            next.successful = false;
+          }
+        }
+
+        // ── Growth: reset value + unit when measurementType changes ─────
         if (tracker.id === 'growth' && fieldId === 'measurementType') {
           delete next.value;
           delete next.value_unit;
           delete next.percentile;
         }
 
-        // ── Auto-link sleep/feed start/end times with ongoing support ──
-        const durationTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
+        // ── Auto-link start/end times for duration trackers ─────────────
+        const durationTrackers = [
+          'sleep',
+          'feed',
+          'dream_feed',
+          'nap',
+          'bath',
+          'pumping',
+          'tummy_time',
+        ];
         if (durationTrackers.includes(tracker.id)) {
-          const hasStart = next.startTime && String(next.startTime).length > 0;
+          const hasStart =
+            next.startTime && String(next.startTime).length > 0;
           const hasEnd = next.endTime && String(next.endTime).length > 0;
 
-          // Recompute status whenever start or end changes
           if (fieldId === 'startTime' || fieldId === 'endTime') {
             if (hasStart && hasEnd) {
-              // Both set → completed
               next.status = 'completed';
-              
               const startMs = new Date(String(next.startTime)).getTime();
               const endMs = new Date(String(next.endTime)).getTime();
               if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
                 const secs = Math.round((endMs - startMs) / 1000);
-                // Only set duration if meaningful (>= 60s) AND sane (<= 24h)
                 if (secs >= 60 && secs <= 86400) {
                   next.duration = secs;
                 } else {
@@ -1944,26 +2548,31 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 delete next.duration;
               }
             } else if (hasStart && !hasEnd) {
-              // Start only → ongoing
               next.status = 'ongoing';
               delete next.duration;
             } else if (!hasStart && hasEnd) {
-              // End only → mark completed but no duration
               next.status = 'completed';
               delete next.duration;
             } else {
-              // Neither set → clear status
               delete next.status;
               delete next.duration;
             }
           }
         }
 
-        // ── Auto-calculate BMI for growth ─────────────────────────────
+        // ── Auto-calculate BMI for growth ───────────────────────────────
         if (tracker.id === 'growth') {
-          const weight = Number(next.weight ?? next.weight_kg ?? prev.weight);
-          const height = Number(next.height ?? next.height_cm ?? prev.height);
-          if (Number.isFinite(weight) && Number.isFinite(height) && height > 0) {
+          const weight = Number(
+            next.weight ?? next.weight_kg ?? prev.weight
+          );
+          const height = Number(
+            next.height ?? next.height_cm ?? prev.height
+          );
+          if (
+            Number.isFinite(weight) &&
+            Number.isFinite(height) &&
+            height > 0
+          ) {
             const heightM = height > 3 ? height / 100 : height;
             next.bmi = parseFloat((weight / (heightM * heightM)).toFixed(1));
           }
@@ -1971,6 +2580,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
 
         return next;
       });
+
       setErrors((prev) => {
         const next = { ...prev };
         delete next[fieldId];
@@ -1980,21 +2590,22 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     [tracker.id]
   );
 
-  // ─── Apply yesterday data ───────────────────────────────────────────
+  // ─── Apply yesterday data ───────────────────────────────────────────────
   const applyYesterdayData = useCallback(
     (yestData: Record<string, unknown>) => {
       triggerHaptic('light');
-      Object.keys(yestData).forEach((key) => userEditedFields.current.add(key));
+      Object.keys(yestData).forEach((key) =>
+        userEditedFields.current.add(key)
+      );
       setData((prev) => ({ ...prev, ...yestData }));
       info('Applied', "Yesterday's values filled in!");
     },
     [triggerHaptic, info]
   );
 
-  // ─── Suggestion / yesterday getters ─────────────────────────────────
+  // ─── Suggestion getters ─────────────────────────────────────────────────
   const getFieldSuggestion = useCallback(
     (fieldId: string): ProgressiveSuggestion | undefined => {
-      // Require confidence >= 60 to surface a suggestion
       return suggestions.find(
         (s) =>
           s.fieldId === fieldId &&
@@ -2017,11 +2628,16 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     [trends]
   );
 
-  // ─── Field renderer ─────────────────────────────────────────────────
+  // ─── Field renderer ─────────────────────────────────────────────────────
   const renderField = useCallback(
     (field: FieldConfig) => {
       try {
-        if (typeof isFieldVisible === 'function' && !isFieldVisible(field)) return null;
+        if (
+          typeof isFieldVisible === 'function' &&
+          !isFieldVisible(field)
+        ) {
+          return null;
+        }
       } catch {
         // Render anyway
       }
@@ -2030,7 +2646,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       const yesterdayValue = getYesterdayValue(field.id);
       const trend = getFieldTrend(field.id);
 
-      const animatedWrapper = (children: React.ReactNode, key?: string) => (
+      const animatedWrapper = (
+        children: React.ReactNode,
+        key?: string
+      ) => (
         <Animated.View
           key={key}
           entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}
@@ -2051,14 +2670,21 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         suggestion,
         yesterdayValue,
         trend,
-        timeContext,
+        editable: !isSubmitting,
       };
 
       switch (field.type) {
         case 'datetime':
         case 'date': {
-          // Special handling for trackers that have explicit start/end times
-          const DURATION_TRACKERS = ['sleep', 'feed', 'dream_feed', 'nap', 'bath', 'pumping', 'tummy_time'];
+          const DURATION_TRACKERS = [
+            'sleep',
+            'feed',
+            'dream_feed',
+            'nap',
+            'bath',
+            'pumping',
+            'tummy_time',
+          ];
           if (
             DURATION_TRACKERS.includes(tracker.id) &&
             (field.id === 'startTime' || field.id === 'endTime')
@@ -2073,68 +2699,115 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 fontSizeMultiplier={fontSizeMultiplier}
                 borderRadiusValue={borderRadiusValue}
                 isStart={field.id === 'startTime'}
+                editable={!isSubmitting}
               />,
               field.id
             );
           }
-          return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
+          return animatedWrapper(
+            <SmartTextField {...commonProps} />,
+            field.id
+          );
         }
         case 'time':
-          return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
+          return animatedWrapper(
+            <SmartTimeField
+              field={field}
+              value={data[field.id]}
+              onChange={(v) => updateField(field.id, v)}
+              error={errors[field.id]}
+              tracker={tracker}
+              colors={fullThemeColors}
+              fontSizeMultiplier={fontSizeMultiplier}
+              borderRadiusValue={borderRadiusValue}
+              editable={!isSubmitting}
+            />,
+            field.id
+          );
         case 'number':
-          return animatedWrapper(<SmartNumberField {...commonProps} />, field.id);
+          return animatedWrapper(
+            <SmartNumberField {...commonProps} />,
+            field.id
+          );
         case 'select':
-          return animatedWrapper(<SmartSelectField {...commonProps} />, field.id);
+          return animatedWrapper(
+            <SmartSelectField {...commonProps} />,
+            field.id
+          );
         case 'multiselect':
-          return animatedWrapper(<SmartMultiSelectField {...commonProps} />, field.id);
+          return animatedWrapper(
+            <SmartMultiSelectField {...commonProps} />,
+            field.id
+          );
         case 'toggle':
           return animatedWrapper(
             <View
               key={field.id}
-              style={[styles.toggleContainer, { borderBottomColor: fullThemeColors.border }]}
+              style={[
+                styles.toggleContainer,
+                { borderBottomColor: fullThemeColors.border },
+              ]}
             >
               <Text
                 style={[
                   styles.toggleLabel,
-                  { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
+                  {
+                    color: fullThemeColors.text,
+                    fontSize: 15 * fontSizeMultiplier,
+                  },
                 ]}
               >
                 {field.label}
               </Text>
               <Switch
+                disabled={isSubmitting}
                 value={Boolean(data[field.id])}
                 onValueChange={(value) => updateField(field.id, value)}
-                trackColor={{ false: fullThemeColors.border, true: `${tracker.color}80` }}
-                thumbColor={data[field.id] ? tracker.color : fullThemeColors.textSecondary}
+                trackColor={{
+                  false: fullThemeColors.border,
+                  true: `${tracker.color}80`,
+                }}
+                thumbColor={
+                  data[field.id]
+                    ? tracker.color
+                    : fullThemeColors.textSecondary
+                }
               />
             </View>,
             field.id
           );
         case 'duration':
-          return animatedWrapper(<SmartDurationField {...commonProps} />, field.id);
+          return animatedWrapper(
+            <SmartDurationField {...commonProps} />,
+            field.id
+          );
         case 'rating': {
           const max = field.max || 5;
           const ratingValue = Number(data[field.id]) || 0;
           return animatedWrapper(
             <View key={field.id} style={styles.fieldContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
-                ]}
-              >
-                {field.label}
-              </Text>
+              <FieldLabel
+                label={field.label}
+                required={field.required}
+                hint={field.hint}
+                colors={fullThemeColors}
+                fontSizeMultiplier={fontSizeMultiplier}
+              />
               <View style={styles.ratingRow}>
                 {Array.from({ length: max }, (_, i) => i + 1).map((star) => (
                   <TouchableOpacity
                     key={star}
+                    disabled={isSubmitting}
                     onPress={() => updateField(field.id, star)}
                   >
                     <Ionicons
                       name={star <= ratingValue ? 'star' : 'star-outline'}
                       size={32}
-                      color={star <= ratingValue ? fullThemeColors.warning : fullThemeColors.border}
+                      color={
+                        star <= ratingValue
+                          ? fullThemeColors.warning
+                          : fullThemeColors.border
+                      }
                     />
                   </TouchableOpacity>
                 ))}
@@ -2146,18 +2819,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         case 'textarea':
           return animatedWrapper(
             <View key={field.id} style={styles.fieldContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
-                ]}
-              >
-                {field.label}
-                {field.required && (
-                  <Text style={{ color: fullThemeColors.error || '#ef4444' }}> *</Text>
-                )}
-              </Text>
+              <FieldLabel
+                label={field.label}
+                required={field.required}
+                hint={field.hint}
+                colors={fullThemeColors}
+                fontSizeMultiplier={fontSizeMultiplier}
+              />
               <TextInput
+                editable={!isSubmitting}
                 style={[
                   styles.input,
                   styles.textarea,
@@ -2170,6 +2840,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                     color: fullThemeColors.text,
                     fontSize: 16 * fontSizeMultiplier,
                     minHeight: 100 * fontSizeMultiplier,
+                    opacity: isSubmitting ? 0.7 : 1,
                   },
                 ]}
                 multiline
@@ -2182,7 +2853,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               />
               {errors[field.id] && (
                 <Text
-                  style={[styles.errorText, { color: fullThemeColors.error || '#ef4444' }]}
+                  style={[
+                    styles.errorText,
+                    { color: fullThemeColors.error || '#ef4444' },
+                  ]}
                 >
                   {errors[field.id]}
                 </Text>
@@ -2191,43 +2865,70 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             field.id
           );
         case 'mood_emoji':
-          return animatedWrapper(<SmartMoodField {...commonProps} />, field.id);
+          return animatedWrapper(
+            <SmartMoodField {...commonProps} />,
+            field.id
+          );
         case 'slider': {
-          const sliderMin = Number.isFinite(field.min as any) ? Number(field.min) : 0;
-          const sliderMax = Number.isFinite(field.max as any) ? Number(field.max) : 100;
-          const sliderStep = Number.isFinite(field.step as any) && Number(field.step) > 0
-            ? Number(field.step)
-            : 1;
+          const sliderMin = Number.isFinite(field.min as any)
+            ? Number(field.min)
+            : 0;
+          const sliderMax = Number.isFinite(field.max as any)
+            ? Number(field.max)
+            : 100;
+          const sliderStep =
+            Number.isFinite(field.step as any) && Number(field.step) > 0
+              ? Number(field.step)
+              : 1;
           const rawValue = Number(data[field.id]);
           const sliderValue = Number.isFinite(rawValue)
             ? Math.max(sliderMin, Math.min(sliderMax, rawValue))
             : sliderMin;
 
-          // Display with proper precision (0 decimals for integers, 1 for floats)
-          const displayValue = sliderStep < 1
-            ? sliderValue.toFixed(1)
-            : String(Math.round(sliderValue));
+          const displayValue =
+            sliderStep < 1
+              ? sliderValue.toFixed(1)
+              : String(Math.round(sliderValue));
 
           return animatedWrapper(
             <View key={field.id} style={styles.fieldContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
-                ]}
+              <FieldLabel
+                label={`${field.label}: ${displayValue}${
+                  field.unit ? ` ${field.unit}` : ''
+                }`}
+                required={field.required}
+                hint={field.hint}
+                colors={fullThemeColors}
+                fontSizeMultiplier={fontSizeMultiplier}
+              />
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  marginTop: 4,
+                }}
               >
-                {field.label}: {displayValue}
-                {field.unit ? ` ${field.unit}` : ''}
-              </Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                <Text style={{ color: fullThemeColors.textSecondary, fontSize: 11 }}>
-                  {sliderMin}{field.unit ? ` ${field.unit}` : ''}
+                <Text
+                  style={{
+                    color: fullThemeColors.textSecondary,
+                    fontSize: 11,
+                  }}
+                >
+                  {sliderMin}
+                  {field.unit ? ` ${field.unit}` : ''}
                 </Text>
-                <Text style={{ color: fullThemeColors.textSecondary, fontSize: 11 }}>
-                  {sliderMax}{field.unit ? ` ${field.unit}` : ''}
+                <Text
+                  style={{
+                    color: fullThemeColors.textSecondary,
+                    fontSize: 11,
+                  }}
+                >
+                  {sliderMax}
+                  {field.unit ? ` ${field.unit}` : ''}
                 </Text>
               </View>
               <Slider
+                disabled={isSubmitting}
                 style={styles.slider}
                 minimumValue={sliderMin}
                 maximumValue={sliderMax}
@@ -2242,6 +2943,20 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             field.id
           );
         }
+        case 'pain_scale':
+          return animatedWrapper(
+            <SmartPainScaleField
+              field={field}
+              value={data[field.id]}
+              onChange={(v) => updateField(field.id, v)}
+              tracker={tracker}
+              colors={fullThemeColors}
+              fontSizeMultiplier={fontSizeMultiplier}
+              borderRadiusValue={borderRadiusValue}
+              editable={!isSubmitting}
+            />,
+            field.id
+          );
         case 'photo':
           return animatedWrapper(
             <SmartPhotoField
@@ -2255,6 +2970,49 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             />,
             field.id
           );
+        case 'video':
+          // Video capture isn't implemented — show a friendly placeholder
+          // instead of silently falling through to a text input.
+          return animatedWrapper(
+            <View key={field.id} style={styles.fieldContainer}>
+              <FieldLabel
+                label={field.label}
+                required={field.required}
+                hint={field.hint}
+                colors={fullThemeColors}
+                fontSizeMultiplier={fontSizeMultiplier}
+              />
+              <View
+                style={[
+                  styles.input,
+                  {
+                    borderColor: fullThemeColors.border,
+                    borderRadius: borderRadiusValue,
+                    backgroundColor: fullThemeColors.surface,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    opacity: 0.6,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="videocam-outline"
+                  size={18}
+                  color={fullThemeColors.textSecondary}
+                />
+                <Text
+                  style={{
+                    color: fullThemeColors.textSecondary,
+                    fontSize: 14,
+                  }}
+                >
+                  Video capture coming soon
+                </Text>
+              </View>
+            </View>,
+            field.id
+          );
         case 'temperature':
           return animatedWrapper(
             <SmartTemperatureField
@@ -2266,6 +3024,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               tracker={tracker}
               borderRadiusValue={borderRadiusValue}
               fontSizeMultiplier={fontSizeMultiplier}
+              editable={!isSubmitting}
             />,
             field.id
           );
@@ -2281,22 +3040,21 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               tracker={tracker}
               borderRadiusValue={borderRadiusValue}
               fontSizeMultiplier={fontSizeMultiplier}
+              editable={!isSubmitting}
             />,
             field.id
           );
         default:
-          return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
+          return animatedWrapper(
+            <SmartTextField {...commonProps} />,
+            field.id
+          );
       }
     },
     [
-      // Only depend on the *values* used, not whole objects
-      // data and errors are needed for the field render
       data,
       errors,
-      tracker.id,
-      tracker.color,
-      tracker.gradient,
-      tracker.fields,
+      tracker,
       fullThemeColors,
       borderRadiusValue,
       fontSizeMultiplier,
@@ -2307,19 +3065,33 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       timeContext,
       updateField,
       photoUris,
+      isSubmitting,
     ]
   );
 
-  // ─── Quick mode ─────────────────────────────────────────────────────
+  // ─── Quick mode ─────────────────────────────────────────────────────────
   if (quickMode) {
     return (
-      <View style={[styles.quickContainer, { backgroundColor: fullThemeColors.background }]}>
-        <View style={[styles.quickHeader, { backgroundColor: tracker.gradient[0] + '15' }]}>
+      <View
+        style={[
+          styles.quickContainer,
+          { backgroundColor: fullThemeColors.background },
+        ]}
+      >
+        <View
+          style={[
+            styles.quickHeader,
+            { backgroundColor: tracker.gradient[0] + '15' },
+          ]}
+        >
           <Text style={{ fontSize: 32 }}>{tracker.emoji}</Text>
           <Text
             style={[
               styles.quickTitle,
-              { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier },
+              {
+                color: fullThemeColors.text,
+                fontSize: 18 * fontSizeMultiplier,
+              },
             ]}
           >
             {tracker.name}
@@ -2332,13 +3104,19 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {tracker.fields.slice(0, 3).map(renderField)}
 
           <TouchableOpacity
             style={[
               styles.quickSubmit,
-              { backgroundColor: tracker.gradient[0], borderRadius: borderRadiusValue },
+              {
+                backgroundColor: tracker.gradient[0],
+                borderRadius: borderRadiusValue,
+              },
             ]}
             onPress={handleSubmit}
             disabled={isSubmitting}
@@ -2352,9 +3130,13 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     );
   }
 
-  // ─── Full mode ──────────────────────────────────────────────────────
-  const visibleInsights = insights.filter((i) => !dismissedInsights.has(i.id));
-  const visibleCorrelations = correlations.filter((c) => !dismissedCorrelations.has(c.id));
+  // ─── Full mode ──────────────────────────────────────────────────────────
+  const visibleInsights = insights.filter(
+    (i) => !dismissedInsights.has(i.id)
+  );
+  const visibleCorrelations = correlations.filter(
+    (c) => !dismissedCorrelations.has(c.id)
+  );
 
   return (
     <KeyboardAvoidingView
@@ -2362,7 +3144,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       style={{ flex: 1 }}
     >
       <ScrollView
-        style={[styles.container, { backgroundColor: fullThemeColors.background }]}
+        style={[
+          styles.container,
+          { backgroundColor: fullThemeColors.background },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -2377,13 +3162,21 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             },
           ]}
         >
-          <Text style={[styles.headerEmoji, { fontSize: 48 * fontSizeMultiplier }]}>
+          <Text
+            style={[
+              styles.headerEmoji,
+              { fontSize: 48 * fontSizeMultiplier },
+            ]}
+          >
             {tracker.emoji}
           </Text>
           <Text
             style={[
               styles.headerTitle,
-              { color: fullThemeColors.text, fontSize: 22 * fontSizeMultiplier },
+              {
+                color: fullThemeColors.text,
+                fontSize: 22 * fontSizeMultiplier,
+              },
             ]}
           >
             {tracker.name}
@@ -2391,7 +3184,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           <Text
             style={[
               styles.headerDesc,
-              { color: fullThemeColors.textSecondary, fontSize: 14 * fontSizeMultiplier },
+              {
+                color: fullThemeColors.textSecondary,
+                fontSize: 14 * fontSizeMultiplier,
+              },
             ]}
           >
             {tracker.description}
@@ -2405,8 +3201,17 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           />
 
           {linkedEntryId && (
-            <View style={[styles.linkedBadge, { backgroundColor: `${tracker.color}20` }]}>
-              <Ionicons name="link-outline" size={14} color={tracker.color} />
+            <View
+              style={[
+                styles.linkedBadge,
+                { backgroundColor: `${tracker.color}20` },
+              ]}
+            >
+              <Ionicons
+                name="link-outline"
+                size={14}
+                color={tracker.color}
+              />
               <Text style={[styles.linkedText, { color: tracker.color }]}>
                 Linked to previous entry
               </Text>
@@ -2431,10 +3236,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                   },
                 ]}
               >
-                <Text style={styles.correlationEmoji}>{correlation.emoji || '🔗'}</Text>
+                <Text style={styles.correlationEmoji}>
+                  {correlation.emoji || '🔗'}
+                </Text>
                 <View style={styles.correlationInfo}>
                   <Text
-                    style={[styles.correlationMessage, { color: fullThemeColors.text }]}
+                    style={[
+                      styles.correlationMessage,
+                      { color: fullThemeColors.text },
+                    ]}
                     numberOfLines={2}
                   >
                     {correlation.message}
@@ -2458,10 +3268,13 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                       ]}
                       onPress={() => {
                         if (correlation.prefillData) {
-                          Object.keys(correlation.prefillData).forEach((key) =>
-                            userEditedFields.current.add(key)
+                          Object.keys(correlation.prefillData).forEach(
+                            (key) => userEditedFields.current.add(key)
                           );
-                          setData((prev) => ({ ...prev, ...correlation.prefillData }));
+                          setData((prev) => ({
+                            ...prev,
+                            ...correlation.prefillData,
+                          }));
                         }
                       }}
                     >
@@ -2476,7 +3289,9 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                   )}
                   <TouchableOpacity
                     onPress={() =>
-                      setDismissedCorrelations((prev) => new Set(prev).add(correlation.id))
+                      setDismissedCorrelations((prev) =>
+                        new Set(prev).add(correlation.id)
+                      )
                     }
                   >
                     <Ionicons
@@ -2513,7 +3328,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               >
                 <Text style={styles.insightEmoji}>{insight.emoji}</Text>
                 <View style={styles.insightContent}>
-                  <Text style={[styles.insightTitle, { color: fullThemeColors.text }]}>
+                  <Text
+                    style={[
+                      styles.insightTitle,
+                      { color: fullThemeColors.text },
+                    ]}
+                  >
                     {insight.title}
                   </Text>
                   <Text
@@ -2528,10 +3348,16 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 </View>
                 <TouchableOpacity
                   onPress={() =>
-                    setDismissedInsights((prev) => new Set(prev).add(insight.id))
+                    setDismissedInsights((prev) =>
+                      new Set(prev).add(insight.id)
+                    )
                   }
                 >
-                  <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
+                  <Ionicons
+                    name="close"
+                    size={18}
+                    color={fullThemeColors.textSecondary}
+                  />
                 </TouchableOpacity>
               </Animated.View>
             ))}
@@ -2561,12 +3387,19 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 color={fullThemeColors.textSecondary}
               />
               <Text
-                style={[styles.yesterdayTitle, { color: fullThemeColors.textSecondary }]}
+                style={[
+                  styles.yesterdayTitle,
+                  { color: fullThemeColors.textSecondary },
+                ]}
               >
                 Suggested from Yesterday
               </Text>
-              <TouchableOpacity onPress={() => applyYesterdayData(prefillData)}>
-                <Text style={[styles.yesterdayApply, { color: tracker.color }]}>
+              <TouchableOpacity
+                onPress={() => applyYesterdayData(prefillData)}
+              >
+                <Text
+                  style={[styles.yesterdayApply, { color: tracker.color }]}
+                >
                   Apply All
                 </Text>
               </TouchableOpacity>
@@ -2589,7 +3422,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                       setData((prev) => ({ ...prev, [key]: value }));
                     }}
                   >
-                    <Text style={[styles.yesterdayChipText, { color: tracker.color }]}>
+                    <Text
+                      style={[
+                        styles.yesterdayChipText,
+                        { color: tracker.color },
+                      ]}
+                    >
                       {key}:{' '}
                       {String(value).length > 15
                         ? String(value).slice(0, 15) + '...'
@@ -2602,19 +3440,25 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         )}
 
         {/* Dynamic fields */}
-        <View style={styles.formBody}>{tracker.fields.map(renderField)}</View>
+        <View style={styles.formBody}>
+          {tracker.fields.map(renderField)}
+        </View>
 
         {/* Notes */}
         <View style={styles.fieldContainer}>
           <Text
             style={[
               styles.label,
-              { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
+              {
+                color: fullThemeColors.text,
+                fontSize: 15 * fontSizeMultiplier,
+              },
             ]}
           >
             Additional Notes
           </Text>
           <TextInput
+            editable={!isSubmitting}
             style={[
               styles.input,
               styles.textarea,
@@ -2625,6 +3469,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 color: fullThemeColors.text,
                 fontSize: 16 * fontSizeMultiplier,
                 minHeight: 100 * fontSizeMultiplier,
+                opacity: isSubmitting ? 0.7 : 1,
               },
             ]}
             multiline
@@ -2643,7 +3488,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             <Text
               style={[
                 styles.label,
-                { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
+                {
+                  color: fullThemeColors.text,
+                  fontSize: 15 * fontSizeMultiplier,
+                },
               ]}
             >
               Quick Tags
@@ -2652,6 +3500,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               {tracker.quickTags.map((tag) => (
                 <TouchableOpacity
                   key={tag}
+                  disabled={isSubmitting}
                   style={[
                     styles.tagChip,
                     {
@@ -2662,12 +3511,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                         ? tracker.color
                         : fullThemeColors.border,
                       borderRadius: borderRadiusValue,
+                      opacity: isSubmitting ? 0.7 : 1,
                     },
                   ]}
                   onPress={() => {
                     triggerHaptic('light');
                     setSelectedTags((prev) =>
-                      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+                      prev.includes(tag)
+                        ? prev.filter((t) => t !== tag)
+                        : [...prev, tag]
                     );
                   }}
                 >
@@ -2694,16 +3546,23 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         <View style={styles.buttonRow}>
           {onCancel && (
             <TouchableOpacity
+              disabled={isSubmitting}
               style={[
                 styles.cancelBtn,
-                { backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue },
+                {
+                  backgroundColor: fullThemeColors.surface,
+                  borderRadius: borderRadiusValue,
+                },
               ]}
               onPress={onCancel}
             >
               <Text
                 style={[
                   styles.cancelText,
-                  { color: fullThemeColors.textSecondary, fontSize: 16 * fontSizeMultiplier },
+                  {
+                    color: fullThemeColors.textSecondary,
+                    fontSize: 16 * fontSizeMultiplier,
+                  },
                 ]}
               >
                 Cancel
@@ -2722,7 +3581,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             onPress={handleSubmit}
             disabled={isSubmitting}
           >
-            <Text style={[styles.submitText, { fontSize: 16 * fontSizeMultiplier }]}>
+            <Text
+              style={[
+                styles.submitText,
+                { fontSize: 16 * fontSizeMultiplier },
+              ]}
+            >
               {isSubmitting ? 'Saving...' : `Save ${tracker.emoji}`}
             </Text>
           </TouchableOpacity>
@@ -2732,7 +3596,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   );
 };
 
-// ─── STYLES ─────────────────────────────────────────────────────────────
+// ─── STYLES ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
@@ -2849,7 +3713,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
   },
+  labelTextWrap: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   label: { fontWeight: '600' },
+  labelHint: { fontWeight: '400' },
   required: { fontWeight: '700' },
 
   countBadge: {
@@ -2907,7 +3773,12 @@ const styles = StyleSheet.create({
   },
   suggestIndicatorText: { fontSize: 10 },
 
-  numberRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, paddingRight: 16 },
+  numberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    paddingRight: 16,
+  },
   numberInput: { flex: 1, padding: 14, fontWeight: '500' },
   unitLabel: { marginLeft: 12, fontWeight: '500' },
   quickValuesRow: {
@@ -2967,7 +3838,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   durationText: { fontWeight: '700', minWidth: 100, textAlign: 'center' },
-  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12, justifyContent: 'center' },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+    justifyContent: 'center',
+  },
   presetChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3019,6 +3896,21 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   moodEmoji: { fontSize: 32 },
+
+  painRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  painEmoji: { fontSize: 32 },
+  painAnchors: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  painAnchor: { fontSize: 11, fontWeight: '500' },
 
   slider: { width: '100%', height: 40, marginTop: 8 },
 
