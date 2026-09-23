@@ -31,10 +31,12 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import SmartPhotoField from './SmartPhotoField';
 import {
@@ -1811,7 +1813,8 @@ const SmartDateTimeField: React.FC<{
   isStart,
   editable = true,
 }) => {
-  const [showPicker, setShowPicker] = useState(false);
+  const datePicker = useDateTimePicker();
+
   const currentValue = data[field.id];
   const currentDate =
     currentValue && !isNaN(new Date(String(currentValue)).getTime())
@@ -1833,6 +1836,18 @@ const SmartDateTimeField: React.FC<{
         minute: '2-digit',
       })
     : 'Set time';
+
+  const handleOpenPicker = useCallback(() => {
+    if (!editable) return;
+    datePicker.open(
+      { value: currentDate, mode: 'datetime' },
+      (picked) => {
+        if (picked) {
+          updateField(field.id, picked.toISOString());
+        }
+      }
+    );
+  }, [editable, currentDate, datePicker, field.id, updateField]);
 
   return (
     <View style={styles.fieldContainer}>
@@ -1858,7 +1873,7 @@ const SmartDateTimeField: React.FC<{
             opacity: !editable ? 0.7 : 1,
           },
         ]}
-        onPress={() => setShowPicker(true)}
+        onPress={handleOpenPicker}
       >
         <Ionicons
           name="calendar-outline"
@@ -1925,28 +1940,77 @@ const SmartDateTimeField: React.FC<{
         </View>
       )}
 
-      {showPicker && (
-        <DateTimePicker
-          value={currentDate}
-          mode="datetime"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(event, selectedDate) => {
-            if (Platform.OS === 'android') setShowPicker(false);
-            if (event.type === 'set' && selectedDate) {
-              updateField(field.id, selectedDate.toISOString());
-            }
-          }}
-        />
-      )}
-
-      {Platform.OS === 'ios' && showPicker && (
-        <TouchableOpacity
-          style={[styles.pickerDoneBtn, { backgroundColor: tracker.color }]}
-          onPress={() => setShowPicker(false)}
+      {/* iOS-only modal render */}
+      {Platform.OS === 'ios' && datePicker.iosPicker.visible ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible={datePicker.iosPicker.visible}
+          statusBarTranslucent
+          onRequestClose={datePicker.dismissIos}
         >
-          <Text style={styles.pickerDoneText}>Done</Text>
-        </TouchableOpacity>
-      )}
+          <Pressable
+            style={{
+              flex: 1,
+              justifyContent: 'flex-end',
+              backgroundColor: 'rgba(0,0,0,0.5)',
+            }}
+            onPress={datePicker.dismissIos}
+          >
+            <View
+              style={{
+                backgroundColor: colors.surface,
+                borderTopLeftRadius: borderRadiusValue * 2,
+                borderTopRightRadius: borderRadiusValue * 2,
+                paddingBottom: 40,
+              }}
+              onStartShouldSetResponder={() => true}
+              onTouchEnd={(e) => e.stopPropagation()}
+            >
+              <View
+                style={{
+                  alignItems: 'flex-end',
+                  padding: 16,
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={datePicker.dismissIos}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: '600',
+                      color: tracker.color,
+                    }}
+                  >
+                    Done
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {(() => {
+                try {
+                  // eslint-disable-next-line @typescript-eslint/no-var-requires
+                  const DateTimePicker = require('@react-native-community/datetimepicker').default;
+                  return (
+                    <DateTimePicker
+                      value={datePicker.iosPicker.value}
+                      mode={datePicker.iosPicker.mode}
+                      display="spinner"
+                      onValueChange={datePicker.handleIosChange}
+                      textColor={colors.text}
+                    />
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
+            </View>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 };
@@ -1973,7 +2037,7 @@ const SmartTimeField: React.FC<{
   borderRadiusValue,
   editable = true,
 }) => {
-  const [showPicker, setShowPicker] = useState(false);
+  const datePicker = useDateTimePicker();
 
   // Parse "HH:mm" into a Date for the picker
   const parsedDate = useMemo(() => {
@@ -1991,14 +2055,19 @@ const SmartTimeField: React.FC<{
   const displayText =
     typeof value === 'string' && value.length > 0 ? value : 'Set time';
 
-  const handleChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') setShowPicker(false);
-    if (event.type === 'set' && selectedDate) {
-      const hh = String(selectedDate.getHours()).padStart(2, '0');
-      const mm = String(selectedDate.getMinutes()).padStart(2, '0');
-      onChange(`${hh}:${mm}`);
-    }
-  };
+  const handleOpenPicker = useCallback(() => {
+    if (!editable) return;
+    datePicker.open(
+      { value: parsedDate, mode: 'time' },
+      (picked) => {
+        if (picked) {
+          const hh = String(picked.getHours()).padStart(2, '0');
+          const mm = String(picked.getMinutes()).padStart(2, '0');
+          onChange(`${hh}:${mm}`);
+        }
+      }
+    );
+  }, [editable, parsedDate, datePicker, onChange]);
 
   return (
     <View style={styles.fieldContainer}>
@@ -2024,7 +2093,7 @@ const SmartTimeField: React.FC<{
             opacity: !editable ? 0.7 : 1,
           },
         ]}
-        onPress={() => setShowPicker(true)}
+        onPress={handleOpenPicker}
       >
         <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
         <Text
@@ -2053,23 +2122,77 @@ const SmartTimeField: React.FC<{
         )}
       </TouchableOpacity>
 
-      {showPicker && (
-        <DateTimePicker
-          value={parsedDate}
-          mode="time"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={handleChange}
-        />
-      )}
-
-      {Platform.OS === 'ios' && showPicker && (
-        <TouchableOpacity
-          style={[styles.pickerDoneBtn, { backgroundColor: tracker.color }]}
-          onPress={() => setShowPicker(false)}
+      {/* iOS-only modal render */}
+      {Platform.OS === 'ios' && datePicker.iosPicker.visible ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible={datePicker.iosPicker.visible}
+          statusBarTranslucent
+          onRequestClose={datePicker.dismissIos}
         >
-          <Text style={styles.pickerDoneText}>Done</Text>
-        </TouchableOpacity>
-      )}
+          <Pressable
+            style={{
+              flex: 1,
+              justifyContent: 'flex-end',
+              backgroundColor: 'rgba(0,0,0,0.5)',
+            }}
+            onPress={datePicker.dismissIos}
+          >
+            <View
+              style={{
+                backgroundColor: colors.surface,
+                borderTopLeftRadius: borderRadiusValue * 2,
+                borderTopRightRadius: borderRadiusValue * 2,
+                paddingBottom: 40,
+              }}
+              onStartShouldSetResponder={() => true}
+              onTouchEnd={(e) => e.stopPropagation()}
+            >
+              <View
+                style={{
+                  alignItems: 'flex-end',
+                  padding: 16,
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={datePicker.dismissIos}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: '600',
+                      color: tracker.color,
+                    }}
+                  >
+                    Done
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {(() => {
+                try {
+                  // eslint-disable-next-line @typescript-eslint/no-var-requires
+                  const DateTimePicker = require('@react-native-community/datetimepicker').default;
+                  return (
+                    <DateTimePicker
+                      value={datePicker.iosPicker.value}
+                      mode={datePicker.iosPicker.mode}
+                      display="spinner"
+                      onValueChange={datePicker.handleIosChange}
+                      textColor={colors.text}
+                    />
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
+            </View>
+          </Pressable>
+        </Modal>
+      ) : null}
 
       {error && (
         <Text style={[styles.errorText, { color: colors.error }]}>

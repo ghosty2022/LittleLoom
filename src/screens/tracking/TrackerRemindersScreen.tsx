@@ -39,7 +39,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import * as Notifications from 'expo-notifications';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   format,
@@ -1038,7 +1038,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const [formTime, setFormTime] = useState(new Date());
   const [formNotes, setFormNotes] = useState('');
   const [formDaysOfWeek, setFormDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const datePicker = useDateTimePicker();
   const [formColor, setFormColor] = useState(CATEGORY_CONFIG.custom.color);
 
   const scrollRef = useRef<ScrollView>(null);
@@ -1614,36 +1614,14 @@ export default function RemindersScreen({ navigation, route }: Props) {
     setAlert({ visible: true, type, title, message, emoji });
   };
 
-  const openAndroidTimePicker = useCallback(() => {
-    // Guard: DateTimePickerAndroid is Android-only
-    if (Platform.OS !== 'android') return;
-    try {
-      const { DateTimePickerAndroid } = require('@react-native-community/datetimepicker');
-      if (!DateTimePickerAndroid || typeof DateTimePickerAndroid.open !== 'function') {
-        if (__DEV__) console.warn('[Reminders] DateTimePickerAndroid not available');
-        return;
+  const openTimePicker = useCallback(() => {
+    datePicker.open(
+      { value: formTime instanceof Date ? formTime : new Date(), mode: 'time' },
+      (picked) => {
+        if (picked) setFormTime(picked);
       }
-      DateTimePickerAndroid.open({
-        value: formTime instanceof Date ? formTime : new Date(),
-        mode: 'time',
-        is24Hour: false,
-        onChange: (event: any, selectedDate?: Date) => {
-          if (!event || event.type !== 'set' || !selectedDate) return;
-          setFormTime(selectedDate);
-        },
-        onError: (err: any) => {
-          if (__DEV__) console.warn('[Reminders] Time picker error:', err);
-        },
-      });
-    } catch (err) {
-      if (__DEV__) console.warn('[Reminders] openAndroidTimePicker failed:', err);
-    }
-  }, [formTime]);
-
-  const onTimeChange = useCallback((event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'ios') setShowTimePicker(false);
-    if (selectedDate) setFormTime(selectedDate);
-  }, []);
+    );
+  }, [datePicker, formTime]);
 
   /* ---- View mode tabs ---- */
   const viewTabs = [
@@ -2067,17 +2045,8 @@ export default function RemindersScreen({ navigation, route }: Props) {
               </View>
 
               <Text style={[styles.inputLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Time</Text>
-              <View style={styles.timePickerRow}>
-                <TouchableOpacity
-                  style={[styles.timePickerButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}
-                  onPress={() => {
-                    if (Platform.OS === 'android') {
-                      openAndroidTimePicker();
-                    } else {
-                      setShowTimePicker(true);
-                    }
-                  }}
-                >
+                            <View style={styles.timePickerRow}>
+                <TouchableOpacity style={[styles.timePickerButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} onPress={openTimePicker}>
                   <Ionicons name="time-outline" size={22} color="#6366f1" />
                   <Text style={[styles.timePickerText, { color: isDark ? '#fff' : '#1e293b' }]}>{format(formTime, 'h:mm a')}</Text>
                 </TouchableOpacity>
@@ -2099,20 +2068,49 @@ export default function RemindersScreen({ navigation, route }: Props) {
                 </View>
               </View>
 
-              {showTimePicker && Platform.OS === 'ios' && (
-                <DateTimePicker
-                  value={formTime}
-                  mode="time"
-                  is24Hour={false}
-                  display="spinner"
-                  onValueChange={(event, selectedDate) => {
-                    if (selectedDate) {
-                      setFormTime(selectedDate);
-                    }
-                  }}
-                  textColor={isDark ? '#fff' : '#000'}
-                />
-              )}
+              {/* iOS-only time picker modal — driven by useDateTimePicker */}
+              {Platform.OS === 'ios' && datePicker.iosPicker.visible ? (
+                <Modal
+                  transparent
+                  animationType="slide"
+                  visible={datePicker.iosPicker.visible}
+                  statusBarTranslucent
+                  onRequestClose={datePicker.dismissIos}
+                >
+                  <Pressable
+                    style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
+                    onPress={datePicker.dismissIos}
+                  >
+                    <View
+                      style={{ backgroundColor: isDark ? '#1a1a2e' : '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 }}
+                      onStartShouldSetResponder={() => true}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                    >
+                      <View style={{ alignItems: 'flex-end', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+                        <TouchableOpacity onPress={datePicker.dismissIos}>
+                          <Text style={{ fontSize: 16, fontWeight: '600', color: '#6366f1' }}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {(() => {
+                        try {
+                          const DateTimePicker = require('@react-native-community/datetimepicker').default;
+                          return (
+                            <DateTimePicker
+                              value={datePicker.iosPicker.value}
+                              mode="time"
+                              display="spinner"
+                              onValueChange={datePicker.handleIosChange}
+                              textColor={isDark ? '#fff' : '#000'}
+                            />
+                          );
+                        } catch {
+                          return null;
+                        }
+                      })()}
+                    </View>
+                  </Pressable>
+                </Modal>
+              ) : null}
 
               <Text style={[styles.inputLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Repeat</Text>
               <View style={styles.repeatGrid}>
