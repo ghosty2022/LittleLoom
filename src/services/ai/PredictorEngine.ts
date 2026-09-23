@@ -411,6 +411,13 @@ export async function observeEvent(
   type: PredictorType,
   eventTimestamp: number
 ): Promise<Prediction> {
+  // Validate timestamp
+  if (!Number.isFinite(eventTimestamp) || eventTimestamp <= 0) {
+    if (__DEV__) console.warn('[Predictor] Invalid eventTimestamp:', eventTimestamp);
+    const state = await loadState(babyId, type);
+    return predictNext(state);
+  }
+
   const state = await loadState(babyId, type);
 
   let updated = state;
@@ -530,6 +537,13 @@ export async function backfillPredictor(
     return { samples: 0 };
   }
 
+  if (!Array.isArray(data) || data.length < 2) {
+    if (__DEV__) {
+      console.log(`[Predictor] Not enough data to backfill ${type} (${data?.length ?? 0} rows)`);
+    }
+    return { samples: 0 };
+  }
+
   const intervals: Array<{ interval: number; at: number }> = [];
   for (let i = 1; i < data.length; i++) {
     const prevRow = data[i - 1];
@@ -540,7 +554,7 @@ export async function backfillPredictor(
     const currMs = toMs(currRow.timestamp);
     if (prevMs === 0 || currMs === 0) continue;
     const intervalMin = (currMs - prevMs) / 60000;
-    if (intervalMin > 1 && intervalMin < 24 * 60) {
+    if (Number.isFinite(intervalMin) && intervalMin > 1 && intervalMin < 24 * 60) {
       intervals.push({ interval: intervalMin, at: currMs });
     }
   }

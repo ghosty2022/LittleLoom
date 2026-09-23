@@ -1236,11 +1236,22 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
    * Strip anything jsonb/PostgREST can't serialize (undefined, functions, NaN).
    */
   const sanitizeForJsonb = useCallback((value: unknown): unknown => {
+    if (value === undefined || value === null) return value;
     try {
+      const seen = new WeakSet();
       return JSON.parse(
-        JSON.stringify(value, (_key, v) =>
-          typeof v === 'number' && !isFinite(v) ? null : v
-        )
+        JSON.stringify(value, (_key, v) => {
+          // Handle NaN/Infinity
+          if (typeof v === 'number' && !isFinite(v)) return null;
+          // Handle undefined
+          if (v === undefined) return null;
+          // Handle circular references
+          if (typeof v === 'object' && v !== null) {
+            if (seen.has(v)) return null;
+            seen.add(v);
+          }
+          return v;
+        })
       );
     } catch {
       return {};
@@ -1304,6 +1315,31 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         ? options.tags.filter((t): t is string => typeof t === 'string' && t.length > 0)
         : [];
       const cleanData = sanitizeForJsonb(data) as Record<string, unknown>;
+
+      // ── Auto-compute duration for sleep/feed with start/end ─────
+      const DURATION_TRACKERS = ['sleep', 'feed', 'dream_feed', 'nap', 'bath', 'pumping', 'tummy_time'];
+      if (DURATION_TRACKERS.includes(trackerId)) {
+        const hasStart = cleanData.startTime && String(cleanData.startTime).length > 0;
+        const hasEnd = cleanData.endTime && String(cleanData.endTime).length > 0;
+        
+        if (hasStart && hasEnd) {
+          const startMs = new Date(String(cleanData.startTime)).getTime();
+          const endMs = new Date(String(cleanData.endTime)).getTime();
+          if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+            const secs = Math.round((endMs - startMs) / 1000);
+            if (secs >= 60 && secs <= 86400) {
+              cleanData.duration = secs;
+              cleanData.status = 'completed';
+            } else {
+              delete cleanData.duration;
+              cleanData.status = 'completed';
+            }
+          }
+        } else if (hasStart && !hasEnd) {
+          cleanData.status = 'ongoing';
+          delete cleanData.duration;
+        }
+      }
 
       const newEntry: TrackerEntry = {
         id: newId,
@@ -1499,12 +1535,14 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       );
 
       const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
-      updatedEntries.forEach(e => {
-        if (!updatedEntriesByTracker[e.trackerId]) {
-          updatedEntriesByTracker[e.trackerId] = [];
-        }
-        updatedEntriesByTracker[e.trackerId].push(e);
-      });
+      updatedEntries
+        .filter(e => !e.isDeleted)
+        .forEach(e => {
+          if (!updatedEntriesByTracker[e.trackerId]) {
+            updatedEntriesByTracker[e.trackerId] = [];
+          }
+          updatedEntriesByTracker[e.trackerId].push(e);
+        });
 
       setState(prev => ({
         ...prev,
@@ -1573,9 +1611,10 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
   /* ─── Entry queries ──────────────────────────────────────────────── */
 
   const handleGetEntries = useCallback((trackerId?: string, limit?: number): TrackerEntry[] => {
-    let filtered = state.entries.filter(e => !e.isDeleted);
-    if (trackerId) filtered = filtered.filter(e => e.trackerId === trackerId);
-    filtered.sort((a, b) => b.timestamp - a.timestamp);
+    const safeEntries = Array.isArray(state.entries) ? state.entries : [];
+    let filtered = safeEntries.filter(e => !e?.isDeleted);
+    if (trackerId) filtered = filtered.filter(e => e?.trackerId === trackerId);
+    filtered.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
     if (limit && limit > 0) filtered = filtered.slice(0, limit);
     return filtered;
   }, [state.entries]);

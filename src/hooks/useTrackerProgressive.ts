@@ -618,20 +618,23 @@ export const useTrackerProgressive = (trackerId: string) => {
     };
 
     // ─── 1. Yesterday's data — but ONLY for stable fields ────────
-    //      Confidence is now 80 (not 95) since it's context, not a fact.
     const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday && Object.keys(yesterday).length > 0) {
       Object.entries(yesterday).forEach(([fieldId, value]) => {
         // Skip time/date fields — they must always be freshly set
         if (isNeverPrefill(fieldId)) return;
         
-        // Skip status fields — a new entry starts fresh
-        if (fieldId === 'status' || fieldId === 'completed' || fieldId === 'ongoing') return;
+        // Skip status/state fields — a new entry starts fresh
+        if (
+          fieldId === 'status' || 
+          fieldId === 'completed' || 
+          fieldId === 'ongoing' ||
+          fieldId === 'duration' ||
+          fieldId === 'startTime' ||
+          fieldId === 'endTime'
+        ) return;
 
         if (value !== undefined && value !== '' && value !== null) {
-          // Don't prefill duration — it will be computed
-          if (fieldId === 'duration') return;
-
           prefill[fieldId] = value;
           suggMap.set(fieldId, {
             fieldId,
@@ -847,41 +850,60 @@ export const useTrackerProgressive = (trackerId: string) => {
   const trends = useMemo(() => {
     const result: Record<string, ProgressiveTrend> = {};
 
+    const TRENDABLE_FIELDS = new Set([
+      'duration', 'amount', 'quantity', 'value', 'temperature',
+      'weight', 'height', 'head', 'bmi', 'percentile', 'bottleAmount',
+      'solidAmount', 'waterAmount',
+    ]);
+
+    // Compute trends across ALL entries for each field (not just [0])
     if (todayEntries.length > 0 && yesterdayEntries.length > 0) {
-      // Average numeric values across all entries, not just the first
-      const todayData = todayEntries[0].data || {};
-      const yestData = yesterdayEntries[0].data || {};
+      // Collect all numeric values per field for today and yesterday
+      const collectNumeric = (entries: TrackerEntry[]): Record<string, number[]> => {
+        const acc: Record<string, number[]> = {};
+        entries.forEach(e => {
+          const data = e.data || {};
+          Object.entries(data).forEach(([key, val]) => {
+            if (!TRENDABLE_FIELDS.has(key)) return;
+            const n = Number(val);
+            if (Number.isFinite(n) && n > 0) {
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(n);
+            }
+          });
+        });
+        return acc;
+      };
 
-      // Only compute trends for numeric fields that make sense
-      const trendableFields = new Set([
-        'duration', 'amount', 'quantity', 'value', 'temperature',
-        'weight', 'height', 'head', 'bmi', 'percentile',
-      ]);
+      const todayNumeric = collectNumeric(todayEntries);
+      const yesterdayNumeric = collectNumeric(yesterdayEntries);
 
-      Object.keys({ ...todayData, ...yestData }).forEach((fieldId) => {
-        // Skip non-numeric or non-trendable fields
-        if (!trendableFields.has(fieldId)) return;
+      Object.keys({ ...todayNumeric, ...yesterdayNumeric }).forEach((fieldId) => {
+        const tList = todayNumeric[fieldId] || [];
+        const yList = yesterdayNumeric[fieldId] || [];
+        if (tList.length === 0 || yList.length === 0) return;
         
-        const current = Number(todayData[fieldId]);
-        const previous = Number(yestData[fieldId]);
+        const avgToday = tList.reduce((a, b) => a + b, 0) / tList.length;
+        const avgYesterday = yList.reduce((a, b) => a + b, 0) / yList.length;
         
-        // Both must be finite positive numbers
-        if (
-          Number.isFinite(current) && current > 0 &&
-          Number.isFinite(previous) && previous > 0
-        ) {
-          result[fieldId] = computeTrend(current, previous);
+        if (Number.isFinite(avgToday) && Number.isFinite(avgYesterday)) {
+          result[fieldId] = computeTrend(avgToday, avgYesterday);
         }
       });
     }
 
+    // Fallback: compare prefill (yesterday) to today's actual entries
     const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday) {
       Object.entries(yesterday).forEach(([fieldId, yestVal]) => {
         if (result[fieldId]) return;
+        if (!TRENDABLE_FIELDS.has(fieldId)) return;
         const current = Number(prefillData[fieldId]);
         const previous = Number(yestVal);
-        if (Number.isFinite(current) && Number.isFinite(previous)) {
+        if (
+          Number.isFinite(current) && current > 0 &&
+          Number.isFinite(previous) && previous > 0
+        ) {
           result[fieldId] = computeTrend(current, previous);
         }
       });

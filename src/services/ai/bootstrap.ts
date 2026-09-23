@@ -31,12 +31,21 @@ const TRACKER_TO_METRICS: Record<string, MetricKey[]> = {
 
 let bootstrappedFor: string | null = null;
 let isRunning = false;
+let runningBabyId: string | null = null;
 
 export async function bootstrapAI(babyId: string, force = false): Promise<void> {
   if (!babyId) return;
   if (!force && bootstrappedFor === babyId) return;
+  
+  // If already running for a different baby, skip (prevents race conditions)
+  if (isRunning && runningBabyId !== babyId) {
+    if (__DEV__) console.log('[AI Bootstrap] Already running for different baby, skipping');
+    return;
+  }
   if (isRunning) return;
+  
   isRunning = true;
+  runningBabyId = babyId;
 
   try {
     console.log(`[AI Bootstrap] Starting for baby ${babyId}...`);
@@ -257,6 +266,7 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
     console.error('[AI Bootstrap] Failed:', e);
   } finally {
     isRunning = false;
+    runningBabyId = null;
   }
 }
 
@@ -270,6 +280,7 @@ export async function observeEntry(
   timestamp: number = Date.now()
 ): Promise<void> {
   if (!babyId || !trackerId) return;
+  if (!data || typeof data !== 'object') return;
 
   const metrics = TRACKER_TO_METRICS[trackerId];
   if (!metrics || metrics.length === 0) return;

@@ -233,12 +233,17 @@ export class FeatureEngineer {
   }
 
   private computeFeatures(entries: RawEntry[], previous: any, baby?: any): ComputedFeatures {
+    // Guard against non-array input
+    const safeEntries = Array.isArray(entries) ? entries.filter(e => 
+      e && e.tracker_id && e.timestamp && !isNaN(new Date(e.timestamp).getTime())
+    ) : [];
+
     // ─── Segment entries by tracker ──────────────────────────────
-    const feedEntries = entries.filter((e) => e.tracker_id === 'feed');
-    const sleepEntries = entries.filter((e) => e.tracker_id === 'sleep');
-    const growthEntries = entries.filter((e) => e.tracker_id === 'growth');
-    const tempEntries = entries.filter((e) => e.tracker_id === 'temperature');
-    const symptomEntries = entries.filter((e) => e.tracker_id === 'symptom');
+    const feedEntries = safeEntries.filter((e) => e.tracker_id === 'feed');
+    const sleepEntries = safeEntries.filter((e) => e.tracker_id === 'sleep');
+    const growthEntries = safeEntries.filter((e) => e.tracker_id === 'growth');
+    const tempEntries = safeEntries.filter((e) => e.tracker_id === 'temperature');
+    const symptomEntries = safeEntries.filter((e) => e.tracker_id === 'symptom');
 
     // ─── Feeding ─────────────────────────────────────────────────
     const feedCount = feedEntries.length;
@@ -307,10 +312,18 @@ export class FeatureEngineer {
 
     // Weight velocity (kg/week) — needs previous days' data
     let weightVelocity: number | null = null;
-    if (weightKgSafe !== null && previous?.weight_kg) {
-      weightVelocity = (weightKgSafe - previous.weight_kg) / 7;
-      // Guard against absurd values
-      if (Math.abs(weightVelocity) > 1) weightVelocity = null;
+    if (
+      weightKgSafe !== null && 
+      Number.isFinite(weightKgSafe) &&
+      previous?.weight_kg != null && 
+      Number.isFinite(Number(previous.weight_kg))
+    ) {
+      const prevWeight = Number(previous.weight_kg);
+      weightVelocity = (weightKgSafe - prevWeight) / 7;
+      // Guard against absurd values (> 1 kg/week is physically impossible for infants)
+      if (!Number.isFinite(weightVelocity) || Math.abs(weightVelocity) > 1) {
+        weightVelocity = null;
+      }
     }
 
     // Compute WHO weight-for-age percentile using the static import.
@@ -350,7 +363,7 @@ export class FeatureEngineer {
     // ─── Engagement ──────────────────────────────────────────────
     // Routine consistency: how spread out across the day the entries are
     const hoursWithEntries = new Set(
-      entries.map((e) => new Date(e.timestamp).getHours())
+      safeEntries.map((e) => new Date(e.timestamp).getHours())
     );
     const routineConsistency = Math.min(
       100,
@@ -365,7 +378,7 @@ export class FeatureEngineer {
     // NOTE: `logged_by` is a non-null UUID column, so `filter(Boolean)` is
     // mostly redundant. We keep it for safety against legacy rows.
     const uniqueLoggers = new Set(
-      entries.map(e => e.logged_by).filter(Boolean)
+      safeEntries.map(e => e.logged_by).filter(Boolean)
     ).size;
 
     const uniqueHours = hoursWithEntries.size;
@@ -377,7 +390,7 @@ export class FeatureEngineer {
     // Spread bonus: more distinct hours = richer data
     const spreadBonus = Math.min(20, uniqueHours * 1.5);
 
-    const rawEngagement = entries.length * 2 * diversityMultiplier + spreadBonus;
+    const rawEngagement = safeEntries.length * 2 * diversityMultiplier + spreadBonus;
 
     // Clamp to [0, 100]
     const parentEngagement = Math.min(100, Math.round(rawEngagement));

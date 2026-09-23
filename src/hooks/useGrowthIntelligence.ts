@@ -198,8 +198,13 @@ export const useGrowthIntelligence = () => {
 
   const mergedGrowthData = useMemo(() => {
     // ─── Primary source: tracker_entries (real Supabase data) ────
-    const fromEntries = (getEntriesStable('growth', 500) || [])
-      .map(e => {
+    const rawFromEntries = getEntriesStable('growth', 500) || [];
+    const fromEntries = rawFromEntries
+      .map((e: any) => {
+        if (!e || !e.timestamp) return null;
+        const ts = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
+        if (!Number.isFinite(ts) || ts <= 0) return null;
+        
         const d = (e.data || {}) as Record<string, unknown>;
         // `measurementType` is the canonical field; fall back to `type`
         const rawType = String(d.measurementType ?? d.type ?? '').toLowerCase();
@@ -213,11 +218,13 @@ export const useGrowthIntelligence = () => {
           type,
           value: safeNumber(d.value, NaN),
           unit: String(d.unit ?? ''),
-          date: new Date(e.timestamp).toISOString(),
-          timestamp: e.timestamp,
+          date: new Date(ts).toISOString(),
+          timestamp: ts,
         };
       })
-      .filter(g => ['height', 'weight', 'head'].includes(g.type) && Number.isFinite(g.value))
+      .filter((g): g is NonNullable<typeof g> => 
+        g !== null && ['height', 'weight', 'head'].includes(g.type) && Number.isFinite(g.value)
+      )
       .sort((a, b) => a.timestamp - b.timestamp);
 
     // ─── Secondary source: BabyContext.growthData (legacy, may be empty) ───
@@ -650,7 +657,13 @@ export const useGrowthIntelligence = () => {
     const calcVelocity = (rawData: typeof heightData, type: 'height' | 'weight' | 'head') => {
       // Guard: filter out invalid entries before sorting
       const data = (rawData || [])
-        .filter(g => g && Number.isFinite(g.value) && g.value > 0 && g.date)
+        .filter(g => {
+          if (!g) return false;
+          if (!Number.isFinite(g.value) || g.value <= 0) return false;
+          if (!g.date) return false;
+          const ts = new Date(g.date).getTime();
+          return Number.isFinite(ts) && ts > 0;
+        })
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       if (data.length < 2) {

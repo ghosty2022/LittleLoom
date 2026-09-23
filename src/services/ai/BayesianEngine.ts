@@ -581,9 +581,9 @@ function coerceNumber(
  */
 export function extractMetricValue(
   metric: MetricKey,
-  data: Record<string, unknown> | undefined
+  data: Record<string, unknown> | undefined | null
 ): number | null {
-  if (!data) return null;
+  if (!data || typeof data !== 'object') return null;
 
   const getNum = (key: string): number | null => coerceNumber(data[key]);
 

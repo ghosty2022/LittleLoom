@@ -151,7 +151,29 @@ const getFieldDisplayValue = (
       const displayNum = Number.isInteger(num) ? num : Math.round(num * 100) / 100;
       return unit ? `${displayNum} ${unit}` : String(displayNum);
     }
-    return unit ? `${value} ${unit}` : String(value);
+    // Non-numeric but non-empty string value
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return unit ? `${value} ${unit}` : value;
+    }
+    return null;
+  }  // ── Quantity / measurement with unit ──────────────────────────
+  if (field.type === 'quantity' || field.type === 'measurement' || field.type === 'number') {
+    // Check for a unit stored alongside the field
+    const unitKey = `${field.id}_unit`;
+    const unit = (entryData[unitKey] as string) || field.unit || '';
+    const num = Number(value);
+    
+    // Guard: don't display NaN or Infinity
+    if (Number.isFinite(num)) {
+      // Round to reasonable precision (max 2 decimals)
+      const displayNum = Number.isInteger(num) ? num : Math.round(num * 100) / 100;
+      return unit ? `${displayNum} ${unit}` : String(displayNum);
+    }
+    // Non-numeric but non-empty string value
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return unit ? `${value} ${unit}` : value;
+    }
+    return null;
   }
 
   // ── Temperature ───────────────────────────────────────────────
@@ -231,14 +253,16 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     const ongoingTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
     if (!ongoingTrackers.includes(entry.trackerId)) return false;
 
+    const data = entry.data || {};
+    
     // Explicit status field wins
-    const status = entry.data?.status;
-    if (status === 'ongoing') return true;
-    if (status === 'completed') return false;
+    const status = data.status;
+    if (status === 'ongoing' || status === 'started') return true;
+    if (status === 'completed' || status === 'ended') return false;
 
     // If startTime exists but endTime is missing → ongoing
-    const hasStart = entry.data?.startTime && String(entry.data.startTime).length > 0;
-    const hasEnd = entry.data?.endTime && String(entry.data.endTime).length > 0;
+    const hasStart = data.startTime && String(data.startTime).length > 0;
+    const hasEnd = data.endTime && String(data.endTime).length > 0;
     if (hasStart && !hasEnd) return true;
 
     return false;
@@ -247,10 +271,11 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
   // ── Compact card ──────────────────────────────────────────────────
   if (compact) {
     // Compact subtitle: prefer ongoing → duration → time
+    const durationFormatted = formatDuration(entry.data?.duration);
     const compactSubtitle = isOngoing
       ? 'Ongoing'
-      : formatDuration(entry.data?.duration)
-      ? formatDuration(entry.data?.duration)!
+      : durationFormatted
+      ? durationFormatted
       : timeString;
 
     // Count photos once

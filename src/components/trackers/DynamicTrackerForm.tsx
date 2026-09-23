@@ -723,38 +723,44 @@ const SmartNumberField: React.FC<{
     const isValid = (n: number) =>
       Number.isFinite(n) && n > 0 && n < 10000;
 
-    // 1. Suggestion (if real confidence)
+    const seenValues = new Set<number>();
+
+    // 1. Suggestion (if real confidence >= 70)
     if (
       suggestion !== undefined &&
       suggestion.confidence >= 70 &&
       isValid(suggNum)
     ) {
       values.push({ label: 'Suggested', value: suggNum, emoji: '✨' });
+      seenValues.add(suggNum);
     }
 
-    // 2. Yesterday's value + neighborhood (only if valid)
+    // 2. Yesterday's value + neighborhood
     if (isValid(yestNum)) {
       // Yesterday's exact value
-      if (!values.some(v => v.value === yestNum)) {
+      if (!seenValues.has(yestNum)) {
         values.push({ label: 'Yesterday', value: yestNum, emoji: '📅' });
+        seenValues.add(yestNum);
       }
 
-      // Neighborhood (±25%) — only if it doesn't duplicate
+      // Neighborhood (±25%) — only if unique
       const quarterDown = Math.round(yestNum * 0.75);
       const quarterUp = Math.round(yestNum * 1.25);
 
       if (
         values.length < 4 &&
         quarterDown > 0 &&
-        !values.some(v => v.value === quarterDown)
+        !seenValues.has(quarterDown)
       ) {
         values.push({ label: '−25%', value: quarterDown });
+        seenValues.add(quarterDown);
       }
       if (
         values.length < 4 &&
-        !values.some(v => v.value === quarterUp)
+        !seenValues.has(quarterUp)
       ) {
         values.push({ label: '+25%', value: quarterUp });
+        seenValues.add(quarterUp);
       }
     }
 
@@ -921,7 +927,10 @@ const SmartDurationField: React.FC<{
     tracker.id === 'sleep' || 
     tracker.id === 'feed' || 
     tracker.id === 'dream_feed' ||
-    tracker.id === 'nap';
+    tracker.id === 'nap' ||
+    tracker.id === 'pumping' ||
+    tracker.id === 'bath' ||
+    tracker.id === 'tummy_time';
 
   return (
     <View style={styles.fieldContainer}>
@@ -1779,23 +1788,34 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
 
       // Auto-compute duration for any duration-tracker with valid start/end
       const DURATION_TRACKERS = ['sleep', 'feed', 'dream_feed', 'nap', 'bath', 'pumping', 'tummy_time'];
-      if (
-        DURATION_TRACKERS.includes(tracker.id) &&
-        finalData.startTime &&
-        finalData.endTime
-      ) {
-        const startMs = new Date(String(finalData.startTime)).getTime();
-        const endMs = new Date(String(finalData.endTime)).getTime();
-        if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-          const secs = Math.round((endMs - startMs) / 1000);
-          // Only assign if it's a meaningful duration (>= 60s)
-          if (secs >= 60 && secs <= 86400) {
-            finalData.duration = secs;
-            finalData.status = 'completed';
+      if (DURATION_TRACKERS.includes(tracker.id)) {
+        const hasStart = finalData.startTime && String(finalData.startTime).length > 0;
+        const hasEnd = finalData.endTime && String(finalData.endTime).length > 0;
+
+        if (hasStart && hasEnd) {
+          const startMs = new Date(String(finalData.startTime)).getTime();
+          const endMs = new Date(String(finalData.endTime)).getTime();
+          if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+            const secs = Math.round((endMs - startMs) / 1000);
+            if (secs >= 60 && secs <= 86400) {
+              finalData.duration = secs;
+              finalData.status = 'completed';
+            } else {
+              delete finalData.duration;
+              finalData.status = 'completed';
+            }
           } else {
             delete finalData.duration;
-            finalData.status = finalData.endTime ? 'completed' : 'ongoing';
+            finalData.status = 'completed';
           }
+        } else if (hasStart) {
+          // Ongoing session — no duration, no endTime
+          delete finalData.duration;
+          finalData.status = 'ongoing';
+        } else if (hasEnd) {
+          // End only — mark completed
+          delete finalData.duration;
+          finalData.status = 'completed';
         }
       }
 

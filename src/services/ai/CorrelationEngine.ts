@@ -368,14 +368,28 @@ export async function discoverCorrelations(
     return [];
   }
 
-  const entries: Entry[] = data.map((row) => ({
-    tracker_id: row.tracker_id,
-    // Normalize: Supabase returns timestamptz as an ISO string OR as a
-    // parsed Date depending on config. Coerce to ms number for the
-    // detectors, which work in epoch ms.
-    timestamp: new Date(row.timestamp).getTime(),
-    data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {},
-  }));
+  const entries: Entry[] = data
+    .map((row) => {
+      if (!row?.tracker_id) return null;
+      const ts = new Date(row.timestamp).getTime();
+      if (!Number.isFinite(ts) || ts <= 0) return null;
+      
+      let parsedData: Record<string, unknown> = {};
+      try {
+        parsedData = typeof row.data === 'string' 
+          ? JSON.parse(row.data) 
+          : (row.data as Record<string, unknown>) || {};
+      } catch {
+        parsedData = {};
+      }
+      
+      return {
+        tracker_id: row.tracker_id,
+        timestamp: ts,
+        data: parsedData,
+      };
+    })
+    .filter((e): e is Entry => e !== null);
 
   const results: DiscoveredCorrelation[] = [];
   for (const detect of DETECTORS) {
