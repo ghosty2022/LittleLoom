@@ -1007,6 +1007,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       timeContext,
       isLoading,
       trackerId,
+      trackerEntries.length,
     ]
   );
 

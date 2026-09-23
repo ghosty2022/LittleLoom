@@ -285,16 +285,40 @@ export const useGrowthIntelligence = () => {
     const BREAST_SESSION_ML = 90;
     last7Days.forEach(entry => {
       const day = new Date(entry.timestamp).toDateString();
-      const feedType = String(entry.data?.feedType || '');
-      const amount = safeNumber(entry.data?.amount, 0);
+      const d = (entry.data || {}) as Record<string, unknown>;
+      const feedType = String(d.feedType || '');
+
+      // Solid food should NOT count toward liquid ml — skip it here.
+      // Variety for solids is handled separately below.
+      if (feedType === 'solid') return;
+
+      // Try every field name that might hold the amount
+      const amount = safeNumber(
+        d.bottleAmount ?? d.amount ?? d.quantity ?? d.amount_ml ?? 0,
+        0
+      );
+
       let ml = 0;
       if (amount > 0) {
-        const unit = String(entry.data?.unit || '');
-        ml = unit === 'oz' ? amount * 29.57 : amount;
+        // Check every possible unit key (field-specific wins over generic)
+        const unit = String(
+          d.bottleAmount_unit ??
+          d.amount_unit ??
+          d.quantity_unit ??
+          d.unit ??
+          'ml'
+        ).toLowerCase();
+        ml = unit === 'oz' ? amount * 29.5735 : amount;
+        // Sanity bound: no single feed is > 500ml
+        if (ml > 500 || ml < 0) ml = 0;
       } else if (feedType === 'breast' || feedType === 'breastfeeding') {
-        const mins = parseDurationSeconds(entry.data?.duration) / 60;
+        // Estimate from duration, cap at 140ml per session
+        const mins = parseDurationSeconds(d.duration) / 60;
         ml = mins > 0 ? Math.min(140, mins * 9) : BREAST_SESSION_ML;
       }
+      // Water should not count toward nutrition volume either
+      if (feedType === 'water') return;
+
       dailyVolumes[day] = (dailyVolumes[day] || 0) + ml;
     });
 
@@ -343,11 +367,32 @@ export const useGrowthIntelligence = () => {
 
     const nightlySleep: number[] = [];
     last7Days.forEach(entry => {
-      const sleepType = String(entry.data?.sleepType || '');
-      if (sleepType === 'night' || sleepType === 'nap') {
-        const hours = parseDurationSeconds(entry.data?.duration) / 3600;
-        if (hours > 0) nightlySleep.push(hours);
-      }
+      const d = (entry.data || {}) as Record<string, unknown>;
+      const sleepType = String(d.sleepType || '');
+      if (sleepType !== 'night' && sleepType !== 'nap') return;
+
+      // Skip ongoing sessions — they don't have a real duration yet
+      const status = String(d.status || '');
+      if (status === 'ongoing') return;
+      const hasEnd = d.endTime && String(d.endTime).length > 0;
+      if (!hasEnd && d.duration === undefined) return;
+
+      // Try multiple duration field names, normalize to seconds
+      const rawDur =
+        d.duration ??
+        d.duration_minutes ??
+        d.durationSeconds ??
+        d.minutes;
+
+      if (rawDur === undefined || rawDur === null) return;
+
+      // parseDurationSeconds handles: raw seconds, "1h 30m" strings, minutes
+      const secs = parseDurationSeconds(rawDur);
+      // Guard: only accept real durations (5 min – 20 h)
+      if (secs < 300 || secs > 72000) return;
+
+      const hours = secs / 3600;
+      nightlySleep.push(hours);
     });
 
     const avgSleep = nightlySleep.length > 0 ?
@@ -529,36 +574,61 @@ export const useGrowthIntelligence = () => {
     const achievedTitles = achievedMilestoneIds;
     const currentAge = ageInMonths;
 
+    // Guard: nothing to compute if age is invalid
+    if (!Number.isFinite(currentAge) || currentAge < 0) return [];
+
     return Object.entries(MILESTONE_CALENDAR)
       .filter(([name, data]) => {
-        return !achievedTitles.has(name) &&
-          data.window.start <= currentAge + 1 &&
-          data.window.end >= currentAge;
+        // Already achieved → skip
+        if (achievedTitles.has(name)) return false;
+        // Only show milestones in or near the current age window
+        return data.window.start <= currentAge + 1 && data.window.end >= currentAge;
       })
       .map(([name, data]) => {
         const prerequisitesMet = data.prerequisites.every(p => achievedTitles.has(p));
-        const windowProgress = Math.max(0, (currentAge - data.window.start) / (data.window.end - data.window.start));
 
-        const relatedEntries = data.category === 'physical' ? getEntriesStable('tummy_time', 14) :
+        // Guard: window span must be positive to avoid divide-by-zero
+        const windowSpan = data.window.end - data.window.start;
+        const windowProgress = windowSpan > 0
+          ? Math.max(0, Math.min(1, (currentAge - data.window.start) / windowSpan))
+          : (currentAge >= data.window.end ? 1 : 0.5);
+
+        const relatedEntries =
+          data.category === 'physical' ? getEntriesStable('tummy_time', 14) :
           data.category === 'language' ? getEntriesStable('reading', 14) :
           data.category === 'social' ? getEntriesStable('mood', 14) :
           data.category === 'cognitive' ? getEntriesStable('play', 14) : [];
 
-        const activityBonus = Math.min(20, (relatedEntries || []).length * 5);
-        const readiness = Math.min(100, (windowProgress * 60) + (prerequisitesMet ? 20 : 0) + activityBonus);
+        const activityCount = Array.isArray(relatedEntries) ? relatedEntries.length : 0;
+        const activityBonus = Math.min(20, activityCount * 5);
+
+        const rawReadiness =
+          (windowProgress * 60) +
+          (prerequisitesMet ? 20 : 0) +
+          activityBonus;
+
+        const readinessPercent = Math.max(
+          0,
+          Math.min(100, Math.round(Number.isFinite(rawReadiness) ? rawReadiness : 0))
+        );
 
         return {
           category: data.category,
-          readinessPercent: Math.round(Number.isFinite(readiness) ? readiness : 0),
+          readinessPercent,
           expectedWindow: data.window,
           currentAge,
-          suggestedActivities: data.suggestedActivities,
-          relatedTrackerIds: data.category === 'physical' ? ['tummy_time', 'play'] :
+          suggestedActivities: Array.isArray(data.suggestedActivities)
+            ? data.suggestedActivities
+            : [],
+          relatedTrackerIds:
+            data.category === 'physical' ? ['tummy_time', 'play'] :
             data.category === 'language' ? ['reading', 'speech'] :
             data.category === 'social' ? ['mood', 'attachment'] :
             data.category === 'cognitive' ? ['play', 'sensory'] : [],
         };
       })
+      // Only surface milestones that are actually actionable (>= 20% ready)
+      .filter(r => r.readinessPercent >= 20)
       .sort((a, b) => b.readinessPercent - a.readinessPercent)
       .slice(0, 3);
   }, [achievedMilestoneIds, ageInMonths, getEntriesStable]);
@@ -578,26 +648,57 @@ export const useGrowthIntelligence = () => {
 
     const birthDate = safeParseDate(currentBaby?.birthDate);
 
-    const calcVelocity = (data: typeof heightData, type: 'height' | 'weight' | 'head') => {
-      if (data.length < 2) return { perMonth: 0, percentile: 50 };
-      const months = Math.max(1, differenceInMonths(
-        safeParseDate(data[0].date) || new Date(),
-        safeParseDate(data[data.length - 1].date) || new Date()
-      ));
-      const totalGrowth = safeNumber(data[0].value, 0) - safeNumber(data[data.length - 1].value, 0);
+    const calcVelocity = (rawData: typeof heightData, type: 'height' | 'weight' | 'head') => {
+      // Guard: filter out invalid entries before sorting
+      const data = (rawData || [])
+        .filter(g => g && Number.isFinite(g.value) && g.value > 0 && g.date)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      if (data.length < 2) {
+        // Fall back to percentile-only when we lack two readings
+        if (data.length === 1 && birthDate) {
+          const ageAtMeasurement = Math.max(
+            0,
+            differenceInMonths(safeParseDate(data[0].date) || new Date(), birthDate)
+          );
+          const rawPercentile = calculatePercentilePrecise(
+            data[0].value,
+            Number.isFinite(ageAtMeasurement) ? ageAtMeasurement : 0,
+            type,
+            gender
+          );
+          return { perMonth: 0, percentile: safePercentile(rawPercentile) };
+        }
+        return { perMonth: 0, percentile: 50 };
+      }
+
+      const newest = data[0];
+      const oldest = data[data.length - 1];
+
+      const months = Math.max(
+        1,
+        differenceInMonths(
+          safeParseDate(newest.date) || new Date(),
+          safeParseDate(oldest.date) || new Date()
+        )
+      );
+
+      // Growth = newest minus oldest (positive = growth)
+      const totalGrowth = safeNumber(newest.value, 0) - safeNumber(oldest.value, 0);
       const perMonth = safeVelocity(totalGrowth / months);
 
-      const ageAtMeasurement = Math.max(0, differenceInMonths(
-        safeParseDate(data[0].date) || new Date(),
-        birthDate || new Date()
-      ));
+      const ageAtMeasurement = birthDate
+        ? Math.max(0, differenceInMonths(safeParseDate(newest.date) || new Date(), birthDate))
+        : 0;
+
       const rawPercentile = calculatePercentilePrecise(
-        safeNumber(data[0].value, 0),
+        safeNumber(newest.value, 0),
         Number.isFinite(ageAtMeasurement) ? ageAtMeasurement : 0,
         type,
         gender
       );
       const percentile = safePercentile(rawPercentile);
+
       return { perMonth, percentile };
     };
 
@@ -609,18 +710,35 @@ export const useGrowthIntelligence = () => {
   }, [mergedGrowthData, gender, currentBaby?.birthDate]);
 
   const compositeIndex = useMemo(() => {
-    const nVal = safeNumber(nutritionScore.value, 0);
-    const rVal = safeNumber(restScore.value, 0);
-    const pVal = safeNumber(physicalScore.value, 0);
-    const cVal = safeNumber(cognitiveScore.value, 0);
-    const hVal = safeNumber(healthStability.value, 0);
+    const subscores = [
+      nutritionScore,
+      restScore,
+      physicalScore,
+      cognitiveScore,
+      healthStability,
+    ];
 
-    const weighted =
-      nVal * safeNumber(nutritionScore.weight, 0) +
-      rVal * safeNumber(restScore.weight, 0) +
-      pVal * safeNumber(physicalScore.weight, 0) +
-      cVal * safeNumber(cognitiveScore.weight, 0) +
-      hVal * safeNumber(healthStability.weight, 0);
+    // Only count scores that have actual data (value > 0 or weight > 0)
+    // so a baby without growth data isn't penalized.
+    const activeSubscores = subscores.filter(
+      s => safeNumber(s.weight, 0) > 0 && Number.isFinite(s.value)
+    );
+
+    if (activeSubscores.length === 0) return 0;
+
+    // Normalize weights so they sum to 1.0 among active subscores
+    const totalWeight = activeSubscores.reduce(
+      (sum, s) => sum + safeNumber(s.weight, 0),
+      0
+    );
+
+    if (totalWeight <= 0) return 0;
+
+    const weighted = activeSubscores.reduce(
+      (sum, s) =>
+        sum + safeNumber(s.value, 0) * (safeNumber(s.weight, 0) / totalWeight),
+      0
+    );
 
     return safeScore(weighted, 0);
   }, [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability]);

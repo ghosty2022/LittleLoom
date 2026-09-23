@@ -469,10 +469,22 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
                 },
               ]}
             >
-              since{' '}
               {(() => {
                 try {
-                  return format(new Date(String(entry.data.startTime)), 'h:mm a');
+                  const start = new Date(String(entry.data.startTime));
+                  if (isNaN(start.getTime())) return '';
+                  const startLabel = format(start, 'h:mm a');
+                  // Show elapsed time for ongoing sessions
+                  const elapsedMin = Math.max(
+                    0,
+                    Math.floor((Date.now() - start.getTime()) / 60000)
+                  );
+                  if (elapsedMin < 1) return `since ${startLabel}`;
+                  const elapsedText =
+                    elapsedMin < 60
+                      ? `${elapsedMin}m ago`
+                      : `${Math.floor(elapsedMin / 60)}h ${elapsedMin % 60}m ago`;
+                  return `since ${startLabel} · ${elapsedText}`;
                 } catch {
                   return '';
                 }
@@ -535,17 +547,23 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
         const flatUris: string[] = Array.isArray(raw)
           ? (raw as unknown[])
               .flat(Infinity)
-              .map((u) =>
-                typeof u === 'string'
-                  ? u
-                  : u && typeof u === 'object' && typeof (u as any).uri === 'string'
-                  ? (u as any).uri
-                  : ''
-              )
+              .map((u) => {
+                if (typeof u === 'string') return u;
+                if (u && typeof u === 'object') {
+                  // Prefer the remote URL for display (survives cache clears)
+                  const obj = u as any;
+                  return typeof obj.publicUrl === 'string' ? obj.publicUrl :
+                         typeof obj.uri === 'string' ? obj.uri : '';
+                }
+                return '';
+              })
               .filter((u): u is string => typeof u === 'string' && u.length > 0)
           : [];
 
-        if (flatUris.length === 0) return null;
+        // Deduplicate — SmartPhotoField may emit both local + remote for one photo
+        const uniqueUris = [...new Set(flatUris)];
+
+        if (uniqueUris.length === 0) return null;
 
         return (
           <View style={styles.photoStrip}>

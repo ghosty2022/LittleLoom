@@ -335,24 +335,39 @@ export const TRACKER_STORAGE_KEYS = {
   CHAINS: (babyId: string) => `@littleloom_chains_${babyId}`,
 } as const;
 
+// ─── Canonical list of built-in tracker IDs ─────────────────────────────
+// IMPORTANT: this must stay in sync with DEFAULT_TRACKERS in
+// `config/defaultTrackers.ts`. If they drift, `isCustomTracker()` will
+// misclassify built-ins as custom (and vice-versa).
 export const DEFAULT_TRACKER_IDS = [
-  'potty', 'diaper', 'feed', 'pumping', 'sleep', 'bath',
+  // Essential
+  'feed', 'sleep', 'diaper', 'potty', 'bath', 'pumping',
+  // Health
   'growth', 'temperature', 'medication', 'symptom',
   'vaccine', 'doctor_visit', 'teething', 'allergy',
-  'skin_condition', 'immunization',
-  'milestone', 'play', 'tummy_time', 'reading',
-  'music', 'outdoor', 'sensory', 'speech',
-  'mood', 'attachment', 'social', 'crying', 'soothing',
-  'nail_care', 'hair_care', 'skin_care', 'sunscreen',
-  'insect_repellent', 'oral_hygiene', 'ear_care', 'nose_care',
+  'skin_condition',
+  // Development
+  'milestone', 'tummy_time', 'play', 'reading', 'speech',
+  // Emotional
+  'mood', 'crying',
+  // Physical care
+  'nail_care', 'oral_hygiene', 'sunscreen', 'skin_care',
+  // Nutrition
   'solid_food', 'water', 'vitamin', 'allergen_intro',
-  'feeding_reaction', 'breastfeeding',
-  'accident', 'injury', 'choking', 'car_seat', 'babyproofing',
-  'wake_time', 'bedtime', 'nap', 'screen_time', 'outdoor_time',
-  'note', 'photo', 'video', 'voice_memo', 'journal',
-  'trip', 'travel', 'daycare', 'babysitter',
-  'reflux', 'colic', 'gas', 'constipation',
-  'diarrhea', 'eczema', 'cradle_cap',
+  // Safety
+  'accident', 'car_seat', 'babyproofing',
+  // Schedule
+  'bedtime', 'screen_time',
+  // Parental
+  'note', 'photo', 'journal',
+  // Travel
+  'trip', 'daycare', 'babysitter',
+  // Special needs
+  'reflux', 'colic', 'constipation', 'diarrhea',
+  // Household
+  'supply_inventory', 'expenses', 'cleaning',
+  // Legacy aliases — kept so old entries still resolve correctly
+  'nap', 'dream_feed', 'breastfeeding', 'injury', 'eczema',
 ] as const;
 
 export type DefaultTrackerId = typeof DEFAULT_TRACKER_IDS[number];

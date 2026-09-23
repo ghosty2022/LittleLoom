@@ -676,8 +676,10 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // ─── Detect initial baby ────────────────────────────────────────────
   const getCurrentBabyId = useCallback((): string | null => {
-    return currentBabyIdRef.current;
-  }, []);
+    // Prefer state for reactive contexts, but fall back to ref for
+    // immediate (synchronous) reads before state commits.
+    return currentBabyIdState ?? currentBabyIdRef.current;
+  }, [currentBabyIdState]);
 
   // ─── Internal refresh function ──────────────────────────────────────
   const refreshEntriesInternal = useCallback(async () => {
@@ -733,22 +735,40 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [userProfile]);
 
   // ─── Granular permissions for the CURRENT baby ─────────────────────
-  // Reads JSON overrides from family_members.permissions (Phase 2.2).
-  const currentBabyIdForPerms = getCurrentBabyId();
+  // We track the current babyId in state (not just a ref) so permission
+  // recomputation happens on the SAME render as the baby switch.
+  const [currentBabyIdState, setCurrentBabyIdState] = useState<string | null>(
+    () => getBabyIdFromContext()
+  );
+
+  // Keep ref in sync for non-React callers
+  useEffect(() => {
+    currentBabyIdRef.current = currentBabyIdState;
+  }, [currentBabyIdState]);
+
+  // Update state when BabyContext broadcasts a change
+  useEffect(() => {
+    const unsub = subscribeToBabyChanges((babyId) => {
+      currentBabyIdRef.current = babyId;
+      setCurrentBabyIdState(babyId);
+    });
+    return () => unsub();
+  }, [subscribeToBabyChanges]);
+
   const currentBabyPermissions = useMemo(() => {
-    if (!currentBabyIdForPerms) return null;
+    if (!currentBabyIdState) return null;
     return {
-      canView:              hasPermissionForBaby(currentBabyIdForPerms, 'view'),
-      canAddEntry:          hasPermissionForBaby(currentBabyIdForPerms, 'addEntry'),
-      canEditEntry:         hasPermissionForBaby(currentBabyIdForPerms, 'editEntry'),
-      canEditOthersEntries: hasPermissionForBaby(currentBabyIdForPerms, 'editOthers'),
-      canDeleteEntry:       hasPermissionForBaby(currentBabyIdForPerms, 'deleteEntry'),
-      canEditBaby:          hasPermissionForBaby(currentBabyIdForPerms, 'editBaby'),
-      canInvite:            hasPermissionForBaby(currentBabyIdForPerms, 'invite'),
-      canExport:            hasPermissionForBaby(currentBabyIdForPerms, 'export'),
-      canManageFamily:      hasPermissionForBaby(currentBabyIdForPerms, 'manageFamily'),
+      canView:              hasPermissionForBaby(currentBabyIdState, 'view'),
+      canAddEntry:          hasPermissionForBaby(currentBabyIdState, 'addEntry'),
+      canEditEntry:         hasPermissionForBaby(currentBabyIdState, 'editEntry'),
+      canEditOthersEntries: hasPermissionForBaby(currentBabyIdState, 'editOthers'),
+      canDeleteEntry:       hasPermissionForBaby(currentBabyIdState, 'deleteEntry'),
+      canEditBaby:          hasPermissionForBaby(currentBabyIdState, 'editBaby'),
+      canInvite:            hasPermissionForBaby(currentBabyIdState, 'invite'),
+      canExport:            hasPermissionForBaby(currentBabyIdState, 'export'),
+      canManageFamily:      hasPermissionForBaby(currentBabyIdState, 'manageFamily'),
     };
-  }, [currentBabyIdForPerms, hasPermissionForBaby]);
+  }, [currentBabyIdState, hasPermissionForBaby]);
 
   const canUseTracker = useCallback((trackerId: string): boolean => {
     const tracker = state.trackers.find(t => t.id === trackerId);
@@ -1354,20 +1374,26 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         lastTrackerId: trackerId,
       }));
 
-      // ─── Bayesian learning: feed the new value into the engine ────
-      //     Uses the canonical observeEntry() from bootstrap.ts, which
-      //     applies the TRACKER_TO_METRICS map + extractMetricValue().
-      (async () => {
-        try {
+      // ─── AI learning: fire-and-forget, but track failures ────────
+      //     Uses observeEntry() from bootstrap.ts (canonical metric map).
+      //     We don't await — the UI shouldn't block on ML.
+      const learningPromise = Promise.allSettled([
+        (async () => {
           const { observeEntry } = await import('@/services/ai/bootstrap');
           await observeEntry(babyId, trackerId, cleanData, timestamp);
-        } catch (err) {
-          if (__DEV__) console.warn('[TrackerContext] observeEntry failed:', err);
-        }
-      })();
+        })(),
+        predictFromEntry(babyId, trackerId, timestamp),
+      ]);
 
-      // ─── Predictor learning: feed the timestamp into Holt-Winters ──
-      predictFromEntry(babyId, trackerId, timestamp).catch(() => {});
+      learningPromise.then((results) => {
+        const failures = results.filter(r => r.status === 'rejected');
+        if (failures.length > 0 && __DEV__) {
+          console.warn(
+            `[TrackerContext] ${failures.length} AI learning task(s) failed:`,
+            failures.map(f => (f as PromiseRejectedResult).reason)
+          );
+        }
+      });
 
       // ─── Correlation cache invalidation (async, non-blocking) ──────
       (async () => {

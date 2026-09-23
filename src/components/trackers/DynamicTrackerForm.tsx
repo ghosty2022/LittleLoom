@@ -1478,7 +1478,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   const [data, setData] = useState<Record<string, unknown>>(() => {
     const merged = { ...prefillData, ...initialData };
     suggestions.forEach((s) => {
-      if (merged[s.fieldId] === undefined && s.confidence >= 70) {
+      // Only auto-fill HIGH-confidence suggestions. Chips are shown
+      // for anything >= 60 so the parent can still tap to apply.
+      if (
+        merged[s.fieldId] === undefined &&
+        s.confidence >= 85 &&
+        s.value !== undefined &&
+        s.value !== null &&
+        s.value !== ''
+      ) {
         merged[s.fieldId] = s.value;
       }
     });
@@ -1502,7 +1510,14 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       const merged = { ...prefillData, ...initialData };
 
       suggestions.forEach((s) => {
-        if (merged[s.fieldId] === undefined && s.confidence >= 70) {
+        // Match the useState threshold — only auto-fill very high confidence
+        if (
+          merged[s.fieldId] === undefined &&
+          s.confidence >= 85 &&
+          s.value !== undefined &&
+          s.value !== null &&
+          s.value !== ''
+        ) {
           merged[s.fieldId] = s.value;
         }
       });
@@ -1563,26 +1578,61 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     triggerHaptic('success');
 
     try {
-      // Compute final data with derived fields (e.g., duration from start/end)
-      const finalData = { ...data };
+      // ─── Trim all string values to avoid " " passing validation ──
+      const finalData: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(data)) {
+        if (typeof v === 'string') {
+          const trimmed = v.trim();
+          // Drop empty strings rather than persist them
+          if (trimmed.length > 0) {
+            finalData[k] = trimmed;
+          }
+        } else if (Array.isArray(v)) {
+          // Trim string entries in arrays
+          const cleaned = v
+            .map((item) =>
+              typeof item === 'string' ? item.trim() : item
+            )
+            .filter((item) =>
+              item !== '' && item !== null && item !== undefined
+            );
+          if (cleaned.length > 0) finalData[k] = cleaned;
+        } else if (v !== undefined && v !== null) {
+          finalData[k] = v;
+        }
+      }
 
-      // Auto-compute duration for sleep/feed if both start and end are set
+      // Auto-compute duration for any duration-tracker with valid start/end
+      const DURATION_TRACKERS = ['sleep', 'feed', 'dream_feed', 'nap', 'bath', 'pumping', 'tummy_time'];
       if (
-        (tracker.id === 'sleep' || tracker.id === 'feed') &&
+        DURATION_TRACKERS.includes(tracker.id) &&
         finalData.startTime &&
         finalData.endTime
       ) {
         const startMs = new Date(String(finalData.startTime)).getTime();
         const endMs = new Date(String(finalData.endTime)).getTime();
         if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-          finalData.duration = Math.round((endMs - startMs) / 1000);
+          const secs = Math.round((endMs - startMs) / 1000);
+          // Only assign if it's a meaningful duration (>= 60s)
+          if (secs >= 60 && secs <= 86400) {
+            finalData.duration = secs;
+            finalData.status = 'completed';
+          } else {
+            delete finalData.duration;
+            finalData.status = finalData.endTime ? 'completed' : 'ongoing';
+          }
         }
       }
 
+      const trimmedNotes = typeof notes === 'string' ? notes.trim() : '';
+      const cleanTags = selectedTags
+        .map((t) => (typeof t === 'string' ? t.trim() : t))
+        .filter((t): t is string => typeof t === 'string' && t.length > 0);
+
       await Promise.resolve(
         onSubmit(finalData, {
-          notes: notes || undefined,
-          tags: selectedTags.length > 0 ? selectedTags : undefined,
+          notes: trimmedNotes.length > 0 ? trimmedNotes : undefined,
+          tags: cleanTags.length > 0 ? cleanTags : undefined,
           photoUris: photoUris.length > 0 ? photoUris : undefined,
           linkedEntryId,
         })

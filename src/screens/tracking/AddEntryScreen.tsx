@@ -2943,45 +2943,60 @@ function TrackerContent({
           />
 
           {/* Learning-mode banner — shown when we don't have enough data */}
-          {progressive && !progressive.hasRealData && (
-            <View
-              style={{
-                marginHorizontal: 16,
-                marginBottom: 12,
-                padding: 12,
-                borderRadius: borderRadiusValue,
-                backgroundColor: `${tracker.gradient[0]}08`,
-                borderLeftWidth: 3,
-                borderLeftColor: tracker.gradient[0],
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-              }}
-            >
-              <Ionicons name="sparkles-outline" size={18} color={tracker.gradient[0]} />
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    color: tracker.gradient[0],
-                    fontWeight: '700',
-                    fontSize: 13,
-                  }}
-                >
-                  Learning mode
-                </Text>
-                <Text
-                  style={{
-                    color: fullThemeColors.textSecondary,
-                    fontSize: 12,
-                    marginTop: 2,
-                  }}
-                >
-                  Log {Math.max(0, 5 - (progressive.entryCount || 0))} more{' '}
-                  {tracker.name.toLowerCase()} {progressive.entryCount === 4 ? 'entry' : 'entries'} to unlock smart suggestions
-                </Text>
+          {(() => {
+            // Defensive: progressive may not yet expose hasRealData
+            const hasRealData =
+              typeof progressive?.hasRealData === 'boolean'
+                ? progressive.hasRealData
+                : false;
+            const entryCount =
+              typeof progressive?.entryCount === 'number'
+                ? progressive.entryCount
+                : (yesterdayEntries?.length ?? 0) + (todayEntries?.length ?? 0);
+
+            if (hasRealData || entryCount >= 5) return null;
+
+            const remaining = Math.max(0, 5 - entryCount);
+            return (
+              <View
+                style={{
+                  marginHorizontal: 16,
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: borderRadiusValue,
+                  backgroundColor: `${tracker.gradient[0]}08`,
+                  borderLeftWidth: 3,
+                  borderLeftColor: tracker.gradient[0],
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <Ionicons name="sparkles-outline" size={18} color={tracker.gradient[0]} />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: tracker.gradient[0],
+                      fontWeight: '700',
+                      fontSize: 13,
+                    }}
+                  >
+                    Learning mode
+                  </Text>
+                  <Text
+                    style={{
+                      color: fullThemeColors.textSecondary,
+                      fontSize: 12,
+                      marginTop: 2,
+                    }}
+                  >
+                    Log {remaining} more {tracker.name.toLowerCase()}{' '}
+                    {remaining === 1 ? 'entry' : 'entries'} to unlock smart suggestions
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
+            );
+          })()}
 
           {/* Context Insights Strip */}
           <ContextInsightsStrip
@@ -3511,9 +3526,14 @@ export default function AddEntryScreen() {
     [route.params]
   );
 
+  // Force a fresh form instance every time the user picks a different tracker.
+  // This prevents stale state (field values, photo URIs, suggestions) from
+  // leaking between trackers.
+  const [formInstanceKey, setFormInstanceKey] = useState(0);
+
   const handleTrackerSelect = useCallback((trackerId: string) => {
     if (!trackerId) {
-      console.warn('No tracker selected');
+      console.warn('[AddEntryScreen] No tracker selected');
       return;
     }
     setSelectedTrackerId(trackerId);
@@ -3527,9 +3547,9 @@ export default function AddEntryScreen() {
     setAppliedSuggestions(new Set());
     setShowYesterdayModal(false);
     setYesterdayEntries([]);
-    setTimeout(() => {
-      setDate(new Date());
-    }, 50);
+    // Increment key so the form remounts with clean internal state
+    setFormInstanceKey((k) => k + 1);
+    setDate(new Date());
   }, []);
 
   const handlePickerClose = useCallback(() => {
