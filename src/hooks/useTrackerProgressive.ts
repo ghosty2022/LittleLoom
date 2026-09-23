@@ -24,7 +24,72 @@ import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 import { useTimelineCorrelations } from './useTimelineCorrelations';
 import { getCachedCorrelations } from '../services/ai/CorrelationEngine';
+  /* ═══════════════════════════════════════════════════════════
+     RELATED TRACKER SUGGESTIONS
+     After logging one tracker, prompt the parent about a
+     naturally-related one. Only suggests if:
+       - the related tracker hasn't been logged in the last hour
+       - we've seen this pair logged together before
+     ═══════════════════════════════════════════════════════════ */
 
+  const relatedTrackerSuggestions = useMemo(() => {
+    const suggestions: Array<{
+      id: string;
+      trackerId: string;
+      emoji: string;
+      label: string;
+      reason: string;
+    }> = [];
+
+    // Pairs that commonly co-occur
+    const PAIRS: Record<string, Array<{ id: string; emoji: string; label: string }>> = {
+      feed: [
+        { id: 'diaper', emoji: '👶', label: 'Log diaper' },
+        { id: 'sleep', emoji: '😴', label: 'Log sleep' },
+      ],
+      sleep: [
+        { id: 'feed', emoji: '🍼', label: 'Log feed' },
+        { id: 'mood', emoji: '😊', label: 'Log mood on wake' },
+      ],
+      diaper: [
+        { id: 'feed', emoji: '🍼', label: 'Log feed' },
+        { id: 'potty', emoji: '🚽', label: 'Log potty' },
+      ],
+      medication: [
+        { id: 'temperature', emoji: '🌡️', label: 'Log temperature' },
+        { id: 'symptom', emoji: '😷', label: 'Log symptoms' },
+      ],
+      growth: [
+        { id: 'milestone', emoji: '🏆', label: 'Log milestone' },
+      ],
+      tummy_time: [
+        { id: 'milestone', emoji: '🏆', label: 'Log milestone' },
+      ],
+    };
+
+    const related = PAIRS[trackerId];
+    if (!related) return suggestions;
+
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+
+    related.forEach(({ id, emoji, label }) => {
+      // Skip if related tracker already logged recently
+      const recentForRelated = (getEntriesStable(id, 5) || []).filter(
+        (e: any) => e.timestamp > oneHourAgo
+      );
+      if (recentForRelated.length > 0) return;
+
+      suggestions.push({
+        id: `related-${id}`,
+        trackerId: id,
+        emoji,
+        label,
+        reason: 'Often logged together',
+      });
+    });
+
+    return suggestions;
+  }, [trackerId, getEntriesStable, trackerEntries.length]);
 /* ═══════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════ */
@@ -228,9 +293,24 @@ const validateSuggestion = (
    ═══════════════════════════════════════════════════════════════ */
 
 export const useTrackerProgressive = (trackerId: string) => {
-  // FIX: Use direct imports, not useSafeContexts
   const tracker = useTracker();
   const baby = useBaby();
+
+  // ─── Debounce entry-driven recomputes ──────────────────────────
+  // When entries change rapidly (bulk import, quick successive logs),
+  // we wait 300ms before invalidating memos. Prevents thrashing.
+  const [debouncedEntryCount, setDebouncedEntryCount] = useState(
+    tracker.entries?.length ?? 0
+  );
+  const pendingCount = tracker.entries?.length ?? 0;
+
+  useEffect(() => {
+    if (pendingCount === debouncedEntryCount) return;
+    const t = setTimeout(() => {
+      setDebouncedEntryCount(pendingCount);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [pendingCount, debouncedEntryCount]);
 
   const gi = useGrowthIntelligence();
   const growthIndex = gi?.growthIndex ?? null;
@@ -246,7 +326,7 @@ export const useTrackerProgressive = (trackerId: string) => {
   //     progressive state from thrashing on every render.
   const aiFingerprint = `${growthIndex?.compositeIndex ?? 0}:${
     growthIndex?.lastUpdated ?? 0
-  }:${tracker.entries?.length ?? 0}`;
+  }:${debouncedEntryCount}`;
 
   // ─── Stable fingerprint of everything in the tracker context that the
   //     memos below actually read. Replaces the raw `tracker` object in
@@ -423,6 +503,51 @@ export const useTrackerProgressive = (trackerId: string) => {
       streakMessage,
     };
   }, [trackerFingerprint, trackerId, now, refreshToken]);
+
+    /* ═══════════════════════════════════════════════════════════
+     ROUTINE CONSISTENCY SCORE
+     Measures how predictable the parent's logging has been
+     over the last 7 days. High = routine established.
+     ═══════════════════════════════════════════════════════════ */
+
+  const routineScore = useMemo(() => {
+    const weekAgo = subDays(now, 7).getTime();
+    const weekEntries = trackerEntries.filter(e => e.timestamp > weekAgo);
+
+    if (weekEntries.length < 5) {
+      return { score: 0, label: 'Building routine', sessions: weekEntries.length };
+    }
+
+    // Group by hour of day
+    const hourBuckets: Record<number, number> = {};
+    weekEntries.forEach(e => {
+      const hour = new Date(e.timestamp).getHours();
+      hourBuckets[hour] = (hourBuckets[hour] || 0) + 1;
+    });
+
+    // How many distinct hour buckets do we have vs total?
+    const distinctHours = Object.keys(hourBuckets).length;
+    const concentration = 1 - (distinctHours / Math.min(24, weekEntries.length));
+
+    // Also factor in day-coverage: how many of the last 7 days had entries?
+    const distinctDays = new Set(
+      weekEntries.map(e => new Date(e.timestamp).toDateString())
+    ).size;
+    const dayCoverage = distinctDays / 7;
+
+    const score = Math.round(
+      (concentration * 0.6 + dayCoverage * 0.4) * 100
+    );
+
+    return {
+      score,
+      label: score >= 80 ? 'Routine locked in'
+        : score >= 60 ? 'Consistent routine'
+        : score >= 40 ? 'Developing routine'
+        : 'Building routine',
+      sessions: weekEntries.length,
+    };
+  }, [trackerEntries, now]);
 
   /* ═══════════════════════════════════════════════════════════
      PREFILL DATA & SUGGESTIONS
@@ -1042,6 +1167,8 @@ export const useTrackerProgressive = (trackerId: string) => {
     todayEntries,
     yesterdayEntries,
     recentEntries,
+    relatedTrackerSuggestions,
+    routineScore,
     generateReminders: growthIndex?.generateReminders ?? (() => []),
     checkNewAchievements: growthIndex?.checkNewAchievements ?? (() => []),
   };

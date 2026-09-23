@@ -20,7 +20,7 @@ import Animated, {
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
 import { useTracker } from '../../hooks/useTrackerContext';
-import { foFVrmatTimeShort, formatDateShort } from '@/utils/time';
+import { formatTimeShort, formatDateShort } from '@/utils/time';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { DynamicTrackerForm } from './DynamicTrackerForm';

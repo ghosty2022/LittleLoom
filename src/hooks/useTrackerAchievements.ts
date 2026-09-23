@@ -363,7 +363,15 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
       (e: any) => Number(e.data?.quality) >= 4 || e.data?.quality === 'good' || e.data?.quality === 'excellent'
     ).length;
 
-    const feedTypes = new Set(feedEntries.map((e: any) => e.data?.feedType).filter(Boolean));
+    // Distinct feed types — counts unique values across breast/bottle/solid/water
+    const feedTypes = new Set(
+      feedEntries
+        .map((e: any) => {
+          const ft = e.data?.feedType;
+          return typeof ft === 'string' ? ft.trim().toLowerCase() : null;
+        })
+        .filter((t): t is string => !!t)
+    );
     const feedTypeCount = feedTypes.size;
 
     const growthData = baby?.growthData || [];
@@ -379,7 +387,19 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
     const earlyBird = allEntries.some((e: any) => new Date(e.timestamp).getHours() < 7);
     const nightOwl = allEntries.some((e: any) => new Date(e.timestamp).getHours() >= 22);
 
-    const photoCount = allEntries.filter((e: any) => e.photoUris && e.photoUris.length > 0).length;
+    // Photo count — handle string[], PhotoMeta[], and nested arrays
+    const photoCount = allEntries.filter((e: any) => {
+      const raw = e.photoUris;
+      if (!Array.isArray(raw)) return false;
+      const flat = (raw as unknown[]).flat(Infinity);
+      return flat.some((u) => {
+        if (typeof u === 'string') return u.length > 0;
+        if (u && typeof u === 'object' && typeof (u as any).uri === 'string') {
+          return (u as any).uri.length > 0;
+        }
+        return false;
+      });
+    }).length;
 
     const sharedCount = allEntries.filter((e: any) => e.loggedByRole === 'parent2').length;
 

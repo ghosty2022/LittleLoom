@@ -431,12 +431,31 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const prevPhotosRef = useRef<PhotoMeta[]>([]);
   const isProcessingRef = useRef(false);
   const mountedRef = useRef(true);
+  const localTempUrisRef = useRef<Set<string>>(new Set());
 
   // ── Cleanup on unmount ────────────────────────────────────────────────
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+
+      // Best-effort cleanup of any temp files we created
+      // (Photos already uploaded + tracked are NOT deleted)
+      const temps = localTempUrisRef.current;
+      if (temps.size > 0) {
+        Promise.all(
+          [...temps].map(async (uri) => {
+            try {
+              // Only delete file:// URIs we created, not remote URLs
+              if (uri.startsWith('file://') || uri.startsWith('/')) {
+                await FileSystem.deleteAsync(uri, { idempotent: true });
+              }
+            } catch {
+              // Silent — cleanup is best-effort
+            }
+          })
+        ).catch(() => {});
+      }
     };
   }, []);
 
@@ -549,6 +568,11 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         const uri = await optimizeImage(rawUri, maxDim, compress);
         if (!mountedRef.current) return;
 
+        // Track temp URI for cleanup on unmount (if upload doesn't happen)
+        if (uri.startsWith('file://') || uri.startsWith('/')) {
+          localTempUrisRef.current.add(uri);
+        }
+
         // Duplicate check
         if (photos.some((p) => p.uri === uri)) {
           sweetAlert.alert('Duplicate', 'This photo is already added.');
@@ -614,6 +638,12 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         setPhotos((prev) => [...prev, meta]);
         setCurrentUri(meta.uri);
         onChange?.(meta.uri, meta);
+
+        // If upload succeeded, we don't need to clean up the local copy
+        // during this session (user might tap to re-view).
+        if (storagePath) {
+          localTempUrisRef.current.delete(uri);
+        }
 
         // Auto-analyze
         if (autoAnalyze) {

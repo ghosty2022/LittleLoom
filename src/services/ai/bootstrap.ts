@@ -41,6 +41,14 @@ export async function bootstrapAI(babyId: string, force = false): Promise<void> 
   try {
     console.log(`[AI Bootstrap] Starting for baby ${babyId}...`);
 
+    // 0a. Flush pending telemetry from prior session
+    try {
+      const { flushTelemetry } = await import('./Telemetry');
+      await flushTelemetry();
+    } catch (e) {
+      if (__DEV__) console.warn('[AI Bootstrap] Telemetry flush failed:', e);
+    }
+
     // 0. Flush any pending cohort operations from prior offline sessions
     try {
       const { flushCohortQueue, getCohortQueueSize } = await import(

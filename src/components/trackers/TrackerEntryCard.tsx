@@ -246,20 +246,56 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
 
   // ── Compact card ──────────────────────────────────────────────────
   if (compact) {
+    // Compact subtitle: prefer ongoing → duration → time
+    const compactSubtitle = isOngoing
+      ? 'Ongoing'
+      : formatDuration(entry.data?.duration)
+      ? formatDuration(entry.data?.duration)!
+      : timeString;
+
+    // Count photos once
+    const photoCount = (() => {
+      const raw = entry.photoUris;
+      if (!Array.isArray(raw)) return 0;
+      const flat = (raw as unknown[]).flat(Infinity);
+      return flat.filter((u) => {
+        if (typeof u === 'string') return u.length > 0;
+        if (u && typeof u === 'object' && typeof (u as any).uri === 'string') {
+          return (u as any).uri.length > 0;
+        }
+        return false;
+      }).length;
+    })();
+
     return (
       <TouchableOpacity
         style={[
           styles.compactCard,
           {
             backgroundColor: fullThemeColors.glassBg,
-            borderColor: fullThemeColors.border,
+            borderColor: isOngoing
+              ? tracker?.color || themeColors.primary
+              : fullThemeColors.border,
             borderRadius: borderRadiusValue,
+            borderWidth: isOngoing ? 2 : 1,
           },
         ]}
         onPress={() => onPress?.(entry)}
         activeOpacity={0.7}
       >
-        <Text style={styles.compactEmoji}>{tracker?.emoji || '📝'}</Text>
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            backgroundColor: `${tracker?.color || themeColors.primary}15`,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 10,
+          }}
+        >
+          <Text style={{ fontSize: 18 }}>{tracker?.emoji || '📝'}</Text>
+        </View>
         <View style={styles.compactContent}>
           <Text
             style={[
@@ -273,18 +309,41 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
           <Text
             style={[
               styles.compactTime,
-              { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier },
+              {
+                color: isOngoing
+                  ? tracker?.color || themeColors.primary
+                  : fullThemeColors.textSecondary,
+                fontSize: 11 * fontSizeMultiplier,
+                fontWeight: isOngoing ? '700' : '500',
+              },
             ]}
           >
-            {isOngoing ? 'Ongoing' : timeString}
+            {compactSubtitle}
           </Text>
         </View>
         {isOngoing && (
-          <View style={[styles.ongoingDot, { backgroundColor: tracker?.color || themeColors.primary }]} />
+          <View
+            style={[
+              styles.ongoingDot,
+              { backgroundColor: tracker?.color || themeColors.primary },
+            ]}
+          />
         )}
-        {Array.isArray(entry.photoUris) && entry.photoUris.length > 0 && (
+        {photoCount > 0 && (
           <View style={styles.photoIndicator}>
             <Ionicons name="image" size={12} color={fullThemeColors.textSecondary} />
+            {photoCount > 1 && (
+              <Text
+                style={{
+                  color: fullThemeColors.textSecondary,
+                  fontSize: 10,
+                  marginLeft: 2,
+                  fontWeight: '600',
+                }}
+              >
+                {photoCount}
+              </Text>
+            )}
           </View>
         )}
       </TouchableOpacity>
@@ -295,14 +354,44 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
   const renderDataPreview = () => {
     if (!tracker || !entry.data || typeof entry.data !== 'object') return null;
 
-    // Skip fields that are already in the title or are internal
-    const INTERNAL_FIELDS = new Set([
+    // Fields to skip — they're either internal bookkeeping or
+    // already surfaced in the title above.
+    const SKIP_IN_PREVIEW = new Set([
       'status', 'startTime', 'endTime', 'duration',
       'sleepType', 'feedType', 'title',
+      'side',        // Already implied by title for breast feeds
+      'measurementType', // Already implied by title for growth
+      'unit',        // Merged with value
+      'value_unit',  // Merged with value
+      'bottleAmount_unit', // Merged with amount
+      'solidAmount_unit',  // Merged with amount
     ]);
 
-    const previewFields = (tracker.fields || [])
-      .filter((f: any) => !INTERNAL_FIELDS.has(f.id))
+    // Prioritize meaningful fields over toggles/notes
+    const PRIORITY_ORDER = [
+      'bottleAmount', 'solidAmount', 'amount', 'value',
+      'quality', 'mood', 'severity', 'temperature',
+      'food', 'name', 'dosage', 'symptoms',
+      'color', 'consistency', 'location', 'method',
+    ];
+
+    const allFields = (tracker.fields || [])
+      .filter((f: any) => !SKIP_IN_PREVIEW.has(f.id))
+      .filter((f: any) => {
+        // Only show fields with actual data
+        const v = entry.data[f.id];
+        return v !== undefined && v !== null && v !== '';
+      });
+
+    // Sort by priority, then keep first 3
+    const previewFields = allFields
+      .sort((a: any, b: any) => {
+        const ai = PRIORITY_ORDER.indexOf(a.id);
+        const bi = PRIORITY_ORDER.indexOf(b.id);
+        const ar = ai === -1 ? 999 : ai;
+        const br = bi === -1 ? 999 : bi;
+        return ar - br;
+      })
       .slice(0, 3);
 
     return (
@@ -474,7 +563,6 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
                   const start = new Date(String(entry.data.startTime));
                   if (isNaN(start.getTime())) return '';
                   const startLabel = format(start, 'h:mm a');
-                  // Show elapsed time for ongoing sessions
                   const elapsedMin = Math.max(
                     0,
                     Math.floor((Date.now() - start.getTime()) / 60000)
@@ -482,8 +570,8 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
                   if (elapsedMin < 1) return `since ${startLabel}`;
                   const elapsedText =
                     elapsedMin < 60
-                      ? `${elapsedMin}m ago`
-                      : `${Math.floor(elapsedMin / 60)}h ${elapsedMin % 60}m ago`;
+                      ? `${elapsedMin}m`
+                      : `${Math.floor(elapsedMin / 60)}h ${elapsedMin % 60}m`;
                   return `since ${startLabel} · ${elapsedText}`;
                 } catch {
                   return '';
@@ -567,7 +655,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
 
         return (
           <View style={styles.photoStrip}>
-            {flatUris.slice(0, 3).map((uri, idx) => (
+            {uniqueUris.slice(0, 3).map((uri, idx) => (
               <Image
                 key={`${uri}-${idx}`}
                 source={{ uri }}
@@ -575,9 +663,9 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
                 resizeMode="cover"
               />
             ))}
-            {flatUris.length > 3 && (
+            {uniqueUris.length > 3 && (
               <View style={[styles.photoCount, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-                <Text style={styles.photoCountText}>+{flatUris.length - 3}</Text>
+                <Text style={styles.photoCountText}>+{uniqueUris.length - 3}</Text>
               </View>
             )}
           </View>

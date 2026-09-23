@@ -94,6 +94,69 @@ const TREND_ICONS = {
 
 // ─── Validation helpers ─────────────────────────────────────────────────
 const MAX_FUTURE_MS = 5 * 60 * 1000; // 5 minutes ahead is OK (clock skew)
+// ─── Growth value sanity bounds by age (in months) ─────────────────────
+// Based on WHO growth standards + 2 SD margins.
+const GROWTH_BOUNDS = {
+  weight: (ageMonths: number): { min: number; max: number } => {
+    if (ageMonths < 3) return { min: 1.5, max: 9 };
+    if (ageMonths < 6) return { min: 3, max: 12 };
+    if (ageMonths < 12) return { min: 5, max: 16 };
+    if (ageMonths < 24) return { min: 7, max: 20 };
+    return { min: 8, max: 30 };
+  },
+  height: (ageMonths: number): { min: number; max: number } => {
+    if (ageMonths < 3) return { min: 35, max: 70 };
+    if (ageMonths < 6) return { min: 50, max: 78 };
+    if (ageMonths < 12) return { min: 60, max: 90 };
+    if (ageMonths < 24) return { min: 70, max: 100 };
+    return { min: 75, max: 120 };
+  },
+  head: (ageMonths: number): { min: number; max: number } => {
+    if (ageMonths < 3) return { min: 30, max: 45 };
+    if (ageMonths < 6) return { min: 35, max: 48 };
+    if (ageMonths < 12) return { min: 38, max: 50 };
+    if (ageMonths < 24) return { min: 40, max: 52 };
+    return { min: 42, max: 56 };
+  },
+};
+
+const validateGrowthValue = (
+  measurementType: string,
+  value: number,
+  ageMonths: number,
+  unit: string
+): string | null => {
+  if (!Number.isFinite(value) || value <= 0) return 'Value must be positive';
+
+  const type = measurementType?.toLowerCase();
+  if (!['weight', 'height', 'head'].includes(type)) return null;
+
+  // Normalize to metric for bounds check
+  let normalizedValue = value;
+  if (type === 'weight' && unit === 'lb') normalizedValue = value * 0.453592;
+  else if (type === 'weight' && unit === 'oz') normalizedValue = value * 0.0283495;
+  else if (type === 'weight' && unit === 'g') normalizedValue = value / 1000;
+  else if ((type === 'height' || type === 'head') && unit === 'in') normalizedValue = value * 2.54;
+
+  const bounds = GROWTH_BOUNDS[type as 'weight' | 'height' | 'head'](ageMonths);
+  if (normalizedValue < bounds.min || normalizedValue > bounds.max) {
+    const unitLabel = type === 'weight' ? 'kg' : 'cm';
+    return `Value looks unusual for this age (expected ${bounds.min}–${bounds.max} ${unitLabel}). Double-check.`;
+  }
+
+  return null;
+};
+  // ─── Medication smart-fill from last entry ─────────────────────────
+  // The last medication entry usually holds name + dosage + type.
+  // Surfacing those as defaults saves the parent from re-typing.
+  const medicationQuickFill = useMemo(() => {
+    if (tracker.id !== 'medication') return null;
+    const last = (yesterdayEntries[0] || todayEntries[0]) as any;
+    if (!last?.data) return null;
+    const { name, dosage, type } = last.data;
+    if (!name && !dosage) return null;
+    return { name, dosage, type };
+  }, [tracker.id, yesterdayEntries, todayEntries]);
 
 const isFutureTimestamp = (value: unknown): boolean => {
   if (value === undefined || value === null || value === '') return false;
@@ -1494,6 +1557,25 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   } = useCustomization();
   const { success, error, info } = useSweetAlert();
 
+  // Needed for growth value validation
+  let currentBabyAgeMonths = 0;
+  try {
+    // Dynamic access to avoid hard dep if hook isn't available
+    const { useBaby } = require('../../context/BabyContext');
+    const { currentBaby } = useBaby();
+    if (currentBaby?.birthDate) {
+      const birth = new Date(currentBaby.birthDate);
+      const now = new Date();
+      currentBabyAgeMonths = Math.max(
+        0,
+        (now.getFullYear() - birth.getFullYear()) * 12 +
+          (now.getMonth() - birth.getMonth())
+      );
+    }
+  } catch {
+    // Ignore — growth validation just falls back to no bounds check
+  }
+
   const {
     prefillData = {},
     suggestions = [],
@@ -1510,10 +1592,23 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
 
   // Initial data seeded with suggestions (confidence >= 70 for auto-fill)
   const [data, setData] = useState<Record<string, unknown>>(() => {
-    const merged = { ...prefillData, ...initialData };
+    // Layer 0: medication quick-fill from last entry
+    const medFill = tracker.id === 'medication' && yesterdayEntries[0]?.data
+      ? {
+          name: (yesterdayEntries[0].data as any).name,
+          dosage: (yesterdayEntries[0].data as any).dosage,
+          type: (yesterdayEntries[0].data as any).type,
+        }
+      : {};
+
+    // Layer 1: tracker defaults (lowest priority)
+    const defaults = { ...medFill, ...getTrackerDefaults(tracker.id) };
+    // Layer 2: prefill from progressive hook
+    // Layer 3: initial data passed by parent
+    const merged = { ...defaults, ...prefillData, ...initialData };
+
+    // Layer 4: high-confidence suggestions override nothing the user typed
     suggestions.forEach((s) => {
-      // Only auto-fill HIGH-confidence suggestions. Chips are shown
-      // for anything >= 60 so the parent can still tap to apply.
       if (
         merged[s.fieldId] === undefined &&
         s.confidence >= 85 &&
@@ -1524,6 +1619,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         merged[s.fieldId] = s.value;
       }
     });
+
     return merged;
   });
 
@@ -1618,12 +1714,32 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           newErrors[field.id] = `${field.label} must be at most ${field.max}`;
         }
       }
+
+      // Growth-specific sanity bounds
+      if (tracker.id === 'growth' && field.id === 'value' && typeof value === 'number') {
+        const mType = String(data.measurementType || '');
+        const mUnit = String(data.value_unit || data.unit || 'kg');
+        const growthErr = validateGrowthValue(mType, value, currentBabyAgeMonths, mUnit);
+        if (growthErr) {
+          newErrors[field.id] = growthErr;
+        }
+      }
     });
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }, [tracker.fields, data]);
 
+        // Temperature sanity
+      if (tracker.id === 'temperature' && field.id === 'value' && typeof value === 'number') {
+        const unit = String(data.unit || 'celsius');
+        const celsius = unit === 'fahrenheit' ? ((value - 32) * 5) / 9 : value;
+        if (celsius < 34 || celsius > 43) {
+          newErrors[field.id] = `Temperature looks unusual (${value}°${
+            unit === 'fahrenheit' ? 'F' : 'C'
+          }). Double-check before saving.`;
+        }
+      }
   // ─── Submit ─────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
@@ -1722,6 +1838,65 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       userEditedFields.current.add(fieldId);
       setData((prev) => {
         const next = { ...prev, [fieldId]: value };
+
+        // ── Feed: reset sibling fields when feedType changes ────────
+        if (tracker.id === 'feed' && fieldId === 'feedType') {
+          // Clear fields that don't apply to the new feed type
+          if (value === 'breast') {
+            delete next.bottleAmount;
+            delete next.bottleAmount_unit;
+            delete next.bottleContent;
+            delete next.solidAmount;
+            delete next.solidAmount_unit;
+            delete next.food;
+            delete next.acceptance;
+          } else if (value === 'bottle') {
+            delete next.side;
+            delete next.breastDuration;
+            delete next.solidAmount;
+            delete next.solidAmount_unit;
+            delete next.food;
+            delete next.acceptance;
+          } else if (value === 'solid') {
+            delete next.side;
+            delete next.breastDuration;
+            delete next.bottleAmount;
+            delete next.bottleAmount_unit;
+            delete next.bottleContent;
+          } else if (value === 'water') {
+            delete next.side;
+            delete next.breastDuration;
+            delete next.bottleAmount;
+            delete next.bottleAmount_unit;
+            delete next.bottleContent;
+            delete next.solidAmount;
+            delete next.solidAmount_unit;
+            delete next.food;
+          }
+        }
+
+        // ── Sleep: reset endTime + duration when status → ongoing ────
+        if (tracker.id === 'sleep' && fieldId === 'status' && value === 'ongoing') {
+          delete next.endTime;
+          delete next.duration;
+        }
+
+        // ── Diaper: reset stool fields when type → wet/dry ──────────
+        if (tracker.id === 'diaper' && fieldId === 'type') {
+          if (value === 'wet' || value === 'dry') {
+            delete next.color;
+            delete next.consistency;
+            delete next.rash;
+            delete next.blowout;
+          }
+        }
+
+        // ── Growth: reset value + unit when measurementType changes ──
+        if (tracker.id === 'growth' && fieldId === 'measurementType') {
+          delete next.value;
+          delete next.value_unit;
+          delete next.percentile;
+        }
 
         // ── Auto-link sleep/feed start/end times ─────────────────────
         const durationTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
@@ -2097,9 +2272,14 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       }
     },
     [
+      // Only depend on the *values* used, not whole objects
+      // data and errors are needed for the field render
       data,
       errors,
-      tracker,
+      tracker.id,
+      tracker.color,
+      tracker.gradient,
+      tracker.fields,
       fullThemeColors,
       borderRadiusValue,
       fontSizeMultiplier,

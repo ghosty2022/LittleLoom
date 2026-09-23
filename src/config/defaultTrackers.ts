@@ -569,6 +569,9 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.text('reason', 'Reason', { placeholder: 'e.g., Fever, Teething' }),
       f.toggle('given', 'Given successfully?', { defaultValue: true }),
       f.toggle('vomited', 'Vomited after?'),
+      f.photo('labelPhoto', 'Photo of Label', {
+        // Helps prevent dosing errors on repeat doses
+      }),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Fever reducer', 'Antibiotic', 'Vitamin', 'Reaction'],

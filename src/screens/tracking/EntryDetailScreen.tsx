@@ -356,8 +356,22 @@ const KpiCard = ({ title, value, unit, change, changeLabel, icon, color, onPress
    SPARKLINE — Mini trend graph
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const Sparkline = ({ data, color, width = 80, height = 30 }: { data: number[]; color: string; width?: number; height?: number }) => {
+// Cross-platform sparkline using SVG-like line segments positioned
+// with rotation applied around the segment's own midpoint (works on
+// both iOS and Android — no transformOrigin needed).
+const Sparkline = ({
+  data,
+  color,
+  width = 80,
+  height = 30,
+}: {
+  data: number[];
+  color: string;
+  width?: number;
+  height?: number;
+}) => {
   if (!data || data.length < 2) return null;
+
   const maxVal = Math.max(...data, 0.1);
   const minVal = Math.min(...data);
   const range = maxVal - minVal || 1;
@@ -375,35 +389,45 @@ const Sparkline = ({ data, color, width = 80, height = 30 }: { data: number[]; c
       {points.map((pt, i) => {
         if (i === 0) return null;
         const prev = points[i - 1];
-        const len = Math.sqrt(Math.pow(pt.x - prev.x, 2) + Math.pow(pt.y - prev.y, 2));
-        const angle = Math.atan2(pt.y - prev.y, pt.x - prev.x) * 180 / Math.PI;
+        const dx = pt.x - prev.x;
+        const dy = pt.y - prev.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+        // Rotate around the segment midpoint so no transformOrigin is needed
+        const midX = (prev.x + pt.x) / 2;
+        const midY = (prev.y + pt.y) / 2;
         return (
-          <View key={i} style={{
-            position: 'absolute',
-            left: prev.x,
-            top: prev.y,
-            width: len,
-            height: 2,
-            backgroundColor: color,
-            transform: [{ translateX: 0 }, { translateY: -1 }, { rotate: `${angle}deg` }],
-            transformOrigin: '0% 50%',
-            borderRadius: 1,
-            opacity: 0.7,
-          }} />
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              left: midX - len / 2,
+              top: midY - 1,
+              width: len,
+              height: 2,
+              backgroundColor: color,
+              borderRadius: 1,
+              opacity: 0.7,
+              transform: [{ rotate: `${angle}deg` }],
+            }}
+          />
         );
       })}
       {points.map((pt, i) => (
-        <View key={`pt-${i}`} style={{
-          position: 'absolute',
-          left: pt.x - 2,
-          top: pt.y - 2,
-          width: 4,
-          height: 4,
-          borderRadius: 2,
-          backgroundColor: color,
-          borderWidth: 1,
-          borderColor: '#fff',
-        }} />
+        <View
+          key={`pt-${i}`}
+          style={{
+            position: 'absolute',
+            left: pt.x - 2,
+            top: pt.y - 2,
+            width: 4,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: color,
+            borderWidth: 1,
+            borderColor: '#fff',
+          }}
+        />
       ))}
     </View>
   );

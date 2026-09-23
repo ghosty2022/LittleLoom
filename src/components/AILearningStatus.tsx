@@ -131,11 +131,13 @@ export const AILearningStatus: React.FC = () => {
                   <Text style={[styles.subtitle, { color: fullThemeColors.textSecondary }]}>
           {!stats.enabled
             ? 'Contribution disabled — tap to manage'
-            : stats.samples < 10
-            ? 'Just getting started — keep logging!'
+            : stats.samples < 5
+            ? 'Just getting started — log a few more entries'
+            : stats.samples < 15
+            ? `Learning patterns (${stats.samples} samples · needs 15+)`
             : stats.samples < 50
             ? `Learning your baby's patterns (${stats.samples} samples)`
-            : `Personalized (${stats.samples} samples across ${stats.metrics} metrics)`}
+            : `Personalized (${stats.samples} samples across ${stats.metrics} metric${stats.metrics !== 1 ? 's' : ''})`}
         </Text>
         </View>
         <TouchableOpacity onPress={handleToggle} style={styles.toggle} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>

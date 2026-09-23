@@ -675,11 +675,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   // ─── Detect initial baby ────────────────────────────────────────────
+  // NOTE: `currentBabyIdState` is declared LATER in this component
+  // (below, near the permission block). We must NOT reference it here
+  // or we get a TDZ crash. Use only the ref for synchronous reads.
   const getCurrentBabyId = useCallback((): string | null => {
-    // Prefer state for reactive contexts, but fall back to ref for
-    // immediate (synchronous) reads before state commits.
-    return currentBabyIdState ?? currentBabyIdRef.current;
-  }, [currentBabyIdState]);
+    return currentBabyIdRef.current;
+  }, []);
 
   // ─── Internal refresh function ──────────────────────────────────────
   const refreshEntriesInternal = useCallback(async () => {
@@ -754,6 +755,14 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
     return () => unsub();
   }, [subscribeToBabyChanges]);
+
+  // ─── Override the ref-only getter with a state-aware version ──
+  // Now that `currentBabyIdState` is in scope, we can safely expose
+  // a version that reads from state first (for reactive contexts)
+  // and falls back to the ref (for synchronous reads).
+  const getCurrentBabyIdSafe = useCallback((): string | null => {
+    return currentBabyIdState ?? currentBabyIdRef.current;
+  }, [currentBabyIdState]);
 
   const currentBabyPermissions = useMemo(() => {
     if (!currentBabyIdState) return null;
@@ -1956,7 +1965,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     syncFromBabyContext,
     refreshTrackers,
     refreshEntries,
-    getCurrentBabyId,
+    getCurrentBabyId: getCurrentBabyIdSafe,
   }), [
     state,
     getTracker,

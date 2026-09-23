@@ -85,11 +85,24 @@ export async function saveEntry(
       }
     }
 
+    const startMs = Date.now();
+
     const { error } = await supabase
       .from('tracker_entries')
       .upsert(payload, { onConflict: 'id' });
 
     if (error) throw new Error(error.message);
+
+    // ─── Telemetry (non-blocking) ────────────────────────────────
+    import('@/services/ai/Telemetry')
+      .then(({ recordEvent }) => {
+        recordEvent({
+          kind: 'entry_save_ok',
+          trackerId: input.trackerId,
+          durationMs: Date.now() - startMs,
+        }).catch(() => {});
+      })
+      .catch(() => {});
 
     await invalidateCache(input.babyId);
     return { ok: true };
@@ -100,8 +113,29 @@ export async function saveEntry(
         error?.message
       );
     }
+
+    // ─── Telemetry for failure ────────────────────────────────────
+    import('@/services/ai/Telemetry')
+      .then(({ recordEvent }) => {
+        recordEvent({
+          kind: 'entry_save_fail',
+          trackerId: input.trackerId,
+          errorType: categorizeError(error?.message),
+        }).catch(() => {});
+      })
+      .catch(() => {});
+
     return { ok: false, error: error?.message || 'Unknown error' };
   }
+}
+
+function categorizeError(msg?: string): string {
+  if (!msg) return 'unknown';
+  if (/network|timeout|fetch|connection/i.test(msg)) return 'network';
+  if (/permission|rls|forbidden|401|403/i.test(msg)) return 'permission';
+  if (/duplicate|unique|conflict|23505/i.test(msg)) return 'duplicate';
+  if (/constraint|check|invalid/i.test(msg)) return 'validation';
+  return 'other';
 }
 export interface SaveEntryResult {
   ok: boolean;
