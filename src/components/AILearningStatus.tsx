@@ -128,7 +128,7 @@ export const AILearningStatus: React.FC = () => {
           <Text style={[styles.title, { color: fullThemeColors.text }]}>
             Personal AI Learning
           </Text>
-                  <Text style={[styles.subtitle, { color: fullThemeColors.textSecondary }]}>
+        <Text style={[styles.subtitle, { color: fullThemeColors.textSecondary }]}>
           {!stats.enabled
             ? 'Contribution disabled — tap to manage'
             : stats.samples < 5

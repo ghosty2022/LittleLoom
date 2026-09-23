@@ -2002,17 +2002,16 @@ const DatePickerModal = memo<DatePickerModalProps>(
               </TouchableOpacity>
             </View>
 
-            {/* Only mount the native picker when visible */}
-            {visible ? (
+            {/* Only mount the native picker when visible.
+                iOS-only — Android uses the imperative DateTimePickerAndroid API. */}
+            {visible && Platform.OS === 'ios' ? (
               <DateTimePicker
                 value={date instanceof Date ? date : new Date()}
                 mode={mode}
                 display="spinner"
                 onValueChange={(event, selectedDate) => {
-                  // New SDK API — falls back gracefully
                   if (selectedDate) onChange(event, selectedDate);
                 }}
-                onChange={onChange}
                 textColor={fullThemeColors.text}
               />
             ) : null}

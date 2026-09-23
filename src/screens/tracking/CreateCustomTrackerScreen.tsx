@@ -138,7 +138,7 @@ const UnitChip: React.FC<{
 export default function CreateCustomTrackerScreen() {
   const navigation = useNavigation<CreateTrackerNavProp>();
   const insets = useSafeAreaInsets();
-  const { addCustomTracker } = useTracker();
+  const { createCustomTracker: addCustomTracker } = useTracker();
   const {
     fullThemeColors,
     themeColors,
@@ -207,7 +207,21 @@ export default function CreateCustomTrackerScreen() {
 
     await new Promise(resolve => setTimeout(resolve, 400));
     
-    addCustomTracker?.(trackerConfig);
+    // createCustomTracker(name, emoji, category, fields, createdBy, options?)
+    await addCustomTracker?.(
+      trackerConfig.name,
+      trackerConfig.emoji,
+      trackerConfig.category ?? 'custom',
+      trackerConfig.fields as any,
+      'parent1',
+      {
+        icon: (trackerConfig as any).icon,
+        color: trackerConfig.color,
+        gradient: trackerConfig.gradient,
+        description: trackerConfig.description,
+        quickTags: trackerConfig.quickTags,
+      }
+    );
     navigation.goBack();
   }, [name, selectedEmoji, selectedColor, description, finalUnit, isValid, triggerHaptic, addCustomTracker, navigation]);
 

@@ -138,35 +138,22 @@ const getFieldDisplayValue = (
     return null;
   }
 
-  // ── Quantity / measurement with unit ──────────────────────────
-  if (field.type === 'quantity' || field.type === 'measurement' || field.type === 'number') {
-    // Check for a unit stored alongside the field
+  // ── Quantity / measurement / number with unit ─────────────────
+  if (
+    field.type === 'quantity' ||
+    field.type === 'measurement' ||
+    field.type === 'number'
+  ) {
     const unitKey = `${field.id}_unit`;
     const unit = (entryData[unitKey] as string) || field.unit || '';
     const num = Number(value);
-    
+
     // Guard: don't display NaN or Infinity
     if (Number.isFinite(num)) {
       // Round to reasonable precision (max 2 decimals)
-      const displayNum = Number.isInteger(num) ? num : Math.round(num * 100) / 100;
-      return unit ? `${displayNum} ${unit}` : String(displayNum);
-    }
-    // Non-numeric but non-empty string value
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return unit ? `${value} ${unit}` : value;
-    }
-    return null;
-  }  // ── Quantity / measurement with unit ──────────────────────────
-  if (field.type === 'quantity' || field.type === 'measurement' || field.type === 'number') {
-    // Check for a unit stored alongside the field
-    const unitKey = `${field.id}_unit`;
-    const unit = (entryData[unitKey] as string) || field.unit || '';
-    const num = Number(value);
-    
-    // Guard: don't display NaN or Infinity
-    if (Number.isFinite(num)) {
-      // Round to reasonable precision (max 2 decimals)
-      const displayNum = Number.isInteger(num) ? num : Math.round(num * 100) / 100;
+      const displayNum = Number.isInteger(num)
+        ? num
+        : Math.round(num * 100) / 100;
       return unit ? `${displayNum} ${unit}` : String(displayNum);
     }
     // Non-numeric but non-empty string value
