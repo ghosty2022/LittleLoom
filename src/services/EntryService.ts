@@ -220,13 +220,22 @@ export interface RawEntryInput {
 
 export function buildSupabasePayload(input: RawEntryInput) {
   const now = new Date().toISOString();
+
+  // Guard: if the input timestamp is missing or invalid, fall back to now.
+  // This prevents "Invalid Date" from being written to the DB.
+  const tsMs =
+    typeof input.timestamp === 'number' && Number.isFinite(input.timestamp)
+      ? input.timestamp
+      : Date.now();
+  const timestamp = new Date(tsMs).toISOString();
+
   return {
     id: input.id,
     tracker_id: input.trackerId,
     tracker_type: input.trackerType,
     baby_id: input.babyId,
-    timestamp: new Date(input.timestamp).toISOString(),
-    title: input.title,
+    timestamp,
+    title: input.title || '',
     data: sanitizePayload(input.data),
     notes: input.notes || null,
     photo_uris: sanitizePhotoUris(input.photoUris),

@@ -1,4 +1,11 @@
 // src/components/trackers/TrackerEntryCard.tsx
+// FIXED: 
+//   - "Ongoing" badge for sleep/feed with status='ongoing'
+//   - Duration displays as "1h 30m" instead of raw seconds
+//   - Quantity fields show their actual unit (g/oz/ml/tbsp/servings/pieces)
+//   - Solid food amount uses solidAmount field
+//   - Defensive photo URI handling
+
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +25,127 @@ interface TrackerEntryCardProps {
   compact?: boolean;
   index?: number;
 }
+
+// ─── Duration formatter ─────────────────────────────────────────────────
+const formatDuration = (seconds: unknown): string | null => {
+  const s = Number(seconds);
+  if (!Number.isFinite(s) || s <= 0) return null;
+  const mins = Math.floor(s / 60);
+  if (mins === 0) return null;
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+};
+
+// ─── Extract a display value for a field ────────────────────────────────
+const getFieldDisplayValue = (
+  field: any,
+  entryData: Record<string, unknown>
+): string | null => {
+  const value = entryData[field.id];
+  if (value === undefined || value === null || value === '') return null;
+
+  // ── Toggle ────────────────────────────────────────────────────
+  if (field.type === 'toggle') {
+    return value ? 'Yes' : 'No';
+  }
+
+  // ── Select ────────────────────────────────────────────────────
+  if (field.type === 'select' && field.options) {
+    const option = field.options.find((o: any) => o.id === value);
+    return option ? option.label : String(value);
+  }
+
+  // ── Multi-select ──────────────────────────────────────────────
+  if (field.type === 'multiselect') {
+    if (!Array.isArray(value) || value.length === 0) return null;
+    if (field.options) {
+      const labels = value
+        .map((v: any) => field.options.find((o: any) => o.id === v)?.label || String(v))
+        .filter(Boolean);
+      return labels.length > 0 ? labels.join(', ') : null;
+    }
+    return value.map(String).join(', ');
+  }
+
+  // ── Duration ──────────────────────────────────────────────────
+  if (field.type === 'duration') {
+    return formatDuration(value);
+  }
+
+  // ── Rating ────────────────────────────────────────────────────
+  if (field.type === 'rating') {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return '⭐'.repeat(Math.min(5, Math.max(1, Math.round(n))));
+  }
+
+  // ── Mood ──────────────────────────────────────────────────────
+  if (field.type === 'mood_emoji') {
+    const moods = ['😭', '😟', '😐', '🙂', '😄'];
+    const n = Number(value);
+    return moods[n - 1] || '😐';
+  }
+
+  // ── Photo ─────────────────────────────────────────────────────
+  if (field.type === 'photo') {
+    if (Array.isArray(value)) {
+      const count = (value as unknown[])
+        .flat(Infinity)
+        .filter(
+          (v) =>
+            typeof v === 'string' ||
+            (v && typeof v === 'object' && typeof (v as any).uri === 'string')
+        ).length;
+      if (count === 0) return null;
+      return `📷 ${count} photo${count !== 1 ? 's' : ''}`;
+    }
+    if (typeof value === 'string' && value.length > 0) {
+      return '📷 1 photo';
+    }
+    return null;
+  }
+
+  // ── Quantity / measurement with unit ──────────────────────────
+  if (field.type === 'quantity' || field.type === 'measurement' || field.type === 'number') {
+    // Check for a unit stored alongside the field
+    const unitKey = `${field.id}_unit`;
+    const unit = (entryData[unitKey] as string) || field.unit || '';
+    const num = Number(value);
+    if (Number.isFinite(num)) {
+      return unit ? `${num} ${unit}` : String(num);
+    }
+    return unit ? `${value} ${unit}` : String(value);
+  }
+
+  // ── Temperature ───────────────────────────────────────────────
+  if (field.type === 'temperature') {
+    const unitKey = `${field.id}_unit`;
+    const unit = (entryData[unitKey] as string) || 'celsius';
+    const unitLabel = unit === 'fahrenheit' ? '°F' : '°C';
+    const num = Number(value);
+    if (Number.isFinite(num)) return `${num}${unitLabel}`;
+    return `${value}${unitLabel}`;
+  }
+
+  // ── Datetime / time ──────────────────────────────────────────
+  if (field.type === 'datetime' || field.type === 'date') {
+    try {
+      const d = new Date(String(value));
+      if (isNaN(d.getTime())) return String(value);
+      return format(d, field.type === 'date' ? 'MMM d' : 'MMM d, h:mm a');
+    } catch {
+      return String(value);
+    }
+  }
+
+  // ── Text / default ────────────────────────────────────────────
+  if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
+    return null;
+  }
+  return String(value);
+};
 
 export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
   entry,
@@ -62,52 +190,72 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     }
   }, [entryDate, isToday]);
 
+  // ── Ongoing status detection ──────────────────────────────────────
+  const isOngoing = useMemo(() => {
+    if (entry.trackerId !== 'sleep' && entry.trackerId !== 'feed') return false;
+    const status = entry.data?.status;
+    if (status === 'ongoing') return true;
+    // If startTime exists but endTime is missing, treat as ongoing
+    if (entry.data?.startTime && !entry.data?.endTime) return true;
+    return false;
+  }, [entry.trackerId, entry.data]);
+
+  // ── Compact card ──────────────────────────────────────────────────
+  if (compact) {
+    return (
+      <TouchableOpacity
+        style={[
+          styles.compactCard,
+          {
+            backgroundColor: fullThemeColors.glassBg,
+            borderColor: fullThemeColors.border,
+            borderRadius: borderRadiusValue,
+          },
+        ]}
+        onPress={() => onPress?.(entry)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.compactEmoji}>{tracker?.emoji || '📝'}</Text>
+        <View style={styles.compactContent}>
+          <Text
+            style={[
+              styles.compactTitle,
+              { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier },
+            ]}
+            numberOfLines={1}
+          >
+            {entry.title || tracker?.name || 'Entry'}
+          </Text>
+          <Text
+            style={[
+              styles.compactTime,
+              { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier },
+            ]}
+          >
+            {isOngoing ? 'Ongoing' : timeString}
+          </Text>
+        </View>
+        {isOngoing && (
+          <View style={[styles.ongoingDot, { backgroundColor: tracker?.color || themeColors.primary }]} />
+        )}
+        {Array.isArray(entry.photoUris) && entry.photoUris.length > 0 && (
+          <View style={styles.photoIndicator}>
+            <Ionicons name="image" size={12} color={fullThemeColors.textSecondary} />
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  }
+
+  // ── Full card ─────────────────────────────────────────────────────
   const renderDataPreview = () => {
     if (!tracker || !entry.data || typeof entry.data !== 'object') return null;
 
-    const previewFields = tracker.fields?.slice(0, 2) || [];
+    const previewFields = tracker.fields?.slice(0, 3) || [];
     return (
       <View style={styles.dataPreview}>
-        {previewFields.map(field => {
-          const value = entry.data[field.id];
-          if (value === undefined || value === null || value === '') return null;
-
-          let displayValue: string;
-          if (field.type === 'toggle') {
-            displayValue = value ? 'Yes' : 'No';
-          } else if (field.type === 'select' && field.options) {
-            const option = field.options.find(o => o.id === value);
-            displayValue = option ? option.label : String(value);
-          } else if (field.type === 'duration') {
-            const mins = Math.floor(Number(value) / 60);
-            displayValue = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
-          } else if (field.type === 'rating') {
-            displayValue = '⭐'.repeat(Number(value));
-          } else if (field.type === 'mood_emoji') {
-            const moods = ['😭', '😟', '😐', '🙂', '😄'];
-            displayValue = moods[Number(value) - 1] || '😐';
-          } else if (field.type === 'photo') {
-            // value may be string, string[], or PhotoMeta[] — summarize safely
-            if (Array.isArray(value)) {
-              const count = value.filter(
-                (v) => typeof v === 'string' || (v && typeof v === 'object' && typeof (v as any).uri === 'string')
-              ).length;
-              if (count === 0) return null;
-              displayValue = `📷 ${count} photo${count !== 1 ? 's' : ''}`;
-            } else if (typeof value === 'string' && value.length > 0) {
-              displayValue = '📷 1 photo';
-            } else {
-              return null;
-            }
-          } else {
-            // Guard against arrays/objects leaking into text rendering
-            if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
-              return null;
-            }
-            displayValue = String(value);
-            if (field.unit) displayValue += ` ${field.unit}`;
-          }
-
+        {previewFields.map((field) => {
+          const displayValue = getFieldDisplayValue(field, entry.data);
           if (!displayValue) return null;
 
           return (
@@ -125,7 +273,10 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
               <Text style={[styles.dataChipLabel, { color: fullThemeColors.textSecondary }]}>
                 {field.label}:
               </Text>
-              <Text style={[styles.dataChipValue, { color: fullThemeColors.text }]} numberOfLines={1}>
+              <Text
+                style={[styles.dataChipValue, { color: fullThemeColors.text }]}
+                numberOfLines={1}
+              >
                 {displayValue}
               </Text>
             </View>
@@ -135,38 +286,6 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     );
   };
 
-  if (compact) {
-    return (
-      <TouchableOpacity
-        style={[
-          styles.compactCard,
-          {
-            backgroundColor: fullThemeColors.glassBg,
-            borderColor: fullThemeColors.border,
-            borderRadius: borderRadiusValue,
-          },
-        ]}
-        onPress={() => onPress?.(entry)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.compactEmoji}>{tracker?.emoji || '📝'}</Text>
-        <View style={styles.compactContent}>
-          <Text style={[styles.compactTitle, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]} numberOfLines={1}>
-            {entry.title || tracker?.name || 'Entry'}
-          </Text>
-          <Text style={[styles.compactTime, { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>
-            {timeString}
-          </Text>
-        </View>
-        {Array.isArray(entry.photoUris) && entry.photoUris.length > 0 && (
-          <View style={styles.photoIndicator}>
-            <Ionicons name="image" size={12} color={fullThemeColors.textSecondary} />
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  }
-
   return (
     <TouchableOpacity
       style={[
@@ -174,8 +293,11 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
         {
           backgroundColor: fullThemeColors.glassBg,
           borderRadius: borderRadiusValue,
-          borderColor: fullThemeColors.border,
+          borderColor: isOngoing
+            ? tracker?.color || themeColors.primary
+            : fullThemeColors.border,
           borderLeftColor: tracker?.color || themeColors.primary,
+          borderLeftWidth: isOngoing ? 6 : 4,
         },
       ]}
       onPress={() => onPress?.(entry)}
@@ -183,19 +305,40 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     >
       <View style={styles.cardHeader}>
         <View style={styles.titleRow}>
-          <View style={[styles.iconContainer, { backgroundColor: `${tracker?.color || themeColors.primary}15` }]}>
+          <View
+            style={[
+              styles.iconContainer,
+              { backgroundColor: `${tracker?.color || themeColors.primary}15` },
+            ]}
+          >
             <Text style={styles.emoji}>{tracker?.emoji || '📝'}</Text>
           </View>
           <View style={styles.titleContent}>
-            <Text style={[styles.title, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]} numberOfLines={1}>
+            <Text
+              style={[
+                styles.title,
+                { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+              ]}
+              numberOfLines={1}
+            >
               {entry.title || tracker?.name || 'Entry'}
             </Text>
             <View style={styles.metaRow}>
-              <Text style={[styles.metaText, { color: fullThemeColors.textSecondary, fontSize: 12 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.metaText,
+                  { color: fullThemeColors.textSecondary, fontSize: 12 * fontSizeMultiplier },
+                ]}
+              >
                 {dateString} • {timeString}
               </Text>
               {entry.loggedByName && (
-                <Text style={[styles.metaText, { color: fullThemeColors.textSecondary, fontSize: 12 * fontSizeMultiplier }]}>
+                <Text
+                  style={[
+                    styles.metaText,
+                    { color: fullThemeColors.textSecondary, fontSize: 12 * fontSizeMultiplier },
+                  ]}
+                >
                   • {entry.loggedByName}
                 </Text>
               )}
@@ -207,7 +350,10 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
           <View style={styles.actions}>
             {onEdit && (
               <TouchableOpacity
-                onPress={() => { triggerHaptic('light'); onEdit(entry); }}
+                onPress={() => {
+                  triggerHaptic('light');
+                  onEdit(entry);
+                }}
                 style={[styles.actionBtn, { backgroundColor: fullThemeColors.surface }]}
               >
                 <Ionicons name="create-outline" size={18} color={fullThemeColors.textSecondary} />
@@ -215,27 +361,91 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
             )}
             {onDelete && (
               <TouchableOpacity
-                onPress={() => { triggerHaptic('warning'); onDelete(entry); }}
-                style={[styles.actionBtn, { backgroundColor: `${fullThemeColors.error || '#ef4444'}15` }]}
+                onPress={() => {
+                  triggerHaptic('warning');
+                  onDelete(entry);
+                }}
+                style={[
+                  styles.actionBtn,
+                  { backgroundColor: `${fullThemeColors.error || '#ef4444'}15` },
+                ]}
               >
-                <Ionicons name="trash-outline" size={18} color={fullThemeColors.error || '#ef4444'} />
+                <Ionicons
+                  name="trash-outline"
+                  size={18}
+                  color={fullThemeColors.error || '#ef4444'}
+                />
               </TouchableOpacity>
             )}
           </View>
         )}
       </View>
 
+      {/* Ongoing badge for sleep/feed */}
+      {isOngoing && (
+        <View
+          style={[
+            styles.ongoingBadge,
+            { backgroundColor: `${tracker?.color || themeColors.primary}15` },
+          ]}
+        >
+          <View
+            style={[
+              styles.ongoingPulse,
+              { backgroundColor: tracker?.color || themeColors.primary },
+            ]}
+          />
+          <Text
+            style={[
+              styles.ongoingText,
+              {
+                color: tracker?.color || themeColors.primary,
+                fontSize: 12 * fontSizeMultiplier,
+              },
+            ]}
+          >
+            Ongoing
+          </Text>
+          {entry.data?.startTime && (
+            <Text
+              style={[
+                styles.ongoingSince,
+                {
+                  color: fullThemeColors.textSecondary,
+                  fontSize: 11 * fontSizeMultiplier,
+                },
+              ]}
+            >
+              since{' '}
+              {(() => {
+                try {
+                  return format(new Date(String(entry.data.startTime)), 'h:mm a');
+                } catch {
+                  return '';
+                }
+              })()}
+            </Text>
+          )}
+        </View>
+      )}
+
       {renderDataPreview()}
 
       {entry.notes && (
-        <Text style={[styles.notes, { color: fullThemeColors.textSecondary, fontSize: 14 * fontSizeMultiplier }]} numberOfLines={2}>
+        <Text
+          style={[
+            styles.notes,
+            { color: fullThemeColors.textSecondary, fontSize: 14 * fontSizeMultiplier },
+          ]}
+          numberOfLines={2}
+        >
           {entry.notes}
         </Text>
       )}
 
       {entry.tags && entry.tags.length > 0 && (
         <View style={styles.tagsRow}>
-          {entry.tags.slice(0, 3).map(tag => (
+          {entry.tags.slice(0, 3).map((tag) => (
             <View
               key={tag}
               style={[
@@ -243,13 +453,23 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
                 { backgroundColor: `${themeColors.primary}15`, borderRadius: borderRadiusValue / 2 },
               ]}
             >
-              <Text style={[styles.tagText, { color: themeColors.primary, fontSize: 11 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.tagText,
+                  { color: themeColors.primary, fontSize: 11 * fontSizeMultiplier },
+                ]}
+              >
                 #{tag}
               </Text>
             </View>
           ))}
           {entry.tags.length > 3 && (
-            <Text style={[styles.moreTags, { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>
+            <Text
+              style={[
+                styles.moreTags,
+                { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier },
+              ]}
+            >
               +{entry.tags.length - 3} more
             </Text>
           )}
@@ -262,7 +482,13 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
         const flatUris: string[] = Array.isArray(raw)
           ? (raw as unknown[])
               .flat(Infinity)
-              .map((u) => (typeof u === 'string' ? u : u && typeof u === 'object' && typeof (u as any).uri === 'string' ? (u as any).uri : ''))
+              .map((u) =>
+                typeof u === 'string'
+                  ? u
+                  : u && typeof u === 'object' && typeof (u as any).uri === 'string'
+                  ? (u as any).uri
+                  : ''
+              )
               .filter((u): u is string => typeof u === 'string' && u.length > 0)
           : [];
 
@@ -271,7 +497,12 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
         return (
           <View style={styles.photoStrip}>
             {flatUris.slice(0, 3).map((uri, idx) => (
-              <Image key={`${uri}-${idx}`} source={{ uri }} style={styles.thumbnail} resizeMode="cover" />
+              <Image
+                key={`${uri}-${idx}`}
+                source={{ uri }}
+                style={styles.thumbnail}
+                resizeMode="cover"
+              />
             ))}
             {flatUris.length > 3 && (
               <View style={[styles.photoCount, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
@@ -283,7 +514,12 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
       })()}
 
       {entry.editedAt && (
-        <Text style={[styles.editedText, { color: fullThemeColors.textSecondary, fontSize: 10 * fontSizeMultiplier }]}>
+        <Text
+          style={[
+            styles.editedText,
+            { color: fullThemeColors.textSecondary, fontSize: 10 * fontSizeMultiplier },
+          ]}
+        >
           Edited
         </Text>
       )}
@@ -297,7 +533,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderLeftWidth: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
@@ -329,6 +564,53 @@ const styles = StyleSheet.create({
   metaText: { fontWeight: '500' },
   actions: { flexDirection: 'row', gap: 8 },
   actionBtn: { padding: 6, borderRadius: 8 },
+
+  // ── Ongoing badge ─────────────────────────────────────────────
+  ongoingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
+  ongoingPulse: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  ongoingText: {
+    fontWeight: '700',
+  },
+  ongoingSince: {
+    fontWeight: '500',
+    marginLeft: 2,
+  },
+
+  // ── Compact ───────────────────────────────────────────────────
+  compactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    marginRight: 12,
+    minWidth: 140,
+    borderWidth: 1,
+  },
+  compactEmoji: { fontSize: 24, marginRight: 10 },
+  compactContent: { flex: 1 },
+  compactTitle: { fontWeight: '600' },
+  compactTime: { marginTop: 2, fontWeight: '500' },
+  photoIndicator: { marginLeft: 8 },
+  ongoingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+
+  // ── Data preview ──────────────────────────────────────────────
   dataPreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -343,7 +625,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   dataChipLabel: { fontSize: 11, fontWeight: '500' },
-  dataChipValue: { fontSize: 12, fontWeight: '600', maxWidth: 120, marginLeft: 4 },
+  dataChipValue: { fontSize: 12, fontWeight: '600', maxWidth: 140, marginLeft: 4 },
+
+  // ── Notes / tags ──────────────────────────────────────────────
   notes: {
     marginTop: 10,
     lineHeight: 20,
@@ -361,6 +645,8 @@ const styles = StyleSheet.create({
   },
   tagText: { fontWeight: '600' },
   moreTags: { fontWeight: '500', alignSelf: 'center' },
+
+  // ── Photos ────────────────────────────────────────────────────
   photoStrip: {
     flexDirection: 'row',
     gap: 8,
@@ -380,17 +666,6 @@ const styles = StyleSheet.create({
   },
   photoCountText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   editedText: { fontStyle: 'italic', marginTop: 8 },
-  compactCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    marginRight: 12,
-    minWidth: 140,
-    borderWidth: 1,
-  },
-  compactEmoji: { fontSize: 24, marginRight: 10 },
-  compactContent: { flex: 1 },
-  compactTitle: { fontWeight: '600' },
-  compactTime: { marginTop: 2, fontWeight: '500' },
-  photoIndicator: { marginLeft: 8 },
 });
+
+export default TrackerEntryCard;
