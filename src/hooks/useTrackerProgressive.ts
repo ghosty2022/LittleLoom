@@ -113,6 +113,12 @@ export interface TrackerProgressiveState {
   isLoading: boolean;
   lastUpdated: number;
 
+  // ─── NEW: data-quality signals ──────────────────────────────────
+  /** Number of entries logged for this tracker */
+  entryCount: number;
+  /** True when we have enough data (≥5 entries) for meaningful suggestions */
+  hasRealData: boolean;
+
   // ✅ ADDED: entry collections returned by the hook
   todayEntries: TrackerEntry[];
   yesterdayEntries: TrackerEntry[];
@@ -984,6 +990,8 @@ export const useTrackerProgressive = (trackerId: string) => {
       timeContext,
       isLoading,
       lastUpdated: Date.now(),
+      entryCount: trackerEntries.length,
+      hasRealData: trackerEntries.length >= 5,
     }),
     [
       prefillData,

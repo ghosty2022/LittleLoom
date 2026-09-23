@@ -108,31 +108,57 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
             💡 Suggested Activities:
           </Text>
           <View style={styles.activitiesList}>
-                            {(readiness.suggestedActivities || []).map((activity, idx) => (
-              <View key={idx} style={[styles.activityChip, { backgroundColor: `${colors[0]}12` }]}>
-                <Ionicons name="checkmark-circle" size={14} color={colors[0]} />
-                <Text style={[styles.activityText, { color: colors[0], fontSize: 12 * fontSizeMultiplier }]}>
-                  {activity}
-                </Text>
-              </View>
-            ))}
+            {Array.isArray(readiness.suggestedActivities) &&
+              readiness.suggestedActivities
+                .filter((a): a is string => typeof a === 'string' && a.length > 0)
+                .slice(0, 5)
+                .map((activity, idx) => (
+                  <View
+                    key={`${activity}-${idx}`}
+                    style={[
+                      styles.activityChip,
+                      { backgroundColor: `${colors[0]}12` },
+                    ]}
+                  >
+                    <Ionicons name="checkmark-circle" size={14} color={colors[0]} />
+                    <Text
+                      style={[
+                        styles.activityText,
+                        { color: colors[0], fontSize: 12 * fontSizeMultiplier },
+                      ]}
+                    >
+                      {activity}
+                    </Text>
+                  </View>
+                ))}
           </View>
         </View>
 
         {/* Related Trackers */}
         <View style={styles.trackersRow}>
-          {(readiness.relatedTrackerIds || []).map((trackerId: string) => (
-            <TouchableOpacity
-              key={trackerId}
-              style={[styles.trackerChip, { backgroundColor: `${colors[0]}15` }]}
-              onPress={() => navigation.navigate('AddEntry' as never, { trackerId } as never)}
-            >
-              <Ionicons name="add-circle" size={14} color={colors[0]} />
-              <Text style={[styles.trackerText, { color: colors[0] }]}>
-                Log {trackerId.replace('_', ' ')}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {Array.isArray(readiness.relatedTrackerIds) &&
+            readiness.relatedTrackerIds
+              .filter((t): t is string => typeof t === 'string' && t.length > 0)
+              .slice(0, 4)
+              .map((trackerId: string) => (
+                <TouchableOpacity
+                  key={trackerId}
+                  style={[
+                    styles.trackerChip,
+                    { backgroundColor: `${colors[0]}15` },
+                  ]}
+                  onPress={() =>
+                    navigation.navigate('AddEntry' as never, {
+                      trackerId,
+                    } as never)
+                  }
+                >
+                  <Ionicons name="add-circle" size={14} color={colors[0]} />
+                  <Text style={[styles.trackerText, { color: colors[0] }]}>
+                    Log {trackerId.replace(/_/g, ' ')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
         </View>
 
         <View style={styles.footer}>

@@ -129,12 +129,26 @@ export default function PredictionCard() {
   const babyId = currentBaby?.id;
 
   const load = useCallback(async () => {
-    if (!babyId) return;
+    if (!babyId) {
+      setLoading(false);
+      return;
+    }
     try {
       const types: PredictorType[] = ['sleep', 'feed', 'diaper'];
-      const [results, ...states] = await Promise.all([
+
+      // Race each load against a 5s timeout so we never hang forever
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 5000)
+      );
+
+      const loadPromise = Promise.all([
         getPredictions(babyId, types),
         ...types.map((t) => readState(babyId, t)),
+      ]);
+
+      const [results, ...states] = await Promise.race([
+        loadPromise,
+        timeoutPromise,
       ]);
 
       setPredictions(results);
@@ -191,6 +205,7 @@ export default function PredictionCard() {
 
   if (!currentBaby) return null;
 
+  // Loading state — show spinner but cap at 5s to avoid infinite loop
   if (loading && predictions.length === 0) {
     return (
       <View
@@ -204,6 +219,18 @@ export default function PredictionCard() {
         ]}
       >
         <ActivityIndicator size="small" color="#667eea" />
+        <Text
+          style={[
+            styles.headerSub,
+            {
+              color: fullThemeColors.textSecondary,
+              marginTop: 8,
+              textAlign: 'center',
+            },
+          ]}
+        >
+          Analyzing patterns…
+        </Text>
       </View>
     );
   }

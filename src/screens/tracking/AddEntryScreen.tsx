@@ -64,6 +64,7 @@ import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
 import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
+// progressive object now includes .hasRealData and .entryCount
 import { useAnomalyFeedback } from '../../hooks/useAnomalyFeedback';
 import type { ProgressiveCorrelation } from '../../hooks/useTrackerProgressive';
 
@@ -2538,9 +2539,12 @@ function TrackerContent({
               : d.sleepType === 'night'
               ? 'Night Sleep'
               : d.sleepType || 'Sleep';
-          // Duration only shown when it's a real computed value (> 60 seconds)
-          const durationText = dur && dur !== '0m' && dur !== '0s' ? ` • ${dur}` : '';
-          return `${sleepLabel}${durationText}`;
+
+          // Only append duration when it's a real computed value.
+          // The `dur` value comes from formatDuration() which handles
+          // raw seconds, strings, and ISO — never produces "3600".
+          const durationText = dur ? ` • ${dur}` : '';
+          return `${sleepLabel}${durationText}`.trim();
         }
         case 'growth': {
           const unit = d.value_unit || d.unit || '';
@@ -2759,8 +2763,13 @@ function TrackerContent({
       templates,
       trends,
       timeContext,
-      yesterdayEntries: [],
-      todayEntries: [],
+      // Pass real entries so form can show recent values if needed
+      yesterdayEntries: yesterdayEntries.slice(0, 5),
+      todayEntries: getEntries(tracker?.id ?? '').filter((e: any) => {
+        const t = e.timestamp;
+        const todayStart = new Date().setHours(0, 0, 0, 0);
+        return t >= todayStart;
+      }).slice(0, 5),
     }),
     [
       prefillData,
@@ -2772,6 +2781,9 @@ function TrackerContent({
       templates,
       trends,
       timeContext,
+      yesterdayEntries,
+      getEntries,
+      tracker?.id,
     ]
   );
 
@@ -2929,6 +2941,47 @@ function TrackerContent({
             borderRadiusValue={borderRadiusValue}
             fontSizeMultiplier={fontSizeMultiplier}
           />
+
+          {/* Learning-mode banner — shown when we don't have enough data */}
+          {progressive && !progressive.hasRealData && (
+            <View
+              style={{
+                marginHorizontal: 16,
+                marginBottom: 12,
+                padding: 12,
+                borderRadius: borderRadiusValue,
+                backgroundColor: `${tracker.gradient[0]}08`,
+                borderLeftWidth: 3,
+                borderLeftColor: tracker.gradient[0],
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <Ionicons name="sparkles-outline" size={18} color={tracker.gradient[0]} />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: tracker.gradient[0],
+                    fontWeight: '700',
+                    fontSize: 13,
+                  }}
+                >
+                  Learning mode
+                </Text>
+                <Text
+                  style={{
+                    color: fullThemeColors.textSecondary,
+                    fontSize: 12,
+                    marginTop: 2,
+                  }}
+                >
+                  Log {Math.max(0, 5 - (progressive.entryCount || 0))} more{' '}
+                  {tracker.name.toLowerCase()} {progressive.entryCount === 4 ? 'entry' : 'entries'} to unlock smart suggestions
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Context Insights Strip */}
           <ContextInsightsStrip
@@ -3300,7 +3353,8 @@ function TrackerContent({
             </Animated.View>
           ) : null}
 
-          {/* Form — photo picker is rendered by the form when the tracker has a photo field */}
+          {/* Form — DynamicTrackerForm renders the photo picker when the
+              tracker has a `photo` field. Do not render one here. */}
           <View style={styles.formWrapper}>
             <DynamicTrackerForm
               tracker={tracker}
@@ -3314,6 +3368,9 @@ function TrackerContent({
                   setShowPicker(true);
                 }
               }}
+              // Prevent the form from re-seeding state on every render
+              // (fixes the "reset while typing" bug)
+              key={selectedTrackerId || 'no-tracker'}
             />
           </View>
 
