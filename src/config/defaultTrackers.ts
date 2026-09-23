@@ -247,7 +247,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'ongoing', label: 'Still sleeping', emoji: '💤' },
           { id: 'completed', label: 'Awake', emoji: '☀️' },
         ],
-        { required: true }
+        { required: true, defaultValue: 'ongoing' }
       ),
       f.datetime('startTime', 'Start Time', { required: true }),
       f.datetime('endTime', 'End Time'),

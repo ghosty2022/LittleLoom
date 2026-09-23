@@ -799,6 +799,13 @@ const SmartDurationField: React.FC<{
   const yesterdayDuration =
     yesterdayValue !== undefined && yesterdayValue !== '' ? Number(yesterdayValue) : null;
 
+  // Detect if this is a sleep/feed duration that should support ongoing
+  const supportsOngoing = 
+    tracker.id === 'sleep' || 
+    tracker.id === 'feed' || 
+    tracker.id === 'dream_feed' ||
+    tracker.id === 'nap';
+
   return (
     <View style={styles.fieldContainer}>
       <FieldLabel
@@ -811,6 +818,10 @@ const SmartDurationField: React.FC<{
             <View style={[styles.recordingBadge, { backgroundColor: `${tracker.color}20` }]}>
               <View style={[styles.recordingDot, { backgroundColor: tracker.color }]} />
               <Text style={[styles.recordingText, { color: tracker.color }]}>Recording</Text>
+            </View>
+          ) : supportsOngoing && seconds === 0 ? (
+            <View style={[styles.recordingBadge, { backgroundColor: `${colors.textSecondary}15` }]}>
+              <Text style={[styles.recordingText, { color: colors.textSecondary }]}>Optional</Text>
             </View>
           ) : null
         }
@@ -1578,18 +1589,44 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         const next = { ...prev, [fieldId]: value };
 
         // ── Auto-link sleep/feed start/end times ─────────────────────
-        if (tracker.id === 'sleep' || tracker.id === 'feed') {
-          if (fieldId === 'startTime' && value && !prev.endTime) {
-            // Leave endTime undefined → "ongoing"
-            next.status = 'ongoing';
+        const durationTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
+        if (durationTrackers.includes(tracker.id)) {
+          if (fieldId === 'startTime' && value) {
+            // Start time set → mark as ongoing (unless end already set)
+            const hasEnd = next.endTime && String(next.endTime).length > 0;
+            next.status = hasEnd ? 'completed' : 'ongoing';
+            
+            // If end already exists, recompute duration
+            if (hasEnd) {
+              const startMs = new Date(String(value)).getTime();
+              const endMs = new Date(String(next.endTime)).getTime();
+              if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+                const secs = Math.round((endMs - startMs) / 1000);
+                if (secs >= 60) next.duration = secs;
+              }
+            } else {
+              // Clear stale duration for ongoing session
+              delete next.duration;
+            }
           }
+          
           if (fieldId === 'endTime' && value) {
             next.status = 'completed';
             if (next.startTime) {
               const startMs = new Date(String(next.startTime)).getTime();
               const endMs = new Date(String(value)).getTime();
               if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-                next.duration = Math.round((endMs - startMs) / 1000);
+                const secs = Math.round((endMs - startMs) / 1000);
+                // Only set duration if meaningful (>= 60 seconds)
+                if (secs >= 60) {
+                  next.duration = secs;
+                } else {
+                  // Too short — clear duration but keep completed status
+                  delete next.duration;
+                }
+              } else {
+                // Invalid times — clear duration
+                delete next.duration;
               }
             }
           }
