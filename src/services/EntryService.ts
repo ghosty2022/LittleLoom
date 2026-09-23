@@ -32,111 +32,6 @@ export interface SaveEntryOptions {
   offlineOnly?: boolean;
 }
 
-export async function saveEntry(
-  input: RawEntryInput,
-  options: SaveEntryOptions = {}
-): Promise<SaveEntryResult> {
-  const payload = buildSupabasePayload(input);
-
-  if (options.offlineOnly) {
-    return { ok: true, queued: true };
-  }
-
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { ok: false, error: 'No authenticated user' };
-    }
-
-    // ─── Duplicate guard: same tracker + same baby + within 5s ────
-    // Catches double-tap save and offline-queue replays.
-    const fiveSecondsAgo = new Date(
-      new Date(input.timestamp).getTime() - 5000
-    ).toISOString();
-    const fiveSecondsLater = new Date(
-      new Date(input.timestamp).getTime() + 5000
-    ).toISOString();
-
-    const { data: dupes } = await supabase
-      .from('tracker_entries')
-      .select('id, data')
-      .eq('baby_id', input.babyId)
-      .eq('tracker_id', input.trackerId)
-      .eq('is_deleted', false)
-      .gte('timestamp', fiveSecondsAgo)
-      .lte('timestamp', fiveSecondsLater);
-
-    if (dupes && dupes.length > 0) {
-      // Compare data payloads — same fields = same entry
-      const incomingData = JSON.stringify(sanitizePayload(input.data));
-      const isDuplicate = dupes.some(
-        d => JSON.stringify(sanitizePayload(d.data)) === incomingData
-      );
-
-      if (isDuplicate) {
-        if (__DEV__) {
-          console.warn(
-            '[EntryService] Duplicate entry suppressed:',
-            input.trackerId
-          );
-        }
-        // Return the existing entry as if we just created it
-        return { ok: true };
-      }
-    }
-
-    const startMs = Date.now();
-
-    const { error } = await supabase
-      .from('tracker_entries')
-      .upsert(payload, { onConflict: 'id' });
-
-    if (error) throw new Error(error.message);
-
-    // ─── Telemetry (non-blocking) ────────────────────────────────
-    import('@/services/ai/Telemetry')
-      .then(({ recordEvent }) => {
-        recordEvent({
-          kind: 'entry_save_ok',
-          trackerId: input.trackerId,
-          durationMs: Date.now() - startMs,
-        }).catch(() => {});
-      })
-      .catch(() => {});
-
-    await invalidateCache(input.babyId);
-    return { ok: true };
-  } catch (error: any) {
-    if (__DEV__) {
-      console.warn(
-        '[EntryService] Supabase write failed, will queue:',
-        error?.message
-      );
-    }
-
-    // ─── Telemetry for failure ────────────────────────────────────
-    import('@/services/ai/Telemetry')
-      .then(({ recordEvent }) => {
-        recordEvent({
-          kind: 'entry_save_fail',
-          trackerId: input.trackerId,
-          errorType: categorizeError(error?.message),
-        }).catch(() => {});
-      })
-      .catch(() => {});
-
-    return { ok: false, error: error?.message || 'Unknown error' };
-  }
-}
-
-function categorizeError(msg?: string): string {
-  if (!msg) return 'unknown';
-  if (/network|timeout|fetch|connection/i.test(msg)) return 'network';
-  if (/permission|rls|forbidden|401|403/i.test(msg)) return 'permission';
-  if (/duplicate|unique|conflict|23505/i.test(msg)) return 'duplicate';
-  if (/constraint|check|invalid/i.test(msg)) return 'validation';
-  return 'other';
-}
 export interface SaveEntryResult {
   ok: boolean;
   entry?: TrackerEntry;
@@ -422,21 +317,62 @@ export async function saveEntry(
       return { ok: false, error: 'No authenticated user' };
     }
 
+    // ─── Duplicate guard: same tracker + same baby + within 5s ────
+    // Catches double-tap save and offline-queue replays.
+    const fiveSecondsAgo = new Date(
+      new Date(input.timestamp).getTime() - 5000
+    ).toISOString();
+    const fiveSecondsLater = new Date(
+      new Date(input.timestamp).getTime() + 5000
+    ).toISOString();
+
+    const { data: dupes } = await supabase
+      .from('tracker_entries')
+      .select('id, data')
+      .eq('baby_id', input.babyId)
+      .eq('tracker_id', input.trackerId)
+      .eq('is_deleted', false)
+      .gte('timestamp', fiveSecondsAgo)
+      .lte('timestamp', fiveSecondsLater);
+
+    if (dupes && dupes.length > 0) {
+      const incomingData = JSON.stringify(sanitizePayload(input.data));
+      const isDuplicate = dupes.some(
+        (d) => JSON.stringify(sanitizePayload(d.data)) === incomingData
+      );
+
+      if (isDuplicate) {
+        if (__DEV__) {
+          console.warn(
+            '[EntryService] Duplicate entry suppressed:',
+            input.trackerId
+          );
+        }
+        return { ok: true };
+      }
+    }
+
+    const startMs = Date.now();
+
     // ─── Idempotency: always upsert on id ────────────────────────
-    // Network retries, double-taps, and offline-queue flushes all
-    // converge to a single row. `insert` was causing duplicate-key
-    // errors that silently dropped entries.
     const { error } = await supabase
       .from('tracker_entries')
       .upsert(payload, { onConflict: 'id' });
 
-    if (error) {
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
 
-    // Invalidate local cache — next read will fetch fresh
+    // ─── Telemetry (non-blocking) ────────────────────────────────
+    import('@/services/ai/Telemetry')
+      .then(({ recordEvent }) => {
+        recordEvent({
+          kind: 'entry_save_ok',
+          trackerId: input.trackerId,
+          durationMs: Date.now() - startMs,
+        }).catch(() => {});
+      })
+      .catch(() => {});
+
     await invalidateCache(input.babyId);
-
     return { ok: true };
   } catch (error: any) {
     if (__DEV__) {
@@ -445,8 +381,31 @@ export async function saveEntry(
         error?.message
       );
     }
+
+    // ─── Telemetry for failure ────────────────────────────────────
+    import('@/services/ai/Telemetry')
+      .then(({ recordEvent }) => {
+        recordEvent({
+          kind: 'entry_save_fail',
+          trackerId: input.trackerId,
+          errorType: categorizeError(error?.message),
+        }).catch(() => {});
+      })
+      .catch(() => {});
+
     return { ok: false, error: error?.message || 'Unknown error' };
   }
+}
+
+// ─── Error categorizer (used by telemetry) ──────────────────────────
+
+function categorizeError(msg?: string): string {
+  if (!msg) return 'unknown';
+  if (/network|timeout|fetch|connection/i.test(msg)) return 'network';
+  if (/permission|rls|forbidden|401|403/i.test(msg)) return 'permission';
+  if (/duplicate|unique|conflict|23505/i.test(msg)) return 'duplicate';
+  if (/constraint|check|invalid/i.test(msg)) return 'validation';
+  return 'other';
 }
 
 // ─── Update Entry ───────────────────────────────────────────────────
@@ -734,8 +693,6 @@ export async function clearEntryCache(): Promise<void> {
     }
   } catch {}
 }
-
-// ─── Singleton-style Export ─────────────────────────────────────────
 
 // ─── Convenience: get all entries for one tracker ───────────────────
 

@@ -6,13 +6,10 @@
 
 import { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import {
-  differenceInDays,
-  differenceInHours,
   subDays,
   subHours,
   format,
   isSameDay,
-  isToday,
 } from 'date-fns';
 
 // FIX: Direct imports from context sources (NOT useSafeContexts)
@@ -24,72 +21,7 @@ import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 import { useTimelineCorrelations } from './useTimelineCorrelations';
 import { getCachedCorrelations } from '../services/ai/CorrelationEngine';
-  /* ═══════════════════════════════════════════════════════════
-     RELATED TRACKER SUGGESTIONS
-     After logging one tracker, prompt the parent about a
-     naturally-related one. Only suggests if:
-       - the related tracker hasn't been logged in the last hour
-       - we've seen this pair logged together before
-     ═══════════════════════════════════════════════════════════ */
 
-  const relatedTrackerSuggestions = useMemo(() => {
-    const suggestions: Array<{
-      id: string;
-      trackerId: string;
-      emoji: string;
-      label: string;
-      reason: string;
-    }> = [];
-
-    // Pairs that commonly co-occur
-    const PAIRS: Record<string, Array<{ id: string; emoji: string; label: string }>> = {
-      feed: [
-        { id: 'diaper', emoji: '👶', label: 'Log diaper' },
-        { id: 'sleep', emoji: '😴', label: 'Log sleep' },
-      ],
-      sleep: [
-        { id: 'feed', emoji: '🍼', label: 'Log feed' },
-        { id: 'mood', emoji: '😊', label: 'Log mood on wake' },
-      ],
-      diaper: [
-        { id: 'feed', emoji: '🍼', label: 'Log feed' },
-        { id: 'potty', emoji: '🚽', label: 'Log potty' },
-      ],
-      medication: [
-        { id: 'temperature', emoji: '🌡️', label: 'Log temperature' },
-        { id: 'symptom', emoji: '😷', label: 'Log symptoms' },
-      ],
-      growth: [
-        { id: 'milestone', emoji: '🏆', label: 'Log milestone' },
-      ],
-      tummy_time: [
-        { id: 'milestone', emoji: '🏆', label: 'Log milestone' },
-      ],
-    };
-
-    const related = PAIRS[trackerId];
-    if (!related) return suggestions;
-
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-
-    related.forEach(({ id, emoji, label }) => {
-      // Skip if related tracker already logged recently
-      const recentForRelated = (getEntriesStable(id, 5) || []).filter(
-        (e: any) => e.timestamp > oneHourAgo
-      );
-      if (recentForRelated.length > 0) return;
-
-      suggestions.push({
-        id: `related-${id}`,
-        trackerId: id,
-        emoji,
-        label,
-        reason: 'Often logged together',
-      });
-    });
-
-    return suggestions;
-  }, [trackerId, getEntriesStable, trackerEntries.length]);
 /* ═══════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════ */
@@ -197,6 +129,22 @@ export interface TrackerProgressiveState {
   // ✅ NEW: expose growth-intelligence driven reminders
   generateReminders: (entries: TrackerEntry[], trackers: any[], score: any) => any[];
   checkNewAchievements: (entries: TrackerEntry[], score: any, unlocked: string[]) => any[];
+
+  // ✅ NEW: related tracker suggestions (chips after logging)
+  relatedTrackerSuggestions: Array<{
+    id: string;
+    trackerId: string;
+    emoji: string;
+    label: string;
+    reason: string;
+  }>;
+
+  // ✅ NEW: routine consistency score
+  routineScore: {
+    score: number;
+    label: string;
+    sessions: number;
+  };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -296,6 +244,21 @@ export const useTrackerProgressive = (trackerId: string) => {
   const tracker = useTracker();
   const baby = useBaby();
 
+  // ─── Safe entry accessor ─────────────────────────────────────────
+  // The tracker context may not be mounted yet when this hook runs.
+  // This wrapper prevents runtime crashes on `tracker.getEntries` calls.
+  const safeGetEntries = useCallback(
+    (id: string, limit?: number) => {
+      if (typeof tracker?.getEntries !== 'function') return [] as TrackerEntry[];
+      try {
+        return (tracker.getEntries(id, limit) || []) as TrackerEntry[];
+      } catch {
+        return [] as TrackerEntry[];
+      }
+    },
+    [tracker]
+  );
+
   // ─── Debounce entry-driven recomputes ──────────────────────────
   // When entries change rapidly (bulk import, quick successive logs),
   // we wait 300ms before invalidating memos. Prevents thrashing.
@@ -340,14 +303,15 @@ export const useTrackerProgressive = (trackerId: string) => {
   // ─── AI-discovered correlations (cached, no recompute) ──────────
   const [aiCorrelations, setAiCorrelations] = useState<any[]>([]);
   useEffect(() => {
-    if (!baby.currentBaby?.id) return;
+    const babyId = baby?.currentBaby?.id;
+    if (!babyId) return;
     let cancelled = false;
-    getCachedCorrelations(baby.currentBaby.id).then(list => {
+    getCachedCorrelations(babyId).then(list => {
       if (!cancelled) setAiCorrelations(list);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [
-    baby.currentBaby?.id,
+    baby?.currentBaby?.id,
     // Re-read whenever the tracker entries change — TrackerContext
     // invalidates the server cache after INVALIDATE_THRESHOLD new logs.
     tracker.entries?.length,
@@ -548,6 +512,75 @@ export const useTrackerProgressive = (trackerId: string) => {
       sessions: weekEntries.length,
     };
   }, [trackerEntries, now]);
+
+  /* ═══════════════════════════════════════════════════════════
+     RELATED TRACKER SUGGESTIONS
+     After logging one tracker, prompt the parent about a
+     naturally-related one. Only suggests if:
+       - the related tracker hasn't been logged in the last hour
+       - we've seen this pair logged together before
+     ═══════════════════════════════════════════════════════════ */
+
+  const relatedTrackerSuggestions = useMemo(() => {
+    const suggestions: Array<{
+      id: string;
+      trackerId: string;
+      emoji: string;
+      label: string;
+      reason: string;
+    }> = [];
+
+    // Pairs that commonly co-occur
+    const PAIRS: Record<string, Array<{ id: string; emoji: string; label: string }>> = {
+      feed: [
+        { id: 'diaper', emoji: '👶', label: 'Log diaper' },
+        { id: 'sleep', emoji: '😴', label: 'Log sleep' },
+      ],
+      sleep: [
+        { id: 'feed', emoji: '🍼', label: 'Log feed' },
+        { id: 'mood', emoji: '😊', label: 'Log mood on wake' },
+      ],
+      diaper: [
+        { id: 'feed', emoji: '🍼', label: 'Log feed' },
+        { id: 'potty', emoji: '🚽', label: 'Log potty' },
+      ],
+      medication: [
+        { id: 'temperature', emoji: '🌡️', label: 'Log temperature' },
+        { id: 'symptom', emoji: '😷', label: 'Log symptoms' },
+      ],
+      growth: [
+        { id: 'milestone', emoji: '🏆', label: 'Log milestone' },
+      ],
+      tummy_time: [
+        { id: 'milestone', emoji: '🏆', label: 'Log milestone' },
+      ],
+    };
+
+    const related = PAIRS[trackerId];
+    if (!related) return suggestions;
+
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+
+    related.forEach(({ id, emoji, label }) => {
+      // Skip if related tracker already logged recently.
+      // NOTE: We use `tracker.getEntries` directly (stable via
+      // trackerFingerprint) because `getEntriesStable` is not
+      // declared in this hook.
+      const recentForRelated = safeGetEntries(id, 5)
+        .filter((e: TrackerEntry) => e.timestamp > oneHourAgo);
+      if (recentForRelated.length > 0) return;
+
+      suggestions.push({
+        id: `related-${id}`,
+        trackerId: id,
+        emoji,
+        label,
+        reason: 'Often logged together',
+      });
+    });
+
+    return suggestions;
+  }, [trackerId, trackerFingerprint, trackerEntries.length, safeGetEntries]);
 
   /* ═══════════════════════════════════════════════════════════
      PREFILL DATA & SUGGESTIONS
@@ -924,7 +957,7 @@ export const useTrackerProgressive = (trackerId: string) => {
 
         if (trackerId === 'medication' && c.type === 'health_alert') {
           action = 'prefill';
-          const lastMed = (tracker.getEntries('medication', 10) || [])[0];
+          const lastMed = ((typeof tracker.getEntries === 'function' ? tracker.getEntries('medication', 10) : []) || [])[0];
           prefillData = lastMed
             ? {
                 reason: 'Fever',
@@ -1117,6 +1150,8 @@ export const useTrackerProgressive = (trackerId: string) => {
       lastUpdated: Date.now(),
       entryCount: trackerEntries.length,
       hasRealData: trackerEntries.length >= 5,
+      relatedTrackerSuggestions,
+      routineScore,
     }),
     [
       prefillData,
@@ -1133,6 +1168,8 @@ export const useTrackerProgressive = (trackerId: string) => {
       isLoading,
       trackerId,
       trackerEntries.length,
+      relatedTrackerSuggestions,
+      routineScore,
     ]
   );
 
@@ -1167,8 +1204,6 @@ export const useTrackerProgressive = (trackerId: string) => {
     todayEntries,
     yesterdayEntries,
     recentEntries,
-    relatedTrackerSuggestions,
-    routineScore,
     generateReminders: growthIndex?.generateReminders ?? (() => []),
     checkNewAchievements: growthIndex?.checkNewAchievements ?? (() => []),
   };

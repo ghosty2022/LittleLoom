@@ -646,6 +646,10 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     currentBabyIdRef.current = currentBabyIdState;
   }, [currentBabyIdState]);
 
+  // (We expose only the ref-based getter via context — the state
+  //  value `currentBabyIdState` is used internally for permissions
+  //  and effect deps where reactivity matters.)
+
   // ─── Subscribe to baby changes from BabyContext ─────────────────────
   useEffect(() => {
     if (subscriptionRef.current) {
@@ -751,28 +755,10 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return 'parent1';
   }, [userProfile]);
 
-  // ─── Granular permissions for the CURRENT baby ─────────────────────
-  // We track the current babyId in state (not just a ref) so permission
-  // recomputation happens on the SAME render as the baby switch.
-  const [currentBabyIdState, setCurrentBabyIdState] = useState<string | null>(
-    () => getBabyIdFromContext()
-  );
-
-  // Keep ref in sync for non-React callers
-  useEffect(() => {
-    currentBabyIdRef.current = currentBabyIdState;
-  }, [currentBabyIdState]);
-
-  // (Subscription to baby changes is handled by the earlier effect —
-  //  no duplicate subscription here to avoid double state updates.)
-
-  // ─── Override the ref-only getter with a state-aware version ──
-  // Now that `currentBabyIdState` is in scope, we can safely expose
-  // a version that reads from state first (for reactive contexts)
-  // and falls back to the ref (for synchronous reads).
-  const getCurrentBabyIdSafe = useCallback((): string | null => {
-    return currentBabyIdState ?? currentBabyIdRef.current;
-  }, [currentBabyIdState]);
+  // (See above for `currentBabyIdState` declaration and the sync effect.
+  //  `getCurrentBabyIdSafe` is declared below, after `currentBabyIdState`
+  //  is in scope — but currently we only need the ref-based version, so
+  //  we don't need a separate state-aware getter here.)
 
   const currentBabyPermissions = useMemo(() => {
     if (!currentBabyIdState) return null;
@@ -1974,7 +1960,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     syncFromBabyContext,
     refreshTrackers,
     refreshEntries,
-    getCurrentBabyId: getCurrentBabyIdSafe,
+    getCurrentBabyId,
   }), [
     state,
     getTracker,
