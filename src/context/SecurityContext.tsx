@@ -115,6 +115,12 @@ interface SecurityContextType extends SecurityState {
   getBiometricEnrolled: () => boolean;
   getBiometricEnabled: () => boolean;
   readBiometricEnabledFromStorage: () => Promise<boolean>;
+  /** Fresh synchronous snapshot of "is any security configured" + specifics. */
+  getSecuritySnapshot: () => {
+    hasAnySecurity: boolean;
+    hasBiometric: boolean;
+    hasPin: boolean;
+  };
 }
 
 const SecurityContext = createContext<SecurityContextType | null>(null);
@@ -1254,6 +1260,20 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     getBiometricEnabled,
     readBiometricEnabledFromStorage,
     isAppLocked: state.isSecurityLocked,
+    getSecuritySnapshot: () => {
+      const hasBiometric = Boolean(
+        state.settings.isBiometricEnabled &&
+          state.isBiometricHardwareAvailable &&
+          state.isBiometricEnrolled
+      );
+      const hasPin = Boolean(state.settings.isPinEnabled);
+      const hasAppLock = Boolean(state.settings.isAppLockEnabled);
+      return {
+        hasAnySecurity: hasBiometric || hasPin || hasAppLock,
+        hasBiometric,
+        hasPin,
+      };
+    },
   }), [
     state,
     checkBiometricCapabilities,
@@ -1290,6 +1310,11 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     getBiometricEnrolled,
     getBiometricEnabled,
     readBiometricEnabledFromStorage,
+    state.settings.isBiometricEnabled,
+    state.settings.isPinEnabled,
+    state.settings.isAppLockEnabled,
+    state.isBiometricHardwareAvailable,
+    state.isBiometricEnrolled,
   ]);
 
   return (

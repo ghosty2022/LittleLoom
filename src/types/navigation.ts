@@ -284,6 +284,9 @@ export type RootStackParamList = {
     fromForgotPassword?: boolean;
   } | undefined;
 
+  // ── Private Vault (PIN fallback for gallery) ──
+  VaultLock: undefined;
+
   // ── Safety ──
   SafetyCorner: undefined;
 

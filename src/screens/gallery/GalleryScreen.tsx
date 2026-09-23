@@ -89,10 +89,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useBaby } from '../../context/BabyContext';
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useMedia } from '../../context/MediaContext';
-import { useSecurity } from '../../context/SecurityContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
 import { SafeAvatar } from '../../components/SafeAvatar';
+import { useVaultUnlock } from '../../hooks/useVaultUnlock';
 import type { RootStackParamList } from '../../types/navigation';
 import {
   UnifiedPhoto,
@@ -1490,9 +1490,28 @@ export default function GalleryScreen() {
   const insets = useSafeAreaInsets();
   const { currentBaby, babies } = useBaby();
   const { entries, refreshEntries } = useTracker();
+
+  // Optional — PhotoSyncContext may not be mounted in every stack.
+  let syncedPhotos: UnifiedPhoto[] = [];
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const syncCtx = require('../../context/PhotoSyncContext').usePhotoSync?.();
+    if (syncCtx && typeof syncCtx.getUnifiedPhotos === 'function') {
+      syncedPhotos = syncCtx.getUnifiedPhotos();
+    }
+  } catch {
+    syncedPhotos = [];
+  }
   const { takePhoto, pickMultipleImages } = useMedia();
-  const { authenticateWithBiometric, settings: securitySettings } = useSecurity();
   const { alert: sweetAlert } = useSweetAlert();
+  const {
+    isUnlocked: vaultUnlocked,
+    unlock: unlockVault,
+    lock: lockVault,
+    isAuthenticating: vaultAuthenticating,
+    hasAnySecurity,
+    refreshSecurityStatus: refreshVaultSecurity,
+  } = useVaultUnlock();
 
   // ── UI state ──
   const [activeTab, setActiveTab] = useState<GalleryTab>('all');
@@ -1502,7 +1521,6 @@ export default function GalleryScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [vaultUnlocked, setVaultUnlocked] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [activeAlbumFilter, setActiveAlbumFilter] = useState<string | null>(null);
@@ -1540,6 +1558,26 @@ export default function GalleryScreen() {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 250);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  /* ── When returning from VaultLock, re-evaluate vault state ── */
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      // If the user came back from VaultLockScreen after successfully
+      // entering their PIN, VaultLockScreen will have called verifyPin()
+      // which sets nothing here — but the very next interaction with the
+      // vault will trigger unlockVault() again and succeed because the
+      // SecurityContext has cleared its own lock state.
+      if (activeTab === 'vault' && !vaultUnlocked) {
+        // Auto-attempt unlock on focus, but silently fail if user cancels.
+        unlockVault('Unlock Private Vault').then((ok) => {
+          if (!ok && hasAnySecurity) {
+            // Stay on the locked empty state — user can tap the button.
+          }
+        });
+      }
+    });
+    return unsubscribe;
+  }, [navigation, activeTab, vaultUnlocked, unlockVault, hasAnySecurity]);
 
   /* ── Load persisted metadata (via photoService) ── */
   useEffect(() => {
@@ -1602,12 +1640,25 @@ export default function GalleryScreen() {
     return map;
   }, [babies]);
 
-  /* ── Build unified gallery via photoService ── */
+  /* ── Build unified gallery via photoService + merge synced photos ── */
   const enrichedPhotos = useMemo((): UnifiedPhoto[] => {
     const nameMap = new Map<string, string>();
     babyMap.forEach((baby, id) => nameMap.set(id, baby.name));
-    return buildUnifiedGallery(entries, meta, nameMap);
-  }, [entries, meta, babyMap]);
+
+    const trackerPhotos = buildUnifiedGallery(entries, meta, nameMap);
+
+    // Merge in any photos from the auto-import queue (uploaded ones).
+    // Deduplicate by uri so nothing shows twice.
+    const seen = new Set(trackerPhotos.map((p) => p.uri));
+    const merged = [...trackerPhotos];
+    for (const sp of syncedPhotos) {
+      if (sp.uri && !seen.has(sp.uri)) {
+        seen.add(sp.uri);
+        merged.push(sp);
+      }
+    }
+    return merged.sort((a, b) => b.timestamp - a.timestamp);
+  }, [entries, meta, babyMap, syncedPhotos]);
 
   /* ── Filter photos ── */
   const filteredPhotos = useMemo(() => {
@@ -1727,43 +1778,68 @@ export default function GalleryScreen() {
     async (tab: GalleryTab) => {
       safeHaptic();
 
+      // Leaving the vault → re-lock immediately (privacy-first)
+      if (tab !== 'vault' && vaultUnlocked) {
+        lockVault();
+      }
+
       if (tab === 'vault' && !vaultUnlocked) {
-        try {
-          if (securitySettings.isBiometricEnabled) {
-            const result = await authenticateWithBiometric(
-              'Unlock Private Vault'
-            );
-            if (result.success) {
-              setVaultUnlocked(true);
-              setActiveTab(tab);
-            } else {
-              sweetAlert(
-                'Locked',
-                'Authentication failed. Vault stays locked.',
-                'warning'
-              );
-              return;
-            }
-          } else {
-            sweetAlert(
-              'Vault Locked',
-              'Enable biometrics in Settings to use the private vault.',
-              'info'
-            );
-            return;
-          }
-        } catch {
-          sweetAlert('Error', 'Could not unlock vault.', 'error');
+        // Refresh status — user may have toggled biometric in Settings.
+        await refreshVaultSecurity();
+
+        const unlocked = await unlockVault('Unlock Private Vault');
+        if (unlocked) {
+          setActiveTab(tab);
+          setActiveAlbumFilter(null);
+          setActiveBabyFilter(null);
           return;
         }
+
+        // Biometric failed OR no biometric → check if PIN exists
+        // and route to the PIN entry screen.
+        if (hasAnySecurity) {
+          navigation.navigate('VaultLock' as never);
+          return;
+        }
+
+        // No security configured at all — bail with helpful message.
+        sweetAlert(
+          'Vault Locked',
+          'Enable biometrics or set a PIN in Settings → Security to use the private vault.',
+          'info'
+        );
+        return;
       }
 
       setActiveTab(tab);
       setActiveAlbumFilter(null);
       setActiveBabyFilter(null);
     },
-    [vaultUnlocked, securitySettings, authenticateWithBiometric, sweetAlert]
+    [
+      vaultUnlocked,
+      lockVault,
+      unlockVault,
+      refreshVaultSecurity,
+      hasAnySecurity,
+      sweetAlert,
+      navigation,
+    ]
   );
+
+  /* ── Re-lock vault whenever the user switches away from the vault tab ── */
+  useEffect(() => {
+    if (activeTab !== 'vault' && vaultUnlocked) {
+      lockVault();
+    }
+  }, [activeTab, vaultUnlocked, lockVault]);
+
+  /* ── Re-check security status when returning from Settings ── */
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      refreshVaultSecurity();
+    });
+    return unsubscribe;
+  }, [navigation, refreshVaultSecurity]);
 
   const handleCamera = useCallback(async () => {
     try {
@@ -1816,13 +1892,32 @@ export default function GalleryScreen() {
     }));
   }, []);
 
-  const handleTogglePrivate = useCallback((photoId: string) => {
-    safeHaptic();
-    setMeta((prev) => ({
-      ...prev,
-      privates: toggleInSet(prev.privates, photoId),
-    }));
-  }, []);
+  const handleTogglePrivate = useCallback(
+    (photoId: string) => {
+      safeHaptic();
+
+      // If we're moving a photo INTO the vault, make sure security is
+      // configured so the user doesn't lock themselves out.
+      const isCurrentlyPrivate = meta.privates.has(photoId);
+      if (!isCurrentlyPrivate && !hasAnySecurity) {
+        sweetAlert(
+          'Security Required',
+          'Set up biometrics or a PIN in Settings → Security before marking photos as private.',
+          'warning',
+          () => {
+            navigation.navigate('SecurityCenter' as never);
+          }
+        );
+        return;
+      }
+
+      setMeta((prev) => ({
+        ...prev,
+        privates: toggleInSet(prev.privates, photoId),
+      }));
+    },
+    [meta.privates, hasAnySecurity, sweetAlert, navigation]
+  );
 
   const handleDeletePhoto = useCallback(
     (photoId: string) => {
@@ -2056,9 +2151,25 @@ export default function GalleryScreen() {
             <Text style={[styles.headerTitle, { color: theme.text.primary }]}>
               {currentBaby ? `${currentBaby.name}'s Photos` : 'Gallery'}
             </Text>
-            <Text style={[styles.headerSubtitle, { color: theme.text.muted }]}>
-              {enrichedPhotos.length} memor{enrichedPhotos.length === 1 ? 'y' : 'ies'}
-            </Text>
+            <View style={styles.headerSubtitleRow}>
+              <Text style={[styles.headerSubtitle, { color: theme.text.muted }]}>
+                {enrichedPhotos.length} memor{enrichedPhotos.length === 1 ? 'y' : 'ies'}
+              </Text>
+              {activeTab === 'vault' && vaultUnlocked ? (
+                <View style={[styles.vaultActiveBadge, { backgroundColor: `${theme.primary}20` }]}>
+                  <Ionicons name="lock-open" size={10} color={theme.primary} />
+                  <Text style={[styles.vaultActiveText, { color: theme.primary }]}>
+                    Unlocked
+                  </Text>
+                  <TouchableOpacity
+                    onPress={lockVault}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="lock-closed" size={10} color={theme.primary} />
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.headerActions}>
@@ -2248,7 +2359,35 @@ export default function GalleryScreen() {
               theme={theme}
             />
 
-            {filteredPhotos.length === 0 ? (
+            {activeTab === 'vault' && !vaultUnlocked ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="lock-closed" size={64} color={theme.text.muted} />
+                <Text style={[styles.emptyText, { color: theme.text.muted }]}>
+                  Your private vault is locked
+                </Text>
+                <TouchableOpacity
+                  style={[styles.captureBtn, { backgroundColor: theme.primary, marginTop: 8 }]}
+                  onPress={async () => {
+                    safeHaptic();
+                    await refreshVaultSecurity();
+                    const ok = await unlockVault('Unlock Private Vault');
+                    if (!ok && hasAnySecurity) {
+                      navigation.navigate('VaultLock' as never);
+                    }
+                  }}
+                  disabled={vaultAuthenticating}
+                >
+                  <Ionicons
+                    name={vaultAuthenticating ? 'hourglass-outline' : 'lock-open-outline'}
+                    size={20}
+                    color="#fff"
+                  />
+                  <Text style={styles.captureBtnText}>
+                    {vaultAuthenticating ? 'Authenticating…' : 'Unlock Vault'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : filteredPhotos.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons
                   name="images-outline"
@@ -2411,6 +2550,21 @@ const styles = StyleSheet.create({
   headerTitleWrap: { flex: 1 },
   headerTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   headerSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 2 },
+  headerSubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  vaultActiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  vaultActiveText: { fontSize: 10, fontWeight: '700' },
   headerActions: { flexDirection: 'row', gap: 6 },
   iconBtn: {
     width: 40,

@@ -47,6 +47,7 @@ import EditGuardianScreen from '../screens/family/EditGuardianScreen';
 import SoundMixerScreen from '../screens/gallery/SoundMixerScreen';
 import SecurityLockScreen from '../screens/security/SecurityLockScreen';
 import BiometricSetupScreen from '../screens/security/BiometricSetupScreen';
+import VaultLockScreen from '../screens/security/VaultLockScreen';
 import BabySelectorScreen from '../screens/baby/BabySelectorScreen';
 import CustomizeScreen from '../screens/settings/CustomizeScreen';
 import TimelineScreen from '../screens/tracking/TimelineScreen';
@@ -685,6 +686,12 @@ function NavigationContent({
             <Stack.Screen name="SecurityLock" component={SecurityLockScreen} options={{ headerShown: false }} />
             <Stack.Screen name="BiometricSetup" component={BiometricSetupScreen} />
             <Stack.Screen name="SecurityCenter" component={SecurityCenterScreen} />
+            {/* PIN fallback for the private vault (gallery). */}
+            <Stack.Screen
+              name="VaultLock"
+              component={VaultLockScreen}
+              options={{ headerShown: false, animation: 'slide_from_bottom' }}
+            />
           </Stack.Group>
 
           {/* TRACKER HUB SCREENS */}
