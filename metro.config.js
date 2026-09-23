@@ -1,18 +1,14 @@
 // metro.config.js
-// ─────────────────────────────────────────────────────────────────────
-// Windows EMFILE fix — aggressively block node_modules subfolders that
-// Metro does not need to watch, and use a single worker to keep the
-// file-handle count low.
-// ─────────────────────────────────────────────────────────────────────
-
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
+// Get the default config
 const config = getDefaultConfig(__dirname);
 
 // ─── SVG Support ──────────────────────────────────────────────────────
 const { transformer, resolver } = config;
 
+// Add SVG transformer support properly
 config.transformer = {
   ...transformer,
   babelTransformerPath: require.resolve('react-native-svg-transformer'),
@@ -22,16 +18,19 @@ config.transformer = {
       inlineRequires: true,
     },
   }),
-  // DO NOT override minifierConfig here — babel/minify defaults are fine
-  // and overriding them opens extra files per worker.
+  // Enable Fast Refresh improvements
+  minifierConfig: {
+    mangle: false,
+    keep_classnames: true,
+    keep_fnames: true,
+  },
 };
 
-// ─── Source extensions + aliases ──────────────────────────────────────
+// ─── Source extensions ──────────────────────────────────────────────
 config.resolver = {
   ...resolver,
   sourceExts: ['js', 'jsx', 'ts', 'tsx', 'json', 'cjs', 'mjs', 'svg'],
-  assetExts: resolver.assetExts.filter((ext) => ext !== 'svg'),
-  unstable_enableSymlinks: false,   // ← don't follow symlinked duplicates
+  assetExts: resolver.assetExts.filter(ext => ext !== 'svg'),
   alias: {
     '@': path.resolve(__dirname, 'src'),
     '@components': path.resolve(__dirname, 'src/components'),
@@ -48,83 +47,32 @@ config.resolver = {
   },
 };
 
-// ─── blockList: skip folders Metro should NOT watch ──────────────────
-// This is the single biggest EMFILE win. Every pattern here removes
-// thousands of files from Metro's watcher.
-config.resolver.blockList = [
-  // Metro / Expo caches
-  /\.expo\/.*/,
-  /\.metro\/.*/,
-  /node_modules\/\.cache\/.*/,
-  // Native build artifacts
-  /android\/\.gradle\/.*/,
-  /android\/\.cxx\/.*/,
-  /android\/build\/.*/,
-  /android\/app\/build\/.*/,
-  /ios\/Pods\/.*/,
-  /ios\/build\/.*/,
-  /ios\/\.xcode\.env\/.*/,
-  // Web / desktop builds
-  /dist\/.*/,
-  /web-build\/.*/,
-  // Editor + OS junk
-  /\.git\/.*/,
-  /\.vscode\/.*/,
-  /\.idea\/.*/,
-  /\.DS_Store$/,
-  // Logs
-  /npm-debug\.log$/,
-  /yarn-error\.log$/,
-  /.*\.log$/,
-  // Deep node_modules — the biggest single win.
-  // Metro never needs to watch 3+ levels of node_modules.
-  /node_modules\/.*\/node_modules\/.*\/node_modules\/.*/,
-  // Docs + test fixtures inside node_modules (huge)
-  /node_modules\/.*\/(docs|examples?|__tests__|__mocks__|test|tests|fixtures)\/.*/,
-  // Sentry vendored tools (not part of the app bundle)
-  /node_modules\/@sentry\/react-native\/dist\/js\/tools\/.*/,
-];
-
-// ─── watchFolders: include the entry files too ───────────────────────
-// By default Metro watches everything under the project root. Listing
-// explicit folders here narrows it down WITHOUT losing the entry files.
-// CRITICAL: include App.tsx / index.js / app.json so Metro doesn't fall
-// back to crawling node_modules to find them.
+// ─── Watch folders for better performance ──────────────────────────
 config.watchFolders = [
   path.resolve(__dirname, 'src'),
   path.resolve(__dirname, 'assets'),
-  path.resolve(__dirname, 'App.tsx'),
-  path.resolve(__dirname, 'App.js'),
-  path.resolve(__dirname, 'index.js'),
-  path.resolve(__dirname, 'index.tsx'),
-  path.resolve(__dirname, 'app.json'),
-  path.resolve(__dirname, 'package.json'),
-].filter((p) => {
-  try {
-    return require('fs').existsSync(p);
-  } catch {
-    return false;
-  }
-});
+];
 
-// ─── maxWorkers = 1: fewer workers = fewer file handles ─────────────
-// You can bump this to 2 later if you need more speed and EMFILE is gone.
-config.maxWorkers = 1;
+// ─── Max workers for better performance ────────────────────────────
+config.maxWorkers = 4;
 
-// ─── Watcher health check (helps detect stalls) ─────────────────────
-config.watcher = {
-  ...config.watcher,
-  additionalExts: ['cjs', 'mjs'],
-  healthCheck: {
-    enabled: true,
-    interval: 30000,
-    timeout: 10000,
+// ─── Cache settings for faster reloads ─────────────────────────────
+config.cacheVersion = '2.1';
+config.resetCache = false;
+
+// ─── Server settings for Fast Refresh ──────────────────────────────
+config.server = {
+  ...config.server,
+  enhanceMiddleware: (middleware) => {
+    return (req, res, next) => {
+      // Add HMR headers for Fast Refresh
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return middleware(req, res, next);
+    };
   },
 };
-
-// ─── Drop the custom enhanceMiddleware ──────────────────────────────
-// The one in your current file adds no value and holds extra handles
-// per request. Use the default middleware instead.
-// (If you need CORS, add it at the app level, not in Metro.)
 
 module.exports = config;
