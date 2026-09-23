@@ -32,6 +32,77 @@ export interface SaveEntryOptions {
   offlineOnly?: boolean;
 }
 
+export async function saveEntry(
+  input: RawEntryInput,
+  options: SaveEntryOptions = {}
+): Promise<SaveEntryResult> {
+  const payload = buildSupabasePayload(input);
+
+  if (options.offlineOnly) {
+    return { ok: true, queued: true };
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { ok: false, error: 'No authenticated user' };
+    }
+
+    // ─── Duplicate guard: same tracker + same baby + within 5s ────
+    // Catches double-tap save and offline-queue replays.
+    const fiveSecondsAgo = new Date(
+      new Date(input.timestamp).getTime() - 5000
+    ).toISOString();
+    const fiveSecondsLater = new Date(
+      new Date(input.timestamp).getTime() + 5000
+    ).toISOString();
+
+    const { data: dupes } = await supabase
+      .from('tracker_entries')
+      .select('id, data')
+      .eq('baby_id', input.babyId)
+      .eq('tracker_id', input.trackerId)
+      .eq('is_deleted', false)
+      .gte('timestamp', fiveSecondsAgo)
+      .lte('timestamp', fiveSecondsLater);
+
+    if (dupes && dupes.length > 0) {
+      // Compare data payloads — same fields = same entry
+      const incomingData = JSON.stringify(sanitizePayload(input.data));
+      const isDuplicate = dupes.some(
+        d => JSON.stringify(sanitizePayload(d.data)) === incomingData
+      );
+
+      if (isDuplicate) {
+        if (__DEV__) {
+          console.warn(
+            '[EntryService] Duplicate entry suppressed:',
+            input.trackerId
+          );
+        }
+        // Return the existing entry as if we just created it
+        return { ok: true };
+      }
+    }
+
+    const { error } = await supabase
+      .from('tracker_entries')
+      .upsert(payload, { onConflict: 'id' });
+
+    if (error) throw new Error(error.message);
+
+    await invalidateCache(input.babyId);
+    return { ok: true };
+  } catch (error: any) {
+    if (__DEV__) {
+      console.warn(
+        '[EntryService] Supabase write failed, will queue:',
+        error?.message
+      );
+    }
+    return { ok: false, error: error?.message || 'Unknown error' };
+  }
+}
 export interface SaveEntryResult {
   ok: boolean;
   entry?: TrackerEntry;
@@ -124,20 +195,32 @@ export function mapRowToEntry(row: any): TrackerEntry {
   const timestamp = Number.isFinite(tsMs) ? tsMs : Date.now();
 
   // ── Photo URIs: jsonb array → clean string[] ─────────────────────
-  // Row values might be: string[], PhotoMeta[], nested arrays, or null.
-  // We flatten and coerce everything to a flat string[].
+  // Prefer publicUrl over uri when both exist (survives cache clears).
   const photoUris: string[] | undefined = (() => {
-    if (!Array.isArray(row.photo_uris)) return undefined;
-    const flat = (row.photo_uris as unknown[]).flat(Infinity);
+    const raw = row.photo_uris ?? row.photos ?? row.photo_urls;
+    if (!Array.isArray(raw)) return undefined;
+
+    const flat = (raw as unknown[]).flat(Infinity);
     const strings = flat
       .map((u) => {
         if (typeof u === 'string') return u;
-        if (u && typeof u === 'object' && typeof (u as any).uri === 'string') {
-          return (u as any).uri as string;
+        if (u && typeof u === 'object') {
+          const obj = u as any;
+          // Prefer remote URL for persistence
+          if (typeof obj.publicUrl === 'string' && obj.publicUrl.length > 0) {
+            return obj.publicUrl;
+          }
+          if (typeof obj.url === 'string' && obj.url.length > 0) {
+            return obj.url;
+          }
+          if (typeof obj.uri === 'string' && obj.uri.length > 0) {
+            return obj.uri;
+          }
         }
         return '';
       })
       .filter((u): u is string => u.length > 0);
+
     const deduped = [...new Set(strings)];
     return deduped.length > 0 ? deduped : undefined;
   })();
@@ -298,18 +381,19 @@ export async function saveEntry(
     return { ok: true, queued: true };
   }
 
-  // ─── Try Supabase write ──────────────────────────────────────────
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       return { ok: false, error: 'No authenticated user' };
     }
 
-    const query = options.upsert
-      ? supabase.from('tracker_entries').upsert(payload, { onConflict: 'id' })
-      : supabase.from('tracker_entries').insert(payload);
-
-    const { error } = await query;
+    // ─── Idempotency: always upsert on id ────────────────────────
+    // Network retries, double-taps, and offline-queue flushes all
+    // converge to a single row. `insert` was causing duplicate-key
+    // errors that silently dropped entries.
+    const { error } = await supabase
+      .from('tracker_entries')
+      .upsert(payload, { onConflict: 'id' });
 
     if (error) {
       throw new Error(error.message);
@@ -568,7 +652,26 @@ export async function warmCache(
   babyId: string,
   entries: TrackerEntry[]
 ): Promise<void> {
-  await writeCache(babyId, entries);
+  try {
+    // Read existing cache and merge — preserve older entries that
+    // may not be in the fresh query result.
+    const existing = await readFromCache({ babyId, includeDeleted: true });
+
+    // Build a map keyed by id, newest data wins
+    const merged = new Map<string, TrackerEntry>();
+    for (const e of existing) merged.set(e.id, e);
+    for (const e of entries) merged.set(e.id, e);
+
+    // Sort by timestamp descending and keep the newest 500
+    const final = [...merged.values()]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 500);
+
+    await writeCache(babyId, final);
+  } catch {
+    // Fall back to overwrite if merge fails
+    await writeCache(babyId, entries);
+  }
 }
 
 // ─── Get Cached Entries (offline read) ──────────────────────────────
@@ -614,6 +717,50 @@ export const EntryService = {
   sanitizePayload,
   sanitizePhotoUris,
   sanitizeTags,
+  // Convenience helpers
+  getEntriesForTracker,
+  getEntriesInRange,
+  countEntriesForTracker,
 };
 
+// ─── Convenience: get all entries for one tracker ───────────────────
+
+export async function getEntriesForTracker(
+  babyId: string,
+  trackerId: string,
+  limit: number = 100
+): Promise<TrackerEntry[]> {
+  return getEntries({ babyId, trackerId, limit });
+}
+
+// ─── Convenience: get entries in a date range ───────────────────────
+
+export async function getEntriesInRange(
+  babyId: string,
+  fromMs: number,
+  toMs: number
+): Promise<TrackerEntry[]> {
+  return getEntries({ babyId, since: fromMs, until: toMs, limit: 2000 });
+}
+
+// ─── Convenience: count entries for one tracker ─────────────────────
+
+export async function countEntriesForTracker(
+  babyId: string,
+  trackerId: string
+): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('tracker_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('baby_id', babyId)
+      .eq('tracker_id', trackerId)
+      .eq('is_deleted', false);
+
+    if (error) return 0;
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
 export default EntryService;

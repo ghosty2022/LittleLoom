@@ -94,7 +94,9 @@ interface AIAnalysis {
   confidence: number; // 0 when no real ML model is available
   suggestions: string[];
   severity?: 'low' | 'medium' | 'high';
-  modelAvailable?: boolean;
+  /** `true` only when a real on-device ML model produced this analysis.
+   *  `false` means the data is rule-based guidance, NOT AI. */
+  modelAvailable: boolean;
 }
 
 interface SmartPhotoFieldProps {
@@ -282,11 +284,12 @@ const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysi
   };
 
   // Simulate a brief processing delay (for UX) but return honest data
+  // Simulate a brief processing delay for UX (photo appearing to "analyze")
   await new Promise((r) => setTimeout(r, 300));
 
   return {
     labels: context ? [context.replace(/_/g, ' ')] : ['photo'],
-    confidence: 0, // 0 = no real ML model; UI should NOT show a fake %
+    confidence: 0, // 0 = no real ML model available
     suggestions: guidance.suggestions,
     severity: guidance.severity,
     modelAvailable: false,
@@ -1093,6 +1096,19 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 </View>
               ) : null}
 
+              {/* Local-only warning when upload didn't complete */}
+              {currentMeta && !currentMeta.storagePath && uploadToSupabase && babyId ? (
+                <View
+                  style={[
+                    styles.localOnlyBadge,
+                    { backgroundColor: 'rgba(245,158,11,0.9)' },
+                  ]}
+                >
+                  <Ionicons name="cloud-offline-outline" size={12} color="#FFF" />
+                  <Text style={styles.localOnlyText}>Local only</Text>
+                </View>
+              ) : null}
+
               {analyzing || isProcessing ? (
                 <View style={styles.analyzingOverlay}>
                   <ActivityIndicator color={COLORS.primary} size="large" />
@@ -1736,6 +1752,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   timestampText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
+  localOnlyBadge: {
+    position: 'absolute',
+    top: 44,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  localOnlyText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
   analyzingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',

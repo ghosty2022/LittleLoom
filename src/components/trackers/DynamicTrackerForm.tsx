@@ -41,7 +41,31 @@ import { MOOD_EMOJIS } from './trackerConstants';
 import { isFieldVisible } from '../../utils/form';
 
 const { width: SCREEN_W } = Dimensions.get('window');
+// ─── Per-tracker default values ─────────────────────────────────────────
+// Applied only when no user data or prefill exists for that field.
+const TRACKER_DEFAULTS: Record<string, Record<string, unknown>> = {
+  mood: { mood: 3 },
+  crying: { intensity: 3 },
+  sleep: { sleepType: 'nap', status: 'ongoing' },
+  feed: { feedType: 'breast' },
+  diaper: { type: 'wet' },
+  potty: { type: 'pee', successful: true },
+  temperature: { unit: 'celsius' },
+  medication: { given: true },
+  bath: { shampoo: false, soap: true },
+  solid_food: { texture: 'puree' },
+  water: { vessel: 'sippy' },
+  vitamin: { given: true },
+  screen_time: { device: 'tv' },
+  bedtime: { routineDuration: 1800 }, // 30 min default
+  play: { engagement: 3 },
+  tummy_time: { tolerance: 3 },
+  reading: { engagement: 3 },
+};
 
+const getTrackerDefaults = (trackerId: string): Record<string, unknown> => {
+  return TRACKER_DEFAULTS[trackerId] ?? {};
+};
 interface DynamicTrackerFormProps {
   tracker: UnifiedTrackerConfig;
   initialData?: Record<string, unknown>;
@@ -66,6 +90,16 @@ const TREND_ICONS = {
   up: 'trending-up-outline',
   down: 'trending-down-outline',
   same: 'remove-outline',
+};
+
+// ─── Validation helpers ─────────────────────────────────────────────────
+const MAX_FUTURE_MS = 5 * 60 * 1000; // 5 minutes ahead is OK (clock skew)
+
+const isFutureTimestamp = (value: unknown): boolean => {
+  if (value === undefined || value === null || value === '') return false;
+  const d = new Date(String(value));
+  if (isNaN(d.getTime())) return false;
+  return d.getTime() - Date.now() > MAX_FUTURE_MS;
 };
 
 // ─── Duration formatter ─────────────────────────────────────────────────
@@ -1548,8 +1582,11 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       } catch {
         // Continue
       }
+
+      const value = data[field.id];
+
+      // Required check
       if (field.required) {
-        const value = data[field.id];
         if (
           value === undefined ||
           value === '' ||
@@ -1557,9 +1594,32 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           (Array.isArray(value) && value.length === 0)
         ) {
           newErrors[field.id] = `${field.label} is required`;
+          return;
+        }
+      }
+
+      // Future-date guard for datetime fields
+      if (
+        (field.type === 'datetime' || field.type === 'date' || field.type === 'time') &&
+        isFutureTimestamp(value)
+      ) {
+        newErrors[field.id] = `${field.label} can't be in the future`;
+        return;
+      }
+
+      // Sanity bounds on numeric fields
+      if (
+        (field.type === 'number' || field.type === 'quantity' || field.type === 'measurement') &&
+        typeof value === 'number'
+      ) {
+        if (Number.isFinite(field.min as any) && value < Number(field.min)) {
+          newErrors[field.id] = `${field.label} must be at least ${field.min}`;
+        } else if (Number.isFinite(field.max as any) && value > Number(field.max)) {
+          newErrors[field.id] = `${field.label} must be at most ${field.max}`;
         }
       }
     });
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }, [tracker.fields, data]);
@@ -1692,15 +1752,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               const endMs = new Date(String(value)).getTime();
               if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
                 const secs = Math.round((endMs - startMs) / 1000);
-                // Only set duration if meaningful (>= 60 seconds)
-                if (secs >= 60) {
+                // Only set duration if meaningful (>= 60s) AND sane (<= 24h)
+                if (secs >= 60 && secs <= 86400) {
                   next.duration = secs;
                 } else {
-                  // Too short — clear duration but keep completed status
+                  // Too short or absurdly long — clear duration
                   delete next.duration;
                 }
               } else {
-                // Invalid times — clear duration
+                // Invalid or backwards times — clear duration
                 delete next.duration;
               }
             }
@@ -1805,9 +1865,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       switch (field.type) {
         case 'datetime':
         case 'date': {
-          // Special handling for sleep/feed start/end times
+          // Special handling for trackers that have explicit start/end times
+          const DURATION_TRACKERS = ['sleep', 'feed', 'dream_feed', 'nap', 'bath', 'pumping', 'tummy_time'];
           if (
-            (tracker.id === 'sleep' || tracker.id === 'feed') &&
+            DURATION_TRACKERS.includes(tracker.id) &&
             (field.id === 'startTime' || field.id === 'endTime')
           ) {
             return animatedWrapper(
