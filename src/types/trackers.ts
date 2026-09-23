@@ -1,5 +1,21 @@
+// src/types/trackers.ts
+// ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL TYPES for the tracker system.
+//
+// This file is the single source of truth for:
+//   • TrackerCategory, FieldType, FieldConfig, FieldOption
+//   • Unit option sets (LIQUID, SOLID, WEIGHT, LENGTH, TEMPERATURE)
+//   • TrackerEntry, UnifiedTrackerConfig, TrackerInsight, TrackerStreak
+//   • ReminderRule, ProgressiveTrackerState
+//   • DEFAULT_TRACKER_IDS (must stay in sync with config/defaultTrackers.ts)
+//
+// NOTE: `ActivityType` is imported from BabyContext for backward compat
+// with legacy code, but new code must use `TrackerEntry.trackerId` instead.
+// ═══════════════════════════════════════════════════════════════════════════
+
 import { ActivityType as LegacyActivityType } from '../context/BabyContext';
 
+// ─── CATEGORIES ────────────────────────────────────────────────────────────
 export type TrackerCategory =
   | 'essential'
   | 'health'
@@ -12,9 +28,12 @@ export type TrackerCategory =
   | 'parental'
   | 'travel'
   | 'special_needs'
-  
-  | 'household'| 'custom';
+  | 'household'
+  | 'custom';
 
+// ─── FIELD TYPES ───────────────────────────────────────────────────────────
+// Every field type the DynamicTrackerForm knows how to render.
+// Adding a new type here REQUIRES a corresponding case in DynamicTrackerForm.
 export type FieldType =
   | 'text'
   | 'number'
@@ -32,30 +51,26 @@ export type FieldType =
   | 'temperature'
   | 'measurement'
   | 'quantity'
-  | 'counter'
   | 'slider'
-  | 'checkbox'
   | 'mood_emoji'
-  | 'progress_bar'      // Visual progress (e.g., bottle emptying)
-  | 'timer'             // Active timer that runs while logging
-  | 'interval'          // "Every X hours" for recurring things
-  | 'pair'              // Start/End time pair with auto-duration
-  | 'repeat_schedule';  // "Mon, Wed, Fri at 8am" pattern
+  | 'pain_scale';     // 0–10 numeric scale (rendered as slider with emoji anchors)
 
-// ─── Unit Sets ──────────────────────────────────────────────────────────
-// Different contexts need different unit options. This centralizes them.
+// ─── UNIT OPTION SETS ──────────────────────────────────────────────────────
+// Shared across defaultTrackers.ts so unit definitions never drift.
 
 export interface UnitOption {
   id: string;
   label: string;
 }
 
+/** Liquid measurements — ml is the universal default, oz for US/UK. */
 export const LIQUID_UNITS: UnitOption[] = [
   { id: 'ml', label: 'ml' },
   { id: 'oz', label: 'oz' },
   { id: 'cups', label: 'cups' },
 ];
 
+/** Solid food measurements — g is universal, oz/tbsp/servings for US. */
 export const SOLID_UNITS: UnitOption[] = [
   { id: 'g', label: 'g' },
   { id: 'oz', label: 'oz' },
@@ -65,6 +80,7 @@ export const SOLID_UNITS: UnitOption[] = [
   { id: 'pieces', label: 'pieces' },
 ];
 
+/** Weight measurements — kg universal, lb for US/UK. */
 export const WEIGHT_UNITS: UnitOption[] = [
   { id: 'kg', label: 'kg' },
   { id: 'lb', label: 'lb' },
@@ -72,30 +88,39 @@ export const WEIGHT_UNITS: UnitOption[] = [
   { id: 'oz', label: 'oz' },
 ];
 
+/** Length/height measurements — cm universal, in for US/UK. */
 export const LENGTH_UNITS: UnitOption[] = [
   { id: 'cm', label: 'cm' },
   { id: 'in', label: 'in' },
   { id: 'mm', label: 'mm' },
 ];
 
+/** Temperature units. */
 export const TEMPERATURE_UNITS: UnitOption[] = [
   { id: 'celsius', label: '°C' },
   { id: 'fahrenheit', label: '°F' },
 ];
 
+// ─── FIELD OPTIONS ─────────────────────────────────────────────────────────
 export interface FieldOption {
   id: string;
   label: string;
   emoji?: string;
   icon?: string;
   color?: string;
+
+  /**
+   * Optional triggers — used by the AI engine to react to specific selections.
+   * e.g., selecting "Fever" can alert the parent or schedule a follow-up.
+   */
   triggers?: {
     alertParent?: boolean;
     scheduleFollowUp?: { hours: number; message: string };
-    linkToTracker?: string;  // e.g., selecting "Fever" links to Temperature tracker
+    linkToTracker?: string; // e.g., selecting "Fever" links to Temperature tracker
   };
 }
 
+// ─── FIELD CONFIG ──────────────────────────────────────────────────────────
 export interface FieldConfig {
   id: string;
   label: string;
@@ -104,55 +129,73 @@ export interface FieldConfig {
   placeholder?: string;
   required?: boolean;
   unit?: string;
-  unitOptions?: { id: string; label: string }[];
+  unitOptions?: UnitOption[];
   min?: number;
   max?: number;
   step?: number;
   defaultValue?: unknown;
+
+  /** Conditional visibility — only show this field when the condition holds. */
   showIf?: {
     field: string;
     equals?: string | boolean | number;
     notEquals?: string | boolean | number;
     contains?: string;
   };
+
+  /**
+   * Progressive enhancement metadata — lets the form decide whether to:
+   *   - suggest values based on history
+   *   - carry forward yesterday's value
+   *   - show a trend arrow next to the field
+   *   - use time-of-day-based suggestions
+   */
   progressive?: {
     suggestFromHistory?: boolean;
     carryForward?: boolean;
     showTrend?: boolean;
     timeBasedSuggestions?: boolean;
   };
+
+  /**
+   * Optional hint shown next to the field label (e.g., "Optional").
+   * Rendered as small gray text. Never used for required fields.
+   */
+  hint?: string;
 }
 
+// ─── REMINDER RULES ────────────────────────────────────────────────────────
 export interface ReminderRule {
   id: string;
   trackerId: string;
-  fieldId?: string;           // Which field triggered this (e.g., "nextDose")
-  type: 'fixed_time' |        // "Every day at 8am"
-    'interval' |              // "Every 6 hours after last log"
-    'pattern' |               // "Mon/Wed/Fri"
-    'conditional' |           // "If temperature > 38°C, remind in 2h"
-    'streak' |                // "You've logged 5 days, keep it up!"
-    'correlation' |           // "Baby fussy after feed? Log next feed carefully"
-    'milestone';              // "First tooth? Time for dental check!"
+  fieldId?: string;
+  type:
+    | 'fixed_time'
+    | 'interval'
+    | 'pattern'
+    | 'conditional'
+    | 'streak'
+    | 'correlation'
+    | 'milestone';
 
-  time?: string;              // "08:00" for fixed_time
-  intervalHours?: number;     // For interval-based
-  daysOfWeek?: number[];      // [1,3,5] for Mon/Wed/Fri
+  time?: string;
+  intervalHours?: number;
+  daysOfWeek?: number[];
 
   condition?: {
     field: string;
     operator: 'gt' | 'lt' | 'eq' | 'gte' | 'lte' | 'contains';
     value: string | number | boolean;
     then: {
-      remindIn: number;       // minutes
+      remindIn: number;
       message: string;
       priority: 'low' | 'normal' | 'high' | 'urgent';
     };
   };
 
-  smartSnooze?: boolean;      // If parent is busy, auto-snooze 15min
-  escalateToPartner?: boolean; // If missed 2x, notify other parent
-  requireConfirmation?: boolean; // Must tap "Given" not just dismiss
+  smartSnooze?: boolean;
+  escalateToPartner?: boolean;
+  requireConfirmation?: boolean;
 
   title: string;
   body: string;
@@ -169,14 +212,13 @@ export interface ReminderRule {
   updatedAt: number;
 }
 
+// ─── TRACKER ENTRY ─────────────────────────────────────────────────────────
 export interface TrackerEntry {
   id: string;
   babyId: string;
   trackerId: string;
   timestamp: number;
-
   title: string;
-
   data: Record<string, unknown>;
 
   loggedBy: string;
@@ -224,6 +266,7 @@ export interface TrackerEntry {
   isDeleted?: boolean;
 }
 
+// ─── UNIFIED TRACKER CONFIG ────────────────────────────────────────────────
 export interface UnifiedTrackerConfig {
   id: string;
   name: string;
@@ -248,20 +291,16 @@ export interface UnifiedTrackerConfig {
 
   progressive?: {
     supportsStreaks?: boolean;
-    streakGoal?: number;  // e.g., "7 days of tummy time"
-
+    streakGoal?: number;
     supportsChaining?: boolean;
-    chainDescription?: string;  // e.g., "Link feed → diaper → sleep"
-
+    chainDescription?: string;
     smartSuggestions?: {
       enabled: boolean;
-      suggestTime?: boolean;     // "Usually feed at 8am, it's 7:45"
-      suggestAmount?: boolean;   // "Yesterday: 120ml, suggest same"
-      suggestFromPartner?: boolean; // "Other parent gave 150ml at 6am"
+      suggestTime?: boolean;
+      suggestAmount?: boolean;
+      suggestFromPartner?: boolean;
     };
-
     reminderRules?: ReminderRule[];
-
     correlations?: {
       watchTrackerId: string;
       watchField: string;
@@ -280,11 +319,11 @@ export interface UnifiedTrackerConfig {
   }[];
 }
 
+// ─── TRACKER INSIGHT ───────────────────────────────────────────────────────
 export interface TrackerInsight {
   id: string;
   trackerId: string;
   type: 'pattern' | 'anomaly' | 'milestone' | 'suggestion' | 'correlation';
-
   title: string;
   description: string;
   emoji: string;
@@ -306,27 +345,27 @@ export interface TrackerInsight {
   generatedAt: number;
   expiresAt?: number;
   dismissedAt?: number;
-
-  confidence: number;  // 0-1, increases with more data
+  confidence: number;
 }
 
+// ─── TRACKER STREAK ────────────────────────────────────────────────────────
 export interface TrackerStreak {
   trackerId: string;
   currentStreak: number;
   longestStreak: number;
   lastLoggedAt: number;
   nextDueAt?: number;
-  isAtRisk: boolean;  // Haven't logged today and it's getting late
-  goalProgress?: number;  // e.g., 5/7 days
+  isAtRisk: boolean;
+  goalProgress?: number;
 }
 
+// ─── STORAGE KEYS ──────────────────────────────────────────────────────────
 export const TRACKER_STORAGE_KEYS = {
   CUSTOM_TRACKERS: '@littleloom_custom_trackers_v2',
   TRACKER_SETTINGS: '@littleloom_tracker_settings_v2',
   LAST_TRACKER: '@littleloom_last_tracker_id',
   ENTRIES_PREFIX: (babyId: string) => `@littleloom_entries_${babyId}`,
   ENTRIES_INDEX: (babyId: string) => `@littleloom_entries_index_${babyId}`,
-
   REMINDERS: '@littleloom_reminders_v2',
   STREAKS: (babyId: string) => `@littleloom_streaks_${babyId}`,
   INSIGHTS: (babyId: string) => `@littleloom_insights_${babyId}`,
@@ -335,10 +374,9 @@ export const TRACKER_STORAGE_KEYS = {
   CHAINS: (babyId: string) => `@littleloom_chains_${babyId}`,
 } as const;
 
-// ─── Canonical list of built-in tracker IDs ─────────────────────────────
-// IMPORTANT: this must stay in sync with DEFAULT_TRACKERS in
-// `config/defaultTrackers.ts`. If they drift, `isCustomTracker()` will
-// misclassify built-ins as custom (and vice-versa).
+// ─── CANONICAL BUILT-IN TRACKER IDS ────────────────────────────────────────
+// MUST stay in sync with DEFAULT_TRACKERS in config/defaultTrackers.ts.
+// If they drift, isCustomTracker() will misclassify built-ins as custom.
 export const DEFAULT_TRACKER_IDS = [
   // Essential
   'feed', 'sleep', 'diaper', 'potty', 'bath', 'pumping',
@@ -375,21 +413,17 @@ export type DefaultTrackerId = typeof DEFAULT_TRACKER_IDS[number];
 export type TrackerActivityType = LegacyActivityType | `custom_${string}`;
 
 export const isCustomTracker = (id: string): boolean =>
-  id.startsWith('custom_') || !DEFAULT_TRACKER_IDS.includes(id as DefaultTrackerId);
+  id.startsWith('custom_') ||
+  !DEFAULT_TRACKER_IDS.includes(id as DefaultTrackerId);
 
+// ─── PROGRESSIVE TRACKER STATE ─────────────────────────────────────────────
 export interface ProgressiveTrackerState {
   todayEntries: TrackerEntry[];
-
   yesterdayEntries: TrackerEntry[];
-
   streaks: TrackerStreak[];
-
   insights: TrackerInsight[];
-
   pendingReminders: ReminderRule[];
-
   recentTemplates: { trackerId: string; templateId: string; usedAt: number }[];
-
   detectedPatterns: {
     id: string;
     description: string;

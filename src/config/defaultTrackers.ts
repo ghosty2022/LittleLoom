@@ -1,19 +1,32 @@
 // src/config/defaultTrackers.ts
-// COMPLETE FIXED V2
-//   ✓ Every tracker has consistent field structure
-//   ✓ Real, actionable fields — no guessing
-//   ✓ Proper units (region-agnostic defaults, explicit overrides)
-//   ✓ Sleep/feed have ongoing/completed status support
-//   ✓ Solid food has its own measurement field separate from liquids
-//   ✓ Duration fields everywhere they matter
-//   ✓ Deduplicated labels and clear descriptions
-//   ✓ Every tracker has 1-4 quickTags for one-tap logging
-//   ✓ Removed redundant trackers that overlapped heavily
-//   ✓ All trackers properly categorized
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCTION-READY DEFAULT TRACKERS V3
+//
+// Design principles:
+//   1. Every field is ACTIONABLE — no filler, no guessing
+//   2. Only relevant fields are shown via `showIf` conditions
+//   3. Ongoing/completed status support for every duration tracker
+//   4. Region-aware unit defaults (ml/oz, kg/lb, cm/in)
+//   5. Rich contextual options (side effects, triggers, relief methods)
+//   6. Consistent naming — snake_case field IDs, Title Case labels
+//   7. No duplicate tracker IDs — every tracker is unique
+//   8. Clean iconography from Ionicons
+//   9. Smart suggestions built into field metadata where relevant
+//   10. Every quickTag is a real, one-tap action parents actually use
+// ═══════════════════════════════════════════════════════════════════════════
 
-import { UnifiedTrackerConfig, FieldConfig, TrackerCategory } from '../types/trackers';
+import {
+  UnifiedTrackerConfig,
+  FieldConfig,
+  TrackerCategory,
+  LIQUID_UNITS as CANONICAL_LIQUID_UNITS,
+  SOLID_UNITS as CANONICAL_SOLID_UNITS,
+  WEIGHT_UNITS as CANONICAL_WEIGHT_UNITS,
+  LENGTH_UNITS as CANONICAL_LENGTH_UNITS,
+} from '../types/trackers';
 
-// ─── Field builders ─────────────────────────────────────────────────────
+// ─── FIELD BUILDERS ────────────────────────────────────────────────────────
+// These keep tracker definitions short, readable, and consistent.
 const f = {
   text: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
     id, label, type: 'text', ...opts,
@@ -70,9 +83,12 @@ const f = {
   video: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
     id, label, type: 'video', ...opts,
   }),
+  slider: (id: string, label: string, min = 0, max = 10, opts?: Partial<FieldConfig>): FieldConfig => ({
+    id, label, type: 'slider', min, max, ...opts,
+  }),
 };
 
-// ─── Permission presets ─────────────────────────────────────────────────
+// ─── PERMISSION PRESETS ────────────────────────────────────────────────────
 const defaultPerms = {
   familyRoles: ['parent1', 'parent2', 'guardian'] as ('parent1' | 'parent2' | 'guardian')[],
   allowGuardiansCreate: true,
@@ -80,40 +96,50 @@ const defaultPerms = {
   allowGuardiansDeleteOwn: true,
 };
 
-// ─── Shared unit option sets ────────────────────────────────────────────
-const LIQUID_UNITS = [
-  { id: 'ml', label: 'ml' },
-  { id: 'oz', label: 'oz' },
+// ─── SHARED UNIT SETS (referenced from canonical types) ────────────────────
+const LIQUID_UNITS = CANONICAL_LIQUID_UNITS;
+const SOLID_UNITS = CANONICAL_SOLID_UNITS;
+const WEIGHT_UNITS = CANONICAL_WEIGHT_UNITS;
+const LENGTH_UNITS = CANONICAL_LENGTH_UNITS;
+
+// ─── SHARED OPTION SETS (reused across trackers) ───────────────────────────
+const SEVERITY_5 = [
+  { id: '1', label: 'Very Mild', emoji: '🟢' },
+  { id: '2', label: 'Mild', emoji: '🟢' },
+  { id: '3', label: 'Moderate', emoji: '🟡' },
+  { id: '4', label: 'Severe', emoji: '🟠' },
+  { id: '5', label: 'Very Severe', emoji: '🔴' },
 ];
 
-const SOLID_UNITS = [
-  { id: 'g', label: 'g' },
-  { id: 'oz', label: 'oz' },
-  { id: 'tbsp', label: 'tbsp' },
-  { id: 'servings', label: 'servings' },
-  { id: 'pieces', label: 'pieces' },
+const ONSET_SPEED = [
+  { id: 'sudden', label: 'Sudden', emoji: '⚡' },
+  { id: 'gradual', label: 'Gradual', emoji: '📈' },
+  { id: 'unknown', label: 'Unknown', emoji: '❓' },
 ];
 
-const WEIGHT_UNITS = [
-  { id: 'kg', label: 'kg' },
-  { id: 'lb', label: 'lb' },
-  { id: 'g', label: 'g' },
-  { id: 'oz', label: 'oz' },
+const DURATION_TRACKER_STATUS = [
+  { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
+  { id: 'completed', label: 'Completed', emoji: '✅' },
 ];
 
-const LENGTH_UNITS = [
-  { id: 'cm', label: 'cm' },
-  { id: 'in', label: 'in' },
+const MOOD_SCALE = [
+  { id: '1', label: 'Very Unhappy', emoji: '😭' },
+  { id: '2', label: 'Unhappy', emoji: '😟' },
+  { id: '3', label: 'Neutral', emoji: '😐' },
+  { id: '4', label: 'Happy', emoji: '🙂' },
+  { id: '5', label: 'Very Happy', emoji: '😄' },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 // DEFAULT TRACKERS
-// ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 
 export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // ESSENTIAL
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── FEEDING ────────────────────────────────────────────────────────────
   {
     id: 'feed',
     name: 'Feeding',
@@ -121,12 +147,24 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     icon: 'nutrition-outline',
     color: '#FF9F43',
     gradient: ['#FF9F43', '#FF6B6B'],
-    description: 'Breastfeeding, bottle, and solid food',
+    description: 'Breast, bottle, solid, and water feeds',
     category: 'essential',
     isCustom: false,
     createdAt: 0,
     updatedAt: 0,
     permissions: defaultPerms,
+    progressive: {
+      supportsStreaks: true,
+      streakGoal: 7,
+      supportsChaining: true,
+      chainDescription: 'Feed → Diaper → Sleep',
+      smartSuggestions: {
+        enabled: true,
+        suggestTime: true,
+        suggestAmount: true,
+        suggestFromPartner: true,
+      },
+    },
     fields: [
       f.select(
         'feedType',
@@ -139,24 +177,8 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      // Status for tracking ongoing/completed feeds (esp. breastfeeding)
-      f.select(
-        'status',
-        'Status',
-        [
-          { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
-          { id: 'completed', label: 'Finished', emoji: '✅' },
-        ],
-        { showIf: { field: 'feedType', equals: 'breast' } }
-      ),
-      f.datetime('startTime', 'Start Time', {
-        showIf: { field: 'feedType', equals: 'breast' },
-      }),
-      f.datetime('endTime', 'End Time', {
-        showIf: { field: 'feedType', equals: 'breast' },
-      }),
 
-      // ── Breast ────────────────────────────────────────────────
+      // ─── BREAST (side, duration, ongoing/completed) ─────────────────
       f.select(
         'side',
         'Side',
@@ -167,14 +189,34 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { showIf: { field: 'feedType', equals: 'breast' } }
       ),
+      f.select(
+        'status',
+        'Status',
+        DURATION_TRACKER_STATUS,
+        {
+          showIf: { field: 'feedType', equals: 'breast' },
+          defaultValue: 'ongoing',
+        }
+      ),
+      f.datetime('startTime', 'Start Time', {
+        showIf: { field: 'feedType', equals: 'breast' },
+        progressive: { timeBasedSuggestions: true },
+      }),
+      f.datetime('endTime', 'End Time', {
+        showIf: { field: 'feedType', equals: 'breast' },
+      }),
       f.duration('breastDuration', 'Duration', {
         showIf: { field: 'feedType', equals: 'breast' },
       }),
+      f.toggle('letdown', 'Letdown felt?', {
+        showIf: { field: 'feedType', equals: 'breast' },
+      }),
 
-      // ── Bottle ────────────────────────────────────────────────
+      // ─── BOTTLE (amount, content, temperature) ──────────────────────
       f.quantity('bottleAmount', 'Amount', {
         showIf: { field: 'feedType', equals: 'bottle' },
         unitOptions: LIQUID_UNITS,
+        progressive: { suggestAmount: true, showTrend: true },
       }),
       f.select(
         'bottleContent',
@@ -186,12 +228,34 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { showIf: { field: 'feedType', equals: 'bottle' } }
       ),
+      f.select(
+        'bottleTemp',
+        'Temperature',
+        [
+          { id: 'room', label: 'Room Temp', emoji: '🌡️' },
+          { id: 'warm', label: 'Warm', emoji: '♨️' },
+          { id: 'cold', label: 'Cold', emoji: '❄️' },
+        ],
+        { showIf: { field: 'feedType', equals: 'bottle' } }
+      ),
 
-      // ── Solid ─────────────────────────────────────────────────
+      // ─── SOLID (food, texture, amount, acceptance) ──────────────────
       f.text('food', 'Food Item', {
         placeholder: 'e.g., Sweet potato, Oatmeal',
         showIf: { field: 'feedType', equals: 'solid' },
       }),
+      f.select(
+        'texture',
+        'Texture',
+        [
+          { id: 'puree', label: 'Puree', emoji: '🥣' },
+          { id: 'mashed', label: 'Mashed', emoji: '🥔' },
+          { id: 'soft_chunks', label: 'Soft Chunks', emoji: '🍌' },
+          { id: 'finger_food', label: 'Finger Food', emoji: '👆' },
+          { id: 'table_food', label: 'Table Food', emoji: '🍽️' },
+        ],
+        { showIf: { field: 'feedType', equals: 'solid' } }
+      ),
       f.quantity('solidAmount', 'Amount Eaten', {
         showIf: { field: 'feedType', equals: 'solid' },
         unitOptions: SOLID_UNITS,
@@ -200,15 +264,50 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         showIf: { field: 'feedType', equals: 'solid' },
       }),
 
-      // ── Water ─────────────────────────────────────────────────
+      // ─── WATER ──────────────────────────────────────────────────────
       f.quantity('waterAmount', 'Amount', {
         showIf: { field: 'feedType', equals: 'water' },
         unitOptions: LIQUID_UNITS,
       }),
+      f.select(
+        'vessel',
+        'Vessel',
+        [
+          { id: 'bottle', label: 'Bottle', emoji: '🍼' },
+          { id: 'sippy', label: 'Sippy Cup', emoji: '🥤' },
+          { id: 'straw', label: 'Straw Cup', emoji: '🧃' },
+          { id: 'open', label: 'Open Cup', emoji: '🥛' },
+        ],
+        { showIf: { field: 'feedType', equals: 'water' } }
+      ),
 
-      // ── Shared ────────────────────────────────────────────────
-      f.toggle('spitUp', 'Spit Up?'),
+      // ─── SHARED ─────────────────────────────────────────────────────
+      f.toggle('spitUp', 'Spit up after?'),
+      f.select(
+        'spitUpAmount',
+        'Spit-up Amount',
+        [
+          { id: 'small', label: 'Small (drool)', emoji: '💧' },
+          { id: 'medium', label: 'Medium', emoji: '💦' },
+          { id: 'large', label: 'Large / Projectile', emoji: '🌊' },
+        ],
+        { showIf: { field: 'spitUp', equals: true } }
+      ),
       f.toggle('reaction', 'Any reaction?'),
+      f.multiselect(
+        'reactionSymptoms',
+        'Reaction Symptoms',
+        [
+          { id: 'rash', label: 'Rash', emoji: '🔴' },
+          { id: 'hives', label: 'Hives', emoji: '🔴' },
+          { id: 'vomiting', label: 'Vomiting', emoji: '🤮' },
+          { id: 'diarrhea', label: 'Diarrhea', emoji: '💩' },
+          { id: 'fussiness', label: 'Fussiness', emoji: '😤' },
+          { id: 'gassiness', label: 'Gassiness', emoji: '💨' },
+          { id: 'refusal', label: 'Refused to continue', emoji: '🙅' },
+        ],
+        { showIf: { field: 'reaction', equals: true } }
+      ),
       f.textarea('reactionNotes', 'Reaction Details', {
         showIf: { field: 'reaction', equals: true },
       }),
@@ -217,6 +316,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Cluster feed', 'Refused', 'Spit up', 'Gassy', 'Good feed'],
   },
 
+  // ─── SLEEP ──────────────────────────────────────────────────────────────
   {
     id: 'sleep',
     name: 'Sleep',
@@ -230,6 +330,14 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     createdAt: 0,
     updatedAt: 0,
     permissions: defaultPerms,
+    progressive: {
+      supportsStreaks: true,
+      streakGoal: 7,
+      smartSuggestions: {
+        enabled: true,
+        suggestTime: true,
+      },
+    },
     fields: [
       f.select(
         'sleepType',
@@ -240,35 +348,55 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.select(
-        'status',
-        'Status',
-        [
-          { id: 'ongoing', label: 'Still sleeping', emoji: '💤' },
-          { id: 'completed', label: 'Awake', emoji: '☀️' },
-        ],
-        { required: true, defaultValue: 'ongoing' }
-      ),
-      f.datetime('startTime', 'Start Time', { required: true }),
+      f.select('status', 'Status', DURATION_TRACKER_STATUS, {
+        required: true,
+        defaultValue: 'ongoing',
+      }),
+      f.datetime('startTime', 'Start Time', {
+        required: true,
+        progressive: { timeBasedSuggestions: true },
+      }),
       f.datetime('endTime', 'End Time'),
       f.duration('duration', 'Duration'),
       f.rating('quality', 'Sleep Quality', 5),
-      f.select('location', 'Location', [
-        { id: 'crib', label: 'Crib', emoji: '🛏️' },
-        { id: 'bassinet', label: 'Bassinet', emoji: '🛏️' },
-        { id: 'parent_bed', label: 'Parent Bed', emoji: '👨‍👩‍👧' },
-        { id: 'stroller', label: 'Stroller', emoji: '🚗' },
-        { id: 'carrier', label: 'Carrier', emoji: '🎒' },
-        { id: 'car', label: 'Car', emoji: '🚙' },
-        { id: 'other', label: 'Other', emoji: '📍' },
-      ]),
+      f.select(
+        'location',
+        'Location',
+        [
+          { id: 'crib', label: 'Crib', emoji: '🛏️' },
+          { id: 'bassinet', label: 'Bassinet', emoji: '🛏️' },
+          { id: 'parent_bed', label: 'Parent Bed', emoji: '👨‍👩‍👧' },
+          { id: 'stroller', label: 'Stroller', emoji: '🚗' },
+          { id: 'carrier', label: 'Carrier', emoji: '🎒' },
+          { id: 'car', label: 'Car', emoji: '🚙' },
+          { id: 'other', label: 'Other', emoji: '📍' },
+        ]
+      ),
       f.toggle('selfSoothing', 'Self-soothed?'),
-      f.toggle('fought', 'Fought sleep?'),
+      f.toggle('foughtSleep', 'Fought sleep?'),
+      f.toggle('wokeUp', 'Woke up during sleep?'),
+      f.number('wakeCount', 'Number of Wakes', '', {
+        min: 0,
+        showIf: { field: 'wokeUp', equals: true },
+      }),
+      f.select(
+        'wakeReason',
+        'Wake Reason',
+        [
+          { id: 'hunger', label: 'Hunger', emoji: '🍼' },
+          { id: 'diaper', label: 'Diaper', emoji: '👶' },
+          { id: 'discomfort', label: 'Discomfort', emoji: '😣' },
+          { id: 'noise', label: 'Noise', emoji: '🔊' },
+          { id: 'unknown', label: 'Unknown', emoji: '❓' },
+        ],
+        { showIf: { field: 'wokeUp', equals: true } }
+      ),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Easy put-down', 'Fought sleep', 'Woke early', 'Long nap'],
   },
 
+  // ─── DIAPER ─────────────────────────────────────────────────────────────
   {
     id: 'diaper',
     name: 'Diaper',
@@ -319,13 +447,25 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { showIf: { field: 'type', notEquals: 'dry' } }
       ),
+      f.select(
+        'amount',
+        'Amount',
+        [
+          { id: 'small', label: 'Small', emoji: '🔹' },
+          { id: 'medium', label: 'Medium', emoji: '🔸' },
+          { id: 'large', label: 'Large', emoji: '🔶' },
+        ],
+        { showIf: { field: 'type', notEquals: 'dry' } }
+      ),
       f.toggle('rash', 'Rash present?'),
       f.toggle('blowout', 'Blowout?'),
+      f.toggle('bleeding', 'Any bleeding?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Blowout', 'Rash', 'Normal', 'Unusual color'],
   },
 
+  // ─── POTTY ──────────────────────────────────────────────────────────────
   {
     id: 'potty',
     name: 'Potty',
@@ -339,6 +479,10 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     createdAt: 0,
     updatedAt: 0,
     permissions: defaultPerms,
+    progressive: {
+      supportsStreaks: true,
+      streakGoal: 7,
+    },
     fields: [
       f.select(
         'type',
@@ -353,18 +497,24 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { required: true }
       ),
       f.toggle('successful', 'Made it to potty?', { required: true }),
-      f.select('location', 'Location', [
-        { id: 'potty', label: 'Potty Chair', emoji: '🪑' },
-        { id: 'toilet', label: 'Toilet', emoji: '🚽' },
-        { id: 'floor', label: 'Floor', emoji: '😰' },
-        { id: 'diaper', label: 'Diaper', emoji: '👶' },
-      ]),
+      f.select(
+        'location',
+        'Location',
+        [
+          { id: 'potty', label: 'Potty Chair', emoji: '🪑' },
+          { id: 'toilet', label: 'Toilet', emoji: '🚽' },
+          { id: 'floor', label: 'Floor', emoji: '😰' },
+          { id: 'diaper', label: 'Diaper', emoji: '👶' },
+        ]
+      ),
       f.toggle('selfInitiated', 'Self-initiated?'),
+      f.toggle('dryAfter', 'Stayed dry after?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First success!', 'Self-initiated', 'Accident', 'Dry night'],
   },
 
+  // ─── BATH ───────────────────────────────────────────────────────────────
   {
     id: 'bath',
     name: 'Bath',
@@ -379,23 +529,21 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     updatedAt: 0,
     permissions: defaultPerms,
     fields: [
-      f.select(
-        'status',
-        'Status',
-        [
-          { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
-          { id: 'completed', label: 'Done', emoji: '✅' },
-        ],
-        { defaultValue: 'completed' }
-      ),
+      f.select('status', 'Status', DURATION_TRACKER_STATUS, {
+        defaultValue: 'completed',
+      }),
       f.datetime('startTime', 'Start Time'),
       f.datetime('endTime', 'End Time'),
       f.duration('duration', 'Duration'),
-      f.select('waterTemp', 'Water Temperature', [
-        { id: 'warm', label: 'Warm', emoji: '🌡️' },
-        { id: 'cool', label: 'Cool', emoji: '❄️' },
-        { id: 'hot', label: 'Hot', emoji: '🔥' },
-      ]),
+      f.select(
+        'waterTemp',
+        'Water Temperature',
+        [
+          { id: 'warm', label: 'Warm', emoji: '🌡️' },
+          { id: 'cool', label: 'Cool', emoji: '❄️' },
+          { id: 'hot', label: 'Hot', emoji: '🔥' },
+        ]
+      ),
       f.toggle('shampoo', 'Shampoo used?'),
       f.toggle('soap', 'Soap used?'),
       f.toggle('lotion', 'Lotion applied after?'),
@@ -405,6 +553,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Splashed', 'Cried', 'Loved it', 'Hair wash'],
   },
 
+  // ─── PUMPING ────────────────────────────────────────────────────────────
   {
     id: 'pumping',
     name: 'Pumping',
@@ -429,32 +578,38 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.select(
-        'status',
-        'Status',
-        [
-          { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
-          { id: 'completed', label: 'Finished', emoji: '✅' },
-        ],
-        { defaultValue: 'completed' }
-      ),
+      f.select('status', 'Status', DURATION_TRACKER_STATUS, {
+        defaultValue: 'completed',
+      }),
       f.datetime('startTime', 'Start Time'),
       f.datetime('endTime', 'End Time'),
       f.quantity('amount', 'Total Output', {
         required: true,
         unitOptions: LIQUID_UNITS,
+        progressive: { suggestAmount: true, showTrend: true },
+      }),
+      f.quantity('leftAmount', 'Left Output', {
+        unitOptions: LIQUID_UNITS,
+        showIf: { field: 'side', equals: 'both' },
+      }),
+      f.quantity('rightAmount', 'Right Output', {
+        unitOptions: LIQUID_UNITS,
+        showIf: { field: 'side', equals: 'both' },
       }),
       f.duration('duration', 'Duration'),
       f.rating('comfort', 'Comfort Level', 5),
       f.toggle('powerPump', 'Power pump session?'),
+      f.toggle('clogged', 'Clogged duct?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['High output', 'Low output', 'Clogged duct', 'Power pump'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // HEALTH
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── GROWTH ─────────────────────────────────────────────────────────────
   {
     id: 'growth',
     name: 'Growth',
@@ -468,6 +623,15 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     createdAt: 0,
     updatedAt: 0,
     permissions: defaultPerms,
+    progressive: {
+      supportsStreaks: true,
+      streakGoal: 4,
+      smartSuggestions: {
+        enabled: true,
+        suggestAmount: true,
+        showTrend: true,
+      },
+    },
     fields: [
       f.select(
         'measurementType',
@@ -481,17 +645,19 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       ),
       f.quantity('value', 'Value', {
         required: true,
-        unitOptions: [
-          ...WEIGHT_UNITS,
-          ...LENGTH_UNITS,
-        ],
+        unitOptions: [...WEIGHT_UNITS, ...LENGTH_UNITS],
+        progressive: { suggestAmount: true, showTrend: true },
       }),
       f.number('percentile', 'WHO Percentile', '%', { min: 0, max: 100 }),
+      f.text('measuredBy', 'Measured By', {
+        placeholder: 'e.g., Dr. Smith, Home',
+      }),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Percentile jump', 'Steady growth', 'Concern', 'Well visit'],
   },
 
+  // ─── TEMPERATURE ────────────────────────────────────────────────────────
   {
     id: 'temperature',
     name: 'Temperature',
@@ -516,26 +682,40 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.select('method', 'Method', [
-        { id: 'forehead', label: 'Forehead', emoji: '🌡️' },
-        { id: 'ear', label: 'Ear', emoji: '👂' },
-        { id: 'oral', label: 'Oral', emoji: '👄' },
-        { id: 'armpit', label: 'Armpit', emoji: '💪' },
-        { id: 'rectal', label: 'Rectal', emoji: '🔴' },
-      ]),
-      f.multiselect('symptoms', 'Symptoms', [
-        { id: 'fever', label: 'Fever', emoji: '🔥' },
-        { id: 'chills', label: 'Chills', emoji: '❄️' },
-        { id: 'sweating', label: 'Sweating', emoji: '💦' },
-        { id: 'irritable', label: 'Irritable', emoji: '😤' },
-        { id: 'lethargic', label: 'Lethargic', emoji: '😴' },
-      ]),
+      f.select(
+        'method',
+        'Method',
+        [
+          { id: 'forehead', label: 'Forehead', emoji: '🌡️' },
+          { id: 'ear', label: 'Ear', emoji: '👂' },
+          { id: 'oral', label: 'Oral', emoji: '👄' },
+          { id: 'armpit', label: 'Armpit', emoji: '💪' },
+          { id: 'rectal', label: 'Rectal', emoji: '🔴' },
+        ]
+      ),
+      f.multiselect(
+        'symptoms',
+        'Accompanying Symptoms',
+        [
+          { id: 'chills', label: 'Chills', emoji: '❄️' },
+          { id: 'sweating', label: 'Sweating', emoji: '💦' },
+          { id: 'irritable', label: 'Irritable', emoji: '😤' },
+          { id: 'lethargic', label: 'Lethargic', emoji: '😴' },
+          { id: 'poor_appetite', label: 'Poor Appetite', emoji: '🍽️' },
+          { id: 'rash', label: 'Rash', emoji: '🔴' },
+        ]
+      ),
       f.toggle('medicated', 'Medication given?'),
+      f.text('medicationName', 'Medication Name', {
+        placeholder: 'e.g., Acetaminophen',
+        showIf: { field: 'medicated', equals: true },
+      }),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Fever', 'Normal', 'After vaccine', 'Teething'],
   },
 
+  // ─── MEDICATION ─────────────────────────────────────────────────────────
   {
     id: 'medication',
     name: 'Medication',
@@ -549,6 +729,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     createdAt: 0,
     updatedAt: 0,
     permissions: defaultPerms,
+    progressive: {
+      supportsStreaks: true,
+      smartSuggestions: {
+        enabled: true,
+        suggestAmount: true,
+      },
+    },
     fields: [
       f.text('name', 'Medication Name', {
         required: true,
@@ -558,25 +745,40 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         required: true,
         placeholder: 'e.g., 2.5ml',
       }),
-      f.select('type', 'Form', [
-        { id: 'liquid', label: 'Liquid', emoji: '🧪' },
-        { id: 'tablet', label: 'Tablet', emoji: '💊' },
-        { id: 'drops', label: 'Drops', emoji: '💧' },
-        { id: 'injection', label: 'Injection', emoji: '💉' },
-        { id: 'suppository', label: 'Suppository', emoji: '🔴' },
-        { id: 'cream', label: 'Cream/Ointment', emoji: '🧴' },
-      ]),
+      f.select(
+        'type',
+        'Form',
+        [
+          { id: 'liquid', label: 'Liquid', emoji: '🧪' },
+          { id: 'tablet', label: 'Tablet', emoji: '💊' },
+          { id: 'drops', label: 'Drops', emoji: '💧' },
+          { id: 'injection', label: 'Injection', emoji: '💉' },
+          { id: 'suppository', label: 'Suppository', emoji: '🔴' },
+          { id: 'cream', label: 'Cream/Ointment', emoji: '🧴' },
+        ]
+      ),
       f.text('reason', 'Reason', { placeholder: 'e.g., Fever, Teething' }),
+      f.select(
+        'route',
+        'Route',
+        [
+          { id: 'oral', label: 'Oral', emoji: '👄' },
+          { id: 'topical', label: 'Topical', emoji: '🧴' },
+          { id: 'nasal', label: 'Nasal', emoji: '👃' },
+          { id: 'rectal', label: 'Rectal', emoji: '🔴' },
+          { id: 'injection', label: 'Injection', emoji: '💉' },
+        ]
+      ),
       f.toggle('given', 'Given successfully?', { defaultValue: true }),
       f.toggle('vomited', 'Vomited after?'),
-      f.photo('labelPhoto', 'Photo of Label', {
-        // Helps prevent dosing errors on repeat doses
-      }),
+      f.photo('labelPhoto', 'Photo of Label'),
+      f.datetime('nextDose', 'Next Dose Due'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Fever reducer', 'Antibiotic', 'Vitamin', 'Reaction'],
   },
 
+  // ─── SYMPTOM ────────────────────────────────────────────────────────────
   {
     id: 'symptom',
     name: 'Symptom',
@@ -606,18 +808,22 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'sore_throat', label: 'Sore Throat', emoji: '😰' },
           { id: 'refusing_food', label: 'Refusing Food', emoji: '🙅' },
           { id: 'lethargy', label: 'Unusually Sleepy', emoji: '😴' },
+          { id: 'wheezing', label: 'Wheezing', emoji: '🫁' },
         ],
         { required: true }
       ),
       f.rating('severity', 'Severity', 5),
+      f.select('onset', 'Onset', ONSET_SPEED),
       f.datetime('startedAt', 'Started At'),
       f.toggle('ongoing', 'Still ongoing?'),
       f.toggle('doctorCalled', 'Contacted doctor?'),
+      f.toggle('erVisit', 'ER visit?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Getting worse', 'Improving', 'Called doctor', 'Emergency'],
   },
 
+  // ─── VACCINE ────────────────────────────────────────────────────────────
   {
     id: 'vaccine',
     name: 'Vaccine',
@@ -640,22 +846,36 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.datetime('dateGiven', 'Date Given', { required: true }),
       f.text('batch', 'Lot Number'),
       f.text('provider', 'Provider', { placeholder: 'e.g., Dr. Smith' }),
-      f.text('site', 'Injection Site', { placeholder: 'e.g., Left thigh' }),
-      f.multiselect('reactions', 'Reactions', [
-        { id: 'none', label: 'None', emoji: '✅' },
-        { id: 'redness', label: 'Redness', emoji: '🔴' },
-        { id: 'swelling', label: 'Swelling', emoji: '📍' },
-        { id: 'fever', label: 'Fever', emoji: '🔥' },
-        { id: 'fussy', label: 'Fussy', emoji: '😤' },
-        { id: 'sleepy', label: 'Sleepy', emoji: '😴' },
-        { id: 'rash', label: 'Rash', emoji: '🔴' },
-      ]),
+      f.select(
+        'site',
+        'Injection Site',
+        [
+          { id: 'left_thigh', label: 'Left Thigh', emoji: '🦵' },
+          { id: 'right_thigh', label: 'Right Thigh', emoji: '🦵' },
+          { id: 'left_arm', label: 'Left Arm', emoji: '💪' },
+          { id: 'right_arm', label: 'Right Arm', emoji: '💪' },
+        ]
+      ),
+      f.multiselect(
+        'reactions',
+        'Reactions',
+        [
+          { id: 'none', label: 'None', emoji: '✅' },
+          { id: 'redness', label: 'Redness', emoji: '🔴' },
+          { id: 'swelling', label: 'Swelling', emoji: '📍' },
+          { id: 'fever', label: 'Fever', emoji: '🔥' },
+          { id: 'fussy', label: 'Fussy', emoji: '😤' },
+          { id: 'sleepy', label: 'Sleepy', emoji: '😴' },
+          { id: 'rash', label: 'Rash', emoji: '🔴' },
+        ]
+      ),
       f.datetime('nextDue', 'Next Dose Due'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['On schedule', 'Delayed', 'Reaction', 'Complete'],
   },
 
+  // ─── DOCTOR VISIT ───────────────────────────────────────────────────────
   {
     id: 'doctor_visit',
     name: 'Doctor Visit',
@@ -685,6 +905,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.text('provider', 'Provider Name'),
       f.text('reason', 'Reason for Visit'),
       f.textarea('diagnosis', 'Diagnosis / Notes'),
+      f.textarea('treatment', 'Treatment / Prescriptions'),
       f.toggle('followUpNeeded', 'Follow-up needed?'),
       f.datetime('followUpDate', 'Follow-up Date', {
         showIf: { field: 'followUpNeeded', equals: true },
@@ -694,6 +915,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Routine', 'Sick', 'Vaccines', 'Concern'],
   },
 
+  // ─── TEETHING ───────────────────────────────────────────────────────────
   {
     id: 'teething',
     name: 'Teething',
@@ -708,34 +930,47 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     updatedAt: 0,
     permissions: defaultPerms,
     fields: [
-      f.select('gumArea', 'Gum Area', [
-        { id: 'bottom_front', label: 'Bottom Front', emoji: '👇' },
-        { id: 'top_front', label: 'Top Front', emoji: '👆' },
-        { id: 'side', label: 'Side / Molar', emoji: '👉' },
-        { id: 'unknown', label: 'Unknown', emoji: '❓' },
-      ]),
-      f.multiselect('symptoms', 'Symptoms', [
-        { id: 'drooling', label: 'Drooling', emoji: '💧' },
-        { id: 'chewing', label: 'Chewing everything', emoji: '😬' },
-        { id: 'fussy', label: 'Fussy', emoji: '😤' },
-        { id: 'sleep_disturbance', label: 'Sleep disruption', emoji: '😴' },
-        { id: 'low_fever', label: 'Low fever', emoji: '🌡️' },
-        { id: 'rash', label: 'Rash', emoji: '🔴' },
-        { id: 'refusing_food', label: 'Refusing food', emoji: '🙅' },
-      ]),
-      f.multiselect('relief', 'Relief Used', [
-        { id: 'teether', label: 'Teether', emoji: '🦷' },
-        { id: 'cold_washcloth', label: 'Cold Washcloth', emoji: '🧊' },
-        { id: 'massage', label: 'Gum Massage', emoji: '👆' },
-        { id: 'medicine', label: 'Pain Reliever', emoji: '💊' },
-        { id: 'cold_food', label: 'Cold Food', emoji: '🍎' },
-      ]),
+      f.select(
+        'gumArea',
+        'Gum Area',
+        [
+          { id: 'bottom_front', label: 'Bottom Front', emoji: '👇' },
+          { id: 'top_front', label: 'Top Front', emoji: '👆' },
+          { id: 'side', label: 'Side / Molar', emoji: '👉' },
+          { id: 'unknown', label: 'Unknown', emoji: '❓' },
+        ]
+      ),
+      f.multiselect(
+        'symptoms',
+        'Symptoms',
+        [
+          { id: 'drooling', label: 'Drooling', emoji: '💧' },
+          { id: 'chewing', label: 'Chewing everything', emoji: '😬' },
+          { id: 'fussy', label: 'Fussy', emoji: '😤' },
+          { id: 'sleep_disturbance', label: 'Sleep disruption', emoji: '😴' },
+          { id: 'low_fever', label: 'Low fever', emoji: '🌡️' },
+          { id: 'rash', label: 'Rash', emoji: '🔴' },
+          { id: 'refusing_food', label: 'Refusing food', emoji: '🙅' },
+        ]
+      ),
+      f.multiselect(
+        'relief',
+        'Relief Used',
+        [
+          { id: 'teether', label: 'Teether', emoji: '🦷' },
+          { id: 'cold_washcloth', label: 'Cold Washcloth', emoji: '🧊' },
+          { id: 'massage', label: 'Gum Massage', emoji: '👆' },
+          { id: 'medicine', label: 'Pain Reliever', emoji: '💊' },
+          { id: 'cold_food', label: 'Cold Food', emoji: '🍎' },
+        ]
+      ),
       f.rating('severity', 'Discomfort Level', 5),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First tooth!', 'Bad day', 'Relief helped', 'No sleep'],
   },
 
+  // ─── ALLERGY ────────────────────────────────────────────────────────────
   {
     id: 'allergy',
     name: 'Allergy',
@@ -776,22 +1011,29 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.multiselect('symptoms', 'Symptoms', [
-        { id: 'hives', label: 'Hives', emoji: '🔴' },
-        { id: 'swelling', label: 'Swelling', emoji: '📍' },
-        { id: 'breathing', label: 'Breathing difficulty', emoji: '😰' },
-        { id: 'vomiting', label: 'Vomiting', emoji: '🤮' },
-        { id: 'diarrhea', label: 'Diarrhea', emoji: '💩' },
-        { id: 'itchy', label: 'Itchy', emoji: '🖐️' },
-      ]),
+      f.multiselect(
+        'symptoms',
+        'Symptoms',
+        [
+          { id: 'hives', label: 'Hives', emoji: '🔴' },
+          { id: 'swelling', label: 'Swelling', emoji: '📍' },
+          { id: 'breathing', label: 'Breathing difficulty', emoji: '😰' },
+          { id: 'vomiting', label: 'Vomiting', emoji: '🤮' },
+          { id: 'diarrhea', label: 'Diarrhea', emoji: '💩' },
+          { id: 'itchy', label: 'Itchy', emoji: '🖐️' },
+        ]
+      ),
+      f.select('onset', 'Onset Speed', ONSET_SPEED),
       f.toggle('epipen', 'EpiPen used?'),
       f.toggle('medicalAttention', 'Medical attention needed?'),
+      f.toggle('resolved', 'Resolved?'),
       f.photo('photos', 'Photos'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['New trigger', 'Emergency', 'Improving', 'Avoided'],
   },
 
+  // ─── SKIN CONDITION ─────────────────────────────────────────────────────
   {
     id: 'skin_condition',
     name: 'Skin Condition',
@@ -821,38 +1063,54 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.select('severity', 'Severity', [
-        { id: 'mild', label: 'Mild', emoji: '🟢' },
-        { id: 'moderate', label: 'Moderate', emoji: '🟡' },
-        { id: 'severe', label: 'Severe', emoji: '🔴' },
-      ]),
-      f.multiselect('location', 'Body Location', [
-        { id: 'face', label: 'Face', emoji: '😊' },
-        { id: 'scalp', label: 'Scalp', emoji: '👶' },
-        { id: 'chest', label: 'Chest', emoji: '👕' },
-        { id: 'back', label: 'Back', emoji: '👤' },
-        { id: 'arms', label: 'Arms', emoji: '💪' },
-        { id: 'legs', label: 'Legs', emoji: '🦵' },
-        { id: 'diaper_area', label: 'Diaper Area', emoji: '👶' },
-        { id: 'full', label: 'Full Body', emoji: '👤' },
-      ]),
-      f.multiselect('treatments', 'Treatments', [
-        { id: 'cream', label: 'Moisturizing Cream', emoji: '🧴' },
-        { id: 'ointment', label: 'Petroleum Jelly', emoji: '🔵' },
-        { id: 'steroid', label: 'Steroid Cream', emoji: '💊' },
-        { id: 'oatmeal', label: 'Oatmeal Bath', emoji: '🛁' },
-        { id: 'air', label: 'Air Time', emoji: '💨' },
-        { id: 'antifungal', label: 'Antifungal', emoji: '💊' },
-      ]),
+      f.select(
+        'severity',
+        'Severity',
+        [
+          { id: 'mild', label: 'Mild', emoji: '🟢' },
+          { id: 'moderate', label: 'Moderate', emoji: '🟡' },
+          { id: 'severe', label: 'Severe', emoji: '🔴' },
+        ]
+      ),
+      f.multiselect(
+        'location',
+        'Body Location',
+        [
+          { id: 'face', label: 'Face', emoji: '😊' },
+          { id: 'scalp', label: 'Scalp', emoji: '👶' },
+          { id: 'chest', label: 'Chest', emoji: '👕' },
+          { id: 'back', label: 'Back', emoji: '👤' },
+          { id: 'arms', label: 'Arms', emoji: '💪' },
+          { id: 'legs', label: 'Legs', emoji: '🦵' },
+          { id: 'diaper_area', label: 'Diaper Area', emoji: '👶' },
+          { id: 'full', label: 'Full Body', emoji: '👤' },
+        ]
+      ),
+      f.multiselect(
+        'treatments',
+        'Treatments Applied',
+        [
+          { id: 'cream', label: 'Moisturizing Cream', emoji: '🧴' },
+          { id: 'ointment', label: 'Petroleum Jelly', emoji: '🔵' },
+          { id: 'steroid', label: 'Steroid Cream', emoji: '💊' },
+          { id: 'oatmeal', label: 'Oatmeal Bath', emoji: '🛁' },
+          { id: 'air', label: 'Air Time', emoji: '💨' },
+          { id: 'antifungal', label: 'Antifungal', emoji: '💊' },
+        ]
+      ),
+      f.toggle('spreading', 'Spreading?'),
+      f.toggle('itchy', 'Itchy?'),
       f.photo('photos', 'Photos'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Flare up', 'Improving', 'New spot', 'Cleared up'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // DEVELOPMENT
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── MILESTONE ──────────────────────────────────────────────────────────
   {
     id: 'milestone',
     name: 'Milestone',
@@ -866,6 +1124,10 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     createdAt: 0,
     updatedAt: 0,
     permissions: defaultPerms,
+    progressive: {
+      supportsStreaks: true,
+      streakGoal: 5,
+    },
     fields: [
       f.text('title', 'Milestone', {
         required: true,
@@ -891,6 +1153,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['First time!', 'Early', 'On track', 'Late'],
   },
 
+  // ─── TUMMY TIME ─────────────────────────────────────────────────────────
   {
     id: 'tummy_time',
     name: 'Tummy Time',
@@ -904,16 +1167,14 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     createdAt: 0,
     updatedAt: 0,
     permissions: defaultPerms,
+    progressive: {
+      supportsStreaks: true,
+      streakGoal: 7,
+    },
     fields: [
-      f.select(
-        'status',
-        'Status',
-        [
-          { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
-          { id: 'completed', label: 'Done', emoji: '✅' },
-        ],
-        { defaultValue: 'completed' }
-      ),
+      f.select('status', 'Status', DURATION_TRACKER_STATUS, {
+        defaultValue: 'completed',
+      }),
       f.datetime('startTime', 'Start Time'),
       f.datetime('endTime', 'End Time'),
       f.duration('duration', 'Duration', { required: true }),
@@ -926,6 +1187,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Hated it', 'Loved it', 'Rolled!', 'Head up'],
   },
 
+  // ─── PLAY ───────────────────────────────────────────────────────────────
   {
     id: 'play',
     name: 'Play',
@@ -963,6 +1225,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Loved it', 'New toy', 'Shared play', 'Independent'],
   },
 
+  // ─── READING ────────────────────────────────────────────────────────────
   {
     id: 'reading',
     name: 'Reading',
@@ -989,6 +1252,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Favorite', 'New book', 'Interactive', 'Bedtime'],
   },
 
+  // ─── SPEECH ─────────────────────────────────────────────────────────────
   {
     id: 'speech',
     name: 'Speech',
@@ -1027,9 +1291,11 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['First word!', 'Mimic', 'Understood', 'Signed'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // EMOTIONAL
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── MOOD ───────────────────────────────────────────────────────────────
   {
     id: 'mood',
     name: 'Mood',
@@ -1045,26 +1311,35 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     permissions: defaultPerms,
     fields: [
       f.mood('mood', 'Overall Mood', { required: true }),
-      f.select('energy', 'Energy Level', [
-        { id: 'high', label: 'High', emoji: '⚡' },
-        { id: 'normal', label: 'Normal', emoji: '✅' },
-        { id: 'low', label: 'Low', emoji: '😴' },
-        { id: 'lethargic', label: 'Lethargic', emoji: '💤' },
-      ]),
-      f.multiselect('factors', 'Contributing Factors', [
-        { id: 'slept_well', label: 'Slept well', emoji: '😴' },
-        { id: 'hungry', label: 'Hungry', emoji: '🍽️' },
-        { id: 'teething', label: 'Teething', emoji: '🦷' },
-        { id: 'sick', label: 'Not feeling well', emoji: '😷' },
-        { id: 'overstimulated', label: 'Overstimulated', emoji: '😵' },
-        { id: 'growth_spurt', label: 'Growth spurt', emoji: '📈' },
-        { id: 'routine_change', label: 'Routine change', emoji: '🔄' },
-      ]),
+      f.select(
+        'energy',
+        'Energy Level',
+        [
+          { id: 'high', label: 'High', emoji: '⚡' },
+          { id: 'normal', label: 'Normal', emoji: '✅' },
+          { id: 'low', label: 'Low', emoji: '😴' },
+          { id: 'lethargic', label: 'Lethargic', emoji: '💤' },
+        ]
+      ),
+      f.multiselect(
+        'factors',
+        'Contributing Factors',
+        [
+          { id: 'slept_well', label: 'Slept well', emoji: '😴' },
+          { id: 'hungry', label: 'Hungry', emoji: '🍽️' },
+          { id: 'teething', label: 'Teething', emoji: '🦷' },
+          { id: 'sick', label: 'Not feeling well', emoji: '😷' },
+          { id: 'overstimulated', label: 'Overstimulated', emoji: '😵' },
+          { id: 'growth_spurt', label: 'Growth spurt', emoji: '📈' },
+          { id: 'routine_change', label: 'Routine change', emoji: '🔄' },
+        ]
+      ),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Happy day', 'Fussy', 'Teething', 'Off day'],
   },
 
+  // ─── CRYING ─────────────────────────────────────────────────────────────
   {
     id: 'crying',
     name: 'Crying',
@@ -1079,34 +1354,44 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     updatedAt: 0,
     permissions: defaultPerms,
     fields: [
-      f.select('reason', 'Suspected Reason', [
-        { id: 'hunger', label: 'Hunger', emoji: '🍽️' },
-        { id: 'tired', label: 'Tired', emoji: '😴' },
-        { id: 'discomfort', label: 'Discomfort', emoji: '😣' },
-        { id: 'pain', label: 'Pain', emoji: '😰' },
-        { id: 'overstimulated', label: 'Overstimulated', emoji: '😵' },
-        { id: 'attention', label: 'Wants Attention', emoji: '👀' },
-        { id: 'unknown', label: 'Unknown', emoji: '❓' },
-      ]),
+      f.select(
+        'reason',
+        'Suspected Reason',
+        [
+          { id: 'hunger', label: 'Hunger', emoji: '🍽️' },
+          { id: 'tired', label: 'Tired', emoji: '😴' },
+          { id: 'discomfort', label: 'Discomfort', emoji: '😣' },
+          { id: 'pain', label: 'Pain', emoji: '😰' },
+          { id: 'overstimulated', label: 'Overstimulated', emoji: '😵' },
+          { id: 'attention', label: 'Wants Attention', emoji: '👀' },
+          { id: 'unknown', label: 'Unknown', emoji: '❓' },
+        ]
+      ),
       f.duration('duration', 'Duration'),
       f.rating('intensity', 'Intensity', 5),
-      f.select('soothedBy', 'Soothed By', [
-        { id: 'feeding', label: 'Feeding', emoji: '🍼' },
-        { id: 'rocking', label: 'Rocking', emoji: '🪑' },
-        { id: 'pacifier', label: 'Pacifier', emoji: '😶' },
-        { id: 'walking', label: 'Walking', emoji: '🚶' },
-        { id: 'singing', label: 'Singing', emoji: '🎵' },
-        { id: 'contact', label: 'Contact / Cuddles', emoji: '🤗' },
-        { id: 'none', label: 'Nothing worked', emoji: '😭' },
-      ]),
+      f.select(
+        'soothedBy',
+        'Soothed By',
+        [
+          { id: 'feeding', label: 'Feeding', emoji: '🍼' },
+          { id: 'rocking', label: 'Rocking', emoji: '🪑' },
+          { id: 'pacifier', label: 'Pacifier', emoji: '😶' },
+          { id: 'walking', label: 'Walking', emoji: '🚶' },
+          { id: 'singing', label: 'Singing', emoji: '🎵' },
+          { id: 'contact', label: 'Contact / Cuddles', emoji: '🤗' },
+          { id: 'none', label: 'Nothing worked', emoji: '😭' },
+        ]
+      ),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Colic', 'Teething', 'Overtired', 'Growth spurt'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // PHYSICAL CARE
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── NAIL CARE ──────────────────────────────────────────────────────────
   {
     id: 'nail_care',
     name: 'Nail Care',
@@ -1138,6 +1423,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Easy', 'Fought', 'Cut skin', 'Slept through'],
   },
 
+  // ─── ORAL HYGIENE ───────────────────────────────────────────────────────
   {
     id: 'oral_hygiene',
     name: 'Oral Hygiene',
@@ -1170,6 +1456,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['First tooth!', 'Cooperative', 'Fought', 'Gum bleed'],
   },
 
+  // ─── SUNSCREEN ──────────────────────────────────────────────────────────
   {
     id: 'sunscreen',
     name: 'Sunscreen',
@@ -1185,26 +1472,35 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     permissions: defaultPerms,
     fields: [
       f.number('spf', 'SPF', '', { min: 1, max: 100 }),
-      f.select('type', 'Type', [
-        { id: 'lotion', label: 'Lotion', emoji: '🧴' },
-        { id: 'spray', label: 'Spray', emoji: '💨' },
-        { id: 'stick', label: 'Stick', emoji: '💄' },
-        { id: 'mineral', label: 'Mineral', emoji: '⛰️' },
-      ]),
-      f.multiselect('areas', 'Applied To', [
-        { id: 'face', label: 'Face', emoji: '😊' },
-        { id: 'ears', label: 'Ears', emoji: '👂' },
-        { id: 'neck', label: 'Neck', emoji: '👤' },
-        { id: 'arms', label: 'Arms', emoji: '💪' },
-        { id: 'legs', label: 'Legs', emoji: '🦵' },
-        { id: 'full', label: 'Full Body', emoji: '👤' },
-      ]),
+      f.select(
+        'type',
+        'Type',
+        [
+          { id: 'lotion', label: 'Lotion', emoji: '🧴' },
+          { id: 'spray', label: 'Spray', emoji: '💨' },
+          { id: 'stick', label: 'Stick', emoji: '💄' },
+          { id: 'mineral', label: 'Mineral', emoji: '⛰️' },
+        ]
+      ),
+      f.multiselect(
+        'areas',
+        'Applied To',
+        [
+          { id: 'face', label: 'Face', emoji: '😊' },
+          { id: 'ears', label: 'Ears', emoji: '👂' },
+          { id: 'neck', label: 'Neck', emoji: '👤' },
+          { id: 'arms', label: 'Arms', emoji: '💪' },
+          { id: 'legs', label: 'Legs', emoji: '🦵' },
+          { id: 'full', label: 'Full Body', emoji: '👤' },
+        ]
+      ),
       f.toggle('reapplied', 'Reapplied?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Beach day', 'Park', 'Reapplied', 'First time'],
   },
 
+  // ─── SKIN CARE ──────────────────────────────────────────────────────────
   {
     id: 'skin_care',
     name: 'Skin Care',
@@ -1230,22 +1526,28 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.multiselect('areas', 'Body Areas', [
-        { id: 'face', label: 'Face', emoji: '😊' },
-        { id: 'body', label: 'Body', emoji: '👤' },
-        { id: 'hands', label: 'Hands', emoji: '✋' },
-        { id: 'feet', label: 'Feet', emoji: '🦶' },
-        { id: 'diaper', label: 'Diaper Area', emoji: '👶' },
-      ]),
+      f.multiselect(
+        'areas',
+        'Body Areas',
+        [
+          { id: 'face', label: 'Face', emoji: '😊' },
+          { id: 'body', label: 'Body', emoji: '👤' },
+          { id: 'hands', label: 'Hands', emoji: '✋' },
+          { id: 'feet', label: 'Feet', emoji: '🦶' },
+          { id: 'diaper', label: 'Diaper Area', emoji: '👶' },
+        ]
+      ),
       f.toggle('reaction', 'Any reaction?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Dry skin', 'Eczema care', 'After bath', 'Daily routine'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // NUTRITION
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── SOLID FOOD ─────────────────────────────────────────────────────────
   {
     id: 'solid_food',
     name: 'Solid Food',
@@ -1264,18 +1566,34 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         required: true,
         placeholder: 'e.g., Sweet potato, Banana',
       }),
-      f.select('texture', 'Texture', [
-        { id: 'puree', label: 'Puree', emoji: '🥣' },
-        { id: 'mashed', label: 'Mashed', emoji: '🥔' },
-        { id: 'soft', label: 'Soft Chunks', emoji: '🍌' },
-        { id: 'finger', label: 'Finger Food', emoji: '👆' },
-        { id: 'table', label: 'Table Food', emoji: '🍽️' },
-      ]),
+      f.select(
+        'texture',
+        'Texture',
+        [
+          { id: 'puree', label: 'Puree', emoji: '🥣' },
+          { id: 'mashed', label: 'Mashed', emoji: '🥔' },
+          { id: 'soft', label: 'Soft Chunks', emoji: '🍌' },
+          { id: 'finger', label: 'Finger Food', emoji: '👆' },
+          { id: 'table', label: 'Table Food', emoji: '🍽️' },
+        ]
+      ),
       f.quantity('amount', 'Amount', {
         unitOptions: SOLID_UNITS,
       }),
       f.rating('acceptance', 'Acceptance', 5),
       f.toggle('allergicReaction', 'Any reaction?'),
+      f.multiselect(
+        'reactionSymptoms',
+        'Reaction Symptoms',
+        [
+          { id: 'rash', label: 'Rash', emoji: '🔴' },
+          { id: 'hives', label: 'Hives', emoji: '🔴' },
+          { id: 'vomiting', label: 'Vomiting', emoji: '🤮' },
+          { id: 'diarrhea', label: 'Diarrhea', emoji: '💩' },
+          { id: 'fussiness', label: 'Fussiness', emoji: '😤' },
+        ],
+        { showIf: { field: 'allergicReaction', equals: true } }
+      ),
       f.textarea('reactionDetails', 'Reaction Details', {
         showIf: { field: 'allergicReaction', equals: true },
       }),
@@ -1284,6 +1602,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Loved it', 'Refused', 'New food', 'Allergic reaction'],
   },
 
+  // ─── WATER ──────────────────────────────────────────────────────────────
   {
     id: 'water',
     name: 'Water',
@@ -1302,19 +1621,24 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         required: true,
         unitOptions: LIQUID_UNITS,
       }),
-      f.select('vessel', 'Vessel', [
-        { id: 'bottle', label: 'Bottle', emoji: '🍼' },
-        { id: 'sippy', label: 'Sippy Cup', emoji: '🥤' },
-        { id: 'straw', label: 'Straw Cup', emoji: '🧃' },
-        { id: 'open', label: 'Open Cup', emoji: '🥛' },
-        { id: 'spoon', label: 'Spoon', emoji: '🥄' },
-      ]),
+      f.select(
+        'vessel',
+        'Vessel',
+        [
+          { id: 'bottle', label: 'Bottle', emoji: '🍼' },
+          { id: 'sippy', label: 'Sippy Cup', emoji: '🥤' },
+          { id: 'straw', label: 'Straw Cup', emoji: '🧃' },
+          { id: 'open', label: 'Open Cup', emoji: '🥛' },
+          { id: 'spoon', label: 'Spoon', emoji: '🥄' },
+        ]
+      ),
       f.toggle('requested', 'Self-requested?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Hot day', 'Sick', 'Requested', 'Refused'],
   },
 
+  // ─── VITAMIN ────────────────────────────────────────────────────────────
   {
     id: 'vitamin',
     name: 'Vitamin',
@@ -1334,19 +1658,24 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         placeholder: 'e.g., Vitamin D drops',
       }),
       f.text('dosage', 'Dosage', { placeholder: 'e.g., 1 drop (400 IU)' }),
-      f.select('type', 'Form', [
-        { id: 'drops', label: 'Drops', emoji: '💧' },
-        { id: 'liquid', label: 'Liquid', emoji: '🧪' },
-        { id: 'chewable', label: 'Chewable', emoji: '🍬' },
-        { id: 'powder', label: 'Powder', emoji: '📦' },
-        { id: 'gummy', label: 'Gummy', emoji: '🐻' },
-      ]),
+      f.select(
+        'type',
+        'Form',
+        [
+          { id: 'drops', label: 'Drops', emoji: '💧' },
+          { id: 'liquid', label: 'Liquid', emoji: '🧪' },
+          { id: 'chewable', label: 'Chewable', emoji: '🍬' },
+          { id: 'powder', label: 'Powder', emoji: '📦' },
+          { id: 'gummy', label: 'Gummy', emoji: '🐻' },
+        ]
+      ),
       f.toggle('given', 'Given successfully?', { defaultValue: true }),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Daily routine', 'Missed', 'Refused', 'New supplement'],
   },
 
+  // ─── ALLERGEN INTRO ─────────────────────────────────────────────────────
   {
     id: 'allergen_intro',
     name: 'Allergen Intro',
@@ -1381,12 +1710,16 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         placeholder: 'e.g., Peanut butter powder',
       }),
       f.quantity('amount', 'Amount', { unitOptions: SOLID_UNITS }),
-      f.select('method', 'Method', [
-        { id: 'mix', label: 'Mixed with food', emoji: '🥣' },
-        { id: 'thin', label: 'Thinned out', emoji: '💧' },
-        { id: 'baked', label: 'Baked in', emoji: '🍞' },
-        { id: 'direct', label: 'Direct', emoji: '👆' },
-      ]),
+      f.select(
+        'method',
+        'Method',
+        [
+          { id: 'mix', label: 'Mixed with food', emoji: '🥣' },
+          { id: 'thin', label: 'Thinned out', emoji: '💧' },
+          { id: 'baked', label: 'Baked in', emoji: '🍞' },
+          { id: 'direct', label: 'Direct', emoji: '👆' },
+        ]
+      ),
       f.toggle('reaction', 'Any reaction?'),
       f.textarea('reactionDetails', 'Reaction Details', {
         showIf: { field: 'reaction', equals: true },
@@ -1396,9 +1729,11 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['First exposure', 'No reaction', 'Mild reaction', 'Cleared'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // SAFETY
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── ACCIDENT ───────────────────────────────────────────────────────────
   {
     id: 'accident',
     name: 'Accident',
@@ -1449,6 +1784,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Minor', 'Doctor called', 'ER visit', 'Near miss'],
   },
 
+  // ─── CAR SEAT ───────────────────────────────────────────────────────────
   {
     id: 'car_seat',
     name: 'Car Seat',
@@ -1475,11 +1811,15 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.select('position', 'Seat Position', [
-        { id: 'rear', label: 'Rear-facing', emoji: '👶' },
-        { id: 'forward', label: 'Forward-facing', emoji: '👦' },
-        { id: 'booster', label: 'Booster', emoji: '🪑' },
-      ]),
+      f.select(
+        'position',
+        'Seat Position',
+        [
+          { id: 'rear', label: 'Rear-facing', emoji: '👶' },
+          { id: 'forward', label: 'Forward-facing', emoji: '👦' },
+          { id: 'booster', label: 'Booster', emoji: '🪑' },
+        ]
+      ),
       f.toggle('tight', 'Straps tight enough?'),
       f.toggle('chestClip', 'Chest clip at armpit?'),
       f.toggle('pinchTest', 'Pinch test passed?'),
@@ -1488,6 +1828,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Installed', 'Adjusted', 'Expired', 'New seat'],
   },
 
+  // ─── BABYPROOFING ───────────────────────────────────────────────────────
   {
     id: 'babyproofing',
     name: 'Babyproofing',
@@ -1517,25 +1858,31 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.multiselect('measures', 'Measures Checked', [
-        { id: 'outlets', label: 'Outlet Covers', emoji: '🔌' },
-        { id: 'gates', label: 'Safety Gates', emoji: '🚧' },
-        { id: 'cabinets', label: 'Cabinet Locks', emoji: '🔒' },
-        { id: 'furniture', label: 'Furniture Anchors', emoji: '📌' },
-        { id: 'blinds', label: 'Blind Cords', emoji: '🪟' },
-        { id: 'corners', label: 'Corner Guards', emoji: '🔺' },
-        { id: 'chemicals', label: 'Chemicals Secured', emoji: '☠️' },
-        { id: 'medicine', label: 'Medicine Locked', emoji: '💊' },
-      ]),
+      f.multiselect(
+        'measures',
+        'Measures Checked',
+        [
+          { id: 'outlets', label: 'Outlet Covers', emoji: '🔌' },
+          { id: 'gates', label: 'Safety Gates', emoji: '🚧' },
+          { id: 'cabinets', label: 'Cabinet Locks', emoji: '🔒' },
+          { id: 'furniture', label: 'Furniture Anchors', emoji: '📌' },
+          { id: 'blinds', label: 'Blind Cords', emoji: '🪟' },
+          { id: 'corners', label: 'Corner Guards', emoji: '🔺' },
+          { id: 'chemicals', label: 'Chemicals Secured', emoji: '☠️' },
+          { id: 'medicine', label: 'Medicine Locked', emoji: '💊' },
+        ]
+      ),
       f.toggle('complete', 'All measures in place?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Updated', 'New hazard', 'All clear', 'Needs work'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // SCHEDULE
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── BEDTIME ────────────────────────────────────────────────────────────
   {
     id: 'bedtime',
     name: 'Bedtime',
@@ -1549,21 +1896,29 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     createdAt: 0,
     updatedAt: 0,
     permissions: defaultPerms,
+    progressive: {
+      supportsStreaks: true,
+      streakGoal: 14,
+    },
     fields: [
       f.time('time', 'Bedtime', { required: true }),
       f.duration('routineDuration', 'Routine Duration'),
-      f.multiselect('routine', 'Routine Steps', [
-        { id: 'bath', label: 'Bath', emoji: '🛁' },
-        { id: 'lotion', label: 'Lotion / Massage', emoji: '🧴' },
-        { id: 'pjs', label: 'PJs', emoji: '👕' },
-        { id: 'nurse', label: 'Nurse / Bottle', emoji: '🍼' },
-        { id: 'book', label: 'Book', emoji: '📚' },
-        { id: 'song', label: 'Song', emoji: '🎵' },
-        { id: 'prayer', label: 'Prayer', emoji: '🙏' },
-        { id: 'white_noise', label: 'White Noise', emoji: '🔊' },
-        { id: 'pacifier', label: 'Pacifier', emoji: '😶' },
-        { id: 'swaddle', label: 'Swaddle', emoji: '📦' },
-      ]),
+      f.multiselect(
+        'routine',
+        'Routine Steps',
+        [
+          { id: 'bath', label: 'Bath', emoji: '🛁' },
+          { id: 'lotion', label: 'Lotion / Massage', emoji: '🧴' },
+          { id: 'pjs', label: 'PJs', emoji: '👕' },
+          { id: 'nurse', label: 'Nurse / Bottle', emoji: '🍼' },
+          { id: 'book', label: 'Book', emoji: '📚' },
+          { id: 'song', label: 'Song', emoji: '🎵' },
+          { id: 'prayer', label: 'Prayer', emoji: '🙏' },
+          { id: 'white_noise', label: 'White Noise', emoji: '🔊' },
+          { id: 'pacifier', label: 'Pacifier', emoji: '😶' },
+          { id: 'swaddle', label: 'Swaddle', emoji: '📦' },
+        ]
+      ),
       f.rating('ease', 'Ease of Going Down', 5),
       f.toggle('asleepIndependently', 'Fell asleep independently?'),
       f.textarea('notes', 'Notes'),
@@ -1571,6 +1926,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Easy', 'Fought', 'Routine complete', 'Skipped step'],
   },
 
+  // ─── SCREEN TIME ────────────────────────────────────────────────────────
   {
     id: 'screen_time',
     name: 'Screen Time',
@@ -1586,29 +1942,39 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     permissions: defaultPerms,
     fields: [
       f.duration('duration', 'Duration', { required: true }),
-      f.select('type', 'Content Type', [
-        { id: 'educational', label: 'Educational', emoji: '📚' },
-        { id: 'entertainment', label: 'Entertainment', emoji: '🎬' },
-        { id: 'video_call', label: 'Video Call', emoji: '📹' },
-        { id: 'music', label: 'Music Video', emoji: '🎵' },
-      ]),
+      f.select(
+        'type',
+        'Content Type',
+        [
+          { id: 'educational', label: 'Educational', emoji: '📚' },
+          { id: 'entertainment', label: 'Entertainment', emoji: '🎬' },
+          { id: 'video_call', label: 'Video Call', emoji: '📹' },
+          { id: 'music', label: 'Music Video', emoji: '🎵' },
+        ]
+      ),
       f.text('content', 'Specific Content', {
         placeholder: 'e.g., Ms. Rachel, ABC song',
       }),
-      f.select('device', 'Device', [
-        { id: 'tv', label: 'TV', emoji: '📺' },
-        { id: 'tablet', label: 'Tablet', emoji: '📱' },
-        { id: 'phone', label: 'Phone', emoji: '📲' },
-      ]),
+      f.select(
+        'device',
+        'Device',
+        [
+          { id: 'tv', label: 'TV', emoji: '📺' },
+          { id: 'tablet', label: 'Tablet', emoji: '📱' },
+          { id: 'phone', label: 'Phone', emoji: '📲' },
+        ]
+      ),
       f.toggle('coViewing', 'Co-viewing with adult?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Educational', 'Limit reached', 'Co-viewing', 'Solo'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // PARENTAL
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── NOTE ───────────────────────────────────────────────────────────────
   {
     id: 'note',
     name: 'Note',
@@ -1630,18 +1996,23 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         required: true,
         placeholder: 'Write your observation here...',
       }),
-      f.multiselect('tags', 'Tags', [
-        { id: 'milestone', label: 'Milestone', emoji: '🏆' },
-        { id: 'concern', label: 'Concern', emoji: '⚠️' },
-        { id: 'funny', label: 'Funny', emoji: '😂' },
-        { id: 'cute', label: 'Cute', emoji: '🥰' },
-        { id: 'memory', label: 'Memory', emoji: '💭' },
-        { id: 'todo', label: 'To-Do', emoji: '✅' },
-      ]),
+      f.multiselect(
+        'tags',
+        'Tags',
+        [
+          { id: 'milestone', label: 'Milestone', emoji: '🏆' },
+          { id: 'concern', label: 'Concern', emoji: '⚠️' },
+          { id: 'funny', label: 'Funny', emoji: '😂' },
+          { id: 'cute', label: 'Cute', emoji: '🥰' },
+          { id: 'memory', label: 'Memory', emoji: '💭' },
+          { id: 'todo', label: 'To-Do', emoji: '✅' },
+        ]
+      ),
     ],
     quickTags: ['Important', 'Funny', 'To remember', 'Question for doctor'],
   },
 
+  // ─── PHOTO ──────────────────────────────────────────────────────────────
   {
     id: 'photo',
     name: 'Photo',
@@ -1659,18 +2030,23 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.text('caption', 'Caption', { placeholder: 'e.g., First smile!' }),
       f.photo('photos', 'Photos', { required: true }),
       f.text('location', 'Location'),
-      f.multiselect('tags', 'Tags', [
-        { id: 'milestone', label: 'Milestone', emoji: '🏆' },
-        { id: 'family', label: 'Family', emoji: '👨‍👩‍👧' },
-        { id: 'funny', label: 'Funny', emoji: '😂' },
-        { id: 'cute', label: 'Cute', emoji: '🥰' },
-        { id: 'holiday', label: 'Holiday', emoji: '🎄' },
-      ]),
+      f.multiselect(
+        'tags',
+        'Tags',
+        [
+          { id: 'milestone', label: 'Milestone', emoji: '🏆' },
+          { id: 'family', label: 'Family', emoji: '👨‍👩‍👧' },
+          { id: 'funny', label: 'Funny', emoji: '😂' },
+          { id: 'cute', label: 'Cute', emoji: '🥰' },
+          { id: 'holiday', label: 'Holiday', emoji: '🎄' },
+        ]
+      ),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First!', 'Family', 'Silly', 'Professional'],
   },
 
+  // ─── JOURNAL ────────────────────────────────────────────────────────────
   {
     id: 'journal',
     name: 'Journal',
@@ -1690,23 +2066,29 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         required: true,
         placeholder: 'How was your day with baby?',
       }),
-      f.select('mood', 'Your Mood', [
-        { id: 'happy', label: 'Happy', emoji: '😊' },
-        { id: 'tired', label: 'Tired', emoji: '😴' },
-        { id: 'stressed', label: 'Stressed', emoji: '😰' },
-        { id: 'grateful', label: 'Grateful', emoji: '🙏' },
-        { id: 'overwhelmed', label: 'Overwhelmed', emoji: '😵' },
-        { id: 'loving', label: 'Loving', emoji: '❤️' },
-      ]),
+      f.select(
+        'mood',
+        'Your Mood',
+        [
+          { id: 'happy', label: 'Happy', emoji: '😊' },
+          { id: 'tired', label: 'Tired', emoji: '😴' },
+          { id: 'stressed', label: 'Stressed', emoji: '😰' },
+          { id: 'grateful', label: 'Grateful', emoji: '🙏' },
+          { id: 'overwhelmed', label: 'Overwhelmed', emoji: '😵' },
+          { id: 'loving', label: 'Loving', emoji: '❤️' },
+        ]
+      ),
       f.toggle('share', 'Share with co-parent?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Milestone day', 'Hard day', 'Grateful', 'Funny moment'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // TRAVEL
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── TRIP ───────────────────────────────────────────────────────────────
   {
     id: 'trip',
     name: 'Trip',
@@ -1745,6 +2127,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['First trip!', 'Went well', 'Hard travel', 'Packed light'],
   },
 
+  // ─── DAYCARE ────────────────────────────────────────────────────────────
   {
     id: 'daycare',
     name: 'Daycare',
@@ -1772,6 +2155,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Good day', 'Rough day', 'New teacher', 'Milestone'],
   },
 
+  // ─── BABYSITTER ─────────────────────────────────────────────────────────
   {
     id: 'babysitter',
     name: 'Babysitter',
@@ -1799,9 +2183,11 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['New sitter', 'Regular', 'Went well', 'Issues'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // SPECIAL NEEDS
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── REFLUX ─────────────────────────────────────────────────────────────
   {
     id: 'reflux',
     name: 'Reflux',
@@ -1826,25 +2212,34 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.select('timing', 'Timing', [
-        { id: 'after_feed', label: 'After Feeding', emoji: '🍼' },
-        { id: 'during_feed', label: 'During Feeding', emoji: '🥄' },
-        { id: 'lying', label: 'While Lying Down', emoji: '🛏️' },
-        { id: 'random', label: 'Random', emoji: '❓' },
-      ]),
+      f.select(
+        'timing',
+        'Timing',
+        [
+          { id: 'after_feed', label: 'After Feeding', emoji: '🍼' },
+          { id: 'during_feed', label: 'During Feeding', emoji: '🥄' },
+          { id: 'lying', label: 'While Lying Down', emoji: '🛏️' },
+          { id: 'random', label: 'Random', emoji: '❓' },
+        ]
+      ),
       f.toggle('projectile', 'Projectile?'),
       f.toggle('blood', 'Blood in vomit?'),
-      f.multiselect('triggers', 'Triggers', [
-        { id: 'overfeeding', label: 'Overfeeding', emoji: '🍼' },
-        { id: 'position', label: 'Position', emoji: '🛏️' },
-        { id: 'food', label: 'Specific Food', emoji: '🥜' },
-        { id: 'stress', label: 'Stress', emoji: '😰' },
-      ]),
+      f.multiselect(
+        'triggers',
+        'Triggers',
+        [
+          { id: 'overfeeding', label: 'Overfeeding', emoji: '🍼' },
+          { id: 'position', label: 'Position', emoji: '🛏️' },
+          { id: 'food', label: 'Specific Food', emoji: '🥜' },
+          { id: 'stress', label: 'Stress', emoji: '😰' },
+        ]
+      ),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['After feed', 'Projectile', 'Blood', 'Medication helped'],
   },
 
+  // ─── COLIC ──────────────────────────────────────────────────────────────
   {
     id: 'colic',
     name: 'Colic',
@@ -1862,26 +2257,35 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.time('startTime', 'Episode Start'),
       f.duration('duration', 'Duration'),
       f.rating('intensity', 'Intensity', 5),
-      f.multiselect('symptoms', 'Symptoms', [
-        { id: 'crying', label: 'Intense Crying', emoji: '😭' },
-        { id: 'clenched', label: 'Clenched Fists', emoji: '✊' },
-        { id: 'legs', label: 'Legs to Tummy', emoji: '🦵' },
-        { id: 'flushed', label: 'Flushed Face', emoji: '🔴' },
-        { id: 'inconsolable', label: 'Inconsolable', emoji: '😰' },
-      ]),
-      f.multiselect('relief', 'Relief Attempted', [
-        { id: 'swaddle', label: 'Swaddle', emoji: '📦' },
-        { id: 'white_noise', label: 'White Noise', emoji: '🔊' },
-        { id: 'walking', label: 'Walking', emoji: '🚶' },
-        { id: 'driving', label: 'Driving', emoji: '🚗' },
-        { id: 'probiotics', label: 'Probiotics', emoji: '💊' },
-        { id: 'gas_drops', label: 'Gas Drops', emoji: '💧' },
-      ]),
+      f.multiselect(
+        'symptoms',
+        'Symptoms',
+        [
+          { id: 'crying', label: 'Intense Crying', emoji: '😭' },
+          { id: 'clenched', label: 'Clenched Fists', emoji: '✊' },
+          { id: 'legs', label: 'Legs to Tummy', emoji: '🦵' },
+          { id: 'flushed', label: 'Flushed Face', emoji: '🔴' },
+          { id: 'inconsolable', label: 'Inconsolable', emoji: '😰' },
+        ]
+      ),
+      f.multiselect(
+        'relief',
+        'Relief Attempted',
+        [
+          { id: 'swaddle', label: 'Swaddle', emoji: '📦' },
+          { id: 'white_noise', label: 'White Noise', emoji: '🔊' },
+          { id: 'walking', label: 'Walking', emoji: '🚶' },
+          { id: 'driving', label: 'Driving', emoji: '🚗' },
+          { id: 'probiotics', label: 'Probiotics', emoji: '💊' },
+          { id: 'gas_drops', label: 'Gas Drops', emoji: '💧' },
+        ]
+      ),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Evening', 'Predictable', 'Nothing worked', 'Gas drops helped'],
   },
 
+  // ─── CONSTIPATION ───────────────────────────────────────────────────────
   {
     id: 'constipation',
     name: 'Constipation',
@@ -1897,35 +2301,48 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     permissions: defaultPerms,
     fields: [
       f.number('daysSince', 'Days Since Last BM', '', { min: 0 }),
-      f.select('stoolType', 'Stool Type (Bristol)', [
-        { id: '1', label: 'Type 1: Separate hard lumps', emoji: '⚫' },
-        { id: '2', label: 'Type 2: Sausage-shaped but lumpy', emoji: '🟤' },
-        { id: '3', label: 'Type 3: Sausage with cracks', emoji: '🟤' },
-        { id: '4', label: 'Type 4: Smooth soft sausage', emoji: '🟢' },
-        { id: '5', label: 'Type 5: Soft blobs', emoji: '🟡' },
-      ]),
-      f.multiselect('symptoms', 'Symptoms', [
-        { id: 'straining', label: 'Straining', emoji: '😣' },
-        { id: 'pain', label: 'Pain', emoji: '😰' },
-        { id: 'refusal', label: 'Refusing to eat', emoji: '🙅' },
-        { id: 'bloating', label: 'Bloating', emoji: '🎈' },
-        { id: 'cranky', label: 'Cranky', emoji: '😤' },
-      ]),
-      f.multiselect('relief', 'Relief Attempted', [
-        { id: 'prune', label: 'Prune Juice / Puree', emoji: '🟣' },
-        { id: 'pear', label: 'Pear Juice', emoji: '🍐' },
-        { id: 'water', label: 'Extra Water', emoji: '💧' },
-        { id: 'fiber', label: 'Fiber Foods', emoji: '🥦' },
-        { id: 'bicycle', label: 'Bicycle Legs', emoji: '🚲' },
-        { id: 'massage', label: 'Tummy Massage', emoji: '💆' },
-        { id: 'suppository', label: 'Suppository', emoji: '🔴' },
-      ]),
+      f.select(
+        'stoolType',
+        'Stool Type (Bristol)',
+        [
+          { id: '1', label: 'Type 1: Separate hard lumps', emoji: '⚫' },
+          { id: '2', label: 'Type 2: Sausage-shaped but lumpy', emoji: '🟤' },
+          { id: '3', label: 'Type 3: Sausage with cracks', emoji: '🟤' },
+          { id: '4', label: 'Type 4: Smooth soft sausage', emoji: '🟢' },
+          { id: '5', label: 'Type 5: Soft blobs', emoji: '🟡' },
+        ]
+      ),
+      f.multiselect(
+        'symptoms',
+        'Symptoms',
+        [
+          { id: 'straining', label: 'Straining', emoji: '😣' },
+          { id: 'pain', label: 'Pain', emoji: '😰' },
+          { id: 'refusal', label: 'Refusing to eat', emoji: '🙅' },
+          { id: 'bloating', label: 'Bloating', emoji: '🎈' },
+          { id: 'cranky', label: 'Cranky', emoji: '😤' },
+        ]
+      ),
+      f.multiselect(
+        'relief',
+        'Relief Attempted',
+        [
+          { id: 'prune', label: 'Prune Juice / Puree', emoji: '🟣' },
+          { id: 'pear', label: 'Pear Juice', emoji: '🍐' },
+          { id: 'water', label: 'Extra Water', emoji: '💧' },
+          { id: 'fiber', label: 'Fiber Foods', emoji: '🥦' },
+          { id: 'bicycle', label: 'Bicycle Legs', emoji: '🚲' },
+          { id: 'massage', label: 'Tummy Massage', emoji: '💆' },
+          { id: 'suppository', label: 'Suppository', emoji: '🔴' },
+        ]
+      ),
       f.toggle('relieved', 'Relieved?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Day 3+', 'Relieved', 'Prune helped', 'Doctor called'],
   },
 
+  // ─── DIARRHEA ───────────────────────────────────────────────────────────
   {
     id: 'diarrhea',
     name: 'Diarrhea',
@@ -1955,20 +2372,26 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.toggle('fever', 'Fever?'),
       f.toggle('vomiting', 'Vomiting?'),
       f.toggle('dehydration', 'Signs of dehydration?'),
-      f.multiselect('hydration', 'Hydration Given', [
-        { id: 'breastmilk', label: 'Breastmilk', emoji: '🤱' },
-        { id: 'formula', label: 'Formula', emoji: '🍼' },
-        { id: 'pedialyte', label: 'Pedialyte', emoji: '💧' },
-        { id: 'water', label: 'Water', emoji: '💧' },
-      ]),
+      f.multiselect(
+        'hydration',
+        'Hydration Given',
+        [
+          { id: 'breastmilk', label: 'Breastmilk', emoji: '🤱' },
+          { id: 'formula', label: 'Formula', emoji: '🍼' },
+          { id: 'pedialyte', label: 'Pedialyte', emoji: '💧' },
+          { id: 'water', label: 'Water', emoji: '💧' },
+        ]
+      ),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Mild', 'Severe', 'Dehydration concern', 'Improving'],
   },
 
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
   // HOUSEHOLD
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── SUPPLY INVENTORY ───────────────────────────────────────────────────
   {
     id: 'supply_inventory',
     name: 'Supplies',
@@ -1998,12 +2421,16 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.select('status', 'Stock Status', [
-        { id: 'full', label: 'Full', emoji: '🟢' },
-        { id: 'half', label: 'Half', emoji: '🟡' },
-        { id: 'low', label: 'Low', emoji: '🔴' },
-        { id: 'out', label: 'Out', emoji: '⚫' },
-      ]),
+      f.select(
+        'status',
+        'Stock Status',
+        [
+          { id: 'full', label: 'Full', emoji: '🟢' },
+          { id: 'half', label: 'Half', emoji: '🟡' },
+          { id: 'low', label: 'Low', emoji: '🔴' },
+          { id: 'out', label: 'Out', emoji: '⚫' },
+        ]
+      ),
       f.number('quantity', 'Quantity Remaining'),
       f.toggle('reorder', 'Need to reorder?'),
       f.textarea('notes', 'Notes'),
@@ -2011,6 +2438,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Stocked up', 'Running low', 'Ordered', 'Out of stock'],
   },
 
+  // ─── EXPENSES ───────────────────────────────────────────────────────────
   {
     id: 'expenses',
     name: 'Expenses',
@@ -2030,22 +2458,27 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         placeholder: 'e.g., Diapers',
       }),
       f.number('cost', 'Cost', '', { required: true }),
-      f.select('category', 'Category', [
-        { id: 'diapers', label: 'Diapers', emoji: '👶' },
-        { id: 'formula', label: 'Formula / Food', emoji: '🍼' },
-        { id: 'clothing', label: 'Clothing', emoji: '👕' },
-        { id: 'gear', label: 'Gear / Equipment', emoji: '🛒' },
-        { id: 'medical', label: 'Medical', emoji: '🏥' },
-        { id: 'toys', label: 'Toys / Books', emoji: '🧸' },
-        { id: 'childcare', label: 'Childcare', emoji: '👩‍🏫' },
-        { id: 'other', label: 'Other', emoji: '📦' },
-      ]),
+      f.select(
+        'category',
+        'Category',
+        [
+          { id: 'diapers', label: 'Diapers', emoji: '👶' },
+          { id: 'formula', label: 'Formula / Food', emoji: '🍼' },
+          { id: 'clothing', label: 'Clothing', emoji: '👕' },
+          { id: 'gear', label: 'Gear / Equipment', emoji: '🛒' },
+          { id: 'medical', label: 'Medical', emoji: '🏥' },
+          { id: 'toys', label: 'Toys / Books', emoji: '🧸' },
+          { id: 'childcare', label: 'Childcare', emoji: '👩‍🏫' },
+          { id: 'other', label: 'Other', emoji: '📦' },
+        ]
+      ),
       f.toggle('essential', 'Essential purchase?'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Essential', 'Splurge', 'Sale', 'Subscription'],
   },
 
+  // ─── CLEANING ───────────────────────────────────────────────────────────
   {
     id: 'cleaning',
     name: 'Cleaning',
@@ -2074,12 +2507,16 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
-      f.select('method', 'Method', [
-        { id: 'wash', label: 'Hand Wash', emoji: '🧼' },
-        { id: 'dishwasher', label: 'Dishwasher', emoji: '🍽️' },
-        { id: 'sterilize', label: 'Sterilized', emoji: '♨️' },
-        { id: 'wipe', label: 'Wiped Down', emoji: '🧻' },
-      ]),
+      f.select(
+        'method',
+        'Method',
+        [
+          { id: 'wash', label: 'Hand Wash', emoji: '🧼' },
+          { id: 'dishwasher', label: 'Dishwasher', emoji: '🍽️' },
+          { id: 'sterilize', label: 'Sterilized', emoji: '♨️' },
+          { id: 'wipe', label: 'Wiped Down', emoji: '🧻' },
+        ]
+      ),
       f.toggle('complete', 'Complete?'),
       f.textarea('notes', 'Notes'),
     ],
@@ -2087,9 +2524,9 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
   },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════
-// HELPER: Derive list of default tracker IDs from DEFAULT_TRACKERS
-// ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
 
 // NOTE: `DEFAULT_TRACKER_IDS` is canonically exported from `types/trackers.ts`.
 // This local alias is kept for internal module use only.
@@ -2097,10 +2534,7 @@ const LOCAL_DEFAULT_TRACKER_IDS: readonly string[] = DEFAULT_TRACKERS.map(
   (t) => t.id
 );
 
-// ═══════════════════════════════════════════════════════════════════════
-// CREATE CUSTOM TRACKER
-// ═══════════════════════════════════════════════════════════════════════
-
+// ─── CREATE CUSTOM TRACKER ─────────────────────────────────────────────────
 export const createCustomTracker = (
   name: string,
   emoji: string,
@@ -2134,7 +2568,6 @@ export const createCustomTracker = (
     createdAt: Date.now(),
     updatedAt: Date.now(),
     permissions: options?.permissions || {
-      // Cast to satisfy the exact union type in UnifiedTrackerConfig
       familyRoles: ['parent1', 'parent2', 'guardian'] as (
         | 'parent1'
         | 'parent2'
@@ -2147,10 +2580,7 @@ export const createCustomTracker = (
   };
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// VALIDATION
-// ═══════════════════════════════════════════════════════════════════════
-
+// ─── VALIDATION ────────────────────────────────────────────────────────────
 export const validateCustomTracker = (
   tracker: UnifiedTrackerConfig
 ): { valid: boolean; errors: string[] } => {
@@ -2186,10 +2616,7 @@ export const validateCustomTracker = (
   return { valid: errors.length === 0, errors };
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// QUERY HELPERS
-// ═══════════════════════════════════════════════════════════════════════
-
+// ─── QUERY HELPERS ─────────────────────────────────────────────────────────
 export const getDefaultTracker = (id: string): UnifiedTrackerConfig | undefined => {
   return DEFAULT_TRACKERS.find((t) => t.id === id);
 };
@@ -2235,5 +2662,11 @@ export const getCategorySummary = (): {
       count: counts[cat] || 0,
       emoji: emojiMap[cat],
     }))
-    .filter((c) => c.count > 0); // Hide empty categories
+    .filter((c) => c.count > 0);
 };
+
+// ─── EXPORT SHARED UNIT SETS (for convenience) ─────────────────────────────
+export const SOLID_UNITS = CANONICAL_SOLID_UNITS;
+export const LIQUID_UNITS = CANONICAL_LIQUID_UNITS;
+export const WEIGHT_UNITS = CANONICAL_WEIGHT_UNITS;
+export const LENGTH_UNITS = CANONICAL_LENGTH_UNITS;

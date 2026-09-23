@@ -417,7 +417,8 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
 
     const usedTypes = new Set(allEntries.map((e: any) => e.trackerId)).size;
 
-    const gi = growthIndex;
+    // NOTE: `gi` is already declared at the top of this memo (line ~350).
+    // Reuse it here — do NOT redeclare.
     // ─── Use `??` not `||` so legitimate 0 values aren't overwritten ──
     const restScore = gi?.restScore?.value ?? 0;
     const healthStability = gi?.healthStability?.value ?? 0;
