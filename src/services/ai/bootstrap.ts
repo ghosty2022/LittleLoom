@@ -292,15 +292,19 @@ export async function resetAIForBaby(babyId: string): Promise<void> {
   try {
     await AsyncStorage.removeItem(LAUNCH_FLAG);
     await AsyncStorage.removeItem(LAST_FEATURE_RUN);
-    // BayesianEngine & PredictorEngine have their own reset helpers.
-    const { resetLearningForBaby } = require('./BayesianEngine');
-    const { resetPredictor } = require('./PredictorEngine');
-    await resetLearningForBaby(babyId);
-    await Promise.all([
-      resetPredictor(babyId, 'sleep'),
-      resetPredictor(babyId, 'feed'),
-      resetPredictor(babyId, 'diaper'),
-    ]);
+    // Dynamic imports to avoid circular dependency at module load time
+    const { resetLearningForBaby } = await import('./BayesianEngine');
+    const { resetPredictor } = await import('./PredictorEngine');
+    if (typeof resetLearningForBaby === 'function') {
+      await resetLearningForBaby(babyId);
+    }
+    if (typeof resetPredictor === 'function') {
+      await Promise.all([
+        resetPredictor(babyId, 'sleep'),
+        resetPredictor(babyId, 'feed'),
+        resetPredictor(babyId, 'diaper'),
+      ]);
+    }
     bootstrappedFor = null;
     console.log(`[AI Bootstrap] Reset for baby ${babyId}`);
   } catch (e) {

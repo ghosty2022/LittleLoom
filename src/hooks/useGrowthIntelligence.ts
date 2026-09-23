@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { differenceInMonths, differenceInDays, differenceInHours, subDays, subMonths } from 'date-fns';
 
-// FIX: useTracker lives in useTrackerContext (safe wrapper), NOT useTrackerContext
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 
@@ -844,9 +843,15 @@ export const useGrowthIntelligence = () => {
     if (!key) return null;
     const dimScores = { nutritionScore, restScore, physicalScore, cognitiveScore, healthStability };
     const thirtyDaysAgo = subDays(new Date(), 30).getTime();
-    const entries30d = typeof getEntriesStable === 'function'
-      ? (getEntriesStable(trackerId, 200) || []).filter(e => e.timestamp > thirtyDaysAgo).length
-      : 0;
+    let entries30d = 0;
+    try {
+      const list = typeof getEntriesStable === 'function'
+        ? (getEntriesStable(trackerId, 200) || [])
+        : [];
+      entries30d = list.filter((e: any) => e?.timestamp > thirtyDaysAgo).length;
+    } catch {
+      entries30d = 0;
+    }
     const score = Math.round(dimScores[key].value * 0.6 + Math.min(100, (entries30d / 14) * 100) * 0.4);
     return { trackerId, dimension: key, score: Math.max(0, Math.min(100, score)), entries30d };
   }, [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, getEntriesStable]);
@@ -925,6 +930,7 @@ export const useGrowthIntelligence = () => {
   }, [mergedGrowthData, ageInMonths, nutritionScore.value, restScore.value, milestoneReadiness, getEntriesStable]);
 
   const checkNewAchievements = useCallback((_entries: TrackerEntry[], _score: any, unlocked: string[]) => {
+    if (!unlocked || !Array.isArray(unlocked)) unlocked = [];
     const candidates = [
       { id: 'gi_composite_80', title: 'Composite index above 80', emoji: '⭐', met: compositeIndex >= 80 },
       { id: 'gi_nutrition_70', title: 'Nutrition score above 70', emoji: '🍎', met: nutritionScore.value >= 70 },

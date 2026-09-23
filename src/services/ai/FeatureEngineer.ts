@@ -214,14 +214,22 @@ export class FeatureEngineer {
     const prev = new Date(date);
     prev.setDate(prev.getDate() - 1);
 
-    const { data } = await supabase
-      .from('ai_features')
-      .select('*')
-      .eq('baby_id', babyId)
-      .eq('feature_date', dateKey(prev))
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from('ai_features')
+        .select('*')
+        .eq('baby_id', babyId)
+        .eq('feature_date', dateKey(prev))
+        .maybeSingle();
 
-    return data || null;
+      if (error) {
+        if (__DEV__) console.warn('[FeatureEngineer] getPreviousFeatures error:', error.message);
+        return null;
+      }
+      return data || null;
+    } catch {
+      return null;
+    }
   }
 
   private computeFeatures(entries: RawEntry[], previous: any, baby?: any): ComputedFeatures {

@@ -182,6 +182,11 @@ const initialState = (babyId: string, type: PredictorType): PredictorState => ({
 
 // ─── Persistence ─────────────────────────────────────────────────────
 
+// Canonical helper — declared before any function that uses it.
+async function getCurrentUserId(): Promise<string | null> {
+  return getCanonicalUserId();
+}
+
 async function loadState(
   babyId: string,
   type: PredictorType
@@ -295,11 +300,6 @@ export async function getAllPredictorStates(
     } catch {}
   }
   return out;
-}
-
-// Canonical helper — defined before use to avoid TDZ errors.
-async function getCurrentUserId(): Promise<string | null> {
-  return getCanonicalUserId();
 }
 
 async function persistState(state: PredictorState): Promise<void> {

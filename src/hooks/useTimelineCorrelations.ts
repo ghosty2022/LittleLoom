@@ -14,7 +14,11 @@ export const useTimelineCorrelations = () => {
 
   const correlations = useMemo((): TimelineCorrelation[] => {
     const results: TimelineCorrelation[] = [];
-    const allEntries = [...entries].sort((a, b) => b.timestamp - a.timestamp);
+    // Guard against undefined entries
+    const safeEntries = Array.isArray(entries) ? entries : [];
+    if (safeEntries.length === 0) return [];
+    
+    const allEntries = [...safeEntries].sort((a, b) => b.timestamp - a.timestamp);
 
     const feedEntries = getEntries('feed', 50);
     feedEntries.forEach((feed, idx) => {
@@ -145,7 +149,7 @@ export const useTimelineCorrelations = () => {
       .filter(({ correlation }) => correlation.confidence >= 60)
       .slice(0, 10)
       .map(({ correlation }) => correlation);
-  }, [entries, entries.length]);
+  }, [entries]);
 
   return { correlations };
 };

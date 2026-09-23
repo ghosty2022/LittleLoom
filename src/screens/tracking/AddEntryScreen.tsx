@@ -503,8 +503,10 @@ const SmartSuggestionChips = memo(
               key={s.id}
               onPress={() => {
                 HAPTIC_LIGHT();
+                // Apply the suggestion — merge into pendingData
                 onApply(s);
               }}
+              activeOpacity={0.75}
               style={[
                 suggestionStyles.chip,
                 {
@@ -2737,10 +2739,15 @@ function TrackerContent({
   const handleApplySuggestion = useCallback(
     (suggestion: SmartSuggestion) => {
       HAPTIC_LIGHT();
-      setPendingData((prev: any) => ({
-        ...prev,
-        [suggestion.fieldId]: suggestion.value,
-      }));
+      // Merge the suggestion into pendingData
+      setPendingData((prev: any) => {
+        const next = { ...prev };
+        if (suggestion.fieldId && suggestion.value !== undefined) {
+          next[suggestion.fieldId] = suggestion.value;
+        }
+        return next;
+      });
+      // Mark as applied so it disappears from the suggestion strip
       setAppliedSuggestions((prev: Set<string>) => {
         const next = new Set(prev);
         next.add(suggestion.id);
@@ -3051,63 +3058,77 @@ function TrackerContent({
             borderRadiusValue={borderRadiusValue}
           />
 
-          {/* Related Tracker Suggestions */}
-          {Array.isArray(progressive?.relatedTrackerSuggestions) &&
-            progressive.relatedTrackerSuggestions.length > 0 ? (
-            <View
-              style={{
-                marginHorizontal: 16,
-                marginTop: 12,
-                marginBottom: 4,
-              }}
-            >
-              <Text
+          {/* Related Tracker Suggestions — deduplicated by trackerId */}
+          {(() => {
+            const suggestions = progressive?.relatedTrackerSuggestions;
+            if (!Array.isArray(suggestions) || suggestions.length === 0) return null;
+            
+            // Deduplicate by trackerId — only show each tracker once
+            const seen = new Set<string>();
+            const unique = suggestions.filter((s: any) => {
+              if (!s?.trackerId || seen.has(s.trackerId)) return false;
+              seen.add(s.trackerId);
+              return true;
+            });
+            
+            if (unique.length === 0) return null;
+            
+            return (
+              <View
                 style={{
-                  color: fullThemeColors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: '600',
-                  marginBottom: 8,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
+                  marginHorizontal: 16,
+                  marginTop: 12,
+                  marginBottom: 4,
                 }}
               >
-                Often logged together
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {progressive.relatedTrackerSuggestions.slice(0, 3).map((s: any) => (
-                  <TouchableOpacity
-                    key={s.id}
-                    onPress={() => {
-                      HAPTIC_LIGHT();
-                      navigation.navigate('AddEntry', { trackerId: s.trackerId });
-                    }}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: borderRadiusValue,
-                      backgroundColor: `${tracker.gradient[0]}10`,
-                      borderWidth: 1,
-                      borderColor: `${tracker.gradient[0]}30`,
-                    }}
-                  >
-                    <Text style={{ fontSize: 16 }}>{s.emoji}</Text>
-                    <Text
+                <Text
+                  style={{
+                    color: fullThemeColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: '600',
+                    marginBottom: 8,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Often logged together
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {unique.slice(0, 3).map((s: any) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      onPress={() => {
+                        HAPTIC_LIGHT();
+                        navigation.navigate('AddEntry', { trackerId: s.trackerId });
+                      }}
                       style={{
-                        color: tracker.gradient[0],
-                        fontSize: 13,
-                        fontWeight: '600',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: borderRadiusValue,
+                        backgroundColor: `${tracker.gradient[0]}10`,
+                        borderWidth: 1,
+                        borderColor: `${tracker.gradient[0]}30`,
                       }}
                     >
-                      {s.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text style={{ fontSize: 16 }}>{s.emoji}</Text>
+                      <Text
+                        style={{
+                          color: tracker.gradient[0],
+                          fontSize: 13,
+                          fontWeight: '600',
+                        }}
+                      >
+                        {s.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
-          ) : null}
+            );
+          })()}
 
           {/* Urgent Reminders Banner */}
           {hasUrgentReminders && urgentReminders.length > 0 ? (

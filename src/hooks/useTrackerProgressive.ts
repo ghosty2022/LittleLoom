@@ -244,20 +244,7 @@ export const useTrackerProgressive = (trackerId: string) => {
   const tracker = useTracker();
   const baby = useBaby();
 
-  // ─── Safe entry accessor ─────────────────────────────────────────
-  // The tracker context may not be mounted yet when this hook runs.
-  // This wrapper prevents runtime crashes on `tracker.getEntries` calls.
-  const safeGetEntries = useCallback(
-    (id: string, limit?: number) => {
-      if (typeof tracker?.getEntries !== 'function') return [] as TrackerEntry[];
-      try {
-        return (tracker.getEntries(id, limit) || []) as TrackerEntry[];
-      } catch {
-        return [] as TrackerEntry[];
-      }
-    },
-    [tracker]
-  );
+  // (safeGetEntries is declared above, after useState)
 
   // ─── Debounce entry-driven recomputes ──────────────────────────
   // When entries change rapidly (bulk import, quick successive logs),
@@ -316,6 +303,19 @@ export const useTrackerProgressive = (trackerId: string) => {
     // invalidates the server cache after INVALIDATE_THRESHOLD new logs.
     tracker.entries?.length,
   ]);
+
+  // ─── Safe entry accessor — must be declared BEFORE any useMemo that uses it ───
+  const safeGetEntries = useCallback(
+    (id: string, limit?: number) => {
+      if (typeof tracker?.getEntries !== 'function') return [] as TrackerEntry[];
+      try {
+        return (tracker.getEntries(id, limit) || []) as TrackerEntry[];
+      } catch {
+        return [] as TrackerEntry[];
+      }
+    },
+    [tracker]
+  );
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -560,16 +560,21 @@ export const useTrackerProgressive = (trackerId: string) => {
     if (!related) return suggestions;
 
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    const seenTrackerIds = new Set<string>();
 
     related.forEach(({ id, emoji, label }) => {
+      // Skip if already added (dedupe)
+      if (seenTrackerIds.has(id)) return;
+      
       // Skip if related tracker already logged recently.
-      // NOTE: We use `tracker.getEntries` directly (stable via
-      // trackerFingerprint) because `getEntriesStable` is not
-      // declared in this hook.
       const recentForRelated = safeGetEntries(id, 5)
-        .filter((e: TrackerEntry) => e.timestamp > oneHourAgo);
+        .filter((e: TrackerEntry) => {
+          const ts = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
+          return Number.isFinite(ts) && ts > oneHourAgo;
+        });
       if (recentForRelated.length > 0) return;
 
+      seenTrackerIds.add(id);
       suggestions.push({
         id: `related-${id}`,
         trackerId: id,

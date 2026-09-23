@@ -17,8 +17,16 @@ const computeStreak = (
   entries: any[],
   trackerId?: string
 ): { currentStreak: number; longestStreak: number; lastLoggedAt: number; isAtRisk: boolean } => {
+  if (!Array.isArray(entries)) {
+    return { currentStreak: 0, longestStreak: 0, lastLoggedAt: 0, isAtRisk: false };
+  }
   const filtered = (entries || [])
-    .filter((e: any) => e && e.timestamp && !e.isDeleted)
+    .filter((e: any) => {
+      if (!e || !e.timestamp) return false;
+      if (e.isDeleted) return false;
+      const ts = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
+      return Number.isFinite(ts) && ts > 0;
+    })
     .filter((e: any) => (trackerId ? e.trackerId === trackerId : true))
     .sort((a: any, b: any) => b.timestamp - a.timestamp);
 
@@ -37,7 +45,8 @@ const computeStreak = (
   // Count consecutive days with entries
   const loggedDays = new Set(
     filtered.map((e: any) => {
-      const d = new Date(e.timestamp);
+      const ts = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
+      const d = new Date(ts);
       d.setHours(0, 0, 0, 0);
       return d.getTime();
     })
@@ -315,6 +324,9 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
   const achievements: Achievement[] = useMemo(() => {
     // Guard against missing baby
     if (!baby?.currentBaby?.id) return [];
+    
+    // Guard against missing growthIndex
+    const gi = growthIndex ?? null;
 
     const babyId = baby.currentBaby.id;
     const now = new Date();

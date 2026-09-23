@@ -25,6 +25,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 
+// Re-export formatMinutes so consumers can import from one place
+export { formatMinutes } from './PredictorEngine';
+
 export type CorrelationKind =
   | 'feed_before_sleep'
   | 'feed_count_vs_mood'

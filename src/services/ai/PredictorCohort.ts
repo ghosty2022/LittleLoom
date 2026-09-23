@@ -52,14 +52,24 @@ export async function getPredictorCohortPrior(
 
     if (error || !data) return null;
 
+    // Validate numeric fields
+    const level = Number(data.level);
+    const trend = Number(data.trend);
+    if (!Number.isFinite(level) || !Number.isFinite(trend)) return null;
+
+    // Normalize seasonal to exactly 6 slots
+    const rawSeasonal = Array.isArray(data.seasonal) ? data.seasonal : [];
+    const seasonal = rawSeasonal.slice(0, 6).map(Number).filter(Number.isFinite);
+    while (seasonal.length < 6) seasonal.push(0);
+
     const prior: PredictorCohortPrior = {
       kind,
       ageCohort: cohort,
-      level: Number(data.level),
-      trend: Number(data.trend),
-      seasonal: Array.isArray(data.seasonal) ? data.seasonal : [],
-      sampleCount: Number(data.sample_count),
-      contributorCount: Number(data.contributor_count),
+      level,
+      trend,
+      seasonal,
+      sampleCount: Number(data.sample_count) || 0,
+      contributorCount: Number(data.contributor_count) || 0,
       updatedAt: Date.now(),
     };
 
@@ -91,10 +101,12 @@ export async function publishPredictorToCohort(
 
   // Respect the per-baby GDPR blocklist
   try {
-    const { isCohortContributionBlocked } = await import('./CohortPriors');
-    const blocked = await isCohortContributionBlocked(babyId);
-    if (blocked) {
-      return { published: 0, skipped: states.length, reason: 'gdpr_blocked' };
+    const mod = await import('./CohortPriors');
+    if (typeof mod.isCohortContributionBlocked === 'function') {
+      const blocked = await mod.isCohortContributionBlocked(babyId);
+      if (blocked) {
+        return { published: 0, skipped: states.length, reason: 'gdpr_blocked' };
+      }
     }
   } catch {}
 

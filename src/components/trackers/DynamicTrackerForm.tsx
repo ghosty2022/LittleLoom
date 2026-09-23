@@ -1898,46 +1898,43 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           delete next.percentile;
         }
 
-        // ── Auto-link sleep/feed start/end times ─────────────────────
+        // ── Auto-link sleep/feed start/end times with ongoing support ──
         const durationTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
         if (durationTrackers.includes(tracker.id)) {
-          if (fieldId === 'startTime' && value) {
-            // Start time set → mark as ongoing (unless end already set)
-            const hasEnd = next.endTime && String(next.endTime).length > 0;
-            next.status = hasEnd ? 'completed' : 'ongoing';
-            
-            // If end already exists, recompute duration
-            if (hasEnd) {
-              const startMs = new Date(String(value)).getTime();
-              const endMs = new Date(String(next.endTime)).getTime();
-              if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-                const secs = Math.round((endMs - startMs) / 1000);
-                if (secs >= 60) next.duration = secs;
-              }
-            } else {
-              // Clear stale duration for ongoing session
-              delete next.duration;
-            }
-          }
-          
-          if (fieldId === 'endTime' && value) {
-            next.status = 'completed';
-            if (next.startTime) {
+          const hasStart = next.startTime && String(next.startTime).length > 0;
+          const hasEnd = next.endTime && String(next.endTime).length > 0;
+
+          // Recompute status whenever start or end changes
+          if (fieldId === 'startTime' || fieldId === 'endTime') {
+            if (hasStart && hasEnd) {
+              // Both set → completed
+              next.status = 'completed';
+              
               const startMs = new Date(String(next.startTime)).getTime();
-              const endMs = new Date(String(value)).getTime();
+              const endMs = new Date(String(next.endTime)).getTime();
               if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
                 const secs = Math.round((endMs - startMs) / 1000);
                 // Only set duration if meaningful (>= 60s) AND sane (<= 24h)
                 if (secs >= 60 && secs <= 86400) {
                   next.duration = secs;
                 } else {
-                  // Too short or absurdly long — clear duration
                   delete next.duration;
                 }
               } else {
-                // Invalid or backwards times — clear duration
                 delete next.duration;
               }
+            } else if (hasStart && !hasEnd) {
+              // Start only → ongoing
+              next.status = 'ongoing';
+              delete next.duration;
+            } else if (!hasStart && hasEnd) {
+              // End only → mark completed but no duration
+              next.status = 'completed';
+              delete next.duration;
+            } else {
+              // Neither set → clear status
+              delete next.status;
+              delete next.duration;
             }
           }
         }

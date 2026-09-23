@@ -2091,7 +2091,9 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
 // HELPER: Derive list of default tracker IDs from DEFAULT_TRACKERS
 // ═══════════════════════════════════════════════════════════════════════
 
-export const DEFAULT_TRACKER_IDS: readonly string[] = DEFAULT_TRACKERS.map(
+// NOTE: `DEFAULT_TRACKER_IDS` is canonically exported from `types/trackers.ts`.
+// This local alias is kept for internal module use only.
+const LOCAL_DEFAULT_TRACKER_IDS: readonly string[] = DEFAULT_TRACKERS.map(
   (t) => t.id
 );
 
@@ -2193,7 +2195,7 @@ export const getDefaultTracker = (id: string): UnifiedTrackerConfig | undefined 
 };
 
 export const getDefaultTrackerIds = (): string[] =>
-  DEFAULT_TRACKERS.map((t) => t.id);
+  [...LOCAL_DEFAULT_TRACKER_IDS];
 
 export const getTrackersByCategory = (
   category: TrackerCategory
