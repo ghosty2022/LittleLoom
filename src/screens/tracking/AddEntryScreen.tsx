@@ -49,8 +49,7 @@ import {
 } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -1945,94 +1944,7 @@ const yesterdayModalStyles = StyleSheet.create({
   doneBtnText: { fontSize: 16, fontWeight: '700' },
 });
 
-// ─── DatePickerModal ────────────────────────────────────────────────────
-interface DatePickerModalProps {
-  visible: boolean;
-  date: Date;
-  mode: 'date' | 'time';
-  onChange: (event: any, selectedDate?: Date) => void;
-  onClose: () => void;
-  themeColors: Record<string, string>;
-  fullThemeColors: Record<string, string>;
-  borderRadiusValue: number;
-}
-
-const DatePickerModal = memo<DatePickerModalProps>(
-  ({ visible, date, mode, onChange, onClose, themeColors, fullThemeColors, borderRadiusValue }) => {
-    // DateTimePicker is a native module that requires iOS to run in modal
-    // mode. On Android, this component should NEVER render — the parent
-    // gates it with `Platform.OS === 'ios'`, but we double-guard here.
-    if (Platform.OS !== 'ios') return null;
-
-    // Only render the DateTimePicker when the modal is actually visible.
-    // Rendering it hidden but mounted has caused crashes on some devices
-    // where the native module initializes with `undefined` props.
-    return (
-      <Modal transparent animationType="slide" visible={visible} statusBarTranslucent>
-        <Pressable
-          style={[
-            pickerStyles.overlay,
-            { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` },
-          ]}
-          onPress={onClose}
-        >
-          <View
-            style={[
-              pickerStyles.content,
-              {
-                backgroundColor: fullThemeColors.surface,
-                borderRadius: borderRadiusValue * 2,
-              },
-            ]}
-            onStartShouldSetResponder={() => true}
-            onTouchEnd={(e) => e.stopPropagation()}
-          >
-            <View
-              style={[
-                pickerStyles.header,
-                { borderBottomColor: fullThemeColors.border },
-              ]}
-            >
-              <TouchableOpacity onPress={onClose} accessibilityRole="button">
-                <Text
-                  style={[pickerStyles.doneButton, { color: themeColors.primary }]}
-                >
-                  Done
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Only mount the native picker when visible.
-                iOS-only — Android uses the imperative DateTimePickerAndroid API. */}
-            {visible && Platform.OS === 'ios' ? (
-              <DateTimePicker
-                value={date instanceof Date ? date : new Date()}
-                mode={mode}
-                display="spinner"
-                onValueChange={(event, selectedDate) => {
-                  if (selectedDate) onChange(event, selectedDate);
-                }}
-                textColor={fullThemeColors.text}
-              />
-            ) : null}
-          </View>
-        </Pressable>
-      </Modal>
-    );
-  }
-);
-DatePickerModal.displayName = 'DatePickerModal';
-
-const pickerStyles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: 'flex-end' },
-  content: { paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
-  header: {
-    alignItems: 'flex-end',
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  doneButton: { fontSize: 16, fontWeight: '600' },
-});
+// (DatePickerModal removed — the picker is now driven by useDateTimePicker)
 
 // ═══════════════════════════════════════════════════════════════════════
 // TRACKER CONTENT
@@ -2084,8 +1996,7 @@ function TrackerContent({
   const { currentBaby } = useBaby();
   const insets = useSafeAreaInsets();
 
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const datePicker = useDateTimePicker();
   const [anomalyWarning, setAnomalyWarning] = useState<string | null>(null);
   const [anomalyMetric, setAnomalyMetric] = useState<string | null>(null);
   const [anomalyValue, setAnomalyValue] = useState<number | null>(null);
@@ -2476,83 +2387,24 @@ function TrackerContent({
     [success, tracker?.name, setDate, setPendingData, setPendingOptions]
   );
 
-  const showAndroidPicker = useCallback(
-    (mode: 'date' | 'time') => {
-      // Guard: DateTimePickerAndroid is Android-only and must NOT
-      // be called on iOS or before the native module is ready.
-      if (Platform.OS !== 'android') return;
-
-      try {
-        // The native module may not be ready immediately after mount.
-        // Check that the API surface is actually available.
-        if (!DateTimePickerAndroid || typeof DateTimePickerAndroid.open !== 'function') {
-          if (__DEV__) {
-            console.warn('[AddEntryScreen] DateTimePickerAndroid not available yet');
-          }
-          return;
-        }
-
-        DateTimePickerAndroid.open({
-          value: dateRef.current instanceof Date ? dateRef.current : new Date(),
-          mode,
-          is24Hour: false,
-          onChange: (event, selectedDate) => {
-            // Guard: event may be undefined on some devices
-            if (!event || event.type !== 'set' || !selectedDate) return;
-
-            const d = new Date(dateRef.current);
-            if (mode === 'date') {
-              d.setFullYear(selectedDate.getFullYear());
-              d.setMonth(selectedDate.getMonth());
-              d.setDate(selectedDate.getDate());
-              setDate(d);
-              // Chain to time picker after a small delay
-              setTimeout(() => {
-                if (Platform.OS === 'android') showAndroidPicker('time');
-              }, 300);
-            } else {
-              d.setHours(selectedDate.getHours());
-              d.setMinutes(selectedDate.getMinutes());
-              setDate(d);
-            }
-          },
-          // Add onError to catch native failures
-          onError: (err: any) => {
-            if (__DEV__) {
-              console.warn('[AddEntryScreen] Date picker error:', err);
-            }
-            error('Error', 'Could not open date picker.');
-          },
-        });
-      } catch (err: any) {
-        if (__DEV__) {
-          console.warn('[AddEntryScreen] showAndroidPicker failed:', err?.message);
-        }
-        error('Error', 'Could not open date picker.');
-      }
-    },
-    [error, setDate]
-  );
-
   const handleDatePress = useCallback(() => {
     HAPTIC_LIGHT();
-    if (Platform.OS === 'android') {
-      showAndroidPicker('date');
-    } else {
-      setShowDatePicker(true);
-    }
-  }, [showAndroidPicker]);
-
-  const onDateChange = useCallback(
-    (_: any, selectedDate?: Date) => {
-      if (Platform.OS === 'android') {
-        setShowDatePicker(false);
-        setShowTimePicker(false);
+    datePicker.open(
+      {
+        value: dateRef.current instanceof Date ? dateRef.current : new Date(),
+        mode: 'datetime',
+      },
+      (picked) => {
+        if (picked) {
+          setDate(picked);
+        }
       }
-      if (selectedDate) setDate(selectedDate);
-    },
-    [setDate]
-  );
+    );
+  }, [datePicker, setDate]);
+
+  // Android-only: opening the picker via the imperative API
+  // already handles "date then time" internally in the hook.
+  // On iOS, `datePicker.iosPicker.visible` drives the modal.
 
   const buildTitle = useCallback(
     (data: Record<string, unknown>): string => {
@@ -3549,30 +3401,78 @@ function TrackerContent({
         fontSizeMultiplier={fontSizeMultiplier}
       />
 
-      {/* iOS Pickers */}
-      {Platform.OS === 'ios' ? (
-        <>
-          <DatePickerModal
-            visible={showDatePicker}
-            date={date}
-            mode="date"
-            onChange={onDateChange}
-            onClose={() => setShowDatePicker(false)}
-            themeColors={themeColors}
-            fullThemeColors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-          <DatePickerModal
-            visible={showTimePicker}
-            date={date}
-            mode="time"
-            onChange={onDateChange}
-            onClose={() => setShowTimePicker(false)}
-            themeColors={themeColors}
-            fullThemeColors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-        </>
+      {/* iOS DateTimePicker Modal — rendered by useDateTimePicker.
+          Android NEVER reaches this block because Platform.OS !== 'ios'. */}
+      {Platform.OS === 'ios' && datePicker.iosPicker.visible ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible={datePicker.iosPicker.visible}
+          statusBarTranslucent
+          onRequestClose={datePicker.dismissIos}
+        >
+          <Pressable
+            style={{
+              flex: 1,
+              justifyContent: 'flex-end',
+              backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})`,
+            }}
+            onPress={datePicker.dismissIos}
+          >
+            <View
+              style={{
+                backgroundColor: fullThemeColors.surface,
+                borderTopLeftRadius: borderRadiusValue * 2,
+                borderTopRightRadius: borderRadiusValue * 2,
+                paddingBottom: 40,
+              }}
+              onStartShouldSetResponder={() => true}
+              onTouchEnd={(e) => e.stopPropagation()}
+            >
+              <View
+                style={{
+                  alignItems: 'flex-end',
+                  padding: 16,
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: fullThemeColors.border,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={datePicker.dismissIos}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: '600',
+                      color: themeColors.primary,
+                    }}
+                  >
+                    Done
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {/* Lazy-require to keep the native module off the Android bundle */}
+              {(() => {
+                try {
+                  // eslint-disable-next-line @typescript-eslint/no-var-requires
+                  const DateTimePicker = require('@react-native-community/datetimepicker').default;
+                  return (
+                    <DateTimePicker
+                      value={datePicker.iosPicker.value}
+                      mode={datePicker.iosPicker.mode}
+                      display="spinner"
+                      onValueChange={datePicker.handleIosChange}
+                      textColor={fullThemeColors.text}
+                    />
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
+            </View>
+          </Pressable>
+        </Modal>
       ) : null}
     </LinearGradient>
   );
