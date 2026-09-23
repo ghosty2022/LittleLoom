@@ -1,4 +1,14 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTS
+// ═══════════════════════════════════════════════════════════════════════════
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Dimensions,
   Modal,
@@ -21,13 +31,11 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, {
   FadeInUp,
   FadeInDown,
-  FadeIn,
   useSharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   interpolate,
   Extrapolation,
-  withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -38,18 +46,24 @@ import {
   parseISO,
   isValid,
   isBefore,
-  isAfter,
   startOfDay,
-  addMonths,
-  subDays,
 } from 'date-fns';
-import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useBaby, BabyProfile } from '../../context/BabyContext';
 import { useFocusEffect } from '@react-navigation/native';
+
+import { useBaby, BabyProfile } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTheme } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
+
+// ⚠️ ADJUST THIS PATH to match your project. Common paths:
+//   import { supabase } from '../../lib/supabase';
+//   import { supabase } from '../../services/supabase';
+//   import { supabase } from '../../config/supabase';
+import { supabase } from '../../lib/supabase';
+
+// ⚠️ If your TS config doesn't declare __DEV__, keep this:
+declare const __DEV__: boolean;
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -58,25 +72,16 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Unified with GrowthDashboard
+   DESIGN TOKENS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const DESIGN = {
-  radius: {
-    xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999,
-  },
-  spacing: {
-    xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32,
-  },
-  shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
-  },
+  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   WHO/CDC VACCINATION SCHEDULE DATA
+   TYPES
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export interface VaccineDose {
@@ -106,8 +111,30 @@ export interface VaccineSeries {
   shortName: string;
   description: string;
   category: 'core' | 'recommended' | 'high_risk' | 'travel';
-  doses: Omit<VaccineDose, 'id' | 'status' | 'dueDate'>[];
+  doses: Omit<
+    VaccineDose,
+    'id' | 'status' | 'dueDate' | 'category' | 'completedDate' | 'notes' | 'recordedBy'
+  >[];
 }
+
+type VaccineTab = 'schedule' | 'timeline' | 'insights' | 'records';
+type StatusFilter = 'all' | 'pending' | 'completed' | 'overdue';
+
+interface VaccineInsight {
+  id: string;
+  type: 'urgent' | 'upcoming' | 'completed' | 'info' | 'travel' | 'side_effect';
+  title: string;
+  description: string;
+  emoji: string;
+  color: string;
+  priority: 'high' | 'medium' | 'low';
+  action?: { label: string; screen: string; params?: any };
+  timestamp: number;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VACCINE SCHEDULE DATA
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const VACCINE_SERIES: VaccineSeries[] = [
   {
@@ -256,28 +283,24 @@ const VACCINE_SERIES: VaccineSeries[] = [
 ];
 
 const STORAGE_KEY = '@littleloom_vaccination_records';
-// Supabase-backed canonical vaccine schedule. Seeds on first run,
-// then always prefers Supabase so the schedule can be updated
-// server-side without an app release.
 const SUPABASE_SCHEDULE_KEY = 'canonical_vaccine_schedule_v1';
 
-/**
- * Loads the vaccine schedule from Supabase (app_settings row keyed by
- * SUPABASE_SCHEDULE_KEY). If not present, seeds it from the bundled
- * VACCINE_SERIES. The bundled version is the fallback if offline.
- */
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUPABASE LOADER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 async function loadVaccineScheduleFromSupabase(): Promise<VaccineSeries[]> {
   try {
-    // Try to read a shared/global row (no user_id) first; if a specific
-    // user override exists, that wins.
     const { data: { user } } = await supabase.auth.getUser();
-    const queries = [
+
+    const queries: any[] = [
       supabase
         .from('app_settings')
         .select('value')
         .eq('key', SUPABASE_SCHEDULE_KEY)
         .maybeSingle(),
     ];
+
     if (user?.id) {
       queries.push(
         supabase
@@ -288,13 +311,17 @@ async function loadVaccineScheduleFromSupabase(): Promise<VaccineSeries[]> {
           .maybeSingle()
       );
     }
+
     const results = await Promise.all(queries);
+
     // Prefer user-scoped override if it exists
-    for (const res of results.reverse()) {
-      const raw = (res as any)?.data?.value;
+    for (const res of [...results].reverse()) {
+      const raw = res?.data?.value;
       if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch { /* ignore bad JSON */ }
       }
     }
 
@@ -311,12 +338,13 @@ async function loadVaccineScheduleFromSupabase(): Promise<VaccineSeries[]> {
           },
           { onConflict: 'key, user_id' }
         )
-        .then(() => {/* best-effort seed */}, () => {/* ignore */});
+        .then(() => {}, () => {});
     }
   } catch (e) {
-    if (__DEV__) console.warn('[Vaccination] Supabase schedule load failed:', e);
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.warn('[Vaccination] Supabase schedule load failed:', e);
+    }
   }
-  // Fallback
   return VACCINE_SERIES;
 }
 
@@ -329,829 +357,1269 @@ const safeParseDate = (d?: string | null): Date | null => {
   try {
     const p = parseISO(d);
     return isValid(p) ? p : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 };
 
 const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
-  const p = safeParseDate(typeof d === 'string' ? d : undefined) || (d instanceof Date ? d : null);
+  const p =
+    safeParseDate(typeof d === 'string' ? d : undefined) ||
+    (d instanceof Date ? d : null);
   if (!p) return '---';
-  try { return format(p, fmt); } catch { return '---'; }
+  try {
+    return format(p, fmt);
+  } catch {
+    return '---';
+  }
 };
 
 const safeDiffDays = (a: Date | string, b: Date | string): number => {
-  const left = safeParseDate(typeof a === 'string' ? a : undefined) || (a instanceof Date ? a : null);
-  const right = safeParseDate(typeof b === 'string' ? b : undefined) || (b instanceof Date ? b : null);
+  const left =
+    safeParseDate(typeof a === 'string' ? a : undefined) ||
+    (a instanceof Date ? a : null);
+  const right =
+    safeParseDate(typeof b === 'string' ? b : undefined) ||
+    (b instanceof Date ? b : null);
   if (!left || !right) return 0;
   return differenceInDays(left, right);
 };
 
 const safeDiffMonths = (a: Date | string, b: Date | string): number => {
-  const left = safeParseDate(typeof a === 'string' ? a : undefined) || (a instanceof Date ? a : null);
-  const right = safeParseDate(typeof b === 'string' ? b : undefined) || (b instanceof Date ? b : null);
+  const left =
+    safeParseDate(typeof a === 'string' ? a : undefined) ||
+    (a instanceof Date ? a : null);
+  const right =
+    safeParseDate(typeof b === 'string' ? b : undefined) ||
+    (b instanceof Date ? b : null);
   if (!left || !right) return 0;
   return Math.max(0, differenceInMonths(left, right));
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TYPES
+   SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type VaccineTab = 'schedule' | 'timeline' | 'insights' | 'records';
-type StatusFilter = 'all' | 'pending' | 'completed' | 'overdue';
+const GlassCard = memo(
+  ({
+    children,
+    style,
+    onPress,
+    active = false,
+  }: {
+    children: React.ReactNode;
+    style?: any;
+    onPress?: () => void;
+    active?: boolean;
+  }) => {
+    const { themeColors } = useCustomization();
+    const Wrapper: any = onPress ? TouchableOpacity : View;
+    return (
+      <Wrapper
+        onPress={onPress}
+        activeOpacity={onPress ? 0.85 : 1}
+        style={[
+          styles.glassCard,
+          active && { borderColor: themeColors.primary, borderWidth: 2 },
+          style,
+        ]}
+      >
+        <LinearGradient
+          colors={['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={styles.glassBorder} />
+        <View style={styles.glassContent}>{children}</View>
+      </Wrapper>
+    );
+  }
+);
 
-interface VaccineInsight {
-  id: string;
-  type: 'urgent' | 'upcoming' | 'completed' | 'info' | 'travel' | 'side_effect';
-  title: string;
-  description: string;
-  emoji: string;
-  color: string;
-  priority: 'high' | 'medium' | 'low';
-  action?: { label: string; screen: string; params?: any };
-  timestamp: number;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   REFINED SUB-COMPONENTS (Matching GrowthDashboard style)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const GlassCard = memo(({ children, style, onPress, active = false }: { children: React.ReactNode; style?: any; onPress?: () => void; active?: boolean }) => {
-  const { themeColors } = useCustomization();
-  const Wrapper = onPress ? TouchableOpacity : View;
-  return (
-    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
-      styles.glassCard,
-      active && { borderColor: themeColors.primary, borderWidth: 2 },
-      style
-    ]}>
-      <LinearGradient
-        colors={['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View style={styles.glassBorder} />
-      <View style={styles.glassContent}>{children}</View>
-    </Wrapper>
-  );
-});
-
-const SectionHeader = memo(({ title, subtitle, action, actionLabel, themeColors }: { title: string; subtitle?: string; action?: () => void; actionLabel?: string; themeColors: any }) => (
-  <View style={styles.sectionHeader}>
-    <View>
-      <Text style={[styles.sectionTitle, { color: '#1e293b' }]}>{title}</Text>
-      {subtitle && <Text style={[styles.sectionSubtitle, { color: '#64748b' }]}>{subtitle}</Text>}
-    </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={styles.sectionAction}>
-        <Text style={[styles.sectionActionText, { color: themeColors.primary }]}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={14} color={themeColors.primary} />
-      </TouchableOpacity>
-    )}
-  </View>
-));
-
-const TabBar = memo(({ tabs, activeTab, onChange, themeColors }: { tabs: { key: VaccineTab; label: string; icon: string }[]; activeTab: VaccineTab; onChange: (t: VaccineTab) => void; themeColors: any }) => (
-  <View style={styles.tabBar}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => onChange(tab.key)}
-          style={[
-            styles.tabItem,
-            isActive && { backgroundColor: '#fff', /* no shadow */ }
-          ]}
-        >
-          <Ionicons name={tab.icon as any} size={16} color={isActive ? themeColors.primary : '#64748b'} />
-          <Text style={[
-            styles.tabLabel,
-            { color: isActive ? themeColors.primary : '#64748b' },
-            isActive && { fontWeight: '700' }
-          ]}>
-            {tab.label}
+const SectionHeader = memo(
+  ({
+    title,
+    subtitle,
+    action,
+    actionLabel,
+    themeColors,
+  }: {
+    title: string;
+    subtitle?: string;
+    action?: () => void;
+    actionLabel?: string;
+    themeColors: any;
+  }) => (
+    <View style={styles.sectionHeader}>
+      <View>
+        <Text style={[styles.sectionTitle, { color: '#1e293b' }]}>{title}</Text>
+        {subtitle && (
+          <Text style={[styles.sectionSubtitle, { color: '#64748b' }]}>
+            {subtitle}
           </Text>
+        )}
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction}>
+          <Text style={[styles.sectionActionText, { color: themeColors.primary }]}>
+            {actionLabel || 'See All'}
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={themeColors.primary} />
         </TouchableOpacity>
-      );
-    })}
-  </View>
-));
+      )}
+    </View>
+  )
+);
 
+const TabBar = memo(
+  ({
+    tabs,
+    activeTab,
+    onChange,
+    themeColors,
+  }: {
+    tabs: { key: VaccineTab; label: string; icon: string }[];
+    activeTab: VaccineTab;
+    onChange: (t: VaccineTab) => void;
+    themeColors: any;
+  }) => (
+    <View style={styles.tabBar}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            style={[styles.tabItem, isActive && { backgroundColor: '#fff' }]}
+          >
+            <Ionicons
+              name={tab.icon as any}
+              size={16}
+              color={isActive ? themeColors.primary : '#64748b'}
+            />
+            <Text
+              style={[
+                styles.tabLabel,
+                { color: isActive ? themeColors.primary : '#64748b' },
+                isActive && { fontWeight: '700' },
+              ]}
+            >
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  )
+);
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 1: Smart Vaccine Timeline (Horizontal scrollable timeline)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const VaccineTimeline = memo(({ doses, onDosePress, themeColors }: { doses: VaccineDose[]; onDosePress: (d: VaccineDose) => void; themeColors: any }) => {
-  const timelineItems = useMemo(() => {
-    const sorted = [...doses].sort((a, b) => {
-      const da = safeParseDate(a.dueDate);
-      const db = safeParseDate(b.dueDate);
-      return (da?.getTime() || 0) - (db?.getTime() || 0);
-    });
-
-    return sorted.map(dose => {
-      const due = safeParseDate(dose.dueDate);
-      return {
-        ...dose,
-        isPast: due ? isBefore(due, startOfDay(new Date())) : false,
-      };
-    });
-  }, [doses]);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <GlassCard>
-        <View style={styles.timelineHeader}>
-          <View style={[styles.timelineIconBg, { backgroundColor: `${themeColors.primary}15` }]}>
-            <Ionicons name="time" size={20} color={themeColors.primary} />
-          </View>
-          <View>
-            <Text style={styles.timelineTitle}>Vaccine Timeline</Text>
-            <Text style={styles.timelineSubtitle}>Visual journey of immunizations</Text>
-          </View>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timelineScroll}>
-          {timelineItems.map((item, i) => (
-            <TouchableOpacity key={item.id} onPress={() => onDosePress(item)} style={styles.timelineNode}>
-              <View style={styles.timelineNodeTop}>
-                <View style={[
-                  styles.timelineDot,
-                  item.status === 'completed' && { backgroundColor: '#10b981', borderColor: '#10b981' },
-                  item.status === 'overdue' && { backgroundColor: '#ef4444', borderColor: '#ef4444' },
-                  item.status === 'due' && { backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
-                  item.status === 'upcoming' && { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
-                ]}>
-                  {item.status === 'completed' && <Ionicons name="checkmark" size={10} color="#fff" />}
-                </View>
-                {i < timelineItems.length - 1 && (
-                  <View style={[
-                    styles.timelineConnector,
-                    item.status === 'completed' && timelineItems[i + 1]?.status === 'completed' && { backgroundColor: '#10b981' },
-                  ]} />
-                )}
-              </View>
-              <View style={styles.timelineNodeContent}>
-                <Text style={styles.timelineNodeShort}>{item.shortName}</Text>
-                <Text style={styles.timelineNodeDose}>D{item.doseNumber}</Text>
-                <Text style={[
-                  styles.timelineNodeStatus,
-                  item.status === 'completed' && { color: '#10b981' },
-                  item.status === 'overdue' && { color: '#ef4444' },
-                  item.status === 'due' && { color: '#f59e0b' },
-                ]}>
-                  {item.status === 'completed' ? 'Done' : item.status === 'overdue' ? 'Late' : item.status === 'due' ? 'Soon' : 'Upcoming'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 2: Vaccine Protection Score (Hero metric like Growth Score)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const ProtectionScore = memo(({ stats, themeColors }: { stats: any; themeColors: any }) => {
-  const score = stats?.progress || 0;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(100).springify()}>
-      <GlassCard>
-        <View style={styles.scoreContainer}>
-          <View style={styles.scoreLeft}>
-            <View style={[styles.scoreRing, { borderColor: `${themeColors.primary}30` }]}>
-              <Text style={[styles.scoreValue, { color: themeColors.primary }]}>{score}</Text>
-              <Text style={[styles.scoreMax, { color: '#94a3b8' }]}>/100</Text>
-            </View>
-            <View style={styles.scoreLabels}>
-              <Text style={styles.scoreLabel}>Protection Score</Text>
-              <Text style={styles.scoreSubLabel}>Immunity Index</Text>
-            </View>
-          </View>
-          <View style={styles.scoreRight}>
-            {[
-              { label: 'Core', value: stats?.completed || 0, total: stats?.total || 0, color: '#10b981', icon: 'shield-checkmark' },
-              { label: 'Due', value: stats?.due || 0, total: 0, color: '#f59e0b', icon: 'time' },
-              { label: 'Overdue', value: stats?.overdue || 0, total: 0, color: '#ef4444', icon: 'alert-circle' },
-            ].map(s => (
-              <View key={s.label} style={styles.scoreMini}>
-                <Ionicons name={s.icon as any} size={14} color={s.color} />
-                <View style={styles.scoreMiniBarWrap}>
-                  <View style={[styles.scoreMiniBarBg, { backgroundColor: `${s.color}15` }]}>
-                    <View style={[styles.scoreMiniBarFill, { 
-                      width: s.total > 0 ? `${(s.value / s.total) * 100}%` : s.value > 0 ? '100%' : '0%', 
-                      backgroundColor: s.color 
-                    }]} />
-                  </View>
-                </View>
-                <Text style={[styles.scoreMiniValue, { color: s.color }]}>{s.value}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 3: Smart Vaccine Insights (AI-powered recommendations)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const VaccineInsights = memo(({ doses, baby, themeColors, onInsightPress }: { doses: VaccineDose[]; baby: BabyProfile; themeColors: any; onInsightPress: (insight: VaccineInsight) => void }) => {
-  const insights = useMemo((): VaccineInsight[] => {
-    const items: VaccineInsight[] = [];
-    const now = Date.now();
-    const ageMonths = safeDiffMonths(new Date(), baby.birthDate);
-
-    // Overdue alerts
-    const overdueDoses = doses.filter(d => d.status === 'overdue');
-    if (overdueDoses.length > 0) {
-      const mostUrgent = overdueDoses.sort((a, b) => {
+/* ── Timeline ── */
+const VaccineTimeline = memo(
+  ({
+    doses,
+    onDosePress,
+    themeColors,
+  }: {
+    doses: VaccineDose[];
+    onDosePress: (d: VaccineDose) => void;
+    themeColors: any;
+  }) => {
+    const timelineItems = useMemo(() => {
+      const sorted = [...doses].sort((a, b) => {
         const da = safeParseDate(a.dueDate);
         const db = safeParseDate(b.dueDate);
         return (da?.getTime() || 0) - (db?.getTime() || 0);
-      })[0];
-      const daysLate = Math.abs(safeDiffDays(mostUrgent.dueDate, new Date()));
-      items.push({
-        id: 'urgent-overdue',
-        type: 'urgent',
-        title: `${mostUrgent.vaccineName} Overdue`,
-        description: `${daysLate} days past due. Schedule appointment ASAP to maintain protection.`,
-        emoji: '⚠️',
-        color: '#ef4444',
-        priority: 'high',
-        action: { label: 'Schedule', screen: 'VaccinationSchedule', params: { filter: 'overdue' } },
-        timestamp: now,
       });
-    }
 
-    // Upcoming due
-    const upcomingDue = doses.filter(d => d.status === 'due').slice(0, 1);
-    upcomingDue.forEach(d => {
-      const daysUntil = safeDiffDays(d.dueDate, new Date());
-      items.push({
-        id: `upcoming-${d.id}`,
-        type: 'upcoming',
-        title: `${d.vaccineName} Due Soon`,
-        description: `Due in ${daysUntil} days (${safeFmt(d.dueDate, 'MMM d')}). Prepare for appointment.`,
-        emoji: '💉',
-        color: '#f59e0b',
-        priority: 'medium',
-        action: { label: 'Record', screen: 'VaccinationSchedule', params: { doseId: d.id } },
-        timestamp: now,
+      return sorted.map((dose) => {
+        const due = safeParseDate(dose.dueDate);
+        return {
+          ...dose,
+          isPast: due ? isBefore(due, startOfDay(new Date())) : false,
+        };
       });
-    });
+    }, [doses]);
 
-    // Completion celebration
-    const recentlyCompleted = doses.filter(d => {
-      if (!d.completedDate) return false;
-      return safeDiffDays(new Date(), d.completedDate) <= 7;
-    });
-    if (recentlyCompleted.length > 0) {
-      items.push({
-        id: 'recent-completion',
-        type: 'completed',
-        title: 'Great Progress! 🎉',
-        description: `${recentlyCompleted.length} dose${recentlyCompleted.length > 1 ? 's' : ''} completed recently. Keep it up!`,
-        emoji: '🛡️',
-        color: '#10b981',
-        priority: 'low',
-        timestamp: now,
-      });
-    }
+    return (
+      <Animated.View entering={FadeInUp.delay(200).springify()}>
+        <GlassCard>
+          <View style={styles.timelineHeader}>
+            <View
+              style={[
+                styles.timelineIconBg,
+                { backgroundColor: `${themeColors.primary}15` },
+              ]}
+            >
+              <Ionicons name="time" size={20} color={themeColors.primary} />
+            </View>
+            <View>
+              <Text style={styles.timelineTitle}>Vaccine Timeline</Text>
+              <Text style={styles.timelineSubtitle}>
+                Visual journey of immunizations
+              </Text>
+            </View>
+          </View>
 
-    // Age-based recommendations
-    if (ageMonths >= 6 && ageMonths < 7) {
-      const fluDose = doses.find(d => d.vaccineId === 'flu' && d.doseNumber === 1);
-      if (fluDose && fluDose.status === 'upcoming') {
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.timelineScroll}
+          >
+            {timelineItems.map((item, i) => (
+              <TouchableOpacity
+                key={item.id}
+                onPress={() => onDosePress(item)}
+                style={styles.timelineNode}
+              >
+                <View style={styles.timelineNodeTop}>
+                  <View
+                    style={[
+                      styles.timelineDot,
+                      item.status === 'completed' && {
+                        backgroundColor: '#10b981',
+                        borderColor: '#10b981',
+                      },
+                      item.status === 'overdue' && {
+                        backgroundColor: '#ef4444',
+                        borderColor: '#ef4444',
+                      },
+                      item.status === 'due' && {
+                        backgroundColor: '#f59e0b',
+                        borderColor: '#f59e0b',
+                      },
+                      item.status === 'upcoming' && {
+                        backgroundColor: '#3b82f6',
+                        borderColor: '#3b82f6',
+                      },
+                    ]}
+                  >
+                    {item.status === 'completed' && (
+                      <Ionicons name="checkmark" size={10} color="#fff" />
+                    )}
+                  </View>
+                  {i < timelineItems.length - 1 && (
+                    <View
+                      style={[
+                        styles.timelineConnector,
+                        item.status === 'completed' &&
+                          timelineItems[i + 1]?.status === 'completed' && {
+                            backgroundColor: '#10b981',
+                          },
+                      ]}
+                    />
+                  )}
+                </View>
+                <View style={styles.timelineNodeContent}>
+                  <Text style={styles.timelineNodeShort}>{item.shortName}</Text>
+                  <Text style={styles.timelineNodeDose}>D{item.doseNumber}</Text>
+                  <Text
+                    style={[
+                      styles.timelineNodeStatus,
+                      item.status === 'completed' && { color: '#10b981' },
+                      item.status === 'overdue' && { color: '#ef4444' },
+                      item.status === 'due' && { color: '#f59e0b' },
+                    ]}
+                  >
+                    {item.status === 'completed'
+                      ? 'Done'
+                      : item.status === 'overdue'
+                      ? 'Late'
+                      : item.status === 'due'
+                      ? 'Soon'
+                      : 'Upcoming'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </GlassCard>
+      </Animated.View>
+    );
+  }
+);
+
+/* ── Protection Score ── */
+const ProtectionScore = memo(
+  ({ stats, themeColors }: { stats: any; themeColors: any }) => {
+    const score = stats?.progress || 0;
+
+    return (
+      <Animated.View entering={FadeInUp.delay(100).springify()}>
+        <GlassCard>
+          <View style={styles.scoreContainer}>
+            <View style={styles.scoreLeft}>
+              <View
+                style={[
+                  styles.scoreRing,
+                  { borderColor: `${themeColors.primary}30` },
+                ]}
+              >
+                <Text style={[styles.scoreValue, { color: themeColors.primary }]}>
+                  {score}
+                </Text>
+                <Text style={[styles.scoreMax, { color: '#94a3b8' }]}>/100</Text>
+              </View>
+              <View style={styles.scoreLabels}>
+                <Text style={styles.scoreLabel}>Protection Score</Text>
+                <Text style={styles.scoreSubLabel}>Immunity Index</Text>
+              </View>
+            </View>
+            <View style={styles.scoreRight}>
+              {[
+                {
+                  label: 'Core',
+                  value: stats?.completed || 0,
+                  total: stats?.total || 0,
+                  color: '#10b981',
+                  icon: 'shield-checkmark',
+                },
+                { label: 'Due', value: stats?.due || 0, total: 0, color: '#f59e0b', icon: 'time' },
+                { label: 'Overdue', value: stats?.overdue || 0, total: 0, color: '#ef4444', icon: 'alert-circle' },
+              ].map((s) => (
+                <View key={s.label} style={styles.scoreMini}>
+                  <Ionicons name={s.icon as any} size={14} color={s.color} />
+                  <View style={styles.scoreMiniBarWrap}>
+                    <View
+                      style={[
+                        styles.scoreMiniBarBg,
+                        { backgroundColor: `${s.color}15` },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.scoreMiniBarFill,
+                          {
+                            width:
+                              s.total > 0
+                                ? `${(s.value / s.total) * 100}%`
+                                : s.value > 0
+                                ? '100%'
+                                : '0%',
+                            backgroundColor: s.color,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                  <Text style={[styles.scoreMiniValue, { color: s.color }]}>
+                    {s.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </GlassCard>
+      </Animated.View>
+    );
+  }
+);
+
+/* ── Insights ──
+   FIX: `baby` can be null — guard against it.
+*/
+const VaccineInsights = memo(
+  ({
+    doses,
+    baby,
+    themeColors,
+    onInsightPress,
+  }: {
+    doses: VaccineDose[];
+    baby: BabyProfile | null;
+    themeColors: any;
+    onInsightPress: (insight: VaccineInsight) => void;
+  }) => {
+    const insights = useMemo((): VaccineInsight[] => {
+      const items: VaccineInsight[] = [];
+      const now = Date.now();
+
+      // FIX: baby may be null → skip baby-dependent insights
+      const ageMonths = baby ? safeDiffMonths(new Date(), baby.birthDate) : 0;
+
+      // Overdue alerts
+      const overdueDoses = doses.filter((d) => d.status === 'overdue');
+      if (overdueDoses.length > 0) {
+        const mostUrgent = overdueDoses.sort((a, b) => {
+          const da = safeParseDate(a.dueDate);
+          const db = safeParseDate(b.dueDate);
+          return (da?.getTime() || 0) - (db?.getTime() || 0);
+        })[0];
+        const daysLate = Math.abs(safeDiffDays(mostUrgent.dueDate, new Date()));
         items.push({
-          id: 'flu-recommendation',
-          type: 'info',
-          title: 'Flu Season Ready',
-          description: 'Annual flu vaccination is now recommended. Consider scheduling with your pediatrician.',
-          emoji: '🤧',
-          color: '#3b82f6',
-          priority: 'medium',
-          action: { label: 'Learn More', screen: 'VaccineDetail', params: { vaccineId: 'flu' } },
+          id: 'urgent-overdue',
+          type: 'urgent',
+          title: `${mostUrgent.vaccineName} Overdue`,
+          description: `${daysLate} days past due. Schedule appointment ASAP to maintain protection.`,
+          emoji: '⚠️',
+          color: '#ef4444',
+          priority: 'high',
+          action: {
+            label: 'Schedule',
+            screen: 'VaccinationSchedule',
+            params: { filter: 'overdue' },
+          },
           timestamp: now,
         });
       }
-    }
 
-    // Travel alert check
-    const travelVaccines = doses.filter(d => {
-      const series = VACCINE_SERIES.find(s => s.id === d.vaccineId);
-      return series?.category === 'travel' && d.status !== 'completed';
-    });
-    if (travelVaccines.length > 0) {
-      items.push({
-        id: 'travel-alert',
-        type: 'travel',
-        title: 'Travel Vaccines Pending',
-        description: `${travelVaccines.length} travel vaccine${travelVaccines.length > 1 ? 's' : ''} not yet administered. Check requirements before travel.`,
-        emoji: '✈️',
-        color: '#8b5cf6',
-        priority: 'medium',
-        action: { label: 'View Travel', screen: 'VaccinationSchedule', params: { filter: 'travel' } },
-        timestamp: now,
+      // Upcoming due
+      const upcomingDue = doses.filter((d) => d.status === 'due').slice(0, 1);
+      upcomingDue.forEach((d) => {
+        const daysUntil = safeDiffDays(d.dueDate, new Date());
+        items.push({
+          id: `upcoming-${d.id}`,
+          type: 'upcoming',
+          title: `${d.vaccineName} Due Soon`,
+          description: `Due in ${daysUntil} days (${safeFmt(
+            d.dueDate,
+            'MMM d'
+          )}). Prepare for appointment.`,
+          emoji: '💉',
+          color: '#f59e0b',
+          priority: 'medium',
+          action: {
+            label: 'Record',
+            screen: 'VaccinationSchedule',
+            params: { doseId: d.id },
+          },
+          timestamp: now,
+        });
       });
-    }
 
-    return items.sort((a, b) => {
-      const prioOrder = { high: 0, medium: 1, low: 2 };
-      return prioOrder[a.priority] - prioOrder[b.priority];
-    }).slice(0, 4);
-  }, [doses, baby]);
+      // Recently completed
+      const recentlyCompleted = doses.filter((d) => {
+        if (!d.completedDate) return false;
+        return safeDiffDays(new Date(), d.completedDate) <= 7;
+      });
+      if (recentlyCompleted.length > 0) {
+        items.push({
+          id: 'recent-completion',
+          type: 'completed',
+          title: 'Great Progress! 🎉',
+          description: `${recentlyCompleted.length} dose${
+            recentlyCompleted.length > 1 ? 's' : ''
+          } completed recently. Keep it up!`,
+          emoji: '🛡️',
+          color: '#10b981',
+          priority: 'low',
+          timestamp: now,
+        });
+      }
 
-  if (insights.length === 0) return null;
+      // Age-based flu recommendation
+      if (ageMonths >= 6 && ageMonths < 7) {
+        const fluDose = doses.find(
+          (d) => d.vaccineId === 'flu' && d.doseNumber === 1
+        );
+        if (fluDose && fluDose.status === 'upcoming') {
+          items.push({
+            id: 'flu-recommendation',
+            type: 'info',
+            title: 'Flu Season Ready',
+            description:
+              'Annual flu vaccination is now recommended. Consider scheduling with your pediatrician.',
+            emoji: '🤧',
+            color: '#3b82f6',
+            priority: 'medium',
+            action: {
+              label: 'Learn More',
+              screen: 'VaccineDetail',
+              params: { vaccineId: 'flu' },
+            },
+            timestamp: now,
+          });
+        }
+      }
 
-  return (
-    <View style={styles.section}>
-      <SectionHeader 
-        title="Smart Insights" 
-        subtitle={`${insights.filter(i => i.priority === 'high').length} need attention`}
-        themeColors={themeColors}
-      />
-      {insights.map((insight, i) => (
-        <Animated.View key={insight.id} entering={FadeInUp.delay(i * 60).springify()}>
-          <TouchableOpacity 
-            onPress={() => onInsightPress(insight)} 
-            activeOpacity={0.85} 
-            style={[
-              styles.insightCard,
-              insight.priority === 'high' && { borderLeftWidth: 3, borderLeftColor: insight.color },
-            ]}
+      // Travel alert
+      const travelVaccines = doses.filter((d) => {
+        const series = VACCINE_SERIES.find((s) => s.id === d.vaccineId);
+        return series?.category === 'travel' && d.status !== 'completed';
+      });
+      if (travelVaccines.length > 0) {
+        items.push({
+          id: 'travel-alert',
+          type: 'travel',
+          title: 'Travel Vaccines Pending',
+          description: `${travelVaccines.length} travel vaccine${
+            travelVaccines.length > 1 ? 's' : ''
+          } not yet administered. Check requirements before travel.`,
+          emoji: '✈️',
+          color: '#8b5cf6',
+          priority: 'medium',
+          action: {
+            label: 'View Travel',
+            screen: 'VaccinationSchedule',
+            params: { filter: 'travel' },
+          },
+          timestamp: now,
+        });
+      }
+
+      return items
+        .sort((a, b) => {
+          const prioOrder = { high: 0, medium: 1, low: 2 };
+          return prioOrder[a.priority] - prioOrder[b.priority];
+        })
+        .slice(0, 4);
+    }, [doses, baby]);
+
+    if (insights.length === 0) return null;
+
+    return (
+      <View style={styles.section}>
+        <SectionHeader
+          title="Smart Insights"
+          subtitle={`${
+            insights.filter((i) => i.priority === 'high').length
+          } need attention`}
+          themeColors={themeColors}
+        />
+        {insights.map((insight, i) => (
+          <Animated.View
+            key={insight.id}
+            entering={FadeInUp.delay(i * 60).springify()}
           >
-            <View style={styles.insightRow}>
-              <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}12` }]}>
-                <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-              </View>
-              <View style={styles.insightContent}>
-                <View style={styles.insightHeader}>
-                  <Text style={styles.insightTitle} numberOfLines={1}>{insight.title}</Text>
-                  <Text style={styles.insightTime}>{safeFmt(insight.timestamp, 'MMM d')}</Text>
-                </View>
-                <Text style={styles.insightDesc} numberOfLines={2}>{insight.description}</Text>
-                {insight.action && (
-                  <View style={[styles.insightActionBadge, { backgroundColor: `${themeColors.primary}10` }]}>
-                    <Text style={[styles.insightActionText, { color: themeColors.primary }]}>{insight.action.label} →</Text>
-                  </View>
-                )}
-              </View>
-              <View style={[styles.insightPriority, { backgroundColor: insight.color }]} />
-            </View>
-          </TouchableOpacity>
-        </Animated.View>
-      ))}
-    </View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 4: Vaccine Category Grid (Visual category cards)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const VaccineCategoryGrid = memo(({ doses, onCategoryPress, themeColors }: { doses: VaccineDose[]; onCategoryPress: (cat: string) => void; themeColors: any }) => {
-  const categories = useMemo(() => [
-    { key: 'core', label: 'Core', icon: 'shield-checkmark', color: '#10b981', desc: 'Essential' },
-    { key: 'recommended', label: 'Recommended', icon: 'star', color: '#3b82f6', desc: 'Advised' },
-    { key: 'high_risk', label: 'High Risk', icon: 'warning', color: '#f59e0b', desc: 'Special' },
-    { key: 'travel', label: 'Travel', icon: 'airplane', color: '#8b5cf6', desc: 'Travel' },
-  ], []);
-
-  const categoryStats = useMemo(() => {
-    const stats: Record<string, { total: number; completed: number; pending: number }> = {};
-    categories.forEach(c => {
-      const seriesIds = VACCINE_SERIES.filter(s => s.category === c.key).map(s => s.id);
-      const catDoses = doses.filter(d => seriesIds.includes(d.vaccineId));
-      stats[c.key] = {
-        total: catDoses.length,
-        completed: catDoses.filter(d => d.status === 'completed').length,
-        pending: catDoses.filter(d => d.status !== 'completed').length,
-      };
-    });
-    return stats;
-  }, [doses, categories]);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <View style={styles.categoryGrid}>
-        {categories.map((cat) => {
-          const stat = categoryStats[cat.key];
-          const progress = stat.total > 0 ? (stat.completed / stat.total) * 100 : 0;
-          return (
-            <TouchableOpacity 
-              key={cat.key} 
-              onPress={() => onCategoryPress(cat.key)}
+            <TouchableOpacity
+              onPress={() => onInsightPress(insight)}
+              activeOpacity={0.85}
               style={[
-                styles.categoryCard,
-                { borderColor: `${cat.color}20` },
+                styles.insightCard,
+                insight.priority === 'high' && {
+                  borderLeftWidth: 3,
+                  borderLeftColor: insight.color,
+                },
               ]}
             >
-              <LinearGradient
-                colors={[`${cat.color}08`, `${cat.color}02`]}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              />
-              <View style={[styles.categoryIconBg, { backgroundColor: `${cat.color}15` }]}>
-                <Ionicons name={cat.icon as any} size={20} color={cat.color} />
-              </View>
-              <Text style={[styles.categoryLabel, { color: '#1e293b' }]}>{cat.label}</Text>
-              <Text style={[styles.categoryDesc, { color: '#64748b' }]}>{cat.desc}</Text>
-              <View style={styles.categoryProgressWrap}>
-                <View style={[styles.categoryProgressBg, { backgroundColor: `${cat.color}12` }]}>
-                  <View style={[styles.categoryProgressFill, { width: `${progress}%`, backgroundColor: cat.color }]} />
+              <View style={styles.insightRow}>
+                <View
+                  style={[
+                    styles.insightIconBg,
+                    { backgroundColor: `${insight.color}12` },
+                  ]}
+                >
+                  <Text style={styles.insightEmoji}>{insight.emoji}</Text>
                 </View>
-                <Text style={[styles.categoryProgressText, { color: cat.color }]}>{Math.round(progress)}%</Text>
-              </View>
-              <Text style={[styles.categoryCount, { color: '#94a3b8' }]}>
-                {stat.completed}/{stat.total} doses
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 5: Dose Detail Card (Redesigned - compact, information-dense)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const DoseDetailCard = memo(({ dose, onComplete, onViewDetails, themeColors, index }: { dose: VaccineDose; onComplete: (d: VaccineDose) => void; onViewDetails: (s: VaccineSeries) => void; themeColors: any; index: number }) => {
-  const series = VACCINE_SERIES.find(s => s.id === dose.vaccineId);
-  const daysUntilDue = safeDiffDays(dose.dueDate, new Date());
-
-  const statusConfig = {
-    completed: { color: '#10b981', bg: '#10b98112', icon: 'checkmark-circle' as const, label: 'Done' },
-    due: { color: '#f59e0b', bg: '#f59e0b12', icon: 'time' as const, label: 'Due' },
-    overdue: { color: '#ef4444', bg: '#ef444412', icon: 'alert-circle' as const, label: 'Late' },
-    upcoming: { color: '#3b82f6', bg: '#3b82f612', icon: 'calendar' as const, label: 'Soon' },
-    scheduled: { color: '#8b5cf6', bg: '#8b5cf612', icon: 'calendar-outline' as const, label: 'Set' },
-  };
-
-  const config = statusConfig[dose.status];
-
-  return (
-    <Animated.View entering={FadeInUp.delay(index * 40).springify()}>
-      <TouchableOpacity 
-        onPress={() => series && onViewDetails(series)}
-        activeOpacity={0.9}
-        style={[
-          styles.doseDetailCard,
-          dose.status === 'overdue' && { borderLeftWidth: 3, borderLeftColor: '#ef4444' },
-          dose.status === 'due' && { borderLeftWidth: 3, borderLeftColor: '#f59e0b' },
-        ]}
-      >
-        <View style={styles.doseDetailTop}>
-          <View style={styles.doseDetailLeft}>
-            <View style={[styles.doseDetailIconBg, { backgroundColor: config.bg }]}>
-              <Ionicons name={config.icon} size={18} color={config.color} />
-            </View>
-            <View style={styles.doseDetailInfo}>
-              <Text style={styles.doseDetailName}>{dose.vaccineName}</Text>
-              <Text style={styles.doseDetailMeta}>Dose {dose.doseNumber} of {dose.totalDoses} • {dose.recommendedAgeLabel}</Text>
-            </View>
-          </View>
-          <View style={[styles.doseDetailBadge, { backgroundColor: config.bg }]}>
-            <Text style={[styles.doseDetailBadgeText, { color: config.color }]}>{config.label}</Text>
-          </View>
-        </View>
-
-        <View style={styles.doseDetailMiddle}>
-          <View style={styles.doseDetailDateRow}>
-            <Ionicons name="calendar-outline" size={13} color="#94a3b8" />
-            <Text style={styles.doseDetailDateText}>
-              {dose.status === 'completed' && dose.completedDate
-                ? `Given: ${safeFmt(dose.completedDate, 'MMM d, yyyy')}`
-                : `Due: ${safeFmt(dose.dueDate, 'MMM d, yyyy')}`}
-            </Text>
-          </View>
-
-          {dose.status === 'overdue' && (
-            <View style={styles.doseDetailAlertRow}>
-              <Ionicons name="warning" size={13} color="#ef4444" />
-              <Text style={styles.doseDetailAlertText}>{Math.abs(daysUntilDue)} days overdue</Text>
-            </View>
-          )}
-          {dose.status === 'due' && daysUntilDue <= 7 && (
-            <View style={styles.doseDetailAlertRow}>
-              <Ionicons name="notifications" size={13} color="#f59e0b" />
-              <Text style={[styles.doseDetailAlertText, { color: '#f59e0b' }]}>Due in {daysUntilDue} days</Text>
-            </View>
-          )}
-          {dose.notes && (
-            <View style={styles.doseDetailNotesRow}>
-              <Ionicons name="document-text" size={13} color="#94a3b8" />
-              <Text style={styles.doseDetailNotesText}>{dose.notes}</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.doseDetailBottom}>
-          <TouchableOpacity onPress={() => series && onViewDetails(series)} style={styles.doseDetailDetailBtn}>
-            <Text style={[styles.doseDetailDetailText, { color: themeColors.primary }]}>Details</Text>
-          </TouchableOpacity>
-          {dose.status !== 'completed' ? (
-            <TouchableOpacity onPress={() => onComplete(dose)} style={[styles.doseDetailRecordBtn, { backgroundColor: themeColors.primary }]}>
-              <Ionicons name="checkmark" size={14} color="#fff" />
-              <Text style={styles.doseDetailRecordText}>Record</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.doseDetailDoneBadge}>
-              <Ionicons name="checkmark-done" size={14} color="#10b981" />
-              <Text style={styles.doseDetailDoneText}>Recorded</Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   NEW FEATURE 6: Travel Vaccine Planner (Travel-specific section)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const TravelVaccinePlanner = memo(({ doses, themeColors, onPlanTravel }: { doses: VaccineDose[]; themeColors: any; onPlanTravel: () => void }) => {
-  const travelDoses = useMemo(() => {
-    const travelSeriesIds = VACCINE_SERIES.filter(s => s.category === 'travel').map(s => s.id);
-    return doses.filter(d => travelSeriesIds.includes(d.vaccineId) && d.status !== 'completed');
-  }, [doses]);
-
-  if (travelDoses.length === 0) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <SectionHeader 
-        title="Travel Ready" 
-        subtitle={`${travelDoses.length} vaccines needed for travel`}
-        themeColors={themeColors}
-      />
-      <GlassCard>
-        <View style={styles.travelHeader}>
-          <View style={[styles.travelIconBg, { backgroundColor: '#8b5cf615' }]}>
-            <Ionicons name="airplane" size={22} color="#8b5cf6" />
-          </View>
-          <View style={styles.travelHeaderText}>
-            <Text style={styles.travelTitle}>Travel Vaccination Checklist</Text>
-            <Text style={styles.travelSubtitle}>Plan ahead for safe travel</Text>
-          </View>
-        </View>
-
-        <View style={styles.travelList}>
-          {travelDoses.map((dose, i) => {
-            const series = VACCINE_SERIES.find(s => s.id === dose.vaccineId);
-            return (
-              <View key={dose.id} style={[styles.travelItem, i < travelDoses.length - 1 && { borderBottomWidth: 1, borderBottomColor: 'rgba(100,116,139,0.08)' }]}>
-                <View style={styles.travelItemLeft}>
-                  <View style={[styles.travelItemDot, { backgroundColor: dose.status === 'overdue' ? '#ef4444' : '#f59e0b' }]} />
-                  <View>
-                    <Text style={styles.travelItemName}>{dose.vaccineName}</Text>
-                    <Text style={styles.travelItemDesc}>{series?.description}</Text>
+                <View style={styles.insightContent}>
+                  <View style={styles.insightHeader}>
+                    <Text style={styles.insightTitle} numberOfLines={1}>
+                      {insight.title}
+                    </Text>
+                    <Text style={styles.insightTime}>
+                      {safeFmt(insight.timestamp, 'MMM d')}
+                    </Text>
                   </View>
+                  <Text style={styles.insightDesc} numberOfLines={2}>
+                    {insight.description}
+                  </Text>
+                  {insight.action && (
+                    <View
+                      style={[
+                        styles.insightActionBadge,
+                        { backgroundColor: `${themeColors.primary}10` },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.insightActionText,
+                          { color: themeColors.primary },
+                        ]}
+                      >
+                        {insight.action.label} →
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={[styles.travelItemStatus, { color: dose.status === 'overdue' ? '#ef4444' : '#f59e0b' }]}>
-                  {dose.status === 'overdue' ? 'Overdue' : 'Pending'}
-                </Text>
+                <View
+                  style={[
+                    styles.insightPriority,
+                    { backgroundColor: insight.color },
+                  ]}
+                />
               </View>
+            </TouchableOpacity>
+          </Animated.View>
+        ))}
+      </View>
+    );
+  }
+);
+
+/* ── Category Grid ── */
+const VaccineCategoryGrid = memo(
+  ({
+    doses,
+    onCategoryPress,
+    themeColors,
+  }: {
+    doses: VaccineDose[];
+    onCategoryPress: (cat: string) => void;
+    themeColors: any;
+  }) => {
+    const categories = useMemo(
+      () => [
+        { key: 'core', label: 'Core', icon: 'shield-checkmark', color: '#10b981', desc: 'Essential' },
+        { key: 'recommended', label: 'Recommended', icon: 'star', color: '#3b82f6', desc: 'Advised' },
+        { key: 'high_risk', label: 'High Risk', icon: 'warning', color: '#f59e0b', desc: 'Special' },
+        { key: 'travel', label: 'Travel', icon: 'airplane', color: '#8b5cf6', desc: 'Travel' },
+      ],
+      []
+    );
+
+    const categoryStats = useMemo(() => {
+      const stats: Record<
+        string,
+        { total: number; completed: number; pending: number }
+      > = {};
+      categories.forEach((c) => {
+        const seriesIds = VACCINE_SERIES.filter(
+          (s) => s.category === c.key
+        ).map((s) => s.id);
+        const catDoses = doses.filter((d) => seriesIds.includes(d.vaccineId));
+        stats[c.key] = {
+          total: catDoses.length,
+          completed: catDoses.filter((d) => d.status === 'completed').length,
+          pending: catDoses.filter((d) => d.status !== 'completed').length,
+        };
+      });
+      return stats;
+    }, [doses, categories]);
+
+    return (
+      <Animated.View entering={FadeInUp.delay(150).springify()}>
+        <View style={styles.categoryGrid}>
+          {categories.map((cat) => {
+            const stat = categoryStats[cat.key];
+            const progress =
+              stat.total > 0 ? (stat.completed / stat.total) * 100 : 0;
+            return (
+              <TouchableOpacity
+                key={cat.key}
+                onPress={() => onCategoryPress(cat.key)}
+                style={[
+                  styles.categoryCard,
+                  { borderColor: `${cat.color}20` },
+                ]}
+              >
+                <LinearGradient
+                  colors={[`${cat.color}08`, `${cat.color}02`]}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
+                <View
+                  style={[
+                    styles.categoryIconBg,
+                    { backgroundColor: `${cat.color}15` },
+                  ]}
+                >
+                  <Ionicons name={cat.icon as any} size={20} color={cat.color} />
+                </View>
+                <Text style={[styles.categoryLabel, { color: '#1e293b' }]}>
+                  {cat.label}
+                </Text>
+                <Text style={[styles.categoryDesc, { color: '#64748b' }]}>
+                  {cat.desc}
+                </Text>
+                <View style={styles.categoryProgressWrap}>
+                  <View
+                    style={[
+                      styles.categoryProgressBg,
+                      { backgroundColor: `${cat.color}12` },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.categoryProgressFill,
+                        { width: `${progress}%`, backgroundColor: cat.color },
+                      ]}
+                    />
+                  </View>
+                  <Text
+                    style={[styles.categoryProgressText, { color: cat.color }]}
+                  >
+                    {Math.round(progress)}%
+                  </Text>
+                </View>
+                <Text style={[styles.categoryCount, { color: '#94a3b8' }]}>
+                  {stat.completed}/{stat.total} doses
+                </Text>
+              </TouchableOpacity>
             );
           })}
         </View>
-
-        <TouchableOpacity onPress={onPlanTravel} style={[styles.travelPlanBtn, { backgroundColor: '#8b5cf6' }]}>
-          <Ionicons name="map" size={16} color="#fff" />
-          <Text style={styles.travelPlanText}>Plan Travel Vaccines</Text>
-        </TouchableOpacity>
-      </GlassCard>
-    </Animated.View>
-  );
-});
-
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   MODALS (Redesigned to match GrowthDashboard style)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const RecordVaccineModal = memo(({ visible, dose, onClose, onSave, themeColors }: any) => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
-  const [selectedSideEffects, setSelectedSideEffects] = useState<string[]>([]);
-  const [batchNumber, setBatchNumber] = useState('');
-  const [location, setLocation] = useState('');
-
-  useEffect(() => {
-    if (visible && dose) {
-      setDate(new Date().toISOString().split('T')[0]);
-      setNotes('');
-      setSelectedSideEffects([]);
-      setBatchNumber('');
-      setLocation('');
-    }
-  }, [visible, dose]);
-
-  if (!dose) return null;
-
-  const handleSave = () => {
-    onSave(dose.id, { 
-      date: new Date(date).toISOString(), 
-      notes, 
-      sideEffects: selectedSideEffects,
-      batchNumber: batchNumber || undefined,
-      location: location || undefined,
-    });
-  };
-
-  const toggleSideEffect = (effect: string) => {
-    setSelectedSideEffects(prev =>
-      prev.includes(effect) ? prev.filter(e => e !== effect) : [...prev, effect]
+      </Animated.View>
     );
-  };
+  }
+);
 
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.modalOverlay}>
-        <BlurView intensity={95} tint="dark" style={StyleSheet.absoluteFill} />
-        <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
-          <LinearGradient colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} style={StyleSheet.absoluteFill} />
-          <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalTitle}>Record {dose.vaccineName}</Text>
-              <Text style={styles.modalSubtitle}>Dose {dose.doseNumber} of {dose.totalDoses}</Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-              <Ionicons name="close" size={20} color="#64748b" />
-            </TouchableOpacity>
-          </View>
+/* ── Dose Detail Card ── */
+const DoseDetailCard = memo(
+  ({
+    dose,
+    onComplete,
+    onViewDetails,
+    themeColors,
+    index,
+  }: {
+    dose: VaccineDose;
+    onComplete: (d: VaccineDose) => void;
+    onViewDetails: (s: VaccineSeries) => void;
+    themeColors: any;
+    index: number;
+  }) => {
+    const series = VACCINE_SERIES.find((s) => s.id === dose.vaccineId);
+    const daysUntilDue = safeDiffDays(dose.dueDate, new Date());
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: SCREEN_H * 0.6 }}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Date Given</Text>
-              <TextInput style={styles.input} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
-            </View>
+    const statusConfig = {
+      completed: { color: '#10b981', bg: '#10b98112', icon: 'checkmark-circle' as const, label: 'Done' },
+      due: { color: '#f59e0b', bg: '#f59e0b12', icon: 'time' as const, label: 'Due' },
+      overdue: { color: '#ef4444', bg: '#ef444412', icon: 'alert-circle' as const, label: 'Late' },
+      upcoming: { color: '#3b82f6', bg: '#3b82f612', icon: 'calendar' as const, label: 'Soon' },
+      scheduled: { color: '#8b5cf6', bg: '#8b5cf612', icon: 'calendar-outline' as const, label: 'Set' },
+    };
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Location</Text>
-              <TextInput 
-                style={styles.input} 
-                value={location} 
-                onChangeText={setLocation} 
-                placeholder="Clinic or hospital name"
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
+    const config = statusConfig[dose.status];
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Batch Number</Text>
-              <TextInput 
-                style={styles.input} 
-                value={batchNumber} 
-                onChangeText={setBatchNumber} 
-                placeholder="Vaccine batch/lot number"
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
-
-            {dose.sideEffects.length > 0 && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Side Effects (select any)</Text>
-                <View style={styles.sideEffectsContainer}>
-                  {dose.sideEffects.map(effect => (
-                    <TouchableOpacity
-                      key={effect}
-                      onPress={() => toggleSideEffect(effect)}
-                      style={[
-                        styles.sideEffectChip,
-                        selectedSideEffects.includes(effect) && { backgroundColor: themeColors.primary, borderColor: themeColors.primary },
-                      ]}
-                    >
-                      <Text style={[
-                        styles.sideEffectChipText,
-                        selectedSideEffects.includes(effect) && { color: '#fff' },
-                      ]}>
-                        {effect}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+    return (
+      <Animated.View entering={FadeInUp.delay(index * 40).springify()}>
+        <TouchableOpacity
+          onPress={() => series && onViewDetails(series)}
+          activeOpacity={0.9}
+          style={[
+            styles.doseDetailCard,
+            dose.status === 'overdue' && {
+              borderLeftWidth: 3,
+              borderLeftColor: '#ef4444',
+            },
+            dose.status === 'due' && {
+              borderLeftWidth: 3,
+              borderLeftColor: '#f59e0b',
+            },
+          ]}
+        >
+          <View style={styles.doseDetailTop}>
+            <View style={styles.doseDetailLeft}>
+              <View
+                style={[styles.doseDetailIconBg, { backgroundColor: config.bg }]}
+              >
+                <Ionicons name={config.icon} size={18} color={config.color} />
               </View>
-            )}
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Notes</Text>
-              <TextInput
-                style={[styles.input, styles.inputMultiline]}
-                multiline
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Add any notes about this vaccination..."
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
-          </ScrollView>
-
-          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-            <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.saveButtonGradient}>
-              <Text style={styles.saveButtonText}>Save Record</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-});
-
-const VaccineDetailModal = memo(({ visible, series, onClose }: { visible: boolean; series: VaccineSeries | null; onClose: () => void }) => {
-  if (!series) return null;
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.modalOverlay}>
-        <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="dark" />
-        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { maxHeight: SCREEN_W * 1.2 }]}>
-          <LinearGradient colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} style={StyleSheet.absoluteFill} />
-          <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalTitle}>{series.name}</Text>
-              <Text style={styles.modalSubtitle}>{series.description}</Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
-              <Ionicons name="close" size={20} color="#64748b" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 16 }}>
-            <View style={styles.detailSection}>
-              <Text style={styles.detailLabel}>Category</Text>
-              <View style={[styles.categoryBadge, { backgroundColor: series.category === 'core' ? '#10b98120' : series.category === 'recommended' ? '#3b82f620' : '#f59e0b20' }]}>
-                <Text style={[styles.categoryBadgeText, { color: series.category === 'core' ? '#10b981' : series.category === 'recommended' ? '#3b82f6' : '#f59e0b' }]}>
-                  {series.category === 'core' ? 'Core' : series.category === 'recommended' ? 'Recommended' : 'High Risk / Travel'}
+              <View style={styles.doseDetailInfo}>
+                <Text style={styles.doseDetailName}>{dose.vaccineName}</Text>
+                <Text style={styles.doseDetailMeta}>
+                  Dose {dose.doseNumber} of {dose.totalDoses} •{' '}
+                  {dose.recommendedAgeLabel}
                 </Text>
               </View>
             </View>
+            <View style={[styles.doseDetailBadge, { backgroundColor: config.bg }]}>
+              <Text
+                style={[styles.doseDetailBadgeText, { color: config.color }]}
+              >
+                {config.label}
+              </Text>
+            </View>
+          </View>
 
-            <View style={styles.detailSection}>
-              <Text style={styles.detailLabel}>Dosing Schedule</Text>
-              {series.doses.map((dose, index) => (
-                <View key={index} style={styles.doseDetailRow}>
-                  <View style={styles.doseDetailNumber}>
-                    <Text style={styles.doseDetailNumberText}>{dose.doseNumber}</Text>
+          <View style={styles.doseDetailMiddle}>
+            <View style={styles.doseDetailDateRow}>
+              <Ionicons name="calendar-outline" size={13} color="#94a3b8" />
+              <Text style={styles.doseDetailDateText}>
+                {dose.status === 'completed' && dose.completedDate
+                  ? `Given: ${safeFmt(dose.completedDate, 'MMM d, yyyy')}`
+                  : `Due: ${safeFmt(dose.dueDate, 'MMM d, yyyy')}`}
+              </Text>
+            </View>
+
+            {dose.status === 'overdue' && (
+              <View style={styles.doseDetailAlertRow}>
+                <Ionicons name="warning" size={13} color="#ef4444" />
+                <Text style={styles.doseDetailAlertText}>
+                  {Math.abs(daysUntilDue)} days overdue
+                </Text>
+              </View>
+            )}
+            {dose.status === 'due' && daysUntilDue <= 7 && (
+              <View style={styles.doseDetailAlertRow}>
+                <Ionicons name="notifications" size={13} color="#f59e0b" />
+                <Text
+                  style={[styles.doseDetailAlertText, { color: '#f59e0b' }]}
+                >
+                  Due in {daysUntilDue} days
+                </Text>
+              </View>
+            )}
+            {dose.notes && (
+              <View style={styles.doseDetailNotesRow}>
+                <Ionicons name="document-text" size={13} color="#94a3b8" />
+                <Text style={styles.doseDetailNotesText}>{dose.notes}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.doseDetailBottom}>
+            <TouchableOpacity
+              onPress={() => series && onViewDetails(series)}
+              style={styles.doseDetailDetailBtn}
+            >
+              <Text
+                style={[
+                  styles.doseDetailDetailText,
+                  { color: themeColors.primary },
+                ]}
+              >
+                Details
+              </Text>
+            </TouchableOpacity>
+            {dose.status !== 'completed' ? (
+              <TouchableOpacity
+                onPress={() => onComplete(dose)}
+                style={[
+                  styles.doseDetailRecordBtn,
+                  { backgroundColor: themeColors.primary },
+                ]}
+              >
+                <Ionicons name="checkmark" size={14} color="#fff" />
+                <Text style={styles.doseDetailRecordText}>Record</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.doseDetailDoneBadge}>
+                <Ionicons name="checkmark-done" size={14} color="#10b981" />
+                <Text style={styles.doseDetailDoneText}>Recorded</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  }
+);
+
+/* ── Travel Planner ── */
+const TravelVaccinePlanner = memo(
+  ({
+    doses,
+    themeColors,
+    onPlanTravel,
+  }: {
+    doses: VaccineDose[];
+    themeColors: any;
+    onPlanTravel: () => void;
+  }) => {
+    const travelDoses = useMemo(() => {
+      const travelSeriesIds = VACCINE_SERIES.filter(
+        (s) => s.category === 'travel'
+      ).map((s) => s.id);
+      return doses.filter(
+        (d) => travelSeriesIds.includes(d.vaccineId) && d.status !== 'completed'
+      );
+    }, [doses]);
+
+    if (travelDoses.length === 0) return null;
+
+    return (
+      <Animated.View entering={FadeInUp.delay(300).springify()}>
+        <SectionHeader
+          title="Travel Ready"
+          subtitle={`${travelDoses.length} vaccines needed for travel`}
+          themeColors={themeColors}
+        />
+        <GlassCard>
+          <View style={styles.travelHeader}>
+            <View
+              style={[styles.travelIconBg, { backgroundColor: '#8b5cf615' }]}
+            >
+              <Ionicons name="airplane" size={22} color="#8b5cf6" />
+            </View>
+            <View style={styles.travelHeaderText}>
+              <Text style={styles.travelTitle}>Travel Vaccination Checklist</Text>
+              <Text style={styles.travelSubtitle}>Plan ahead for safe travel</Text>
+            </View>
+          </View>
+
+          <View style={styles.travelList}>
+            {travelDoses.map((dose, i) => {
+              const series = VACCINE_SERIES.find((s) => s.id === dose.vaccineId);
+              return (
+                <View
+                  key={dose.id}
+                  style={[
+                    styles.travelItem,
+                    i < travelDoses.length - 1 && {
+                      borderBottomWidth: 1,
+                      borderBottomColor: 'rgba(100,116,139,0.08)',
+                    },
+                  ]}
+                >
+                  <View style={styles.travelItemLeft}>
+                    <View
+                      style={[
+                        styles.travelItemDot,
+                        {
+                          backgroundColor:
+                            dose.status === 'overdue' ? '#ef4444' : '#f59e0b',
+                        },
+                      ]}
+                    />
+                    <View>
+                      <Text style={styles.travelItemName}>
+                        {dose.vaccineName}
+                      </Text>
+                      <Text style={styles.travelItemDesc}>
+                        {series?.description}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.doseDetailContent}>
-                    <Text style={styles.doseDetailAge}>{dose.recommendedAgeLabel}</Text>
-                    <Text style={styles.doseDetailDesc}>{dose.description}</Text>
-                  </View>
+                  <Text
+                    style={[
+                      styles.travelItemStatus,
+                      {
+                        color:
+                          dose.status === 'overdue' ? '#ef4444' : '#f59e0b',
+                      },
+                    ]}
+                  >
+                    {dose.status === 'overdue' ? 'Overdue' : 'Pending'}
+                  </Text>
                 </View>
-              ))}
-            </View>
+              );
+            })}
+          </View>
 
-            <View style={styles.detailSection}>
-              <Text style={styles.detailLabel}>Contraindications</Text>
-              {series.doses[0].contraindications.map((c, i) => (
-                <View key={i} style={styles.contraindicationRow}>
-                  <Ionicons name="warning-outline" size={14} color="#ef4444" />
-                  <Text style={styles.contraindicationText}>{c}</Text>
-                </View>
-              ))}
-              {series.doses[0].contraindications.length === 0 && (
-                <Text style={styles.noContraindications}>No specific contraindications listed</Text>
-              )}
-            </View>
-
-            <View style={styles.detailSection}>
-              <Text style={styles.detailLabel}>Administration</Text>
-              <Text style={styles.detailText}>Route: {series.doses[0].route}</Text>
-            </View>
-          </ScrollView>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-});
-
-
+          <TouchableOpacity
+            onPress={onPlanTravel}
+            style={[styles.travelPlanBtn, { backgroundColor: '#8b5cf6' }]}
+          >
+            <Ionicons name="map" size={16} color="#fff" />
+            <Text style={styles.travelPlanText}>Plan Travel Vaccines</Text>
+          </TouchableOpacity>
+        </GlassCard>
+      </Animated.View>
+    );
+  }
+);
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — REDESIGNED WITH TABS & GROWTHDASHBOARD STYLE
+   MODALS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const RecordVaccineModal = memo(
+  ({ visible, dose, onClose, onSave, themeColors }: any) => {
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [notes, setNotes] = useState('');
+    const [selectedSideEffects, setSelectedSideEffects] = useState<string[]>([]);
+    const [batchNumber, setBatchNumber] = useState('');
+    const [location, setLocation] = useState('');
+
+    useEffect(() => {
+      if (visible && dose) {
+        setDate(new Date().toISOString().split('T')[0]);
+        setNotes('');
+        setSelectedSideEffects([]);
+        setBatchNumber('');
+        setLocation('');
+      }
+    }, [visible, dose]);
+
+    if (!dose) return null;
+
+    const handleSave = () => {
+      onSave(dose.id, {
+        date: new Date(date).toISOString(),
+        notes,
+        sideEffects: selectedSideEffects,
+        batchNumber: batchNumber || undefined,
+        location: location || undefined,
+      });
+    };
+
+    const toggleSideEffect = (effect: string) => {
+      setSelectedSideEffects((prev) =>
+        prev.includes(effect)
+          ? prev.filter((e) => e !== effect)
+          : [...prev, effect]
+      );
+    };
+
+    return (
+      <Modal
+        visible={visible}
+        transparent
+        animationType="fade"
+        onRequestClose={onClose}
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <BlurView
+            intensity={95}
+            tint="dark"
+            style={StyleSheet.absoluteFill}
+          />
+          <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
+            <LinearGradient
+              colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>
+                  Record {dose.vaccineName}
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  Dose {dose.doseNumber} of {dose.totalDoses}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: SCREEN_H * 0.6 }}
+            >
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Date Given</Text>
+                <TextInput
+                  style={styles.input}
+                  value={date}
+                  onChangeText={setDate}
+                  placeholder="YYYY-MM-DD"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Location</Text>
+                <TextInput
+                  style={styles.input}
+                  value={location}
+                  onChangeText={setLocation}
+                  placeholder="Clinic or hospital name"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Batch Number</Text>
+                <TextInput
+                  style={styles.input}
+                  value={batchNumber}
+                  onChangeText={setBatchNumber}
+                  placeholder="Vaccine batch/lot number"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              {dose.sideEffects.length > 0 && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>
+                    Side Effects (select any)
+                  </Text>
+                  <View style={styles.sideEffectsContainer}>
+                    {dose.sideEffects.map((effect: string) => (
+                      <TouchableOpacity
+                        key={effect}
+                        onPress={() => toggleSideEffect(effect)}
+                        style={[
+                          styles.sideEffectChip,
+                          selectedSideEffects.includes(effect) && {
+                            backgroundColor: themeColors.primary,
+                            borderColor: themeColors.primary,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.sideEffectChipText,
+                            selectedSideEffects.includes(effect) && {
+                              color: '#fff',
+                            },
+                          ]}
+                        >
+                          {effect}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Notes</Text>
+                <TextInput
+                  style={[styles.input, styles.inputMultiline]}
+                  multiline
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Add any notes about this vaccination..."
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
+              <LinearGradient
+                colors={[themeColors.primary, themeColors.secondary]}
+                style={styles.saveButtonGradient}
+              >
+                <Text style={styles.saveButtonText}>Save Record</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Modal>
+    );
+  }
+);
+
+const VaccineDetailModal = memo(
+  ({
+    visible,
+    series,
+    onClose,
+  }: {
+    visible: boolean;
+    series: VaccineSeries | null;
+    onClose: () => void;
+  }) => {
+    if (!series) return null;
+
+    return (
+      <Modal
+        visible={visible}
+        transparent
+        animationType="fade"
+        onRequestClose={onClose}
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <BlurView intensity={95} style={StyleSheet.absoluteFill} tint="dark" />
+          <Animated.View
+            entering={FadeInUp.springify()}
+            style={[styles.modalContent, { maxHeight: SCREEN_W * 1.2 }]}
+          >
+            <LinearGradient
+              colors={['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>{series.name}</Text>
+                <Text style={styles.modalSubtitle}>{series.description}</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ marginTop: 16 }}
+            >
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>Category</Text>
+                <View
+                  style={[
+                    styles.categoryBadge,
+                    {
+                      backgroundColor:
+                        series.category === 'core'
+                          ? '#10b98120'
+                          : series.category === 'recommended'
+                          ? '#3b82f620'
+                          : '#f59e0b20',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.categoryBadgeText,
+                      {
+                        color:
+                          series.category === 'core'
+                            ? '#10b981'
+                            : series.category === 'recommended'
+                            ? '#3b82f6'
+                            : '#f59e0b',
+                      },
+                    ]}
+                  >
+                    {series.category === 'core'
+                      ? 'Core'
+                      : series.category === 'recommended'
+                      ? 'Recommended'
+                      : 'High Risk / Travel'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>Dosing Schedule</Text>
+                {series.doses.map((dose, index) => (
+                  <View key={index} style={styles.doseDetailRow}>
+                    <View style={styles.doseDetailNumber}>
+                      <Text style={styles.doseDetailNumberText}>
+                        {dose.doseNumber}
+                      </Text>
+                    </View>
+                    <View style={styles.doseDetailContent}>
+                      <Text style={styles.doseDetailAge}>
+                        {dose.recommendedAgeLabel}
+                      </Text>
+                      <Text style={styles.doseDetailDesc}>
+                        {dose.description}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>Contraindications</Text>
+                {series.doses[0].contraindications.map((c, i) => (
+                  <View key={i} style={styles.contraindicationRow}>
+                    <Ionicons
+                      name="warning-outline"
+                      size={14}
+                      color="#ef4444"
+                    />
+                    <Text style={styles.contraindicationText}>{c}</Text>
+                  </View>
+                ))}
+                {series.doses[0].contraindications.length === 0 && (
+                  <Text style={styles.noContraindications}>
+                    No specific contraindications listed
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>Administration</Text>
+                <Text style={styles.detailText}>
+                  Route: {series.doses[0].route}
+                </Text>
+              </View>
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+    );
+  }
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function VaccinationScheduleScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { themeColors, triggerHaptic } = useCustomization();
   const { isDark, colors: appColors } = useTheme();
-  const { currentBaby, babies, switchBaby } = useBaby();
+  const { currentBaby } = useBaby();
 
   const [doses, setDoses] = useState<VaccineDose[]>([]);
-  const [schedule, setSchedule] = useState<VaccineSeries[]>(VACCINE_SERIES);
   const [activeTab, setActiveTab] = useState<VaccineTab>('schedule');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -1161,6 +1629,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -1172,34 +1641,24 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
 
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
+    transform: [
+      {
+        translateY: interpolate(
+          scrollY.value,
+          [0, 80],
+          [-10, 0],
+          Extrapolation.CLAMP
+        ),
+      },
+    ],
   }));
 
   const currentBabyRef = useRef(currentBaby);
   currentBabyRef.current = currentBaby;
 
-  /* ── Load/Save vaccination records ── */
-  useEffect(() => {
-    loadRecords();
-  }, [currentBaby?.id]);
-
-  const babyModalShownRef = useRef(false);
-  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadRecords();
-    }, [loadRecords])
-  );
-  useEffect(() => {
-    if (!currentBaby && !babyModalShownRef.current && !isLoadingInitial) {
-      babyModalShownRef.current = true;
-      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
-      return () => clearTimeout(timer);
-    }
-    if (currentBaby) babyModalShownRef.current = false;
-  }, [currentBaby, isLoadingInitial]);
-
+  // ═══════════════════════════════════════════════════════════════════════
+  // FIX: `loadRecords` must be declared BEFORE `useFocusEffect` uses it.
+  // ═══════════════════════════════════════════════════════════════════════
   const loadRecords = useCallback(async () => {
     const baby = currentBabyRef.current;
     if (!baby) {
@@ -1209,15 +1668,24 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     }
     try {
       const stored = await AsyncStorage.getItem(`${STORAGE_KEY}_${baby.id}`);
-      const records: Record<string, { completedDate: string; notes: string; sideEffects: string[]; batchNumber?: string; location?: string }> = stored ? JSON.parse(stored) : {};
+      const records: Record<
+        string,
+        {
+          completedDate: string;
+          notes: string;
+          sideEffects: string[];
+          batchNumber?: string;
+          location?: string;
+        }
+      > = stored ? JSON.parse(stored) : {};
 
-      // ─── Load canonical schedule from Supabase (falls back to bundled) ──
+      // Load canonical schedule from Supabase (falls back to bundled)
       const schedule = await loadVaccineScheduleFromSupabase();
 
       const birthDate = safeParseDate(baby.birthDate) || new Date();
       const generatedDoses: VaccineDose[] = [];
 
-      schedule.forEach(series => {
+      schedule.forEach((series) => {
         series.doses.forEach((dose) => {
           const dueDate = addDays(birthDate, dose.recommendedAgeDays);
           const record = records[`${series.id}_${dose.doseNumber}`];
@@ -1243,10 +1711,16 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
             dueDate: dueDate.toISOString(),
             completedDate: record?.completedDate,
             status,
-            category: dose.recommendedAgeDays <= 30 ? 'birth' :
-              dose.recommendedAgeDays <= 365 ? 'infant' :
-              dose.recommendedAgeDays <= 730 ? 'toddler' :
-              dose.recommendedAgeDays <= 2190 ? 'preschool' : 'adolescent',
+            category:
+              dose.recommendedAgeDays <= 30
+                ? 'birth'
+                : dose.recommendedAgeDays <= 365
+                ? 'infant'
+                : dose.recommendedAgeDays <= 730
+                ? 'toddler'
+                : dose.recommendedAgeDays <= 2190
+                ? 'preschool'
+                : 'adolescent',
             description: dose.description,
             sideEffects: dose.sideEffects,
             contraindications: dose.contraindications,
@@ -1257,52 +1731,101 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
         });
       });
 
-      setDoses(generatedDoses.sort((a, b) => {
-        const dateA = safeParseDate(a.dueDate);
-        const dateB = safeParseDate(b.dueDate);
-        if (!dateA || !dateB) return 0;
-        return dateA.getTime() - dateB.getTime();
-      }));
+      setDoses(
+        generatedDoses.sort((a, b) => {
+          const dateA = safeParseDate(a.dueDate);
+          const dateB = safeParseDate(b.dueDate);
+          if (!dateA || !dateB) return 0;
+          return dateA.getTime() - dateB.getTime();
+        })
+      );
     } catch (error) {
       console.error('Error loading vaccination records:', error);
     } finally {
       setIsLoadingInitial(false);
     }
-  }, [currentBabyRef]);
+  }, []); // refs are stable; no deps needed
 
-  const saveRecord = async (doseId: string, data: { date: string; notes: string; sideEffects: string[]; batchNumber?: string; location?: string }) => {
-    if (!currentBaby) return;
-    try {
-      const stored = await AsyncStorage.getItem(`${STORAGE_KEY}_${currentBaby.id}`);
-      const records = stored ? JSON.parse(stored) : {};
+  // Initial load
+  useEffect(() => {
+    loadRecords();
+  }, [currentBaby?.id, loadRecords]);
 
-      records[doseId] = {
-        completedDate: data.date,
-        notes: data.notes,
-        sideEffects: data.sideEffects,
-        batchNumber: data.batchNumber,
-        location: data.location,
-      };
+  // Focus reload
+  useFocusEffect(
+    useCallback(() => {
+      loadRecords();
+    }, [loadRecords])
+  );
 
-      await AsyncStorage.setItem(`${STORAGE_KEY}_${currentBaby.id}`, JSON.stringify(records));
-      await loadRecords();
-
-      triggerHaptic('success');
-    } catch (error) {
-      console.error('Error saving record:', error);
+  // Baby-required modal
+  const babyModalShownRef = useRef(false);
+  useEffect(() => {
+    if (
+      !currentBaby &&
+      !babyModalShownRef.current &&
+      !isLoadingInitial
+    ) {
+      babyModalShownRef.current = true;
+      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
+      return () => clearTimeout(timer);
     }
-  };
+    if (currentBaby) babyModalShownRef.current = false;
+  }, [currentBaby, isLoadingInitial]);
+
+  const saveRecord = useCallback(
+    async (
+      doseId: string,
+      data: {
+        date: string;
+        notes: string;
+        sideEffects: string[];
+        batchNumber?: string;
+        location?: string;
+      }
+    ) => {
+      if (!currentBaby) return;
+      try {
+        const stored = await AsyncStorage.getItem(
+          `${STORAGE_KEY}_${currentBaby.id}`
+        );
+        const records = stored ? JSON.parse(stored) : {};
+
+        records[doseId] = {
+          completedDate: data.date,
+          notes: data.notes,
+          sideEffects: data.sideEffects,
+          batchNumber: data.batchNumber,
+          location: data.location,
+        };
+
+        await AsyncStorage.setItem(
+          `${STORAGE_KEY}_${currentBaby.id}`,
+          JSON.stringify(records)
+        );
+        await loadRecords();
+
+        triggerHaptic('success');
+      } catch (error) {
+        console.error('Error saving record:', error);
+      }
+    },
+    [currentBaby, loadRecords, triggerHaptic]
+  );
 
   const handleComplete = useCallback((dose: VaccineDose) => {
     setSelectedDose(dose);
     setShowRecordModal(true);
   }, []);
 
-  const handleSaveRecord = useCallback((doseId: string, data: any) => {
-    saveRecord(doseId, data);
-    setShowRecordModal(false);
-    setSelectedDose(null);
-  }, [currentBaby]);
+  const handleSaveRecord = useCallback(
+    (doseId: string, data: any) => {
+      saveRecord(doseId, data);
+      setShowRecordModal(false);
+      setSelectedDose(null);
+    },
+    [saveRecord]
+  );
 
   const handleViewDetails = useCallback((series: VaccineSeries) => {
     setSelectedSeries(series);
@@ -1320,30 +1843,39 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     }
   }, [loadRecords]);
 
-  const handleTabChange = useCallback((tab: VaccineTab) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setActiveTab(tab);
-    triggerHaptic('light');
-  }, [triggerHaptic]);
+  const handleTabChange = useCallback(
+    (tab: VaccineTab) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setActiveTab(tab);
+      triggerHaptic('light');
+    },
+    [triggerHaptic]
+  );
 
-  const handleCategoryPress = useCallback((cat: string) => {
-    setActiveCategory(cat);
-    setActiveTab('schedule');
-    triggerHaptic('light');
-  }, [triggerHaptic]);
+  const handleCategoryPress = useCallback(
+    (cat: string) => {
+      setActiveCategory(cat);
+      setActiveTab('schedule');
+      triggerHaptic('light');
+    },
+    [triggerHaptic]
+  );
 
-  const handleInsightPress = useCallback((insight: VaccineInsight) => {
-    triggerHaptic('light');
-    if (insight.action?.screen) {
-      navigation.navigate(insight.action.screen, insight.action.params);
-    }
-  }, [navigation, triggerHaptic]);
+  const handleInsightPress = useCallback(
+    (insight: VaccineInsight) => {
+      triggerHaptic('light');
+      if (insight.action?.screen) {
+        navigation.navigate(insight.action.screen, insight.action.params);
+      }
+    },
+    [navigation, triggerHaptic]
+  );
 
   /* ── Stats ── */
   const stats = useMemo(() => {
-    const completed = doses.filter(d => d.status === 'completed').length;
-    const overdue = doses.filter(d => d.status === 'overdue').length;
-    const due = doses.filter(d => d.status === 'due').length;
+    const completed = doses.filter((d) => d.status === 'completed').length;
+    const overdue = doses.filter((d) => d.status === 'overdue').length;
+    const due = doses.filter((d) => d.status === 'due').length;
     const total = doses.length;
     const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
@@ -1355,17 +1887,24 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     let filtered = doses;
 
     if (activeCategory !== 'all') {
-      const seriesIds = VACCINE_SERIES.filter(s => s.category === activeCategory).map(s => s.id);
-      filtered = filtered.filter(d => seriesIds.includes(d.vaccineId));
+      const seriesIds = VACCINE_SERIES.filter(
+        (s) => s.category === activeCategory
+      ).map((s) => s.id);
+      filtered = filtered.filter((d) => seriesIds.includes(d.vaccineId));
     }
 
     if (statusFilter !== 'all') {
       if (statusFilter === 'pending') {
-        filtered = filtered.filter(d => d.status === 'due' || d.status === 'overdue' || d.status === 'upcoming');
+        filtered = filtered.filter(
+          (d) =>
+            d.status === 'due' ||
+            d.status === 'overdue' ||
+            d.status === 'upcoming'
+        );
       } else if (statusFilter === 'completed') {
-        filtered = filtered.filter(d => d.status === 'completed');
+        filtered = filtered.filter((d) => d.status === 'completed');
       } else if (statusFilter === 'overdue') {
-        filtered = filtered.filter(d => d.status === 'overdue');
+        filtered = filtered.filter((d) => d.status === 'overdue');
       }
     }
 
@@ -1375,7 +1914,7 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
   /* ── Group by age category ── */
   const groupedDoses = useMemo(() => {
     const groups: Record<string, VaccineDose[]> = {};
-    filteredDoses.forEach(dose => {
+    filteredDoses.forEach((dose) => {
       if (!groups[dose.category]) groups[dose.category] = [];
       groups[dose.category].push(dose);
     });
@@ -1395,14 +1934,12 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     return safeDiffMonths(new Date(), currentBaby.birthDate);
   }, [currentBaby]);
 
-  const tabs = [
-    { key: 'schedule' as VaccineTab, label: 'Schedule', icon: 'calendar-outline' },
-    { key: 'timeline' as VaccineTab, label: 'Timeline', icon: 'time-outline' },
-    { key: 'insights' as VaccineTab, label: 'Insights', icon: 'bulb-outline' },
-    { key: 'records' as VaccineTab, label: 'Records', icon: 'document-text-outline' },
+  const tabs: { key: VaccineTab; label: string; icon: string }[] = [
+    { key: 'schedule', label: 'Schedule', icon: 'calendar-outline' },
+    { key: 'timeline', label: 'Timeline', icon: 'time-outline' },
+    { key: 'insights', label: 'Insights', icon: 'bulb-outline' },
+    { key: 'records', label: 'Records', icon: 'document-text-outline' },
   ];
-
-  
 
   return (
     <View style={styles.container}>
@@ -1411,37 +1948,74 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
         colors={
           (isDark
             ? [appColors.background, appColors.surface, appColors.card]
-            : ['#f8fafc', '#e0e7ff', '#ddd6fe']) as [string, string, ...string[]]
+            : ['#f8fafc', '#e0e7ff', '#ddd6fe']) as [
+            string,
+            string,
+            ...string[]
+          ]
         }
         style={StyleSheet.absoluteFill}
       />
 
       {/* Sticky Header */}
-      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
+      <Animated.View
+        style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}
+      >
         <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
-        <Text style={styles.stickyTitle}>{currentBaby ? `${currentBaby.name}'s Vaccines` : 'Vaccines'}</Text>
-        <Text style={styles.stickySubtitle}>{currentBaby ? `${ageMonths} months • ${stats.completed}/${stats.total} doses` : 'Select a baby profile'}</Text>
+        <Text style={styles.stickyTitle}>
+          {currentBaby ? `${currentBaby.name}'s Vaccines` : 'Vaccines'}
+        </Text>
+        <Text style={styles.stickySubtitle}>
+          {currentBaby
+            ? `${ageMonths} months • ${stats.completed}/${stats.total} doses`
+            : 'Select a baby profile'}
+        </Text>
       </Animated.View>
 
       {/* Main Scroll */}
       <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12 }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + 12 },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.primary} colors={[themeColors.primary, themeColors.secondary]} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={themeColors.primary}
+            colors={[themeColors.primary, themeColors.secondary]}
+          />
         }
       >
-        {/* ── TOP HEADER ROW ── */}
+        {/* Top Header Row */}
         <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+          >
             <Ionicons name="arrow-back" size={22} color="#1e293b" />
           </TouchableOpacity>
 
           {currentBaby ? (
-            <TouchableOpacity onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Vaccines' })} style={styles.babyChip}>
-              <SafeAvatar avatar={currentBaby.avatar} size={36} fallbackIcon="person" borderColor={themeColors.primary} borderWidth={2} />
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('SwitchBaby', {
+                  returnTo: 'Main',
+                  returnLabel: 'Vaccines',
+                })
+              }
+              style={styles.babyChip}
+            >
+              <SafeAvatar
+                avatar={currentBaby.avatar}
+                size={36}
+                fallbackIcon="person"
+                borderColor={themeColors.primary}
+                borderWidth={2}
+              />
               <View style={styles.babyChipText}>
                 <Text style={styles.babyChipName}>{currentBaby.name}</Text>
                 <Text style={styles.babyChipAge}>{ageMonths}mo</Text>
@@ -1449,78 +2023,131 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
               <Ionicons name="chevron-down" size={16} color="#94a3b8" />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity onPress={() => navigation.navigate('CreateBabyProfile')} style={[styles.babyChip, { justifyContent: 'flex-start', gap: 10 }]}>
-              <View style={{ width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: `${themeColors.primary}15` }}>
-                <Ionicons name="add-circle" size={28} color={themeColors.primary} />
+            <TouchableOpacity
+              onPress={() => navigation.navigate('CreateBabyProfile')}
+              style={[styles.babyChip, { justifyContent: 'flex-start', gap: 10 }]}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 12,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  backgroundColor: `${themeColors.primary}15`,
+                }}
+              >
+                <Ionicons
+                  name="add-circle"
+                  size={28}
+                  color={themeColors.primary}
+                />
               </View>
               <View style={styles.babyChipText}>
                 <Text style={styles.babyChipName}>Add Baby</Text>
                 <Text style={styles.babyChipAge}>Tap to create profile</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#94a3b8" style={{ marginLeft: 'auto' }} />
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color="#94a3b8"
+                style={{ marginLeft: 'auto' }}
+              />
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity onPress={() => navigation.navigate('PediatricianPDFExport')} style={[styles.pdfBtn, { backgroundColor: 'rgba(255,255,255,0.6)' }]}>
-            <Ionicons name="document-text" size={22} color={themeColors.primary} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('PediatricianPDFExport')}
+            style={[
+              styles.pdfBtn,
+              { backgroundColor: 'rgba(255,255,255,0.6)' },
+            ]}
+          >
+            <Ionicons
+              name="document-text"
+              size={22}
+              color={themeColors.primary}
+            />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => {
-            if (!currentBaby) {
-              setShowBabyRequiredModal(true);
-              return;
-            }
-            const nextDue = doses.find(d => d.status === 'due' || d.status === 'overdue');
-            if (nextDue) handleComplete(nextDue);
-          }} style={[styles.addBtn, { backgroundColor: themeColors.primary }]}>
+          <TouchableOpacity
+            onPress={() => {
+              if (!currentBaby) {
+                setShowBabyRequiredModal(true);
+                return;
+              }
+              const nextDue = doses.find(
+                (d) => d.status === 'due' || d.status === 'overdue'
+              );
+              if (nextDue) handleComplete(nextDue);
+            }}
+            style={[styles.addBtn, { backgroundColor: themeColors.primary }]}
+          >
             <Ionicons name="add" size={24} color="#fff" />
           </TouchableOpacity>
         </Animated.View>
 
-        {/* ── PROTECTION SCORE (Hero) ── */}
+        {/* Protection Score */}
         <ProtectionScore stats={stats} themeColors={themeColors} />
 
-        {/* ── VACCINE CATEGORY GRID ── */}
-        <VaccineCategoryGrid doses={doses} onCategoryPress={handleCategoryPress} themeColors={themeColors} />
+        {/* Category Grid */}
+        <VaccineCategoryGrid
+          doses={doses}
+          onCategoryPress={handleCategoryPress}
+          themeColors={themeColors}
+        />
 
-        {/* ── TAB BAR ── */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} themeColors={themeColors} />
+        {/* Tab Bar */}
+        <TabBar
+          tabs={tabs}
+          activeTab={activeTab}
+          onChange={handleTabChange}
+          themeColors={themeColors}
+        />
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: SCHEDULE
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* TAB: SCHEDULE */}
         {activeTab === 'schedule' && (
           <>
-            {/* Status Filter */}
             <View style={styles.statusFilterContainer}>
-              {([
-                { key: 'all', label: 'All' },
-                { key: 'pending', label: 'Pending' },
-                { key: 'completed', label: 'Done' },
-                { key: 'overdue', label: 'Late' },
-              ] as const).map(filter => (
+              {(
+                [
+                  { key: 'all', label: 'All' },
+                  { key: 'pending', label: 'Pending' },
+                  { key: 'completed', label: 'Done' },
+                  { key: 'overdue', label: 'Late' },
+                ] as const
+              ).map((filter) => (
                 <TouchableOpacity
                   key={filter.key}
                   onPress={() => setStatusFilter(filter.key)}
                   style={[
                     styles.statusChip,
-                    statusFilter === filter.key && { backgroundColor: `${themeColors.primary}20`, borderColor: themeColors.primary },
+                    statusFilter === filter.key && {
+                      backgroundColor: `${themeColors.primary}20`,
+                      borderColor: themeColors.primary,
+                    },
                   ]}
                 >
-                  <Text style={[
-                    styles.statusChipText,
-                    statusFilter === filter.key && { color: themeColors.primary, fontWeight: '700' },
-                  ]}>
+                  <Text
+                    style={[
+                      styles.statusChipText,
+                      statusFilter === filter.key && {
+                        color: themeColors.primary,
+                        fontWeight: '700',
+                      },
+                    ]}
+                  >
                     {filter.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            {/* Dose List by Category */}
             {Object.entries(groupedDoses).map(([category, categoryDoses]) => (
               <View key={category} style={styles.categorySection}>
-                <Text style={styles.categoryTitle}>{categoryLabels[category] || category}</Text>
+                <Text style={styles.categoryTitle}>
+                  {categoryLabels[category] || category}
+                </Text>
                 {categoryDoses.map((dose, i) => (
                   <DoseDetailCard
                     key={dose.id}
@@ -1536,54 +2163,90 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
 
             {filteredDoses.length === 0 && (
               <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="shield-check" size={64} color="#cbd5e1" />
-                <Text style={styles.emptyStateTitle}>No vaccinations found</Text>
-                <Text style={styles.emptyStateText}>Try adjusting your filters</Text>
+                <MaterialCommunityIcons
+                  name="shield-check"
+                  size={64}
+                  color="#cbd5e1"
+                />
+                <Text style={styles.emptyStateTitle}>
+                  No vaccinations found
+                </Text>
+                <Text style={styles.emptyStateText}>
+                  Try adjusting your filters
+                </Text>
               </View>
             )}
 
-            {/* Travel Vaccines */}
-            <TravelVaccinePlanner doses={doses} themeColors={themeColors} onPlanTravel={() => navigation.navigate('TravelPlanner')} />
+            <TravelVaccinePlanner
+              doses={doses}
+              themeColors={themeColors}
+              onPlanTravel={() => navigation.navigate('TravelPlanner')}
+            />
           </>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: TIMELINE
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* TAB: TIMELINE */}
         {activeTab === 'timeline' && (
           <>
-            <VaccineTimeline doses={doses} onDosePress={handleComplete} themeColors={themeColors} />
+            <VaccineTimeline
+              doses={doses}
+              onDosePress={handleComplete}
+              themeColors={themeColors}
+            />
 
-            {/* Next Dose Alert */}
             {(() => {
-              const nextDose = doses.find(d => d.status === 'due' || d.status === 'overdue');
+              const nextDose = doses.find(
+                (d) => d.status === 'due' || d.status === 'overdue'
+              );
               if (!nextDose) return null;
               return (
                 <Animated.View entering={FadeInUp.delay(250).springify()}>
-                  <GlassCard style={[styles.nextDoseCard, nextDose.status === 'overdue' && styles.nextDoseCardOverdue]}>
+                  <GlassCard
+                    style={[
+                      styles.nextDoseCard,
+                      nextDose.status === 'overdue' && styles.nextDoseCardOverdue,
+                    ]}
+                  >
                     <View style={styles.nextDoseHeader}>
                       <Ionicons
-                        name={nextDose.status === 'overdue' ? 'alert-circle' : 'notifications'}
+                        name={
+                          nextDose.status === 'overdue'
+                            ? 'alert-circle'
+                            : 'notifications'
+                        }
                         size={24}
                         color={nextDose.status === 'overdue' ? '#ef4444' : '#f59e0b'}
                       />
                       <View style={styles.nextDoseContent}>
                         <Text style={styles.nextDoseTitle}>
-                          {nextDose.status === 'overdue' ? '⚠️ Vaccination Overdue' : '💡 Next Vaccination Due'}
+                          {nextDose.status === 'overdue'
+                            ? '⚠️ Vaccination Overdue'
+                            : '💡 Next Vaccination Due'}
                         </Text>
                         <Text style={styles.nextDoseText}>
-                          {nextDose.vaccineName} — Dose {nextDose.doseNumber} of {nextDose.totalDoses}
+                          {nextDose.vaccineName} — Dose {nextDose.doseNumber} of{' '}
+                          {nextDose.totalDoses}
                         </Text>
                         <Text style={styles.nextDoseDate}>
                           {nextDose.status === 'overdue'
-                            ? `Overdue by ${Math.abs(safeDiffDays(nextDose.dueDate, new Date()))} days`
+                            ? `Overdue by ${Math.abs(
+                                safeDiffDays(nextDose.dueDate, new Date())
+                              )} days`
                             : `Due ${safeFmt(nextDose.dueDate, 'MMM d, yyyy')}`}
                         </Text>
                       </View>
                     </View>
                     <TouchableOpacity
                       onPress={() => handleComplete(nextDose)}
-                      style={[styles.nextDoseButton, { backgroundColor: nextDose.status === 'overdue' ? '#ef4444' : themeColors.primary }]}
+                      style={[
+                        styles.nextDoseButton,
+                        {
+                          backgroundColor:
+                            nextDose.status === 'overdue'
+                              ? '#ef4444'
+                              : themeColors.primary,
+                        },
+                      ]}
                     >
                       <Text style={styles.nextDoseButtonText}>Record Now</Text>
                     </TouchableOpacity>
@@ -1594,22 +2257,47 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
           </>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: INSIGHTS
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* TAB: INSIGHTS */}
         {activeTab === 'insights' && (
           <>
-            <VaccineInsights doses={doses} baby={currentBaby} themeColors={themeColors} onInsightPress={handleInsightPress} />
+            <VaccineInsights
+              doses={doses}
+              baby={currentBaby}
+              themeColors={themeColors}
+              onInsightPress={handleInsightPress}
+            />
 
-            {/* Quick Actions */}
             <View style={styles.quickActions}>
               {[
-                { icon: '📊', label: 'Growth', screen: 'GrowthDashboard', gradient: ['#6366f1', '#818cf8'] },
-                { icon: '🌟', label: 'Milestones', screen: 'Timeline', params: { filter: 'milestone' }, gradient: ['#f59e0b', '#fbbf24'] },
-                { icon: '🏆', label: 'Achievements', screen: 'Achievements', gradient: ['#8b5cf6', '#a78bfa'] },
+                {
+                  icon: '📊',
+                  label: 'Growth',
+                  screen: 'GrowthDashboard',
+                  gradient: ['#6366f1', '#818cf8'] as [string, string],
+                },
+                {
+                  icon: '🌟',
+                  label: 'Milestones',
+                  screen: 'Timeline',
+                  params: { filter: 'milestone' },
+                  gradient: ['#f59e0b', '#fbbf24'] as [string, string],
+                },
+                {
+                  icon: '🏆',
+                  label: 'Achievements',
+                  screen: 'Achievements',
+                  gradient: ['#8b5cf6', '#a78bfa'] as [string, string],
+                },
               ].map((action, i) => (
-                <TouchableOpacity key={i} onPress={() => navigation.navigate(action.screen, action.params)} style={styles.quickAction}>
-                  <LinearGradient colors={action.gradient as [string, string]} style={styles.quickActionGradient}>
+                <TouchableOpacity
+                  key={i}
+                  onPress={() => navigation.navigate(action.screen, (action as any).params ?? undefined)}
+                  style={styles.quickAction}
+                >
+                  <LinearGradient
+                    colors={action.gradient}
+                    style={styles.quickActionGradient}
+                  >
                     <Text style={styles.quickActionIcon}>{action.icon}</Text>
                     <Text style={styles.quickActionText}>{action.label}</Text>
                   </LinearGradient>
@@ -1619,51 +2307,83 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
           </>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: RECORDS
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* TAB: RECORDS */}
         {activeTab === 'records' && (
           <View style={styles.section}>
-            <SectionHeader 
-              title="Vaccination Records" 
-              subtitle={`${doses.filter(d => d.status === 'completed').length} recorded`}
+            <SectionHeader
+              title="Vaccination Records"
+              subtitle={`${
+                doses.filter((d) => d.status === 'completed').length
+              } recorded`}
               themeColors={themeColors}
             />
             <GlassCard style={styles.recordsCard}>
               {doses
-                .filter(d => d.status === 'completed')
+                .filter((d) => d.status === 'completed')
                 .sort((a, b) => {
                   const da = safeParseDate(a.completedDate);
                   const db = safeParseDate(b.completedDate);
                   return (db?.getTime() || 0) - (da?.getTime() || 0);
                 })
                 .map((dose, i, arr) => (
-                  <View key={dose.id} style={[styles.recordRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: 'rgba(100,116,139,0.08)' }]}>
-                    <View style={[styles.recordIconBg, { backgroundColor: '#10b98112' }]}>
-                      <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+                  <View
+                    key={dose.id}
+                    style={[
+                      styles.recordRow,
+                      i < arr.length - 1 && {
+                        borderBottomWidth: 1,
+                        borderBottomColor: 'rgba(100,116,139,0.08)',
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.recordIconBg,
+                        { backgroundColor: '#10b98112' },
+                      ]}
+                    >
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color="#10b981"
+                      />
                     </View>
                     <View style={styles.recordInfo}>
                       <Text style={styles.recordName}>{dose.vaccineName}</Text>
-                      <Text style={styles.recordMeta}>Dose {dose.doseNumber} of {dose.totalDoses}</Text>
+                      <Text style={styles.recordMeta}>
+                        Dose {dose.doseNumber} of {dose.totalDoses}
+                      </Text>
                     </View>
                     <View style={styles.recordRight}>
-                      <Text style={styles.recordDate}>{safeFmt(dose.completedDate, 'MMM d, yyyy')}</Text>
-                      {dose.notes && <Text style={styles.recordNotes} numberOfLines={1}>{dose.notes}</Text>}
+                      <Text style={styles.recordDate}>
+                        {safeFmt(dose.completedDate, 'MMM d, yyyy')}
+                      </Text>
+                      {dose.notes && (
+                        <Text style={styles.recordNotes} numberOfLines={1}>
+                          {dose.notes}
+                        </Text>
+                      )}
                     </View>
                   </View>
                 ))}
-              {doses.filter(d => d.status === 'completed').length === 0 && (
+              {doses.filter((d) => d.status === 'completed').length === 0 && (
                 <View style={styles.emptyRecords}>
-                  <MaterialCommunityIcons name="clipboard-text-outline" size={48} color="#cbd5e1" />
+                  <MaterialCommunityIcons
+                    name="clipboard-text-outline"
+                    size={48}
+                    color="#cbd5e1"
+                  />
                   <Text style={styles.emptyRecordsText}>No records yet</Text>
-                  <Text style={styles.emptyRecordsSub}>Record your first vaccination to see it here</Text>
+                  <Text style={styles.emptyRecordsSub}>
+                    Record your first vaccination to see it here
+                  </Text>
                 </View>
               )}
             </GlassCard>
           </View>
         )}
 
-        {/* WHO Attribution */}
+        {/* Attribution */}
         <View style={styles.attribution}>
           <Ionicons name="information-circle" size={14} color="#94a3b8" />
           <Text style={styles.attributionText}>
@@ -1688,16 +2408,23 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
         >
           <View style={styles.modalContent}>
             <View style={styles.modalIconWrap}>
-              <LinearGradient colors={[themeColors.secondary, themeColors.primary]} style={styles.modalIconGradient}>
+              <LinearGradient
+                colors={[themeColors.secondary, themeColors.primary]}
+                style={styles.modalIconGradient}
+              >
                 <Ionicons name="people-outline" size={32} color="#fff" />
               </LinearGradient>
             </View>
             <Text style={styles.modalTitle}>Baby Profile Needed</Text>
             <Text style={styles.modalDesc}>
-              Create a baby profile to start tracking vaccinations and unlock all features.
+              Create a baby profile to start tracking vaccinations and unlock
+              all features.
             </Text>
             <TouchableOpacity
-              style={[styles.modalPrimaryBtn, { backgroundColor: themeColors.primary }]}
+              style={[
+                styles.modalPrimaryBtn,
+                { backgroundColor: themeColors.primary },
+              ]}
               onPress={() => {
                 setShowBabyRequiredModal(false);
                 navigation.navigate('CreateBabyProfile');
@@ -1716,11 +2443,14 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── MODALS ── */}
+      {/* Modals */}
       <RecordVaccineModal
         visible={showRecordModal}
         dose={selectedDose}
-        onClose={() => { setShowRecordModal(false); setSelectedDose(null); }}
+        onClose={() => {
+          setShowRecordModal(false);
+          setSelectedDose(null);
+        }}
         onSave={handleSaveRecord}
         themeColors={themeColors}
       />
@@ -1728,155 +2458,170 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
       <VaccineDetailModal
         visible={showDetailModal}
         series={selectedSeries}
-        onClose={() => { setShowDetailModal(false); setSelectedSeries(null); }}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedSeries(null);
+        }}
       />
-
-      {/* Baby switching handled via SwitchBaby screen */}
     </View>
   );
 }
 
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned (Matching GrowthDashboard)
+   STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingBottom: 24 },
 
-  // ── Glass Card ──
   glassCard: {
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
-    /* no shadow */
     marginHorizontal: DESIGN.spacing.lg,
     marginBottom: DESIGN.spacing.lg,
     backgroundColor: 'rgba(255,255,255,0.7)',
   },
   glassBorder: {
     position: 'absolute',
-    top: 0, left: 0, right: 0,
+    top: 0,
+    left: 0,
+    right: 0,
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.8)',
   },
   glassContent: { flex: 1 },
 
-  // ── Top Header ──
-  topHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 10, 
-    marginHorizontal: 16, 
-    marginBottom: 16 
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
-  backBtn: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.6)',
   },
-  babyChip: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 10, 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 16, 
+  babyChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.6)',
   },
   babyChipText: { flex: 1 },
-  babyChipName: { fontSize: 16, fontWeight: '800', color: '#1e293b', letterSpacing: -0.3 },
-  babyChipAge: { fontSize: 12, fontWeight: '600', color: '#64748b', marginTop: 1 },
-  addBtn: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: 14, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  babyChipName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1e293b',
+    letterSpacing: -0.3,
   },
-  pdfBtn: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: 14, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  babyChipAge: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+    marginTop: 1,
+  },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pdfBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
-  // ── Sticky Header ──
-  stickyHeader: { 
-    position: 'absolute', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    zIndex: 100, 
-    alignItems: 'center', 
-    paddingHorizontal: 20, 
-    paddingBottom: 10 
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 10,
   },
   stickyTitle: { fontSize: 17, fontWeight: '800', color: '#1e293b' },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
-
-  // ── Section Header ──
-  sectionHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'flex-start', 
-    marginHorizontal: 20, 
-    marginBottom: 12, 
-    marginTop: 8 
+  stickySubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 2,
   },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1e293b', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
+
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1e293b',
+    letterSpacing: -0.3,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 2,
+  },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Tab Bar ──
-  tabBar: { 
-    flexDirection: 'row', 
-    marginHorizontal: 16, 
-    marginBottom: 16, 
-    padding: 4, 
-    borderRadius: 16, 
+  tabBar: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 4,
+    borderRadius: 16,
     gap: 2,
     backgroundColor: 'rgba(0,0,0,0.04)',
   },
-  tabItem: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 6, 
-    paddingVertical: 10, 
-    borderRadius: 12 
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
   },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  // ── Protection Score ──
-  scoreContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 18, 
-    gap: 16 
+  scoreContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 18,
+    gap: 16,
   },
-  scoreLeft: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 14 
-  },
-  scoreRing: { 
-    width: 72, 
-    height: 72, 
-    borderRadius: 36, 
-    borderWidth: 4, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  scoreLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  scoreRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scoreValue: { fontSize: 24, fontWeight: '800' },
   scoreMax: { fontSize: 12, fontWeight: '600' },
@@ -1888,42 +2633,59 @@ const styles = StyleSheet.create({
   scoreMiniBarWrap: { flex: 1 },
   scoreMiniBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   scoreMiniBarFill: { height: '100%', borderRadius: 3 },
-  scoreMiniValue: { fontSize: 12, fontWeight: '700', width: 28, textAlign: 'right' },
-
-  // ── Category Grid ──
-  categoryGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    gap: 10, 
-    marginHorizontal: 16, 
-    marginBottom: 16 
+  scoreMiniValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    width: 28,
+    textAlign: 'right',
   },
-  categoryCard: { 
-    width: (SCREEN_W - 56) / 2, 
-    padding: 14, 
-    borderRadius: 20, 
+
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  categoryCard: {
+    width: (SCREEN_W - 56) / 2,
+    padding: 14,
+    borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    /* no shadow */
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
-  categoryIconBg: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
+  categoryIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
   },
   categoryLabel: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
   categoryDesc: { fontSize: 11, fontWeight: '500', marginBottom: 8 },
-  categoryProgressWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  categoryProgressBg: { flex: 1, height: 5, borderRadius: 3, overflow: 'hidden' },
+  categoryProgressWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  categoryProgressBg: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
   categoryProgressFill: { height: '100%', borderRadius: 3 },
-  categoryProgressText: { fontSize: 11, fontWeight: '700', width: 32, textAlign: 'right' },
+  categoryProgressText: {
+    fontSize: 11,
+    fontWeight: '700',
+    width: 32,
+    textAlign: 'right',
+  },
   categoryCount: { fontSize: 11, fontWeight: '500' },
 
-  // ── Status Filter ──
   statusFilterContainer: {
     flexDirection: 'row',
     gap: 8,
@@ -1939,13 +2701,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(100,116,139,0.1)',
     alignItems: 'center',
   },
-  statusChipText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#64748b',
-  },
+  statusChipText: { fontSize: 12, fontWeight: '500', color: '#64748b' },
 
-  // ── Category Section ──
   categorySection: { marginBottom: 20 },
   categoryTitle: {
     fontSize: 16,
@@ -1956,14 +2713,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
-  // ── Dose Detail Card ──
   doseDetailCard: {
     marginBottom: 10,
     marginHorizontal: 16,
     padding: 14,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.85)',
-    /* no shadow */
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
   },
@@ -1993,9 +2748,19 @@ const styles = StyleSheet.create({
   doseDetailMiddle: { gap: 4, marginBottom: 10 },
   doseDetailDateRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   doseDetailDateText: { fontSize: 12, color: '#64748b', fontWeight: '500' },
-  doseDetailAlertRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  doseDetailAlertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
   doseDetailAlertText: { fontSize: 12, color: '#ef4444', fontWeight: '600' },
-  doseDetailNotesRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  doseDetailNotesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
   doseDetailNotesText: { fontSize: 11, color: '#94a3b8', flex: 1 },
   doseDetailBottom: {
     flexDirection: 'row',
@@ -2032,26 +2797,34 @@ const styles = StyleSheet.create({
   },
   doseDetailDoneText: { fontSize: 12, fontWeight: '700', color: '#10b981' },
 
-  // ── Timeline ──
-  timelineHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12, 
-    padding: 16, 
-    paddingBottom: 12 
+  timelineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    paddingBottom: 12,
   },
-  timelineIconBg: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  timelineIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   timelineTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
-  timelineSubtitle: { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
+  timelineSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 2,
+  },
   timelineScroll: { paddingHorizontal: 16, paddingVertical: 12, gap: 0 },
   timelineNode: { alignItems: 'center', width: 70 },
-  timelineNodeTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  timelineNodeTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   timelineDot: {
     width: 24,
     height: 24,
@@ -2074,110 +2847,109 @@ const styles = StyleSheet.create({
   timelineNodeDose: { fontSize: 10, color: '#64748b', fontWeight: '500' },
   timelineNodeStatus: { fontSize: 10, fontWeight: '600', marginTop: 2 },
 
-  // ── Next Dose Card ──
   nextDoseCard: {
     padding: 20,
     marginBottom: 20,
     borderLeftWidth: 4,
     borderLeftColor: '#f59e0b',
   },
-  nextDoseCardOverdue: {
-    borderLeftColor: '#ef4444',
-  },
+  nextDoseCardOverdue: { borderLeftColor: '#ef4444' },
   nextDoseHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 16,
   },
-  nextDoseContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
+  nextDoseContent: { flex: 1, marginLeft: 12 },
   nextDoseTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: '#1e293b',
     marginBottom: 4,
   },
-  nextDoseText: {
-    fontSize: 14,
-    color: '#475569',
-    marginBottom: 2,
-  },
-  nextDoseDate: {
-    fontSize: 13,
-    color: '#64748b',
-  },
+  nextDoseText: { fontSize: 14, color: '#475569', marginBottom: 2 },
+  nextDoseDate: { fontSize: 13, color: '#64748b' },
   nextDoseButton: {
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
-  nextDoseButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  nextDoseButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
-  // ── Insight Card ──
-  insightCard: { 
-    padding: 14, 
-    marginBottom: 8, 
-    borderRadius: 16, 
-    marginHorizontal: 16, 
-    /* no shadow */
+  insightCard: {
+    padding: 14,
+    marginBottom: 8,
+    borderRadius: 16,
+    marginHorizontal: 16,
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  insightIconBg: { 
-    width: 42, 
-    height: 42, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  insightIconBg: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   insightEmoji: { fontSize: 20 },
   insightContent: { flex: 1, gap: 3 },
-  insightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  insightHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   insightTitle: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
   insightTime: { fontSize: 11, fontWeight: '500', color: '#94a3b8' },
-  insightDesc: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: '#475569' },
-  insightActionBadge: { 
-    alignSelf: 'flex-start', 
-    paddingHorizontal: 10, 
-    paddingVertical: 5, 
-    borderRadius: 8, 
-    marginTop: 4 
+  insightDesc: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
+    color: '#475569',
+  },
+  insightActionBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginTop: 4,
   },
   insightActionText: { fontSize: 11, fontWeight: '700' },
   insightPriority: { width: 4, height: 36, borderRadius: 2 },
 
-  // ── Travel Section ──
-  travelHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12, 
-    padding: 16, 
-    paddingBottom: 12 
+  travelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    paddingBottom: 12,
   },
-  travelIconBg: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  travelIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   travelHeaderText: { flex: 1 },
   travelTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
-  travelSubtitle: { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
-  travelList: { paddingHorizontal: 16, paddingBottom: 8 },
-  travelItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 10, 
-    gap: 10 
+  travelSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 2,
   },
-  travelItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  travelList: { paddingHorizontal: 16, paddingBottom: 8 },
+  travelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 10,
+  },
+  travelItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
   travelItemDot: { width: 8, height: 8, borderRadius: 4 },
   travelItemName: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
   travelItemDesc: { fontSize: 11, color: '#64748b', marginTop: 1 },
@@ -2194,42 +2966,35 @@ const styles = StyleSheet.create({
   },
   travelPlanText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
-  // ── Quick Actions ──
-  quickActions: { 
-    flexDirection: 'row', 
-    gap: DESIGN.spacing.md, 
-    marginHorizontal: DESIGN.spacing.lg, 
-    marginBottom: DESIGN.spacing.xxl, 
-    marginTop: 8 
+  quickActions: {
+    flexDirection: 'row',
+    gap: DESIGN.spacing.md,
+    marginHorizontal: DESIGN.spacing.lg,
+    marginBottom: DESIGN.spacing.xxl,
+    marginTop: 8,
   },
-  quickAction: { 
-    flex: 1, 
-    borderRadius: 16, 
-    overflow: 'hidden', 
-    /* no shadow */ 
-  },
-  quickActionGradient: { 
-    paddingVertical: 16, 
-    alignItems: 'center', 
-    gap: 6 
+  quickAction: { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  quickActionGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    gap: 6,
   },
   quickActionIcon: { fontSize: 22 },
   quickActionText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  // ── Records ──
   recordsCard: { padding: 8 },
-  recordRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 10, 
-    gap: 12 
+  recordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    gap: 12,
   },
-  recordIconBg: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 10, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  recordIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   recordInfo: { flex: 1, gap: 2 },
   recordName: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
@@ -2241,12 +3006,15 @@ const styles = StyleSheet.create({
   emptyRecordsText: { fontSize: 16, fontWeight: '700', color: '#64748b' },
   emptyRecordsSub: { fontSize: 13, color: '#94a3b8', textAlign: 'center' },
 
-  // ── Empty States ──
   emptyState: { alignItems: 'center', paddingVertical: 40 },
-  emptyStateTitle: { fontSize: 18, fontWeight: '700', color: '#64748b', marginTop: 16 },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#64748b',
+    marginTop: 16,
+  },
   emptyStateText: { fontSize: 14, color: '#94a3b8', marginTop: 4 },
 
-  // ── Attribution ──
   attribution: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2257,58 +3025,52 @@ const styles = StyleSheet.create({
   },
   attributionText: { fontSize: 11, color: '#94a3b8', textAlign: 'center' },
 
-  // ── Section ──
   section: { marginBottom: DESIGN.spacing.xl },
 
-  // ── No Data States ──
-  noDataTitle: { fontSize: 24, fontWeight: '800', color: '#1e293b', marginBottom: 8 },
-  noDataText: { fontSize: 15, fontWeight: '500', color: '#64748b', textAlign: 'center', marginHorizontal: 40, marginBottom: 24 },
-  createBtn: { 
-    paddingHorizontal: 32, 
-    paddingVertical: 16, 
-    borderRadius: 16, 
-    shadowColor: '#667eea', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.3, 
-    shadowRadius: 12, 
-    elevation: 8 
-  },
-  createBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  // ── Modals ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
-  modalContent: { 
-    width: '100%', 
-    maxWidth: 400, 
-    borderRadius: DESIGN.radius.xl, 
-    padding: DESIGN.spacing.xxl, 
-    overflow: 'hidden', 
-    /* no shadow */ 
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: DESIGN.radius.xl,
+    padding: DESIGN.spacing.xxl,
+    overflow: 'hidden',
   },
-  modalHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    marginBottom: 20 
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  modalTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3, color: '#1e293b' },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: '#1e293b',
+  },
   modalSubtitle: { fontSize: 13, color: '#64748b', marginTop: 2 },
-  modalClose: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 10, 
-    backgroundColor: 'rgba(100,116,139,0.1)', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  modalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   inputGroup: { marginBottom: 14 },
-  inputLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, color: '#64748b' },
-  input: { 
-    height: 50, 
-    borderRadius: 12, 
-    backgroundColor: 'rgba(100,116,139,0.08)', 
-    paddingHorizontal: 16, 
-    fontSize: 16, 
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    color: '#64748b',
+  },
+  input: {
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    paddingHorizontal: 16,
+    fontSize: 16,
     fontWeight: '600',
     color: '#1e293b',
   },
@@ -2335,30 +3097,15 @@ const styles = StyleSheet.create({
   saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // ── Baby Switcher Modal ──
-  babySwitcherModal: { 
-    width: '85%', 
-    maxWidth: 360, 
-    borderRadius: 24, 
-    padding: 20, 
-    overflow: 'hidden' 
-  },
-  babySwitcherTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16, textAlign: 'center', color: '#1e293b' },
-  babySwitcherItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 14, 
-    padding: 12, 
-    borderRadius: 16, 
-    marginBottom: 8 
-  },
-  babySwitcherInfo: { flex: 1 },
-  babySwitcherName: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
-  babySwitcherMeta: { fontSize: 12, fontWeight: '500', marginTop: 2, color: '#64748b' },
-
-  // ── Detail Modal ──
   detailSection: { marginBottom: 20 },
-  detailLabel: { fontSize: 12, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
   detailText: { fontSize: 14, color: '#475569', lineHeight: 20 },
   categoryBadge: {
     paddingHorizontal: 12,
@@ -2367,7 +3114,11 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   categoryBadgeText: { fontSize: 12, fontWeight: '700' },
-  doseDetailRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
+  doseDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
   doseDetailNumber: {
     width: 28,
     height: 28,
@@ -2381,8 +3132,54 @@ const styles = StyleSheet.create({
   doseDetailNumberText: { fontSize: 12, fontWeight: '800', color: '#667eea' },
   doseDetailContent: { flex: 1 },
   doseDetailAge: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
-  doseDetailDesc: { fontSize: 12, color: '#64748b', marginTop: 2, lineHeight: 18 },
-  contraindicationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  doseDetailDesc: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  contraindicationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
   contraindicationText: { fontSize: 13, color: '#475569', flex: 1 },
-  noContraindications: { fontSize: 13, color: '#94a3b8', fontStyle: 'italic' },
+  noContraindications: {
+    fontSize: 13,
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
+
+  // Styles used by the BabyRequired modal
+  modalIconWrap: { alignItems: 'center', marginBottom: 16 },
+  modalIconGradient: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalDesc: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  modalPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+  },
+  modalPrimaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  modalSecondaryBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalSecondaryBtnText: { color: '#64748b', fontSize: 14, fontWeight: '600' },
 });
