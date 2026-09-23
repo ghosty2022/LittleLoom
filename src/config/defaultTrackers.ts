@@ -2665,8 +2665,3 @@ export const getCategorySummary = (): {
     .filter((c) => c.count > 0);
 };
 
-// ─── EXPORT SHARED UNIT SETS (for convenience) ─────────────────────────────
-export const SOLID_UNITS = CANONICAL_SOLID_UNITS;
-export const LIQUID_UNITS = CANONICAL_LIQUID_UNITS;
-export const WEIGHT_UNITS = CANONICAL_WEIGHT_UNITS;
-export const LENGTH_UNITS = CANONICAL_LENGTH_UNITS;
