@@ -53,18 +53,28 @@ export const useVaultUnlock = (): VaultUnlockState => {
   /* ─── Refresh security status from fresh storage ──────────────────── */
   const refreshSecurityStatus = useCallback(async () => {
     try {
-      const [bioEnabled, pinEnabled, appLockEnabled] = await Promise.all([
-        // Read FRESH — never trust closures
-        security.readBiometricEnabledFromStorage?.() ?? Promise.resolve(false),
-        Promise.resolve(security.settings.isPinEnabled),
-        Promise.resolve(security.settings.isAppLockEnabled),
-      ]);
+      // Prefer the fresh synchronous snapshot from SecurityContext.
+      const snap = (security as any).getSecuritySnapshot?.();
+      if (snap) {
+        setHasBiometric(Boolean(snap.hasBiometric));
+        setHasPin(Boolean(snap.hasPin));
+        setHasAnySecurity(Boolean(snap.hasAnySecurity));
+        return;
+      }
 
+      // Fallback: read directly from storage (worst case).
+      const bioEnabled = await security.readBiometricEnabledFromStorage?.();
       const bioHw = security.isBiometricHardwareAvailable && security.isBiometricEnrolled;
 
-      setHasBiometric(bioHw && bioEnabled);
-      setHasPin(Boolean(pinEnabled));
-      setHasAnySecurity(Boolean(bioEnabled || pinEnabled || appLockEnabled));
+      setHasBiometric(Boolean(bioHw && bioEnabled));
+      setHasPin(Boolean(security.settings.isPinEnabled));
+      setHasAnySecurity(
+        Boolean(
+          bioEnabled ||
+            security.settings.isPinEnabled ||
+            security.settings.isAppLockEnabled
+        )
+      );
     } catch {
       setHasAnySecurity(false);
       setHasBiometric(false);

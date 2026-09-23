@@ -2665,3 +2665,8 @@ export const getCategorySummary = (): {
     .filter((c) => c.count > 0);
 };
 
+// ─── EXPORT SHARED UNIT SETS (for convenience) ─────────────────────────────
+// NOTE: The unit sets are already declared at the top of this file.
+// Re-export them here so external consumers can import them from
+// either `types/trackers.ts` OR `config/defaultTrackers.ts`.
+export { SOLID_UNITS, LIQUID_UNITS, WEIGHT_UNITS, LENGTH_UNITS };
