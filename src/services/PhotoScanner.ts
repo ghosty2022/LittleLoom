@@ -24,6 +24,8 @@ export interface ScannedPhoto {
 
 export interface ScanResult {
   photos: ScannedPhoto[];
+  /** Alias for `photos` — kept so both hook and legacy callers work. */
+  media: ScannedPhoto[];
   totalFound: number;
   alreadyImported: number;
   newPhotos: number;
@@ -179,6 +181,7 @@ export class PhotoScanner {
 
       return {
         photos: scannedPhotos,
+        media: scannedPhotos,
         totalFound: assets.assets.length,
         alreadyImported: 0,
         newPhotos: scannedPhotos.length,

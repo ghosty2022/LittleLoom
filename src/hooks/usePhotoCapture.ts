@@ -129,6 +129,9 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
 
       triggerHaptic('success');
       setPhotos(prev => [...prev, photo]);
+      // NOTE: persistence to `photoService` is the caller's job via
+      // `useTracker().addEntry({ photoUris: [...] })`. The hook only
+      // manages the local edit session state.
       return photo;
     } catch (error) {
       console.error('Camera error:', error);
@@ -177,6 +180,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
 
       triggerHaptic('success');
       setPhotos(prev => [...prev, ...newPhotos]);
+      // NOTE: persistence handled by the caller (see above).
       return newPhotos;
     } catch (error) {
       console.error('Library error:', error);

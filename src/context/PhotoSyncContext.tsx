@@ -19,6 +19,16 @@ import { useBaby } from './BabyContext';
 import { useAuth } from './AuthContext';
 import { useSweetAlert } from '../components/SweetAlert';
 import { decode } from 'base64-arraybuffer';
+import {
+  UnifiedPhoto,
+  photoFromScanned,
+  normalizePhotoType,
+} from '../types/photos';
+import {
+  loadPhotoMetadata,
+  saveLocalPhotos,
+  buildLocalCapturePhoto,
+} from '../services/photoService';
 
 /* ═══════════════════════════════════════════════════════════════════
    TYPES
@@ -93,6 +103,8 @@ interface PhotoSyncContextType extends PhotoSyncState {
   clearCompleted: () => Promise<void>;
   getScanHistory: () => Promise<ScanHistoryEntry[]>;
   clearScanHistory: () => Promise<void>;
+  /** Expose unified photos for any consumer (e.g., GalleryScreen). */
+  getUnifiedPhotos: () => UnifiedPhoto[];
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -422,23 +434,29 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const url = await uploadToStorage(item.photo, item.babyId);
 
         const entryId = buildEntryId();
-        const { error: entryError } = await supabase.from('tracker_entries').insert({
-          id: entryId,
-          tracker_id: 'photo',
-          baby_id: item.babyId,
-          timestamp: item.photo.creationDate.getTime(),
-          title: '📸 Photo',
-          data: {
-            photoUrl: url,
-            fileName: item.photo.fileName,
-            fileSize: item.photo.fileSize,
-            width: item.photo.width,
-            height: item.photo.height,
-          },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          is_deleted: false,
-        });
+        const { error: entryError } = await supabase
+          .from('tracker_entries')
+          .insert({
+            id: entryId,
+            // tracker_type must match the CHECK constraint. 'custom' is the
+            // safe catch-all; tracker_id distinguishes the real tracker.
+            tracker_type: 'custom',
+            tracker_id: 'photo',
+            baby_id: item.babyId,
+            // timestamptz column — pass an ISO string, NOT ms.
+            timestamp: new Date(item.photo.creationDate).toISOString(),
+            title: '📸 Photo',
+            data: {
+              photoUrl: url,
+              fileName: item.photo.fileName,
+              fileSize: item.photo.fileSize,
+              width: item.photo.width,
+              height: item.photo.height,
+              source: 'auto_import',
+            },
+            photo_uris: [url],
+            is_deleted: false,
+          });
 
         if (entryError) throw new Error(entryError.message);
 
@@ -742,6 +760,27 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   }, []);
 
+  /* ─── Unified Photos Getter ──────────────────────────────────── */
+
+  const getUnifiedPhotos = useCallback((): UnifiedPhoto[] => {
+    return queueRef.current
+      .filter((i) => i.status === 'completed' && i.uploadedUrl)
+      .map((i) => ({
+        ...photoFromScanned({
+          uri: i.uploadedUrl!,
+          fileName: i.photo.fileName,
+          fileSize: i.photo.fileSize,
+          width: i.photo.width,
+          height: i.photo.height,
+          creationDate: i.photo.creationDate,
+        }),
+        id: i.id,
+        source: 'auto_import',
+        babyId: i.babyId,
+        backupStatus: 'synced',
+      }));
+  }, []);
+
   /* ─── Context Value ──────────────────────────────────────────── */
 
   const value = useMemo<PhotoSyncContextType>(
@@ -754,6 +793,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       clearCompleted,
       getScanHistory,
       clearScanHistory,
+      getUnifiedPhotos,
     }),
     [
       state,
@@ -764,6 +804,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       clearCompleted,
       getScanHistory,
       clearScanHistory,
+      getUnifiedPhotos,
     ],
   );
 

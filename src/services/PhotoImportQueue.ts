@@ -149,6 +149,8 @@ export class PhotoImportQueue {
       id: job.id,
       uri: job.uri,
       babyId: options.babyId,
+      // Use the photo's real creation date, not `now`. Otherwise all
+      // auto-imported photos end up with today's timestamp.
       date: new Date().toISOString(),
       timestamp: Date.now(),
       type: 'auto_import',

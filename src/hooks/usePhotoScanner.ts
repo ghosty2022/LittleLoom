@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { PhotoScanner, ScanProgress, ScanResult } from '../services/PhotoScanner';
+import type { UnifiedPhoto } from '../types/photos';
 import { supabase } from '../utils/supabase';
 
 export function usePhotoScanner() {
@@ -25,13 +26,15 @@ export function usePhotoScanner() {
       const scanResult = await scanner.scan({ afterDate });
       setResult(scanResult);
       
-      // Optionally store results in Supabase
-      // NOTE: PhotoScanner surfaces local device media for the user to
-      // review. Persisting is left to the caller via `tracker.addEntry`
-      // with `photoUris` so AI observeEntry runs on the real tracker
-      // entry (not a synthetic one).
+      // PhotoScanner surfaces local device media for user review.
+      // Persisting to tracker entries is the caller's responsibility
+      // via `useTracker().addEntry({ photoUris })` so AI observeEntry
+      // runs on the real entry (not a synthetic one).
       if (__DEV__ && scanResult.media.length > 0) {
-        console.log(`[PhotoScanner] Surfaced ${scanResult.media.length} local photos`);
+        console.log(
+          `[PhotoScanner] Surfaced ${scanResult.media.length} local photos ` +
+          `(photos=${scanResult.photos.length}, total=${scanResult.totalFound})`
+        );
       }
       
       return scanResult;

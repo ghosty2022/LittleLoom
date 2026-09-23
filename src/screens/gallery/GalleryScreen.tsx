@@ -94,7 +94,22 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import type { RootStackParamList } from '../../types/navigation';
-import type { TrackerEntry } from '../../types/trackers';
+import {
+  UnifiedPhoto,
+  PhotoType,
+  normalizePhotoType,
+} from '../../types/photos';
+import {
+  loadPhotoMetadata,
+  saveFavorites,
+  savePrivates,
+  saveCaptions,
+  saveLocalPhotos,
+  buildUnifiedGallery,
+  buildLocalCapturePhoto,
+  toggleInSet,
+  PhotoMetadata,
+} from '../../services/photoService';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -128,41 +143,13 @@ const STORAGE_KEYS = {
    TYPES
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type PhotoType =
-  | 'milestone'
-  | 'daily'
-  | 'sleep'
-  | 'feed'
-  | 'potty'
-  | 'growth'
-  | 'medication'
-  | 'tracker'
-  | 'all';
-
 type GalleryTab = 'all' | 'albums' | 'timeline' | 'favorites' | 'vault';
 type ViewMode = 'grid' | 'list';
 
-/** Unified photo object — either from a tracker entry or local capture */
-interface GalleryPhoto {
-  id: string;
-  uri: string;
-  timestamp: number;
-  type: PhotoType;
-  // Linked tracker data (if from a tracker entry)
-  linkedEntry?: {
-    id: string;
-    trackerId: string;
-    title: string;
-    notes?: string;
-  };
-  babyId?: string;
-  babyName?: string;
-  isFavorite: boolean;
-  isPrivate: boolean;
-  tags: string[];
-  caption?: string;
-  source: 'tracker' | 'camera' | 'gallery';
-}
+// NOTE: GalleryPhoto now lives in `../../types/photos` as `UnifiedPhoto`.
+// Use that type directly — it's shared with PhotoSyncContext, PhotoScanner,
+// and every other photo surface.
+type GalleryPhoto = UnifiedPhoto;
 
 interface DateGroup {
   date: string;
@@ -214,21 +201,7 @@ const safeNotification = (type: Haptics.NotificationFeedbackType) => {
   } catch {}
 };
 
-/** Normalize any entry photoUris shape into a flat string[] */
-const cleanImageUris = (raw: unknown): string[] => {
-  if (!Array.isArray(raw)) return [];
-  const flat = (raw as unknown[]).flat(Infinity);
-  const strings = flat
-    .map((u) => {
-      if (typeof u === 'string') return u;
-      if (u && typeof u === 'object' && typeof (u as any).uri === 'string') {
-        return (u as any).uri as string;
-      }
-      return '';
-    })
-    .filter((u): u is string => u.length > 0);
-  return [...new Set(strings)];
-};
+// (URI normalization now lives in `photosFromTrackerEntry` in types/photos.ts)
 
 /** Format bytes for display */
 const formatBytes = (bytes: number): string => {
@@ -1364,7 +1337,9 @@ const PhotoDetailModal = React.memo(
               {photo.linkedEntry ? (
                 <TouchableOpacity
                   style={styles.detailLinkedBtn}
-                  onPress={() => onNavigateToEntry(photo.linkedEntry!.id)}
+                  onPress={() =>
+                    onNavigateToEntry(photo.linkedEntry!.entryId)
+                  }
                 >
                   <Ionicons name="link-outline" size={14} color="#fff" />
                   <Text style={styles.detailLinkedText}>
@@ -1534,11 +1509,14 @@ export default function GalleryScreen() {
   const [activeBabyFilter, setActiveBabyFilter] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ── Persisted metadata ──
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [privates, setPrivates] = useState<Set<string>>(new Set());
-  const [captions, setCaptions] = useState<Record<string, string>>({});
-  const [localPhotos, setLocalPhotos] = useState<GalleryPhoto[]>([]);
+  // ── Persisted metadata (single source of truth, loaded via photoService) ──
+  const [meta, setMeta] = useState<PhotoMetadata>(() => ({
+    favorites: new Set(),
+    privates: new Set(),
+    captions: {},
+    tags: {},
+    localPhotos: [],
+  }));
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -1563,26 +1541,25 @@ export default function GalleryScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  /* ── Load persisted metadata ── */
+  /* ── Load persisted metadata (via photoService) ── */
   useEffect(() => {
     const load = async () => {
       try {
-        const [favStr, privStr, capStr, viewStr, tabStr, localStr] =
-          await Promise.all([
-            AsyncStorage.getItem(STORAGE_KEYS.FAVORITES),
-            AsyncStorage.getItem(STORAGE_KEYS.PRIVATE),
-            AsyncStorage.getItem(STORAGE_KEYS.CAPTIONS),
-            AsyncStorage.getItem(STORAGE_KEYS.VIEW_MODE),
-            AsyncStorage.getItem(STORAGE_KEYS.GALLERY_TAB),
-            AsyncStorage.getItem('@littleloom_gallery_local'),
-          ]);
+        const loaded = await loadPhotoMetadata();
+        if (__DEV__) {
+          console.log(
+            `[Gallery] Loaded meta: favorites=${loaded.favorites.size} ` +
+            `privates=${loaded.privates.size} local=${loaded.localPhotos.length}`
+          );
+        }
+        setMeta(loaded);
 
-        if (favStr) setFavorites(new Set(JSON.parse(favStr)));
-        if (privStr) setPrivates(new Set(JSON.parse(privStr)));
-        if (capStr) setCaptions(JSON.parse(capStr));
+        const [viewStr, tabStr] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.VIEW_MODE),
+          AsyncStorage.getItem(STORAGE_KEYS.GALLERY_TAB),
+        ]);
         if (viewStr === 'list' || viewStr === 'grid') setViewMode(viewStr);
         if (tabStr) setActiveTab(tabStr as GalleryTab);
-        if (localStr) setLocalPhotos(JSON.parse(localStr));
       } catch (e) {
         if (__DEV__) console.warn('[Gallery] Load error:', e);
       } finally {
@@ -1592,115 +1569,45 @@ export default function GalleryScreen() {
     load();
   }, []);
 
-  /* ── Persist metadata ── */
+  /* ── Persist metadata via photoService ── */
   useEffect(() => {
-    AsyncStorage.setItem(
-      STORAGE_KEYS.FAVORITES,
-      JSON.stringify([...favorites])
-    ).catch(() => {});
-  }, [favorites]);
+    saveFavorites(meta.favorites);
+  }, [meta.favorites]);
 
   useEffect(() => {
-    AsyncStorage.setItem(
-      STORAGE_KEYS.PRIVATE,
-      JSON.stringify([...privates])
-    ).catch(() => {});
-  }, [privates]);
+    savePrivates(meta.privates);
+  }, [meta.privates]);
 
   useEffect(() => {
-    AsyncStorage.setItem(
-      STORAGE_KEYS.CAPTIONS,
-      JSON.stringify(captions)
-    ).catch(() => {});
-  }, [captions]);
+    saveCaptions(meta.captions);
+  }, [meta.captions]);
 
   useEffect(() => {
-    AsyncStorage.setItem(
-      STORAGE_KEYS.VIEW_MODE,
-      viewMode
-    ).catch(() => {});
+    saveLocalPhotos(meta.localPhotos);
+  }, [meta.localPhotos]);
+
+  /* ── Persist view preferences directly (small, not worth a service) ── */
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.VIEW_MODE, viewMode).catch(() => {});
   }, [viewMode]);
 
   useEffect(() => {
-    AsyncStorage.setItem(
-      STORAGE_KEYS.GALLERY_TAB,
-      activeTab
-    ).catch(() => {});
+    AsyncStorage.setItem(STORAGE_KEYS.GALLERY_TAB, activeTab).catch(() => {});
   }, [activeTab]);
 
-  useEffect(() => {
-    AsyncStorage.setItem(
-      '@littleloom_gallery_local',
-      JSON.stringify(localPhotos)
-    ).catch(() => {});
-  }, [localPhotos]);
-
-  /* ── Build unified gallery from tracker entries + local photos ── */
-  const galleryPhotos = useMemo((): GalleryPhoto[] => {
-    const all: GalleryPhoto[] = [];
-
-    // 1. From tracker entries
-    if (Array.isArray(entries)) {
-      for (const entry of entries) {
-        if (entry.isDeleted) continue;
-        const uris = cleanImageUris(entry.photoUris);
-        uris.forEach((uri, idx) => {
-          all.push({
-            id: `${entry.id}_${idx}`,
-            uri,
-            timestamp: entry.timestamp,
-            type: (entry.trackerId as PhotoType) || 'tracker',
-            linkedEntry: {
-              id: entry.id,
-              trackerId: entry.trackerId,
-              title: entry.title,
-              notes: entry.notes,
-            },
-            babyId: entry.babyId,
-            isFavorite: favorites.has(`${entry.id}_${idx}`),
-            isPrivate: privates.has(`${entry.id}_${idx}`),
-            tags: entry.tags || [],
-            caption: captions[`${entry.id}_${idx}`] || entry.notes,
-            source: 'tracker',
-          });
-        });
-      }
-    }
-
-    // 2. From local captures
-    for (const local of localPhotos) {
-      all.push({
-        ...local,
-        isFavorite: favorites.has(local.id),
-        isPrivate: privates.has(local.id),
-        caption: captions[local.id] || local.caption,
-      });
-    }
-
-    // Deduplicate by uri
-    const seen = new Set<string>();
-    return all
-      .filter((p) => {
-        if (seen.has(p.uri)) return false;
-        seen.add(p.uri);
-        return true;
-      })
-      .sort((a, b) => b.timestamp - a.timestamp);
-  }, [entries, localPhotos, favorites, privates, captions]);
-
-  /* ── Map baby names ── */
+  /* ── Map baby names for enrichment ── */
   const babyMap = useMemo(() => {
     const map = new Map<string, any>();
     babies.forEach((b: any) => map.set(b.id, b));
     return map;
   }, [babies]);
 
-  const enrichedPhotos = useMemo(() => {
-    return galleryPhotos.map((p) => ({
-      ...p,
-      babyName: p.babyId ? babyMap.get(p.babyId)?.name : undefined,
-    }));
-  }, [galleryPhotos, babyMap]);
+  /* ── Build unified gallery via photoService ── */
+  const enrichedPhotos = useMemo((): UnifiedPhoto[] => {
+    const nameMap = new Map<string, string>();
+    babyMap.forEach((baby, id) => nameMap.set(id, baby.name));
+    return buildUnifiedGallery(entries, meta, nameMap);
+  }, [entries, meta, babyMap]);
 
   /* ── Filter photos ── */
   const filteredPhotos = useMemo(() => {
@@ -1863,18 +1770,15 @@ export default function GalleryScreen() {
       safeHaptic(Haptics.ImpactFeedbackStyle.Medium);
       const uri = await takePhoto();
       if (uri) {
-        const newPhoto: GalleryPhoto = {
-          id: `cam_${Date.now()}`,
+        const newPhoto = buildLocalCapturePhoto(
           uri,
-          timestamp: Date.now(),
-          type: 'daily',
-          babyId: currentBaby?.id,
-          isFavorite: false,
-          isPrivate: false,
-          tags: [],
-          source: 'camera',
-        };
-        setLocalPhotos((prev) => [newPhoto, ...prev]);
+          currentBaby?.id,
+          'camera'
+        );
+        setMeta((prev) => ({
+          ...prev,
+          localPhotos: [newPhoto, ...prev.localPhotos],
+        }));
         safeNotification(Haptics.NotificationFeedbackType.Success);
       }
     } catch (e) {
@@ -1889,19 +1793,15 @@ export default function GalleryScreen() {
       const uris = await pickMultipleImages(20);
       if (!uris || uris.length === 0) return;
 
-      const newPhotos: GalleryPhoto[] = uris.map((uri, i) => ({
-        id: `import_${Date.now()}_${i}`,
-        uri,
+      const newPhotos = uris.map((uri, i) => ({
+        ...buildLocalCapturePhoto(uri, currentBaby?.id, 'gallery'),
         timestamp: Date.now() - i * 1000,
-        type: 'daily',
-        babyId: currentBaby?.id,
-        isFavorite: false,
-        isPrivate: false,
-        tags: [],
-        source: 'gallery',
       }));
 
-      setLocalPhotos((prev) => [...newPhotos, ...prev]);
+      setMeta((prev) => ({
+        ...prev,
+        localPhotos: [...newPhotos, ...prev.localPhotos],
+      }));
       safeNotification(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       if (__DEV__) console.warn('[Gallery] Import error:', e);
@@ -1910,36 +1810,44 @@ export default function GalleryScreen() {
 
   const handleToggleFavorite = useCallback((photoId: string) => {
     safeHaptic();
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(photoId)) next.delete(photoId);
-      else next.add(photoId);
-      return next;
-    });
+    setMeta((prev) => ({
+      ...prev,
+      favorites: toggleInSet(prev.favorites, photoId),
+    }));
   }, []);
 
   const handleTogglePrivate = useCallback((photoId: string) => {
     safeHaptic();
-    setPrivates((prev) => {
-      const next = new Set(prev);
-      if (next.has(photoId)) next.delete(photoId);
-      else next.add(photoId);
-      return next;
-    });
+    setMeta((prev) => ({
+      ...prev,
+      privates: toggleInSet(prev.privates, photoId),
+    }));
   }, []);
 
   const handleDeletePhoto = useCallback(
     (photoId: string) => {
       sweetAlert(
         'Delete Photo?',
-        'This will remove it from the gallery but keep it in the tracker entry.',
+        'This will remove it from the gallery. The tracker entry stays intact.',
         'warning',
         () => {
-          setLocalPhotos((prev) => prev.filter((p) => p.id !== photoId));
-          setFavorites((prev) => {
-            const next = new Set(prev);
-            next.delete(photoId);
-            return next;
+          setMeta((prev) => {
+            const nextFavorites = new Set(prev.favorites);
+            const nextPrivates = new Set(prev.privates);
+            nextFavorites.delete(photoId);
+            nextPrivates.delete(photoId);
+            const nextCaptions = { ...prev.captions };
+            delete nextCaptions[photoId];
+            const nextTags = { ...prev.tags };
+            delete nextTags[photoId];
+            return {
+              ...prev,
+              localPhotos: prev.localPhotos.filter((p) => p.id !== photoId),
+              favorites: nextFavorites,
+              privates: nextPrivates,
+              captions: nextCaptions,
+              tags: nextTags,
+            };
           });
           setShowDetail(false);
           safeNotification(Haptics.NotificationFeedbackType.Success);
@@ -1950,7 +1858,10 @@ export default function GalleryScreen() {
   );
 
   const handleEditCaption = useCallback((photoId: string, caption: string) => {
-    setCaptions((prev) => ({ ...prev, [photoId]: caption }));
+    setMeta((prev) => ({
+      ...prev,
+      captions: { ...prev.captions, [photoId]: caption },
+    }));
     safeHaptic();
   }, []);
 
@@ -2027,9 +1938,28 @@ export default function GalleryScreen() {
       } from the gallery?`,
       'warning',
       () => {
-        setLocalPhotos((prev) =>
-          prev.filter((p) => !selectedPhotos.has(p.id))
-        );
+        setMeta((prev) => {
+          const nextFavorites = new Set(prev.favorites);
+          const nextPrivates = new Set(prev.privates);
+          const nextCaptions = { ...prev.captions };
+          const nextTags = { ...prev.tags };
+          selectedPhotos.forEach((id) => {
+            nextFavorites.delete(id);
+            nextPrivates.delete(id);
+            delete nextCaptions[id];
+            delete nextTags[id];
+          });
+          return {
+            ...prev,
+            localPhotos: prev.localPhotos.filter(
+              (p) => !selectedPhotos.has(p.id)
+            ),
+            favorites: nextFavorites,
+            privates: nextPrivates,
+            captions: nextCaptions,
+            tags: nextTags,
+          };
+        });
         setSelectedPhotos(new Set());
         setIsBatchMode(false);
         safeNotification(Haptics.NotificationFeedbackType.Success);
@@ -2039,14 +1969,14 @@ export default function GalleryScreen() {
 
   const handleBatchFavorite = useCallback(() => {
     if (selectedPhotos.size === 0) return;
-    setFavorites((prev) => {
-      const next = new Set(prev);
+    setMeta((prev) => {
+      const next = new Set(prev.favorites);
       const allFav = Array.from(selectedPhotos).every((id) => next.has(id));
       selectedPhotos.forEach((id) => {
         if (allFav) next.delete(id);
         else next.add(id);
       });
-      return next;
+      return { ...prev, favorites: next };
     });
     safeHaptic();
   }, [selectedPhotos]);
@@ -2127,7 +2057,7 @@ export default function GalleryScreen() {
               {currentBaby ? `${currentBaby.name}'s Photos` : 'Gallery'}
             </Text>
             <Text style={[styles.headerSubtitle, { color: theme.text.muted }]}>
-              {galleryPhotos.length} memor{galleryPhotos.length === 1 ? 'y' : 'ies'}
+              {enrichedPhotos.length} memor{enrichedPhotos.length === 1 ? 'y' : 'ies'}
             </Text>
           </View>
 
