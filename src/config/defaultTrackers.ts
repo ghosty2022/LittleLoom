@@ -87,6 +87,17 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'oz', label: 'oz' },
         ],
       }),
+      // Solid food gets its own measurement field
+      f.quantity('solidAmount', 'Amount Eaten', {
+        showIf: { field: 'feedType', equals: 'solid' },
+        unitOptions: [
+          { id: 'g', label: 'g' },
+          { id: 'oz', label: 'oz' },
+          { id: 'tbsp', label: 'tbsp' },
+          { id: 'servings', label: 'servings' },
+          { id: 'pieces', label: 'pieces' },
+        ],
+      }),
       f.select('side', 'Side', [
         { id: 'left', label: 'Left', emoji: '⬅️' },
         { id: 'right', label: 'Right', emoji: '➡️' },
@@ -113,6 +124,10 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       ], { required: true }),
       f.datetime('startTime', 'Start Time', { required: true }),
       f.datetime('endTime', 'End Time'),
+      f.select('status', 'Status', [
+        { id: 'ongoing', label: 'Still sleeping', emoji: '💤' },
+        { id: 'completed', label: 'Awake', emoji: '☀️' },
+      ], { defaultValue: 'ongoing' }),
       f.duration('duration', 'Duration'),
       f.rating('quality', 'Sleep Quality', 5),
       f.select('location', 'Location', [

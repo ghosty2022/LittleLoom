@@ -23,10 +23,9 @@ export const AIBootstrapGate: React.FC = () => {
 
     lastBabyIdRef.current = id;
 
-    // First time we see a baby: force a warm-up so backfill runs immediately.
-    // Subsequent switches are non-forced (idempotent, throttled internally).
-    const isFirstSeen = lastBabyIdRef.current === null || bootstrappedIdsRef.current.size === 0;
-    bootstrapAI(id, isFirstSeen)
+    // Always force a warm-up on first mount for a baby so backfill runs
+    // immediately. bootstrapAI is internally throttled so this is safe.
+    bootstrapAI(id, true)
       .then(() => {
         bootstrappedIdsRef.current.add(id);
       })

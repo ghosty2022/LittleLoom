@@ -939,16 +939,62 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     }
   }, [validate, data, notes, selectedTags, photoUris, onSubmit, triggerHaptic, error, linkedEntryId, isSubmitting]);
 
-  // ─── Field update ──────────────────────────────────────────────────────
+  // ─── Field update (with cross-field auto-linking) ───────────────────────
   const updateField = useCallback((fieldId: string, value: unknown) => {
     userEditedFields.current.add(fieldId);
-    setData(prev => ({ ...prev, [fieldId]: value }));
+    setData(prev => {
+      const next = { ...prev, [fieldId]: value };
+
+      // ── Auto-link sleep start/end times ──────────────────────────────
+      // If user sets endTime and no startTime exists, leave startTime empty
+      // (so "ongoing sleep" is the default). If user sets startTime and
+      // endTime is missing, set endTime = null to signal "ongoing".
+      if (tracker.id === 'sleep') {
+        if (fieldId === 'startTime' && value && !prev.endTime) {
+          // Leave endTime undefined → "ongoing"
+          next.endTime = undefined;
+        }
+        if (fieldId === 'endTime' && value && !prev.startTime) {
+          // If user sets end without start, default start to the same time
+          // minus 1 hour (reasonable default) — but mark as user-edited
+          // so we don't override later.
+          const endMs = new Date(value as string).getTime();
+          if (!isNaN(endMs)) {
+            next.startTime = new Date(endMs - 60 * 60 * 1000).toISOString();
+          }
+        }
+        // Auto-compute duration when both are set
+        if (next.startTime && next.endTime) {
+          const startMs = new Date(next.startTime as string).getTime();
+          const endMs = new Date(next.endTime as string).getTime();
+          if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+            next.duration = Math.round((endMs - startMs) / 1000);
+          }
+        }
+      }
+
+      // ── Auto-link feed start/end ─────────────────────────────────────
+      if (tracker.id === 'feed') {
+        if (fieldId === 'startTime' && value && !prev.endTime) {
+          next.endTime = undefined;
+        }
+        if (next.startTime && next.endTime) {
+          const startMs = new Date(next.startTime as string).getTime();
+          const endMs = new Date(next.endTime as string).getTime();
+          if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+            next.duration = Math.round((endMs - startMs) / 1000);
+          }
+        }
+      }
+
+      return next;
+    });
     setErrors(prev => {
       const next = { ...prev };
       delete next[fieldId];
       return next;
     });
-  }, []);
+  }, [tracker.id]);
 
   // ─── Apply yesterday data ─────────────────────────────────────────────
   const applyYesterdayData = useCallback((yestData: Record<string, unknown>) => {
@@ -1100,7 +1146,80 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     );
     
     switch (field.type) {
-      case 'text': return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
+            case 'datetime': {
+        // Special handling for start/end times — show an "Ongoing" toggle
+        if (
+          (tracker.id === 'sleep' || tracker.id === 'feed') &&
+          (field.id === 'startTime' || field.id === 'endTime')
+        ) {
+          const isStart = field.id === 'startTime';
+          const otherField = isStart ? 'endTime' : 'startTime';
+          const hasOtherValue = data[otherField] !== undefined && data[otherField] !== null && data[otherField] !== '';
+          return animatedWrapper(
+            <View style={styles.fieldContainer}>
+              <Text style={[styles.label, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
+                {field.label}
+                {field.required && <Text style={[styles.required, { color: fullThemeColors.error || '#ef4444' }]}> *</Text>}
+              </Text>
+              <TouchableOpacity
+                style={[styles.input, {
+                  borderColor: fullThemeColors.border,
+                  borderRadius: borderRadiusValue,
+                  backgroundColor: fullThemeColors.surface,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }]}
+                onPress={() => {
+                  // Use DateTimePickerAndroid on Android, show a prompt on iOS
+                  const now = new Date();
+                  const currentMs = data[field.id]
+                    ? new Date(data[field.id] as string).getTime()
+                    : now.getTime();
+                  if (Platform.OS === 'android') {
+                    const DateTimePickerAndroid = require('@react-native-community/datetimepicker').DateTimePickerAndroid;
+                    DateTimePickerAndroid.open({
+                      value: new Date(currentMs),
+                      mode: 'datetime',
+                      onChange: (_e: any, selected?: Date) => {
+                        if (selected) {
+                          updateField(field.id, selected.toISOString());
+                        }
+                      },
+                    });
+                  } else {
+                    // iOS: use the date picker modal (parent handles)
+                    updateField(field.id, new Date(currentMs).toISOString());
+                  }
+                }}
+              >
+                <Ionicons name="calendar-outline" size={18} color={fullThemeColors.textSecondary} />
+                <Text style={{ color: data[field.id] ? fullThemeColors.text : fullThemeColors.textSecondary, flex: 1 }}>
+                  {data[field.id]
+                    ? new Date(data[field.id] as string).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : 'Set time'}
+                </Text>
+                {data[field.id] && (
+                  <TouchableOpacity onPress={() => updateField(field.id, undefined)}>
+                    <Ionicons name="close-circle" size={18} color={fullThemeColors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+              {/* "Ongoing" hint when start is set but end is not */}
+              {isStart && data[field.id] && !hasOtherValue && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                  <Ionicons name="time-outline" size={14} color={tracker.color} />
+                  <Text style={{ color: tracker.color, fontSize: 12, fontWeight: '600' }}>
+                    Ongoing — tap "End Time" when finished
+                  </Text>
+                </View>
+              )}
+            </View>,
+            field.id
+          );
+        }
+        return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
+      }
       case 'number': return animatedWrapper(<SmartNumberField {...commonProps} />, field.id);
       case 'select': return animatedWrapper(<SmartSelectField {...commonProps} />, field.id);
       case 'multiselect': return animatedWrapper(

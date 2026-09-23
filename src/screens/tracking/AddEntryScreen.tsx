@@ -1191,6 +1191,16 @@ function TrackerContent({
     setPendingData((prev: any) => {
       const newData = { ...prev };
       let hasChanges = false;
+
+      // ── Seed startTime from the form's date for time-sensitive trackers ──
+      // This ensures sleep/feed entries always have a real start time
+      // derived from the user's chosen `date`, not the current wall clock.
+      const TIME_SENSITIVE = ['sleep', 'feed', 'nap', 'bedtime', 'wake_time'];
+      if (TIME_SENSITIVE.includes(tracker.id) && newData.startTime === undefined) {
+        newData.startTime = date.toISOString();
+        hasChanges = true;
+      }
+
       Object.entries(prefillData || {}).forEach(([key, value]) => {
         if (newData[key] === undefined && value !== undefined && value !== '') {
           newData[key] = value;
@@ -1215,7 +1225,7 @@ function TrackerContent({
     if (didApplyCorrelation) {
       setAppliedCorrelationPrefill(null);
     }
-  }, [prefillData, suggestions, appliedCorrelationPrefill, tracker, setPendingData, setAppliedCorrelationPrefill]);
+  }, [prefillData, suggestions, appliedCorrelationPrefill, tracker, setPendingData, setAppliedCorrelationPrefill, date]);
 
   useEffect(() => {
     if (!editEntryId || !tracker) return;
@@ -1348,22 +1358,59 @@ function TrackerContent({
     if (selectedDate) setDate(selectedDate);
   }, [setDate]);
 
+  const formatDuration = useCallback((seconds: unknown): string => {
+    const s = Number(seconds);
+    if (!Number.isFinite(s) || s <= 0) return '';
+    const mins = Math.floor(s / 60);
+    if (mins < 60) return `${mins}m`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }, []);
+
   const buildTitle = useCallback((data: Record<string, unknown>): string => {
     if (!tracker) return 'Entry';
     const d = data;
+    const dur = formatDuration(d.duration);
     switch (tracker.id) {
-      case 'potty': return `${d.type || 'Potty'} ${d.successful ? '\u2713' : ''}`;
-      case 'feed': return `${d.feedType || 'Feed'}${d.amount ? ` (${d.amount})` : ''}`;
-      case 'sleep': return `${d.sleepType || 'Sleep'}${d.duration ? ` \u2022 ${d.duration}` : ''}`;
-      case 'growth': return `${d.measurementType || 'Measurement'}: ${d.value || ''}${d.unit || ''}`;
-      case 'medication': return `${d.name || 'Medicine'} ${d.dosage || ''}`;
-      case 'milestone': return `\uD83C\uDF1F ${d.title || 'New Milestone'}`;
-      case 'diaper': return `${d.type || 'Diaper'} Change`;
-      case 'temperature': return `\uD83C\uDF21\uFE0F ${d.value || ''}${d.unit === 'fahrenheit' ? '\u00B0F' : '\u00B0C'}`;
-      case 'note': return (d.title as string) || 'Note';
-      default: return `${tracker.emoji} ${tracker.name}`;
+      case 'potty':
+        return `${d.type || 'Potty'}${d.successful ? ' ✓' : ''}`;
+      case 'feed': {
+        const amount = d.amount ? ` (${d.amount}${d.amount_unit === 'oz' ? ' oz' : ' ml'})` : '';
+        return `${d.feedType || 'Feed'}${amount}${dur ? ` • ${dur}` : ''}`;
+      }
+      case 'sleep': {
+        const sleepLabel = d.sleepType === 'nap' ? 'Nap' : d.sleepType === 'night' ? 'Night Sleep' : (d.sleepType || 'Sleep');
+        return `${sleepLabel}${dur ? ` • ${dur}` : ''}`;
+      }
+      case 'growth': {
+        const unit = d.value_unit || d.unit || '';
+        return `${d.measurementType || 'Measurement'}: ${d.value || ''}${unit ? ` ${unit}` : ''}`;
+      }
+      case 'medication':
+        return `${d.name || 'Medicine'}${d.dosage ? ` ${d.dosage}` : ''}`;
+      case 'milestone':
+        return `🌟 ${d.title || 'New Milestone'}`;
+      case 'diaper':
+        return `${d.type || 'Diaper'} Change`;
+      case 'temperature': {
+        const unit = d.unit === 'fahrenheit' ? '°F' : '°C';
+        return `🌡️ ${d.value || ''}${unit}`;
+      }
+      case 'note':
+        return (d.title as string) || 'Note';
+      case 'bath':
+        return `🛁 Bath${dur ? ` • ${dur}` : ''}`;
+      case 'pumping': {
+        const amount = d.amount ? ` (${d.amount}${d.amount_unit === 'oz' ? ' oz' : ' ml'})` : '';
+        return `🤱 Pumping${amount}${dur ? ` • ${dur}` : ''}`;
+      }
+      case 'tummy_time':
+        return `😤 Tummy Time${dur ? ` • ${dur}` : ''}`;
+      default:
+        return `${tracker.emoji} ${tracker.name}${dur ? ` • ${dur}` : ''}`;
     }
-  }, [tracker]);
+  }, [tracker, formatDuration]);
 
   const handleFormSubmit = useCallback((data: Record<string, unknown>, options: { title?: string; notes?: string; photoUris?: string[]; tags?: string[] }) => {
     setPendingData(data);

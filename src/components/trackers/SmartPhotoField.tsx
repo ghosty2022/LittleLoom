@@ -91,9 +91,10 @@ interface PhotoMeta {
 
 interface AIAnalysis {
   labels: string[];
-  confidence: number;
+  confidence: number; // 0 when no real ML model is available
   suggestions: string[];
   severity?: 'low' | 'medium' | 'high';
+  modelAvailable?: boolean;
 }
 
 interface SmartPhotoFieldProps {
@@ -200,64 +201,96 @@ const sweetAlert = {
   },
 };
 
-// ── Mock AI Analysis Engine ────────────────────────────────────────────────
-const analyzePhoto = async (uri: string, context?: string): Promise<AIAnalysis> => {
-  await new Promise((r) => setTimeout(r, 600));
-  const contextMap: Record<string, AIAnalysis> = {
+// ── Contextual Photo Analysis (Non-Mock, Rule-Based) ───────────────────────
+// NOTE: On-device ML is not available. This returns HONEST, context-specific
+// guidance based on tracker type — no fake confidence scores.
+// When a real ML model is integrated, replace analyzePhoto with the model call.
+
+interface PhotoAnalysisResult {
+  labels: string[];
+  confidence: number; // 0 = no model available, do not display as percentage
+  suggestions: string[];
+  severity?: 'low' | 'medium' | 'high';
+  modelAvailable: boolean;
+}
+
+const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysisResult> => {
+  // Validate the photo URI is real before "analyzing"
+  if (!uri || typeof uri !== 'string' || uri.length === 0) {
+    throw new Error('Invalid photo URI');
+  }
+
+  // Context-specific guidance (educational, not AI-generated)
+  const contextGuidance: Record<string, { suggestions: string[]; severity: 'low' | 'medium' | 'high' }> = {
     skin_condition: {
-      labels: ['Skin', 'Dermatology', 'Infant'],
-      confidence: 0.87,
       suggestions: [
-        'Monitor for spreading over 24h',
-        'Note any fever or irritability',
-        'Take daily comparison photos',
+        'Take a photo in the same lighting daily for comparison',
+        'Note if the area is spreading, itchy, or warm to touch',
+        'Document any new foods, soaps, or detergents used',
       ],
       severity: 'medium',
     },
     rash: {
-      labels: ['Rash', 'Erythema', 'Infant Skin'],
-      confidence: 0.91,
       suggestions: [
-        'Check for fever — urgent if > 38°C',
-        'Document when rash appeared',
-        'Note any new foods or products',
+        'Check for fever — seek care if > 38°C (100.4°F)',
+        'Note when the rash first appeared',
+        'Photograph any changes in size or color',
       ],
       severity: 'medium',
     },
     injury: {
-      labels: ['Bruise', 'Soft Tissue', 'Pediatric'],
-      confidence: 0.78,
       suggestions: [
-        'Apply cold compress for 15 min',
-        'Monitor swelling and color change',
-        'Seek care if swelling increases',
+        'Apply a cold compress for 10-15 minutes',
+        'Monitor for swelling, bruising, or limited movement',
+        'Seek care if the area becomes hot or swollen',
       ],
       severity: 'low',
     },
     oral_hygiene: {
-      labels: ['Oral Cavity', 'Teeth', 'Pediatric'],
-      confidence: 0.85,
       suggestions: [
-        'Track brushing consistency',
-        'Note any white spots or discoloration',
-        'Schedule next dental checkup',
+        'Look for white spots, brown stains, or bleeding gums',
+        'Note if brushing causes pain or bleeding',
+        'Track how many teeth are visible',
+      ],
+      severity: 'low',
+    },
+    temperature: {
+      suggestions: [
+        'Ensure the thermometer is clean before use',
+        'Record the exact reading and method used',
+        'Note any other symptoms (cough, runny nose)',
+      ],
+      severity: 'medium',
+    },
+    medication: {
+      suggestions: [
+        'Photograph the label to avoid dosing errors',
+        'Note the exact time and amount given',
+        'Record any reactions in the notes',
       ],
       severity: 'low',
     },
   };
 
-  return (
-    contextMap[context || ''] || {
-      labels: ['Pediatric', 'Photo Documentation'],
-      confidence: 0.82,
-      suggestions: [
-        'Keep photo in tracker for reference',
-        'Share with pediatrician if concerned',
-        'Take follow-up photo in 24-48h',
-      ],
-      severity: 'low',
-    }
-  );
+  const guidance = contextGuidance[context || ''] || {
+    suggestions: [
+      'Keep this photo attached to the entry for reference',
+      'Add notes about what you observed',
+      'Share with your pediatrician if concerned',
+    ],
+    severity: 'low' as const,
+  };
+
+  // Simulate a brief processing delay (for UX) but return honest data
+  await new Promise((r) => setTimeout(r, 300));
+
+  return {
+    labels: context ? [context.replace(/_/g, ' ')] : ['photo'],
+    confidence: 0, // 0 = no real ML model; UI should NOT show a fake %
+    suggestions: guidance.suggestions,
+    severity: guidance.severity,
+    modelAvailable: false,
+  };
 };
 
 // ── Safe image dimension getter ────────────────────────────────────────────
@@ -1022,19 +1055,19 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 </View>
               ) : null}
 
-              {analysis && !analyzing ? (
-                <View
-                  style={[
-                    styles.analysisBadge,
-                    { backgroundColor: severityColor + 'E6' },
-                  ]}
-                >
-                  <Ionicons name="sparkles" size={14} color="#FFF" />
-                  <Text style={styles.analysisText}>{`AI ${Math.round(
-                    (analysis.confidence || 0) * 100
-                  )}%`}</Text>
-                </View>
-              ) : null}
+              {analysis && !analyzing && analysis.modelAvailable !== false ? (
+  <View
+    style={[
+      styles.analysisBadge,
+      { backgroundColor: severityColor + 'E6' },
+    ]}
+  >
+    <Ionicons name="sparkles" size={14} color="#FFF" />
+    <Text style={styles.analysisText}>{`AI ${Math.round(
+      (analysis.confidence || 0) * 100
+    )}%`}</Text>
+  </View>
+) : null}
 
               {currentMeta ? (
                 <View
@@ -1180,49 +1213,52 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
       {/* AI Analysis Panel */}
       {analysis && !analyzing ? (
+  <View
+    style={[
+      styles.analysisPanel,
+      {
+        backgroundColor: GLASS.bg,
+        borderColor: GLASS.border,
+        borderRadius: RADIUS.lg,
+        borderWidth: 1,
+      },
+    ]}
+  >
+    <View style={styles.analysisHeader}>
+      <Ionicons name="bulb" size={18} color={COLORS.primary} />
+      <Text
+        style={[styles.analysisTitle, { color: COLORS.text.primary }]}
+      >
+        {'Photo Guidance'}
+      </Text>
+    </View>
+
+    {analysis.modelAvailable !== false && (
+      <>
         <View
           style={[
-            styles.analysisPanel,
-            {
-              backgroundColor: GLASS.bg,
-              borderColor: GLASS.border,
-              borderRadius: RADIUS.lg,
-              borderWidth: 1,
-            },
+            styles.confidenceTrack,
+            { backgroundColor: COLORS.text.disabled + '40' },
           ]}
         >
-          <View style={styles.analysisHeader}>
-            <Ionicons name="bulb" size={18} color={COLORS.primary} />
-            <Text
-              style={[styles.analysisTitle, { color: COLORS.text.primary }]}
-            >
-              {'Smart Insights'}
-            </Text>
-          </View>
-
-          <View
+          <Animated.View
             style={[
-              styles.confidenceTrack,
-              { backgroundColor: COLORS.text.disabled + '40' },
+              styles.confidenceFill,
+              { backgroundColor: severityColor },
+              severityBarStyle,
             ]}
-          >
-            <Animated.View
-              style={[
-                styles.confidenceFill,
-                { backgroundColor: severityColor },
-                severityBarStyle,
-              ]}
-            />
-          </View>
-          <Text
-            style={[
-              styles.confidenceLabel,
-              { color: COLORS.text.tertiary, marginBottom: SPACE.sm },
-            ]}
-          >
-            {`Confidence: ${Math.round((analysis.confidence || 0) * 100)}%`}
-          </Text>
-
+          />
+        </View>
+        <Text
+          style={[
+            styles.confidenceLabel,
+            { color: COLORS.text.tertiary, marginBottom: SPACE.sm },
+          ]}
+        >
+          {`Confidence: ${Math.round((analysis.confidence || 0) * 100)}%`}
+        </Text>
+      </>
+    )}
           {Array.isArray(analysis.suggestions) &&
           analysis.suggestions.length > 0
             ? analysis.suggestions.map((s, i) => (
