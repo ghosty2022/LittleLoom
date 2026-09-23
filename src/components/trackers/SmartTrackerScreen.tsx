@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,9 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { 
-  FadeInUp, 
+import Animated, {
+  FadeInUp,
   FadeIn,
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  interpolate,
 } from 'react-native-reanimated';
 
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
@@ -25,12 +21,48 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { DynamicTrackerForm } from './DynamicTrackerForm';
 import type { UnifiedTrackerConfig, TrackerEntry } from '../../types/trackers';
-const { width: SCREEN_W } = Dimensions.get('window');
 
 interface SmartTrackerScreenProps {
   tracker: UnifiedTrackerConfig;
   onClose: () => void;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SAFE HELPERS — guard against undefined values from context
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const safeArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+const safeString = (v: unknown, fallback = ''): string =>
+  typeof v === 'string' && v.length > 0 ? v : fallback;
+
+const safeNumber = (v: unknown, fallback = 0): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const safeObject = (v: unknown): Record<string, unknown> =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+/* Fallback theme color map — used when themeColors lacks a key */
+const FALLBACK_COLORS = {
+  success: '#10b981',
+  warning: '#f59e0b',
+  error: '#ef4444',
+  info: '#3b82f6',
+};
+
+const pickColor = (
+  themeColors: any,
+  key: 'success' | 'warning' | 'error' | 'info'
+): string => {
+  const value = themeColors?.[key];
+  return typeof value === 'string' && value.length > 0 ? value : FALLBACK_COLORS[key];
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════════════ */
 
 export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker, onClose }) => {
   const {
@@ -49,38 +81,81 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
   } = useTracker();
 
   const progressive = useTrackerProgressive(tracker.id);
-  const {
-    prefillData = {},
-    suggestions = [],
-    streak,
-    isAtRisk,
-    hoursUntilBreak,
-    streakMessage,
-    insights = [],
-    hasNewInsights,
-    correlations = [],
-    activeReminders = [],
-    hasUrgentReminders,
-    templates = [],
-    trends = {},
-    timeContext,
-    todayEntries = [],
-    yesterdayEntries = [],
-    recentEntries = [],
-    isLoading,
-    lastUpdated,
-    applyAllYesterday,
-    dismissInsight,
-    refresh,
-  } = progressive || {};
+
+  // ─── Defensive destructure with safe defaults ──────────────────────
+  const prefillData = useMemo(
+    () => safeObject(progressive?.prefillData),
+    [progressive?.prefillData]
+  );
+  const suggestions = useMemo(
+    () => safeArray<any>(progressive?.suggestions),
+    [progressive?.suggestions]
+  );
+  const streak = progressive?.streak ?? null;
+  const isAtRisk = Boolean(progressive?.isAtRisk);
+  const hoursUntilBreak = safeNumber(progressive?.hoursUntilBreak, 0);
+  const streakMessage = safeString(progressive?.streakMessage);
+  const insights = useMemo(
+    () => safeArray<any>(progressive?.insights),
+    [progressive?.insights]
+  );
+  const hasNewInsights = Boolean(progressive?.hasNewInsights);
+  const correlations = useMemo(
+    () => safeArray<any>(progressive?.correlations),
+    [progressive?.correlations]
+  );
+  const activeReminders = useMemo(
+    () => safeArray<any>(progressive?.activeReminders),
+    [progressive?.activeReminders]
+  );
+  const hasUrgentReminders = Boolean(progressive?.hasUrgentReminders);
+  const templates = useMemo(
+    () => safeArray<any>(progressive?.templates),
+    [progressive?.templates]
+  );
+  const trends = useMemo(
+    () => safeObject(progressive?.trends) as Record<string, any>,
+    [progressive?.trends]
+  );
+  const timeContext = useMemo(
+    () => ({
+      timeOfDay: 'morning' as const,
+      dayOfWeek: 0,
+      isWeekend: false,
+      isHoliday: false,
+      usualTimes: [] as string[],
+      nextSuggestedTime: undefined as string | undefined,
+      ...safeObject(progressive?.timeContext),
+    }),
+    [progressive?.timeContext]
+  );
+  const todayEntries = useMemo(
+    () => safeArray<TrackerEntry>(progressive?.todayEntries),
+    [progressive?.todayEntries]
+  );
+  const yesterdayEntries = useMemo(
+    () => safeArray<TrackerEntry>(progressive?.yesterdayEntries),
+    [progressive?.yesterdayEntries]
+  );
+  const recentEntries = useMemo(
+    () => safeArray<TrackerEntry>(progressive?.recentEntries),
+    [progressive?.recentEntries]
+  );
+  const isLoading = Boolean(progressive?.isLoading);
+  const dismissInsight = progressive?.dismissInsight;
+  const refresh = progressive?.refresh;
+
+  // ─── Theme color fallbacks ─────────────────────────────────────────
+  const successColor = pickColor(themeColors, 'success');
+  const warningColor = pickColor(themeColors, 'warning');
+  const errorColor = pickColor(themeColors, 'error');
+  const infoColor = pickColor(themeColors, 'info');
 
   // Pull real streak data from achievements hook (single source of truth)
   const { streak: globalStreak } = useTrackerAchievements();
 
   const [mode, setMode] = useState<'dashboard' | 'form' | 'history' | 'insights'>('dashboard');
   // NOTE: linkedEntryId is reserved for future correlation-driven linking.
-  // When a correlation suggests linking to a specific entry, call:
-  //   setLinkedEntryId(correlation.relatedEntry.id);
   const [linkedEntryId, setLinkedEntryId] = useState<string | undefined>(undefined);
   // One-shot override merged over prefillData when opening the form from a
   // template or correlation action. Cleared on plain quick-log and after save.
@@ -90,7 +165,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     if (mode === 'dashboard' && typeof refresh === 'function') {
       refresh();
     }
-  }, [mode]);
+  }, [mode, refresh]);
 
   const handleSubmit = useCallback(async (
     data: Record<string, unknown>,
@@ -114,99 +189,160 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     setMode('dashboard');
   }, [tracker, addEntry, linkEntries, success]);
 
-  const applyTemplate = (template: any) => {
+  const applyTemplate = useCallback((template: any) => {
     triggerHaptic('light');
-    setFormPreset(template?.data ?? null);
+    setFormPreset(safeObject(template?.data));
     setMode('form');
-  };
+  }, [triggerHaptic]);
 
-  const quickLog = () => {
+  const quickLog = useCallback(() => {
     triggerHaptic('light');
     setFormPreset(null); // plain quick-log must not inherit a stale preset
     setMode('form');
-  };
+  }, [triggerHaptic]);
 
-  const handleCorrelationAction = (correlation: typeof correlations[0]) => {
+  const handleCorrelationAction = useCallback((correlation: any) => {
     triggerHaptic('light');
-    if ((correlation.action === 'log_now' || correlation.action === 'prefill') && correlation.prefillData) {
-      setFormPreset(correlation.prefillData);
+    if (
+      (correlation?.action === 'log_now' || correlation?.action === 'prefill') &&
+      correlation?.prefillData
+    ) {
+      setFormPreset(safeObject(correlation.prefillData));
     } else {
       setFormPreset(null);
     }
     setMode('form');
-  };
+  }, [triggerHaptic]);
 
-  const handleDismissInsight = (insightId: string) => {
+  const handleDismissInsight = useCallback((insightId: string) => {
     triggerHaptic('light');
-    dismissInsight(insightId);
-  };
+    if (typeof dismissInsight === 'function') {
+      dismissInsight(insightId);
+    }
+  }, [triggerHaptic, dismissInsight]);
+
+  /* ═══════════════════════════════════════════════════════════════════
+     DASHBOARD MODE
+     ═══════════════════════════════════════════════════════════════════ */
 
   if (mode === 'dashboard') {
+    const urgentCount = activeReminders.filter(
+      (r) => r?.priority === 'high' || r?.priority === 'urgent'
+    ).length;
+
     return (
       <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
         {/* Header */}
-        <View style={[styles.dashboardHeader, { 
-          backgroundColor: tracker.gradient[0] + '15',
-          borderBottomLeftRadius: borderRadiusValue * 2,
-          borderBottomRightRadius: borderRadiusValue * 2,
-        }]}>
+        <View
+          style={[
+            styles.dashboardHeader,
+            {
+              backgroundColor: tracker.gradient[0] + '15',
+              borderBottomLeftRadius: borderRadiusValue * 2,
+              borderBottomRightRadius: borderRadiusValue * 2,
+            },
+          ]}
+        >
           <View style={styles.headerTop}>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={24} color={fullThemeColors.text} />
             </TouchableOpacity>
-            <Text style={[styles.headerEmoji, { fontSize: 48 * fontSizeMultiplier }]}>{tracker.emoji}</Text>
+            <Text style={[styles.headerEmoji, { fontSize: 48 * fontSizeMultiplier }]}>
+              {tracker.emoji}
+            </Text>
             <TouchableOpacity onPress={() => setMode('history')} style={styles.historyBtn}>
               <Ionicons name="time-outline" size={24} color={fullThemeColors.text} />
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.headerTitle, { color: fullThemeColors.text, fontSize: 24 * fontSizeMultiplier }]}>
+          <Text
+            style={[
+              styles.headerTitle,
+              { color: fullThemeColors.text, fontSize: 24 * fontSizeMultiplier },
+            ]}
+          >
             {tracker.name}
           </Text>
-          <Text style={[styles.headerDesc, { color: fullThemeColors.textSecondary, fontSize: 14 * fontSizeMultiplier }]}>
+          <Text
+            style={[
+              styles.headerDesc,
+              { color: fullThemeColors.textSecondary, fontSize: 14 * fontSizeMultiplier },
+            ]}
+          >
             {tracker.description}
           </Text>
 
           {/* Time Context Badge */}
-          {timeContext.usualTimes.length > 0 && (
-            <Animated.View entering={FadeIn} style={[styles.timeContextBadge, { backgroundColor: `${tracker.color}10` }]}>
+          {Array.isArray(timeContext.usualTimes) && timeContext.usualTimes.length > 0 && (
+            <Animated.View
+              entering={shouldReduceMotion ? undefined : FadeIn}
+              style={[
+                styles.timeContextBadge,
+                { backgroundColor: `${tracker.color}10` },
+              ]}
+            >
               <Ionicons name="time-outline" size={14} color={tracker.color} />
               <Text style={[styles.timeContextText, { color: tracker.color }]}>
                 Usually at {timeContext.usualTimes.join(', ')}
-                {timeContext.nextSuggestedTime && ` • Next: ${timeContext.nextSuggestedTime}`}
+                {timeContext.nextSuggestedTime
+                  ? ` • Next: ${timeContext.nextSuggestedTime}`
+                  : ''}
               </Text>
             </Animated.View>
           )}
 
           {/* Streak - Real data from tracker entries */}
-          {streak && streak.currentStreak > 0 && (
-            <Animated.View entering={FadeIn} style={[styles.streakCard, { 
-              backgroundColor: isAtRisk ? '#FF6B6B15' : `${tracker.color}15`,
-              borderColor: isAtRisk ? '#FF6B6B30' : `${tracker.color}30`,
-            }]}>
+          {streak && safeNumber(streak.currentStreak, 0) > 0 && (
+            <Animated.View
+              entering={shouldReduceMotion ? undefined : FadeIn}
+              style={[
+                styles.streakCard,
+                {
+                  backgroundColor: isAtRisk ? '#FF6B6B15' : `${tracker.color}15`,
+                  borderColor: isAtRisk ? '#FF6B6B30' : `${tracker.color}30`,
+                },
+              ]}
+            >
               <Ionicons name="flame" size={28} color={isAtRisk ? '#FF6B6B' : tracker.color} />
               <View style={styles.streakInfo}>
-                <Text style={[styles.streakCount, { color: isAtRisk ? '#FF6B6B' : tracker.color }]}>
-                  {streak.currentStreak} Day{streak.currentStreak !== 1 ? 's' : ''}
+                <Text
+                  style={[
+                    styles.streakCount,
+                    { color: isAtRisk ? '#FF6B6B' : tracker.color },
+                  ]}
+                >
+                  {safeNumber(streak.currentStreak, 0)} Day
+                  {safeNumber(streak.currentStreak, 0) !== 1 ? 's' : ''}
                 </Text>
                 <Text style={[styles.streakLabel, { color: fullThemeColors.textSecondary }]}>
                   {streakMessage}
                 </Text>
               </View>
               {isAtRisk && (
-                <TouchableOpacity onPress={quickLog} style={[styles.streakAction, { backgroundColor: '#FF6B6B' }]}>
-                  <Text style={styles.streakActionText}>Log Now ({hoursUntilBreak}h left)</Text>
+                <TouchableOpacity
+                  onPress={quickLog}
+                  style={[styles.streakAction, { backgroundColor: '#FF6B6B' }]}
+                >
+                  <Text style={styles.streakActionText}>
+                    Log Now ({hoursUntilBreak}h left)
+                  </Text>
                 </TouchableOpacity>
               )}
             </Animated.View>
           )}
 
           {/* Urgent Reminders Banner */}
-          {hasUrgentReminders && (
-            <Animated.View entering={FadeInUp} style={[styles.urgentBanner, { backgroundColor: '#FF6B6B15', borderColor: '#FF6B6B30' }]}>
+          {hasUrgentReminders && urgentCount > 0 && (
+            <Animated.View
+              entering={shouldReduceMotion ? undefined : FadeInUp}
+              style={[
+                styles.urgentBanner,
+                { backgroundColor: '#FF6B6B15', borderColor: '#FF6B6B30' },
+              ]}
+            >
               <Ionicons name="alert-circle" size={20} color="#FF6B6B" />
               <Text style={[styles.urgentText, { color: '#FF6B6B' }]}>
-                {activeReminders.filter(r => r.priority === 'high' || r.priority === 'urgent').length} urgent reminder{activeReminders.filter(r => r.priority === 'high' || r.priority === 'urgent').length !== 1 ? 's' : ''}
+                {urgentCount} urgent reminder{urgentCount !== 1 ? 's' : ''}
               </Text>
             </Animated.View>
           )}
@@ -216,199 +352,374 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
           {/* Active Reminders */}
           {activeReminders.length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+                ]}
+              >
                 Reminders ({activeReminders.length})
               </Text>
-              {activeReminders.slice(0, 3).map((reminder, i) => (
-                <Animated.View key={reminder.id} entering={FadeInUp.delay(i * 50)} style={[styles.reminderCard, { 
-                  backgroundColor: reminder.priority === 'urgent' || reminder.priority === 'high' 
-                    ? '#FF6B6B08' 
-                    : fullThemeColors.surface,
-                  borderRadius: borderRadiusValue,
-                  borderLeftWidth: 3,
-                  borderLeftColor: reminder.priority === 'urgent' ? '#FF6B6B' : reminder.priority === 'high' ? themeColors.warning : tracker.color,
-                }]}>
-                  <Text style={styles.reminderEmoji}>{reminder.emoji}</Text>
-                  <View style={styles.reminderInfo}>
-                    <Text style={[styles.reminderTitle, { color: fullThemeColors.text }]}>{reminder.title}</Text>
-                    <Text style={[styles.reminderBody, { color: fullThemeColors.textSecondary }]} numberOfLines={2}>
-                      {reminder.body}
-                    </Text>
-                    {reminder.dueAt && (
-                      <Text style={[styles.reminderDue, { color: tracker.color }]}>
-                        Due {formatTimeShort(reminder.dueAt)}
+              {activeReminders.slice(0, 3).map((reminder, i) => {
+                if (!reminder) return null;
+                const isUrgent = reminder.priority === 'urgent';
+                const isHigh = reminder.priority === 'high';
+                const borderColor = isUrgent
+                  ? '#FF6B6B'
+                  : isHigh
+                  ? warningColor
+                  : tracker.color;
+                return (
+                  <Animated.View
+                    key={reminder.id || `reminder-${i}`}
+                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(i * 50)}
+                    style={[
+                      styles.reminderCard,
+                      {
+                        backgroundColor: isUrgent || isHigh
+                          ? '#FF6B6B08'
+                          : fullThemeColors.surface,
+                        borderRadius: borderRadiusValue,
+                        borderLeftWidth: 3,
+                        borderLeftColor: borderColor,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.reminderEmoji}>{reminder.emoji || '🔔'}</Text>
+                    <View style={styles.reminderInfo}>
+                      <Text style={[styles.reminderTitle, { color: fullThemeColors.text }]}>
+                        {reminder.title || 'Reminder'}
                       </Text>
-                    )}
-                  </View>
-                  {reminder.actionButtons?.map(btn => (
-                    <TouchableOpacity
-                      key={btn.id}
-                      style={[styles.reminderAction, { backgroundColor: tracker.color }]}
-                      onPress={() => {
-                        if (btn.action === 'log_now') quickLog();
-                      }}
-                    >
-                      <Text style={styles.reminderActionText}>{btn.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </Animated.View>
-              ))}
+                      <Text
+                        style={[
+                          styles.reminderBody,
+                          { color: fullThemeColors.textSecondary },
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {reminder.body || ''}
+                      </Text>
+                      {reminder.dueAt && (
+                        <Text style={[styles.reminderDue, { color: tracker.color }]}>
+                          Due {formatTimeShort(reminder.dueAt)}
+                        </Text>
+                      )}
+                    </View>
+                    {Array.isArray(reminder.actionButtons) &&
+                      reminder.actionButtons.map((btn: any) => (
+                        <TouchableOpacity
+                          key={btn?.id || `btn-${Math.random()}`}
+                          style={[styles.reminderAction, { backgroundColor: tracker.color }]}
+                          onPress={() => {
+                            if (btn?.action === 'log_now') quickLog();
+                          }}
+                        >
+                          <Text style={styles.reminderActionText}>
+                            {btn?.label || 'Action'}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                  </Animated.View>
+                );
+              })}
             </View>
           )}
 
           {/* Correlations */}
           {correlations.length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+                ]}
+              >
                 Smart Connections
               </Text>
-              {correlations.slice(0, 3).map((correlation, i) => (
-                <Animated.View key={correlation.id} entering={FadeInUp.delay(i * 50)} style={[styles.correlationCard, { 
-                  backgroundColor: fullThemeColors.surface,
-                  borderRadius: borderRadiusValue,
-                }]}>
-                  <Text style={styles.correlationEmoji}>{correlation.emoji}</Text>
-                  <View style={styles.correlationInfo}>
-                    <Text style={[styles.correlationMessage, { color: fullThemeColors.text }]}>
-                      {correlation.message}
+              {correlations.slice(0, 3).map((correlation, i) => {
+                if (!correlation) return null;
+                return (
+                  <Animated.View
+                    key={correlation.id || `corr-${i}`}
+                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(i * 50)}
+                    style={[
+                      styles.correlationCard,
+                      {
+                        backgroundColor: fullThemeColors.surface,
+                        borderRadius: borderRadiusValue,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.correlationEmoji}>
+                      {correlation.emoji || '🔗'}
                     </Text>
-                    <Text style={[styles.correlationMeta, { color: fullThemeColors.textSecondary }]}>
-                      {correlation.trackerEmoji} {correlation.trackerName} • {correlation.confidence}% confidence
-                    </Text>
-                  </View>
-                  {correlation.action !== 'none' && (
-                    <TouchableOpacity 
-                      style={[styles.correlationAction, { backgroundColor: tracker.color }]}
-                      onPress={() => handleCorrelationAction(correlation)}
-                    >
-                      <Text style={styles.correlationActionText}>
-                        {correlation.action === 'log_now' ? 'Log' : correlation.action === 'prefill' ? 'Apply' : 'View'}
+                    <View style={styles.correlationInfo}>
+                      <Text
+                        style={[styles.correlationMessage, { color: fullThemeColors.text }]}
+                      >
+                        {correlation.message || 'Pattern detected'}
                       </Text>
-                    </TouchableOpacity>
-                  )}
-                </Animated.View>
-              ))}
+                      <Text
+                        style={[
+                          styles.correlationMeta,
+                          { color: fullThemeColors.textSecondary },
+                        ]}
+                      >
+                        {correlation.trackerEmoji || '📊'}{' '}
+                        {correlation.trackerName || 'Tracker'} •{' '}
+                        {safeNumber(correlation.confidence, 0)}% confidence
+                      </Text>
+                    </View>
+                    {correlation.action && correlation.action !== 'none' && (
+                      <TouchableOpacity
+                        style={[
+                          styles.correlationAction,
+                          { backgroundColor: tracker.color },
+                        ]}
+                        onPress={() => handleCorrelationAction(correlation)}
+                      >
+                        <Text style={styles.correlationActionText}>
+                          {correlation.action === 'log_now'
+                            ? 'Log'
+                            : correlation.action === 'prefill'
+                            ? 'Apply'
+                            : 'View'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </Animated.View>
+                );
+              })}
             </View>
           )}
 
           {/* Today's Entries */}
           {todayEntries.length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+                ]}
+              >
                 Today ({todayEntries.length})
               </Text>
-              {todayEntries.slice(0, 3).map((entry, i) => (
-                <Animated.View key={entry.id} entering={FadeInUp.delay(i * 50)} style={[styles.entryCard, { 
-                  backgroundColor: fullThemeColors.surface,
-                  borderRadius: borderRadiusValue,
-                }]}>
-                  <Text style={[styles.entryTime, { color: fullThemeColors.textSecondary }]}>
-                    {formatTimeShort(entry.timestamp)}
-                  </Text>
-                  <Text style={[styles.entryTitle, { color: fullThemeColors.text }]} numberOfLines={1}>
-                    {entry.title}
-                  </Text>
-                  {entry.notes && (
-                    <Text style={[styles.entryNotes, { color: fullThemeColors.textSecondary }]} numberOfLines={1}>
-                      {entry.notes}
+              {todayEntries.slice(0, 3).map((entry, i) => {
+                if (!entry) return null;
+                return (
+                  <Animated.View
+                    key={entry.id || `today-${i}`}
+                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(i * 50)}
+                    style={[
+                      styles.entryCard,
+                      {
+                        backgroundColor: fullThemeColors.surface,
+                        borderRadius: borderRadiusValue,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.entryTime, { color: fullThemeColors.textSecondary }]}
+                    >
+                      {formatTimeShort(entry.timestamp)}
                     </Text>
-                  )}
-                </Animated.View>
-              ))}
+                    <Text
+                      style={[styles.entryTitle, { color: fullThemeColors.text }]}
+                      numberOfLines={1}
+                    >
+                      {entry.title || tracker.name}
+                    </Text>
+                    {entry.notes && (
+                      <Text
+                        style={[
+                          styles.entryNotes,
+                          { color: fullThemeColors.textSecondary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {entry.notes}
+                      </Text>
+                    )}
+                  </Animated.View>
+                );
+              })}
             </View>
           )}
 
-          {/* Quick Templates - Now from progressive hook with auto-generated */}
+          {/* Quick Templates */}
           {templates.length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+                ]}
+              >
                 Quick Templates
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templatesScroll}>
-                {templates.map((template, i) => (
-                  <TouchableOpacity
-                    key={template.id}
-                    style={[styles.templateCard, { 
-                      backgroundColor: fullThemeColors.surface,
-                      borderRadius: borderRadiusValue,
-                      borderColor: template.source === 'auto_generated' ? '#FF6B6B30' : tracker.color + '30',
-                      borderWidth: template.source === 'auto_generated' ? 2 : 1.5,
-                    }]}
-                    onPress={() => applyTemplate(template)}
-                  >
-                    <Text style={styles.templateEmoji}>{template.emoji}</Text>
-                    <Text style={[styles.templateName, { color: fullThemeColors.text }]}>{template.name}</Text>
-                    {template.source === 'auto_generated' && (
-                      <View style={[styles.autoBadge, { backgroundColor: '#FF6B6B' }]}>
-                        <Text style={styles.autoText}>Auto</Text>
-                      </View>
-                    )}
-                    {template.isDefault && (
-                      <View style={[styles.defaultBadge, { backgroundColor: tracker.color }]}>
-                        <Text style={styles.defaultText}>Default</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.templatesScroll}
+              >
+                {templates.map((template, i) => {
+                  if (!template) return null;
+                  const isAuto = template.source === 'auto_generated';
+                  return (
+                    <TouchableOpacity
+                      key={template.id || `template-${i}`}
+                      style={[
+                        styles.templateCard,
+                        {
+                          backgroundColor: fullThemeColors.surface,
+                          borderRadius: borderRadiusValue,
+                          borderColor: isAuto
+                            ? '#FF6B6B30'
+                            : `${tracker.color}30`,
+                          borderWidth: isAuto ? 2 : 1.5,
+                        },
+                      ]}
+                      onPress={() => applyTemplate(template)}
+                    >
+                      <Text style={styles.templateEmoji}>{template.emoji || '⭐'}</Text>
+                      <Text
+                        style={[styles.templateName, { color: fullThemeColors.text }]}
+                        numberOfLines={2}
+                      >
+                        {template.name || 'Template'}
+                      </Text>
+                      {isAuto && (
+                        <View style={[styles.autoBadge, { backgroundColor: '#FF6B6B' }]}>
+                          <Text style={styles.autoText}>Auto</Text>
+                        </View>
+                      )}
+                      {template.isDefault && (
+                        <View
+                          style={[
+                            styles.defaultBadge,
+                            { backgroundColor: tracker.color },
+                          ]}
+                        >
+                          <Text style={styles.defaultText}>Default</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </View>
           )}
 
-          {/* Smart Insights - Now from progressive hook with dismissal */}
+          {/* Smart Insights */}
           {insights.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+                  ]}
+                >
                   Smart Insights
                 </Text>
                 {hasNewInsights && (
-                  <View style={[styles.newBadge, { backgroundColor: themeColors.success }]}>
+                  <View style={[styles.newBadge, { backgroundColor: successColor }]}>
                     <Text style={styles.newBadgeText}>New</Text>
                   </View>
                 )}
               </View>
-              {insights.slice(0, 3).map((insight, i) => (
-                <Animated.View key={insight.id} entering={FadeInUp.delay(i * 100)} style={[styles.insightRow, { 
-                  backgroundColor: insight.priority === 'good' ? `${themeColors.success}10` : 
-                                   insight.priority === 'warning' ? `${themeColors.warning}10` : 
-                                   `${themeColors.info}10`,
-                  borderRadius: borderRadiusValue,
-                }]}>
-                  <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-                  <View style={styles.insightInfo}>
-                    <Text style={[styles.insightTitle, { color: fullThemeColors.text }]}>{insight.title}</Text>
-                    <Text style={[styles.insightDesc, { color: fullThemeColors.textSecondary }]} numberOfLines={2}>
-                      {insight.description}
-                    </Text>
-                  </View>
-                  <TouchableOpacity onPress={() => handleDismissInsight(insight.id)}>
-                    <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
-                  </TouchableOpacity>
-                </Animated.View>
-              ))}
+              {insights.slice(0, 3).map((insight, i) => {
+                if (!insight) return null;
+                const bg =
+                  insight.priority === 'good'
+                    ? `${successColor}10`
+                    : insight.priority === 'warning'
+                    ? `${warningColor}10`
+                    : `${infoColor}10`;
+                return (
+                  <Animated.View
+                    key={insight.id || `insight-${i}`}
+                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(i * 100)}
+                    style={[
+                      styles.insightRow,
+                      { backgroundColor: bg, borderRadius: borderRadiusValue },
+                    ]}
+                  >
+                    <Text style={styles.insightEmoji}>{insight.emoji || '💡'}</Text>
+                    <View style={styles.insightInfo}>
+                      <Text
+                        style={[styles.insightTitle, { color: fullThemeColors.text }]}
+                      >
+                        {insight.title || 'Insight'}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.insightDesc,
+                          { color: fullThemeColors.textSecondary },
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {insight.description || ''}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleDismissInsight(insight.id)}
+                    >
+                      <Ionicons
+                        name="close"
+                        size={18}
+                        color={fullThemeColors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </Animated.View>
+                );
+              })}
             </View>
           )}
 
-          {/* Yesterday Preview - Now using hook's prefill data */}
-          {prefillData && Object.keys(prefillData).length > 0 && (
+          {/* Yesterday Preview */}
+          {Object.keys(prefillData).length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+                ]}
+              >
                 Yesterday's Values
               </Text>
-              <View style={[styles.yesterdayCard, { 
-                backgroundColor: fullThemeColors.surface,
-                borderRadius: borderRadiusValue,
-              }]}>
-                {Object.entries(prefillData).slice(0, 4).map(([key, value]) => (
-                  <View key={key} style={styles.yesterdayRow}>
-                    <Text style={[styles.yesterdayKey, { color: fullThemeColors.textSecondary }]}>{key}</Text>
-                    <Text style={[styles.yesterdayValue, { color: fullThemeColors.text }]}>
-                      {String(value).length > 20 ? String(value).slice(0, 20) + '...' : String(value)}
-                    </Text>
-                  </View>
-                ))}
-                <TouchableOpacity 
-                  style={[styles.yesterdayBtn, { backgroundColor: tracker.color }]} 
+              <View
+                style={[
+                  styles.yesterdayCard,
+                  {
+                    backgroundColor: fullThemeColors.surface,
+                    borderRadius: borderRadiusValue,
+                  },
+                ]}
+              >
+                {Object.entries(prefillData)
+                  .slice(0, 4)
+                  .map(([key, value]) => (
+                    <View key={key} style={styles.yesterdayRow}>
+                      <Text
+                        style={[
+                          styles.yesterdayKey,
+                          { color: fullThemeColors.textSecondary },
+                        ]}
+                      >
+                        {key}
+                      </Text>
+                      <Text
+                        style={[styles.yesterdayValue, { color: fullThemeColors.text }]}
+                      >
+                        {String(value).length > 20
+                          ? String(value).slice(0, 20) + '...'
+                          : String(value)}
+                      </Text>
+                    </View>
+                  ))}
+                <TouchableOpacity
+                  style={[styles.yesterdayBtn, { backgroundColor: tracker.color }]}
                   onPress={() => {
                     triggerHaptic('light');
                     setMode('form');
@@ -423,24 +734,48 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
           {/* Suggestions Chips */}
           {suggestions.length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
+                ]}
+              >
                 Suggestions
               </Text>
               <View style={styles.suggestionsWrap}>
-                {suggestions.slice(0, 5).map((suggestion) => (
-                  <View key={`${suggestion.fieldId}-${suggestion.source}`} style={[styles.suggestionChip, { 
-                    backgroundColor: `${tracker.color}10`,
-                    borderRadius: borderRadiusValue,
-                  }]}>
-                    <Text style={styles.suggestionEmoji}>{suggestion.emoji}</Text>
-                    <Text style={[styles.suggestionLabel, { color: fullThemeColors.text }]}>
-                      {suggestion.label}: {String(suggestion.value).slice(0, 15)}
-                    </Text>
-                    <Text style={[styles.confidenceBadge, { color: tracker.color }]}>
-                      {suggestion.confidence}%
-                    </Text>
-                  </View>
-                ))}
+                {suggestions.slice(0, 5).map((suggestion, i) => {
+                  if (!suggestion) return null;
+                  return (
+                    <View
+                      key={`${suggestion.fieldId}-${suggestion.source}-${i}`}
+                      style={[
+                        styles.suggestionChip,
+                        {
+                          backgroundColor: `${tracker.color}10`,
+                          borderRadius: borderRadiusValue,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.suggestionEmoji}>
+                        {suggestion.emoji || '✨'}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.suggestionLabel,
+                          { color: fullThemeColors.text },
+                        ]}
+                      >
+                        {suggestion.label || suggestion.fieldId}:{' '}
+                        {String(suggestion.value).slice(0, 15)}
+                      </Text>
+                      <Text
+                        style={[styles.confidenceBadge, { color: tracker.color }]}
+                      >
+                        {safeNumber(suggestion.confidence, 0)}%
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -450,11 +785,14 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
         </ScrollView>
 
         {/* FAB */}
-        <TouchableOpacity 
-          style={[styles.fab, { 
-            backgroundColor: tracker.gradient[0],
-            borderRadius: borderRadiusValue * 1.5,
-          }]} 
+        <TouchableOpacity
+          style={[
+            styles.fab,
+            {
+              backgroundColor: tracker.gradient[0],
+              borderRadius: borderRadiusValue * 1.5,
+            },
+          ]}
           onPress={quickLog}
         >
           <Ionicons name="add" size={28} color="#fff" />
@@ -464,10 +802,16 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     );
   }
 
+  /* ═══════════════════════════════════════════════════════════════════
+     FORM MODE
+     ═══════════════════════════════════════════════════════════════════ */
+
   if (mode === 'form') {
     return (
       <View style={{ flex: 1 }}>
-        <View style={[styles.formHeader, { backgroundColor: tracker.gradient[0] + '15' }]}>
+        <View
+          style={[styles.formHeader, { backgroundColor: tracker.gradient[0] + '15' }]}
+        >
           <TouchableOpacity onPress={() => setMode('dashboard')} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={fullThemeColors.text} />
           </TouchableOpacity>
@@ -502,16 +846,23 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     );
   }
 
+  /* ═══════════════════════════════════════════════════════════════════
+     HISTORY MODE
+     ═══════════════════════════════════════════════════════════════════ */
+
   if (mode === 'history') {
     const allEntries = [...todayEntries, ...yesterdayEntries, ...recentEntries]
       .sort((a, b) => b.timestamp - a.timestamp)
-      .filter((entry, index, self) => 
-        index === self.findIndex(e => e.id === entry.id)
-      ); // Deduplicate
+      .filter(
+        (entry, index, self) =>
+          entry && index === self.findIndex((e) => e.id === entry.id)
+      ); // Deduplicate + guard null
 
     return (
       <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
-        <View style={[styles.historyHeader, { backgroundColor: tracker.gradient[0] + '15' }]}>
+        <View
+          style={[styles.historyHeader, { backgroundColor: tracker.gradient[0] + '15' }]}
+        >
           <TouchableOpacity onPress={() => setMode('dashboard')} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={fullThemeColors.text} />
           </TouchableOpacity>
@@ -522,48 +873,101 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false}>
-          {allEntries.map((entry, i) => (
-            <Animated.View key={entry.id} entering={FadeInUp.delay(i * 30)} style={[styles.historyCard, { 
-              backgroundColor: fullThemeColors.surface,
-              borderRadius: borderRadiusValue,
-            }]}>
-              <View style={styles.historyCardHeader}>
-                <Text style={[styles.historyDate, { color: fullThemeColors.textSecondary }]}>
-                  {formatDateShort(entry.timestamp)} • {formatTimeShort(entry.timestamp)}
-                </Text>
-                {entry.loggedByRole === 'parent2' && (
-                  <View style={[styles.partnerBadge, { backgroundColor: `${tracker.color}20` }]}>
-                    <Text style={[styles.partnerText, { color: tracker.color }]}>Partner</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.historyTitle, { color: fullThemeColors.text }]}>{entry.title}</Text>
-              {Object.entries(entry.data).length > 0 && (
-                <View style={styles.historyData}>
-                  {Object.entries(entry.data).slice(0, 3).map(([key, value]) => (
-                    <View key={key} style={styles.historyDataRow}>
-                      <Text style={[styles.historyDataKey, { color: fullThemeColors.textSecondary }]}>{key}:</Text>
-                      <Text style={[styles.historyDataValue, { color: fullThemeColors.text }]}>
-                        {String(value).length > 15 ? String(value).slice(0, 15) + '...' : String(value)}
+          {allEntries.map((entry, i) => {
+            if (!entry) return null;
+            const entryData = safeObject(entry.data);
+            const entryDataKeys = Object.keys(entryData);
+            const linkedEntries = safeArray<any>(entry.linkedEntries);
+
+            return (
+              <Animated.View
+                key={entry.id || `history-${i}`}
+                entering={shouldReduceMotion ? undefined : FadeInUp.delay(i * 30)}
+                style={[
+                  styles.historyCard,
+                  {
+                    backgroundColor: fullThemeColors.surface,
+                    borderRadius: borderRadiusValue,
+                  },
+                ]}
+              >
+                <View style={styles.historyCardHeader}>
+                  <Text
+                    style={[
+                      styles.historyDate,
+                      { color: fullThemeColors.textSecondary },
+                    ]}
+                  >
+                    {formatDateShort(entry.timestamp)} •{' '}
+                    {formatTimeShort(entry.timestamp)}
+                  </Text>
+                  {entry.loggedByRole === 'parent2' && (
+                    <View
+                      style={[
+                        styles.partnerBadge,
+                        { backgroundColor: `${tracker.color}20` },
+                      ]}
+                    >
+                      <Text style={[styles.partnerText, { color: tracker.color }]}>
+                        Partner
                       </Text>
                     </View>
-                  ))}
+                  )}
                 </View>
-              )}
-              {entry.linkedEntries && entry.linkedEntries.length > 0 && (
-                <View style={[styles.linkedBadge, { backgroundColor: `${tracker.color}15` }]}>
-                  <Ionicons name="link-outline" size={14} color={tracker.color} />
-                  <Text style={[styles.linkedText, { color: tracker.color }]}>
-                    Linked to {entry.linkedEntries.length} other {entry.linkedEntries.length === 1 ? 'entry' : 'entries'}
-                  </Text>
-                </View>
-              )}
-            </Animated.View>
-          ))}
+                <Text style={[styles.historyTitle, { color: fullThemeColors.text }]}>
+                  {entry.title || tracker.name}
+                </Text>
+                {entryDataKeys.length > 0 && (
+                  <View style={styles.historyData}>
+                    {Object.entries(entryData)
+                      .slice(0, 3)
+                      .map(([key, value]) => (
+                        <View key={key} style={styles.historyDataRow}>
+                          <Text
+                            style={[
+                              styles.historyDataKey,
+                              { color: fullThemeColors.textSecondary },
+                            ]}
+                          >
+                            {key}:
+                          </Text>
+                          <Text
+                            style={[
+                              styles.historyDataValue,
+                              { color: fullThemeColors.text },
+                            ]}
+                          >
+                            {String(value).length > 15
+                              ? String(value).slice(0, 15) + '...'
+                              : String(value)}
+                          </Text>
+                        </View>
+                      ))}
+                  </View>
+                )}
+                {linkedEntries.length > 0 && (
+                  <View
+                    style={[
+                      styles.linkedBadge,
+                      { backgroundColor: `${tracker.color}15` },
+                    ]}
+                  >
+                    <Ionicons name="link-outline" size={14} color={tracker.color} />
+                    <Text style={[styles.linkedText, { color: tracker.color }]}>
+                      Linked to {linkedEntries.length} other{' '}
+                      {linkedEntries.length === 1 ? 'entry' : 'entries'}
+                    </Text>
+                  </View>
+                )}
+              </Animated.View>
+            );
+          })}
           {allEntries.length === 0 && (
             <View style={styles.emptyState}>
               <Text style={{ fontSize: 48 }}>📝</Text>
-              <Text style={[styles.emptyText, { color: fullThemeColors.textSecondary }]}>
+              <Text
+                style={[styles.emptyText, { color: fullThemeColors.textSecondary }]}
+              >
                 No entries yet. Start tracking!
               </Text>
             </View>
@@ -573,10 +977,17 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     );
   }
 
+  /* ═══════════════════════════════════════════════════════════════════
+     INSIGHTS MODE
+     ═══════════════════════════════════════════════════════════════════ */
+
   if (mode === 'insights') {
+    const trendEntries = Object.entries(trends);
     return (
       <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
-        <View style={[styles.historyHeader, { backgroundColor: tracker.gradient[0] + '15' }]}>
+        <View
+          style={[styles.historyHeader, { backgroundColor: tracker.gradient[0] + '15' }]}
+        >
           <TouchableOpacity onPress={() => setMode('dashboard')} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={fullThemeColors.text} />
           </TouchableOpacity>
@@ -588,77 +999,196 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
 
         <ScrollView showsVerticalScrollIndicator={false} style={{ padding: 16 }}>
           {/* Trends Section */}
-          {Object.keys(trends).length > 0 && (
+          {trendEntries.length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier },
+                ]}
+              >
                 Trends
               </Text>
-              {Object.entries(trends).map(([fieldId, trend]) => (
-                <View key={fieldId} style={[styles.trendCard, { backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue }]}>
-                  <Ionicons 
-                    name={trend.direction === 'up' ? 'trending-up' : trend.direction === 'down' ? 'trending-down' : 'remove'} 
-                    size={24} 
-                    color={trend.direction === 'up' ? themeColors.success : trend.direction === 'down' ? themeColors.error : fullThemeColors.textSecondary} 
-                  />
-                  <View style={styles.trendInfo}>
-                    <Text style={[styles.trendField, { color: fullThemeColors.text }]}>{fieldId}</Text>
-                    <Text style={[styles.trendDelta, { color: trend.direction === 'up' ? themeColors.success : trend.direction === 'down' ? themeColors.error : fullThemeColors.textSecondary }]}>
-                      {trend.deltaLabel || 'No change'}
-                    </Text>
+              {trendEntries.map(([fieldId, trend]) => {
+                if (!trend) return null;
+                const dir = trend.direction || 'same';
+                const trendColor =
+                  dir === 'up'
+                    ? successColor
+                    : dir === 'down'
+                    ? errorColor
+                    : fullThemeColors.textSecondary;
+                return (
+                  <View
+                    key={fieldId}
+                    style={[
+                      styles.trendCard,
+                      {
+                        backgroundColor: fullThemeColors.surface,
+                        borderRadius: borderRadiusValue,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        dir === 'up'
+                          ? 'trending-up'
+                          : dir === 'down'
+                          ? 'trending-down'
+                          : 'remove'
+                      }
+                      size={24}
+                      color={trendColor}
+                    />
+                    <View style={styles.trendInfo}>
+                      <Text style={[styles.trendField, { color: fullThemeColors.text }]}>
+                        {fieldId}
+                      </Text>
+                      <Text style={[styles.trendDelta, { color: trendColor }]}>
+                        {trend.deltaLabel || 'No change'}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
 
           {/* All Insights */}
           {insights.length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier },
+                ]}
+              >
                 All Insights
               </Text>
-              {insights.map((insight, i) => (
-                <Animated.View key={insight.id} entering={FadeInUp.delay(i * 50)} style={[styles.insightRow, { 
-                  backgroundColor: insight.priority === 'good' ? `${themeColors.success}10` : 
-                                   insight.priority === 'warning' ? `${themeColors.warning}10` : 
-                                   `${themeColors.info}10`,
-                  borderRadius: borderRadiusValue,
-                }]}>
-                  <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-                  <View style={styles.insightInfo}>
-                    <Text style={[styles.insightTitle, { color: fullThemeColors.text }]}>{insight.title}</Text>
-                    <Text style={[styles.insightDesc, { color: fullThemeColors.textSecondary }]}>{insight.description}</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => handleDismissInsight(insight.id)}>
-                    <Ionicons name="close" size={18} color={fullThemeColors.textSecondary} />
-                  </TouchableOpacity>
-                </Animated.View>
-              ))}
+              {insights.map((insight, i) => {
+                if (!insight) return null;
+                const bg =
+                  insight.priority === 'good'
+                    ? `${successColor}10`
+                    : insight.priority === 'warning'
+                    ? `${warningColor}10`
+                    : `${infoColor}10`;
+                return (
+                  <Animated.View
+                    key={insight.id || `all-insight-${i}`}
+                    entering={shouldReduceMotion ? undefined : FadeInUp.delay(i * 50)}
+                    style={[
+                      styles.insightRow,
+                      { backgroundColor: bg, borderRadius: borderRadiusValue },
+                    ]}
+                  >
+                    <Text style={styles.insightEmoji}>{insight.emoji || '💡'}</Text>
+                    <View style={styles.insightInfo}>
+                      <Text
+                        style={[styles.insightTitle, { color: fullThemeColors.text }]}
+                      >
+                        {insight.title || 'Insight'}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.insightDesc,
+                          { color: fullThemeColors.textSecondary },
+                        ]}
+                      >
+                        {insight.description || ''}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleDismissInsight(insight.id)}
+                    >
+                      <Ionicons
+                        name="close"
+                        size={18}
+                        color={fullThemeColors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  </Animated.View>
+                );
+              })}
             </View>
           )}
 
           {/* Time Patterns */}
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier }]}>
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier },
+              ]}
+            >
               Time Patterns
             </Text>
-            <View style={[styles.timePatternCard, { backgroundColor: fullThemeColors.surface, borderRadius: borderRadiusValue }]}>
+            <View
+              style={[
+                styles.timePatternCard,
+                {
+                  backgroundColor: fullThemeColors.surface,
+                  borderRadius: borderRadiusValue,
+                },
+              ]}
+            >
               <View style={styles.timePatternRow}>
-                <Text style={[styles.timePatternLabel, { color: fullThemeColors.textSecondary }]}>Time of Day</Text>
-                <Text style={[styles.timePatternValue, { color: fullThemeColors.text }]}>{timeContext.timeOfDay}</Text>
+                <Text
+                  style={[
+                    styles.timePatternLabel,
+                    { color: fullThemeColors.textSecondary },
+                  ]}
+                >
+                  Time of Day
+                </Text>
+                <Text style={[styles.timePatternValue, { color: fullThemeColors.text }]}>
+                  {timeContext.timeOfDay}
+                </Text>
               </View>
               <View style={styles.timePatternRow}>
-                <Text style={[styles.timePatternLabel, { color: fullThemeColors.textSecondary }]}>Weekend</Text>
-                <Text style={[styles.timePatternValue, { color: fullThemeColors.text }]}>{timeContext.isWeekend ? 'Yes' : 'No'}</Text>
+                <Text
+                  style={[
+                    styles.timePatternLabel,
+                    { color: fullThemeColors.textSecondary },
+                  ]}
+                >
+                  Weekend
+                </Text>
+                <Text style={[styles.timePatternValue, { color: fullThemeColors.text }]}>
+                  {timeContext.isWeekend ? 'Yes' : 'No'}
+                </Text>
               </View>
               <View style={styles.timePatternRow}>
-                <Text style={[styles.timePatternLabel, { color: fullThemeColors.textSecondary }]}>Usual Times</Text>
-                <Text style={[styles.timePatternValue, { color: fullThemeColors.text }]}>{timeContext.usualTimes.join(', ') || 'None yet'}</Text>
+                <Text
+                  style={[
+                    styles.timePatternLabel,
+                    { color: fullThemeColors.textSecondary },
+                  ]}
+                >
+                  Usual Times
+                </Text>
+                <Text style={[styles.timePatternValue, { color: fullThemeColors.text }]}>
+                  {Array.isArray(timeContext.usualTimes) &&
+                  timeContext.usualTimes.length > 0
+                    ? timeContext.usualTimes.join(', ')
+                    : 'None yet'}
+                </Text>
               </View>
               {timeContext.nextSuggestedTime && (
                 <View style={styles.timePatternRow}>
-                  <Text style={[styles.timePatternLabel, { color: fullThemeColors.textSecondary }]}>Next Suggested</Text>
-                  <Text style={[styles.timePatternValue, { color: tracker.color }]}>{timeContext.nextSuggestedTime}</Text>
+                  <Text
+                    style={[
+                      styles.timePatternLabel,
+                      { color: fullThemeColors.textSecondary },
+                    ]}
+                  >
+                    Next Suggested
+                  </Text>
+                  <Text
+                    style={[styles.timePatternValue, { color: tracker.color }]}
+                  >
+                    {timeContext.nextSuggestedTime}
+                  </Text>
                 </View>
               )}
             </View>
@@ -670,6 +1200,10 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
 
   return null;
 };
+
+/* ═══════════════════════════════════════════════════════════════════════
+   STYLES — unchanged from original
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

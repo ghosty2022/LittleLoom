@@ -1956,51 +1956,69 @@ interface DatePickerModalProps {
 }
 
 const DatePickerModal = memo<DatePickerModalProps>(
-  ({ visible, date, mode, onChange, onClose, themeColors, fullThemeColors, borderRadiusValue }) => (
-    <Modal transparent animationType="slide" visible={visible} statusBarTranslucent>
-      <Pressable
-        style={[
-          pickerStyles.overlay,
-          { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` },
-        ]}
-        onPress={onClose}
-      >
-        <View
+  ({ visible, date, mode, onChange, onClose, themeColors, fullThemeColors, borderRadiusValue }) => {
+    // DateTimePicker is a native module that requires iOS to run in modal
+    // mode. On Android, this component should NEVER render — the parent
+    // gates it with `Platform.OS === 'ios'`, but we double-guard here.
+    if (Platform.OS !== 'ios') return null;
+
+    // Only render the DateTimePicker when the modal is actually visible.
+    // Rendering it hidden but mounted has caused crashes on some devices
+    // where the native module initializes with `undefined` props.
+    return (
+      <Modal transparent animationType="slide" visible={visible} statusBarTranslucent>
+        <Pressable
           style={[
-            pickerStyles.content,
-            {
-              backgroundColor: fullThemeColors.surface,
-              borderRadius: borderRadiusValue * 2,
-            },
+            pickerStyles.overlay,
+            { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` },
           ]}
-          onStartShouldSetResponder={() => true}
-          onTouchEnd={(e) => e.stopPropagation()}
+          onPress={onClose}
         >
           <View
             style={[
-              pickerStyles.header,
-              { borderBottomColor: fullThemeColors.border },
+              pickerStyles.content,
+              {
+                backgroundColor: fullThemeColors.surface,
+                borderRadius: borderRadiusValue * 2,
+              },
             ]}
+            onStartShouldSetResponder={() => true}
+            onTouchEnd={(e) => e.stopPropagation()}
           >
-            <TouchableOpacity onPress={onClose} accessibilityRole="button">
-              <Text
-                style={[pickerStyles.doneButton, { color: themeColors.primary }]}
-              >
-                Done
-              </Text>
-            </TouchableOpacity>
+            <View
+              style={[
+                pickerStyles.header,
+                { borderBottomColor: fullThemeColors.border },
+              ]}
+            >
+              <TouchableOpacity onPress={onClose} accessibilityRole="button">
+                <Text
+                  style={[pickerStyles.doneButton, { color: themeColors.primary }]}
+                >
+                  Done
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Only mount the native picker when visible */}
+            {visible ? (
+              <DateTimePicker
+                value={date instanceof Date ? date : new Date()}
+                mode={mode}
+                display="spinner"
+                onValueChange={(event, selectedDate) => {
+                  // New SDK API — falls back gracefully
+                  if (selectedDate) onChange(event, selectedDate);
+                }}
+                onChange={onChange}
+                textColor={fullThemeColors.text}
+              />
+            ) : null}
           </View>
-          <DateTimePicker
-            value={date}
-            mode={mode}
-            display="spinner"
-            onChange={onChange}
-            textColor={fullThemeColors.text}
-          />
-        </View>
-      </Pressable>
-    </Modal>
-  )
+        </Pressable>
+      </Modal>
+    );
+  }
 );
 DatePickerModal.displayName = 'DatePickerModal';
 
@@ -2459,29 +2477,56 @@ function TrackerContent({
 
   const showAndroidPicker = useCallback(
     (mode: 'date' | 'time') => {
+      // Guard: DateTimePickerAndroid is Android-only and must NOT
+      // be called on iOS or before the native module is ready.
+      if (Platform.OS !== 'android') return;
+
       try {
+        // The native module may not be ready immediately after mount.
+        // Check that the API surface is actually available.
+        if (!DateTimePickerAndroid || typeof DateTimePickerAndroid.open !== 'function') {
+          if (__DEV__) {
+            console.warn('[AddEntryScreen] DateTimePickerAndroid not available yet');
+          }
+          return;
+        }
+
         DateTimePickerAndroid.open({
-          value: dateRef.current,
+          value: dateRef.current instanceof Date ? dateRef.current : new Date(),
           mode,
           is24Hour: false,
           onChange: (event, selectedDate) => {
-            if (event.type === 'set' && selectedDate) {
-              const d = new Date(dateRef.current);
-              if (mode === 'date') {
-                d.setFullYear(selectedDate.getFullYear());
-                d.setMonth(selectedDate.getMonth());
-                d.setDate(selectedDate.getDate());
-                setDate(d);
-                setTimeout(() => showAndroidPicker('time'), 300);
-              } else {
-                d.setHours(selectedDate.getHours());
-                d.setMinutes(selectedDate.getMinutes());
-                setDate(d);
-              }
+            // Guard: event may be undefined on some devices
+            if (!event || event.type !== 'set' || !selectedDate) return;
+
+            const d = new Date(dateRef.current);
+            if (mode === 'date') {
+              d.setFullYear(selectedDate.getFullYear());
+              d.setMonth(selectedDate.getMonth());
+              d.setDate(selectedDate.getDate());
+              setDate(d);
+              // Chain to time picker after a small delay
+              setTimeout(() => {
+                if (Platform.OS === 'android') showAndroidPicker('time');
+              }, 300);
+            } else {
+              d.setHours(selectedDate.getHours());
+              d.setMinutes(selectedDate.getMinutes());
+              setDate(d);
             }
           },
+          // Add onError to catch native failures
+          onError: (err: any) => {
+            if (__DEV__) {
+              console.warn('[AddEntryScreen] Date picker error:', err);
+            }
+            error('Error', 'Could not open date picker.');
+          },
         });
-      } catch {
+      } catch (err: any) {
+        if (__DEV__) {
+          console.warn('[AddEntryScreen] showAndroidPicker failed:', err?.message);
+        }
         error('Error', 'Could not open date picker.');
       }
     },
