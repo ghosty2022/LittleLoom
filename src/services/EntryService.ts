@@ -274,7 +274,8 @@ export function mapRowToEntry(row: any): TrackerEntry {
   // ── Data: jsonb object OR JSON string ────────────────────────────
   let parsedData: Record<string, unknown> = {};
   if (row.data && typeof row.data === 'object') {
-    parsedData = row.data;
+    // Defensive copy — we're about to mutate this
+    parsedData = { ...(row.data as Record<string, unknown>) };
   } else if (typeof row.data === 'string') {
     try {
       parsedData = JSON.parse(row.data);
@@ -736,27 +737,6 @@ export async function clearEntryCache(): Promise<void> {
 
 // ─── Singleton-style Export ─────────────────────────────────────────
 
-export const EntryService = {
-  saveEntry,
-  updateEntry,
-  softDeleteEntry,
-  restoreEntry,
-  getEntries,
-  getEntryById,
-  getCachedEntries,
-  warmCache,
-  clearEntryCache,
-  buildSupabasePayload,
-  mapRowToEntry,
-  sanitizePayload,
-  sanitizePhotoUris,
-  sanitizeTags,
-  // Convenience helpers
-  getEntriesForTracker,
-  getEntriesInRange,
-  countEntriesForTracker,
-};
-
 // ─── Convenience: get all entries for one tracker ───────────────────
 
 export async function getEntriesForTracker(
@@ -797,4 +777,29 @@ export async function countEntriesForTracker(
     return 0;
   }
 }
+
+// ─── Singleton-style Export ─────────────────────────────────────────
+// Declared LAST so every helper it references is already defined.
+
+export const EntryService = {
+  saveEntry,
+  updateEntry,
+  softDeleteEntry,
+  restoreEntry,
+  getEntries,
+  getEntryById,
+  getCachedEntries,
+  warmCache,
+  clearEntryCache,
+  buildSupabasePayload,
+  mapRowToEntry,
+  sanitizePayload,
+  sanitizePhotoUris,
+  sanitizeTags,
+  // Convenience helpers
+  getEntriesForTracker,
+  getEntriesInRange,
+  countEntriesForTracker,
+};
+
 export default EntryService;

@@ -32,6 +32,7 @@ import {
 } from '../../types/trackers';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { useBaby } from '../../context/BabyContext';
 import {
   TrackerProgressiveState,
   ProgressiveSuggestion,
@@ -149,14 +150,8 @@ const validateGrowthValue = (
   // ─── Medication smart-fill from last entry ─────────────────────────
   // The last medication entry usually holds name + dosage + type.
   // Surfacing those as defaults saves the parent from re-typing.
-  const medicationQuickFill = useMemo(() => {
-    if (tracker.id !== 'medication') return null;
-    const last = (yesterdayEntries[0] || todayEntries[0]) as any;
-    if (!last?.data) return null;
-    const { name, dosage, type } = last.data;
-    if (!name && !dosage) return null;
-    return { name, dosage, type };
-  }, [tracker.id, yesterdayEntries, todayEntries]);
+  // NOTE: this must live INSIDE the main component — do not define it
+  // at module scope (it needs component-local state).
 
 const isFutureTimestamp = (value: unknown): boolean => {
   if (value === undefined || value === null || value === '') return false;
@@ -1557,24 +1552,23 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   } = useCustomization();
   const { success, error, info } = useSweetAlert();
 
-  // Needed for growth value validation
-  let currentBabyAgeMonths = 0;
-  try {
-    // Dynamic access to avoid hard dep if hook isn't available
-    const { useBaby } = require('../../context/BabyContext');
-    const { currentBaby } = useBaby();
-    if (currentBaby?.birthDate) {
-      const birth = new Date(currentBaby.birthDate);
-      const now = new Date();
-      currentBabyAgeMonths = Math.max(
-        0,
-        (now.getFullYear() - birth.getFullYear()) * 12 +
-          (now.getMonth() - birth.getMonth())
-      );
-    }
-  } catch {
-    // Ignore — growth validation just falls back to no bounds check
-  }
+  // ─── Baby age for growth value validation ─────────────────────────
+  // Imported statically at the top of the file so we don't violate
+  // the Rules of Hooks (dynamic requires inside component bodies
+  // would also balloon the bundle).
+  const { currentBaby } = useBaby();
+
+  const currentBabyAgeMonths = useMemo(() => {
+    if (!currentBaby?.birthDate) return 0;
+    const birth = new Date(currentBaby.birthDate);
+    if (isNaN(birth.getTime())) return 0;
+    const now = new Date();
+    return Math.max(
+      0,
+      (now.getFullYear() - birth.getFullYear()) * 12 +
+        (now.getMonth() - birth.getMonth())
+    );
+  }, [currentBaby?.birthDate]);
 
   const {
     prefillData = {},
@@ -1583,28 +1577,32 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     insights = [],
     correlations = [],
     activeReminders = [],
-    templates = [],
+    templates = {},
     trends = {},
     timeContext,
     yesterdayEntries = [],
     todayEntries = [],
   } = progressiveState || {};
 
+  // ─── Medication smart-fill from last entry ─────────────────────────
+  const medicationQuickFill = useMemo(() => {
+    if (tracker.id !== 'medication') return null;
+    const last = (yesterdayEntries[0] || todayEntries[0]) as any;
+    if (!last?.data) return null;
+    const { name, dosage, type } = last.data;
+    if (!name && !dosage) return null;
+    return { name, dosage, type };
+  }, [tracker.id, yesterdayEntries, todayEntries]);
+
   // Initial data seeded with suggestions (confidence >= 70 for auto-fill)
   const [data, setData] = useState<Record<string, unknown>>(() => {
-    // Layer 0: medication quick-fill from last entry
-    const medFill = tracker.id === 'medication' && yesterdayEntries[0]?.data
-      ? {
-          name: (yesterdayEntries[0].data as any).name,
-          dosage: (yesterdayEntries[0].data as any).dosage,
-          type: (yesterdayEntries[0].data as any).type,
-        }
-      : {};
-
-    // Layer 1: tracker defaults (lowest priority)
-    const defaults = { ...medFill, ...getTrackerDefaults(tracker.id) };
-    // Layer 2: prefill from progressive hook
-    // Layer 3: initial data passed by parent
+    // Layer 0: tracker defaults (lowest priority)
+    const defaults = {
+      ...(medicationQuickFill || {}),
+      ...getTrackerDefaults(tracker.id),
+    };
+    // Layer 1: prefill from progressive hook
+    // Layer 2: initial data passed by parent
     const merged = { ...defaults, ...prefillData, ...initialData };
 
     // Layer 4: high-confidence suggestions override nothing the user typed
@@ -1724,13 +1722,8 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           newErrors[field.id] = growthErr;
         }
       }
-    });
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [tracker.fields, data]);
-
-        // Temperature sanity
+      // Temperature sanity
       if (tracker.id === 'temperature' && field.id === 'value' && typeof value === 'number') {
         const unit = String(data.unit || 'celsius');
         const celsius = unit === 'fahrenheit' ? ((value - 32) * 5) / 9 : value;
@@ -1740,6 +1733,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           }). Double-check before saving.`;
         }
       }
+    });
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [tracker.fields, data, currentBabyAgeMonths, tracker.id]);
+
   // ─── Submit ─────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
@@ -1830,6 +1829,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     linkedEntryId,
     isSubmitting,
     tracker.id,
+    currentBabyAgeMonths,
   ]);
 
   // ─── Field update with cross-field auto-linking ─────────────────────

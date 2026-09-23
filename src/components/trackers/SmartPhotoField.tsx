@@ -1794,6 +1794,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   localOnlyText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
+  localOnlyBadge: {
+    position: 'absolute',
+    top: 44,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  localOnlyText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
   analyzingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',

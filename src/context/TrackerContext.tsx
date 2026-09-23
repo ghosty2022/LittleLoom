@@ -588,7 +588,9 @@ function useFamilyMembersSafe(): any[] {
 export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile } = useAuth();
   // ─── Lazy-resolve family members without a circular import ────
-  const members = useFamilyMembersSafe();
+  //     (currently unused — myRole is derived from userProfile.role
+  //      to avoid the circular dependency entirely)
+  useFamilyMembersSafe();
   const { triggerHaptic } = useCustomization();
   const { success, toast, alert: sweetAlert } = useSweetAlert();
   
@@ -632,6 +634,18 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const isRefreshingRef = useRef(false);
   const subscriptionRef = useRef<(() => void) | null>(null);
 
+  // ─── Current baby ID in state (for reactive contexts) ─────────────
+  // We ALSO keep a ref for synchronous reads before state commits.
+  // Declared here so downstream callbacks can safely reference it.
+  const [currentBabyIdState, setCurrentBabyIdState] = useState<string | null>(
+    () => getBabyIdFromContext()
+  );
+
+  // Keep ref in sync
+  useEffect(() => {
+    currentBabyIdRef.current = currentBabyIdState;
+  }, [currentBabyIdState]);
+
   // ─── Subscribe to baby changes from BabyContext ─────────────────────
   useEffect(() => {
     if (subscriptionRef.current) {
@@ -640,11 +654,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     const unsubscribe = subscribeToBabyChanges((babyId) => {
-      console.log('[TrackerContext] Baby changed to:', babyId);
-      
+      if (__DEV__) console.log('[TrackerContext] Baby changed to:', babyId);
+
       if (babyId !== currentBabyIdRef.current) {
         currentBabyIdRef.current = babyId;
-        
+        setCurrentBabyIdState(babyId);
+
         requestAnimationFrame(() => {
           if (babyId && !isRefreshingRef.current) {
             refreshEntriesInternal();
@@ -664,6 +679,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const initialBabyId = getBabyIdFromContext();
     if (initialBabyId && !currentBabyIdRef.current) {
       currentBabyIdRef.current = initialBabyId;
+      setCurrentBabyIdState(initialBabyId);
     }
 
     return () => {
@@ -747,14 +763,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     currentBabyIdRef.current = currentBabyIdState;
   }, [currentBabyIdState]);
 
-  // Update state when BabyContext broadcasts a change
-  useEffect(() => {
-    const unsub = subscribeToBabyChanges((babyId) => {
-      currentBabyIdRef.current = babyId;
-      setCurrentBabyIdState(babyId);
-    });
-    return () => unsub();
-  }, [subscribeToBabyChanges]);
+  // (Subscription to baby changes is handled by the earlier effect —
+  //  no duplicate subscription here to avoid double state updates.)
 
   // ─── Override the ref-only getter with a state-aware version ──
   // Now that `currentBabyIdState` is in scope, we can safely expose
@@ -1327,7 +1337,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       };
 
       const trackerType = getTrackerType(trackerId);
-      const timestampISO = new Date(timestamp).toISOString();
 
       // ─── Build canonical payload via EntryService ─────────────────
       const rawInput = {

@@ -17,6 +17,13 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
   const navigation = useNavigation();
   const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
 
+  // Defensive: readinessPercent may be undefined if the readiness object
+  // came from an older cached value.
+  const safeReadinessPercent = Math.max(
+    0,
+    Math.min(100, Number(readiness.readinessPercent) || 0)
+  );
+
   const categoryColors: Record<string, [string, string]> = {
     physical: ['#FF9F43', '#FFD700'],
     cognitive: ['#5F27CD', '#8B5CF6'],
@@ -83,7 +90,7 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
           </View>
           <View style={[styles.percentBadge, { backgroundColor: `${colors[0]}20` }]}>
             <Text style={[styles.percentText, { color: colors[0] }]}>
-              {readiness.readinessPercent}%
+              {safeReadinessPercent}%
             </Text>
           </View>
         </View>
@@ -94,9 +101,10 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
             style={[
               styles.progressFill,
               {
-                width: `${readiness.readinessPercent}%`,
-                backgroundColor: readiness.readinessPercent > 80 ? colors[0] :
-                  readiness.readinessPercent > 50 ? colors[1] : '#94A3B8',
+                width: `${safeReadinessPercent}%`,
+                backgroundColor:
+                  safeReadinessPercent > 80 ? colors[0] :
+                  safeReadinessPercent > 50 ? colors[1] : '#94A3B8',
               },
             ]}
           />
@@ -163,8 +171,8 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
 
         <View style={styles.footer}>
           <Text style={[styles.footerText, { color: fullThemeColors.textSecondary }]}>
-            {readiness.readinessPercent > 80 ? '🌟 Ready to achieve! Tap to log milestone' :
-             readiness.readinessPercent > 50 ? '👀 Keep practicing — milestone approaching' :
+            {safeReadinessPercent > 80 ? '🌟 Ready to achieve! Tap to log milestone' :
+             safeReadinessPercent > 50 ? '👀 Keep practicing — milestone approaching' :
              '⏰ Early — build foundation skills'}
           </Text>
           <Ionicons name="chevron-forward" size={18} color={colors[0]} />

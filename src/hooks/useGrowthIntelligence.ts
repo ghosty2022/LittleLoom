@@ -584,7 +584,7 @@ export const useGrowthIntelligence = () => {
         // Only show milestones in or near the current age window
         return data.window.start <= currentAge + 1 && data.window.end >= currentAge;
       })
-      .map(([name, data]) => {
+      .map(([, data]) => {
         const prerequisitesMet = data.prerequisites.every(p => achievedTitles.has(p));
 
         // Guard: window span must be positive to avoid divide-by-zero
