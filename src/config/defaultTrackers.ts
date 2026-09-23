@@ -379,6 +379,17 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     updatedAt: 0,
     permissions: defaultPerms,
     fields: [
+      f.select(
+        'status',
+        'Status',
+        [
+          { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
+          { id: 'completed', label: 'Done', emoji: '✅' },
+        ],
+        { defaultValue: 'completed' }
+      ),
+      f.datetime('startTime', 'Start Time'),
+      f.datetime('endTime', 'End Time'),
       f.duration('duration', 'Duration'),
       f.select('waterTemp', 'Water Temperature', [
         { id: 'warm', label: 'Warm', emoji: '🌡️' },
@@ -418,6 +429,17 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { required: true }
       ),
+      f.select(
+        'status',
+        'Status',
+        [
+          { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
+          { id: 'completed', label: 'Finished', emoji: '✅' },
+        ],
+        { defaultValue: 'completed' }
+      ),
+      f.datetime('startTime', 'Start Time'),
+      f.datetime('endTime', 'End Time'),
       f.quantity('amount', 'Total Output', {
         required: true,
         unitOptions: LIQUID_UNITS,
@@ -880,6 +902,17 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     updatedAt: 0,
     permissions: defaultPerms,
     fields: [
+      f.select(
+        'status',
+        'Status',
+        [
+          { id: 'ongoing', label: 'In Progress', emoji: '🔄' },
+          { id: 'completed', label: 'Done', emoji: '✅' },
+        ],
+        { defaultValue: 'completed' }
+      ),
+      f.datetime('startTime', 'Start Time'),
+      f.datetime('endTime', 'End Time'),
       f.duration('duration', 'Duration', { required: true }),
       f.rating('tolerance', 'Tolerance', 5),
       f.toggle('reached', 'Reached for toys?'),
@@ -2096,7 +2129,12 @@ export const createCustomTracker = (
     createdAt: Date.now(),
     updatedAt: Date.now(),
     permissions: options?.permissions || {
-      familyRoles: ['parent1', 'parent2', 'guardian'],
+      // Cast to satisfy the exact union type in UnifiedTrackerConfig
+      familyRoles: ['parent1', 'parent2', 'guardian'] as (
+        | 'parent1'
+        | 'parent2'
+        | 'guardian'
+      )[],
       allowGuardiansCreate: true,
       allowGuardiansEditOwn: true,
       allowGuardiansDeleteOwn: true,

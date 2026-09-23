@@ -28,9 +28,19 @@ export const AIBootstrapGate: React.FC = () => {
     bootstrapAI(id, true)
       .then(() => {
         bootstrappedIdsRef.current.add(id);
+        if (__DEV__) {
+          console.log(`[AIBootstrapGate] Bootstrap complete for baby ${id}`);
+        }
       })
       .catch((err) => {
-        if (__DEV__) console.warn('[AIBootstrapGate] bootstrapAI failed:', err);
+        // Log always (not just DEV) — silent failures hide real bugs
+        console.warn('[AIBootstrapGate] bootstrapAI failed:', err);
+        // Schedule a retry in 30s so we don't hammer the network on permanent failures
+        setTimeout(() => {
+          if (lastBabyIdRef.current === id) {
+            bootstrapAI(id).catch(() => {});
+          }
+        }, 30000);
       });
   }, [currentBaby?.id]);
 

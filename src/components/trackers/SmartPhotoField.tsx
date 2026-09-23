@@ -553,23 +553,33 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         }
 
         // Upload to Supabase if enabled
+        // NOTE: We keep BOTH the local URI (for instant display) and the
+        // remote URL (for persistence). The local URI is used as a fallback
+        // if the upload fails or the network drops.
         let storagePath: string | undefined;
         let publicUrl: string | undefined;
 
         if (uploadToSupabase && babyId) {
           setUploading(true);
           try {
-            const result = await uploadToSupabase(uri, 'tracker-photos', `baby-${babyId}`);
+            const result = await uploadToSupabase(
+              uri,
+              'tracker-photos',
+              `baby-${babyId}`
+            );
             if (result) {
               storagePath = result.path;
               publicUrl = result.url;
             }
           } catch (e) {
-            console.warn('Upload failed, using local URI:', e);
+            console.warn('[SmartPhotoField] Upload failed, using local URI:', e);
           } finally {
-            setUploading(false);
+            if (mountedRef.current) setUploading(false);
           }
         }
+
+        // Bail if component unmounted during upload
+        if (!mountedRef.current) return;
 
         // File info
         let fileSize: number | undefined;

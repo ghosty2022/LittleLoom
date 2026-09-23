@@ -624,23 +624,48 @@ const SmartNumberField: React.FC<{
   trend,
 }) => {
   const quickValues = useMemo(() => {
-    const values: { label: string; value: number }[] = [];
+    const values: { label: string; value: number; emoji?: string }[] = [];
     const suggNum = Number(suggestion?.value);
     const yestNum = Number(yesterdayValue);
 
+    const isValid = (n: number) =>
+      Number.isFinite(n) && n > 0 && n < 10000;
+
+    // 1. Suggestion (if real confidence)
     if (
       suggestion !== undefined &&
-      suggestion.confidence >= 60 &&
-      Number.isFinite(suggNum) &&
-      suggNum > 0
+      suggestion.confidence >= 70 &&
+      isValid(suggNum)
     ) {
-      values.push({ label: 'Suggest', value: suggNum });
+      values.push({ label: 'Suggested', value: suggNum, emoji: '✨' });
     }
-    if (Number.isFinite(yestNum) && yestNum > 0) {
-      values.push({ label: 'Same', value: yestNum });
-      if (values.length < 4) values.push({ label: '-25%', value: Math.round(yestNum * 0.75) });
-      if (values.length < 4) values.push({ label: '+25%', value: Math.round(yestNum * 1.25) });
+
+    // 2. Yesterday's value + neighborhood (only if valid)
+    if (isValid(yestNum)) {
+      // Yesterday's exact value
+      if (!values.some(v => v.value === yestNum)) {
+        values.push({ label: 'Yesterday', value: yestNum, emoji: '📅' });
+      }
+
+      // Neighborhood (±25%) — only if it doesn't duplicate
+      const quarterDown = Math.round(yestNum * 0.75);
+      const quarterUp = Math.round(yestNum * 1.25);
+
+      if (
+        values.length < 4 &&
+        quarterDown > 0 &&
+        !values.some(v => v.value === quarterDown)
+      ) {
+        values.push({ label: '−25%', value: quarterDown });
+      }
+      if (
+        values.length < 4 &&
+        !values.some(v => v.value === quarterUp)
+      ) {
+        values.push({ label: '+25%', value: quarterUp });
+      }
     }
+
     return values.slice(0, 4);
   }, [suggestion, yesterdayValue]);
 
@@ -1864,7 +1889,22 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           );
         case 'mood_emoji':
           return animatedWrapper(<SmartMoodField {...commonProps} />, field.id);
-        case 'slider':
+        case 'slider': {
+          const sliderMin = Number.isFinite(field.min as any) ? Number(field.min) : 0;
+          const sliderMax = Number.isFinite(field.max as any) ? Number(field.max) : 100;
+          const sliderStep = Number.isFinite(field.step as any) && Number(field.step) > 0
+            ? Number(field.step)
+            : 1;
+          const rawValue = Number(data[field.id]);
+          const sliderValue = Number.isFinite(rawValue)
+            ? Math.max(sliderMin, Math.min(sliderMax, rawValue))
+            : sliderMin;
+
+          // Display with proper precision (0 decimals for integers, 1 for floats)
+          const displayValue = sliderStep < 1
+            ? sliderValue.toFixed(1)
+            : String(Math.round(sliderValue));
+
           return animatedWrapper(
             <View key={field.id} style={styles.fieldContainer}>
               <Text
@@ -1873,15 +1913,23 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                   { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
                 ]}
               >
-                {field.label}: {String(data[field.id] || field.min || 0)}
-                {field.unit}
+                {field.label}: {displayValue}
+                {field.unit ? ` ${field.unit}` : ''}
               </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={{ color: fullThemeColors.textSecondary, fontSize: 11 }}>
+                  {sliderMin}{field.unit ? ` ${field.unit}` : ''}
+                </Text>
+                <Text style={{ color: fullThemeColors.textSecondary, fontSize: 11 }}>
+                  {sliderMax}{field.unit ? ` ${field.unit}` : ''}
+                </Text>
+              </View>
               <Slider
                 style={styles.slider}
-                minimumValue={field.min || 0}
-                maximumValue={field.max || 100}
-                step={field.step || 1}
-                value={Number(data[field.id]) || field.min || 0}
+                minimumValue={sliderMin}
+                maximumValue={sliderMax}
+                step={sliderStep}
+                value={sliderValue}
                 onValueChange={(value) => updateField(field.id, value)}
                 minimumTrackTintColor={tracker.color}
                 maximumTrackTintColor={fullThemeColors.border}
@@ -1890,6 +1938,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             </View>,
             field.id
           );
+        }
         case 'photo':
           return animatedWrapper(
             <SmartPhotoField

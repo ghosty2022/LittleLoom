@@ -117,12 +117,34 @@ export const useTimelineCorrelations = () => {
         }
       });
 
+    // Deduplicate by id, then sort by confidence × recency, then cap
     const seen = new Set<string>();
-    return results.filter(c => {
+    const deduped = results.filter(c => {
       if (seen.has(c.id)) return false;
       seen.add(c.id);
       return true;
-    }).slice(0, 10);
+    });
+
+    // Score each correlation: confidence weighted by how recent it is
+    const nowMs = Date.now();
+    const scored = deduped.map(c => {
+      const primaryTs = c.primaryEntry?.timestamp || 0;
+      const ageHours = (nowMs - primaryTs) / 3600000;
+      // Recency multiplier: 1.0 for fresh, halves every 48h
+      const recencyMultiplier = 1 / (1 + ageHours / 48);
+      return {
+        correlation: c,
+        score: (c.confidence / 100) * recencyMultiplier,
+      };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+
+    // Only keep correlations with real signal (confidence >= 60)
+    return scored
+      .filter(({ correlation }) => correlation.confidence >= 60)
+      .slice(0, 10)
+      .map(({ correlation }) => correlation);
   }, [entries, entries.length]);
 
   return { correlations };

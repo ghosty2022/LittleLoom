@@ -595,17 +595,55 @@ export function extractMetricValue(
       return unit === 'fahrenheit' ? ((v - 32) * 5) / 9 : v;
     }
     case 'feeding_ml': {
-      const amount =
-        getNum('amount_ml') ?? getNum('amount') ?? getNum('quantity') ?? getNum('value');
+      // Feed type guard — solids don't produce ml values
+      const feedType = String(data.feedType || '').toLowerCase();
+      if (feedType === 'solid' || feedType === 'water') return null;
+
+      // Try specific field names first (newer schema)
+      let amount =
+        getNum('bottleAmount') ??
+        getNum('amount_ml') ??
+        getNum('amount') ??
+        getNum('quantity');
+
       if (amount === null || amount <= 0) return null;
-      const unit = String(data.unit || 'ml').toLowerCase();
-      return unit === 'oz' ? amount * 29.5735 : amount;
+
+      // Determine unit — support both generic 'unit' and field-specific units
+      const unit = String(
+        data.bottleAmount_unit ||
+        data.amount_unit ||
+        data.unit ||
+        'ml'
+      ).toLowerCase();
+
+      // Reject absurd amounts
+      const ml = unit === 'oz' ? amount * 29.5735 : amount;
+      if (ml > 500 || ml < 1) return null;
+      return ml;
     }
     case 'weight_kg': {
-      const v = getNum('weight_kg') ?? getNum('weight') ?? getNum('value');
-      if (v === null) return null;
-      const unit = String(data.unit || 'kg').toLowerCase();
-      return unit === 'lb' ? v * 0.453592 : v;
+      // Skip if this is a height or head measurement
+      const mType = String(data.measurementType || '').toLowerCase();
+      if (mType && mType !== 'weight') return null;
+
+      const v =
+        getNum('weight_kg') ??
+        getNum('weight') ??
+        (mType === 'weight' ? getNum('value') : null);
+      if (v === null || v <= 0) return null;
+
+      const unit = String(
+        data.value_unit ||
+        data.weight_unit ||
+        data.unit ||
+        'kg'
+      ).toLowerCase();
+
+      const kg = unit === 'lb' ? v * 0.453592 : unit === 'g' ? v / 1000 : v;
+
+      // Sanity: 0.5 – 40 kg
+      if (kg < 0.5 || kg > 40) return null;
+      return kg;
     }
     case 'height_cm': {
       const v = getNum('height_cm') ?? getNum('height') ?? getNum('value');

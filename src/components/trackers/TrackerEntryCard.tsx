@@ -99,7 +99,10 @@ const getFieldDisplayValue = (
 
   // ── Duration ──────────────────────────────────────────────────
   if (field.type === 'duration') {
-    return formatDuration(value);
+    const formatted = formatDuration(value);
+    // formatDuration handles seconds → "1h 30m" conversion
+    // Return null if it couldn't be parsed, so it doesn't show "3600"
+    return formatted;
   }
 
   // ── Rating ────────────────────────────────────────────────────
@@ -141,8 +144,12 @@ const getFieldDisplayValue = (
     const unitKey = `${field.id}_unit`;
     const unit = (entryData[unitKey] as string) || field.unit || '';
     const num = Number(value);
+    
+    // Guard: don't display NaN or Infinity
     if (Number.isFinite(num)) {
-      return unit ? `${num} ${unit}` : String(num);
+      // Round to reasonable precision (max 2 decimals)
+      const displayNum = Number.isInteger(num) ? num : Math.round(num * 100) / 100;
+      return unit ? `${displayNum} ${unit}` : String(displayNum);
     }
     return unit ? `${value} ${unit}` : String(value);
   }
@@ -288,7 +295,16 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
   const renderDataPreview = () => {
     if (!tracker || !entry.data || typeof entry.data !== 'object') return null;
 
-    const previewFields = tracker.fields?.slice(0, 3) || [];
+    // Skip fields that are already in the title or are internal
+    const INTERNAL_FIELDS = new Set([
+      'status', 'startTime', 'endTime', 'duration',
+      'sleepType', 'feedType', 'title',
+    ]);
+
+    const previewFields = (tracker.fields || [])
+      .filter((f: any) => !INTERNAL_FIELDS.has(f.id))
+      .slice(0, 3);
+
     return (
       <View style={styles.dataPreview}>
         {previewFields.map((field) => {

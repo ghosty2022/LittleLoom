@@ -361,9 +361,13 @@ export const useTrackerProgressive = (trackerId: string) => {
       hourCounts[h] = (hourCounts[h] || 0) + 1;
     });
 
-    // Only show "usual times" if we have enough data (>= 3 entries at that hour)
+    // Only show "usual times" if we have enough data.
+    // Require: >= 20% of entries at that hour AND at least 3 total occurrences.
+    const totalEntries = recentEntries.length;
+    const minCount = Math.max(3, Math.ceil(totalEntries * 0.15));
+
     const usualTimes = Object.entries(hourCounts)
-      .filter(([, count]) => count >= 3)
+      .filter(([, count]) => count >= minCount)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([h]) => formatTime(parseInt(h)));
@@ -422,17 +426,49 @@ export const useTrackerProgressive = (trackerId: string) => {
     const prefill: Record<string, unknown> = {};
     const suggMap = new Map<string, ProgressiveSuggestion>();
 
-    // ─── 1. Yesterday's data (highest confidence) ────────────────
+    // ─── Fields that MUST NOT be auto-prefilled from yesterday ──────
+    // These are time-sensitive or state-tracking fields where stale
+    // values would be actively harmful (e.g., copying yesterday's
+    // startTime would create an entry 24h in the past).
+    const NEVER_PREFILL = new Set([
+      'startTime', 'endTime', 'dateGiven', 'startedAt', 'departure',
+      'return', 'dropoff', 'pickup', 'followUpDate', 'nextDue',
+      'time', 'bedtime', 'wakeTime', 'datetime',
+    ]);
+
+    const isNeverPrefill = (fieldId: string) => {
+      const lower = fieldId.toLowerCase();
+      return (
+        NEVER_PREFILL.has(fieldId) ||
+        lower.endsWith('time') ||
+        lower.endsWith('date') ||
+        lower.startsWith('start') ||
+        lower.startsWith('end') ||
+        lower.includes('timestamp')
+      );
+    };
+
+    // ─── 1. Yesterday's data — but ONLY for stable fields ────────
+    //      Confidence is now 80 (not 95) since it's context, not a fact.
     const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday && Object.keys(yesterday).length > 0) {
       Object.entries(yesterday).forEach(([fieldId, value]) => {
+        // Skip time/date fields — they must always be freshly set
+        if (isNeverPrefill(fieldId)) return;
+        
+        // Skip status fields — a new entry starts fresh
+        if (fieldId === 'status' || fieldId === 'completed' || fieldId === 'ongoing') return;
+
         if (value !== undefined && value !== '' && value !== null) {
+          // Don't prefill duration — it will be computed
+          if (fieldId === 'duration') return;
+
           prefill[fieldId] = value;
           suggMap.set(fieldId, {
             fieldId,
             value,
             source: 'yesterday',
-            confidence: 95,
+            confidence: 80,
             label: 'Yesterday',
             emoji: '⏰',
           });
@@ -505,13 +541,27 @@ export const useTrackerProgressive = (trackerId: string) => {
     }
 
     // ─── 4. Partner's recent entries (co-parenting) ──────────────
+    //      Only surface DATA fields, never time/status/duration —
+    //      those would create duplicate or nonsensical entries.
     const partnerEntry = trackerEntries.find(
       (e) =>
         e.loggedByRole === 'parent2' &&
         e.timestamp > subHours(now, 6).getTime()
     );
     if (partnerEntry) {
+      const partnerTimeAgo = Math.round(
+        (now.getTime() - partnerEntry.timestamp) / 60000
+      );
+      const timeLabel =
+        partnerTimeAgo < 60
+          ? `${partnerTimeAgo}m ago`
+          : `${Math.round(partnerTimeAgo / 60)}h ago`;
+
       Object.entries(partnerEntry.data || {}).forEach(([fieldId, value]) => {
+        // Skip time/status fields — partner's timing is not ours
+        if (isNeverPrefill(fieldId)) return;
+        if (fieldId === 'status' || fieldId === 'duration') return;
+
         if (
           prefill[fieldId] === undefined &&
           !suggMap.has(fieldId) &&
@@ -519,14 +569,14 @@ export const useTrackerProgressive = (trackerId: string) => {
           value !== '' &&
           value !== null
         ) {
-          // Validate partner suggestions (lower confidence)
+          // Validate partner suggestions (require 75+ confidence)
           const validated = validateSuggestion(fieldId, value, 75);
           if (validated) {
             suggMap.set(fieldId, {
               ...validated,
               source: 'partner',
-              label: `Other parent: ${String(value).slice(0, 20)}`,
-              emoji: '👤',
+              label: `Co-parent ${timeLabel}: ${String(value).slice(0, 16)}`,
+              emoji: '👥',
             });
           }
         }
@@ -534,6 +584,11 @@ export const useTrackerProgressive = (trackerId: string) => {
     }
 
     // ─── 5. Correlation-based suggestions ────────────────────────
+    //      IMPORTANT: correlations only INFORM the suggestion chip,
+    //      they do NOT auto-prefill the form. The parent must
+    //      actively tap the suggestion.
+    //      Confidence is capped at 70 since these are statistical,
+    //      not deterministic.
     const safeCorrelations = timelineCorrelations || [];
     safeCorrelations
       .filter((c) => {
@@ -542,37 +597,68 @@ export const useTrackerProgressive = (trackerId: string) => {
         return relatedId === trackerId || primaryId === trackerId;
       })
       .forEach((c) => {
+        // Only surface the suggestion — do NOT write to `prefill`
         if (trackerId === 'medication' && c.type === 'health_alert') {
-          if (!prefill['reason'] && !suggMap.has('reason')) {
-            prefill['reason'] = 'Fever';
+          if (!suggMap.has('reason')) {
             suggMap.set('reason', {
               fieldId: 'reason',
               value: 'Fever',
               source: 'correlation',
-              confidence: 90,
-              label: c.insight || 'Health alert detected',
+              confidence: 70, // Capped — this is a guess, not a fact
+              label: c.insight || 'Recent health alert detected',
               emoji: '🔗',
             });
           }
         }
 
         if (trackerId === 'sleep' && c.type === 'feed_sleep_pattern') {
-          if (!prefill['sleepType'] && !suggMap.has('sleepType')) {
-            prefill['sleepType'] = 'nap';
+          if (!suggMap.has('sleepType')) {
             suggMap.set('sleepType', {
               fieldId: 'sleepType',
               value: 'nap',
               source: 'correlation',
-              confidence: 85,
-              label: 'Post-feed nap detected',
+              confidence: 70,
+              label: 'Post-feed nap pattern',
               emoji: '🍼😴',
             });
           }
         }
       });
 
-    // ─── Convert map back to array, deduplicated ────────────────
-    const suggestions = Array.from(suggMap.values());
+    // ─── Deduplicate suggestions: only ONE per field ────────────
+    //      Priority: yesterday > pattern > partner > correlation > time
+    const sourceRank: Record<string, number> = {
+      yesterday: 5,
+      pattern: 4,
+      partner: 3,
+      template: 3,
+      correlation: 2,
+      time_based: 1,
+    };
+
+    // Group by fieldId, keep highest-priority (then highest-confidence)
+    const byField = new Map<string, ProgressiveSuggestion>();
+    for (const sugg of suggMap.values()) {
+      const existing = byField.get(sugg.fieldId);
+      if (!existing) {
+        byField.set(sugg.fieldId, sugg);
+        continue;
+      }
+      const existingRank = sourceRank[existing.source] ?? 0;
+      const newRank = sourceRank[sugg.source] ?? 0;
+      if (
+        newRank > existingRank ||
+        (newRank === existingRank && sugg.confidence > existing.confidence)
+      ) {
+        byField.set(sugg.fieldId, sugg);
+      }
+    }
+
+    // Cap the total number of suggestions shown to avoid overwhelm
+    const MAX_SUGGESTIONS = 6;
+    const suggestions = Array.from(byField.values())
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, MAX_SUGGESTIONS);
 
     return { prefillData: prefill, suggestions };
   }, [

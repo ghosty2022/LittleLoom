@@ -417,7 +417,18 @@ export async function observeEvent(
   if (state.lastObservedAt > 0) {
     const intervalMin = (eventTimestamp - state.lastObservedAt) / 60000;
 
-    if (intervalMin > 1 && intervalMin < 24 * 60) {
+    // Per-type acceptable interval bounds (minutes)
+    // Prevents a 3-day-old stale entry from poisoning the model
+    const bounds: Record<PredictorType, [number, number]> = {
+      sleep: [20, 20 * 60],      // 20 min – 20 h
+      feed: [30, 12 * 60],       // 30 min – 12 h
+      diaper: [15, 12 * 60],     // 15 min – 12 h
+      wake: [15, 12 * 60],
+      medication: [60, 24 * 60], // 1 h – 24 h
+    };
+    const [minI, maxI] = bounds[state.type] ?? [1, 24 * 60];
+
+    if (intervalMin >= minI && intervalMin <= maxI) {
       updated = updateHoltWinters(
         state,
         intervalMin,
@@ -425,6 +436,11 @@ export async function observeEvent(
         DEFAULT_PARAMS
       );
       await persistState(updated);
+    } else if (__DEV__) {
+      console.log(
+        `[Predictor] Rejected interval ${intervalMin.toFixed(1)}m for ${state.type} ` +
+        `(bounds ${minI}–${maxI}m)`
+      );
     }
   } else {
     updated = {
