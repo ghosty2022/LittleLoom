@@ -532,62 +532,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      if (Platform.OS === 'android') {
-        const channelConfigs = [
-          { id: 'default', name: 'Default', importance: Notifications.AndroidImportance.MAX },
-          { id: 'achievements', name: 'Achievements', importance: Notifications.AndroidImportance.HIGH },
-          { id: 'streaks', name: 'Streak Protection', importance: Notifications.AndroidImportance.HIGH },
-          { id: 'chat', name: 'Chat Messages', importance: Notifications.AndroidImportance.HIGH },
-          { id: 'safety', name: 'Safety Alerts', importance: Notifications.AndroidImportance.MAX },
-          { id: 'reminders', name: 'Reminders', importance: Notifications.AndroidImportance.HIGH },
-          { id: 'activities', name: 'Activities', importance: Notifications.AndroidImportance.DEFAULT },
-          { id: 'community', name: 'Community', importance: Notifications.AndroidImportance.DEFAULT },
-        ];
-
-        for (const config of channelConfigs) {
-          try {
-            await Notifications.setNotificationChannelAsync(config.id, {
-              name: config.name,
-              importance: config.importance,
-              enableVibrate: true,
-              enableLights: true,
-            });
-          } catch (error) {
-            console.warn(`[AppContext] Failed to create channel ${config.id}:`, error);
-          }
-        }
-      }
-
-      Notifications.setNotificationHandler({
-        handleNotification: async (notification) => ({
-          shouldShowAlert: settings.inAppEnabled,
-          shouldPlaySound: settings.soundEnabled,
-          shouldSetBadge: settings.badgeEnabled,
-          priority: Notifications.AndroidNotificationPriority.HIGH,
-        }),
-      });
-
-      // Clean up old listeners
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-        notificationListener.current = null;
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-        responseListener.current = null;
-      }
-      if (appStateListener.current) {
-        appStateListener.current.remove();
-        appStateListener.current = null;
-      }
-
-      notificationListener.current = Notifications.addNotificationReceivedListener(
-        handleNotificationReceived
-      );
-
-      responseListener.current = Notifications.addNotificationResponseReceivedListener(
-        handleNotificationResponse
-      );
+      // NOTE: Notification channels, notification handler, and listeners
+      // are now owned EXCLUSIVELY by src/services/NotificationService.ts.
+      // AppContext only manages the background fetch task and settings sync.
+      // Do NOT call setNotificationHandler or setNotificationChannelAsync here —
+      // doing so overwrites the unified handler and breaks per-channel routing.
 
       if (settings.allowBackgroundSync) {
         try {
@@ -624,14 +573,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // ─── Notification Handlers ──────────────────────────────────────
+  // NOTE: Notification response handling is owned by NotificationService.
+  // Register a handler via `notificationService.addResponseHandler()` in
+  // AppNavigator (see useNotificationSetup hook). These stubs remain only
+  // as a safety net for cases where AppNavigator isn't mounted yet.
 
   const handleNotificationReceived = useCallback((notification: Notifications.Notification) => {
-    console.log('[AppContext] Notification received:', notification.request.identifier);
+    console.log('[AppContext] Notification received (fallback):', notification.request.identifier);
     storeNotification(notification);
   }, []);
 
   const handleNotificationResponse = useCallback((response: Notifications.NotificationResponse) => {
-    console.log('[AppContext] Notification response:', response.notification.request.identifier);
+    console.log('[AppContext] Notification response (fallback):', response.notification.request.identifier);
 
     const data = response.notification.request.content.data;
     if (!data) return;
@@ -965,6 +918,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotificationSettings(newSettings);
     await saveNotificationSettings(newSettings);
     await ensureNotificationsInitialized();
+
+    // Mirror relevant settings into the unified NotificationService so
+    // the handler/scheduler in that service sees the latest values.
+    try {
+      const { notificationService } = await import('@/services/NotificationService');
+      await notificationService.updateSettings({
+        enabled: newSettings.enabled,
+        pushEnabled: newSettings.pushEnabled,
+        inAppEnabled: newSettings.inAppEnabled,
+        soundEnabled: newSettings.soundEnabled,
+        vibrationEnabled: newSettings.vibrationEnabled,
+        badgeEnabled: newSettings.badgeEnabled,
+        quietHoursStart: newSettings.quietHoursStart,
+        quietHoursEnd: newSettings.quietHoursEnd,
+        chatNotifications: newSettings.chatNotifications,
+        achievementNotifications: newSettings.achievementReminders,
+        reminderNotifications: newSettings.activityReminders || newSettings.streakReminders,
+        safetyAlerts: newSettings.safetyAlerts,
+      });
+    } catch (e) {
+      console.warn('[AppContext] Failed to sync notification settings with service:', e);
+    }
 
     if (updates.allowBackgroundSync !== undefined) {
       if (updates.allowBackgroundSync) {

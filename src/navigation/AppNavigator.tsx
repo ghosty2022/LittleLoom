@@ -68,6 +68,7 @@ import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
 import { supabase } from '@/utils/supabase';
+import { notificationService } from '@/services/NotificationService';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -474,6 +475,87 @@ function NavigationContent({
       navReadyCalled.current = true;
       setIsNavReady(true);
     }
+  }, []);
+
+  // ─── NOTIFICATION RESPONSE HANDLER ───────────────────────────────
+  // Register a handler with the unified NotificationService that
+  // navigates to the correct screen when a notification is tapped.
+  useEffect(() => {
+    const navigateFromNotification = (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data || {};
+      const type = data.type as string;
+      const screen = data.screen as string;
+      const params = (data.params as Record<string, unknown>) || {};
+
+      if (!navRef.current?.isReady()) {
+        // Navigation not ready — retry once after a delay
+        setTimeout(() => {
+          if (navRef.current?.isReady()) {
+            navigateFromNotification(response);
+          }
+        }, 800);
+        return;
+      }
+
+      try {
+        switch (type) {
+          case 'chat_message':
+            navRef.current.navigate('FamilyChat' as any, {
+              chatId: data.chatId,
+              ...params,
+            });
+            break;
+          case 'achievement_unlocked':
+          case 'achievement_reminder':
+            navRef.current.navigate('Achievements' as any, params);
+            break;
+          case 'activity_reminder':
+          case 'reminder':
+            navRef.current.navigate('TrackerReminders' as any, params);
+            break;
+          case 'streak_reminder':
+          case 'streak_urgent':
+            navRef.current.navigate('Timeline' as any, { type: 'potty', ...params });
+            break;
+          case 'safety_alert':
+          case 'sos':
+            navRef.current.navigate('SafetyCorner' as any, params);
+            break;
+          case 'daily_summary':
+            navRef.current.navigate('Timeline' as any, params);
+            break;
+          case 'community_notification':
+            navRef.current.navigate('Main' as any, { screen: 'Connect', ...params });
+            break;
+          default:
+            if (screen) {
+              navRef.current.navigate(screen as any, params);
+            }
+        }
+      } catch (error) {
+        console.warn('[Navigation] Failed to handle notification tap:', error);
+      }
+    };
+
+    const unsubscribe = notificationService.addResponseHandler(navigateFromNotification);
+
+    // Handle the "cold start" case — user tapped a notification while
+    // the app was killed, so we need to read the last response manually.
+    (async () => {
+      try {
+        const Notifications = require('expo-notifications');
+        const lastResponse = await Notifications.getLastNotificationResponseAsync();
+        if (lastResponse) {
+          setTimeout(() => navigateFromNotification(lastResponse), 1000);
+        }
+      } catch (e) {
+        // expo-notifications not available — skip
+      }
+    })();
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // ═════════════════════════════════════════════════════════════════

@@ -37,6 +37,8 @@ import { InlineSpinner } from '../components/UniversalSpinner';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { CommunityStackParamList } from '../types/navigation';
 import { supabase } from '@/utils/supabase';
+import * as Notifications from 'expo-notifications';
+import { notificationService } from '../services/NotificationService';
 
 const Stack = createNativeStackNavigator<CommunityStackParamList>();
 
@@ -283,8 +285,16 @@ const SearchUsersScreen = () => {
 };
 
 const BlockedUsersScreen = () => {
-  const { blockedUsers, getUserById, unblockUser } = useCommunity();
-  
+  // `unblockUser` may not exist in older CommunityContext versions —
+  // fall back to `blockUser` (which toggles) or a no-op.
+  const community = useCommunity() as any;
+  const blockedUsers: string[] = community.blockedUsers ?? [];
+  const getUserById = community.getUserById ?? (() => undefined);
+  const unblockUser =
+    community.unblockUser ??
+    community.blockUser ?? // blockUser toggles, so passing a blocked id unblocks
+    (async (_id: string) => {});
+
   return (
     <SafeAreaView style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main, paddingHorizontal: 20 }]}>
       <View style={styles.placeholderHeader}>
@@ -358,6 +368,8 @@ function useCommunityAuthCheck() {
 // ─── MAIN COMMUNITY NAVIGATOR ──────────────────────────────────────────
 const CommunityNavigator = React.memo(() => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
+  // NOTE: navigation state is intentionally not bubbled up here — the
+  // root navigator already handles tab-level state. Keeping this pure.
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
   
@@ -384,7 +396,11 @@ const CommunityNavigator = React.memo(() => {
 
   useEffect(() => {
     if (isAuthValid === false) {
-      console.log('[CommunityNavigator] Auth invalid, staying in loading state');
+      console.log('[CommunityNavigator] Auth invalid — rendering auth-required view');
+      // Ensure we exit the loading phase so the auth-required UI can render.
+      if (phase === 'loading') {
+        setPhase('main');
+      }
       return;
     }
     
@@ -439,6 +455,102 @@ const CommunityNavigator = React.memo(() => {
     await markSplashShown();
     setPhase('main');
   }, [markSplashShown]);
+
+  // ─── COMMUNITY NOTIFICATION RESPONSE HANDLER ───────────────────────
+  // Registers a handler with the unified NotificationService that reacts
+  // to community-related notification taps (chat, follow, comment, like,
+  // mention, etc.) by pushing the correct community screen onto the
+  // community stack.
+  const communityNavRef = useRef<any>(null);
+
+  useEffect(() => {
+    // Only wire this up once the main phase is active — otherwise
+    // the community stack isn't mounted and navigate() calls are no-ops.
+    if (phase !== 'main') return;
+
+    const handleCommunityNotification = (
+      response: Notifications.NotificationResponse
+    ) => {
+      const data = response.notification.request.content.data || {};
+      const type = data.type as string;
+      const screen = data.screen as string;
+      const params = (data.params as Record<string, unknown>) || {};
+
+      // Only intercept community-type notifications here.
+      const isCommunityType =
+        type === 'community_notification' ||
+        type === 'chat_message' ||
+        type === 'community_like' ||
+        type === 'community_comment' ||
+        type === 'community_follow' ||
+        type === 'community_mention' ||
+        type === 'community_reply' ||
+        type === 'community_repost' ||
+        screen === 'Chat' ||
+        screen === 'ChatList' ||
+        screen === 'Notifications' ||
+        screen === 'PostDetail' ||
+        screen === 'CommunityMemberProfile';
+
+      if (!isCommunityType) return;
+
+      // Navigation may not be ready yet — retry once after a tick.
+      const nav = communityNavRef.current;
+      if (!nav || !nav.isReady?.()) {
+        setTimeout(() => {
+          const retryNav = communityNavRef.current;
+          if (retryNav?.isReady?.()) {
+            handleCommunityNotification(response);
+          }
+        }, 600);
+        return;
+      }
+
+      try {
+        // Route by explicit `screen` first, then fall back to `type`.
+        const targetScreen = screen || (
+          type === 'chat_message' ? 'Chat' :
+          type === 'community_notification' ? 'Notifications' :
+          type === 'community_like' ||
+          type === 'community_comment' ||
+          type === 'community_repost' ? 'PostDetail' :
+          type === 'community_follow' ? 'CommunityMemberProfile' :
+          type === 'community_mention' ? 'Notifications' :
+          null
+        );
+
+        if (!targetScreen) return;
+
+        // Ensure we're on the community main screen first so the back
+        // button behaves predictably for the user.
+        const currentRoute = nav.getCurrentRoute?.()?.name;
+        if (currentRoute && currentRoute !== 'CommunityMain' && currentRoute !== targetScreen) {
+          // Reset to the target so back-stack is clean.
+          nav.navigate(targetScreen, params);
+        } else {
+          nav.navigate(targetScreen, params);
+        }
+
+        if (__DEV__) {
+          console.log('[CommunityNavigator] Routed notification to:', targetScreen, params);
+        }
+      } catch (error) {
+        console.warn('[CommunityNavigator] Failed to handle notification:', error);
+        // Fallback — bounce to community main so the user isn't stuck.
+        try {
+          communityNavRef.current?.navigate?.('CommunityMain');
+        } catch {}
+      }
+    };
+
+    const unsubscribe = notificationService.addResponseHandler(
+      handleCommunityNotification
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [phase]);
 
   const handleOnboardingComplete = useCallback(async () => {
     try {
@@ -504,6 +616,7 @@ const CommunityNavigator = React.memo(() => {
     <>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <Stack.Navigator
+        ref={communityNavRef}
         initialRouteName="CommunityMain"
         screenOptions={MAIN_SCREEN_OPTIONS}
       >

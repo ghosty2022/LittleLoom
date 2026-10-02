@@ -110,10 +110,10 @@ const DESIGN = {
    NOTIFICATION HANDLER
    ═══════════════════════════════════════════════════════════════ */
 
-// NOTE: setNotificationHandler must be called exactly once per app launch.
-// It is now registered centrally in `src/services/notifications.ts`.
-// import { configureNotificationHandler } from '../../services/notifications';
-// configureNotificationHandler(); // called in App.tsx instead
+// NOTE: setNotificationHandler is called EXACTLY ONCE per app launch,
+// inside src/services/NotificationService.ts during initialize().
+// Do NOT call it here — that would overwrite the unified handler and
+// break per-channel routing.
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES

@@ -54,22 +54,9 @@ const loadReanimated = async () => {
   }
 };
 
-// Lazy load notification service to avoid startup issues
-let notificationService: any = null;
-let notificationServiceLoaded = false;
-
-const loadNotificationService = async () => {
-  if (notificationServiceLoaded) return notificationService;
-  try {
-    const module = await import('@/services/NotificationService');
-    notificationService = module.notificationService || module.default;
-    notificationServiceLoaded = true;
-    return notificationService;
-  } catch (error) {
-    console.warn('[App] Failed to load notification service:', error);
-    return null;
-  }
-};
+// Direct import — the unified NotificationService handles its own
+// initialization, retries, and error recovery internally.
+import { notificationService } from '@/services/NotificationService';
 
 LogBox.ignoreLogs([
   'Non-serializable values were found in the navigation state',
@@ -355,18 +342,17 @@ export default function App(): React.ReactElement | null {
     }
   };
 
-  // Lazy load notification service
+  // Initialize the unified notification service
   const initNotificationService = async () => {
     if (notificationInitRef.current) return;
     notificationInitRef.current = true;
 
     try {
-      const service = await loadNotificationService();
-      if (service && typeof service.initialize === 'function') {
-        await service.initialize();
-        console.log('[App] Notification service initialized');
+      const success = await notificationService.initialize();
+      if (success) {
+        console.log('[App] ✅ Notification service ready');
       } else {
-        console.log('[App] Notification service not available');
+        console.log('[App] ⚠️ Notification service initialized with warnings');
       }
     } catch (error) {
       console.warn('[App] Notification service init failed:', error);
@@ -412,9 +398,14 @@ export default function App(): React.ReactElement | null {
     }
   };
 
-  // Phase 2: Background state saving
+  // Phase 2: Background state saving + notification queue flush on foreground
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
+      // Flush queued notifications when app comes back to foreground
+      if (next === 'active') {
+        notificationService.flushQueue().catch(() => {});
+      }
+
       if (
         AppState.currentState === 'active' &&
         (next === 'inactive' || next === 'background')
