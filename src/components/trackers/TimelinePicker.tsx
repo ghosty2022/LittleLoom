@@ -455,9 +455,9 @@ export const TimelinePicker: React.FC<TimelinePickerProps> = ({
 };
 
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 1000, justifyContent: 'flex-end' },
+  overlay: { ...StyleSheet.absoluteFill, zIndex: 1000, justifyContent: 'flex-end' },
   blurView: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject },
+  backdrop: { ...StyleSheet.absoluteFill },
   modalContainer: {
     maxHeight: SCREEN_HEIGHT * 0.85,
     marginHorizontal: 12,

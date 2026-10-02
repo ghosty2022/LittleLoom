@@ -142,6 +142,7 @@
     "@react-native-community/cli": "^20.2.0",
     "@testing-library/react-native": "^12.9.0",
     "@types/lodash": "^4.17.0",
+    "@types/node": "^26.6.4",
     "@types/react": "~19.2.4",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.60.1",

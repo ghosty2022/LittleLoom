@@ -1503,7 +1503,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   gridMoreOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',

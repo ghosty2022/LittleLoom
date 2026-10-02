@@ -1260,7 +1260,7 @@ const styles = StyleSheet.create({
   lastBackupText: { fontSize: 14, color: '#43e97b', fontWeight: '600' },
   note: { fontSize: 13, color: '#888', textAlign: 'center', fontWeight: '500', lineHeight: 18 },
 
-  progressOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 1000 },
+  progressOverlay: { ...StyleSheet.absoluteFill, zIndex: 1000 },
   progressBlur: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   progressContent: { width: '80%', alignItems: 'center', padding: 32 },
   progressMessage: {

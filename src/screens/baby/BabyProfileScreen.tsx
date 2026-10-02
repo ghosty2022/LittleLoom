@@ -2278,7 +2278,7 @@ const getStyles = (isDarkMode: boolean, colors: any) => {
     profileHero: { flexDirection: 'row', alignItems: 'center', gap: 16, marginHorizontal: 16, marginBottom: 20 },
     avatarSection: { position: 'relative' },
     uploadingOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: 'rgba(0,0,0,0.5)',
       borderRadius: 33,
       alignItems: 'center',

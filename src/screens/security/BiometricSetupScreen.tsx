@@ -688,7 +688,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  gradient: { ...StyleSheet.absoluteFillObject },
+  gradient: { ...StyleSheet.absoluteFill },
   content: {
     flex: 1,
     paddingHorizontal: 24,
@@ -817,7 +817,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
   },
   optionCardBlur: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 20,
   },
   optionIcon: {
@@ -888,7 +888,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   enableGradient: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

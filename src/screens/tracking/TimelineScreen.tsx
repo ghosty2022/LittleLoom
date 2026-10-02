@@ -1782,7 +1782,7 @@ export default function EnhancedTimelineScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  backgroundGradient: { ...StyleSheet.absoluteFillObject },
+  backgroundGradient: { ...StyleSheet.absoluteFill },
 
   // ── Glass Card ──
   glassCard: {

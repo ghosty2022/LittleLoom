@@ -2895,7 +2895,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     borderWidth: 1, 
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
   },
-  postItemGradient: { ...StyleSheet.absoluteFillObject },
+  postItemGradient: { ...StyleSheet.absoluteFill },
   postItemContent: { padding: 16 },
   postItemHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   postItemTopic: { 

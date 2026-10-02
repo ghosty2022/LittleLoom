@@ -1237,7 +1237,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  gradient: { ...StyleSheet.absoluteFillObject, opacity: 0.15 },
+  gradient: { ...StyleSheet.absoluteFill, opacity: 0.15 },
   flex: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: 20 },
   section: { paddingTop: 8 },
@@ -1257,7 +1257,7 @@ const styles = StyleSheet.create({
 
   card: { borderRadius: 20, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 8 },
   cardDark: { borderColor: 'rgba(255,255,255,0.06)' },
-  cardGlow: { ...StyleSheet.absoluteFillObject, opacity: 0.4 },
+  cardGlow: { ...StyleSheet.absoluteFill, opacity: 0.4 },
   cardContent: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 14 },
   cardIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   cardText: { flex: 1 },

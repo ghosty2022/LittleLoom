@@ -107,7 +107,7 @@ export default function QRScannerScreen() {
   return (
     <View style={styles.container}>
       <CameraView
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         facing="back"
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{ 
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     fontWeight: '700' 
   },
   overlay: { 
-    ...StyleSheet.absoluteFillObject, 
+    ...StyleSheet.absoluteFill, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   processing: { 
-    ...StyleSheet.absoluteFillObject, 
+    ...StyleSheet.absoluteFill, 
     backgroundColor: 'rgba(0,0,0,0.8)', 
     justifyContent: 'center', 
     alignItems: 'center' 

@@ -1959,7 +1959,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   alertOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 9999,
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -2483,7 +2483,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   uploadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',

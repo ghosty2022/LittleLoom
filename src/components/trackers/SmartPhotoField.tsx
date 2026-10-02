@@ -1795,7 +1795,7 @@ const styles = StyleSheet.create({
   },
   localOnlyText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
   analyzingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',

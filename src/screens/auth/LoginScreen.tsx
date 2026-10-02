@@ -1632,7 +1632,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   gradient: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   keyboardView: {
     flex: 1,

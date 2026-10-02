@@ -1485,7 +1485,7 @@ const styles = StyleSheet.create({
     height: 150,
   },
   postImageMoreOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 12,

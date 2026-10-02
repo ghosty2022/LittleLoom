@@ -1643,7 +1643,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
 // ============================================
 const getStyles = (isDarkMode: boolean, colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  bg: { ...StyleSheet.absoluteFillObject },
+  bg: { ...StyleSheet.absoluteFill },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { flexGrow: 1, minHeight: SCREEN_H },
 

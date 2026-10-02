@@ -1221,7 +1221,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  imagePlaceholder: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
+  imagePlaceholder: { ...StyleSheet.absoluteFill, justifyContent: 'center', alignItems: 'center' },
   messageImage: { width: '100%', height: '100%' },
 
   // File

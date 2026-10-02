@@ -1175,7 +1175,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, 
     paddingBottom: 10 
   },
-  stickyHeaderBg: { ...StyleSheet.absoluteFillObject },
+  stickyHeaderBg: { ...StyleSheet.absoluteFill },
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 

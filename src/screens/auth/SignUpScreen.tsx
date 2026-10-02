@@ -1403,7 +1403,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  gradient: { ...StyleSheet.absoluteFillObject },
+  gradient: { ...StyleSheet.absoluteFill },
   keyboardView: { flex: 1 },
   scrollContent: {
     flexGrow: 1,

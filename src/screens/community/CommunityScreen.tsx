@@ -2107,7 +2107,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pollFill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: DS.radius.md,
   },
   pollOptionContent: {
