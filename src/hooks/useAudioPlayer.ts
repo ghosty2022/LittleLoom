@@ -1,6 +1,20 @@
 // src/hooks/useAudioPlayer.ts
+// Local audio player hook built on expo-audio.
+//
+// FIX: expo-audio's `useAudioPlayer` accepts a string source, a
+//      require(), or a {uri} object — but only the string form is
+//      guaranteed across SDK versions. We pass the URI string.
+//
+// FIX: `useAudioPlayerState` is not the canonical export name;
+//      `useAudioPlayerStatus` is. Importing the wrong symbol caused
+//      the status object to be `undefined` on some SDK versions,
+//      which silently broke position/duration updates.
+
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useAudioPlayer as useExpoAudioPlayer, useAudioPlayerState } from 'expo-audio';
+import {
+  useAudioPlayer as useExpoAudioPlayer,
+  useAudioPlayerStatus,
+} from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
 interface AudioState {
@@ -18,21 +32,23 @@ export const useAudioPlayer = (uri: string) => {
     isLoading: false,
   });
 
-  const player = useExpoAudioPlayer({ uri });
-  const status = useAudioPlayerState(player);
+  // Pass the URI string directly — see FIX note at top of file.
+  const player = useExpoAudioPlayer(uri);
+  const status = useAudioPlayerStatus(player);
   const isMounted = useRef(true);
 
   useEffect(() => {
     if (!isMounted.current) return;
+    if (!status) return;
 
-    const positionMs = (status?.currentTime ?? 0) * 1000;
-    const durationMs = (status?.duration ?? 0) * 1000;
+    const positionMs = (status.currentTime ?? 0) * 1000;
+    const durationMs = (status.duration ?? 0) * 1000;
 
     setState({
-      isPlaying: status?.playing ?? false,
+      isPlaying: status.playing ?? false,
       position: positionMs,
       duration: durationMs,
-      isLoading: status?.buffering ?? false,
+      isLoading: status.isBuffering ?? false,
     });
   }, [status]);
 
@@ -47,10 +63,10 @@ export const useAudioPlayer = (uri: string) => {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
       if (state.isPlaying) {
-        await player.pause();
+        player.pause();
         setState(prev => ({ ...prev, isPlaying: false }));
       } else {
-        await player.play();
+        player.play();
         setState(prev => ({ ...prev, isPlaying: true }));
       }
     } catch (error) {
@@ -61,7 +77,7 @@ export const useAudioPlayer = (uri: string) => {
 
   const stop = useCallback(async () => {
     try {
-      await player.pause();
+      player.pause();
       player.seekTo(0);
       setState(prev => ({ ...prev, isPlaying: false, position: 0 }));
     } catch (error) {
@@ -69,13 +85,16 @@ export const useAudioPlayer = (uri: string) => {
     }
   }, [player]);
 
-  const seekTo = useCallback((positionMillis: number) => {
-    try {
-      player.seekTo(positionMillis / 1000);
-    } catch (error) {
-      console.error('Audio seek error:', error);
-    }
-  }, [player]);
+  const seekTo = useCallback(
+    (positionMillis: number) => {
+      try {
+        player.seekTo(positionMillis / 1000);
+      } catch (error) {
+        console.error('Audio seek error:', error);
+      }
+    },
+    [player]
+  );
 
   const formatTime = useCallback((millis: number = 0) => {
     const totalSeconds = Math.floor(millis / 1000);
@@ -99,3 +118,5 @@ export const useAudioPlayer = (uri: string) => {
     formattedDuration: formatTime(state.duration),
   };
 };
+
+export default useAudioPlayer;

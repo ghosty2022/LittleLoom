@@ -1,15 +1,18 @@
 // src/hooks/useBaby.ts
-// Use BabyContext directly
+// Safe wrapper — delegates to useSafeContexts fallback.
 
 import { useContext } from 'react';
 import { BabyContext } from '../context/BabyContext';
+import { useSafeBaby } from './useSafeContexts';
 
 export function useBaby() {
-  const context = useContext(BabyContext);
-  if (context === undefined) {
-    throw new Error('useBaby must be used within a BabyProvider');
+  try {
+    const context = useContext(BabyContext);
+    if (!context) return useSafeBaby() as any;
+    return context;
+  } catch {
+    return useSafeBaby() as any;
   }
-  return context;
 }
 
 export default useBaby;

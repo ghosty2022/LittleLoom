@@ -1,7 +1,14 @@
 // src/hooks/useSafeContexts.ts
-// Safe context hooks that never throw - for use in components that may render before contexts are ready
-// 
-// FIX: No circular dependencies. This file does NOT import from any hook that uses the tracker context.
+// Safe context hooks that never throw — for use in components that may
+// render before contexts are ready.
+//
+// FIX: No circular dependencies. This file does NOT import from any hook
+//      that uses the tracker context.
+//
+// FIX: `useSafeApp` now forwards the REAL AppContext methods
+//      (`setCommunityScreen`, `isCommunityScreen`) instead of returning
+//      hard-coded dummies. `useReportRoute` and anything else that reads
+//      those off `useSafeApp()` will now work.
 
 import { useContext } from 'react';
 import { useTheme as useThemeOriginal } from '../context/AppContext';
@@ -10,7 +17,7 @@ import { useBaby as useBabyOriginal } from '../context/BabyContext';
 import { useActivity as useActivityOriginal } from '../context/ActivityContext';
 import useCustomizationOriginal from './useCustomization';
 
-// FIX: Direct import of the context, NOT the hook wrapper
+// Direct import of the context, NOT the hook wrapper
 import { TrackerContext } from '../context/TrackerContext';
 import { UserContext } from '../context/UserContext';
 
@@ -133,9 +140,14 @@ const DEFAULT_CUSTOMIZATION = {
 
 function useSafeApp() {
   try {
-    const app = useThemeOriginal();
+    // useThemeOriginal() returns the FULL AppContext value (theme aliases
+    // + isCommunityScreen + setCommunityScreen + notification helpers).
+    // We spread it first, then override only the nav-visibility shims
+    // that don't exist on the real context.
+    const app = useThemeOriginal() as any;
     return {
       ...app,
+      // Navigation-visibility shims (consumed by LiquidGlassNavigation)
       isNavVisible: true,
       isNavCompact: false,
       showNav: () => {},
@@ -143,8 +155,12 @@ function useSafeApp() {
       toggleCompact: () => {},
       forceShowNav: () => {},
       forceHideNav: () => {},
-      isCommunityScreen: false,
-      setCommunityRoute: () => {},
+      // Real AppContext state — do NOT override these with dummies
+      isCommunityScreen: app?.isCommunityScreen ?? false,
+      setCommunityScreen:
+        typeof app?.setCommunityScreen === 'function'
+          ? app.setCommunityScreen
+          : () => {},
       handleScroll: () => {},
     };
   } catch (e) {
@@ -168,7 +184,7 @@ function useSafeApp() {
       forceShowNav: () => {},
       forceHideNav: () => {},
       isCommunityScreen: false,
-      setCommunityRoute: () => {},
+      setCommunityScreen: () => {},
       handleScroll: () => {},
     };
   }
@@ -334,7 +350,7 @@ function useSafeActivity() {
   }
 }
 
-// ─── SAFE CUSTOMIZATION ──────────────────────────────────────────────
+// ─── SAFE CUSTOMIZATION ────────────────────────────────────────────────
 
 function useSafeCustomization() {
   try {
@@ -346,10 +362,10 @@ function useSafeCustomization() {
   }
 }
 
-// ─── SAFE TRACKER ─────────────────────────────────────────────────────
+// ─── SAFE TRACKER ──────────────────────────────────────────────────────
 
-// ✅ SINGLE SOURCE OF TRUTH — mirrored exactly in
-//    `src/hooks/useTrackerContext.ts`. Keep the two in sync.
+// SINGLE SOURCE OF TRUTH — mirrored exactly in
+// `src/hooks/useTrackerContext.ts`. Keep the two in sync.
 function getFallbackTrackerContext() {
   return {
     isLoading: false,
@@ -382,7 +398,7 @@ function getFallbackTrackerContext() {
     getEntriesByDate: () => [],
     getEntryById: () => undefined,
     getTrackerStats: () => ({ totalEntries: 0, thisWeek: 0, thisMonth: 0, lastEntry: null, streakDays: 0 }),
-    getTodaySummary: () => [],          // ← ADDED (ActivityContext needs this)
+    getTodaySummary: () => [],
     canUseTracker: () => false,
     canCreateEntry: () => false,
     canEditEntry: () => false,
@@ -406,7 +422,7 @@ function getFallbackTrackerContext() {
     refreshTrackers: async () => {},
     refreshEntries: async () => {},
     setCurrentBabyId: () => {},
-    getCurrentBabyId: () => null,       // ← ADDED (ActivityContext needs this)
+    getCurrentBabyId: () => null,
     getCustomTrackers: () => [],
     getSystemTrackers: () => [],
     getTrackerById: () => undefined,
@@ -433,8 +449,7 @@ function useSafeTracker() {
   }
 }
 
-// ─── SAFE USER ──────────────────────────────────────────────────────────
-// ADD THIS NEW FUNCTION
+// ─── SAFE USER ─────────────────────────────────────────────────────────
 
 function getFallbackUserContext() {
   return {
@@ -487,7 +502,7 @@ function useSafeUser() {
   }
 }
 
-// ─── UNIFIED THEME ────────────────────────────────────────────────────
+// ─── UNIFIED THEME ─────────────────────────────────────────────────────
 
 export function useUnifiedTheme() {
   const app = useSafeApp();
@@ -506,8 +521,16 @@ export function useUnifiedTheme() {
     themeColors: customization.themeColors,
     appColors: app.colors,
     bgColors: isDark
-      ? [customization.themeColors?.colors?.[0] || '#0f0f1e', customization.themeColors?.colors?.[1] || '#1a1a2e', customization.themeColors?.colors?.[2] || '#16213e']
-      : [customization.themeColors?.colors?.[0] || '#f8faff', customization.themeColors?.colors?.[1] || '#f0f4ff', customization.themeColors?.colors?.[2] || '#e8eeff'],
+      ? [
+          customization.themeColors?.colors?.[0] || '#0f0f1e',
+          customization.themeColors?.colors?.[1] || '#1a1a2e',
+          customization.themeColors?.colors?.[2] || '#16213e',
+        ]
+      : [
+          customization.themeColors?.colors?.[0] || '#f8faff',
+          customization.themeColors?.colors?.[1] || '#f0f4ff',
+          customization.themeColors?.colors?.[2] || '#e8eeff',
+        ],
     text: {
       primary: isDark ? '#ffffff' : '#1e293b',
       secondary: isDark ? '#a0a0a0' : '#64748b',
@@ -518,13 +541,12 @@ export function useUnifiedTheme() {
       border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
       card: isDark ? 'rgba(30,30,40,0.4)' : 'rgba(255,255,255,0.5)',
     },
-    blur: isDark ? 'dark' as const : 'light' as const,
-    statusBar: isDark ? 'light' as const : 'dark' as const,
+    blur: isDark ? ('dark' as const) : ('light' as const),
+    statusBar: isDark ? ('light' as const) : ('dark' as const),
   };
 }
 
-// ─── EXPORTS ──────────────────────────────────────────────────────────
-// ADD useSafeUser to exports
+// ─── EXPORTS ───────────────────────────────────────────────────────────
 
 export {
   useSafeApp,
@@ -533,7 +555,7 @@ export {
   useSafeActivity,
   useSafeCustomization,
   useSafeTracker,
-  useSafeUser, // <-- ADD THIS
+  useSafeUser,
 };
 
 export default useUnifiedTheme;
