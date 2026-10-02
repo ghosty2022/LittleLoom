@@ -484,8 +484,21 @@ function NavigationContent({
     const navigateFromNotification = (response: Notifications.NotificationResponse) => {
       const data = response.notification.request.content.data || {};
       const type = data.type as string;
-      const screen = data.screen as string;
+      const rawScreen = data.screen as string | undefined;
       const params = (data.params as Record<string, unknown>) || {};
+
+      // Resolve legacy screen names persisted from older app builds.
+      // Example: a notification scheduled by v2.0 said screen: 'Reminders',
+      // but the route was renamed to 'TrackerReminders' in v2.1.
+      const LEGACY_SCREEN_ALIASES: Record<string, string> = {
+        Reminders: 'TrackerReminders',
+        Safety: 'SafetyCorner',
+        Community: 'Main',
+        Home: 'Main',
+      };
+      const screen = rawScreen
+        ? (LEGACY_SCREEN_ALIASES[rawScreen] ?? rawScreen)
+        : undefined;
 
       if (!navRef.current?.isReady()) {
         // Navigation not ready — retry once after a delay
@@ -497,39 +510,82 @@ function NavigationContent({
         return;
       }
 
+      // Guard: only navigate to screens registered in this navigator.
+      const KNOWN_SCREENS = new Set<string>([
+        'Onboarding', 'Login', 'SignUp', 'ForgotPassword', 'QRScanner',
+        'CoParentInviteScreen', 'BabyOptional', 'CreateBabyProfile',
+        'Main', 'Timeline', 'EntryDetail',
+        'PottyTracker', 'FeedTracker', 'SleepTracker',
+        'CommunityProfile', 'Profile', 'SwitchBaby',
+        'EditProfile', 'EditGuardian', 'SecureAccessList',
+        'Gallery', 'FamilyChatList', 'FamilyChat',
+        'BackupRestore', 'HelpCenter', 'ContactSupport',
+        'PrivacyPolicy', 'TermsOfService', 'About',
+        'LanguageSettings', 'UnitSettings', 'AIManagement',
+        'VaccinationSchedule', 'PediatricianPDFExport', 'SafetyCorner',
+        'AddEntry', 'Achievements', 'GrowthDashboard', 'Insights',
+        'TrackerReminders', 'FamilySharing', 'SoundMixer', 'Customize',
+        'SecurityLock', 'BiometricSetup', 'SecurityCenter', 'VaultLock',
+        'UniversalTrackerHub', 'AllTrackers', 'CreateCustomTracker',
+        'More', 'TimelinePicker',
+      ]);
+
+      const safeNavigate = (target: string, navParams?: object) => {
+        if (!KNOWN_SCREENS.has(target)) {
+          console.warn(
+            `[Navigation] Refusing to navigate to unknown screen: "${target}". ` +
+            `Known: ${[...KNOWN_SCREENS].join(', ')}`,
+          );
+          // Fallback to Main so the user isn't stranded
+          try {
+            navRef.current?.navigate('Main' as any, navParams);
+          } catch {}
+          return;
+        }
+        try {
+          navRef.current?.navigate(target as any, navParams);
+        } catch (e) {
+          console.warn(`[Navigation] navigate("${target}") threw:`, e);
+        }
+      };
+
       try {
         switch (type) {
           case 'chat_message':
-            navRef.current.navigate('FamilyChat' as any, {
+            safeNavigate('FamilyChat', {
               chatId: data.chatId,
               ...params,
             });
             break;
           case 'achievement_unlocked':
           case 'achievement_reminder':
-            navRef.current.navigate('Achievements' as any, params);
+            safeNavigate('Achievements', params);
             break;
           case 'activity_reminder':
           case 'reminder':
-            navRef.current.navigate('TrackerReminders' as any, params);
+            safeNavigate('TrackerReminders', params);
             break;
           case 'streak_reminder':
           case 'streak_urgent':
-            navRef.current.navigate('Timeline' as any, { type: 'potty', ...params });
+            safeNavigate('Timeline', { type: 'potty', ...params });
             break;
           case 'safety_alert':
           case 'sos':
-            navRef.current.navigate('SafetyCorner' as any, params);
+            safeNavigate('SafetyCorner', params);
             break;
           case 'daily_summary':
-            navRef.current.navigate('Timeline' as any, params);
+            safeNavigate('Timeline', params);
             break;
           case 'community_notification':
-            navRef.current.navigate('Main' as any, { screen: 'Connect', ...params });
+            // Community lives inside the Connect tab (nested navigator)
+            safeNavigate('Main', {
+              screen: 'Connect',
+              params: { screen: screen || 'CommunityMain', params },
+            });
             break;
           default:
             if (screen) {
-              navRef.current.navigate(screen as any, params);
+              safeNavigate(screen, params);
             }
         }
       } catch (error) {

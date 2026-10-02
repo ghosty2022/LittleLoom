@@ -1088,21 +1088,24 @@ export default function RemindersScreen({ navigation, route }: Props) {
   }, [baby?.id]);
 
   /* ---- Notification listener ---- */
+  // NOTE: Notification tap handling is centralized in AppNavigator via
+  // `notificationService.addResponseHandler()`. Adding a second listener
+  // here would race with that handler and double-fire navigation.
+  //
+  // If you need screen-specific behavior on tap, read `route.params`
+  // instead — AppNavigator forwards the notification's `data` into the
+  // target screen's params.
+  //
+  // Example: for reminders, AppNavigator sends the user to
+  // `TrackerReminders` with params from the notification. If you want to
+  // highlight the specific reminder, read `route.params?.reminderId`.
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      if (data?.screen) {
-        if (data.screen === 'UniversalTracker' && data.type) {
-          navigation.navigate('Timeline', { type: data.type, babyId: data.babyId });
-        } else if (data.screen === 'AddLog') {
-          navigation.navigate('AddEntry', { type: data.type, babyId: data.babyId });
-        } else {
-          navigation.navigate(data.screen as any, data.params || {});
-        }
-      }
-    });
-    return () => subscription.remove();
-  }, [navigation]);
+    const reminderId = (route.params as any)?.reminderId;
+    if (reminderId) {
+      // Optional: scroll to / highlight the tapped reminder
+      // console.log('[TrackerReminders] Opened for reminder:', reminderId);
+    }
+  }, [route.params]);
 
   /* ---- Baby required modal ---- */
   useEffect(() => {
@@ -1358,7 +1361,16 @@ export default function RemindersScreen({ navigation, route }: Props) {
           body: reminder.notes || `Time for ${reminder.title.toLowerCase()}!`,
           sound: true,
           badge: 1,
-          data: { screen: 'Reminders', reminderId: reminder.id, category: reminder.category, babyId: reminder.babyId, type: reminder.category },
+          data: {
+            // `screen` MUST match a route registered in AppNavigator.
+            // The registered route is `TrackerReminders`, not `Reminders`.
+            screen: 'TrackerReminders',
+            // `type` is what the unified handler routes on first.
+            type: 'reminder',
+            reminderId: reminder.id,
+            category: reminder.category,
+            babyId: reminder.babyId,
+          },
         },
         trigger,
       });
