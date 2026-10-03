@@ -1187,6 +1187,12 @@ const PhotoGridItem = React.memo(
           </View>
         ) : null}
 
+        {item.aiTags && item.aiTags.length > 0 ? (
+          <View style={styles.gridAiBadge}>
+            <Ionicons name="sparkles" size={8} color="#fff" />
+          </View>
+        ) : null}
+
         <View style={styles.gridBadges}>
           {item.isFavorite ? (
             <View style={[styles.gridBadge, { backgroundColor: '#ef4444' }]}>
@@ -1526,6 +1532,7 @@ export default function GalleryScreen() {
   const [activeAlbumFilter, setActiveAlbumFilter] = useState<string | null>(null);
   const [activeBabyFilter, setActiveBabyFilter] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [aiTagFilter, setAiTagFilter] = useState<string | null>(null);
 
   // ── Persisted metadata (single source of truth, loaded via photoService) ──
   const [meta, setMeta] = useState<PhotoMetadata>(() => ({
@@ -1688,6 +1695,14 @@ export default function GalleryScreen() {
       list = list.filter((p) => p.babyId === activeBabyFilter);
     }
 
+    // AI tag filter
+    if (aiTagFilter) {
+      const needle = aiTagFilter.toLowerCase();
+      list = list.filter((p) =>
+        (p.aiTags ?? []).some((t) => t.toLowerCase().includes(needle))
+      );
+    }
+
     // Search
     if (debouncedSearch) {
       const q = debouncedSearch.toLowerCase().trim();
@@ -1728,6 +1743,7 @@ export default function GalleryScreen() {
     activeBabyFilter,
     debouncedSearch,
     vaultUnlocked,
+    aiTagFilter,
   ]);
 
   /* ── Group by date ── */
@@ -2271,6 +2287,56 @@ export default function GalleryScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* AI Tag Chips */}
+        {(() => {
+          const tagCounts = new Map<string, number>();
+          enrichedPhotos.forEach((p) => {
+            (p.aiTags ?? []).forEach((t) => {
+              tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+            });
+          });
+          const topTags = Array.from(tagCounts.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8);
+          if (topTags.length === 0) return null;
+          return (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsScroll}
+            >
+              {aiTagFilter ? (
+                <TouchableOpacity
+                  style={[styles.chip, { backgroundColor: '#ef444415' }]}
+                  onPress={() => setAiTagFilter(null)}
+                >
+                  <Ionicons name="close-circle" size={14} color="#ef4444" />
+                  <Text style={[styles.chipLabel, { color: '#ef4444' }]}>
+                    {aiTagFilter}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {topTags.map(([tag, count]) => (
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.chip, { backgroundColor: `${theme.primary}12` }]}
+                  onPress={() => setAiTagFilter(tag === aiTagFilter ? null : tag)}
+                >
+                  <Ionicons name="sparkles" size={12} color={theme.primary} />
+                  <Text style={[styles.chipLabel, { color: theme.primary }]}>
+                    {tag}
+                  </Text>
+                  <View style={[styles.chipCount, { backgroundColor: `${theme.primary}20` }]}>
+                    <Text style={[styles.chipCountText, { color: theme.primary }]}>
+                      {count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          );
+        })()}
 
         {/* Smart Search Chips */}
         <SmartSearchChips
@@ -2870,6 +2936,17 @@ const styles = StyleSheet.create({
     borderColor: '#667eea',
   },
   gridBadges: { position: 'absolute', top: 6, left: 6, flexDirection: 'row', gap: 4 },
+  gridAiBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#8b5cf6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   gridBadge: {
     width: 20,
     height: 20,

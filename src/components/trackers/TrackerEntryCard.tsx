@@ -684,6 +684,41 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
         );
       })()}
 
+      {entry.aiTags && entry.aiTags.length > 0 ? (
+        <View style={styles.aiTagRow}>
+          <View
+            style={[
+              styles.aiTagChip,
+              {
+                backgroundColor: `${themeColors.primary}12`,
+                borderRadius: borderRadiusValue / 2,
+              },
+            ]}
+          >
+            <Ionicons name="sparkles" size={10} color={themeColors.primary} />
+            <Text
+              style={[
+                styles.aiTagText,
+                { color: themeColors.primary, fontSize: 10 * fontSizeMultiplier },
+              ]}
+              numberOfLines={1}
+            >
+              {entry.aiTags[0]}
+            </Text>
+          </View>
+          {entry.aiTags.length > 1 ? (
+            <Text
+              style={[
+                styles.aiTagMore,
+                { color: fullThemeColors.textSecondary, fontSize: 10 * fontSizeMultiplier },
+              ]}
+            >
+              +{entry.aiTags.length - 1}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {entry.editedAt && (
         <Text
           style={[
@@ -837,6 +872,26 @@ const styles = StyleSheet.create({
   },
   photoCountText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   editedText: { fontStyle: 'italic', marginTop: 8 },
+  aiTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+  },
+  aiTagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  aiTagText: {
+    fontWeight: '700',
+    maxWidth: 120,
+  },
+  aiTagMore: {
+    fontWeight: '600',
+  },
 });
 
 export default TrackerEntryCard;

@@ -230,6 +230,7 @@ export interface TrackerEntry {
   videoUri?: string;
   voiceMemoUri?: string;
   tags?: string[];
+  aiTags?: string[];
   location?: {
     latitude: number;
     longitude: number;
