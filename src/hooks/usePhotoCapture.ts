@@ -129,9 +129,22 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
 
       triggerHaptic('success');
       setPhotos(prev => [...prev, photo]);
-      // NOTE: persistence to `photoService` is the caller's job via
-      // `useTracker().addEntry({ photoUris: [...] })`. The hook only
-      // manages the local edit session state.
+
+      // ── On-device classification (fire-and-forget) ──────────────
+      try {
+        const { classifyImage } = await import('../services/ai/PhotoClassifier');
+        const result = await classifyImage(asset.uri, 3);
+        if (__DEV__ && result.topLabel) {
+          console.log(
+            `[PhotoCapture] Tagged: ${result.topLabel} (${Math.round(result.topConfidence * 100)}%)`
+          );
+        }
+        // Attach the tag to the photo object so callers can persist it
+        (photo as any).aiTags = result.labels.map((l) => l.label);
+      } catch (e) {
+        if (__DEV__) console.warn('[PhotoCapture] classification failed:', e);
+      }
+
       return photo;
     } catch (error) {
       console.error('Camera error:', error);

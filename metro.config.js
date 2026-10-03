@@ -14,7 +14,15 @@ config.transformer = {
 config.resolver = {
   ...config.resolver,
   sourceExts: ['js', 'jsx', 'ts', 'tsx', 'json', 'cjs', 'mjs', 'svg'],
-  assetExts: config.resolver.assetExts.filter((ext) => ext !== 'svg'),
+
+  // ─── Preserve default assetExts (png, jpg, etc.) ────────────────
+  // The `pte` extension is treated as a BINARY ASSET, not a source file.
+  // Metro will copy it into the bundle untouched.
+  assetExts: [
+    ...config.resolver.assetExts.filter((ext) => ext !== 'svg'),
+    'pte',
+  ],
+
   alias: {
     '@': path.resolve(__dirname, 'src'),
     '@components': path.resolve(__dirname, 'src/components'),
@@ -29,8 +37,10 @@ config.resolver = {
     '@theme': path.resolve(__dirname, 'src/theme'),
     '@providers': path.resolve(__dirname, 'src/providers'),
   },
+
   blockList: [
     /[\/\\]executorch-env[\/\\].*/,
+    /[\/\\]\.git[\/\\].*/,
   ],
 };
 
