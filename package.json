@@ -117,6 +117,7 @@
     "react-hook-form": "^7.53.0",
     "react-native": "^0.86.2",
     "react-native-calendars": "^1.1307.0",
+    "react-native-executorch": "^0.10.4",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-gifted-charts": "^1.4.76",
     "react-native-maps": "1.27.2",
