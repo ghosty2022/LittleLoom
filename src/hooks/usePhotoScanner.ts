@@ -36,6 +36,25 @@ export function usePhotoScanner() {
           `(photos=${scanResult.photos.length}, total=${scanResult.totalFound})`
         );
       }
+
+      // ── Classify the first few photos on-device (fire-and-forget) ──
+      // This gives users smart tags without blocking the scan.
+      (async () => {
+        try {
+          const { classifyImage } = await import('../services/ai/PhotoClassifier');
+          const sample = scanResult.media.slice(0, 10);
+          for (const photo of sample) {
+            if (photo.uri) {
+              const result = await classifyImage(photo.uri, 3);
+              if (result.topLabel) {
+                (photo as any).aiTags = result.labels.map((l) => l.label);
+              }
+            }
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[PhotoScanner] classification failed:', e);
+        }
+      })();
       
       return scanResult;
     } catch (err) {

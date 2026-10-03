@@ -59,6 +59,21 @@ export type PhotoSource =
 export type BackupStatus = 'synced' | 'pending' | 'failed' | 'local';
 export type SyncStatus = 'synced' | 'pending' | 'conflict';
 
+// ─── AI CLASSIFICATION ─────────────────────────────────────────────────────
+// Populated by `PhotoClassifier.classifyImage()` after a photo is captured
+// or imported. All fields are optional — absence means "not yet classified".
+
+export interface PhotoAIClassification {
+  /** Top-N ImageNet labels, most confident first. */
+  labels: string[];
+  /** Confidence of the top label (0..1). */
+  topConfidence: number;
+  /** Convenience copy of `labels[0]`. */
+  topLabel: string;
+  /** When classification ran (unix ms). */
+  classifiedAt: number;
+}
+
 // ─── PHOTO METADATA ────────────────────────────────────────────────────────
 
 export interface PhotoFace {
@@ -136,6 +151,20 @@ export interface UnifiedPhoto {
   exif?: PhotoExif;
   faces?: PhotoFace[];
   blurHash?: string;
+
+  /**
+   * On-device AI classification output.
+   * Populated asynchronously by PhotoClassifier after capture/import.
+   * Absent until first classification run.
+   */
+  ai?: PhotoAIClassification;
+
+  /**
+   * Flat list of AI-detected labels for quick filtering / display.
+   * Mirrors `ai.labels` when present, kept flat for ergonomic queries
+   * (e.g., `photo.aiTags?.includes('teddy bear')`).
+   */
+  aiTags?: string[];
 
   // ── Cloud sync ──
   backupStatus?: BackupStatus;
@@ -253,3 +282,42 @@ export const dedupePhotos = (photos: UnifiedPhoto[]): UnifiedPhoto[] => {
  */
 export const sortPhotosDesc = (photos: UnifiedPhoto[]): UnifiedPhoto[] =>
   [...photos].sort((a, b) => b.timestamp - a.timestamp);
+
+// ─── AI TAG HELPERS ────────────────────────────────────────────────────────
+
+/**
+ * Attach AI classification results to a photo, returning a new object.
+ * Idempotent — safe to call multiple times; latest result wins.
+ */
+export const withAIClassification = (
+  photo: UnifiedPhoto,
+  result: { labels: { label: string; confidence: number }[]; topLabel: string; topConfidence: number }
+): UnifiedPhoto => ({
+  ...photo,
+  ai: {
+    labels: result.labels.map((l) => l.label),
+    topLabel: result.topLabel,
+    topConfidence: result.topConfidence,
+    classifiedAt: Date.now(),
+  },
+  aiTags: result.labels.map((l) => l.label),
+});
+
+/**
+ * True when a photo has been classified (has any AI tags).
+ */
+export const isClassified = (photo: UnifiedPhoto): boolean =>
+  Array.isArray(photo.aiTags) && photo.aiTags.length > 0;
+
+/**
+ * Filter photos that contain any of the given AI tags (case-insensitive).
+ */
+export const filterByAITag = (
+  photos: UnifiedPhoto[],
+  tag: string
+): UnifiedPhoto[] => {
+  const needle = tag.toLowerCase();
+  return photos.filter((p) =>
+    (p.aiTags ?? []).some((t) => t.toLowerCase().includes(needle))
+  );
+};

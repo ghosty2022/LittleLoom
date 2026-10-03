@@ -283,16 +283,29 @@ const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysi
     severity: 'low' as const,
   };
 
-  // Simulate a brief processing delay (for UX) but return honest data
-  // Simulate a brief processing delay for UX (photo appearing to "analyze")
-  await new Promise((r) => setTimeout(r, 300));
+  // ── Real on-device classification via ExecuTorch ───────────────
+  let modelLabels: string[] = [];
+  let modelConfidence = 0;
+  let modelAvailable = false;
+
+  try {
+    const { classifyImage } = await import('@/services/ai/PhotoClassifier');
+    const result = await classifyImage(uri, 3);
+    if (result.labels.length > 0) {
+      modelLabels = result.labels.map((l) => l.label);
+      modelConfidence = result.topConfidence;
+      modelAvailable = true;
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[SmartPhotoField] model inference failed:', e);
+  }
 
   return {
-    labels: context ? [context.replace(/_/g, ' ')] : ['photo'],
-    confidence: 0, // 0 = no real ML model available
+    labels: modelLabels.length > 0 ? modelLabels : (context ? [context.replace(/_/g, ' ')] : ['photo']),
+    confidence: modelConfidence,
     suggestions: guidance.suggestions,
     severity: guidance.severity,
-    modelAvailable: false,
+    modelAvailable,
   };
 };
 
