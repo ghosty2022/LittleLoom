@@ -83,3 +83,7 @@ yarn-error.*
 # Auto-push script
 auto-git-push.ps1
 
+executorch-env/
+android/
+ios/
+.easignore
