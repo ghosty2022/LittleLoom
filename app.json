@@ -148,7 +148,8 @@
       "expo-asset",
       "expo-audio",
       "expo-video",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-ai-kit"
     ],
     "extra": {
       "eas": {
