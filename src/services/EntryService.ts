@@ -12,6 +12,7 @@
 //   • Soft-delete entries
 //   • Read entries with filters
 //   • Sanitize payloads for PostgREST (no undefined/NaN/functions)
+//   • Persist on-device AI tags (`ai_tags` JSONB column)
 //
 // Does NOT:
 //   • Manage UI state (contexts do that)
@@ -51,6 +52,8 @@ export interface GetEntriesOptions {
   includeDeleted?: boolean;
   /** Max results */
   limit?: number;
+  /** Filter to entries whose ai_tags contains any of these labels */
+  aiTags?: string[];
 }
 
 // ─── Payload Sanitizer ──────────────────────────────────────────────
@@ -96,6 +99,25 @@ function sanitizeTags(tags?: string[] | null): string[] {
   );
 }
 
+/**
+ * Sanitize AI tags — flat string[] of labels.
+ * Lowercased, trimmed, deduped, capped at 20 items.
+ */
+function sanitizeAiTags(tags?: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  const flat = (tags as unknown[]).flat(Infinity);
+  const cleaned = flat
+    .map((t) => {
+      if (typeof t === 'string') return t.trim().toLowerCase();
+      if (t && typeof t === 'object' && typeof (t as any).label === 'string') {
+        return (t as any).label.trim().toLowerCase();
+      }
+      return '';
+    })
+    .filter((t): t is string => t.length > 0);
+  return [...new Set(cleaned)].slice(0, 20);
+}
+
 // ─── Map Row → TrackerEntry ─────────────────────────────────────────
 //
 // Canonical row-to-entry mapper. Used by:
@@ -105,7 +127,7 @@ function sanitizeTags(tags?: string[] | null): string[] {
 // Handles every shape Supabase can return:
 //   • timestamptz as ISO string OR epoch ms number
 //   • data as jsonb object OR JSON string
-//   • photo_uris / tags / linked_entries as jsonb array OR null
+//   • photo_uris / tags / ai_tags / linked_entries as jsonb array OR null
 //   • Missing timestamp → falls back to created_at → Date.now()
 
 export function mapRowToEntry(row: any): TrackerEntry {
@@ -160,6 +182,25 @@ export function mapRowToEntry(row: any): TrackerEntry {
         (t: unknown): t is string => typeof t === 'string' && t.length > 0
       )
     : undefined;
+
+  // ── AI Tags: jsonb array → clean lowercase string[] ──────────────
+  const aiTags: string[] | undefined = (() => {
+    const raw = row.ai_tags;
+    if (!Array.isArray(raw) || raw.length === 0) return undefined;
+
+    const cleaned = raw
+      .map((t: unknown) => {
+        if (typeof t === 'string') return t.trim().toLowerCase();
+        if (t && typeof t === 'object' && typeof (t as any).label === 'string') {
+          return (t as any).label.trim().toLowerCase();
+        }
+        return '';
+      })
+      .filter((t: string): t is string => t.length > 0);
+
+    const deduped = [...new Set(cleaned)];
+    return deduped.length > 0 ? deduped : undefined;
+  })();
 
   // ── Linked entries: jsonb array or [] ────────────────────────────
   const linkedEntries = Array.isArray(row.linked_entries)
@@ -230,6 +271,7 @@ export function mapRowToEntry(row: any): TrackerEntry {
     notes: row.notes || undefined,
     photoUris,
     tags,
+    aiTags,
     notificationId: row.notification_id || undefined,
     reminderScheduled: row.reminder_scheduled === true,
     syncedAt: row.synced_at || undefined,
@@ -253,6 +295,8 @@ export interface RawEntryInput {
   notes?: string;
   photoUris?: string[];
   tags?: string[];
+  /** On-device AI classification labels for the attached photos. */
+  aiTags?: string[];
   loggedBy: string;
   loggedByName: string;
   loggedByRole: string;
@@ -282,6 +326,7 @@ export function buildSupabasePayload(input: RawEntryInput) {
     notes: input.notes || null,
     photo_uris: sanitizePhotoUris(input.photoUris),
     tags: sanitizeTags(input.tags),
+    ai_tags: sanitizeAiTags(input.aiTags),
     logged_by: input.loggedBy,
     logged_by_name: input.loggedByName,
     logged_by_role: input.loggedByRole,
@@ -419,6 +464,7 @@ export interface UpdateEntryInput {
     timestamp: number;
     photoUris: string[];
     tags: string[];
+    aiTags: string[];
   }>;
   editedBy: string;
 }
@@ -449,6 +495,9 @@ export async function updateEntry(
   }
   if (input.updates.tags !== undefined) {
     remoteUpdates.tags = sanitizeTags(input.updates.tags);
+  }
+  if (input.updates.aiTags !== undefined) {
+    remoteUpdates.ai_tags = sanitizeAiTags(input.updates.aiTags);
   }
 
   try {
@@ -544,6 +593,11 @@ export async function getEntries(
       query = query.lte('timestamp', new Date(options.until).toISOString());
     }
 
+    // AI tag filter — PostgREST jsonb contains operator
+    if (Array.isArray(options.aiTags) && options.aiTags.length > 0) {
+      query = query.contains('ai_tags', options.aiTags);
+    }
+
     query = query.order('timestamp', { ascending: false });
 
     if (options.limit) {
@@ -621,6 +675,15 @@ async function readFromCache(
     }
     if (options.until !== undefined) {
       filtered = filtered.filter(e => e.timestamp <= options.until!);
+    }
+    // AI tag filter — applied in-memory for offline reads
+    if (Array.isArray(options.aiTags) && options.aiTags.length > 0) {
+      const needles = options.aiTags.map((t) => t.toLowerCase());
+      filtered = filtered.filter((e) =>
+        (e.aiTags ?? []).some((t) =>
+          needles.some((n) => t.toLowerCase().includes(n))
+        )
+      );
     }
     if (options.limit) {
       filtered = filtered.slice(0, options.limit);
@@ -714,6 +777,16 @@ export async function getEntriesInRange(
   return getEntries({ babyId, since: fromMs, until: toMs, limit: 2000 });
 }
 
+// ─── Convenience: get entries containing any AI tag ─────────────────
+
+export async function getEntriesByAiTags(
+  babyId: string,
+  tags: string[],
+  limit: number = 500
+): Promise<TrackerEntry[]> {
+  return getEntries({ babyId, aiTags: tags, limit });
+}
+
 // ─── Convenience: count entries for one tracker ─────────────────────
 
 export async function countEntriesForTracker(
@@ -753,9 +826,11 @@ export const EntryService = {
   sanitizePayload,
   sanitizePhotoUris,
   sanitizeTags,
+  sanitizeAiTags,
   // Convenience helpers
   getEntriesForTracker,
   getEntriesInRange,
+  getEntriesByAiTags,
   countEntriesForTracker,
 };
 

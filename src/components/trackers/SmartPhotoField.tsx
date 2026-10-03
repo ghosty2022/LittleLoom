@@ -116,6 +116,8 @@ interface SmartPhotoFieldProps {
   autoAnalyze?: boolean;
   babyId?: string;
   uploadToSupabase?: boolean;
+  /** Called after each photo is analyzed. */
+  onAnalysis?: (analysis: AIAnalysis) => void;
 }
 
 // ── Safe optional native modules ──────────────────────────────────────────
@@ -420,6 +422,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   autoAnalyze = true,
   babyId,
   uploadToSupabase = true,
+  onAnalysis,
 }) => {
   const [photos, setPhotos] = useState<PhotoMeta[]>([]);
   const [currentUri, setCurrentUri] = useState<string | null>(value || null);
@@ -667,6 +670,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
               setAnalysis(result);
               setAnalysisHistory((prev) => ({ ...prev, [meta.uri]: result }));
               onChange?.(meta.uri, meta, result);
+              onAnalysis?.(result);
             }
           } catch (e) {
             console.warn('Analysis error:', e);
@@ -690,7 +694,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         }
       }
     },
-    [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId]
+    [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId, onAnalysis]
   );
 
   // ─── Take Photo ──────────────────────────────────────────────────────────

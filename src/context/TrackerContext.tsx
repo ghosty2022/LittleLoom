@@ -106,6 +106,7 @@ interface TrackerContextType extends Omit<TrackerState, 'currentBabyId'> {
       notes?: string;
       photoUris?: string[];
       tags?: string[];
+      aiTags?: string[];
     }
   ) => Promise<TrackerEntry | null>;
 
@@ -1276,6 +1277,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       notes?: string;
       photoUris?: string[];
       tags?: string[];
+      aiTags?: string[];
     }
   ): Promise<TrackerEntry | null> => {
     const babyId = getCurrentBabyId();
@@ -1313,6 +1315,9 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       const cleanPhotoUris = sanitizePhotoUris(options?.photoUris);
       const cleanTags = Array.isArray(options?.tags)
         ? options.tags.filter((t): t is string => typeof t === 'string' && t.length > 0)
+        : [];
+              const cleanAiTags = Array.isArray(options?.aiTags)
+        ? options.aiTags.filter((t): t is string => typeof t === 'string' && t.length > 0)
         : [];
       const cleanData = sanitizeForJsonb(data) as Record<string, unknown>;
 
@@ -1354,6 +1359,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         notes: options?.notes,
         photoUris: cleanPhotoUris.length > 0 ? cleanPhotoUris : undefined,
         tags: cleanTags.length > 0 ? cleanTags : undefined,
+        aiTags: cleanAiTags.length > 0 ? cleanAiTags : undefined,
         linkedEntries: [],
         isDeleted: false,
       };
@@ -1372,6 +1378,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         notes: options?.notes,
         photoUris: cleanPhotoUris,
         tags: cleanTags,
+        aiTags: cleanAiTags,
         loggedBy: userProfile?.id || 'unknown',
         loggedByName: userProfile?.fullName || 'Unknown',
         loggedByRole: (myRole as any) || 'parent1',

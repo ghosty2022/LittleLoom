@@ -2288,6 +2288,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photoUris, setPhotoUris] = useState<string[]>([]);
+    const [photoAiTags, setPhotoAiTags] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(
     new Set()
@@ -2524,6 +2525,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           notes: trimmedNotes.length > 0 ? trimmedNotes : undefined,
           tags: cleanTags.length > 0 ? cleanTags : undefined,
           photoUris: photoUris.length > 0 ? photoUris : undefined,
+          aiTags: photoAiTags.length > 0 ? photoAiTags : undefined,
           linkedEntryId,
         })
       );
@@ -2544,6 +2546,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     linkedEntryId,
     isSubmitting,
     tracker.id,
+    photoAiTags,
   ]);
 
   // ─── Field update with cross-field auto-linking ─────────────────────────
@@ -3090,6 +3093,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               onUrisChange={(uris) => setPhotoUris(uris)}
               maxPhotos={field.max || 4}
               initialPhotoUris={photoUris}
+              onAnalysis={(analysis) => {
+                // Collect AI labels across all photos in this form
+                if (analysis.modelAvailable && analysis.labels.length > 0) {
+                  setPhotoAiTags((prev) => {
+                    const merged = new Set([...prev, ...analysis.labels]);
+                    return Array.from(merged);
+                  });
+                }
+              }}
             />,
             field.id
           );
