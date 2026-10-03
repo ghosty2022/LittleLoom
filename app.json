@@ -52,7 +52,6 @@
     },
     "android": {
       "package": "com.tpm.littleloom",
-      "versionCode": 1,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.USE_BIOMETRIC",
