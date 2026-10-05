@@ -458,7 +458,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (authError || !authData?.user) {
         console.warn('[Auth] Supabase sign in failed:', authError?.message);
 
-        if (authError?.message?.toLowerCase().includes('email not confirmed')) {
+        // ─── FIX: Kill any stale SDK session so auto-refresh can't ──
+        //     silently log this user in behind our back. Without this,
+        //     a wrong-password attempt still ends up authenticated
+        //     because the SDK refreshes an old refresh_token.
+        //
+        //     We only do this when the failure is auth-related
+        //     (invalid credentials / no user). Network failures are
+        //     left alone.
+        const msg = (authError?.message || '').toLowerCase();
+        const isAuthFailure =
+          msg.includes('invalid') ||
+          msg.includes('credentials') ||
+          msg.includes('not found') ||
+          !authData?.user;
+
+        if (isAuthFailure) {
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch {}
+          try {
+            await secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN);
+            await secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE);
+          } catch {}
+          try {
+            clearUserIdCache();
+          } catch {}
+        }
+
+        if (msg.includes('email not confirmed')) {
           try {
             const { error: resendError } = await supabase.auth.resend({
               type: 'signup',
@@ -467,18 +495,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (!resendError) {
               return {
                 success: false,
-                message: 'Please check your email and confirm your account. A new confirmation link has been sent.'
+                message:
+                  'Please check your email and confirm your account. A new confirmation link has been sent.',
               };
             }
           } catch (e) {}
-          return { success: false, message: 'Please check your email and confirm your account before signing in.' };
+          return {
+            success: false,
+            message:
+              'Please check your email and confirm your account before signing in.',
+          };
         }
 
-        if (authError?.message?.toLowerCase().includes('invalid login credentials')) {
-          return { success: false, message: 'Invalid email or password. Please try again.' };
+        if (msg.includes('invalid login credentials')) {
+          return {
+            success: false,
+            message: 'Invalid email or password. Please try again.',
+          };
         }
 
-        return { success: false, message: authError?.message || 'Unable to sign in. Please try again.' };
+        return {
+          success: false,
+          message:
+            authError?.message ||
+            'Unable to sign in. Please try again.',
+        };
       }
 
       const token = authData.session?.access_token || '';

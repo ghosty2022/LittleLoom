@@ -1,5 +1,17 @@
 // src/screens/auth/LoginScreen.tsx - COMPLETE REDESIGNED
 // Matches SecurityLockScreen theme - glass UI, friendly language, fast
+//
+// ─── CHANGELOG (this version) ────────────────────────────────────────
+//   • "Remember Me" now actually works — saves email to AsyncStorage on
+//     successful sign-in, prefills on mount, and clears when unchecked.
+//   • Failed sign-in explicitly calls supabase.auth.signOut({ local })
+//     so the SDK's auto-refresh can't silently log the user in with a
+//     stale refresh_token behind the wrong-password attempt.
+//   • Navigation effect bails when loginAttempted.current is true, so
+//     a failed login does NOT navigate away.
+//   • The effect that fires on `isAuthenticated` is the single source
+//     of truth for post-sign-in navigation.
+//   • `isAuthenticatedRef` gives async callbacks a fresh view of auth.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
@@ -23,9 +35,13 @@ import { useFamily } from '../../context/FamilyContext';
 import { supabase } from '../../utils/supabase';
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
+
+// ─── Remember Me storage key ──────────────────────────────────────────
+const REMEMBER_ME_EMAIL_KEY = '@littleloom_remember_me_email';
+const REMEMBER_ME_FLAG_KEY = '@littleloom_remember_me_enabled';
 
 // ─── OAuth Configuration ──────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = Platform.select({
@@ -61,12 +77,13 @@ const isValidUsername = (username: string): boolean => {
 export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   // ─── STATE ───
   const [activeTab, setActiveTab] = useState<'signin' | 'join'>('signin');
-  
+
   // ─── SIGN IN STATE ───
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMeLoaded, setRememberMeLoaded] = useState(false);
 
   // ─── JOIN FAMILY STATE ───
   const [inviteCode, setInviteCode] = useState('');
@@ -78,10 +95,10 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const [showJoinPassword, setShowJoinPassword] = useState(false);
   const [showJoinConfirmPassword, setShowJoinConfirmPassword] = useState(false);
   const [codeValidated, setCodeValidated] = useState(false);
-  const [codeInfo, setCodeInfo] = useState<{ 
-    role: string; 
-    relationship?: string; 
-    used?: boolean; 
+  const [codeInfo, setCodeInfo] = useState<{
+    role: string;
+    relationship?: string;
+    used?: boolean;
     signupCompleted?: boolean;
     isPartial?: boolean;
     partialEmail?: string;
@@ -116,8 +133,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   } = useAuth();
 
   // ─── Use FamilyContext for invite validation ─────────────────────
-  const { 
-    validateInviteCode: validateInviteCodeFromFamily, 
+  const {
+    validateInviteCode: validateInviteCodeFromFamily,
     getInviteCodeById,
     getPartialSignupInfo,
     recoverPartialSignup,
@@ -125,13 +142,20 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   } = useFamily();
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
-  
+
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
   const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
   const triggerHaptic = customization?.triggerHaptic ?? (() => {});
-  
-  const { toast, error: showError, success: showSuccess, confirm, info: showInfo, alert: showAlert } = useSweetAlert();
+
+  const {
+    toast,
+    error: showError,
+    success: showSuccess,
+    confirm,
+    info: showInfo,
+    alert: showAlert,
+  } = useSweetAlert();
 
   const insets = useSafeAreaInsets();
 
@@ -147,12 +171,57 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const socialAuthInProgress = useRef(false);
   const navigationAttemptedRef = useRef(false);
 
-  // ─── FIX: Live ref to isAuthenticated so async callbacks see the
-  //     latest value even after re-renders.
+  // ─── Live ref to isAuthenticated so async callbacks see the latest value
   const isAuthenticatedRef = useRef(isAuthenticated);
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
+
+  // ─── Load Remember Me preferences on mount ──────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [savedEmail, savedFlag] = await Promise.all([
+          AsyncStorage.getItem(REMEMBER_ME_EMAIL_KEY),
+          AsyncStorage.getItem(REMEMBER_ME_FLAG_KEY),
+        ]);
+        if (cancelled) return;
+
+        if (savedFlag === 'true' && savedEmail) {
+          setRememberMe(true);
+          setEmail(savedEmail);
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Login] Failed to load remember-me:', e);
+      } finally {
+        if (!cancelled) setRememberMeLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ─── Persist Remember Me whenever it changes (after initial load) ──
+  const persistRememberMe = useCallback(
+    async (enabled: boolean, emailToSave?: string) => {
+      try {
+        if (enabled && emailToSave) {
+          await AsyncStorage.multiSet([
+            [REMEMBER_ME_FLAG_KEY, 'true'],
+            [REMEMBER_ME_EMAIL_KEY, emailToSave.trim()],
+          ]);
+        } else {
+          await AsyncStorage.multiRemove([
+            REMEMBER_ME_FLAG_KEY,
+            REMEMBER_ME_EMAIL_KEY,
+          ]);
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Login] Failed to save remember-me:', e);
+      }
+    },
+    []
+  );
 
   // ─── OAuth Requests ──────────────────────────────────────────────────
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
@@ -162,7 +231,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       scopes: ['openid', 'profile', 'email'],
       responseType: 'token',
     },
-    { 
+    {
       authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
       tokenEndpoint: 'https://oauth2.googleapis.com/token',
     }
@@ -175,7 +244,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       scopes: ['public_profile', 'email'],
       responseType: 'token',
     },
-    { 
+    {
       authorizationEndpoint: 'https://www.facebook.com/v18.0/dialog/oauth',
       tokenEndpoint: 'https://graph.facebook.com/v18.0/oauth/access_token',
     }
@@ -323,71 +392,36 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     };
   }, []);
 
-  // ─── FIX: If auth already initialized with a valid session, leave ───
-  // The Supabase SDK auto-refreshes the cached refresh_token in the
-  // background. That means a user who signed in previously may already
-  // be authenticated by the time they land on this screen. If so, we
-  // skip the login form entirely.
-  //
-  // Without this, you get the confusing UX where you type a wrong
-  // password, see "Login failed", but get logged in anyway by the
-  // auto-refresh that raced your signIn call.
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isAuthenticated) return;
-    if (navigationAttemptedRef.current) return;
-
-    navigationAttemptedRef.current = true;
-
-    const timer = setTimeout(() => {
-      if (!isMounted.current) return;
-      forceUnlock().catch(() => {});
-      if (!setupComplete) {
-        if (!hasBaby) {
-          navigation.replace('BabyOptional');
-        } else if (!hasParent2) {
-          navigation.replace('CoParentInviteScreen');
-        } else {
-          navigation.replace('Main');
-        }
-        return;
-      }
-      navigation.replace('Main');
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [
-    authLoading,
-    isAuthenticated,
-    setupComplete,
-    hasBaby,
-    hasParent2,
-    navigation,
-    forceUnlock,
-  ]);
-
   // ─── Single source of truth for post-sign-in navigation ──────
-  // This effect fires when AuthContext commits an authenticated state.
-  // It handles BOTH cases:
-  //   • The user typed credentials and signIn() succeeded.
-  //   • The SDK auto-refreshed a cached refresh_token on mount.
-  // Either way, if isAuthenticated is true, we leave this screen.
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) return;
+    if (isProcessing) return;
     if (navigationAttemptedRef.current) return;
+
+    // If the user just typed wrong credentials, DO NOT let the
+    // authenticated state navigate away.
+    if (loginAttempted.current) return;
 
     navigationAttemptedRef.current = true;
 
+    const parent2Addressed =
+      hasParent2 === true || hasParent2 === 'skipped';
+    const babyAddressed =
+      hasBaby === true || hasBaby === 'skipped';
+
     const timer = setTimeout(() => {
       if (!isMounted.current) return;
+
+      // Re-check — the state may have changed during the delay
+      if (loginAttempted.current) return;
+
       forceUnlock().catch(() => {});
 
-      // Route to the correct screen based on actual setup state
       if (!setupComplete) {
-        if (!hasBaby) {
+        if (!babyAddressed) {
           navigation.replace('BabyOptional');
-        } else if (!hasParent2) {
+        } else if (!parent2Addressed) {
           navigation.replace('CoParentInviteScreen');
         } else {
           navigation.replace('Main');
@@ -396,12 +430,13 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       }
 
       navigation.replace('Main');
-    }, 150);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [
     authLoading,
     isAuthenticated,
+    isProcessing,
     setupComplete,
     hasParent2,
     hasBaby,
@@ -440,13 +475,13 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     codeDebounceTimer.current = setTimeout(async () => {
       try {
         console.log('[Login] 🔍 Validating invite code:', trimmed);
-        
+
         const partialInfo = await getPartialSignupInfo(trimmed);
         console.log('[Login] 📊 Partial signup info:', partialInfo);
 
         if (partialInfo.exists) {
           console.log('[Login] ⚠️ Partial sign-up detected for code:', trimmed);
-          
+
           if (isMounted.current) {
             setCodeValidated(true);
             setCodeInfo({
@@ -459,14 +494,14 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
               signupCompleted: false,
             });
             setShowPartialRecovery(true);
-            
+
             if (partialInfo.email) setJoinEmail(partialInfo.email);
             if (partialInfo.phone) setJoinPhone(partialInfo.phone);
             if (partialInfo.name) setJoinFullName(partialInfo.name);
-            
+
             showInfo(
-              'Resume Sign-up', 
-              partialInfo.email 
+              'Resume Sign-up',
+              partialInfo.email
                 ? `Continue signing up with ${partialInfo.email}`
                 : 'Complete your registration'
             );
@@ -529,7 +564,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   // ─── HANDLE PARTIAL SIGNUP RECOVERY ──────────────────────────────────
   const handlePartialSignupRecovery = useCallback(async () => {
     if (isProcessing || authLoading) return;
-    
+
     const trimmedCode = inviteCode.trim();
     if (trimmedCode.length !== 6) {
       showError('Invalid Code', 'Please enter a valid invite code');
@@ -578,7 +613,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('medium');
 
     try {
-            const signUpResult = await signUpWithInviteCode(
+      const signUpResult = await signUpWithInviteCode(
         trimmedCode,
         joinFullName.trim(),
         joinEmail.trim(),
@@ -586,12 +621,11 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       );
 
       if (signUpResult.success && isMounted.current) {
-        // Fetch the newly created user to get their ID reliably
         const { data: { user } } = await supabase.auth.getUser();
-        
+
         const recoveryResult = await recoverPartialSignup(
           trimmedCode,
-          user?.id || '', // Use the freshly fetched user ID
+          user?.id || '',
           joinEmail.trim(),
           joinPhone.trim() || undefined,
           joinFullName.trim()
@@ -670,7 +704,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       return;
     }
 
-    // ─── Hard guard: prevent double-tap racing the signIn lock ─────
     if (loginAttempted.current) return;
     loginAttempted.current = true;
     setIsProcessing(true);
@@ -679,7 +712,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     try {
       let userIdentifier = trimmedIdentifier;
-      
+
       if (isUsername) {
         try {
           const user = await findUserByEmailOrUsername(trimmedIdentifier);
@@ -695,27 +728,31 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       const success = await signIn(userIdentifier, password);
 
       if (success && isMounted.current) {
+        // ─── Persist Remember Me on success ───────────────────────
+        await persistRememberMe(rememberMe, userIdentifier);
+
         showSuccess(
           `Welcome Back${userName !== 'there' ? `, ${userName}` : ''}!`,
           'Successfully signed in'
         );
         forceUnlock().catch(() => {});
+
         // Navigation happens in the effect above once isAuthenticated
         // is actually committed by AuthContext. Do NOT navigate here.
       } else if (isMounted.current) {
-        // ─── FIX: Only show "Login Failed" if we're NOT signed in ──
-        // The SDK's auto-refresh may race our explicit signIn. If the
-        // background refresh already authenticated us, don't show a
-        // scary error just because the manual attempt failed.
-        //
-        // We give it a brief moment to allow SIGNED_IN to fire.
-        await new Promise((r) => setTimeout(r, 300));
+        // ─── FIX: Kill the SDK's stale session on auth failure ──
+        // Without this, the SDK's background auto-refresh can silently
+        // log the user in with a cached refresh_token, even though
+        // signInWithPassword just failed with "invalid credentials".
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {}
 
-        if (!isMounted.current) return;
-
-        if (!isAuthenticated) {
-          showError('Login Failed', 'Invalid credentials. Please try again.');
-        }
+        // Show the real error. Do NOT navigate.
+        showError(
+          'Login Failed',
+          'Invalid credentials. Please try again.'
+        );
         loginAttempted.current = false;
       }
     } catch (error) {
@@ -729,6 +766,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   }, [
     email,
     password,
+    rememberMe,
+    persistRememberMe,
     signIn,
     findUserByEmailOrUsername,
     isProcessing,
@@ -761,14 +800,14 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     const trimmedCode = inviteCode.trim();
     let isPartialSignup = false;
-    
+
     if (trimmedCode.length === 6) {
       try {
         const partialInfo = await getPartialSignupInfo(trimmedCode);
         if (partialInfo.exists) {
           isPartialSignup = true;
           console.log('[Login] Completing partial sign-up for code:', trimmedCode);
-          
+
           if (partialInfo.email && joinEmail.trim().toLowerCase() !== partialInfo.email.toLowerCase()) {
             showError('Email Mismatch', `This partial sign-up was started with ${partialInfo.email}. Please use the same email to continue.`);
             setJoinEmail(partialInfo.email || '');
@@ -781,7 +820,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
 
     const existingUser = await findUserByEmail(joinEmail.trim());
-    
+
     if (existingUser) {
       if (isPartialSignup) {
         confirm(
@@ -797,7 +836,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         );
         return;
       }
-      
+
       showInfo('Account Found', 'You already have an account. Please sign in instead.');
       setActiveTab('signin');
       setEmail(joinEmail.trim());
@@ -857,7 +896,10 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         if (isPartialSignup && userProfile?.id) {
           await markSignupComplete(trimmedCode, userProfile.id);
         }
-        
+
+        // Also honor Remember Me for the newly-joined user
+        await persistRememberMe(rememberMe, joinEmail.trim());
+
         showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
         forceUnlock().catch(() => {});
       } else {
@@ -870,12 +912,12 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, getPartialSignupInfo, markSignupComplete, userProfile, isProcessing, authLoading, isAuthenticated, setupComplete, triggerHaptic, showError, showSuccess, showInfo, confirm, forceUnlock, navigation]);
+  }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, getPartialSignupInfo, markSignupComplete, userProfile, isProcessing, authLoading, isAuthenticated, setupComplete, triggerHaptic, showError, showSuccess, showInfo, confirm, forceUnlock, navigation, rememberMe, persistRememberMe]);
 
   // ─── BIOMETRIC LOGIN ─────────────────────────────────────────────────
   const handleBiometricLogin = useCallback(async () => {
     loginAttempted.current = false;
-    
+
     if (isProcessing || authLoading) return false;
 
     if (isAuthenticated && setupComplete) {
@@ -1033,6 +1075,19 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('light');
     navigation.navigate('SignUp');
   }, [navigation, triggerHaptic]);
+
+  // ─── Toggle Remember Me handler ──────────────────────────────────────
+  const handleToggleRememberMe = useCallback(() => {
+    triggerHaptic('light');
+    setRememberMe((prev) => {
+      const next = !prev;
+      // If turning off, wipe stored credentials immediately.
+      if (!next) {
+        persistRememberMe(false).catch(() => {});
+      }
+      return next;
+    });
+  }, [persistRememberMe, triggerHaptic]);
 
   // ─── RENDER ──────────────────────────────────────────────────────────
   return (
@@ -1245,9 +1300,11 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
                   {/* ─── Remember Me & Forgot Password ─── */}
                   <View style={styles.rowContainer}>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.rememberMeContainer}
-                      onPress={() => setRememberMe(!rememberMe)}
+                      onPress={handleToggleRememberMe}
+                      disabled={isLoading || !rememberMeLoaded}
+                      activeOpacity={0.7}
                     >
                       <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
                         {rememberMe && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -1353,7 +1410,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
                   ]}>
                     <Ionicons name="key-outline" size={20} color={
-                      codeInfo?.isPartial ? '#f59e0b' : 
+                      codeInfo?.isPartial ? '#f59e0b' :
                       codeValidated ? '#22c55e' : '#667eea'
                     } style={styles.inputIcon} />
                     <TextInput
@@ -1509,6 +1566,23 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                             size={20}
                             color="#667eea"
                           />
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* ─── Remember Me on Join Form ─── */}
+                      <View style={styles.rowContainer}>
+                        <TouchableOpacity
+                          style={styles.rememberMeContainer}
+                          onPress={handleToggleRememberMe}
+                          disabled={isLoading || !rememberMeLoaded}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+                            {rememberMe && <Ionicons name="checkmark" size={14} color="#fff" />}
+                          </View>
+                          <Text style={[styles.rememberMeText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                            Remember me
+                          </Text>
                         </TouchableOpacity>
                       </View>
 
@@ -1711,15 +1785,9 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  gradient: {
-    ...StyleSheet.absoluteFill,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  gradient: { ...StyleSheet.absoluteFill },
+  keyboardView: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
