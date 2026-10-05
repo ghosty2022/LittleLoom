@@ -316,24 +316,46 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     };
   }, []);
 
+  // ─── Single source of truth for post-sign-in navigation ──────
+  // This effect fires when AuthContext actually commits the new
+  // authentication state. It is the ONLY place navigation happens
+  // after a successful sign-in. handleLogin() must NOT navigate.
   useEffect(() => {
-    if (authLoading || !isAuthenticated || !setupComplete) return;
+    if (authLoading || !isAuthenticated) return;
 
-    // Guard against double navigation — this was being triggered twice
-    // (once by Supabase's SIGNED_IN, once by our own setState) and the
-    // second replace() was throwing "another sign in operation in
-    // progress" from the sign-in lock.
     if (navigationAttemptedRef.current) return;
     navigationAttemptedRef.current = true;
 
     const timer = setTimeout(() => {
       if (!isMounted.current) return;
       forceUnlock().catch(() => {});
+
+      // Route to the correct screen based on actual setup state
+      if (!setupComplete) {
+        if (!hasBaby) {
+          navigation.replace('BabyOptional');
+        } else if (!hasParent2) {
+          navigation.replace('CoParentInviteScreen');
+        } else {
+          // Both steps addressed but setupComplete flag not set — fix it
+          navigation.replace('Main');
+        }
+        return;
+      }
+
       navigation.replace('Main');
-    }, 150);
+    }, 200);
 
     return () => clearTimeout(timer);
-  }, [authLoading, isAuthenticated, setupComplete, navigation, forceUnlock]);
+  }, [
+    authLoading,
+    isAuthenticated,
+    setupComplete,
+    hasParent2,
+    hasBaby,
+    navigation,
+    forceUnlock,
+  ]);
 
   useEffect(() => {
     logoScale.value = withSequence(
@@ -621,26 +643,24 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       const success = await signIn(userIdentifier, password);
 
       if (success && isMounted.current) {
-        showSuccess(`Welcome Back${userName !== 'there' ? `, ${userName}` : ''}!`, 'Successfully signed in');
+        // ─── Wait for AuthContext to commit state before navigating ──
+        // Otherwise the setup flags on this closure are stale and we
+        // navigate to the wrong screen (or to BabyOptional while the
+        // user already has a baby in the DB).
+        await new Promise((r) => setTimeout(r, 300));
+
+        if (!isMounted.current) return;
+
+        showSuccess(
+          `Welcome Back${userName !== 'there' ? `, ${userName}` : ''}!`,
+          'Successfully signed in'
+        );
         forceUnlock().catch(() => {});
 
-        if (!setupComplete) {
-          if (!hasBaby) {
-            navigation.replace('BabyOptional');
-          } else if (!hasParent2) {
-            navigation.replace('CoParentInviteScreen');
-          }
-          return;
-        }
-
-        if (hasSeenOnboarding) {
-          const shouldPrompt = await shouldShowBiometricPrompt();
-          if (shouldPrompt) {
-            setTimeout(() => {
-              promptEnableBiometricLogin(userIdentifier, password);
-            }, 1000);
-          }
-        }
+        // NOTE: Do NOT navigate from here for the setup steps. The
+        // effect further down already handles navigation once
+        // AuthContext's state is actually committed. Navigating here
+        // races that effect and lands on the wrong screen.
       } else {
         showError('Login Failed', 'Invalid credentials. Please try again.');
         loginAttempted.current = false;

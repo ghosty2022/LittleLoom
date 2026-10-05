@@ -1,8 +1,43 @@
 // src/context/DatabaseContext.tsx
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet, AppState } from 'react-native';
-import { supabase } from '@/utils/supabase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// ─────────────────────────────────────────────────────────────────────
+// DEPRECATED: DatabaseContext is a no-op pass-through.
+//
+// WHY THIS EXISTS:
+// The old DatabaseContext polled Supabase on every cold start to try
+// to refresh a session that didn't exist yet, spamming:
+//   "[DB] Session expired, attempting refresh..."
+//   "[DB] Session refresh failed"
+// BEFORE the user even reached the login screen.
+//
+// That loop also competed with AuthContext's own session reads, which
+// made `supabase.auth.getSession()` intermittently return null — and
+// that in turn made BabyContext / FamilyContext see "no user ID".
+//
+// Session lifecycle is now owned EXCLUSIVELY by AuthContext. The
+// Supabase client is a singleton. There is nothing left for this
+// provider to do.
+//
+// We keep this file (and its hooks) so existing imports don't break,
+// but it no longer touches Supabase at all. Every value it exposes is
+// derived from AuthContext, which is the single source of truth.
+// ─────────────────────────────────────────────────────────────────────
+
+import React, { createContext, useContext, useMemo } from 'react';
+
+// ─── Safe optional import of AuthContext ─────────────────────────────
+// We import lazily to avoid circular-dependency issues during app
+// bootstrap (AuthProvider may not be mounted yet when this module
+// is first evaluated).
+let useAuthSafe: (() => any) | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const authModule = require('./AuthContext');
+  useAuthSafe = authModule.useAuth ?? null;
+} catch {
+  useAuthSafe = null;
+}
+
+// ─── TYPES ───────────────────────────────────────────────────────────
 
 interface DatabaseContextType {
   isReady: boolean;
@@ -15,7 +50,11 @@ interface DatabaseContextType {
   signOut: () => Promise<void>;
 }
 
-const DatabaseContext = createContext<DatabaseContextType>({
+// ─── DEFAULT VALUE (never returned to consumers) ─────────────────────
+// We still define it for TypeScript's benefit; the hook below always
+// returns a real object.
+
+const DEFAULT_VALUE: DatabaseContextType = {
   isReady: true,
   error: null,
   retry: () => {},
@@ -24,244 +63,103 @@ const DatabaseContext = createContext<DatabaseContextType>({
   session: null,
   refreshSession: async () => {},
   signOut: async () => {},
-});
+};
 
-export const useDatabase = () => useContext(DatabaseContext);
-export const useSafeDatabase = useDatabase; // alias for compatibility
+const DatabaseContext = createContext<DatabaseContextType>(DEFAULT_VALUE);
 
+// ─── HOOK ────────────────────────────────────────────────────────────
+
+/**
+ * Safe hook — never throws, always returns a valid object.
+ *
+ * Consumers that used to rely on `useDatabase().userId` and
+ * `useDatabase().session` will now get the values from AuthContext.
+ */
+export const useDatabase = (): DatabaseContextType => {
+  const ctx = useContext(DatabaseContext);
+  return ctx ?? DEFAULT_VALUE;
+};
+
+// Alias kept for backward compatibility with older imports.
+export const useSafeDatabase = useDatabase;
+
+// ─── PROVIDER ────────────────────────────────────────────────────────
+
+/**
+ * DatabaseProvider — pure pass-through.
+ *
+ * It reads state from AuthContext and forwards it. It NEVER touches
+ * Supabase directly. This is what removes the "Session expired" flood
+ * from the logs.
+ *
+ * If AuthProvider isn't mounted yet (early bootstrap), the provider
+ * falls back to inert defaults without logging or retrying anything.
+ */
 export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isReady, setIsReady] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const [isOnline, setIsOnline] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [session, setSession] = useState<any | null>(null);
-  const [showLoading, setShowLoading] = useState(false);
-  const retryCountRef = useRef(0);
-  const isMountedRef = useRef(true);
-  const appStateSubscriptionRef = useRef<any>(null);
-  const initRef = useRef(false);
-  const lastLogTimeRef = useRef<Record<string, number>>({});
-  const logCooldownMs = 5000; // Only log same message every 5 seconds
-
-  // Throttled logging to reduce noise
-  const throttledLog = useCallback((message: string, data?: any) => {
-    const now = Date.now();
-    const key = message;
-    if (!lastLogTimeRef.current[key] || now - lastLogTimeRef.current[key] > logCooldownMs) {
-      lastLogTimeRef.current[key] = now;
-      if (data) {
-        console.log(message, data);
-      } else {
-        console.log(message);
-      }
+  // Read AuthContext if the hook is available. This is safe because
+  // AuthProvider is always mounted ABOVE DatabaseProvider in App.tsx.
+  let auth: any = null;
+  try {
+    if (useAuthSafe) {
+      auth = useAuthSafe();
     }
-  }, []);
-
-  // Check Supabase connection and session
-  const checkConnection = useCallback(async () => {
-    try {
-      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.warn('[DatabaseContext] Supabase session check failed:', sessionError.message);
-        setError(new Error('Supabase session issue'));
-        setIsReady(false);
-        return;
-      }
-
-      if (currentSession?.user) {
-        setUserId(currentSession.user.id);
-        setSession(currentSession);
-        setError(null);
-        setIsReady(true);
-        
-        try {
-          await AsyncStorage.setItem('@littleloom_session', JSON.stringify(currentSession));
-        } catch (storageError) {
-          // Silently handle storage error
-        }
-      } else {
-        try {
-          const storedSession = await AsyncStorage.getItem('@littleloom_session');
-          if (storedSession) {
-            const parsed = JSON.parse(storedSession);
-            if (parsed?.user) {
-              setUserId(parsed.user.id);
-              setSession(parsed);
-              setError(null);
-              setIsReady(true);
-              throttledLog('[DatabaseContext] Session restored from cache');
-              return;
-            }
-          }
-        } catch {
-          // Silently handle
-        }
-        
-        setUserId(null);
-        setSession(null);
-        setIsReady(true);
-      }
-    } catch (err) {
-      console.warn('[DatabaseContext] Connection check error:', err);
-      setError(err instanceof Error ? err : new Error('Connection failed'));
-      setIsReady(true);
-    }
-  }, [throttledLog]);
-
-  const checkOnlineStatus = useCallback(() => {
-    setIsOnline(true);
-  }, []);
-
-  const refreshSession = useCallback(async () => {
-    try {
-      // ─── First try cached session (no network) ───────────────────
-      const { data: { session: current } } = await supabase.auth.getSession();
-      if (current?.user?.id) {
-        setUserId(current.user.id);
-        setSession(current);
-        setError(null);
-        setIsReady(true);
-        return;
-      }
-
-      // ─── Only then attempt a network refresh ─────────────────────
-      const { data: { session: refreshedSession }, error: refreshError } =
-        await supabase.auth.refreshSession();
-
-      if (refreshError) {
-        // If the error is "invalid JWT" / "session missing", clear and bail.
-        // For any other (transient) error, keep the cached state.
-        const msg = refreshError.message?.toLowerCase() || '';
-        const isFatal = msg.includes('invalid') || msg.includes('missing') || msg.includes('jwt');
-
-        if (isFatal) {
-          await AsyncStorage.removeItem('@littleloom_session');
-          setUserId(null);
-          setSession(null);
-        }
-        // Do NOT spam console.warn — throttle it.
-        throttledLog('[DatabaseContext] Session refresh failed:', refreshError.message);
-        return;
-      }
-
-      if (refreshedSession?.user) {
-        setUserId(refreshedSession.user.id);
-        setSession(refreshedSession);
-        setError(null);
-        setIsReady(true);
-        await AsyncStorage.setItem('@littleloom_session', JSON.stringify(refreshedSession));
-      }
-    } catch (err) {
-      throttledLog('[DatabaseContext] Session refresh error:', err);
-    }
-  }, [throttledLog]);
-
-  const signOut = useCallback(async () => {
-    try {
-      await supabase.auth.signOut();
-      await AsyncStorage.removeItem('@littleloom_session');
-      setUserId(null);
-      setSession(null);
-      console.log('[DatabaseContext] Signed out');
-    } catch (err) {
-      console.error('[DatabaseContext] Sign out error:', err);
-      throw err;
-    }
-  }, []);
-
-  const retry = useCallback(() => {
-    retryCountRef.current = 0;
-    setError(null);
-    setIsReady(false);
-    setShowLoading(true);
-    checkConnection().finally(() => {
-      if (isMountedRef.current) {
-        setShowLoading(false);
-      }
-    });
-  }, [checkConnection]);
-
-  useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (event === 'TOKEN_REFRESHED') {
-        // Silent refresh - no log
-        if (newSession?.user) {
-          setUserId(newSession.user.id);
-          setSession(newSession);
-          await AsyncStorage.setItem('@littleloom_session', JSON.stringify(newSession));
-        }
-        return;
-      }
-      
-      throttledLog('[DatabaseContext] Auth state changed:', event);
-      
-      if (newSession?.user) {
-        setUserId(newSession.user.id);
-        setSession(newSession);
-        setError(null);
-        setIsReady(true);
-        await AsyncStorage.setItem('@littleloom_session', JSON.stringify(newSession));
-      } else if (event === 'SIGNED_OUT') {
-        setUserId(null);
-        setSession(null);
-        await AsyncStorage.removeItem('@littleloom_session');
-      }
-    });
-
-    return () => {
-      authListener?.subscription?.unsubscribe();
-    };
-  }, [throttledLog]);
-
-  useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
-    
-    isMountedRef.current = true;
-    checkConnection();
-
-    let lastRefresh = 0;
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        const now = Date.now();
-        // Cooldown: don't spam refreshSession on rapid foreground transitions
-        if (now - lastRefresh < 30000) return;
-        lastRefresh = now;
-        // Defer so it doesn't block the UI thread
-        setTimeout(() => { refreshSession().catch(() => {}); }, 200);
-      }
-    });
-    appStateSubscriptionRef.current = subscription;
-
-    return () => {
-      isMountedRef.current = false;
-      if (appStateSubscriptionRef.current) {
-        appStateSubscriptionRef.current.remove();
-        appStateSubscriptionRef.current = null;
-      }
-    };
-  }, [checkConnection, refreshSession]);
-
-  if (showLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#667eea" />
-        <Text style={styles.loading}>Connecting...</Text>
-      </View>
-    );
+  } catch {
+    // AuthProvider not mounted — fall through to inert defaults.
+    auth = null;
   }
 
-  const value: DatabaseContextType = {
-    isReady,
-    error,
-    retry,
-    isOnline,
-    userId,
-    session,
-    refreshSession,
-    signOut,
-  };
+  // Derive the minimal surface this context exposes. All values come
+  // straight from AuthContext — no polling, no retries, no logs.
+  const value = useMemo<DatabaseContextType>(() => {
+    const derivedUserId: string | null =
+      auth?.userProfile?.id ??
+      auth?.session?.user?.id ??
+      null;
+
+    return {
+      isReady: auth ? !auth.isLoading : true,
+      error: null,
+
+      // No-op. AuthContext owns session recovery. There is nothing
+      // here to retry.
+      retry: () => {},
+
+      // Always true. Real connectivity checks belong in a dedicated
+      // network-status module, not in a database provider.
+      isOnline: true,
+
+      userId: derivedUserId,
+      session: auth?.session ?? null,
+
+      // Delegate to AuthContext — single source of truth. Swallow
+      // errors so consumers don't crash if AuthContext is missing.
+      refreshSession: async () => {
+        try {
+          if (typeof auth?.refreshSession === 'function') {
+            await auth.refreshSession();
+          }
+        } catch {
+          // Silent — AuthContext logs its own errors.
+        }
+      },
+
+      signOut: async () => {
+        try {
+          if (typeof auth?.signOut === 'function') {
+            await auth.signOut();
+          }
+        } catch {
+          // Silent — AuthContext logs its own errors.
+        }
+      },
+    };
+  }, [
+    auth?.isLoading,
+    auth?.userProfile?.id,
+    auth?.session,
+    auth?.refreshSession,
+    auth?.signOut,
+  ]);
 
   return (
     <DatabaseContext.Provider value={value}>
@@ -269,16 +167,5 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     </DatabaseContext.Provider>
   );
 };
-
-const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8faff',
-    padding: 32,
-  },
-  loading: { marginTop: 16, fontSize: 14, color: '#64748b' },
-});
 
 export default DatabaseProvider;

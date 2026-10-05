@@ -290,10 +290,34 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
+    // ─── FIX: Recover user ID if authProfile is stale ────────────
+    let effectiveUserId = authProfile?.id;
+    if (!effectiveUserId) {
+      // Try Supabase session
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        effectiveUserId = session?.user?.id;
+      } catch {}
+    }
+    if (!effectiveUserId) {
+      // Try AsyncStorage recovery
+      try {
+        const keys = await AsyncStorage.getAllKeys();
+        const authKey = keys.find(k => k.includes('auth-token') || k.includes('supabase.auth'));
+        if (authKey) {
+          const stored = await AsyncStorage.getItem(authKey);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            effectiveUserId = parsed?.user?.id || parsed?.session?.user?.id;
+          }
+        }
+      } catch {}
+    }
+
     // ─── Only load if the current user is part of this baby ────
-    if (authProfile?.id && currentBaby.parent1_id !== authProfile.id && currentBaby.parent2_id !== authProfile.id) {
+    if (effectiveUserId && currentBaby.parent1_id !== effectiveUserId && currentBaby.parent2_id !== effectiveUserId) {
       const guardianIds = currentBaby.guardian_ids || [];
-      if (!guardianIds.includes(authProfile.id)) {
+      if (!guardianIds.includes(effectiveUserId)) {
         console.log('[FamilyContext] User not associated with this baby, skipping load');
         return;
       }
@@ -315,19 +339,23 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .eq('id', currentBaby.parent1_id)
           .maybeSingle();
 
+        // ─── FIX: Fall back to authProfile if profile fetch failed ─
+        const isCurrentUserParent1 = effectiveUserId === currentBaby.parent1_id;
+        const fallbackProfile = isCurrentUserParent1 ? authProfile : null;
+
         members.push({
           id: currentBaby.parent1_id,
           userId: currentBaby.parent1_id,
-          fullName: parentData?.full_name || 'Parent',
-          email: parentData?.email || '',
-          avatar: parentData?.avatar || parentData?.community_avatar,
+          fullName: parentData?.full_name || fallbackProfile?.fullName || 'Parent',
+          email: parentData?.email || fallbackProfile?.email || '',
+          avatar: parentData?.avatar || parentData?.community_avatar || fallbackProfile?.avatar,
           role: UserRole.PARENT_1,
           relationship: 'Parent',
           permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
           addedAt: currentBaby.created_at,
           addedBy: currentBaby.parent1_id,
           canBeRemoved: false,
-          phoneNumber: parentData?.phone_number,
+          phoneNumber: parentData?.phone_number || fallbackProfile?.phoneNumber,
           notificationsEnabled: true,
           lastActive: new Date().toISOString(),
           status: 'active',

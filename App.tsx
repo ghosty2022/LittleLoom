@@ -213,6 +213,8 @@ export default function App(): React.ReactElement | null {
   const sessionCleanupDoneRef = useRef(false);
 
   // ─── PHASE -1: One-time cleanup of corrupted session keys ────────────
+  // Runs ONCE per app lifetime, before any auth logic. Uses a ref guard
+  // so React StrictMode's double-invoke doesn't cause two cleanups.
   // This runs ONCE per app lifetime, before any auth logic. It scans
   // AsyncStorage for Supabase auth keys and removes any that are not
   // valid JSON or are missing both `access_token` and `user`. This

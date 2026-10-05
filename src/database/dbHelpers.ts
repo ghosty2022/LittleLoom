@@ -115,7 +115,6 @@ export async function testDatabaseConnection(): Promise<{
 export function clearUserIdCache(): void {
   cachedUserId = null;
   cachedUserIdTimestamp = 0;
-  console.log('[DB] User ID cache cleared');
 }
 
 /* ─── UTILITY ───────────────────────────────────────────────────────────── */
@@ -141,111 +140,82 @@ export async function tableExists(tableName: string): Promise<boolean> {
   }
 }
 
-// ─── FIXED: Get current user ID with session refresh ──────────────────
+// ─── Get current user ID (NO refresh spam) ───────────────────────────
+//
+// This used to call `supabase.auth.refreshSession()` whenever the
+// session was missing, which produced an infinite loop on cold start:
+//
+//   [DB] Session expired, attempting refresh...
+//   [DB] Session refresh failed
+//   [DB] Session expired, attempting refresh...
+//   ...
+//
+// Session lifecycle is owned by AuthContext. This helper only reads
+// the cached session — never mutates it. If there's no session, we
+// simply return null. The caller (BabyContext / FamilyContext) already
+// knows how to fall back to AuthContext.
 export async function getCurrentUserId(): Promise<string | null> {
-  // Return cached value if fresh
   const now = Date.now();
+
+  // 1. Serve from cache if fresh
   if (cachedUserId !== null && (now - cachedUserIdTimestamp) < USER_ID_CACHE_TTL) {
     return cachedUserId;
   }
 
-  // If we're already refreshing, wait a bit
-  if (isRefreshingSession) {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if (cachedUserId !== null) return cachedUserId;
+  // 2. Single attempt at reading the session — no retries, no refresh,
+  //    no logging. If it's missing, that's a valid state (user not
+  //    signed in yet).
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id) {
+      cachedUserId = session.user.id;
+      cachedUserIdTimestamp = now;
+      return cachedUserId;
+    }
+
+    // 3. Fall back to getUser() — only once, no loops
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.id) {
+      cachedUserId = user.id;
+      cachedUserIdTimestamp = now;
+      return user.id;
+    }
+  } catch {
+    // Silent — no log spam. AuthContext handles error reporting.
   }
 
-  try {
-    // First try to get the user
-    const { data: { user }, error } = await supabase.auth.getUser();
-    
-    if (error || !user) {
-      // If error is session missing, try to refresh
-      if (error?.message?.includes('session') || error?.message?.includes('JWT')) {
-        console.log('[DB] Session expired, attempting refresh...');
-        isRefreshingSession = true;
-        
-        const { data: { session }, error: refreshError } = await supabase.auth.getSession();
-        
-        if (refreshError || !session?.user) {
-          console.log('[DB] Session refresh failed');
-          cachedUserId = null;
-          cachedUserIdTimestamp = now;
-          isRefreshingSession = false;
-          return null;
-        }
-        
-        cachedUserId = session.user.id;
-        cachedUserIdTimestamp = now;
-        isRefreshingSession = false;
-        return cachedUserId;
-      }
-      
-      cachedUserId = null;
-      cachedUserIdTimestamp = now;
-      return null;
-    }
-    
-    if (cachedUserId !== user.id) {
-      console.log('[DB] User authenticated:', user.id);
-    }
-    cachedUserId = user.id;
-    cachedUserIdTimestamp = now;
-    return user.id;
-  } catch (error) {
-    console.error('[DB] getCurrentUserId error:', error);
-    cachedUserId = null;
-    cachedUserIdTimestamp = now;
-    isRefreshingSession = false;
-    return null;
-  }
+  // Cache the "no user" result briefly so we don't hammer the SDK
+  cachedUserId = null;
+  cachedUserIdTimestamp = now;
+  return null;
 }
 
-// Get current session with refresh attempt
+// Get current session — silent, no retries, no logging.
+// Session lifecycle is owned by AuthContext.
 export async function getCurrentSession() {
   try {
-    // Try to get fresh session
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) {
-      console.warn('[DB] Session error:', error.message);
-      
-      // If error is about missing session, try to get user directly
-      if (error.message?.includes('session') || error.message?.includes('JWT')) {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (!userError && user) {
-          console.log('[DB] Got user directly, session may be stale but user exists');
-          // Return a minimal session-like object
-          return { user, access_token: 'refreshed' };
-        }
-      }
-      return null;
-    }
-    return session;
-  } catch (error) {
-    console.error('[DB] getCurrentSession error:', error);
+    const { data: { session } } = await supabase.auth.getSession();
+    return session ?? null;
+  } catch {
     return null;
   }
 }
 
 // ─── FORCE REFRESH SESSION ──────────────────────────────────────────────
+// No-op warning: kept for backward compatibility. Callers should
+// prefer AuthContext.refreshSession() instead.
 export async function forceRefreshSession(): Promise<boolean> {
   try {
-    isRefreshingSession = true;
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error || !session) {
-      console.warn('[DB] Force refresh failed:', error?.message);
-      cachedUserId = null;
-      cachedUserIdTimestamp = 0;
-      isRefreshingSession = false;
-      return false;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id) {
+      cachedUserId = session.user.id;
+      cachedUserIdTimestamp = Date.now();
+      return true;
     }
-    cachedUserId = session.user.id;
-    cachedUserIdTimestamp = Date.now();
-    isRefreshingSession = false;
-    return true;
-  } catch (error) {
-    console.error('[DB] Force refresh error:', error);
-    isRefreshingSession = false;
+    cachedUserId = null;
+    cachedUserIdTimestamp = 0;
+    return false;
+  } catch {
     return false;
   }
 }

@@ -459,7 +459,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // `userProfile.id` and `session.user.id`. Reading from there avoids
   // the SDK 2.45+ "getSession returns null on cold start" quirk.
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    // 1. AuthContext (authoritative, always fresh)
+    // ─── 1. AuthContext (authoritative, always fresh) ─────────────
     const fromAuth =
       auth?.userProfile?.id ??
       (auth?.session?.user?.id ?? null);
@@ -468,35 +468,57 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return fromAuth;
     }
 
-    // 2. Cached ref (set previously)
+    // ─── 2. Cached ref (set previously) ───────────────────────────
     if (currentUserIdRef.current) {
       return currentUserIdRef.current;
     }
 
-    // 3. Supabase getSession (with brief retry — auto-refresh may be in flight)
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (!error && session?.user?.id) {
-          currentUserIdRef.current = session.user.id;
-          return session.user.id;
-        }
-        // If getSession fails, try recoverSession
-        if (!session) {
-          const { recoverSession } = await import('@/utils/supabase');
-          const recovered = await recoverSession();
-          if (recovered?.user?.id) {
-            currentUserIdRef.current = recovered.user.id;
-            return recovered.user.id;
-          }
-        }
-      } catch (e) {
-        if (__DEV__) console.warn('[BabyContext] getSession attempt failed:', e);
+    // ─── 3. Supabase getSession — single attempt, no retry ────────
+    // Previously this retried 3x with 400ms delays. That caused a
+    // 1.2s stall on every cold start when there was no session,
+    // and combined with DatabaseContext's refresh loop produced the
+    // "Session expired" log flood. AuthContext owns retry logic now.
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (!error && session?.user?.id) {
+        currentUserIdRef.current = session.user.id;
+        return session.user.id;
       }
-      await new Promise(r => setTimeout(r, 500));
+    } catch {
+      // Silent — caller has other fallbacks
     }
 
-    // 4. Supabase getUser (final fallback — network call)
+    // ─── 4. Read directly from AsyncStorage (Supabase's storage key) ─
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const authKey = keys.find(
+        k => k.includes('auth-token') || k.includes('supabase.auth')
+      );
+      if (authKey) {
+        const stored = await AsyncStorage.getItem(authKey);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            // Supabase stores: { access_token, refresh_token, user, expires_at }
+            const userId =
+              parsed?.user?.id ||
+              parsed?.session?.user?.id ||
+              parsed?.currentSession?.user?.id;
+            if (userId) {
+              if (__DEV__) console.log('[BabyContext] ✅ Recovered user ID from AsyncStorage');
+              currentUserIdRef.current = userId;
+              return userId;
+            }
+          } catch (parseErr) {
+            if (__DEV__) console.warn('[BabyContext] Failed to parse stored session:', parseErr);
+          }
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[BabyContext] AsyncStorage recovery failed:', e);
+    }
+
+    // ─── 5. Supabase getUser (network fallback) ───────────────────
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (!error && user?.id) {
@@ -505,26 +527,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (e) {
       if (__DEV__) console.warn('[BabyContext] getUser failed:', e);
-    }
-
-    // 5. LAST RESORT: Read directly from AsyncStorage
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const authKey = keys.find(k => k.includes('auth-token') || k.includes('supabase.auth'));
-      if (authKey) {
-        const stored = await AsyncStorage.getItem(authKey);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const userId = parsed?.user?.id || parsed?.session?.user?.id;
-          if (userId) {
-            if (__DEV__) console.log('[BabyContext] ✅ Recovered user ID from AsyncStorage');
-            currentUserIdRef.current = userId;
-            return userId;
-          }
-        }
-      }
-    } catch (e) {
-      if (__DEV__) console.warn('[BabyContext] AsyncStorage recovery failed:', e);
     }
 
     if (__DEV__) console.warn('[BabyContext] Could not get user ID from any method');

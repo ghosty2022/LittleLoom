@@ -499,21 +499,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
       ]);
 
-      const baseName = fullName || userEmail.split('@')[0];
+      // ─── FIX: Read the live profile from the profiles table ────
+      // The auth user_metadata may be stale. The profiles table is
+      // the authoritative source for full_name, email, and avatar.
+      let liveFullName = fullName;
+      let liveEmail = userEmail;
+      let liveAvatar = userMeta.avatar || '👤';
+      let livePhone: string | undefined;
+
+      try {
+        const { data: liveProfile } = await supabase
+          .from('profiles')
+          .select('full_name, email, avatar, avatar_url, phone_number')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (liveProfile) {
+          liveFullName = liveProfile.full_name || fullName;
+          liveEmail = liveProfile.email || userEmail;
+          liveAvatar =
+            liveProfile.avatar ||
+            liveProfile.avatar_url ||
+            liveAvatar;
+          livePhone = liveProfile.phone_number || undefined;
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Auth] Live profile fetch failed:', e);
+      }
+
+      const baseName = liveFullName || liveEmail.split('@')[0];
       const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
 
       const userProfile: UserProfile = {
         id: user.id,
-        fullName: baseName,
-        email: userEmail,
-        avatar: userMeta.avatar || '👤',
+        fullName: liveFullName,
+        email: liveEmail,
+        phoneNumber: livePhone,
+        avatar: liveAvatar,
         role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
         createdAt: user.created_at || new Date().toISOString(),
         preferences: { notifications: true, darkMode: false, language: 'en' },
         communityUsername: commUsername || baseName,
         communityHandle: commHandle || baseHandle,
         communityBio: commBio || '',
-        communityAvatar: commAvatar || userMeta.avatar || '👤',
+        communityAvatar: commAvatar || liveAvatar,
         communityDisplayName: commDisplayName || baseName,
         communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
         communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
@@ -1777,21 +1806,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         let isValidSession = false;
         let userProfile = null;
+        let effectiveSession = session;
 
         if (session && token) {
           // ─── Trust the cached session first ─────────────────────
-          // `getSession()` validates the JWT locally (decodes the token
-          // and checks `exp`). We do NOT need a network round trip to
-          // `getUser()` just to confirm that — doing it on every launch
-          // wiped profiles whenever the network hiccuped.
           isValidSession = true;
           if (userProfileStr) {
             try { userProfile = JSON.parse(userProfileStr); } catch {}
           }
 
-          // Optional background verify. If it truly fails with a JWT
-          // error we clear tokens, but we do it asynchronously and do
-          // NOT block the initial render on it.
+          // Optional background verify
           supabase.auth.getUser().then(({ data, error }) => {
             if (error && /jwt|invalid|expired/i.test(error.message)) {
               if (__DEV__) console.warn('[Auth] Token rejected by server:', error.message);
@@ -1801,9 +1825,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ]).then(() => clearUserIdCache());
             }
           }).catch(() => {});
+        } else if (token && !session) {
+          // ─── FIX: Token exists but session is null ──────────────
+          // This happens when Supabase's internal getSession() fails
+          // on cold start but our stored token is still valid.
+          // We try to recover the session from AsyncStorage.
+          try {
+            const keys = await AsyncStorage.getAllKeys();
+            const authKey = keys.find(
+              k => k.includes('auth-token') || k.includes('supabase.auth')
+            );
+            if (authKey) {
+              const stored = await AsyncStorage.getItem(authKey);
+              if (stored) {
+                const parsed = JSON.parse(stored);
+                if (parsed?.access_token && parsed?.refresh_token) {
+                  const { data: setData, error: setError } = await supabase.auth.setSession({
+                    access_token: parsed.access_token,
+                    refresh_token: parsed.refresh_token,
+                  });
+                  if (!setError && setData.session) {
+                    if (__DEV__) console.log('[Auth] ✅ Recovered session from storage');
+                    effectiveSession = setData.session;
+                    isValidSession = true;
+                    if (userProfileStr) {
+                      try { userProfile = JSON.parse(userProfileStr); } catch {}
+                    }
+                  }
+                }
+              }
+            }
+          } catch (recoverErr) {
+            if (__DEV__) console.warn('[Auth] Session recovery failed:', recoverErr);
+          }
         }
 
         if (userProfile && isValidSession) {
+          // ─── FIX: Refresh live name/email/avatar from Supabase ─────
+          // The cached profile may have the fallback "Parent" name.
+          // Always pull the authoritative values from the profiles table.
+          try {
+            const liveUserId =
+              userProfile.id ||
+              effectiveSession?.user?.id;
+
+            if (liveUserId) {
+              const { data: liveProfile } = await supabase
+                .from('profiles')
+                .select('full_name, email, avatar, avatar_url, phone_number')
+                .eq('id', liveUserId)
+                .maybeSingle();
+
+              if (liveProfile) {
+                userProfile = {
+                  ...userProfile,
+                  fullName: liveProfile.full_name || userProfile.fullName || 'Parent',
+                  email: liveProfile.email || userProfile.email || '',
+                  avatar:
+                    liveProfile.avatar ||
+                    liveProfile.avatar_url ||
+                    userProfile.avatar ||
+                    '👤',
+                  phoneNumber: liveProfile.phone_number || userProfile.phoneNumber,
+                };
+              }
+            }
+          } catch (e) {
+            if (__DEV__) console.warn('[Auth] Live profile fetch failed:', e);
+          }
+
           const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
             AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
             AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
@@ -1827,6 +1917,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
             communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
           };
+
+          // Persist the enriched profile so subsequent boots are fast
+          try {
+            await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile));
+          } catch {}
         }
 
         let biometricAvailable = false;
@@ -1882,7 +1977,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             hasBaby,
             availableBiometricTypes: availableTypes,
             biometricTypeName: bioTypeName,
-            session: session || null,
+            session: effectiveSession || null,
           });
         }
         initComplete.current = true;
@@ -1902,15 +1997,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const user = session.user;
         const userMeta = user.user_metadata || {};
 
-        const userProfile: UserProfile = {
-          id: user.id,
-          fullName: userMeta.full_name || userMeta.fullName || user.email?.split('@')[0] || 'User',
-          email: user.email || '',
-          avatar: userMeta.avatar || '👤',
-          role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
-          createdAt: user.created_at || new Date().toISOString(),
-          preferences: { notifications: true, darkMode: false, language: 'en' },
-        };
+        // ─── FIX: Don't overwrite the cached profile with a
+        //     fallback-only stub. Only update the session here; the
+        //     profile is authored by performSignInInternal and/or
+        //     initAuth, which both read the live profiles row.
+        const existingProfile = stateRef.current.userProfile;
+        const sameUser = existingProfile?.id === user.id;
+
+        const userProfile: UserProfile = sameUser && existingProfile
+          ? existingProfile
+          : {
+              id: user.id,
+              fullName:
+                userMeta.full_name ||
+                userMeta.fullName ||
+                user.email?.split('@')[0] ||
+                'User',
+              email: user.email || '',
+              avatar: userMeta.avatar || '👤',
+              role:
+                (userMeta.role as 'parent1' | 'parent2' | 'guardian') ||
+                'parent1',
+              createdAt: user.created_at || new Date().toISOString(),
+              preferences: { notifications: true, darkMode: false, language: 'en' },
+            };
 
         if (isMounted.current) {
           setState(prev => ({
