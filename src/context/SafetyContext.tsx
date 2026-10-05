@@ -784,10 +784,20 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   /* ── Import device contacts using new expo-contacts API ── */
   const importDeviceContacts = useCallback(async () => {
     try {
-      // Request permissions using the new API
-      const { status } = await Location.requestPermissionsAsync();
-      
-      // Use the new Contact class API
+      // ─── Correct permission flow for contacts ────────────────────
+      // The previous version mistakenly called Location.requestPermissionsAsync()
+      // which asked for LOCATION access instead of contacts. That meant
+      // contacts were never actually granted permission, so the import
+      // silently returned zero contacts on iOS, and could crash on Android.
+      const { status } = await Contact.requestPermissionsAsync();
+      if (status !== 'granted') {
+        sweetAlert.alert(
+          'Permission Required',
+          'Please allow access to contacts to import family members.',
+        );
+        return;
+      }
+
       const hasContacts = await Contact.hasAny();
       if (!hasContacts) {
         sweetAlert.alert('No Contacts', 'No contacts found on your device.');

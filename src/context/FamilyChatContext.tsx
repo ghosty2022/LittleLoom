@@ -692,10 +692,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [setupRealtimeListeners]);
 
   /* ─── Kick off sync once family code is known ───────────────── */
+  // Guard on deviceId + familyCode + not-yet-initialized. If the family
+  // code arrives late (async from Supabase), this effect re-fires because
+  // `state.familyCode` is in the deps array.
   useEffect(() => {
-    if (deviceIdRef.current && state.familyCode && !isInitializedRef.current) {
-      performInitialSync();
-    }
+    if (!deviceIdRef.current) return;
+    if (!state.familyCode) return;
+    if (isInitializedRef.current) return;
+
+    performInitialSync();
   }, [state.familyCode, performInitialSync]);
 
   /* ─── Setters ────────────────────────────────────────────────── */

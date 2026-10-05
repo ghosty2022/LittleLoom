@@ -205,11 +205,23 @@ const AppLoadingScreen = React.memo(() => {
 });
 
 // ─── VALIDATE SESSION ──────────────────────────────────────────────
+// CRITICAL: This used to call `supabase.auth.getUser()` which is a
+// NETWORK round trip on SDK 2.117. Any transient network failure
+// (or a token mid-refresh) would return `false`, causing the
+// navigator to bounce the user back to Login even though
+// AuthContext.isAuthenticated was `true`.
+//
+// That was the root cause of the "logged in → pushed to Login → user
+// tries again → 'Invalid login credentials'" loop.
+//
+// We now trust the LOCAL session (getSession decodes the JWT and
+// checks `exp` — no network required). If AuthContext says we're
+// authenticated, we are.
 async function validateSupabaseSession(): Promise<boolean> {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return false;
-    return true;
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) return false;
+    return !!session?.user;
   } catch {
     return false;
   }
@@ -345,18 +357,50 @@ function NavigationContent({
   }, []);
 
   // ─── VALIDATE SESSION ────────────────────────────────────────────
+  // CRITICAL: Prefer AuthContext's verdict. AuthContext already ran a
+  // network validation during boot with proper retry/backoff, and
+  // keeps `isAuthenticated` in sync via `onAuthStateChange`. If it
+  // says we're authenticated, we are — re-checking here would
+  // re-introduce the network-failure → Login bounce loop.
+  //
+  // We only do a lightweight sanity check with `getSession()` which
+  // reads from local storage and requires no network.
   useEffect(() => {
+    let cancelled = false;
+
     const checkSession = async () => {
       if (!isAuthenticated) {
-        setIsValidSession(false);
-        setSessionChecked(true);
+        if (!cancelled) {
+          setIsValidSession(false);
+          setSessionChecked(true);
+        }
         return;
       }
-      const valid = await validateSupabaseSession();
-      setIsValidSession(valid);
-      setSessionChecked(true);
+
+      // AuthContext says authenticated — trust it first.
+      if (!cancelled) setIsValidSession(true);
+
+      // Optional: verify locally (no network). If it fails, we still
+      // don't flip to false because AuthContext is authoritative.
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!cancelled && !session?.user) {
+          // Log for diagnostics but don't bounce.
+          if (__DEV__) {
+            console.warn(
+              '[Navigation] AuthContext says auth=true, but local session is empty. Trusting AuthContext.'
+            );
+          }
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Navigation] Session sanity check failed:', e);
+      }
+
+      if (!cancelled) setSessionChecked(true);
     };
+
     checkSession();
+    return () => { cancelled = true; };
   }, [isAuthenticated]);
 
   // ─── UPDATE REFS ──────────────────────────────────────────────────

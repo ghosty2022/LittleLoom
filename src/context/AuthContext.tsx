@@ -1,5 +1,23 @@
 // src/context/AuthContext.tsx
 // Full Supabase Auth - No local DB fallbacks - FIXED RLS and Avatar issues
+//
+// ─── CHANGELOG (this version) ────────────────────────────────────────
+//   • validateCurrentSession:
+//       - Reads isAuthenticatedRef.current (not state.isAuthenticated)
+//         to avoid stale-closure bugs in the periodic check
+//       - Distinguishes transient errors (network) from a genuine
+//         `session === null` — only wipes state on the latter
+//       - Retries getSession() once after 400ms before declaring
+//         the user logged out, in case auto-refresh is in flight
+//   • signOut:
+//       - Uses { scope: 'local' } so refresh_token is NOT revoked
+//         server-side. Prevents the "Invalid login credentials on
+//         second attempt" bug where an internal cleanup signOut
+//         killed the user's session before their next login.
+//   • Periodic 5-minute check:
+//       - Double-confirms the session is genuinely dead before
+//         triggering signOut. A single failed check no longer logs
+//         the user out.
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Alert } from 'react-native';
@@ -215,16 +233,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isMounted = useRef(true);
   const initComplete = useRef(false);
   const setupCompleteCallbackRef = useRef<(() => Promise<void>) | null>(null);
-  
+
   const signInLock = useRef(false);
   const signInLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const biometricLoginLock = useRef(false);
   const biometricLoginTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSignInTime = useRef(0);
-  
+
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const lastActiveTimeRef = useRef<number>(Date.now());
   const isAuthenticatedRef = useRef<boolean>(false);
+
+  // ─── Refs holding latest state values so callbacks with empty deps
+  //     can still read them without stale closures. ────────────────
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   const acquireSignInLock = useCallback((): boolean => {
     if (signInLock.current) return false;
@@ -279,16 +302,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshSession = useCallback(async (): Promise<boolean> => {
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
-      
+
       if (error || !session) {
-        console.warn('[Auth] Refresh session failed:', error?.message);
+        // Only log — do NOT wipe. A transient error here is not a
+        // reason to log the user out.
+        if (error && __DEV__) {
+          console.warn('[Auth] Refresh session failed:', error.message);
+        }
         return false;
       }
 
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
+
       if (userError || !user) {
-        console.warn('[Auth] Get user failed:', userError?.message);
+        if (userError && __DEV__) {
+          console.warn('[Auth] Get user failed:', userError.message);
+        }
         return false;
       }
 
@@ -297,27 +326,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return true;
     } catch (error) {
-      console.error('[Auth] Refresh session error:', error);
+      if (__DEV__) console.error('[Auth] Refresh session error:', error);
       return false;
     }
   }, []);
 
+  /**
+   * Validate the current Supabase session.
+   *
+   * Behavior:
+   *   • Transient error  → preserve current state, return whether we
+   *                        were authenticated before
+   *   • Session is null  → retry once after 400ms (auto-refresh may
+   *                        be in flight), then wipe if still null
+   *   • Valid session    → update state and return true
+   */
   const validateCurrentSession = useCallback(async (): Promise<boolean> => {
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
 
-      // ─── Distinguish "no session" from "transient failure" ────────
-      // `getSession()` returns `{ session: null, error: null }` when there
-      // genuinely is no session. A real error object means a network
-      // problem — we must NOT wipe the user's saved profile in that case.
+      // ─── Transient error — do NOT wipe user state ────────────────
       if (error) {
-        console.warn('[Auth] Session check failed (transient):', error.message);
-        // Keep existing state — try again later.
-        return Boolean(state.isAuthenticated);
+        if (__DEV__) {
+          console.warn('[Auth] Session check failed (transient):', error.message);
+        }
+        // Read from ref — avoids stale closure when this callback has
+        // an empty deps array.
+        return Boolean(isAuthenticatedRef.current);
       }
 
+      // ─── Genuinely no session — retry once before wiping ─────────
       if (!session) {
-        console.warn('[Auth] No session — clearing local state');
+        await new Promise((r) => setTimeout(r, 400));
+        const { data: { session: retry } } = await supabase.auth.getSession();
+
+        if (retry?.user) {
+          if (isMounted.current) {
+            setState((prev) => ({ ...prev, session: retry }));
+          }
+          return true;
+        }
+
+        // Confirmed dead — wipe local state.
+        if (__DEV__) console.warn('[Auth] No session — clearing local state');
         await Promise.all([
           secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
           secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
@@ -340,16 +391,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
+      // ─── Valid session — keep state fresh ───────────────────────
       if (isMounted.current) {
         setState(prev => ({ ...prev, session }));
       }
 
       const user = session.user;
       const userMeta = user.user_metadata || {};
-      
+
       const currentProfile = await secureStorage.getItem(SECURE_KEYS.USER_PROFILE);
       let profile = currentProfile ? JSON.parse(currentProfile) : null;
-      
+
       if (profile && profile.id !== user.id) {
         const updatedProfile: UserProfile = {
           id: user.id,
@@ -360,34 +412,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: user.created_at || new Date().toISOString(),
           preferences: { notifications: true, darkMode: false, language: 'en' },
         };
-        
+
         await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
         if (isMounted.current) {
           setState(prev => ({ ...prev, userProfile: updatedProfile }));
         }
       }
-      
+
       return true;
     } catch (error) {
-      console.error('[Auth] Session validation error:', error);
-      return false;
+      if (__DEV__) console.error('[Auth] Session validation error:', error);
+      // Fail-safe: don't wipe on unexpected errors.
+      return Boolean(isAuthenticatedRef.current);
     }
   }, []);
 
   const forceLogoutOnInvalidSession = useCallback(async (): Promise<boolean> => {
     try {
       const isValid = await validateCurrentSession();
-      if (!isValid && state.isAuthenticated) {
-        console.log('[Auth] Force logout due to invalid session');
+      if (!isValid && isAuthenticatedRef.current) {
+        if (__DEV__) console.log('[Auth] Force logout due to invalid session');
         await signOut();
         return false;
       }
       return true;
     } catch (error) {
-      console.error('[Auth] Force logout error:', error);
+      if (__DEV__) console.error('[Auth] Force logout error:', error);
       return false;
     }
-  }, [validateCurrentSession, state.isAuthenticated]);
+  }, [validateCurrentSession]);
 
   // ─── SIGN IN ────────────────────────────────────────────────────────────
 
@@ -404,7 +457,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (authError || !authData?.user) {
         console.warn('[Auth] Supabase sign in failed:', authError?.message);
-        
+
         if (authError?.message?.toLowerCase().includes('email not confirmed')) {
           try {
             const { error: resendError } = await supabase.auth.resend({
@@ -412,19 +465,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: email.trim(),
             });
             if (!resendError) {
-              return { 
-                success: false, 
-                message: 'Please check your email and confirm your account. A new confirmation link has been sent.' 
+              return {
+                success: false,
+                message: 'Please check your email and confirm your account. A new confirmation link has been sent.'
               };
             }
           } catch (e) {}
           return { success: false, message: 'Please check your email and confirm your account before signing in.' };
         }
-        
+
         if (authError?.message?.toLowerCase().includes('invalid login credentials')) {
           return { success: false, message: 'Invalid email or password. Please try again.' };
         }
-        
+
         return { success: false, message: authError?.message || 'Unable to sign in. Please try again.' };
       }
 
@@ -445,10 +498,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_STATS),
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
       ]);
-      
+
       const baseName = fullName || userEmail.split('@')[0];
       const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-      
+
       const userProfile: UserProfile = {
         id: user.id,
         fullName: baseName,
@@ -470,7 +523,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
         secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
       ]);
-      
+
       if (!tokenStored || !profileStored) {
         console.warn('[Auth] Failed to save login data to secure storage');
         return { success: false, message: 'Failed to save login data' };
@@ -483,12 +536,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.getItem(ASYNC_KEYS.PARENT2_COMPLETED),
         AsyncStorage.getItem(ASYNC_KEYS.BABY_COMPLETED),
       ]);
-      
+
       const p2Done = hasParent2Str === 'true' ? true : hasParent2Str === 'skipped' ? 'skipped' : false;
       const babyDone = hasBabyStr === 'true' ? true : hasBabyStr === 'skipped' ? 'skipped' : false;
       const bothStepsAddressed = hasParent2Str !== null && hasBabyStr !== null;
       const isSetupComplete = setupCompleteStr === 'true' || bothStepsAddressed;
-      
+
       if (isSetupComplete) {
         await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
       }
@@ -509,7 +562,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true, user };
     } catch (error) {
-      console.error('[Auth] Sign in error:', error);
+      if (__DEV__) console.error('[Auth] Sign in error:', error);
       return { success: false, message: 'An unexpected error occurred. Please try again.' };
     }
   }, []);
@@ -532,8 +585,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
     if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
     try {
-      console.log('[Auth] SignUp attempt for:', email);
-      
+      if (__DEV__) console.log('[Auth] SignUp attempt for:', email);
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -546,42 +599,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (signUpError || !signUpData?.user) {
         console.warn('[Auth] Supabase sign up rejected:', signUpError?.message);
-        
+
         if (signUpError?.message?.toLowerCase().includes('already registered') ||
             signUpError?.message?.toLowerCase().includes('user already exists')) {
-          console.log('[Auth] User exists, attempting sign in...');
+          if (__DEV__) console.log('[Auth] User exists, attempting sign in...');
           const result = await performSignInInternal(email.trim(), password, false);
           return result;
         }
-        
+
         return { success: false, message: signUpError?.message || 'Could not create account' };
       }
 
-      console.log('[Auth] User created successfully:', signUpData.user.id);
+      if (__DEV__) console.log('[Auth] User created successfully:', signUpData.user.id);
       const token = signUpData.session?.access_token || '';
       const userId = signUpData.user.id;
-      
-      // ─── CRITICAL FIX: Wait for session to be established ──────────
-      // Give Supabase a moment to fully establish the session
+
       await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Refresh session to ensure it's valid
       await refreshSession();
-      
+
       try {
         const { error: resendError } = await supabase.auth.resend({
           type: 'signup',
           email: email.trim(),
         });
-        if (!resendError) {
+        if (!resendError && __DEV__) {
           console.log('[Auth] Confirmation email sent');
         }
       } catch (resendErr) {
-        console.warn('[Auth] Could not send confirmation:', resendErr);
+        if (__DEV__) console.warn('[Auth] Could not send confirmation:', resendErr);
       }
-      
+
       const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-      
+
       const userProfile: UserProfile = {
         id: userId,
         fullName,
@@ -633,7 +682,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true };
     } catch (error) {
-      console.error('[Auth] Sign up error:', error);
+      if (__DEV__) console.error('[Auth] Sign up error:', error);
       return { success: false, message: 'Failed to create account. Please try again.' };
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock, performSignInInternal, refreshSession]);
@@ -642,21 +691,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithSocial = useCallback(async (socialUser: SocialUser): Promise<{ success: boolean; message?: string }> => {
     if (!acquireSignInLock()) return { success: false, message: 'Another sign in operation in progress' };
-    
+
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithOAuth({
-        provider: socialUser.provider === 'google' ? 'google' : 
-                  socialUser.provider === 'apple' ? 'apple' : 
+        provider: socialUser.provider === 'google' ? 'google' :
+                  socialUser.provider === 'apple' ? 'apple' :
                   socialUser.provider === 'facebook' ? 'facebook' : 'google',
       });
 
       if (authError) {
-        console.error('[Auth] Social sign in failed:', authError.message);
+        if (__DEV__) console.error('[Auth] Social sign in failed:', authError.message);
         return { success: false, message: 'Unable to sign in with social provider. Please try again.' };
       }
 
       const token = `social_token_${socialUser.provider}_${Date.now()}`;
-      
+
       const userProfile: UserProfile = {
         id: socialUser.id || `social_${Date.now()}`,
         fullName: socialUser.fullName,
@@ -698,7 +747,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true };
     } catch (error) {
-      console.error('Social sign in error:', error);
+      if (__DEV__) console.error('Social sign in error:', error);
       return { success: false, message: 'Social authentication failed' };
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock]);
@@ -708,21 +757,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = useCallback(async (): Promise<void> => {
     if (signInLock.current) await new Promise(resolve => setTimeout(resolve, 1000));
     try {
-      console.log('[Auth] Starting sign out process...');
-      
+      if (__DEV__) console.log('[Auth] Starting sign out process...');
+
       // Clear navigation lock
       await AsyncStorage.setItem('littleloom_security_lock', 'false');
-      
-      // Get current setup state before clearing
-      const [hasParent2Str, hasBabyStr, setupComplete, hasSeenOnboarding] = await Promise.all([
-        AsyncStorage.getItem(ASYNC_KEYS.HAS_PARENT2),
-        AsyncStorage.getItem(ASYNC_KEYS.HAS_BABY),
-        AsyncStorage.getItem(ASYNC_KEYS.SETUP_COMPLETE),
-        AsyncStorage.getItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING),
-      ]);
 
-      // Sign out from Supabase
-      await supabase.auth.signOut();
+      // ─── Sign out LOCALLY only — do NOT revoke the server token ──
+      // `scope: 'local'` clears the session from this device's storage
+      // WITHOUT invalidating the refresh_token server-side.
+      //
+      // Why this matters: the previous default (`scope: 'global'`)
+      // revoked the refresh_token on every signOut call. Our
+      // `validateCurrentSession()` and periodic 5-minute check can
+      // legitimately fail to reach Supabase (network hiccup, cold
+      // start), and each of those failures used to trigger a global
+      // signOut — which then made the user's NEXT login attempt fail
+      // with "Invalid login credentials" because the server had
+      // already revoked the token.
+      //
+      // Local-only cleanup preserves the user's ability to sign back
+      // in immediately, and matches how Supabase's own docs recommend
+      // handling signOut in mobile apps.
+      await supabase.auth.signOut({ scope: 'local' });
 
       // Clear all secure storage
       await Promise.all([
@@ -762,21 +818,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           session: null,
           onboardingComplete: false,
           hasSeenOnboarding: false,
-          isBiometricAvailable: state.isBiometricAvailable,
+          isBiometricAvailable: stateRef.current.isBiometricAvailable,
           isBiometricEnabled: false,
           isBiometricLoginEnabled: false,
           setupComplete: false,
           hasParent2: false,
           hasBaby: false,
-          availableBiometricTypes: state.availableBiometricTypes,
-          biometricTypeName: state.biometricTypeName,
+          availableBiometricTypes: stateRef.current.availableBiometricTypes,
+          biometricTypeName: stateRef.current.biometricTypeName,
         });
       }
 
-      console.log('[Auth] Sign out completed successfully - user is now logged out');
-    } catch (error) { 
-      console.error('[Auth] Sign out error:', error);
-      
+      if (__DEV__) console.log('[Auth] Sign out completed successfully - user is now logged out');
+    } catch (error) {
+      if (__DEV__) console.error('[Auth] Sign out error:', error);
+
       // Even if there's an error, try to reset the auth state
       if (isMounted.current) {
         setState({
@@ -787,18 +843,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           session: null,
           onboardingComplete: false,
           hasSeenOnboarding: false,
-          isBiometricAvailable: state.isBiometricAvailable,
+          isBiometricAvailable: stateRef.current.isBiometricAvailable,
           isBiometricEnabled: false,
           isBiometricLoginEnabled: false,
           setupComplete: false,
           hasParent2: false,
           hasBaby: false,
-          availableBiometricTypes: state.availableBiometricTypes,
-          biometricTypeName: state.biometricTypeName,
+          availableBiometricTypes: stateRef.current.availableBiometricTypes,
+          biometricTypeName: stateRef.current.biometricTypeName,
         });
       }
     }
-  }, [state.isBiometricAvailable, state.availableBiometricTypes, state.biometricTypeName]);
+  }, []);
 
   // ─── BIOMETRIC FUNCTIONS ──────────────────────────────────────────────
 
@@ -808,15 +864,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         LocalAuthentication.hasHardwareAsync(),
         LocalAuthentication.isEnrolledAsync(),
       ]);
-      
+
       if (hasHardware && isEnrolled) {
         let availableTypes: LocalAuthentication.AuthenticationType[] = [];
         try {
           availableTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
         } catch (e) {}
-        
+
         const typeName = getBiometricTypeName(availableTypes);
-        
+
         if (isMounted.current) {
           setState(prev => ({
             ...prev,
@@ -829,7 +885,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return false;
     } catch (error) {
-      console.error('Biometric availability check failed:', error);
+      if (__DEV__) console.error('Biometric availability check failed:', error);
       return false;
     }
   }, []);
@@ -848,7 +904,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         disableDeviceFallback: false,
       });
     } catch (error) {
-      console.error('Biometric authentication error:', error);
+      if (__DEV__) console.error('Biometric authentication error:', error);
       return { success: false, error: String(error) };
     }
   }, [checkBiometricAvailability]);
@@ -868,7 +924,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return false;
     } catch (error) {
-      console.error('Enable biometric error:', error);
+      if (__DEV__) console.error('Enable biometric error:', error);
       return false;
     }
   }, [checkBiometricAvailability, authenticateWithBiometric]);
@@ -885,7 +941,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           secureStorage.setItem(SECURE_KEYS.BIOMETRIC_PASSWORD, password),
           secureStorage.setItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'true'),
         ]);
-        
+
         if (isMounted.current) {
           setState(prev => ({ ...prev, isBiometricLoginEnabled: true }));
         }
@@ -893,7 +949,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return false;
     } catch (error) {
-      console.error('Enable biometric login error:', error);
+      if (__DEV__) console.error('Enable biometric login error:', error);
       return false;
     }
   }, [checkBiometricAvailability, authenticateWithBiometric]);
@@ -906,12 +962,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
         AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'false'),
       ]);
-      
+
       if (isMounted.current) {
         setState(prev => ({ ...prev, isBiometricLoginEnabled: false, isBiometricEnabled: false }));
       }
     } catch (error) {
-      console.error('Disable biometric login error:', error);
+      if (__DEV__) console.error('Disable biometric login error:', error);
     }
   }, []);
 
@@ -932,17 +988,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!acquireBiometricLock()) {
       return { success: false, message: 'Biometric login in progress' };
     }
-    
+
     try {
       const [available, hasCredentials] = await Promise.all([
         checkBiometricAvailability(),
         hasBiometricLoginCredentials(),
       ]);
-      
+
       if (!available) {
         return { success: false, message: 'Biometric authentication not available' };
       }
-      
+
       if (!hasCredentials) {
         return { success: false, message: 'No biometric credentials saved' };
       }
@@ -954,7 +1010,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const email = await secureStorage.getItem(SECURE_KEYS.BIOMETRIC_EMAIL);
       const password = await secureStorage.getItem(SECURE_KEYS.BIOMETRIC_PASSWORD);
-      
+
       if (!email || !password) {
         return { success: false, message: 'Missing biometric credentials' };
       }
@@ -966,7 +1022,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true };
     } catch (error) {
-      console.error('Biometric login error:', error);
+      if (__DEV__) console.error('Biometric login error:', error);
       return { success: false, message: 'Biometric login failed' };
     } finally {
       releaseBiometricLock();
@@ -976,26 +1032,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ─── USER PROFILE FUNCTIONS ───────────────────────────────────────────
 
   const updateUserProfile = useCallback(async (updates: Partial<UserProfile>): Promise<boolean> => {
-    const currentProfile = state.userProfile;
+    const currentProfile = stateRef.current.userProfile;
     if (!currentProfile) return false;
 
     try {
       const updatedProfile = { ...currentProfile, ...updates };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
-      
+
       if (isMounted.current) {
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
       }
-      
+
       return true;
     } catch (error) {
-      console.error('Update user profile error:', error);
+      if (__DEV__) console.error('Update user profile error:', error);
       return false;
     }
-  }, [state.userProfile]);
+  }, []);
 
   const updateUserPreferences = useCallback(async (prefs: Partial<UserProfile['preferences']>): Promise<boolean> => {
-    const currentProfile = state.userProfile;
+    const currentProfile = stateRef.current.userProfile;
     if (!currentProfile) return false;
 
     try {
@@ -1004,25 +1060,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         preferences: { ...currentProfile.preferences, ...prefs } as UserProfile['preferences'],
       };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
-      
+
       if (isMounted.current) {
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
       }
       return true;
     } catch (error) {
-      console.error('Update preferences error:', error);
+      if (__DEV__) console.error('Update preferences error:', error);
       return false;
     }
-  }, [state.userProfile]);
+  }, []);
 
   const getCurrentUserProfile = useCallback((): UserProfile | null => {
-    return state.userProfile;
-  }, [state.userProfile]);
+    return stateRef.current.userProfile;
+  }, []);
 
   // ─── COMMUNITY PROFILE FUNCTIONS ──────────────────────────────────────
 
   const updateCommunityProfile = useCallback(async (updates: { username?: string; handle?: string; bio?: string; avatar?: string; displayName?: string }): Promise<boolean> => {
-    const currentProfile = state.userProfile;
+    const currentProfile = stateRef.current.userProfile;
     if (!currentProfile) return false;
 
     try {
@@ -1034,7 +1090,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.displayName !== undefined) updatedProfile.communityDisplayName = updates.displayName;
 
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
-      
+
       if (updates.username !== undefined) {
         await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_USERNAME, updates.username);
       }
@@ -1056,10 +1112,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return true;
     } catch (error) {
-      console.error('Update community profile error:', error);
+      if (__DEV__) console.error('Update community profile error:', error);
       return false;
     }
-  }, [state.userProfile]);
+  }, []);
 
   const getCommunityProfile = useCallback(async (): Promise<{ username: string; handle: string; bio: string; avatar: string; displayName: string; stats: any; selectedTopics: string[] } | null> => {
     try {
@@ -1083,62 +1139,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectedTopics: selectedTopics ? JSON.parse(selectedTopics) : [],
       };
     } catch (error) {
-      console.error('Get community profile error:', error);
+      if (__DEV__) console.error('Get community profile error:', error);
       return null;
     }
   }, []);
 
   const updateCommunityStats = useCallback(async (stats: Partial<UserProfile['communityStats']>): Promise<boolean> => {
-    const currentProfile = state.userProfile;
+    const currentProfile = stateRef.current.userProfile;
     if (!currentProfile) return false;
 
     try {
       const currentStats = currentProfile.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0 };
       const updatedStats = { ...currentStats, ...stats };
-      
+
       const updatedProfile = { ...currentProfile, communityStats: updatedStats };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
       await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_STATS, JSON.stringify(updatedStats));
-      
+
       if (isMounted.current) {
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
       }
       return true;
     } catch (error) {
-      console.error('Update community stats error:', error);
+      if (__DEV__) console.error('Update community stats error:', error);
       return false;
     }
-  }, [state.userProfile]);
+  }, []);
 
   const updateCommunityTopics = useCallback(async (topics: string[]): Promise<boolean> => {
-    const currentProfile = state.userProfile;
+    const currentProfile = stateRef.current.userProfile;
     if (!currentProfile) return false;
 
     try {
       const updatedProfile = { ...currentProfile, communitySelectedTopics: topics };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
       await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(topics));
-      
+
       if (isMounted.current) {
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
       }
       return true;
     } catch (error) {
-      console.error('Update community topics error:', error);
+      if (__DEV__) console.error('Update community topics error:', error);
       return false;
     }
-  }, [state.userProfile]);
+  }, []);
 
   const updateCommunityUsername = useCallback(async (newUsername: string): Promise<{ success: boolean; message: string }> => {
     const trimmed = newUsername.trim().toLowerCase().replace(/^@/, '');
-    
+
     if (trimmed.length < 3) {
       return { success: false, message: 'Username must be at least 3 characters' };
     }
     if (trimmed.length > 30) {
       return { success: false, message: 'Username must be less than 30 characters' };
     }
-    
+
     const validPattern = /^[a-zA-Z][a-zA-Z0-9_.]*$/;
     if (!validPattern.test(trimmed)) {
       return { success: false, message: 'Must start with a letter. Only letters, numbers, underscores, and dots allowed.' };
@@ -1162,14 +1218,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isUsernameAvailable = useCallback(async (username: string): Promise<{ available: boolean; message: string }> => {
     try {
       const trimmed = username.trim().toLowerCase().replace(/^@/, '');
-      
+
       if (trimmed.length < 3) {
         return { available: false, message: 'Username must be at least 3 characters' };
       }
-      
+
       const registryJson = await AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME);
       const existingUsernames = registryJson ? [registryJson] : [];
-      
+
       const allUsernamesJson = await AsyncStorage.getItem('littleloom_username_registry');
       let allUsernames: string[] = [];
       if (allUsernamesJson) {
@@ -1178,16 +1234,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           allUsernames = Array.isArray(parsed) ? parsed : [];
         } catch {}
       }
-      
+
       const allExisting = [...existingUsernames, ...allUsernames];
-      
+
       if (allExisting.some(u => u.toLowerCase() === trimmed)) {
         return { available: false, message: 'Username is already taken' };
       }
-      
+
       return { available: true, message: 'Username is available' };
     } catch (error) {
-      console.error('Check username availability error:', error);
+      if (__DEV__) console.error('Check username availability error:', error);
       return { available: false, message: 'Failed to check username availability' };
     }
   }, []);
@@ -1196,7 +1252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
     const availability = await isUsernameAvailable(trimmed);
     if (!availability.available) return false;
-    
+
     try {
       const registryJson = await AsyncStorage.getItem('littleloom_username_registry');
       let registry: string[] = registryJson ? JSON.parse(registryJson) : [];
@@ -1204,9 +1260,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       registry.push(trimmed);
       await AsyncStorage.setItem('littleloom_username_registry', JSON.stringify(registry));
     } catch {}
-    
-    return await updateCommunityProfile({ 
-      username: trimmed, 
+
+    return await updateCommunityProfile({
+      username: trimmed,
       handle: `@${trimmed}`,
       displayName: trimmed,
     });
@@ -1218,13 +1274,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const key = step === 'parent2' ? ASYNC_KEYS.PARENT2_COMPLETED : ASYNC_KEYS.BABY_COMPLETED;
       await AsyncStorage.setItem(key, 'skipped');
-      
+
       const stateKey = step === 'parent2' ? 'hasParent2' : 'hasBaby';
       if (isMounted.current) {
         setState(prev => ({ ...prev, [stateKey]: 'skipped' as const }));
       }
     } catch (error) {
-      console.error(`Skip ${step} error:`, error);
+      if (__DEV__) console.error(`Skip ${step} error:`, error);
     }
   }, []);
 
@@ -1232,7 +1288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const key = step === 'parent2' ? ASYNC_KEYS.PARENT2_COMPLETED : ASYNC_KEYS.BABY_COMPLETED;
       await AsyncStorage.setItem(key, 'true');
-      
+
       const stateKey = step === 'parent2' ? 'hasParent2' : 'hasBaby';
       if (isMounted.current) {
         setState(prev => ({ ...prev, [stateKey]: true as const }));
@@ -1246,15 +1302,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (parent2Completed !== null && babyCompleted !== null) {
         await AsyncStorage.setItem(ASYNC_KEYS.SETUP_COMPLETE, 'true');
         await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
-        
+
         if (isMounted.current) {
-          setState(prev => ({ 
-            ...prev, 
-            setupComplete: true, 
-            onboardingComplete: true 
+          setState(prev => ({
+            ...prev,
+            setupComplete: true,
+            onboardingComplete: true
           }));
         }
-        
+
         if (setupCompleteCallbackRef.current) {
           await setupCompleteCallbackRef.current();
         }
@@ -1262,7 +1318,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return true;
     } catch (error) {
-      console.error(`Complete ${step} error:`, error);
+      if (__DEV__) console.error(`Complete ${step} error:`, error);
       return false;
     }
   }, []);
@@ -1277,7 +1333,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ASYNC_KEYS.BABY_COMPLETED,
         ASYNC_KEYS.ONBOARDING_COMPLETE,
       ]);
-      
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1288,7 +1344,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
     } catch (error) {
-      console.error('Reset setup flow error:', error);
+      if (__DEV__) console.error('Reset setup flow error:', error);
     }
   }, []);
 
@@ -1323,7 +1379,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({ ...prev, hasSeenOnboarding: true }));
       }
     } catch (error) {
-      console.error('Mark onboarding seen error:', error);
+      if (__DEV__) console.error('Mark onboarding seen error:', error);
     }
   }, []);
 
@@ -1333,15 +1389,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
         hasBiometricLoginCredentials(),
       ]);
-      
-      if (state.isBiometricAvailable && biometricEnabled !== 'true') {
+
+      if (stateRef.current.isBiometricAvailable && biometricEnabled !== 'true') {
         return true;
       }
       return false;
     } catch (error) {
       return false;
     }
-  }, [state.isBiometricAvailable, hasBiometricLoginCredentials]);
+  }, [hasBiometricLoginCredentials]);
 
   // ─── UTILITY FUNCTIONS ────────────────────────────────────────────────
 
@@ -1354,12 +1410,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const getBiometricTypeInfo = useCallback((): { type: string; icon: string } => {
-    const types = state.availableBiometricTypes;
+    const types = stateRef.current.availableBiometricTypes;
     return {
       type: getBiometricTypeName(types),
       icon: getBiometricIcon(types),
     };
-  }, [state.availableBiometricTypes]);
+  }, []);
 
   const clearAllLocks = useCallback(() => {
     releaseSignInLock();
@@ -1393,17 +1449,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const verifyPassword = useCallback(async (password: string): Promise<boolean> => {
-    if (!state.userProfile?.email) return false;
+    const email = stateRef.current.userProfile?.email;
+    if (!email) return false;
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: state.userProfile.email,
+        email,
         password,
       });
       return !error;
     } catch {
       return false;
     }
-  }, [state.userProfile?.email]);
+  }, []);
 
   // ─── ACCOUNT FUNCTIONS ────────────────────────────────────────────────
 
@@ -1415,246 +1472,231 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, message: 'Account deletion requires additional verification. Please contact support.' };
   }, []);
 
-  // ─── FIXED: SIGN UP WITH INVITE CODE ──────────────────────────────────
-  
-// src/context/AuthContext.tsx - Updated signUpWithInviteCode function
+  // ─── SIGN UP WITH INVITE CODE ─────────────────────────────────────────
 
-// ─── FIXED: SIGN UP WITH INVITE CODE ──────────────────────────────────
-const signUpWithInviteCode = useCallback(async (
-  code: string,
-  fullName: string,
-  email: string,
-  password: string
-): Promise<{ success: boolean; message: string }> => {
-  try {
-    const trimmedCode = code.trim().toUpperCase();
-    
-    // ─── 1. Validate the invite code from the database ──────────────
-    const { data: inviteData, error: inviteError } = await supabase
-      .from('invite_codes')
-      .select('*')
-      .eq('code', trimmedCode)
-      .eq('used', false)
-      .eq('revoked', false)
-      .maybeSingle();
+  const signUpWithInviteCode = useCallback(async (
+    code: string,
+    fullName: string,
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      const trimmedCode = code.trim().toUpperCase();
 
-    if (inviteError) {
-      console.error('[Auth] Invite code validation error:', inviteError);
-      return { success: false, message: 'Error validating invite code' };
-    }
-
-    if (!inviteData) {
-      // ─── Check if this is a partial signup ──────────────────────────
-      const { data: partialData, error: partialError } = await supabase
+      // ─── 1. Validate the invite code from the database ──────────────
+      const { data: inviteData, error: inviteError } = await supabase
         .from('invite_codes')
         .select('*')
         .eq('code', trimmedCode)
-        .eq('used', true)
-        .eq('signup_completed', false)
+        .eq('used', false)
         .eq('revoked', false)
         .maybeSingle();
 
-      if (!partialError && partialData) {
-        // This is a partial signup - allow continuing
-        console.log('[Auth] Continuing partial signup for code:', trimmedCode);
-        // Proceed with signup but don't mark as used again
-      } else {
-        return { success: false, message: 'Invalid or expired invite code' };
+      if (inviteError) {
+        if (__DEV__) console.error('[Auth] Invite code validation error:', inviteError);
+        return { success: false, message: 'Error validating invite code' };
       }
-    }
 
-    // ─── 2. Check if expired ─────────────────────────────────────────
-    const now = Date.now();
-    const expiresAt = (inviteData?.created_at || 0) + (inviteData?.expires_in_days || 7) * 24 * 60 * 60 * 1000;
-    if (inviteData && now > expiresAt) {
-      return { success: false, message: 'Invite code has expired' };
-    }
-
-    // ─── 3. Check if user already exists ─────────────────────────────
-    const { data: existingUser } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', email.trim().toLowerCase())
-      .maybeSingle();
-
-    if (existingUser) {
-      return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
-    }
-
-    // ─── 4. Proceed with signup ──────────────────────────────────────
-    const signUpResult = await signUp(fullName, email, password);
-    
-    if (!signUpResult.success) {
-      return signUpResult;
-    }
-
-    // ─── 5. Get the newly created user ──────────────────────────────
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (user) {
-      // ─── 6. Mark the invite code as used ──────────────────────────
-      if (inviteData) {
-        const { error: updateError } = await supabase
+      if (!inviteData) {
+        // ─── Check if this is a partial signup ──────────────────────────
+        const { data: partialData, error: partialError } = await supabase
           .from('invite_codes')
-          .update({
-            used: true,
-            used_by: user.id,
-            used_at: Date.now(),
-            used_by_email: email.trim().toLowerCase(),
-            used_by_name: fullName.trim(),
-            signup_completed: true,
-            updated_at: Date.now(),
-          })
-          .eq('code', trimmedCode);
+          .select('*')
+          .eq('code', trimmedCode)
+          .eq('used', true)
+          .eq('signup_completed', false)
+          .eq('revoked', false)
+          .maybeSingle();
 
-        if (updateError) {
-          console.error('[Auth] Failed to mark invite code as used:', updateError);
-        }
-      } else {
-        // For partial signup, just mark as completed
-        const { error: updateError } = await supabase
-          .from('invite_codes')
-          .update({
-            signup_completed: true,
-            used_by: user.id,
-            used_by_email: email.trim().toLowerCase(),
-            used_by_name: fullName.trim(),
-            updated_at: Date.now(),
-          })
-          .eq('code', trimmedCode);
-
-        if (updateError) {
-          console.error('[Auth] Failed to complete partial signup:', updateError);
+        if (!partialError && partialData) {
+          if (__DEV__) console.log('[Auth] Continuing partial signup for code:', trimmedCode);
+          // Proceed with signup but don't mark as used again
+        } else {
+          return { success: false, message: 'Invalid or expired invite code' };
         }
       }
 
-      // ─── 7. Create family member entry ─────────────────────────────
-      // This is how guardians are tracked (NOT via guardian_ids)
-      const familyMemberId = `fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      
-      try {
-        // Determine the role from the invite
-        const role = inviteData?.role || 'viewer';
-        const relationship = inviteData?.relationship || 'Family Member';
-        const creatorId = inviteData?.creator_id || user.id;
-        const babyId = inviteData?.family_id;
+      // ─── 2. Check if expired ─────────────────────────────────────────
+      const now = Date.now();
+      const expiresAt = (inviteData?.created_at || 0) + (inviteData?.expires_in_days || 7) * 24 * 60 * 60 * 1000;
+      if (inviteData && now > expiresAt) {
+        return { success: false, message: 'Invite code has expired' };
+      }
 
-        if (!babyId) {
-          console.error('[Auth] No family_id in invite data');
-          return { 
-            success: true, 
-            message: 'Account created but no family found. Please contact support.' 
-          };
-        }
+      // ─── 3. Check if user already exists ─────────────────────────────
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email.trim().toLowerCase())
+        .maybeSingle();
 
-        const familyMemberData = {
-          id: familyMemberId,
-          baby_id: babyId,
-          user_id: user.id,
-          email: email.trim().toLowerCase(),
-          full_name: fullName.trim(),
-          role: role,
-          relationship: relationship,
-          permissions: {},
-          added_at: new Date().toISOString(),
-          added_by: creatorId,
-          can_be_removed: true,
-          notifications_enabled: true,
-          status: 'active',
-          updated_at: new Date().toISOString(),
-          is_deleted: false,
-        };
+      if (existingUser) {
+        return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
+      }
 
-        console.log('[Auth] Creating family member:', JSON.stringify(familyMemberData, null, 2));
+      // ─── 4. Proceed with signup ──────────────────────────────────────
+      const signUpResult = await signUp(fullName, email, password);
 
-        // ─── CRITICAL: Insert into family_members ──────────────────────
-        const { error: familyError } = await supabase
-          .from('family_members')
-          .insert(familyMemberData);
+      if (!signUpResult.success) {
+        return { success: false, message: signUpResult.message || 'Signup failed' };
+      }
 
-        if (familyError) {
-          console.error('[Auth] Failed to create family member:', familyError);
-          
-          // ─── Try with minimal fields if full insert fails ────────────
-          try {
-            const minimalData = {
-              id: familyMemberId,
-              baby_id: babyId,
-              user_id: user.id,
-              email: email.trim().toLowerCase(),
-              full_name: fullName.trim(),
-              role: role,
-              relationship: relationship,
-              permissions: {},
-              added_at: new Date().toISOString(),
-              added_by: creatorId,
-              can_be_removed: true,
-              notifications_enabled: true,
-              status: 'active',
-              updated_at: new Date().toISOString(),
-            };
-            
-            const { error: retryError } = await supabase
-              .from('family_members')
-              .insert(minimalData);
-              
-            if (retryError) {
-              console.error('[Auth] Failed to create family member (retry):', retryError);
-            }
-          } catch (retryErr) {
-            console.error('[Auth] Family member retry failed:', retryErr);
+      // ─── 5. Get the newly created user ──────────────────────────────
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        // ─── 6. Mark the invite code as used ──────────────────────────
+        if (inviteData) {
+          const { error: updateError } = await supabase
+            .from('invite_codes')
+            .update({
+              used: true,
+              used_by: user.id,
+              used_at: Date.now(),
+              used_by_email: email.trim().toLowerCase(),
+              used_by_name: fullName.trim(),
+              signup_completed: true,
+              updated_at: Date.now(),
+            })
+            .eq('code', trimmedCode);
+
+          if (updateError) {
+            if (__DEV__) console.error('[Auth] Failed to mark invite code as used:', updateError);
           }
         } else {
-          console.log('[Auth] Family member created successfully:', familyMemberId);
-        }
+          const { error: updateError } = await supabase
+            .from('invite_codes')
+            .update({
+              signup_completed: true,
+              used_by: user.id,
+              used_by_email: email.trim().toLowerCase(),
+              used_by_name: fullName.trim(),
+              updated_at: Date.now(),
+            })
+            .eq('code', trimmedCode);
 
-        // ─── 8. If role is parent2, update baby's parent2_id ──────────
-        if (role === 'parent2') {
-          try {
-            const { error: updateBabyError } = await supabase
-              .from('babies')
-              .update({
-                parent2_id: user.id,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', babyId);
-
-            if (updateBabyError) {
-              console.error('[Auth] Failed to update parent2:', updateBabyError);
-            }
-          } catch (updateParent2Error) {
-            console.error('[Auth] Parent2 update error:', updateParent2Error);
+          if (updateError) {
+            if (__DEV__) console.error('[Auth] Failed to complete partial signup:', updateError);
           }
         }
-        
-        // ─── 9. If role is guardian or viewer, no extra updates needed ──
-        // They are already in family_members, which BabyContext queries
 
-      } catch (familyInsertError) {
-        console.error('[Auth] Family member insertion error:', familyInsertError);
-        // Don't fail the signup, continue
+        // ─── 7. Create family member entry ─────────────────────────────
+        const familyMemberId = `fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+        try {
+          const role = inviteData?.role || 'viewer';
+          const relationship = inviteData?.relationship || 'Family Member';
+          const creatorId = inviteData?.creator_id || user.id;
+          const babyId = inviteData?.family_id;
+
+          if (!babyId) {
+            if (__DEV__) console.error('[Auth] No family_id in invite data');
+            return {
+              success: true,
+              message: 'Account created but no family found. Please contact support.'
+            };
+          }
+
+          const familyMemberData = {
+            id: familyMemberId,
+            baby_id: babyId,
+            user_id: user.id,
+            email: email.trim().toLowerCase(),
+            full_name: fullName.trim(),
+            role: role,
+            relationship: relationship,
+            permissions: {},
+            added_at: new Date().toISOString(),
+            added_by: creatorId,
+            can_be_removed: true,
+            notifications_enabled: true,
+            status: 'active',
+            updated_at: new Date().toISOString(),
+            is_deleted: false,
+          };
+
+          if (__DEV__) console.log('[Auth] Creating family member:', JSON.stringify(familyMemberData, null, 2));
+
+          const { error: familyError } = await supabase
+            .from('family_members')
+            .insert(familyMemberData);
+
+          if (familyError) {
+            if (__DEV__) console.error('[Auth] Failed to create family member:', familyError);
+
+            try {
+              const minimalData = {
+                id: familyMemberId,
+                baby_id: babyId,
+                user_id: user.id,
+                email: email.trim().toLowerCase(),
+                full_name: fullName.trim(),
+                role: role,
+                relationship: relationship,
+                permissions: {},
+                added_at: new Date().toISOString(),
+                added_by: creatorId,
+                can_be_removed: true,
+                notifications_enabled: true,
+                status: 'active',
+                updated_at: new Date().toISOString(),
+              };
+
+              const { error: retryError } = await supabase
+                .from('family_members')
+                .insert(minimalData);
+
+              if (retryError) {
+                if (__DEV__) console.error('[Auth] Failed to create family member (retry):', retryError);
+              }
+            } catch (retryErr) {
+              if (__DEV__) console.error('[Auth] Family member retry failed:', retryErr);
+            }
+          } else {
+            if (__DEV__) console.log('[Auth] Family member created successfully:', familyMemberId);
+          }
+
+          // ─── 8. If role is parent2, update baby's parent2_id ──────────
+          if (role === 'parent2') {
+            try {
+              const { error: updateBabyError } = await supabase
+                .from('babies')
+                .update({
+                  parent2_id: user.id,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', babyId);
+
+              if (updateBabyError) {
+                if (__DEV__) console.error('[Auth] Failed to update parent2:', updateBabyError);
+              }
+            } catch (updateParent2Error) {
+              if (__DEV__) console.error('[Auth] Parent2 update error:', updateParent2Error);
+            }
+          }
+        } catch (familyInsertError) {
+          if (__DEV__) console.error('[Auth] Family member insertion error:', familyInsertError);
+        }
       }
+
+      const roleDisplay = inviteData?.role === 'parent2' ? 'Parent 2'
+        : inviteData?.role === 'guardian' ? 'Guardian'
+        : 'Viewer';
+
+      return {
+        success: true,
+        message: `Welcome to the family! You've joined as ${roleDisplay}`
+      };
+    } catch (error) {
+      if (__DEV__) console.error('[Auth] Sign up with invite code error:', error);
+      return { success: false, message: 'Failed to join family. Please try again.' };
     }
+  }, [signUp]);
 
-    const roleDisplay = inviteData?.role === 'parent2' ? 'Parent 2' 
-      : inviteData?.role === 'guardian' ? 'Guardian' 
-      : 'Viewer';
-
-    return { 
-      success: true, 
-      message: `Welcome to the family! You've joined as ${roleDisplay}` 
-    };
-  } catch (error) {
-    console.error('[Auth] Sign up with invite code error:', error);
-    return { success: false, message: 'Failed to join family. Please try again.' };
-  }
-}, [signUp]);
-
-  // ─── FIND USER FUNCTIONS (Supabase only) ─────────────────────────────
+  // ─── FIND USER FUNCTIONS ──────────────────────────────────────────────
 
   const findUserByEmail = useCallback(async (email: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
     try {
-      // Try to find user in profiles table first
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('id, email, full_name, role')
@@ -1670,12 +1712,9 @@ const signUpWithInviteCode = useCallback(async (
         };
       }
 
-      // NOTE: supabase.auth.admin.listUsers requires a service-role key and
-      // will 401 on the client. We therefore rely exclusively on the
-      // `profiles` table (queried above). If a profile is missing, return null.
       return null;
     } catch (error) {
-      console.error('Find user by email error:', error);
+      if (__DEV__) console.error('Find user by email error:', error);
       return null;
     }
   }, []);
@@ -1701,12 +1740,12 @@ const signUpWithInviteCode = useCallback(async (
 
   useEffect(() => {
     if (initComplete.current) return;
-    
+
     const initAuth = async () => {
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
+
+        if (sessionError && __DEV__) {
           console.warn('[Auth] Session error:', sessionError.message);
         }
 
@@ -1738,23 +1777,24 @@ const signUpWithInviteCode = useCallback(async (
 
         let isValidSession = false;
         let userProfile = null;
-        
+
         if (session && token) {
           // ─── Trust the cached session first ─────────────────────
-          // `getSession()` already validates the JWT locally (it decodes
-          // the token and checks `exp`). We do NOT need a network round
-          // trip to `getUser()` just to confirm that. Calling it on every
-          // launch was wiping profiles whenever the network hiccuped.
+          // `getSession()` validates the JWT locally (decodes the token
+          // and checks `exp`). We do NOT need a network round trip to
+          // `getUser()` just to confirm that — doing it on every launch
+          // wiped profiles whenever the network hiccuped.
           isValidSession = true;
           if (userProfileStr) {
             try { userProfile = JSON.parse(userProfileStr); } catch {}
           }
 
-          // Optional: verify in background. If it fails, we do NOT wipe.
+          // Optional background verify. If it truly fails with a JWT
+          // error we clear tokens, but we do it asynchronously and do
+          // NOT block the initial render on it.
           supabase.auth.getUser().then(({ data, error }) => {
             if (error && /jwt|invalid|expired/i.test(error.message)) {
-              // Token truly dead — clear.
-              console.warn('[Auth] Token rejected by server:', error.message);
+              if (__DEV__) console.warn('[Auth] Token rejected by server:', error.message);
               Promise.all([
                 secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
                 secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
@@ -1762,7 +1802,7 @@ const signUpWithInviteCode = useCallback(async (
             }
           }).catch(() => {});
         }
-        
+
         if (userProfile && isValidSession) {
           const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
             AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
@@ -1773,10 +1813,10 @@ const signUpWithInviteCode = useCallback(async (
             AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_STATS),
             AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
           ]);
-          
+
           const baseName = userProfile.fullName || 'Parent';
           const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-          
+
           userProfile = {
             ...userProfile,
             communityUsername: commUsername || baseName,
@@ -1788,11 +1828,11 @@ const signUpWithInviteCode = useCallback(async (
             communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
           };
         }
-        
+
         let biometricAvailable = false;
         let availableTypes: LocalAuthentication.AuthenticationType[] = [];
         let bioTypeName = 'Biometric';
-        
+
         try {
           if (LocalAuthentication?.hasHardwareAsync) {
             const [hasHardware, isEnrolled] = await Promise.all([
@@ -1813,11 +1853,11 @@ const signUpWithInviteCode = useCallback(async (
         const bothStepsAddressed = p2Done && bDone;
         const shouldBeSetupComplete = explicitSetupComplete || bothStepsAddressed;
 
-        const hasParent2 = parent2Completed === 'true' ? true : 
+        const hasParent2 = parent2Completed === 'true' ? true :
                           parent2Completed === 'skipped' ? 'skipped' :
                           hasParent2Str === 'true' ? true :
                           hasParent2Str === 'skipped' ? 'skipped' : false;
-                          
+
         const hasBaby = babyCompleted === 'true' ? true :
                        babyCompleted === 'skipped' ? 'skipped' :
                        hasBabyStr === 'true' ? true :
@@ -1847,7 +1887,7 @@ const signUpWithInviteCode = useCallback(async (
         }
         initComplete.current = true;
       } catch (error) {
-        console.error('Auth init failed:', error);
+        if (__DEV__) console.error('Auth init failed:', error);
         if (isMounted.current) setState(prev => ({ ...prev, isLoading: false }));
         initComplete.current = true;
       }
@@ -1856,12 +1896,12 @@ const signUpWithInviteCode = useCallback(async (
     initAuth();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Auth state change:', event);
-      
+      if (__DEV__) console.log('[Auth] Auth state change:', event);
+
       if (event === 'SIGNED_IN' && session) {
         const user = session.user;
         const userMeta = user.user_metadata || {};
-        
+
         const userProfile: UserProfile = {
           id: user.id,
           fullName: userMeta.full_name || userMeta.fullName || user.email?.split('@')[0] || 'User',
@@ -1871,7 +1911,7 @@ const signUpWithInviteCode = useCallback(async (
           createdAt: user.created_at || new Date().toISOString(),
           preferences: { notifications: true, darkMode: false, language: 'en' },
         };
-        
+
         if (isMounted.current) {
           setState(prev => ({
             ...prev,
@@ -1882,7 +1922,7 @@ const signUpWithInviteCode = useCallback(async (
           }));
         }
       } else if (event === 'SIGNED_OUT') {
-        console.log('[Auth] SIGNED_OUT event received, clearing state');
+        if (__DEV__) console.log('[Auth] SIGNED_OUT event received, clearing state');
         clearUserIdCache();
         if (isMounted.current) {
           setState({
@@ -1893,14 +1933,14 @@ const signUpWithInviteCode = useCallback(async (
             session: null,
             onboardingComplete: false,
             hasSeenOnboarding: false,
-            isBiometricAvailable: state.isBiometricAvailable,
+            isBiometricAvailable: stateRef.current.isBiometricAvailable,
             isBiometricEnabled: false,
             isBiometricLoginEnabled: false,
             setupComplete: false,
             hasParent2: false,
             hasBaby: false,
-            availableBiometricTypes: state.availableBiometricTypes,
-            biometricTypeName: state.biometricTypeName,
+            availableBiometricTypes: stateRef.current.availableBiometricTypes,
+            biometricTypeName: stateRef.current.biometricTypeName,
           });
         }
       } else if (event === 'TOKEN_REFRESHED' && session) {
@@ -1919,21 +1959,31 @@ const signUpWithInviteCode = useCallback(async (
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
-    
+
     if (state.isAuthenticated) {
       intervalId = setInterval(async () => {
         try {
           const isValid = await validateCurrentSession();
           if (!isValid && isMounted.current) {
-            console.log('[Auth] Periodic session check failed, logging out...');
-            await signOut();
+            // ─── Double-confirm before hard signOut ────────────────
+            // A single failed validation could be a network blip.
+            // Ask once more after a short delay; only sign out if
+            // the session is confirmed dead on both attempts.
+            await new Promise((r) => setTimeout(r, 1500));
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session && isMounted.current) {
+              if (__DEV__) console.log('[Auth] Session confirmed dead — signing out');
+              await signOut();
+            } else if (isMounted.current && __DEV__) {
+              console.log('[Auth] Session recovered — skipping signOut');
+            }
           }
         } catch (error) {
-          console.warn('[Auth] Periodic session check error:', error);
+          if (__DEV__) console.warn('[Auth] Periodic session check error:', error);
         }
       }, 300000);
     }
-    
+
     return () => {
       if (intervalId) {
         clearInterval(intervalId);

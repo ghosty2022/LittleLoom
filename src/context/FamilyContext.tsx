@@ -6,6 +6,7 @@ import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from './AuthContext';
+import { useBaby } from './BabyContext';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
 
@@ -81,10 +82,20 @@ const showAlert = (title: string, message: string) => {
 
 export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile: authProfile, session } = useAuth();
+
+  // ─── BabyContext is the authoritative source for "which baby is active".
+  // FamilyContext must MIRROR BabyContext (not re-query from scratch),
+  // otherwise Parent 2 / Guardian sessions show an empty family because
+  // the old `parent1_id` query returned nothing.
+  const {
+    currentBaby: babyFromContext,
+    currentBabyId: babyIdFromContext,
+    babies: babiesFromContext,
+  } = useBaby();
   
-  const [currentBaby, setCurrentBaby] = useState<any>(null);
-  const [babies, setBabies] = useState<any[]>([]);
-  const [babyLoading, setBabyLoading] = useState(true);
+  const [currentBaby, setCurrentBaby] = useState<any>(babyFromContext ?? null);
+  const [babies, setBabies] = useState<any[]>(babiesFromContext ?? []);
+  const [babyLoading, setBabyLoading] = useState(!babyFromContext);
 
   const [state, setState] = useState<FamilyState>({
     isLoading: false,
@@ -127,56 +138,135 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [authProfile?.id]);
 
+  // ─── Sync from BabyContext FIRST (Parent 2 / Guardian support) ────
+  // BabyContext already knows how to find babies via parent1_id,
+  // parent2_id, family_members, AND invite_codes. It's the single
+  // source of truth. We mirror its state instead of re-querying.
+  useEffect(() => {
+    if (babyFromContext) {
+      setCurrentBaby(babyFromContext);
+      setBabyLoading(false);
+    }
+    if (Array.isArray(babiesFromContext) && babiesFromContext.length > 0) {
+      setBabies(babiesFromContext);
+    }
+  }, [babyFromContext, babiesFromContext]);
+
+  // ─── React to baby switches ───────────────────────────────────────
+  // If BabyContext switches baby (via switchBaby), reload family for
+  // the new baby. Without this, `currentBaby` went stale.
+  useEffect(() => {
+    const newId = babyIdFromContext ?? babyFromContext?.id ?? null;
+    if (!newId) return;
+    if (currentBaby?.id === newId) return;
+
+    if (babyFromContext) {
+      setCurrentBaby(babyFromContext);
+    }
+    // Reload family for the new baby
+    loadFamilyRef.current?.();
+  }, [babyIdFromContext, babyFromContext?.id, currentBaby?.id]);
+
+  // ─── Fallback: query Supabase only if BabyContext is empty ────────
+  // This preserves backward compatibility while giving BabyContext
+  // precedence. It also covers the very first render before
+  // BabyContext has hydrated.
   const loadBabyData = useCallback(async () => {
     if (!authProfile?.id) return;
+    if (babyFromContext) {
+      // BabyContext has data → we're done, just mirror.
+      setCurrentBaby(babyFromContext);
+      setBabyLoading(false);
+      return;
+    }
 
     try {
       setBabyLoading(true);
 
-      const { data: settingData } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'current_baby_id')
-        .eq('user_id', authProfile.id)
-        .maybeSingle();
+      // Query ALL paths — parent1, parent2, and family_members.
+      // The old code only checked parent1, which hid the baby from
+      // Parent 2 and Guardian sessions.
+      const babyIds = new Set<string>();
 
-      const currentBabyId = settingData?.value;
-
-      if (currentBabyId) {
-        const { data: babyData, error: babyError } = await supabase
-          .from('babies')
-          .select('*')
-          .eq('id', currentBabyId)
-          .eq('is_active', true)
+      // path 1: app_settings current_baby_id
+      try {
+        const { data: settingData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'current_baby_id')
+          .eq('user_id', authProfile.id)
           .maybeSingle();
+        if (settingData?.value) babyIds.add(settingData.value);
+      } catch {}
 
-        if (!babyError && babyData) {
-          setCurrentBaby(babyData);
-        }
+      // path 2: parent1_id
+      try {
+        const { data } = await supabase
+          .from('babies')
+          .select('id')
+          .eq('parent1_id', authProfile.id)
+          .eq('is_active', true);
+        (data ?? []).forEach((b: any) => b?.id && babyIds.add(b.id));
+      } catch {}
+
+      // path 3: parent2_id
+      try {
+        const { data } = await supabase
+          .from('babies')
+          .select('id')
+          .eq('parent2_id', authProfile.id)
+          .eq('is_active', true);
+        (data ?? []).forEach((b: any) => b?.id && babyIds.add(b.id));
+      } catch {}
+
+      // path 4: family_members
+      try {
+        const { data: fmRows } = await supabase
+          .from('family_members')
+          .select('baby_id')
+          .eq('user_id', authProfile.id)
+          .eq('status', 'active')
+          .is('deleted_at', null);
+        (fmRows ?? []).forEach((fm: any) => fm?.baby_id && babyIds.add(fm.baby_id));
+      } catch {}
+
+      const idList = [...babyIds].filter(Boolean);
+
+      if (idList.length === 0) {
+        setBabies([]);
+        setCurrentBaby(null);
+        setBabyLoading(false);
+        return;
       }
 
       const { data: allBabies, error: allError } = await supabase
         .from('babies')
         .select('*')
-        .eq('parent1_id', authProfile.id)
+        .in('id', idList)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
       if (!allError && allBabies) {
         setBabies(allBabies);
+        // Pick current from app_settings if valid, otherwise first
+        const wantedId = babyIdFromContext;
+        const chosen = wantedId
+          ? allBabies.find((b: any) => b.id === wantedId) ?? allBabies[0]
+          : allBabies[0];
+        setCurrentBaby(chosen ?? null);
       }
     } catch (error) {
       console.warn('[FamilyProvider] Could not load baby data:', error);
     } finally {
       setBabyLoading(false);
     }
-  }, [authProfile?.id]);
+  }, [authProfile?.id, babyFromContext, babyIdFromContext]);
 
   useEffect(() => {
     if (authProfile?.id) {
       loadBabyData();
     }
-  }, [authProfile?.id]);
+  }, [authProfile?.id, babyFromContext?.id]);
 
   const isOwner = useMemo(() => {
     const effectiveProfile = authProfile;

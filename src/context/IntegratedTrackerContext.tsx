@@ -257,6 +257,10 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     predictiveAchievements: [],
   });
 
+    // ─── Stable ref so effects can read current state without re-subscribing ───
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
+
   // ─── FIXED: Use refs to track previous values and prevent infinite loops ──
   const prevEntriesRef = useRef<any[]>([]);
   const prevGrowthDataRef = useRef<any[]>([]);
@@ -318,7 +322,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
       ? growthIndex.generateReminders(entries, trackers, score) 
       : [];
     const newAchievements = typeof growthIndex?.checkNewAchievements === 'function'
-      ? growthIndex.checkNewAchievements(entries, score, state.unlockedAchievements)
+      ? growthIndex.checkNewAchievements(entries, score, stateRef.current.unlockedAchievements)
       : [];
 
     const streak = calculateStreak(entries);
@@ -330,7 +334,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     const correlations = analyzeCorrelations(entries);
 
     const predictiveAchievements = buildPredictiveAchievements(
-      entries, predictiveReminders, score, state.unlockedAchievements
+      entries, predictiveReminders, score, stateRef.current.unlockedAchievements
     );
 
     setState(prev => ({
@@ -355,7 +359,17 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     }
 
     processingRef.current = false;
-  }, [entries, growthData, currentBaby, growthIndex, predictiveReminders, state.unlockedAchievements, trackers]);
+    // NOTE: `state.unlockedAchievements` intentionally omitted from deps
+    // because the effect reads it via `stateRef.current` below, avoiding
+    // the recompute cascade that fired on every dismissAchievement call.
+  }, [
+    entries,
+    growthData,
+    currentBaby,
+    growthIndex,
+    predictiveReminders,
+    trackers,
+  ]);
 
   /* ── Helpers ── */
   const calculateAgeInMonths = (birthDate: string): number => {

@@ -11,9 +11,17 @@
 // NOT RESPONSIBLE FOR:
 //   • Tracker entries → use `useTracker()` from `@/hooks/useTrackerContext`
 //
-// The entry-related methods below are SILENT STUBS kept only for
-// backward compatibility with older screens. They return safe defaults
-// (false / [] / 0 / null) and log nothing. New code must use useTracker().
+// ─── CRITICAL FIX (this version) ─────────────────────────────────────
+// `getCurrentUserId()` used to call `supabase.auth.getSession()` and
+// returned null when the SDK's local-only getSession returned
+// `{ session: null }` on cold start (SDK 2.45+ behavior). That made
+// `loadBabies()` short-circuit and the user saw zero babies even
+// though AuthContext had already verified a session.
+//
+// We now read the user ID from `useAuth()` FIRST (that context is
+// always authoritative), and only fall back to `supabase.auth.*` as a
+// last resort. AuthContext keeps `.session` and `.userProfile` in
+// sync across every auth state transition, so this is always fresh.
 // ─────────────────────────────────────────────────────────────────────
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,6 +30,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { useAuth } from './AuthContext';
 
 // ─── STORAGE KEYS ────────────────────────────────────────────────────────
 export const STORAGE_KEYS = {
@@ -199,6 +208,12 @@ let babyChangeSubscribers: BabyChangeCallback[] = [];
 // PROVIDER
 // ═══════════════════════════════════════════════════════════════════════
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // ─── Auth is the authoritative source for user identity ──────────
+  const auth = useAuth();
+  const authUserId: string | null =
+    auth?.userProfile?.id ??
+    (auth?.session?.user?.id ?? null);
+
   const [state, setState] = useState<BabyState>({
     isLoading: false,
     isSyncing: false,
@@ -233,9 +248,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const maxLoadAttempts = 5;
-  const currentUserIdRef = useRef<string | null>(null);
+  const currentUserIdRef = useRef<string | null>(authUserId);
   const authStateListenerRef = useRef<any>(null);
   const lastBroadcastedBabyIdRef = useRef<string | null>(null);
+
+  // ─── Keep currentUserIdRef in sync with AuthContext ───────────────
+  useEffect(() => {
+    if (authUserId) {
+      currentUserIdRef.current = authUserId;
+    }
+  }, [authUserId]);
 
   // ─── Age calculation ────────────────────────────────────────────────
   const calculateAge = useCallback((birthDate: string): string => {
@@ -432,17 +454,40 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // ─── getCurrentUserId ──────────────────────────────────────────────
+  // ─── CRITICAL FIX: read from AuthContext FIRST, then Supabase ─────
+  // AuthContext has already verified the session. It exposes both
+  // `userProfile.id` and `session.user.id`. Reading from there avoids
+  // the SDK 2.45+ "getSession returns null on cold start" quirk.
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (!error && session?.user?.id) {
-        currentUserIdRef.current = session.user.id;
-        return session.user.id;
-      }
-    } catch (e) {
-      console.warn('[BabyContext] Session check failed:', e);
+    // 1. AuthContext (authoritative, always fresh)
+    const fromAuth =
+      auth?.userProfile?.id ??
+      (auth?.session?.user?.id ?? null);
+    if (fromAuth) {
+      currentUserIdRef.current = fromAuth;
+      return fromAuth;
     }
 
+    // 2. Cached ref (set previously)
+    if (currentUserIdRef.current) {
+      return currentUserIdRef.current;
+    }
+
+    // 3. Supabase getSession (with brief retry — auto-refresh may be in flight)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (!error && session?.user?.id) {
+          currentUserIdRef.current = session.user.id;
+          return session.user.id;
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[BabyContext] getSession attempt failed:', e);
+      }
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    // 4. Supabase getUser (final fallback — network call)
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (!error && user?.id) {
@@ -450,12 +495,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return user.id;
       }
     } catch (e) {
-      console.warn('[BabyContext] getUser failed:', e);
+      if (__DEV__) console.warn('[BabyContext] getUser failed:', e);
     }
 
-    console.warn('[BabyContext] Could not get user ID from any method');
+    if (__DEV__) console.warn('[BabyContext] Could not get user ID from any method');
     return null;
-  }, []);
+  }, [auth?.userProfile?.id, auth?.session?.user?.id]);
 
   // ─── loadBabies ────────────────────────────────────────────────────
   const loadBabies = useCallback(async (force = false) => {
@@ -476,7 +521,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // ─── Retry once: session hydration can lag on cold start ────────
       if (!userId) {
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 500));
         userId = await getCurrentUserId();
       }
 
@@ -1032,6 +1077,33 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadBabies]);
 
+  // ─── React to AuthContext identity change ──────────────────────────
+  // When AuthContext updates (signIn/signOut/refresh), re-run loadBabies.
+  useEffect(() => {
+    if (authUserId) {
+      initRef.current = false;
+      backfillRanRef.current = false;
+      // Small delay so AuthContext's own state commit lands first.
+      const t = setTimeout(() => {
+        if (isMounted.current) loadBabies(true);
+      }, 300);
+      return () => clearTimeout(t);
+    } else {
+      // User logged out — clear.
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          babies: [],
+          currentBabyId: null,
+          currentBaby: null,
+          isInitialized: false,
+          userRoles: {},
+          userPermissions: {},
+        }));
+      }
+    }
+  }, [authUserId, loadBabies]);
+
   // ─── Initial load ───────────────────────────────────────────────────
   useEffect(() => {
     if (initRef.current) return;
@@ -1040,6 +1112,15 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initialize = async () => {
       if (__DEV__) console.log('[BabyContext] Initializing...');
 
+      // Try AuthContext first
+      const fromAuth = authUserId;
+      if (fromAuth) {
+        currentUserIdRef.current = fromAuth;
+        await loadBabies();
+        return;
+      }
+
+      // Fall back to Supabase getSession
       let hasSession = false;
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -1100,7 +1181,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authStateListenerRef.current?.subscription?.unsubscribe?.();
       }
     };
-  }, [loadBabies]);
+  }, [loadBabies, authUserId]);
 
   // ─── Auto-refresh on app focus ──────────────────────────────────────
   useEffect(() => {
@@ -1815,10 +1896,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ]);
 
   // ─── DEPRECATED ENTRY STUBS (silent, no warnings) ───────────────────
-  // These exist ONLY so old screens that still call useBaby().<method>()
-  // don't crash. They return safe defaults and log nothing.
-  // New code must use useTracker() as the source of truth.
-
   const entries = useMemo<ActivityEntry[]>(() => [], []);
 
   const loadEntries = useCallback(async () => {}, []);

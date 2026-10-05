@@ -887,8 +887,15 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
   /* ─── REAL-TIME SYNC ─────────────────────────────────────────────── */
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
+  // ─── Realtime subscription ────────────────────────────────────────
+  // IMPORTANT: We depend on `currentBabyIdState` (a state value) rather
+  // than `getCurrentBabyId` (a stable ref-based getter). `getCurrentBabyId`
+  // has `[]` deps and never changes identity, so the effect below would
+  // only run once at mount — meaning switching baby would leave the
+  // channel bound to the OLD baby and new entries would never arrive
+  // via realtime.
   useEffect(() => {
-    const babyId = getCurrentBabyId();
+    const babyId = currentBabyIdState;
     if (!babyId) return;
 
     // Tear down any existing channel
@@ -952,7 +959,13 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         realtimeChannelRef.current = null;
       }
     };
-  }, [getCurrentBabyId]);
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [currentBabyIdState]);
 
   // NOTE: mapRowToEntry is declared above the realtime effect — do not re-declare.
 
@@ -1404,22 +1417,32 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         }
       }
 
-      const updatedEntries = [newEntry, ...state.entries];
-
-      const updatedEntriesByTracker = { ...state.entriesByTracker };
-      if (!updatedEntriesByTracker[trackerId]) {
-        updatedEntriesByTracker[trackerId] = [];
-      }
-      updatedEntriesByTracker[trackerId] = [newEntry, ...updatedEntriesByTracker[trackerId]];
+      // ─── Use functional update to avoid clobbering concurrent adds ──
+      // Reading `state.entries` here would race with any other in-flight
+      // insert. The functional form always sees the latest committed state.
+      // We capture the latest entries into a local so the streak calculation
+      // below can use them without needing `state.entries` in deps.
+      let entriesSnapshot: TrackerEntry[] = state.entries;
+      setState(prev => {
+        entriesSnapshot = [newEntry, ...prev.entries];
+        const updatedEntries = [newEntry, ...prev.entries];
+        const updatedEntriesByTracker = { ...prev.entriesByTracker };
+        if (!updatedEntriesByTracker[trackerId]) {
+          updatedEntriesByTracker[trackerId] = [];
+        }
+        updatedEntriesByTracker[trackerId] = [
+          newEntry,
+          ...updatedEntriesByTracker[trackerId],
+        ];
+        return {
+          ...prev,
+          entries: updatedEntries,
+          entriesByTracker: updatedEntriesByTracker,
+          lastTrackerId: trackerId,
+        };
+      });
 
       await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.LAST_TRACKER, trackerId);
-
-      setState(prev => ({
-        ...prev,
-        entries: updatedEntries,
-        entriesByTracker: updatedEntriesByTracker,
-        lastTrackerId: trackerId,
-      }));
 
       // ─── AI learning: fire-and-forget, but track failures ────────
       //     Uses observeEntry() from bootstrap.ts (canonical metric map).
@@ -1456,7 +1479,8 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       //     (throttled to once per 12h by CohortPriors; no need to publish
       //     on every single entry — that's wasteful and can race.)
 
-      const streak = calculateStreak(trackerId, updatedEntries, babyId);
+      // ─── Streak check uses the snapshot captured inside the setState ──
+      const streak = calculateStreak(trackerId, entriesSnapshot, babyId);
       if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
         triggerHaptic('success');
         success(
@@ -1472,7 +1496,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
     }
-  }, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, state.entries, state.entriesByTracker, triggerHaptic, success, sweetAlert, sanitizeForJsonb, sanitizePhotoUris]);
+  }, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, triggerHaptic, success, sweetAlert, sanitizeForJsonb, sanitizePhotoUris]);
 
   const handleUpdateEntry = useCallback(async (
     entryId: string,
@@ -1526,36 +1550,45 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         return false;
       }
 
-      const updatedEntries = state.entries.map(e =>
-        e.id === entryId ? { 
-          ...e, 
-          ...updates, 
-          editedBy: userProfile?.id, 
-          editedAt: Date.now(),
-          // Ensure arrays are clean
-          photoUris: updates.photoUris !== undefined ? sanitizePhotoUris(updates.photoUris) : e.photoUris,
-          tags: updates.tags !== undefined ? 
-            (Array.isArray(updates.tags) ? updates.tags.filter((t): t is string => typeof t === 'string' && t.length > 0) : []) 
-            : e.tags,
-          data: updates.data !== undefined ? sanitizeForJsonb(updates.data) as Record<string, unknown> : e.data,
-        } : e
-      );
+      // ─── Functional update avoids stale-state clobbering ─────────────
+      setState(prev => {
+        const updatedEntries = prev.entries.map(e =>
+          e.id === entryId ? {
+            ...e,
+            ...updates,
+            editedBy: userProfile?.id,
+            editedAt: Date.now(),
+            // Ensure arrays are clean
+            photoUris: updates.photoUris !== undefined
+              ? sanitizePhotoUris(updates.photoUris)
+              : e.photoUris,
+            tags: updates.tags !== undefined
+              ? (Array.isArray(updates.tags)
+                  ? updates.tags.filter((t): t is string => typeof t === 'string' && t.length > 0)
+                  : [])
+              : e.tags,
+            data: updates.data !== undefined
+              ? (sanitizeForJsonb(updates.data) as Record<string, unknown>)
+              : e.data,
+          } : e
+        );
 
-      const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
-      updatedEntries
-        .filter(e => !e.isDeleted)
-        .forEach(e => {
-          if (!updatedEntriesByTracker[e.trackerId]) {
-            updatedEntriesByTracker[e.trackerId] = [];
-          }
-          updatedEntriesByTracker[e.trackerId].push(e);
-        });
+        const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
+        updatedEntries
+          .filter(e => !e.isDeleted)
+          .forEach(e => {
+            if (!updatedEntriesByTracker[e.trackerId]) {
+              updatedEntriesByTracker[e.trackerId] = [];
+            }
+            updatedEntriesByTracker[e.trackerId].push(e);
+          });
 
-      setState(prev => ({
-        ...prev,
-        entries: updatedEntries,
-        entriesByTracker: updatedEntriesByTracker,
-      }));
+        return {
+          ...prev,
+          entries: updatedEntries,
+          entriesByTracker: updatedEntriesByTracker,
+        };
+      });
 
       // ─── Bayesian learning: re-observe the corrected value ───────
       if (updates.data && babyId) {
@@ -1569,7 +1602,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       sweetAlert('Error', 'Failed to update entry', 'warning');
       return false;
     }
-  }, [state.entries, canEditEntry, userProfile, sweetAlert, sanitizeForJsonb, sanitizePhotoUris]);
+  }, [canEditEntry, userProfile, sweetAlert, sanitizeForJsonb, sanitizePhotoUris]);
 
   const handleDeleteEntry = useCallback(async (entryId: string): Promise<boolean> => {
     const entry = state.entries.find(e => e.id === entryId);
@@ -1589,23 +1622,26 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         return false;
       }
 
-      const updatedEntries = state.entries.map(e =>
-        e.id === entryId ? { ...e, isDeleted: true } : e
-      );
+      // ─── Functional update avoids stale-state clobbering ─────────────
+      setState(prev => {
+        const updatedEntries = prev.entries.map(e =>
+          e.id === entryId ? { ...e, isDeleted: true } : e
+        );
 
-      const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
-      updatedEntries.filter(e => !e.isDeleted).forEach(e => {
-        if (!updatedEntriesByTracker[e.trackerId]) {
-          updatedEntriesByTracker[e.trackerId] = [];
-        }
-        updatedEntriesByTracker[e.trackerId].push(e);
+        const updatedEntriesByTracker: Record<string, TrackerEntry[]> = {};
+        updatedEntries.filter(e => !e.isDeleted).forEach(e => {
+          if (!updatedEntriesByTracker[e.trackerId]) {
+            updatedEntriesByTracker[e.trackerId] = [];
+          }
+          updatedEntriesByTracker[e.trackerId].push(e);
+        });
+
+        return {
+          ...prev,
+          entries: updatedEntries,
+          entriesByTracker: updatedEntriesByTracker,
+        };
       });
-
-      setState(prev => ({
-        ...prev,
-        entries: updatedEntries,
-        entriesByTracker: updatedEntriesByTracker,
-      }));
 
       return true;
     } catch (error) {
@@ -1613,7 +1649,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       sweetAlert('Error', 'Failed to delete entry', 'warning');
       return false;
     }
-  }, [state.entries, canDeleteEntry, sweetAlert]);
+  }, [canDeleteEntry, sweetAlert]);
 
   /* ─── Entry queries ──────────────────────────────────────────────── */
 

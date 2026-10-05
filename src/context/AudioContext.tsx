@@ -229,6 +229,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   /* ─── Play Track ─────────────────────────────────────────────────────── */
+  // ─── Keep a ref so the auto-next effect always sees the latest list ──
+  const importedTracksRef = useRef<AudioTrack[]>([]);
+  useEffect(() => { importedTracksRef.current = importedTracks; }, [importedTracks]);
+
   const playTrack = useCallback((track: AudioTrack) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -237,13 +241,15 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       player.play();
       setPlayerMode('mini');
 
-      const allTracks = [...SOUND_TRACKS, ...importedTracks];
+      // Read from ref — avoids stale `importedTracks` in the auto-next
+      // effect that calls `playTrack` after a track finishes.
+      const allTracks = [...SOUND_TRACKS, ...importedTracksRef.current];
       const index = allTracks.findIndex(t => t.id === track.id);
       if (index !== -1) setCurrentIndex(index);
     } catch (error) {
       console.error('Error playing track:', error);
     }
-  }, [importedTracks, player]);
+  }, [player]);
 
   /* ─── Toggle Playback ────────────────────────────────────────────────── */
   const togglePlayback = useCallback(() => {
@@ -272,23 +278,23 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   /* ─── Next Track ────────────────────────────────────────────────────── */
   const nextTrack = useCallback(() => {
-    const allTracks = [...SOUND_TRACKS, ...importedTracks];
+    const allTracks = [...SOUND_TRACKS, ...importedTracksRef.current];
     if (allTracks.length === 0) return;
 
     const nextIndex = (currentIndex + 1) % allTracks.length;
     setCurrentIndex(nextIndex);
     playTrack(allTracks[nextIndex]);
-  }, [currentIndex, importedTracks, playTrack]);
+  }, [currentIndex, playTrack]);
 
   /* ─── Previous Track ────────────────────────────────────────────────── */
   const previousTrack = useCallback(() => {
-    const allTracks = [...SOUND_TRACKS, ...importedTracks];
+    const allTracks = [...SOUND_TRACKS, ...importedTracksRef.current];
     if (allTracks.length === 0) return;
 
     const prevIndex = currentIndex === 0 ? allTracks.length - 1 : currentIndex - 1;
     setCurrentIndex(prevIndex);
     playTrack(allTracks[prevIndex]);
-  }, [currentIndex, importedTracks, playTrack]);
+  }, [currentIndex, playTrack]);
 
   /* ─── Seek To ───────────────────────────────────────────────────────── */
   const seekTo = useCallback((positionMillis: number) => {

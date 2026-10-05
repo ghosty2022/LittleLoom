@@ -2,11 +2,35 @@
 // ─────────────────────────────────────────────────────────────────────
 // THE canonical Supabase client for the entire app.
 //
-// Every other file (src/lib/supabase.ts, src/services/supabaseClient.ts)
-// re-exports from here — they never call createClient themselves.
+// Every other file that used to create its own client now imports from
+// here. Duplicate files (src/lib/supabase.ts, src/services/supabaseClient.ts)
+// have been deleted.
 //
-// Uses a hybrid storage adapter (SecureStore for small values, AsyncStorage
-// for large) with in-memory caching to reduce I/O.
+// Uses a hybrid storage adapter (SecureStore for small values,
+// AsyncStorage for large) with in-memory caching to reduce I/O.
+//
+// ─── CRITICAL FIX ────────────────────────────────────────────────────
+// flowType is 'implicit' NOT 'pkce'.
+//
+// PKCE is an OAuth authorization-code flow for WEB apps that receive
+// a `?code=xyz` redirect from the provider. It requires the SDK to
+// persist a `code_verifier` alongside the session.
+//
+// On React Native we sign in directly (email/password or OAuth token
+// exchange), and our custom storage adapter only persists a plain
+// { access_token, refresh_token, user } session. Under 'pkce' the SDK
+// reads back the stored value, expects a `code_verifier`, fails to
+// find it, and silently discards the session.
+//
+// Symptoms of the PKCE bug:
+//   • getSession() returns null on next launch
+//   • AuthContext wipes token + profile
+//   • "Invalid login credentials" on second attempt because the
+//     previous refresh_token was revoked server-side
+//   • BabyContext can't find userId → loadBabies() short-circuits
+//
+// 'implicit' is correct for all React Native apps that don't do
+// browser-based OAuth redirects.
 // ─────────────────────────────────────────────────────────────────────
 
 import 'react-native-url-polyfill/auto';
@@ -47,18 +71,11 @@ export const supabase: SupabaseClient = createClient(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
-      // ─── CRITICAL: must be 'implicit' for React Native ────────────
-      // PKCE is an OAuth-redirect flow for web. On native, the SDK
-      // signs users in directly with email/password or OAuth tokens,
-      // and expects to persist a plain { access_token, refresh_token }
-      // session. Under 'pkce' the SDK ALSO expects to persist a
-      // code_verifier alongside the session — our custom storage
-      // adapter doesn't return it in the exact shape Supabase wants,
-      // so the session silently fails to persist. That causes:
-      //   • getSession() → null on next launch
-      //   • AuthContext wipes token + profile
-      //   • Next login fails with "Invalid login credentials"
-      //     because the previous refresh_token was revoked.
+      // ─── CRITICAL: 'implicit' for React Native ────────────────────
+      // Do NOT change this to 'pkce' unless you switch to a
+      // browser-based OAuth redirect flow that receives ?code=xyz
+      // and can persist the code_verifier. See file header for the
+      // full explanation of what breaks.
       flowType: 'implicit',
     },
     realtime: {
@@ -203,12 +220,29 @@ export function onAuthStateChange(
 
 // ─── Sign Out ───────────────────────────────────────────────────────
 
+/**
+ * Sign out from Supabase — LOCAL scope only.
+ *
+ * `scope: 'local'` clears the session from this device's storage
+ * WITHOUT revoking the refresh_token server-side.
+ *
+ * Default behavior (`scope: 'global'`) revokes the refresh_token on
+ * every call. Our internal safety checks (`validateCurrentSession`,
+ * periodic 5-min check, security auto-lock) can legitimately fail to
+ * reach Supabase due to network hiccups — each of those failures
+ * would trigger a global signOut, revoking the token, and making the
+ * user's NEXT login attempt fail with "Invalid login credentials".
+ *
+ * Local-only cleanup preserves the ability to sign back in
+ * immediately and matches how Supabase recommends handling signOut
+ * in mobile apps.
+ */
 export async function signOutWithCleanup(): Promise<{
   success: boolean;
   error?: string;
 }> {
   try {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
       return { success: false, error: error.message };
     }
