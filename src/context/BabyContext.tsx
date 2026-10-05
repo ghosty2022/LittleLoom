@@ -474,17 +474,26 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // 3. Supabase getSession (with brief retry — auto-refresh may be in flight)
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (!error && session?.user?.id) {
           currentUserIdRef.current = session.user.id;
           return session.user.id;
         }
+        // If getSession fails, try recoverSession
+        if (!session) {
+          const { recoverSession } = await import('@/utils/supabase');
+          const recovered = await recoverSession();
+          if (recovered?.user?.id) {
+            currentUserIdRef.current = recovered.user.id;
+            return recovered.user.id;
+          }
+        }
       } catch (e) {
         if (__DEV__) console.warn('[BabyContext] getSession attempt failed:', e);
       }
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 500));
     }
 
     // 4. Supabase getUser (final fallback — network call)
@@ -496,6 +505,26 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (e) {
       if (__DEV__) console.warn('[BabyContext] getUser failed:', e);
+    }
+
+    // 5. LAST RESORT: Read directly from AsyncStorage
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const authKey = keys.find(k => k.includes('auth-token') || k.includes('supabase.auth'));
+      if (authKey) {
+        const stored = await AsyncStorage.getItem(authKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const userId = parsed?.user?.id || parsed?.session?.user?.id;
+          if (userId) {
+            if (__DEV__) console.log('[BabyContext] ✅ Recovered user ID from AsyncStorage');
+            currentUserIdRef.current = userId;
+            return userId;
+          }
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[BabyContext] AsyncStorage recovery failed:', e);
     }
 
     if (__DEV__) console.warn('[BabyContext] Could not get user ID from any method');

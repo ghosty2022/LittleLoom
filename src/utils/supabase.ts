@@ -1,38 +1,4 @@
 // src/utils/supabase.ts
-// ─────────────────────────────────────────────────────────────────────
-// THE canonical Supabase client for the entire app.
-//
-// Every other file that used to create its own client now imports from
-// here. Duplicate files (src/lib/supabase.ts, src/services/supabaseClient.ts)
-// have been deleted.
-//
-// Uses a hybrid storage adapter (SecureStore for small values,
-// AsyncStorage for large) with in-memory caching to reduce I/O.
-//
-// ─── CRITICAL FIX ────────────────────────────────────────────────────
-// flowType is 'implicit' NOT 'pkce'.
-//
-// PKCE is an OAuth authorization-code flow for WEB apps that receive
-// a `?code=xyz` redirect from the provider. It requires the SDK to
-// persist a `code_verifier` alongside the session.
-//
-// On React Native we sign in directly (email/password or OAuth token
-// exchange), and our custom storage adapter only persists a plain
-// { access_token, refresh_token, user } session. Under 'pkce' the SDK
-// reads back the stored value, expects a `code_verifier`, fails to
-// find it, and silently discards the session.
-//
-// Symptoms of the PKCE bug:
-//   • getSession() returns null on next launch
-//   • AuthContext wipes token + profile
-//   • "Invalid login credentials" on second attempt because the
-//     previous refresh_token was revoked server-side
-//   • BabyContext can't find userId → loadBabies() short-circuits
-//
-// 'implicit' is correct for all React Native apps that don't do
-// browser-based OAuth redirects.
-// ─────────────────────────────────────────────────────────────────────
-
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -51,10 +17,6 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Supabase credentials are missing!');
-  console.error('   EXPO_PUBLIC_SUPABASE_URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
-  console.error('   EXPO_PUBLIC_SUPABASE_ANON_KEY:', supabaseAnonKey ? '✅ Set' : '❌ Missing');
-  console.error('   → Create a .env file at the project root with these values.');
-
   if (typeof __DEV__ !== 'undefined' && !__DEV__) {
     throw new Error('Supabase credentials are required in production');
   }
@@ -71,11 +33,6 @@ export const supabase: SupabaseClient = createClient(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
-      // ─── CRITICAL: 'implicit' for React Native ────────────────────
-      // Do NOT change this to 'pkce' unless you switch to a
-      // browser-based OAuth redirect flow that receives ?code=xyz
-      // and can persist the code_verifier. See file header for the
-      // full explanation of what breaks.
       flowType: 'implicit',
     },
     realtime: {
@@ -91,11 +48,79 @@ export const supabase: SupabaseClient = createClient(
   }
 );
 
-// ─── Connection Helpers ─────────────────────────────────────────────
+// ─── FIX: Session Recovery Helper ────────────────────────────────────
 
 /**
- * Lightweight connectivity probe. Does not throw.
+ * Recover a session from our own storage if Supabase's internal
+ * getSession() fails. This is a workaround for the SDK bug where
+ * getSession() returns null on cold start even though a valid
+ * session exists in storage.
  */
+export async function recoverSession(): Promise<Session | null> {
+  try {
+    // Try Supabase's getSession first
+    const { data, error } = await supabase.auth.getSession();
+    if (!error && data.session) {
+      return data.session;
+    }
+
+    // If that failed, try to manually recover from storage
+    const storageKey = `sb-${new URL(supabaseUrl || 'https://x.supabase.co').hostname.split('.')[0]}-auth-token`;
+    
+    const stored = await AsyncStorage.getItem(storageKey);
+    if (!stored) {
+      // Try alternate key format
+      const keys = await AsyncStorage.getAllKeys();
+      const authKey = keys.find(k => k.includes('auth-token') || k.includes('supabase.auth'));
+      if (authKey) {
+        const altStored = await AsyncStorage.getItem(authKey);
+        if (altStored) {
+          try {
+            const parsed = JSON.parse(altStored);
+            if (parsed?.access_token && parsed?.refresh_token) {
+              // Force Supabase to use this session
+              const { data: setData, error: setError } = await supabase.auth.setSession({
+                access_token: parsed.access_token,
+                refresh_token: parsed.refresh_token,
+              });
+              if (!setError && setData.session) {
+                console.log('[Supabase] ✅ Recovered session from storage');
+                return setData.session;
+              }
+            }
+          } catch (e) {
+            console.warn('[Supabase] Failed to parse stored session:', e);
+          }
+        }
+      }
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed?.access_token && parsed?.refresh_token) {
+        const { data: setData, error: setError } = await supabase.auth.setSession({
+          access_token: parsed.access_token,
+          refresh_token: parsed.refresh_token,
+        });
+        if (!setError && setData.session) {
+          console.log('[Supabase] ✅ Recovered session from storage');
+          return setData.session;
+        }
+      }
+    } catch (e) {
+      console.warn('[Supabase] Failed to parse stored session:', e);
+    }
+
+    return null;
+  } catch (error) {
+    console.warn('[Supabase] Session recovery error:', error);
+    return null;
+  }
+}
+
+// ─── Connection Helpers ─────────────────────────────────────────────
+
 export async function checkSupabaseConnection(): Promise<{
   connected: boolean;
   message: string;
@@ -104,16 +129,9 @@ export async function checkSupabaseConnection(): Promise<{
   try {
     const { error } = await supabase.from('babies').select('id').limit(1);
     if (error) {
-      return {
-        connected: false,
-        message: 'Connection failed',
-        error: error.message,
-      };
+      return { connected: false, message: 'Connection failed', error: error.message };
     }
-    return {
-      connected: true,
-      message: 'Connected to Supabase',
-    };
+    return { connected: true, message: 'Connected to Supabase' };
   } catch (error) {
     return {
       connected: false,
@@ -125,50 +143,39 @@ export async function checkSupabaseConnection(): Promise<{
 
 // ─── Session Helpers ────────────────────────────────────────────────
 
-/**
- * Safe session getter — never throws, returns null on failure.
- */
 export async function getCurrentSession(): Promise<Session | null> {
   try {
     const { data, error } = await supabase.auth.getSession();
     if (error) {
-      if (__DEV__) {
-        console.warn('[Supabase] Failed to get session:', error.message);
-      }
-      return null;
+      if (__DEV__) console.warn('[Supabase] Failed to get session:', error.message);
+      // Try recovery
+      return await recoverSession();
+    }
+    if (!data.session) {
+      // Try recovery
+      return await recoverSession();
     }
     return data.session;
   } catch (error) {
-    if (__DEV__) {
-      console.warn('[Supabase] Session error:', error);
-    }
-    return null;
+    if (__DEV__) console.warn('[Supabase] Session error:', error);
+    return await recoverSession();
   }
 }
 
-/**
- * Safe user getter — never throws.
- */
 export async function getCurrentUser(): Promise<User | null> {
   try {
     const session = await getCurrentSession();
     if (session?.user) return session.user;
 
-    // Fallback: try directly
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) return null;
     return data.user;
   } catch (error) {
-    if (__DEV__) {
-      console.warn('[Supabase] Failed to get user:', error);
-    }
+    if (__DEV__) console.warn('[Supabase] Failed to get user:', error);
     return null;
   }
 }
 
-/**
- * Get the current user's ID (string or null).
- */
 export async function getCurrentUserId(): Promise<string | null> {
   const user = await getCurrentUser();
   return user?.id ?? null;
@@ -187,7 +194,6 @@ export async function refreshSessionWithRetry(
         return { session: data.session, success: true };
       }
 
-      // Don't retry auth-rejected refreshes
       if (error?.status === 400 || error?.status === 401) {
         return { session: null, success: false };
       }
@@ -220,23 +226,6 @@ export function onAuthStateChange(
 
 // ─── Sign Out ───────────────────────────────────────────────────────
 
-/**
- * Sign out from Supabase — LOCAL scope only.
- *
- * `scope: 'local'` clears the session from this device's storage
- * WITHOUT revoking the refresh_token server-side.
- *
- * Default behavior (`scope: 'global'`) revokes the refresh_token on
- * every call. Our internal safety checks (`validateCurrentSession`,
- * periodic 5-min check, security auto-lock) can legitimately fail to
- * reach Supabase due to network hiccups — each of those failures
- * would trigger a global signOut, revoking the token, and making the
- * user's NEXT login attempt fail with "Invalid login credentials".
- *
- * Local-only cleanup preserves the ability to sign back in
- * immediately and matches how Supabase recommends handling signOut
- * in mobile apps.
- */
 export async function signOutWithCleanup(): Promise<{
   success: boolean;
   error?: string;
@@ -255,72 +244,10 @@ export async function signOutWithCleanup(): Promise<{
   }
 }
 
-// ─── Profile Helpers ────────────────────────────────────────────────
+// ─── Storage Utilities ──────────────────────────────────────────────
 
-export async function getUserProfile(userId: string) {
-  try {
-    const { data, error } = await supabase
-      .from('community_profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error) {
-      if (__DEV__) {
-        console.warn('[Supabase] Failed to get user profile:', error.message);
-      }
-      return null;
-    }
-    return data;
-  } catch (error) {
-    if (__DEV__) {
-      console.warn('[Supabase] User profile error:', error);
-    }
-    return null;
-  }
-}
-
-export async function upsertUserProfile(profile: {
-  user_id: string;
-  display_name: string;
-  username?: string;
-  handle?: string;
-  bio?: string;
-  avatar?: string;
-}) {
-  try {
-    const { data, error } = await supabase
-      .from('community_profiles')
-      .upsert(profile, { onConflict: 'user_id' })
-      .select()
-      .single();
-
-    if (error) {
-      if (__DEV__) {
-        console.warn('[Supabase] Failed to upsert user profile:', error.message);
-      }
-      return { success: false, error: error.message };
-    }
-    return { success: true, data };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-// ─── Storage Utilities (Advanced) ───────────────────────────────────
-
-/**
- * Direct access to the underlying storage adapter. Rarely needed.
- */
 export { supabaseStorage } from './supabaseStorage';
 
-/**
- * Wipe all Supabase-related keys from local storage.
- * Useful on sign-out or account deletion.
- */
 export async function clearSupabaseLocalState(): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
@@ -340,10 +267,6 @@ export async function clearSupabaseLocalState(): Promise<void> {
   }
 }
 
-// ─── Type Re-exports ────────────────────────────────────────────────
-
 export type { SupabaseClient, Session, User } from '@supabase/supabase-js';
-
-// ─── Default Export ─────────────────────────────────────────────────
 
 export default supabase;
