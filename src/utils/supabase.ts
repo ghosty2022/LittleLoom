@@ -47,7 +47,19 @@ export const supabase: SupabaseClient = createClient(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
-      flowType: 'pkce',
+      // ─── CRITICAL: must be 'implicit' for React Native ────────────
+      // PKCE is an OAuth-redirect flow for web. On native, the SDK
+      // signs users in directly with email/password or OAuth tokens,
+      // and expects to persist a plain { access_token, refresh_token }
+      // session. Under 'pkce' the SDK ALSO expects to persist a
+      // code_verifier alongside the session — our custom storage
+      // adapter doesn't return it in the exact shape Supabase wants,
+      // so the session silently fails to persist. That causes:
+      //   • getSession() → null on next launch
+      //   • AuthContext wipes token + profile
+      //   • Next login fails with "Invalid login credentials"
+      //     because the previous refresh_token was revoked.
+      flowType: 'implicit',
     },
     realtime: {
       params: {
