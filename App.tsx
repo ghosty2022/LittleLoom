@@ -34,7 +34,6 @@ import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
 import { AIBootstrapGate } from '@/components/AIBootstrapGate';
 
 // ─── SweetAlert Provider ──────────────────────────────────────────────
-// Import from the fixed SweetAlert component
 import SweetAlertProvider from '@/components/SweetAlert';
 
 // ─── ImageUtils SweetAlert setter ─────────────────────────────────────
@@ -159,10 +158,10 @@ interface InnerAppProps {
 const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateChange }) => {
   const { isDark, colors: themeColors } = useTheme();
   useAppLock();
-  
+
   // Get sweetAlert instance and set it for ImageUtils
   const sweetAlert = useSweetAlert();
-  
+
   // Set sweetAlert for ImageUtils on mount
   useEffect(() => {
     setSweetAlert(sweetAlert);
@@ -211,6 +210,73 @@ export default function App(): React.ReactElement | null {
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const splashHiddenRef = useRef(false);
   const notificationInitRef = useRef(false);
+  const sessionCleanupDoneRef = useRef(false);
+
+  // ─── PHASE -1: One-time cleanup of corrupted session keys ────────────
+  // This runs ONCE per app lifetime, before any auth logic. It scans
+  // AsyncStorage for Supabase auth keys and removes any that are not
+  // valid JSON or are missing both `access_token` and `user`. This
+  // prevents the "Session expired, attempting refresh..." storm and
+  // the BabyContext "Could not get user ID from any method" bug.
+  useEffect(() => {
+    if (sessionCleanupDoneRef.current) return;
+    sessionCleanupDoneRef.current = true;
+
+    const clearCorruptedSession = async () => {
+      try {
+        const keys = await AsyncStorage.getAllKeys();
+        const authKeys = keys.filter(
+          (k) =>
+            typeof k === 'string' &&
+            (k.includes('auth-token') ||
+              k.startsWith('sb-') ||
+              k.includes('supabase.auth'))
+        );
+
+        if (authKeys.length === 0) return;
+
+        for (const key of authKeys) {
+          try {
+            const value = await AsyncStorage.getItem(key);
+            if (!value) continue;
+
+            // Try to parse — if it fails, it's corrupted
+            let parsed: any = null;
+            try {
+              parsed = JSON.parse(value);
+            } catch {
+              console.log('[App] 🧹 Removing non-JSON auth key:', key);
+              await AsyncStorage.removeItem(key);
+              continue;
+            }
+
+            // Check for a valid session shape
+            const hasAccessToken =
+              parsed?.access_token ||
+              parsed?.session?.access_token ||
+              parsed?.currentSession?.access_token;
+
+            const hasUser =
+              parsed?.user ||
+              parsed?.session?.user ||
+              parsed?.currentSession?.user;
+
+            // If neither is present, treat as corrupted
+            if (!hasAccessToken && !hasUser) {
+              console.log('[App] 🧹 Removing corrupted auth key:', key);
+              await AsyncStorage.removeItem(key);
+            }
+          } catch (innerErr) {
+            console.warn('[App] Session cleanup inner error:', innerErr);
+          }
+        }
+      } catch (e) {
+        console.warn('[App] Session cleanup error:', e);
+      }
+    };
+
+    clearCorruptedSession();
+  }, []);
 
   // Phase 0: Read theme from database immediately
   useEffect(() => {
@@ -266,7 +332,7 @@ export default function App(): React.ReactElement | null {
         // Wait for essential tasks with shorter timeout
         await Promise.race([
           essentialTasks,
-          new Promise((_, reject) => 
+          new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Essential init timeout')), 2000)
           )
         ]).catch(e => {
@@ -329,7 +395,7 @@ export default function App(): React.ReactElement | null {
       // System UI (non-blocking)
       if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
         await SystemUI.setBackgroundColorAsync(
-          initialTheme.isTrueBlack ? '#000000' : 
+          initialTheme.isTrueBlack ? '#000000' :
           initialTheme.isDark ? '#08080f' : '#f8faff'
         );
       }
@@ -374,14 +440,14 @@ export default function App(): React.ReactElement | null {
       const hasParent2 = hasParent2Str === 'true' || hasParent2Str === 'skipped';
       const hasBaby = hasBabyStr === 'true' || hasBabyStr === 'skipped';
       const setupDone = setupCompleteStr === 'true' || (hasParent2 && hasBaby);
-      
+
       if (!setupDone || wasLocked === 'true') {
         if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
           await statePersistence.clearNavigationState();
         }
         return;
       }
-      
+
       if (statePersistence && typeof statePersistence.getNavigationState === 'function') {
         const navState = await statePersistence.getNavigationState();
         if (navState?.state) {
