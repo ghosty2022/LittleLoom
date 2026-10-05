@@ -115,11 +115,36 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const refreshSession = useCallback(async () => {
     try {
-      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        console.warn('[DatabaseContext] Session refresh failed:', refreshError.message);
+      // ─── First try cached session (no network) ───────────────────
+      const { data: { session: current } } = await supabase.auth.getSession();
+      if (current?.user?.id) {
+        setUserId(current.user.id);
+        setSession(current);
+        setError(null);
+        setIsReady(true);
         return;
       }
+
+      // ─── Only then attempt a network refresh ─────────────────────
+      const { data: { session: refreshedSession }, error: refreshError } =
+        await supabase.auth.refreshSession();
+
+      if (refreshError) {
+        // If the error is "invalid JWT" / "session missing", clear and bail.
+        // For any other (transient) error, keep the cached state.
+        const msg = refreshError.message?.toLowerCase() || '';
+        const isFatal = msg.includes('invalid') || msg.includes('missing') || msg.includes('jwt');
+
+        if (isFatal) {
+          await AsyncStorage.removeItem('@littleloom_session');
+          setUserId(null);
+          setSession(null);
+        }
+        // Do NOT spam console.warn — throttle it.
+        throttledLog('[DatabaseContext] Session refresh failed:', refreshError.message);
+        return;
+      }
+
       if (refreshedSession?.user) {
         setUserId(refreshedSession.user.id);
         setSession(refreshedSession);
@@ -128,9 +153,9 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         await AsyncStorage.setItem('@littleloom_session', JSON.stringify(refreshedSession));
       }
     } catch (err) {
-      console.warn('[DatabaseContext] Session refresh error:', err);
+      throttledLog('[DatabaseContext] Session refresh error:', err);
     }
-  }, []);
+  }, [throttledLog]);
 
   const signOut = useCallback(async () => {
     try {
@@ -196,10 +221,15 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isMountedRef.current = true;
     checkConnection();
 
+    let lastRefresh = 0;
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        // Silent refresh - no log
-        refreshSession();
+        const now = Date.now();
+        // Cooldown: don't spam refreshSession on rapid foreground transitions
+        if (now - lastRefresh < 30000) return;
+        lastRefresh = now;
+        // Defer so it doesn't block the UI thread
+        setTimeout(() => { refreshSession().catch(() => {}); }, 200);
       }
     });
     appStateSubscriptionRef.current = subscription;

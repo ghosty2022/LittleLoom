@@ -305,9 +305,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const validateCurrentSession = useCallback(async (): Promise<boolean> => {
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error || !session) {
-        console.warn('[Auth] Session validation failed, clearing local state');
+
+      // ─── Distinguish "no session" from "transient failure" ────────
+      // `getSession()` returns `{ session: null, error: null }` when there
+      // genuinely is no session. A real error object means a network
+      // problem — we must NOT wipe the user's saved profile in that case.
+      if (error) {
+        console.warn('[Auth] Session check failed (transient):', error.message);
+        // Keep existing state — try again later.
+        return Boolean(state.isAuthenticated);
+      }
+
+      if (!session) {
+        console.warn('[Auth] No session — clearing local state');
         await Promise.all([
           secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
           secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
@@ -315,12 +325,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
         ]);
-        
+
         clearUserIdCache();
-        
+
         if (isMounted.current) {
-          setState(prev => ({ 
-            ...prev, 
+          setState(prev => ({
+            ...prev,
             isAuthenticated: false,
             userToken: null,
             userProfile: null,
@@ -1730,30 +1740,27 @@ const signUpWithInviteCode = useCallback(async (
         let userProfile = null;
         
         if (session && token) {
-          try {
-            const { data: { user }, error } = await supabase.auth.getUser();
-            isValidSession = !error && !!user;
-            console.log('[Auth] Session validation:', isValidSession ? 'valid' : 'invalid');
-            
-            if (isValidSession && userProfileStr) {
-              userProfile = JSON.parse(userProfileStr);
+          // ─── Trust the cached session first ─────────────────────
+          // `getSession()` already validates the JWT locally (it decodes
+          // the token and checks `exp`). We do NOT need a network round
+          // trip to `getUser()` just to confirm that. Calling it on every
+          // launch was wiping profiles whenever the network hiccuped.
+          isValidSession = true;
+          if (userProfileStr) {
+            try { userProfile = JSON.parse(userProfileStr); } catch {}
+          }
+
+          // Optional: verify in background. If it fails, we do NOT wipe.
+          supabase.auth.getUser().then(({ data, error }) => {
+            if (error && /jwt|invalid|expired/i.test(error.message)) {
+              // Token truly dead — clear.
+              console.warn('[Auth] Token rejected by server:', error.message);
+              Promise.all([
+                secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
+                secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
+              ]).then(() => clearUserIdCache());
             }
-          } catch (e) {
-            console.warn('[Auth] Session validation error:', e);
-            isValidSession = false;
-          }
-          
-          if (!isValidSession) {
-            console.log('[Auth] Invalid session detected, clearing local state');
-            await Promise.all([
-              secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
-              secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
-              secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
-              secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
-              secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
-            ]);
-            clearUserIdCache();
-          }
+          }).catch(() => {});
         }
         
         if (userProfile && isValidSession) {

@@ -472,15 +472,22 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      const userId = await getCurrentUserId();
+      let userId = await getCurrentUserId();
+
+      // ─── Retry once: session hydration can lag on cold start ────────
+      if (!userId) {
+        await new Promise(r => setTimeout(r, 400));
+        userId = await getCurrentUserId();
+      }
 
       if (!userId) {
-        console.warn('[BabyContext] No authenticated user found');
+        if (__DEV__) console.warn('[BabyContext] No authenticated user after retry');
+        // Don't wipe existing babies — just mark not-loading.
         if (isMounted.current) {
           setState(prev => ({
             ...prev,
             isLoading: false,
-            isInitialized: true,
+            isInitialized: prev.isInitialized || prev.babies.length > 0,
           }));
         }
         return;

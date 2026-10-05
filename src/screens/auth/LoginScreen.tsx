@@ -145,6 +145,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const biometricCheckComplete = useRef(false);
   const codeDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socialAuthInProgress = useRef(false);
+  const navigationAttemptedRef = useRef(false);
 
   // ─── OAuth Requests ──────────────────────────────────────────────────
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
@@ -316,15 +317,22 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   }, []);
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated && setupComplete) {
-      const timer = setTimeout(() => {
-        if (isMounted.current) {
-          forceUnlock().catch(() => {});
-          navigation.replace('Main');
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
+    if (authLoading || !isAuthenticated || !setupComplete) return;
+
+    // Guard against double navigation — this was being triggered twice
+    // (once by Supabase's SIGNED_IN, once by our own setState) and the
+    // second replace() was throwing "another sign in operation in
+    // progress" from the sign-in lock.
+    if (navigationAttemptedRef.current) return;
+    navigationAttemptedRef.current = true;
+
+    const timer = setTimeout(() => {
+      if (!isMounted.current) return;
+      forceUnlock().catch(() => {});
+      navigation.replace('Main');
+    }, 150);
+
+    return () => clearTimeout(timer);
   }, [authLoading, isAuthenticated, setupComplete, navigation, forceUnlock]);
 
   useEffect(() => {
@@ -588,6 +596,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       return;
     }
 
+    // ─── Hard guard: prevent double-tap racing the signIn lock ─────
+    if (loginAttempted.current) return;
     loginAttempted.current = true;
     setIsProcessing(true);
     Keyboard.dismiss();

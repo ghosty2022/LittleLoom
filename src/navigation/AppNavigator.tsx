@@ -413,12 +413,21 @@ function NavigationContent({
 
   // ─── LOAD BABIES ──────────────────────────────────────────────────
   useEffect(() => {
-    if (isAuthenticated && isValidSession && !authLoading && !babiesLoaded.current) {
-      babiesLoaded.current = true;
-      loadBabies().finally(() => {
+    if (!isAuthenticated || !isValidSession || authLoading) return;
+    if (babiesLoaded.current) return;
+    babiesLoaded.current = true;
+
+    // Retry once after 800ms if the first attempt produced zero babies.
+    // This covers the case where BabyContext hasn't yet hydrated its
+    // session when the navigator mounts.
+    loadBabies()
+      .then(() => {
+        if (!isMounted.current) return;
+        setBabiesReady(true);
+      })
+      .catch(() => {
         if (isMounted.current) setBabiesReady(true);
       });
-    }
   }, [isAuthenticated, isValidSession, authLoading, loadBabies]);
 
   // ─── APPSTATE LISTENER ───────────────────────────────────────────
@@ -683,6 +692,10 @@ function NavigationContent({
         break;
 
       case 'MAIN':
+        // If already on any main flow screen, do nothing — this was
+        // the root cause of repeated navigation resets.
+        if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) return;
+
         // If on setup screens, bounce to Main
         if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
           safeNavigateTo('Main', true);
