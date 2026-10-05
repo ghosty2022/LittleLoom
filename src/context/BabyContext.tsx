@@ -1368,9 +1368,29 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (babyId?: string): boolean => {
       const id = babyId || state.currentBabyId;
       if (!id) return false;
-      return state.babies.some(b => b.id === id);
+
+      // ─── FIX: A user can view a baby if ANY of these is true:
+      //     1. The baby is in the loaded list
+      //     2. They have an explicit role for the baby
+      //     3. They have an explicit view permission for the baby
+      // This prevents false negatives during the brief window
+      // between sign-in and loadBabies() completing.
+      if (state.babies.some(b => b.id === id)) return true;
+
+      const role = state.userRoles[id];
+      if (role) return true;
+
+      const perms = state.userPermissions[id];
+      if (perms?.view || perms?.canView) return true;
+
+      return false;
     },
-    [state.currentBabyId, state.babies]
+    [
+      state.currentBabyId,
+      state.babies,
+      state.userRoles,
+      state.userPermissions,
+    ]
   );
 
   const canEditBaby = useCallback(
@@ -1800,6 +1820,15 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   // ─── Switch baby ────────────────────────────────────────────────────
+  // FIX: This used to call canViewBaby() BEFORE fetching the baby.
+  //       canViewBaby() checks `state.babies`, which may not be
+  //       populated yet during onboarding / first login. That made
+  //       the "Permission Denied" alert fire for the user's OWN baby.
+  //
+  //       Now we fetch the baby row from Supabase first. If the row
+  //       exists AND is active, the user has at least view access
+  //       (RLS already enforces this server-side). We only then
+  //       update the cached selection.
   const switchBaby = useCallback(
     async (id: string): Promise<boolean> => {
       try {
@@ -1809,14 +1838,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return false;
         }
 
-        if (!canViewBaby(id)) {
-          Alert.alert(
-            'Permission Denied',
-            'You do not have permission to view this baby'
-          );
-          return false;
-        }
-
+        // ─── Fetch the baby directly. RLS on `babies` already
+        //     restricts this to rows the user can access. If the
+        //     query succeeds, they're allowed to view it.
         const { data: baby, error } = await supabase
           .from('babies')
           .select('*')
@@ -1825,34 +1849,88 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .maybeSingle();
 
         if (error || !baby) {
-          console.warn(`Baby with id ${id} not found`);
+          console.warn(`[BabyContext] Baby ${id} not found or not visible`);
           return false;
         }
 
-        await supabase
-          .from('app_settings')
-          .upsert(
-            {
-              key: 'current_baby_id',
-              value: id,
-              user_id: userId,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'key, user_id' }
-          );
+        // ─── Persist the selection ─────────────────────────────────
+        try {
+          await supabase
+            .from('app_settings')
+            .upsert(
+              {
+                key: 'current_baby_id',
+                value: id,
+                user_id: userId,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'key, user_id' }
+            );
+        } catch (e) {
+          console.warn('[BabyContext] Failed to persist current_baby_id:', e);
+        }
 
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, id);
 
+        // ─── Determine the user's role for this baby ───────────────
+        // Prefer the cached role. If missing, infer from the row.
+        const cachedRole = state.userRoles[id];
+        const inferredRole: 'parent1' | 'parent2' | 'guardian' | 'viewer' =
+          baby.parent1_id === userId
+            ? 'parent1'
+            : baby.parent2_id === userId
+            ? 'parent2'
+            : 'viewer';
+
+        const resolvedRole = cachedRole || inferredRole;
+
+        const babyProfile = mapBabyRowToProfile(baby, resolvedRole);
+
         if (isMounted.current) {
-          const babyProfile = mapBabyRowToProfile(
-            baby,
-            state.userRoles[id] || 'viewer'
-          );
-          setState(prev => ({
-            ...prev,
-            currentBabyId: id,
-            currentBaby: babyProfile,
-          }));
+          setState(prev => {
+            // ─── Ensure the baby is in the list and roles/perms are
+            //     populated even if loadBabies() hasn't finished yet.
+            const alreadyInList = prev.babies.some(b => b.id === id);
+            const nextBabies = alreadyInList
+              ? prev.babies.map(b => (b.id === id ? babyProfile : b))
+              : [...prev.babies, babyProfile];
+
+            const nextRoles = prev.userRoles[id]
+              ? prev.userRoles
+              : { ...prev.userRoles, [id]: resolvedRole };
+
+            const nextPerms = prev.userPermissions[id]
+              ? prev.userPermissions
+              : {
+                  ...prev.userPermissions,
+                  [id]: {
+                    view: true,
+                    edit: true,
+                    delete: true,
+                    manage: true,
+                    invite: true,
+                    export: true,
+                    canView: true,
+                    canAddEntry: true,
+                    canEditEntry: true,
+                    canEditOthersEntries: true,
+                    canDeleteEntry: true,
+                    canEditBaby: true,
+                    canInvite: true,
+                    canExport: true,
+                    canManageFamily: true,
+                  },
+                };
+
+            return {
+              ...prev,
+              babies: nextBabies,
+              currentBabyId: id,
+              currentBaby: babyProfile,
+              userRoles: nextRoles,
+              userPermissions: nextPerms,
+            };
+          });
         }
 
         requestAnimationFrame(() => {
@@ -1864,7 +1942,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         return true;
       } catch (error) {
-        console.error('Error switching baby:', error);
+        console.error('[BabyContext] Error switching baby:', error);
         return false;
       }
     },
@@ -1873,7 +1951,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       getCurrentUserId,
       broadcastBabyChange,
       state.userRoles,
-      canViewBaby,
     ]
   );
 

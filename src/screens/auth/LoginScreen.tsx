@@ -147,6 +147,13 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const socialAuthInProgress = useRef(false);
   const navigationAttemptedRef = useRef(false);
 
+  // ─── FIX: Live ref to isAuthenticated so async callbacks see the
+  //     latest value even after re-renders.
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
   // ─── OAuth Requests ──────────────────────────────────────────────────
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
@@ -316,14 +323,60 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     };
   }, []);
 
-  // ─── Single source of truth for post-sign-in navigation ──────
-  // This effect fires when AuthContext actually commits the new
-  // authentication state. It is the ONLY place navigation happens
-  // after a successful sign-in. handleLogin() must NOT navigate.
+  // ─── FIX: If auth already initialized with a valid session, leave ───
+  // The Supabase SDK auto-refreshes the cached refresh_token in the
+  // background. That means a user who signed in previously may already
+  // be authenticated by the time they land on this screen. If so, we
+  // skip the login form entirely.
+  //
+  // Without this, you get the confusing UX where you type a wrong
+  // password, see "Login failed", but get logged in anyway by the
+  // auto-refresh that raced your signIn call.
   useEffect(() => {
-    if (authLoading || !isAuthenticated) return;
-
+    if (authLoading) return;
+    if (!isAuthenticated) return;
     if (navigationAttemptedRef.current) return;
+
+    navigationAttemptedRef.current = true;
+
+    const timer = setTimeout(() => {
+      if (!isMounted.current) return;
+      forceUnlock().catch(() => {});
+      if (!setupComplete) {
+        if (!hasBaby) {
+          navigation.replace('BabyOptional');
+        } else if (!hasParent2) {
+          navigation.replace('CoParentInviteScreen');
+        } else {
+          navigation.replace('Main');
+        }
+        return;
+      }
+      navigation.replace('Main');
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [
+    authLoading,
+    isAuthenticated,
+    setupComplete,
+    hasBaby,
+    hasParent2,
+    navigation,
+    forceUnlock,
+  ]);
+
+  // ─── Single source of truth for post-sign-in navigation ──────
+  // This effect fires when AuthContext commits an authenticated state.
+  // It handles BOTH cases:
+  //   • The user typed credentials and signIn() succeeded.
+  //   • The SDK auto-refreshed a cached refresh_token on mount.
+  // Either way, if isAuthenticated is true, we leave this screen.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) return;
+    if (navigationAttemptedRef.current) return;
+
     navigationAttemptedRef.current = true;
 
     const timer = setTimeout(() => {
@@ -337,14 +390,13 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         } else if (!hasParent2) {
           navigation.replace('CoParentInviteScreen');
         } else {
-          // Both steps addressed but setupComplete flag not set — fix it
           navigation.replace('Main');
         }
         return;
       }
 
       navigation.replace('Main');
-    }, 200);
+    }, 150);
 
     return () => clearTimeout(timer);
   }, [
@@ -643,26 +695,27 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       const success = await signIn(userIdentifier, password);
 
       if (success && isMounted.current) {
-        // ─── Wait for AuthContext to commit state before navigating ──
-        // Otherwise the setup flags on this closure are stale and we
-        // navigate to the wrong screen (or to BabyOptional while the
-        // user already has a baby in the DB).
-        await new Promise((r) => setTimeout(r, 300));
-
-        if (!isMounted.current) return;
-
         showSuccess(
           `Welcome Back${userName !== 'there' ? `, ${userName}` : ''}!`,
           'Successfully signed in'
         );
         forceUnlock().catch(() => {});
+        // Navigation happens in the effect above once isAuthenticated
+        // is actually committed by AuthContext. Do NOT navigate here.
+      } else if (isMounted.current) {
+        // ─── FIX: Only show "Login Failed" if we're NOT signed in ──
+        // The SDK's auto-refresh may race our explicit signIn. If the
+        // background refresh already authenticated us, don't show a
+        // scary error just because the manual attempt failed.
+        //
+        // We give it a brief moment to allow SIGNED_IN to fire.
+        await new Promise((r) => setTimeout(r, 300));
 
-        // NOTE: Do NOT navigate from here for the setup steps. The
-        // effect further down already handles navigation once
-        // AuthContext's state is actually committed. Navigating here
-        // races that effect and lands on the wrong screen.
-      } else {
-        showError('Login Failed', 'Invalid credentials. Please try again.');
+        if (!isMounted.current) return;
+
+        if (!isAuthenticated) {
+          showError('Login Failed', 'Invalid credentials. Please try again.');
+        }
         loginAttempted.current = false;
       }
     } catch (error) {

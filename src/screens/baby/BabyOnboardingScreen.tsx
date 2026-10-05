@@ -92,135 +92,157 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }, [userProfile]);
 
   // ─── CHECK AND NAVIGATE ─────────────────────────────────────────────
+  // Runs once to decide whether we can skip the onboarding UI and go
+  // straight to Main. The new switchBaby() handles all state
+  // population, so we don't call loadBabies() anywhere here.
   const checkAndNavigate = useCallback(async () => {
     if (navigationAttemptedRef.current) {
       console.log('[BabyOnboarding] Navigation already attempted, skipping');
       return false;
     }
     if (!isMountedRef.current) return false;
-    
+
     try {
-      // ─── CRITICAL FIX: First check if user has family memberships ──────────
-      // This MUST run before checking context because context might not have babies yet
       const userId = await getUserId();
-      if (userId) {
-        console.log('[BabyOnboarding] Checking family_members for user:', userId);
-        
-        const { data: familyData, error: fmError } = await supabase
-          .from('family_members')
-          .select('baby_id, role')
-          .eq('user_id', userId)
-          .eq('status', 'active')
-          .is('deleted_at', null);
-        
-        if (!fmError && familyData && familyData.length > 0) {
-          console.log(`[BabyOnboarding] Found ${familyData.length} family memberships`);
-          const babyIds = familyData.map(fm => fm.baby_id).filter(id => id);
-          
-          if (babyIds.length > 0) {
-            const { data: remoteBabiesData, error: babyError } = await supabase
-              .from('babies')
-              .select('*')
-              .in('id', babyIds);
-            
-            if (!babyError && remoteBabiesData && remoteBabiesData.length > 0) {
-              console.log(`[BabyOnboarding] Found ${remoteBabiesData.length} babies via family_members`);
-              setHasBabies(true);
-              setRemoteBabies(remoteBabiesData);
-              
-              // Find the first baby with the highest role
-              const rolePriority = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
-              const sortedBabies = [...remoteBabiesData].sort((a, b) => {
-                const roleA = familyData.find(fm => fm.baby_id === a.id)?.role || 'viewer';
-                const roleB = familyData.find(fm => fm.baby_id === b.id)?.role || 'viewer';
-                return (rolePriority[roleA as keyof typeof rolePriority] || 3) - (rolePriority[roleB as keyof typeof rolePriority] || 3);
-              });
-              
-              if (sortedBabies[0]) {
-                await switchBaby(sortedBabies[0].id);
-                await completeSetup('baby');
-                navigationAttemptedRef.current = true;
-                navigation.replace('Main');
-                return true;
-              }
+
+      // ─── Fast path 1: context already has babies ────────────────
+      if (babies && babies.length > 0) {
+        console.log(`[BabyOnboarding] Found ${babies.length} babies in context`);
+
+        const targetId = currentBabyId || babies[0]?.id;
+        if (targetId) {
+          if (!currentBabyId) {
+            await switchBaby(targetId);
+          }
+          await completeSetup('baby');
+
+          navigationAttemptedRef.current = true;
+          navigation.replace('Main');
+          return true;
+        }
+      }
+
+      if (!userId) {
+        return false;
+      }
+
+      // ─── Fast path 2: local DB has babies ───────────────────────
+      const localBabies = await getAllBabiesFromDb();
+      if (localBabies && localBabies.length > 0) {
+        console.log(
+          `[BabyOnboarding] Found ${localBabies.length} babies in local DB`
+        );
+
+        const targetId = currentBabyId || localBabies[0]?.id;
+        if (targetId) {
+          if (!currentBabyId) {
+            await switchBaby(targetId);
+          }
+          await completeSetup('baby');
+
+          navigationAttemptedRef.current = true;
+          navigation.replace('Main');
+          return true;
+        }
+      }
+
+      // ─── Slow path: query Supabase directly ─────────────────────
+      console.log(
+        '[BabyOnboarding] Checking family_members for user:',
+        userId
+      );
+
+      const { data: familyData, error: fmError } = await supabase
+        .from('family_members')
+        .select('baby_id, role')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .is('deleted_at', null);
+
+      if (!fmError && familyData && familyData.length > 0) {
+        const babyIds = familyData
+          .map((fm) => fm.baby_id)
+          .filter((id) => id);
+
+        if (babyIds.length > 0) {
+          const { data: remoteBabiesData, error: babyError } =
+            await supabase.from('babies').select('*').in('id', babyIds);
+
+          if (
+            !babyError &&
+            remoteBabiesData &&
+            remoteBabiesData.length > 0
+          ) {
+            const rolePriority: Record<string, number> = {
+              parent1: 0,
+              parent2: 1,
+              guardian: 2,
+              viewer: 3,
+            };
+            const sortedBabies = [...remoteBabiesData].sort((a, b) => {
+              const roleA =
+                familyData.find((fm) => fm.baby_id === a.id)?.role ||
+                'viewer';
+              const roleB =
+                familyData.find((fm) => fm.baby_id === b.id)?.role ||
+                'viewer';
+              return (
+                (rolePriority[roleA] ?? 3) - (rolePriority[roleB] ?? 3)
+              );
+            });
+
+            if (sortedBabies[0]) {
+              await switchBaby(sortedBabies[0].id);
+              await completeSetup('baby');
+              navigationAttemptedRef.current = true;
+              navigation.replace('Main');
+              return true;
             }
           }
         }
-
-        // ─── Check if user used an invite code (FALLBACK) ──────────────
-        const { data: inviteData, error: inviteError } = await supabase
-          .from('invite_codes')
-          .select('family_id, code, role')
-          .eq('used_by', userId)
-          .eq('used', true)
-          .maybeSingle();
-        
-        if (!inviteError && inviteData?.family_id) {
-          console.log(`[BabyOnboarding] Found family_id from invite: ${inviteData.family_id}`);
-          const { data: babyData } = await supabase
-            .from('babies')
-            .select('*')
-            .eq('id', inviteData.family_id);
-          
-          if (babyData && babyData.length > 0) {
-            console.log(`[BabyOnboarding] Found baby via invite code: ${babyData[0].name}`);
-            setHasBabies(true);
-            setRemoteBabies(babyData);
-            await switchBaby(babyData[0].id);
-            await completeSetup('baby');
-            navigationAttemptedRef.current = true;
-            navigation.replace('Main');
-            return true;
-          }
-        }
       }
 
-      // ─── FIX: Check if babies exist in context ──────────────────────
-      if (babies && babies.length > 0) {
-        console.log(`[BabyOnboarding] Found ${babies.length} babies in context`);
-        setHasBabies(true);
-        setRemoteBabies(babies);
-        
-        const babyId = currentBabyId || babies[0]?.id;
-        if (babyId) {
-          if (!currentBabyId) {
-            await switchBaby(babyId);
-          }
-          await completeSetup('baby');
-          navigationAttemptedRef.current = true;
-          console.log('[BabyOnboarding] Baby found, navigating to Main');
-          navigation.replace('Main');
-          return true;
-        }
-        return true;
-      }
+      // ─── Invite code fallback ──────────────────────────────────
+      const { data: inviteData, error: inviteError } = await supabase
+        .from('invite_codes')
+        .select('family_id, code, role')
+        .eq('used_by', userId)
+        .eq('used', true)
+        .maybeSingle();
 
-      // ─── FIX: Check local DB ─────────────────────────────────────────
-      const localBabies = await getAllBabiesFromDb();
-      if (localBabies && localBabies.length > 0) {
-        console.log(`[BabyOnboarding] Found ${localBabies.length} babies in local DB`);
-        setHasBabies(true);
-        setRemoteBabies(localBabies);
-        
-        const babyId = currentBabyId || localBabies[0]?.id;
-        if (babyId) {
-          if (!currentBabyId) {
-            await switchBaby(babyId);
-          }
+      if (!inviteError && inviteData?.family_id) {
+        const { data: babyData } = await supabase
+          .from('babies')
+          .select('*')
+          .eq('id', inviteData.family_id);
+
+        if (babyData && babyData.length > 0) {
+          console.log(
+            `[BabyOnboarding] Found baby via invite code: ${babyData[0].name}`
+          );
+          setHasBabies(true);
+          setRemoteBabies(babyData);
+          await switchBaby(babyData[0].id);
           await completeSetup('baby');
           navigationAttemptedRef.current = true;
-          console.log('[BabyOnboarding] Local baby found, navigating to Main');
           navigation.replace('Main');
           return true;
         }
       }
-      
+
       return false;
     } catch (error) {
       console.warn('[BabyOnboarding] Check navigate error:', error);
       return false;
     }
-  }, [navigation, wasSetupCompleted, completeSetup, babies, switchBaby, currentBabyId, getUserId]);
+  }, [
+    navigation,
+    completeSetup,
+    babies,
+    switchBaby,
+    currentBabyId,
+    getUserId,
+  ]);
 
   // ─── SYNC BABIES FROM SUPABASE ──────────────────────────────────────
   const syncBabiesFromSupabase = useCallback(async (userId: string): Promise<boolean> => {
@@ -351,10 +373,9 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
 
       console.log(`[BabyOnboarding] Synced ${syncedCount} new babies`);
 
-      // ─── Force load babies after sync ──────────────────────────────
-      await loadBabies(true);
-      
       // ─── Set current baby if none set ──────────────────────────────
+      // switchBaby() fetches and populates state.babies/permissions,
+      // so we skip loadBabies() here.
       const currentId = await getAppSetting('current_baby_id');
       if (!currentId && allBabies[0]) {
         await setCurrentBabyInDb(allBabies[0].id);
@@ -368,7 +389,7 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       setSyncInProgress(false);
       return false;
     }
-  }, [syncInProgress, loadBabies, switchBaby]);
+  }, [syncInProgress, switchBaby]);
 
   // ─── CHECK AND SYNC BABIES ──────────────────────────────────────────
   const checkAndSyncBabies = useCallback(async () => {
@@ -587,45 +608,71 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   }, [loadBabies, checkAndSyncBabies, checkAndNavigate, babies]);
 
   // ─── HANDLERS ──────────────────────────────────────────────────────
-  const handleImportBaby = useCallback(async (baby: any) => {
-    triggerHaptic('medium');
-    setIsProcessing(true);
-    
-    try {
-      await createBabyInDb({
-        id: baby.id,
-        name: baby.name,
-        avatar: baby.avatar || undefined,
-        dateOfBirth: baby.date_of_birth,
-        gender: baby.gender || undefined,
-        bloodType: baby.blood_type || undefined,
-        medicalNotes: baby.medical_notes || undefined,
-        parent1Id: baby.parent1_id || undefined,
-        parent2Id: baby.parent2_id || undefined,
-      });
+  const handleImportBaby = useCallback(
+    async (baby: any) => {
+      triggerHaptic('medium');
+      setIsProcessing(true);
 
-      await setCurrentBabyInDb(baby.id);
-      await loadBabies(true);
-      await switchBaby(baby.id);
-      await completeSetup('baby');
+      try {
+        // ─── 1. Ensure baby exists in local DB ────────────────────
+        const existing = await getBabyByIdFromDb(baby.id);
+        if (!existing) {
+          await createBabyInDb({
+            id: baby.id,
+            name: baby.name,
+            avatar: baby.avatar || undefined,
+            dateOfBirth: baby.date_of_birth,
+            gender: baby.gender || undefined,
+            bloodType: baby.blood_type || undefined,
+            medicalNotes: baby.medical_notes || undefined,
+            parent1Id: baby.parent1_id || undefined,
+            parent2Id: baby.parent2_id || undefined,
+          });
+        }
 
-      const { hasParent2 } = await wasSetupCompleted();
-      
-      if (hasParent2 === false) {
-        toast('Next Step: Invite a co-parent', 'info');
-        navigation.replace('CoParentInviteScreen');
-      } else {
-        await completeSetup('parent2');
-        toast(`Welcome back! Imported ${baby.name}'s profile`, 'success');
-        navigation.replace('Main');
+        await setCurrentBabyInDb(baby.id);
+
+        // ─── 2. Switch baby — populates state.babies/perms ────────
+        const switched = await switchBaby(baby.id);
+        if (!switched) {
+          toast('Could not import baby. Please try again.', 'error');
+          return;
+        }
+
+        await completeSetup('baby');
+
+        // ─── 3. Navigate based on setup state ─────────────────────
+        const { hasParent2 } = await wasSetupCompleted();
+
+        if (hasParent2 === false) {
+          toast('Next Step: Invite a co-parent', 'info');
+          navigation.replace('CoParentInviteScreen');
+        } else {
+          await completeSetup('parent2');
+          toast(
+            `Welcome back! Imported ${baby.name}'s profile`,
+            'success'
+          );
+          navigation.replace('Main');
+        }
+      } catch (error) {
+        console.error('[BabyOnboarding] Import baby error:', error);
+        toast('Could not import baby profile', 'error');
+      } finally {
+        if (isMountedRef.current) {
+          setIsProcessing(false);
+        }
       }
-    } catch (error) {
-      console.error('Import baby error:', error);
-      toast('Could not import baby profile', 'error');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [loadBabies, switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation]);
+    },
+    [
+      switchBaby,
+      completeSetup,
+      wasSetupCompleted,
+      toast,
+      triggerHaptic,
+      navigation,
+    ]
+  );
 
   const handleSkip = useCallback(async () => {
     triggerHaptic('light');
@@ -668,49 +715,78 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     navigation.navigate('CreateBabyProfile');
   }, [navigation, triggerHaptic]);
 
-  // ─── FIXED: handleSelectBaby with proper refresh ─────────────────────
+  // ─── handleSelectBaby ────────────────────────────────────────────────
+  // switchBaby() now fetches the baby from Supabase and populates
+  // state.babies + userPermissions as a side effect. No need to call
+  // loadBabies() before OR after — that was racing the permission check
+  // and producing the "You do not have permission to view this baby"
+  // alert for the user's OWN baby.
   const handleSelectBaby = useCallback(async (babyId: string) => {
     triggerHaptic('medium');
     setIsProcessing(true);
+
     try {
-      await loadBabies(true);
-      await switchBaby(babyId);
+      // ─── 1. Switch baby FIRST — this fetches + commits everything ──
+      const switched = await switchBaby(babyId);
+
+      if (!switched) {
+        // switchBaby returns false if the baby isn't visible or the
+        // fetch failed. Show a real error instead of silently failing.
+        toast('Could not switch baby. Please try again.', 'error');
+        return;
+      }
+
+      // ─── 2. Mark baby step complete ────────────────────────────────
       await completeSetup('baby');
-      
-      const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
-      
-      console.log('[BabyOnboarding] Setup status:', { hasParent2, isSetupComplete });
-      
+
+      // ─── 3. Decide next screen based on setup state ────────────────
+      const { hasParent2, setupComplete: isSetupComplete } =
+        await wasSetupCompleted();
+
+      console.log('[BabyOnboarding] Setup status:', {
+        hasParent2,
+        isSetupComplete,
+      });
+
       if (isSetupComplete) {
-        await loadBabies(true);
         console.log('[BabyOnboarding] Setup complete, navigating to Main');
         navigation.replace('Main');
-      } else if (hasParent2 === false) {
+        return;
+      }
+
+      if (hasParent2 === false) {
         toast('Invite a co-parent to join the family', 'info');
         navigation.replace('CoParentInviteScreen');
-      } else if (hasParent2 === 'skipped') {
+        return;
+      }
+
+      if (hasParent2 === 'skipped') {
         await completeSetup('parent2');
-        await loadBabies(true);
         toast('Baby profile selected', 'success');
         navigation.replace('Main');
-      } else {
-        await loadBabies(true);
-        toast('Baby profile selected', 'success');
-        navigation.replace('Main');
+        return;
       }
+
+      // Fallback: parent2 step is incomplete but not explicitly false.
+      // Send them to the co-parent screen so they can finish setup.
+      toast('Baby profile selected', 'success');
+      navigation.replace('Main');
     } catch (error) {
-      console.error('handleSelectBaby error:', error);
+      console.error('[BabyOnboarding] handleSelectBaby error:', error);
       toast('Could not switch baby', 'error');
-      try {
-        await loadBabies(true);
-        navigation.replace('Main');
-      } catch (e) {
-        console.error('Fallback navigation failed:', e);
-      }
     } finally {
-      setIsProcessing(false);
+      if (isMountedRef.current) {
+        setIsProcessing(false);
+      }
     }
-  }, [switchBaby, completeSetup, wasSetupCompleted, toast, triggerHaptic, navigation, loadBabies]);
+  }, [
+    switchBaby,
+    completeSetup,
+    wasSetupCompleted,
+    toast,
+    triggerHaptic,
+    navigation,
+  ]);
 
   const handleRetry = useCallback(async () => {
     setLoadError(null);
