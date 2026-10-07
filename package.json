@@ -119,7 +119,7 @@
     "react-native": "^0.86.2",
     "react-native-blob-util": "^0.25.1",
     "react-native-calendars": "^1.1307.0",
-    "react-native-executorch": "^0.10.4",
+    "react-native-executorch": "0.10.4",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-gifted-charts": "^1.4.76",
     "react-native-maps": "1.27.2",
@@ -189,8 +189,14 @@
       ]
     }
   },
+  "overrides": {
+    "react-native-executorch": {
+      "react-native-blob-util": "$react-native-blob-util"
+    }
+  },
   "resolutions": {
     "react": "19.2.3",
-    "@types/react": "~19.2.4"
+    "@types/react": "~19.2.4",
+    "react-native-blob-util": "^0.25.1"
   }
 }
