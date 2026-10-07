@@ -1,4 +1,4 @@
-// App.tsx - WITHOUT Stripe (with SweetAlertProvider)
+// App.tsx — LittleLoom (AI-enabled, lazy-loaded)
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -31,30 +31,16 @@ import { ensureAllImageDirs } from '@/utils/imageUtils';
 
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
+
+// ─── AI (lazy — does NOT pull heavy packages into the main chunk) ─────
 import { AIBootstrapGate } from '@/components/AIBootstrapGate';
 
-// ─── SweetAlert Provider ──────────────────────────────────────────────
+// ─── SweetAlert ───────────────────────────────────────────────────────
 import SweetAlertProvider from '@/components/SweetAlert';
-
-// ─── ImageUtils SweetAlert setter ─────────────────────────────────────
 import { setSweetAlert } from '@/utils/imageUtils';
 import { useSweetAlert } from '@/components/SweetAlert';
 
-// FIX: Lazy load Reanimated to avoid resolution issues
-let ReanimatedLoaded = false;
-const loadReanimated = async () => {
-  if (ReanimatedLoaded) return;
-  try {
-    await import('react-native-reanimated');
-    ReanimatedLoaded = true;
-    console.log('[App] Reanimated loaded successfully');
-  } catch (error) {
-    console.warn('[App] Failed to load Reanimated:', error);
-  }
-};
-
-// Direct import — the unified NotificationService handles its own
-// initialization, retries, and error recovery internally.
+// ─── Notifications (unified service) ──────────────────────────────────
 import { notificationService } from '@/services/NotificationService';
 
 LogBox.ignoreLogs([
@@ -62,20 +48,23 @@ LogBox.ignoreLogs([
   'The provided Linking scheme',
   'JavaScript logs will be removed from Metro',
   'Navigation state from different app version',
-  // Ignore Reanimated warnings in development
   'Reanimated',
   'Worklets',
+  // AI packages sometimes warn about missing native modules in dev
+  'expo-ai-kit',
+  'react-native-executorch',
+  'edge-llm',
 ]);
 
 SplashScreen.preventAutoHideAsync();
 
-// CRITICAL FIX: Only preload essential fonts, load others lazily
+// CRITICAL: Only preload the fonts you actually need before first paint.
 const ESSENTIAL_FONTS = {
-  'Ionicons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+  Ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
 };
 
 const NON_RESTORABLE_ROUTES = new Set([
-  'SecurityLock', 'Login', 'SignUp', 'ForgotPassword', 'Onboarding'
+  'SecurityLock', 'Login', 'SignUp', 'ForgotPassword', 'Onboarding',
 ]);
 
 const SPLASH_THEMES = {
@@ -110,86 +99,88 @@ interface CustomSplashScreenProps {
   isTrueBlack: boolean;
 }
 
-const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrueBlack }) => {
-  const colors = isTrueBlack
-    ? SPLASH_THEMES.trueBlack
-    : isDark
-    ? SPLASH_THEMES.dark
-    : SPLASH_THEMES.light;
+const CustomSplashScreen = React.memo<CustomSplashScreenProps>(
+  ({ isDark, isTrueBlack }) => {
+    const colors = isTrueBlack
+      ? SPLASH_THEMES.trueBlack
+      : isDark
+      ? SPLASH_THEMES.dark
+      : SPLASH_THEMES.light;
 
-  return (
-    <View style={styles.splashContainer}>
-      <LinearGradient
-        colors={colors.gradient}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <StatusBar style={colors.statusBar} />
-      <View style={styles.splashContent}>
-        <View style={[styles.splashLogoRing, { borderColor: colors.ring }]}>
-          <Image
-            source={require('./assets/logo.png')}
-            style={styles.splashLogoImage}
-            resizeMode="contain"
-          />
-        </View>
-        <Text style={[styles.splashBrand, { color: colors.text }]}>
-          LittleLoom
-        </Text>
-        <Text style={[styles.splashTagline, { color: colors.subtext }]}>
-          Gentle Care, Happy Baby
-        </Text>
-        <View style={{ marginTop: 32 }}>
-          <InlineSpinner size={28} color={colors.spinner} />
+    return (
+      <View style={styles.splashContainer}>
+        <LinearGradient
+          colors={colors.gradient}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <StatusBar style={colors.statusBar} />
+        <View style={styles.splashContent}>
+          <View style={[styles.splashLogoRing, { borderColor: colors.ring }]}>
+            <Image
+              source={require('./assets/logo.png')}
+              style={styles.splashLogoImage}
+              resizeMode="contain"
+            />
+          </View>
+          <Text style={[styles.splashBrand, { color: colors.text }]}>
+            LittleLoom
+          </Text>
+          <Text style={[styles.splashTagline, { color: colors.subtext }]}>
+            Gentle Care, Happy Baby
+          </Text>
+          <View style={{ marginTop: 32 }}>
+            <InlineSpinner size={28} color={colors.spinner} />
+          </View>
         </View>
       </View>
-    </View>
-  );
-});
-
-// ─── InnerApp with SweetAlert setter ──────────────────────────────────
+    );
+  }
+);
 
 interface InnerAppProps {
   initialState: object | undefined;
   onStateChange: (state: object | undefined) => void;
 }
 
-const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateChange }) => {
-  const { isDark, colors: themeColors } = useTheme();
-  useAppLock();
+const InnerApp: React.FC<InnerAppProps> = React.memo(
+  ({ initialState, onStateChange }) => {
+    const { isDark, colors: themeColors } = useTheme();
+    useAppLock();
 
-  // Get sweetAlert instance and set it for ImageUtils
-  const sweetAlert = useSweetAlert();
+    const sweetAlert = useSweetAlert();
 
-  // Set sweetAlert for ImageUtils on mount
-  useEffect(() => {
-    setSweetAlert(sweetAlert);
-  }, [sweetAlert]);
+    useEffect(() => {
+      setSweetAlert(sweetAlert);
+    }, [sweetAlert]);
 
-  return (
-    <SweetAlertProvider
-      isDark={isDark}
-      themeColors={{
-        primary: themeColors?.primary || '#6366f1',
-        secondary: themeColors?.secondary || '#8b5cf6',
-        accent: themeColors?.accent || '#ec4899',
-      }}
-      reduceMotion={false}
-    >
-      <ModalProvider>
-        <View style={styles.container}>
-          <AIBootstrapGate />
-          <AppNavigator initialState={initialState} onStateChange={onStateChange} />
-          <GlobalAudioPlayer />
-        </View>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-      </ModalProvider>
-    </SweetAlertProvider>
-  );
-});
-
-// ─── Main App ──────────────────────────────────────────────────────────
+    return (
+      <SweetAlertProvider
+        isDark={isDark}
+        themeColors={{
+          primary: themeColors?.primary || '#6366f1',
+          secondary: themeColors?.secondary || '#8b5cf6',
+          accent: themeColors?.accent || '#ec4899',
+        }}
+        reduceMotion={false}
+      >
+        <ModalProvider>
+          <View style={styles.container}>
+            {/* AI initializes in background — does not block children */}
+            <AIBootstrapGate />
+            <AppNavigator
+              initialState={initialState}
+              onStateChange={onStateChange}
+            />
+            <GlobalAudioPlayer />
+          </View>
+          <StatusBar style={isDark ? 'light' : 'dark'} />
+        </ModalProvider>
+      </SweetAlertProvider>
+    );
+  }
+);
 
 export default function App(): React.ReactElement | null {
   const systemScheme = useColorScheme();
@@ -201,7 +192,9 @@ export default function App(): React.ReactElement | null {
   });
 
   const [ready, setReady] = useState(false);
-  const [initialState, setInitialState] = useState<object | undefined>(undefined);
+  const [initialState, setInitialState] = useState<object | undefined>(
+    undefined
+  );
   const [initError, setInitError] = useState<string | null>(null);
 
   const lastStateRef = useRef<object | undefined>(undefined);
@@ -212,14 +205,7 @@ export default function App(): React.ReactElement | null {
   const notificationInitRef = useRef(false);
   const sessionCleanupDoneRef = useRef(false);
 
-  // ─── PHASE -1: One-time cleanup of corrupted session keys ────────────
-  // Runs ONCE per app lifetime, before any auth logic. Uses a ref guard
-  // so React StrictMode's double-invoke doesn't cause two cleanups.
-  // This runs ONCE per app lifetime, before any auth logic. It scans
-  // AsyncStorage for Supabase auth keys and removes any that are not
-  // valid JSON or are missing both `access_token` and `user`. This
-  // prevents the "Session expired, attempting refresh..." storm and
-  // the BabyContext "Could not get user ID from any method" bug.
+  // ── PHASE -1: One-time cleanup of corrupted session keys ──────────
   useEffect(() => {
     if (sessionCleanupDoneRef.current) return;
     sessionCleanupDoneRef.current = true;
@@ -242,7 +228,6 @@ export default function App(): React.ReactElement | null {
             const value = await AsyncStorage.getItem(key);
             if (!value) continue;
 
-            // Try to parse — if it fails, it's corrupted
             let parsed: any = null;
             try {
               parsed = JSON.parse(value);
@@ -252,7 +237,6 @@ export default function App(): React.ReactElement | null {
               continue;
             }
 
-            // Check for a valid session shape
             const hasAccessToken =
               parsed?.access_token ||
               parsed?.session?.access_token ||
@@ -263,7 +247,6 @@ export default function App(): React.ReactElement | null {
               parsed?.session?.user ||
               parsed?.currentSession?.user;
 
-            // If neither is present, treat as corrupted
             if (!hasAccessToken && !hasUser) {
               console.log('[App] 🧹 Removing corrupted auth key:', key);
               await AsyncStorage.removeItem(key);
@@ -280,7 +263,7 @@ export default function App(): React.ReactElement | null {
     clearCorruptedSession();
   }, []);
 
-  // Phase 0: Read theme from database immediately
+  // ── PHASE 0: read theme from DB immediately ───────────────────────
   useEffect(() => {
     let mounted = true;
 
@@ -296,7 +279,7 @@ export default function App(): React.ReactElement | null {
         const isTrueBlack = saved === 'trueBlack';
 
         setInitialTheme({ isDark, isTrueBlack });
-      } catch (e) {
+      } catch {
         setInitialTheme({
           isDark: systemScheme === 'dark',
           isTrueBlack: false,
@@ -307,52 +290,48 @@ export default function App(): React.ReactElement | null {
     };
 
     loadTheme();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [systemScheme]);
 
-  // Phase 1: Parallel initialization with aggressive timeout
+  // ── PHASE 1: parallel init, aggressive timeout ────────────────────
   useEffect(() => {
     if (!themeLoaded || initStartedRef.current) return;
     initStartedRef.current = true;
 
     const init = async () => {
       try {
-        // Load Reanimated first (non-blocking)
-        loadReanimated().catch(e => {
-          console.warn('[App] Reanimated load failed:', e);
-        });
-
-        // Start all init tasks in parallel - don't await them all
+        // Essential fonts only — with a hard 2s timeout.
         const essentialTasks = Promise.all([
-          // Only essential font loading
-          Font.loadAsync(ESSENTIAL_FONTS).catch(e => {
+          Font.loadAsync(ESSENTIAL_FONTS).catch((e) => {
             console.warn('[App] Font loading failed:', e);
             return null;
           }),
         ]);
 
-        // Wait for essential tasks with shorter timeout
         await Promise.race([
           essentialTasks,
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Essential init timeout')), 2000)
-          )
-        ]).catch(e => {
+            setTimeout(
+              () => reject(new Error('Essential init timeout')),
+              2000
+            )
+          ),
+        ]).catch((e) => {
           console.warn('[App] Essential tasks timed out, continuing...', e);
         });
 
-        // CRITICAL FIX: Hide splash immediately after essential tasks
         if (!splashHiddenRef.current) {
           await SplashScreen.hideAsync();
           splashHiddenRef.current = true;
         }
         setReady(true);
 
-        // Run non-essential tasks in background (don't await)
-        runBackgroundTasks().catch(e => {
+        // Background tasks — never await in the critical path.
+        runBackgroundTasks().catch((e) => {
           console.warn('[App] Background tasks error:', e);
         });
-
       } catch (e) {
         console.error('[App] Critical init error:', e);
         setInitError('Failed to initialize app');
@@ -360,7 +339,7 @@ export default function App(): React.ReactElement | null {
           await SplashScreen.hideAsync();
           splashHiddenRef.current = true;
         }
-        setReady(true); // Show app even with error
+        setReady(true);
       }
     };
 
@@ -373,44 +352,40 @@ export default function App(): React.ReactElement | null {
     };
   }, [themeLoaded]);
 
-  // Background tasks that don't block startup
   const runBackgroundTasks = async () => {
     try {
-      // Load additional fonts in background
+      // Non-essential fonts
       const additionalFonts = {
-        'MaterialIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
-        'MaterialCommunityIcons': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'),
-        'Feather': require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf'),
+        MaterialIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
+        MaterialCommunityIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'),
+        Feather: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf'),
       };
-      Font.loadAsync(additionalFonts).catch(e => {
+      Font.loadAsync(additionalFonts).catch((e) => {
         console.warn('[App] Additional fonts failed:', e);
       });
 
-      // Notification service - lazy loaded with error handling
       await initNotificationService();
 
-      // Image directories (non-blocking)
       if (ensureAllImageDirs && typeof ensureAllImageDirs === 'function') {
         await ensureAllImageDirs();
       }
 
-      // System UI (non-blocking)
       if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
         await SystemUI.setBackgroundColorAsync(
-          initialTheme.isTrueBlack ? '#000000' :
-          initialTheme.isDark ? '#08080f' : '#f8faff'
+          initialTheme.isTrueBlack
+            ? '#000000'
+            : initialTheme.isDark
+            ? '#08080f'
+            : '#f8faff'
         );
       }
 
-      // Navigation state restoration (non-blocking)
       await restoreNavigationState();
-
     } catch (e) {
       console.warn('[App] Background tasks error:', e);
     }
   };
 
-  // Initialize the unified notification service
   const initNotificationService = async () => {
     if (notificationInitRef.current) return;
     notificationInitRef.current = true;
@@ -424,39 +399,48 @@ export default function App(): React.ReactElement | null {
       }
     } catch (error) {
       console.warn('[App] Notification service init failed:', error);
-      // Don't throw - allow app to continue
     }
   };
 
-  // Navigation state restoration - non-blocking
   const restoreNavigationState = async () => {
     try {
-      // Quick check for setup completion
-      const [setupCompleteStr, hasParent2Str, hasBabyStr, wasLocked] = await Promise.all([
-        AsyncStorage.getItem('littleloom_setup_complete'),
-        AsyncStorage.getItem('littleloom_parent2_completed'),
-        AsyncStorage.getItem('littleloom_baby_completed'),
-        AsyncStorage.getItem('littleloom_security_lock'),
-      ]);
+      const [setupCompleteStr, hasParent2Str, hasBabyStr, wasLocked] =
+        await Promise.all([
+          AsyncStorage.getItem('littleloom_setup_complete'),
+          AsyncStorage.getItem('littleloom_parent2_completed'),
+          AsyncStorage.getItem('littleloom_baby_completed'),
+          AsyncStorage.getItem('littleloom_security_lock'),
+        ]);
 
-      const hasParent2 = hasParent2Str === 'true' || hasParent2Str === 'skipped';
+      const hasParent2 =
+        hasParent2Str === 'true' || hasParent2Str === 'skipped';
       const hasBaby = hasBabyStr === 'true' || hasBabyStr === 'skipped';
-      const setupDone = setupCompleteStr === 'true' || (hasParent2 && hasBaby);
+      const setupDone =
+        setupCompleteStr === 'true' || (hasParent2 && hasBaby);
 
       if (!setupDone || wasLocked === 'true') {
-        if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
+        if (
+          statePersistence &&
+          typeof statePersistence.clearNavigationState === 'function'
+        ) {
           await statePersistence.clearNavigationState();
         }
         return;
       }
 
-      if (statePersistence && typeof statePersistence.getNavigationState === 'function') {
+      if (
+        statePersistence &&
+        typeof statePersistence.getNavigationState === 'function'
+      ) {
         const navState = await statePersistence.getNavigationState();
         if (navState?.state) {
           const routeName = navState.routeName as string;
           if (!NON_RESTORABLE_ROUTES.has(routeName)) {
             setInitialState(navState.state);
-          } else if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
+          } else if (
+            statePersistence &&
+            typeof statePersistence.clearNavigationState === 'function'
+          ) {
             await statePersistence.clearNavigationState();
           }
         }
@@ -466,10 +450,9 @@ export default function App(): React.ReactElement | null {
     }
   };
 
-  // Phase 2: Background state saving + notification queue flush on foreground
+  // ── PHASE 2: save nav state on background + flush notif queue ─────
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
-      // Flush queued notifications when app comes back to foreground
       if (next === 'active') {
         notificationService.flushQueue().catch(() => {});
       }
@@ -482,7 +465,10 @@ export default function App(): React.ReactElement | null {
           const parsed = lastStateRef.current as any;
           const route = parsed.routes?.[parsed.index];
           if (route?.name !== 'SecurityLock') {
-            if (statePersistence && typeof statePersistence.saveNavigationState === 'function') {
+            if (
+              statePersistence &&
+              typeof statePersistence.saveNavigationState === 'function'
+            ) {
               await statePersistence.saveNavigationState(
                 lastStateRef.current,
                 route?.name,
@@ -491,7 +477,10 @@ export default function App(): React.ReactElement | null {
             }
           }
         }
-        if (statePersistence && typeof statePersistence.flushPendingSaves === 'function') {
+        if (
+          statePersistence &&
+          typeof statePersistence.flushPendingSaves === 'function'
+        ) {
           await statePersistence.flushPendingSaves();
         }
       }
@@ -502,7 +491,9 @@ export default function App(): React.ReactElement | null {
   const onStateChange = useCallback((state: object | undefined) => {
     if (!state) return;
 
-    const stateKey = (state as any)?.key || JSON.stringify((state as any)?.routes?.[(state as any)?.index]);
+    const stateKey =
+      (state as any)?.key ||
+      JSON.stringify((state as any)?.routes?.[(state as any)?.index]);
     if (stateKey && stateKey === lastStateKeyRef.current) return;
     if (stateKey) lastStateKeyRef.current = stateKey;
 
@@ -515,7 +506,10 @@ export default function App(): React.ReactElement | null {
         clearTimeout(stateSaveTimerRef.current);
       }
       stateSaveTimerRef.current = setTimeout(() => {
-        if (statePersistence && typeof statePersistence.queueSave === 'function') {
+        if (
+          statePersistence &&
+          typeof statePersistence.queueSave === 'function'
+        ) {
           statePersistence.queueSave('@littleloom_nav_state_v4', {
             state,
             routeName: route.name,
@@ -524,7 +518,10 @@ export default function App(): React.ReactElement | null {
             appVersion: '2.1.0',
           });
         }
-        if (statePersistence && typeof statePersistence.saveLastRoute === 'function') {
+        if (
+          statePersistence &&
+          typeof statePersistence.saveLastRoute === 'function'
+        ) {
           statePersistence.saveLastRoute(route.name, route.params);
         }
         stateSaveTimerRef.current = null;
@@ -559,7 +556,6 @@ export default function App(): React.ReactElement | null {
     );
   }
 
-  // ─── WITHOUT STRIPE ────────────────────────────────────────────────────
   return (
     <DatabaseProvider>
       <ErrorBoundary>
@@ -588,9 +584,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  splashContent: {
-    alignItems: 'center',
-  },
+  splashContent: { alignItems: 'center' },
   splashLogoRing: {
     width: 120,
     height: 120,
@@ -600,13 +594,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  splashEmoji: {
-    fontSize: 56,
-  },
-  splashLogoImage: {
-    width: 72,
-    height: 72,
-  },
+  splashLogoImage: { width: 72, height: 72 },
   splashBrand: {
     fontSize: 32,
     fontWeight: '800',
@@ -627,10 +615,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8faff',
     padding: 32,
   },
-  errorEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
+  errorEmoji: { fontSize: 64, marginBottom: 16 },
   errorTitle: {
     fontSize: 24,
     fontWeight: '700',

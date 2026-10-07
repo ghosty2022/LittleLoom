@@ -24,6 +24,7 @@
     "assetBundlePatterns": [
       "**/*",
       "assets/**/*",
+      "assets/models/**/*",
       "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/*.ttf"
     ],
     "ios": {
@@ -38,16 +39,10 @@
         "NSMicrophoneUsageDescription": "LittleLoom may use the microphone when recording videos of your baby.",
         "NSLocationWhenInUseUsageDescription": "LittleLoom uses your location to tag where photos were taken.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "LittleLoom uses your location to tag where photos were taken, even in the background.",
-        "UIBackgroundModes": [
-          "fetch",
-          "remote-notification",
-          "processing"
-        ],
+        "UIBackgroundModes": ["fetch", "remote-notification", "processing"],
         "ITSAppUsesNonExemptEncryption": false,
         "UIUserInterfaceStyle": "Automatic",
-        "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true
-        }
+        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": true }
       }
     },
     "android": {
@@ -70,8 +65,7 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
-        "android.permission.REQUEST_INSTALL_PACKAGES"
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -79,34 +73,21 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       }
     },
-    "web": {
-      "bundler": "metro",
-      "favicon": "./assets/favicon.png"
-    },
+    "web": { "bundler": "metro", "favicon": "./assets/favicon.png" },
     "plugins": [
       "./plugins/withPackagingOptions.js",
-      "./plugins/withStripeFix.js",
       [
         "expo-build-properties",
-        {
-          "android": {
-            "kotlinVersion": "2.1.20"
-          }
-        }
+        { "android": { "kotlinVersion": "2.1.20" } }
       ],
       [
         "expo-local-authentication",
-        {
-          "faceIDPermission": "Allow LittleLoom by TPM Solutions to use Face ID."
-        }
+        { "faceIDPermission": "Allow LittleLoom by TPM Solutions to use Face ID." }
       ],
       "expo-dev-client",
       [
         "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#667eea"
-        }
+        { "icon": "./assets/icon.png", "color": "#667eea" }
       ],
       [
         "expo-image-picker",
@@ -126,19 +107,14 @@
       ],
       [
         "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "Allow LittleLoom to use your location to tag where photos were taken."
-        }
+        { "locationAlwaysAndWhenInUsePermission": "Allow LittleLoom to use your location to tag where photos were taken." }
       ],
       [
         "expo-splash-screen",
         {
           "backgroundColor": "#ffffff",
           "image": "./assets/splash-icon.png",
-          "dark": {
-            "image": "./assets/splash-icon.png",
-            "backgroundColor": "#1a1a1a"
-          }
+          "dark": { "image": "./assets/splash-icon.png", "backgroundColor": "#1a1a1a" }
         }
       ],
       "expo-font",
@@ -151,29 +127,19 @@
       "expo-ai-kit"
     ],
     "extra": {
-      "eas": {
-        "projectId": "e9e00b01-6623-4a60-b3e9-dbf5e2ca7aac"
-      },
+      "eas": { "projectId": "e9e00b01-6623-4a60-b3e9-dbf5e2ca7aac" },
       "developer": {
         "name": "TPM Solutions",
         "website": "https://tpmsolutions.co.ke"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": { "policy": "appVersion" },
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     },
-    "platforms": [
-      "ios",
-      "android",
-      "web"
-    ],
-    "developmentClient": {
-      "silentLaunch": true
-    }
+    "platforms": ["ios", "android", "web"],
+    "developmentClient": { "silentLaunch": true }
   }
 }
