@@ -7,7 +7,7 @@ import { BlurView } from 'expo-blur';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeInRight, FadeIn, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
-// Add this import for Layout animations
+
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -996,7 +996,7 @@ export default function FamilyChatListScreen({
   };
 
   const handleMemberPress = async (member: FamilyMember) => {
-    // Check if the member is the current user
+    
     const memberUserId = member.userId || member.id;
     if (
       memberUserId === userProfile?.id ||
@@ -1014,7 +1014,7 @@ export default function FamilyChatListScreen({
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Pass the member ID (which could be custom format like fm_xxx)
+    
     const chatId = await getOrCreateDirectChat(member.id, member);
 
     if (chatId) {
@@ -1053,7 +1053,7 @@ export default function FamilyChatListScreen({
   const handleDeleteChat = async () => {
     if (!selectedChat) return;
 
-    // Use a local state modal or confirm instead - showSweetAlert only supports toast style
+    
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     await deleteChat(selectedChat.id);
     setShowOptionsModal(false);
@@ -1100,7 +1100,7 @@ export default function FamilyChatListScreen({
     }
 
     try {
-      // Actually create the group
+      
       const groupNameToUse = groupName.trim() || `Family Group`;
       const chatId = await createFamilyGroup(groupNameToUse, groupPhoto || undefined);
       
@@ -1118,7 +1118,7 @@ export default function FamilyChatListScreen({
         setGroupName('');
         setGroupPhoto(null);
         
-        // Navigate to the new group chat
+        
         navigation.navigate('FamilyChat', { chatId });
       } else {
         showSweetAlert('error', 'Error', 'Failed to create group. Please try again.');
@@ -1775,8 +1775,8 @@ export default function FamilyChatListScreen({
                 style={styles.groupPhotoContainer}
                 onPress={() => {
 
-                // Use a proper action sheet or modal instead
-                // For now, default to gallery
+                
+                
                 handlePickImage();
                 }}
               >

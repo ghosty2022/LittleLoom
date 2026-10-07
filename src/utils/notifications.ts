@@ -1,12 +1,12 @@
-// src/services/NotificationService.ts
-// Notification service — supports both Expo and Supabase notifications.
-// Includes: permission request, handler setup, Android channels, chat notifications.
+
+
+
 
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 
-// ─── TYPES ──────────────────────────────────────────────────────────────
+
 
 export interface LocalNotificationPayload {
   title: string;
@@ -24,7 +24,7 @@ interface QueueItem {
   attempts: number;
 }
 
-// ─── SERVICE ────────────────────────────────────────────────────────────
+
 
 class NotificationService {
   private isInitialized = false;
@@ -38,7 +38,7 @@ class NotificationService {
     if (this.isInitialized) return;
 
     try {
-      // Request permissions
+      
       const { status } = await Notifications.requestPermissionsAsync({
         ios: {
           allowAlert: true,
@@ -52,18 +52,18 @@ class NotificationService {
         console.warn('[NotificationService] Permission not granted');
       }
 
-      // Set the notification handler
+      
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
           shouldShowAlert: true,
           shouldPlaySound: true,
           shouldSetBadge: true,
-          // Required by some Expo SDK versions
+          
           priority: Notifications.AndroidNotificationPriority.HIGH,
         }),
       });
 
-      // Android channels
+      
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('default', {
           name: 'General Notifications',
@@ -106,7 +106,7 @@ class NotificationService {
     }
   }
 
-  // ─── PERMISSIONS ──────────────────────────────────────────────────────
+  
 
   async requestPermissions(): Promise<boolean> {
     try {
@@ -128,7 +128,7 @@ class NotificationService {
     }
   }
 
-  // ─── SEND LOCAL NOTIFICATION ──────────────────────────────────────────
+  
 
   /**
    * Schedule a local notification.
@@ -164,7 +164,7 @@ class NotificationService {
       return id;
     } catch (error) {
       console.warn('[NotificationService] Schedule error:', error);
-      // Queue for retry
+      
       this.queue.push({
         id: `q_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         payload,
@@ -182,7 +182,7 @@ class NotificationService {
     return this.scheduleLocalNotification({ ...payload, trigger: null });
   }
 
-  // ─── CHAT NOTIFICATIONS ───────────────────────────────────────────────
+  
 
   /**
    * Send a notification for a family chat message.
@@ -205,7 +205,7 @@ class NotificationService {
     });
   }
 
-  // ─── CANCEL ───────────────────────────────────────────────────────────
+  
 
   async cancelNotification(notificationId: string): Promise<void> {
     try {
@@ -223,7 +223,7 @@ class NotificationService {
     }
   }
 
-  // ─── QUERY ────────────────────────────────────────────────────────────
+  
 
   async getAllScheduled(): Promise<Notifications.NotificationRequest[]> {
     try {
@@ -250,7 +250,7 @@ class NotificationService {
     }
   }
 
-  // ─── QUEUE MANAGEMENT ─────────────────────────────────────────────────
+  
 
   /**
    * Retry queued notifications. Call this on app foreground.
@@ -282,7 +282,7 @@ class NotificationService {
   }
 }
 
-// ─── SINGLETON ──────────────────────────────────────────────────────────
+
 
 export const notificationService = new NotificationService();
 export default notificationService;

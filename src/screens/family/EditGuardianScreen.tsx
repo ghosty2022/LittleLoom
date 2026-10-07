@@ -1,4 +1,4 @@
-// src/screens/EditGuardianScreen.tsx
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -49,7 +49,7 @@ import { useTracker } from '../../hooks/useTrackerContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import * as ImagePicker from 'expo-image-picker';
-// IMPORTANT: Use legacy API to avoid deprecation warnings
+
 import * as FileSystem from 'expo-file-system/legacy';
 
 /* Permanent storage for guardian/member photos */
@@ -1492,7 +1492,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const processedUri = `${GUARDIAN_IMAGES_DIR}${memberId}_${Date.now()}.${safeExt}`;
 
-      if (sourceUri.startsWith('content://')) {
+      if (sourceUri.startsWith('content:
         const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.writeAsStringAsync(processedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
       } else if (sourceUri.startsWith('data:')) {
@@ -1519,7 +1519,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   };
 
-  // ─── HANDLE ROLE CHANGE ──────────────────────────────────────────────
+  
   const handleRoleChange = async (newRole: UserRole) => {
     if (!member || !hasPermission('manageFamily')) return;
     if (member.role === newRole) { setShowRoleModal(false); return; }
@@ -1538,27 +1538,27 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }, () => setShowRoleModal(false), 'Change', 'Cancel');
   };
 
-  // ─── HANDLE CALL ──────────────────────────────────────────────────────
+  
   const handleCall = async () => {
     if (!member?.phoneNumber) { sweetAlert.alert('No Phone Number', 'No phone number on file.', 'warning'); return; }
     const phoneUrl = `tel:${member.phoneNumber.replace(/\s/g, '')}`;
     if (await Linking.canOpenURL(phoneUrl)) { triggerHaptic('medium'); await Linking.openURL(phoneUrl); }
   };
 
-  // ─── HANDLE MESSAGE ──────────────────────────────────────────────────
+  
   const handleMessage = () => {
     if (!member) return;
     navigation.navigate('FamilyChat' as never, { memberId: member.id, memberName: member.fullName, memberAvatar: member.avatar, memberRole: member.role });
   };
 
-  // ─── HANDLE SHARE ─────────────────────────────────────────────────────
+  
   const handleShare = async () => {
     if (!member) return;
     try { triggerHaptic('medium'); await Share.share({ message: `${member.fullName} - ${ROLE_LABELS[member.role] || member.role}\n${member.email || ''}\n${member.phoneNumber || ''}`, title: `${member.fullName}'s Contact Info` }); }
     catch (error) { console.error('Error sharing contact:', error); }
   };
 
-  // ─── ON REFRESH ──────────────────────────────────────────────────────
+  
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -1574,7 +1574,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   }, [loadFamily, refreshBabyData, currentBaby, member, loadMemberActivities]);
 
-  // ─── HANDLE TAB CHANGE ───────────────────────────────────────────────
+  
   const handleTabChange = useCallback((tab: ProfileTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
@@ -1583,7 +1583,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
   const styles = useMemo(() => getDynamicStyles(isDark), [isDark]);
 
-  // ─── LOADING STATE ──────────────────────────────────────────────────
+  
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>

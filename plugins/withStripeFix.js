@@ -1,11 +1,11 @@
-// plugins/withStripeFix.js
+
 const { withAppBuildGradle } = require('@expo/config-plugins');
 
 module.exports = function withStripeFix(config) {
   return withAppBuildGradle(config, (config) => {
     let buildGradle = config.modResults.contents;
 
-    // Already applied?
+    
     if (buildGradle.includes('stripe-force-resolution')) {
       return config;
     }
@@ -26,7 +26,7 @@ module.exports = function withStripeFix(config) {
     }
 }`;
 
-    // Insert inside the android block
+    
     buildGradle = buildGradle.replace(
       /(android\s*\{)/,
       `$1\n    ${resolutionStrategy}`

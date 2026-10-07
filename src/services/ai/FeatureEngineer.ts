@@ -1,23 +1,23 @@
-// src/services/ai/FeatureEngineer.ts
-// ─────────────────────────────────────────────────────────────────────
-// Nightly feature engineering for the ai_features table.
-//
-// FIXES in this version:
-//   ✓ Computes ALL 18 columns (was missing 4)
-//   ✓ Handles unit conversions correctly (F→C, oz→ml, seconds→minutes)
-//   ✓ Sanitizes for PostgREST (no undefined/NaN)
-//   ✓ Robust to missing entries (returns zeros, not crashes)
-//   ✓ Uses canonical Supabase client
-//
-// Public API:
-//   - computeAndStoreFeatures(babyId, date): Promise<void>
-//   - backfillRange(babyId, daysBack): Promise<number>
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { supabase } from '@/utils/supabase';
 import { calculatePercentilePrecise } from '@/hooks/useWHOGrowthCalculator';
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 interface RawEntry {
   id: string;
@@ -47,7 +47,7 @@ export interface ComputedFeatures {
   parent_engagement_score: number;
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────
+
 
 const parseData = (data: unknown): Record<string, unknown> => {
   if (!data) return {};
@@ -96,11 +96,11 @@ const toMl = (data: Record<string, unknown>): number => {
 const toMinutes = (data: Record<string, unknown>): number => {
   const d = data.duration;
   if (typeof d === 'number' && Number.isFinite(d)) {
-    // Your schema stores duration in seconds
+    
     return d / 60;
   }
   if (typeof d === 'string') {
-    // Parse "1h 30m" / "45m" / "90s"
+    
     const s = d.trim().toLowerCase();
     const asNum = Number(s);
     if (Number.isFinite(asNum)) return asNum / 60;
@@ -126,7 +126,7 @@ const toCelsius = (data: Record<string, unknown>): number | null => {
   return unit === 'fahrenheit' ? ((v - 32) * 5) / 9 : v;
 };
 
-// ─── The Service ────────────────────────────────────────────────────
+
 
 export class FeatureEngineer {
   /**
@@ -139,7 +139,7 @@ export class FeatureEngineer {
       if (entries.length === 0) return;
 
       const previous = await this.getPreviousFeatures(babyId, date);
-      // Load baby profile (for WHO percentile computation)
+      
       let baby: any = null;
       try {
         const { data: b } = await supabase
@@ -147,7 +147,7 @@ export class FeatureEngineer {
           .select('date_of_birth, gender')
           .eq('id', babyId)
           .maybeSingle();
-        // Normalize so downstream code that reads `birth_date` still works
+        
         baby = b ? { ...b, birth_date: b.date_of_birth } : null;
       } catch {}
       const features = this.computeFeatures(entries, previous, baby);
@@ -189,7 +189,7 @@ export class FeatureEngineer {
     return count;
   }
 
-  // ─── Private ────────────────────────────────────────────────────
+  
 
   private async getEntriesForDay(babyId: string, date: Date): Promise<RawEntry[]> {
     const start = startOfDay(date);
@@ -233,19 +233,19 @@ export class FeatureEngineer {
   }
 
   private computeFeatures(entries: RawEntry[], previous: any, baby?: any): ComputedFeatures {
-    // Guard against non-array input
+    
     const safeEntries = Array.isArray(entries) ? entries.filter(e => 
       e && e.tracker_id && e.timestamp && !isNaN(new Date(e.timestamp).getTime())
     ) : [];
 
-    // ─── Segment entries by tracker ──────────────────────────────
+    
     const feedEntries = safeEntries.filter((e) => e.tracker_id === 'feed');
     const sleepEntries = safeEntries.filter((e) => e.tracker_id === 'sleep');
     const growthEntries = safeEntries.filter((e) => e.tracker_id === 'growth');
     const tempEntries = safeEntries.filter((e) => e.tracker_id === 'temperature');
     const symptomEntries = safeEntries.filter((e) => e.tracker_id === 'symptom');
 
-    // ─── Feeding ─────────────────────────────────────────────────
+    
     const feedCount = feedEntries.length;
     const feedTotalMl = feedEntries.reduce((sum, e) => sum + toMl(parseData(e.data)), 0);
 
@@ -264,7 +264,7 @@ export class FeatureEngineer {
       }
     }
 
-    // ─── Sleep ───────────────────────────────────────────────────
+    
     const sleepTotalMinutes = sleepEntries.reduce(
       (sum, e) => sum + toMinutes(parseData(e.data)),
       0
@@ -274,7 +274,7 @@ export class FeatureEngineer {
       return String(d.sleepType || '').toLowerCase() === 'nap';
     }).length;
 
-    // Sleep consistency: standard deviation of sleep start times, lower = more consistent
+    
     let sleepConsistencyScore: number | null = null;
     if (sleepEntries.length >= 2) {
       const startHours = sleepEntries.map((e) => {
@@ -286,11 +286,11 @@ export class FeatureEngineer {
         startHours.reduce((sum, h) => sum + Math.pow(h - mean, 2), 0) /
         startHours.length;
       const stddev = Math.sqrt(variance);
-      // Map: stddev 0 → 100, stddev 4h+ → 0
+      
       sleepConsistencyScore = Math.max(0, Math.min(100, 100 - (stddev / 4) * 100));
     }
 
-    // ─── Growth ──────────────────────────────────────────────────
+    
     const weightEntry = growthEntries.find((e) => {
       const d = parseData(e.data);
       return String(d.measurementType || '').toLowerCase() === 'weight';
@@ -310,7 +310,7 @@ export class FeatureEngineer {
       : null;
     const heightCmSafe = Number.isFinite(heightCm) ? heightCm : previous?.height_cm ?? null;
 
-    // Weight velocity (kg/week) — needs previous days' data
+    
     let weightVelocity: number | null = null;
     if (
       weightKgSafe !== null && 
@@ -320,13 +320,13 @@ export class FeatureEngineer {
     ) {
       const prevWeight = Number(previous.weight_kg);
       weightVelocity = (weightKgSafe - prevWeight) / 7;
-      // Guard against absurd values (> 1 kg/week is physically impossible for infants)
+      
       if (!Number.isFinite(weightVelocity) || Math.abs(weightVelocity) > 1) {
         weightVelocity = null;
       }
     }
 
-    // Compute WHO weight-for-age percentile using the static import.
+    
     let weightPercentile: number | null = previous?.weight_percentile ?? null;
     if (weightKgSafe !== null && baby?.birth_date && baby?.gender) {
       try {
@@ -336,8 +336,8 @@ export class FeatureEngineer {
           0,
           (n.getFullYear() - b.getFullYear()) * 12 + (n.getMonth() - b.getMonth())
         );
-        // babies.gender is 'male' | 'female' | 'other' in the DB.
-        // The WHO calculator expects 'boy' | 'girl'.
+        
+        
         const genderRaw = String(baby.gender || '').toLowerCase();
         const g: 'boy' | 'girl' =
           genderRaw === 'female' || genderRaw === 'girl' ? 'girl' : 'boy';
@@ -348,11 +348,11 @@ export class FeatureEngineer {
           g
         );
       } catch {
-        // calculator unavailable — keep null
+        
       }
     }
 
-    // ─── Health ──────────────────────────────────────────────────
+    
     const temps = tempEntries
       .map((e) => toCelsius(parseData(e.data)))
       .filter((t): t is number => t !== null);
@@ -360,8 +360,8 @@ export class FeatureEngineer {
     const temperatureMax = temps.length > 0 ? Math.max(...temps) : null;
     const symptomCount = symptomEntries.length;
 
-    // ─── Engagement ──────────────────────────────────────────────
-    // Routine consistency: how spread out across the day the entries are
+    
+    
     const hoursWithEntries = new Set(
       safeEntries.map((e) => new Date(e.timestamp).getHours())
     );
@@ -370,29 +370,29 @@ export class FeatureEngineer {
       (hoursWithEntries.size / 24) * 100 * 2.5
     );
 
-    // Parent engagement: weighted by role diversity and entry spread
-    //   - Multiple family members logging = higher engagement
-    //   - Entries spread across the day = higher engagement
-    //   - Rapid bursts (spam) get dampened
-    //
-    // NOTE: `logged_by` is a non-null UUID column, so `filter(Boolean)` is
-    // mostly redundant. We keep it for safety against legacy rows.
+    
+    
+    
+    
+    
+    
+    
     const uniqueLoggers = new Set(
       safeEntries.map(e => e.logged_by).filter(Boolean)
     ).size;
 
     const uniqueHours = hoursWithEntries.size;
 
-    // Diversity bonus: 1 logger = 1.0x, 2+ loggers = 1.3x, 3+ = 1.5x
+    
     const diversityMultiplier =
       uniqueLoggers >= 3 ? 1.5 : uniqueLoggers >= 2 ? 1.3 : 1.0;
 
-    // Spread bonus: more distinct hours = richer data
+    
     const spreadBonus = Math.min(20, uniqueHours * 1.5);
 
     const rawEngagement = safeEntries.length * 2 * diversityMultiplier + spreadBonus;
 
-    // Clamp to [0, 100]
+    
     const parentEngagement = Math.min(100, Math.round(rawEngagement));
 
     return {
@@ -423,7 +423,7 @@ export class FeatureEngineer {
   }
 }
 
-// ─── Singleton + default export ─────────────────────────────────────
+
 
 export const featureEngineer = new FeatureEngineer();
 export default featureEngineer;

@@ -1,32 +1,32 @@
-// src/services/ai/BayesianEngine.ts
-// ─────────────────────────────────────────────────────────────────────
-// Bayesian adaptive thresholds for per-baby "normal" ranges.
-//
-// FIXES in this version:
-//   ✓ O(1) incremental learning (was O(n) — reprocessed entire history)
-//   ✓ Persisted posterior state (AsyncStorage + Supabase app_settings)
-//   ✓ Sanity bounds — rejects nonsense values before they poison the posterior
-//   ✓ Consent gate — respects "Personal AI Learning" toggle
-//   ✓ Versioned storage keys — safe model upgrades
-//   ✓ Uses canonical Supabase client (utils/supabase)
-//   ✓ VERIFIED: `extractMetricValue` duration parsing was ambiguous between
-//     seconds-vs-minutes when the tracker stored a raw number. Now the
-//     schema is documented inline: `duration` = SECONDS (matching the
-//     tracker_entries.data schema), `minutes` / `duration_minutes` =
-//     explicit minutes if the caller provides them.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 
-// Uses the canonical helper — keeps session cache consistent across the app.
+
 import { getCurrentUserId as getCanonicalUserId } from '@/database/dbHelpers';
 
 async function getCurrentUserId(): Promise<string | null> {
   return getCanonicalUserId();
 }
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 export type MetricKey =
   | 'temperature_c'
@@ -67,7 +67,7 @@ const LEGACY_MAP: Record<LegacyMetric, MetricKey> = {
 export interface NormalRange {
   mean: number;
   stddev: number;
-  confidence: number; // 0..1
+  confidence: number; 
   samples: number;
 }
 
@@ -107,8 +107,8 @@ interface PriorSpec {
   max: number;
 }
 
-// ─── Priors ─────────────────────────────────────────────────────────
-// Sources: WHO growth standards, NICE pediatric guidelines.
+
+
 
 const PRIORS: Record<MetricKey, PriorSpec> = {
   temperature_c:      { mu: 36.8, sigmaPrior: 0.5,  priorStrength: 5, sigmaFloor: 0.15, min: 33,  max: 43 },
@@ -127,7 +127,7 @@ const PRIORS: Record<MetricKey, PriorSpec> = {
   wake_window_min:    { mu: 120,  sigmaPrior: 45,   priorStrength: 3, sigmaFloor: 15,   min: 20,  max: 600 },
 };
 
-// ─── Storage keys ───────────────────────────────────────────────────
+
 
 const STORAGE_PREFIX = '@littleloom_bayes_v1:';
 const CONSENT_KEY = '@littleloom_ai_consent_v1';
@@ -139,11 +139,11 @@ const storageKey = (babyId: string, metric: MetricKey) =>
 const supabaseKey = (babyId: string, metric: MetricKey) =>
   `${SUPABASE_KEY_PREFIX}${babyId}:${metric}`;
 
-// ─── In-memory cache (per session) ──────────────────────────────────
+
 
 const memoryCache = new Map<string, Posterior>();
 
-// ─── Helpers ────────────────────────────────────────────────────────
+
 
 const resolveMetric = (metric: AnyMetric): MetricKey => {
   if (metric in LEGACY_MAP) return LEGACY_MAP[metric as LegacyMetric];
@@ -224,16 +224,16 @@ async function isLearningAllowed(): Promise<boolean> {
   }
 }
 
-// ─── Persistence ────────────────────────────────────────────────────
+
 
 async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posterior> {
   const key = storageKey(babyId, metric);
 
-  // 1. Memory
+  
   const cached = memoryCache.get(key);
   if (cached) return cached;
 
-  // 2. AsyncStorage
+  
   try {
     const raw = await AsyncStorage.getItem(key);
     if (raw) {
@@ -243,7 +243,7 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
     }
   } catch {}
 
-  // 3. Supabase (cold start after reinstall)
+  
   try {
     const userId = await getCurrentUserId();
     if (userId) {
@@ -273,7 +273,7 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
     }
   } catch {}
 
-  // 4. Prior — try cohort prior first, fall back to generic
+  
   try {
     const { getCohortPrior, ageToCohort } = await import('./CohortPriors');
 
@@ -331,7 +331,7 @@ async function loadPosterior(babyId: string, metric: MetricKey): Promise<Posteri
     if (__DEV__) console.warn('[Bayes] Cohort prior load failed:', e);
   }
 
-  // 5. Generic prior fallback
+  
   const post = priorFromSpec(PRIORS[metric]);
   memoryCache.set(key, post);
   return post;
@@ -353,7 +353,7 @@ async function persistPosterior(
     console.warn('[Bayes] AsyncStorage write failed:', e);
   }
 
-  // Supabase — best effort, non-blocking
+  
   getCurrentUserId()
     .then((userId) => {
       if (!userId) return;
@@ -377,7 +377,7 @@ async function persistPosterior(
     .catch(() => {});
 }
 
-// ─── Public API ─────────────────────────────────────────────────────
+
 
 /**
  * Feed a new observation into the learning model.
@@ -532,7 +532,7 @@ export async function resetLearningForBaby(babyId: string): Promise<void> {
   console.log(`[Bayes] Learning reset for baby ${babyId}`);
 }
 
-// ─── Numeric coercion ──────────────────────────────────────────────
+
 
 function coerceNumber(
   raw: unknown,
@@ -595,11 +595,11 @@ export function extractMetricValue(
       return unit === 'fahrenheit' ? ((v - 32) * 5) / 9 : v;
     }
     case 'feeding_ml': {
-      // Feed type guard — solids don't produce ml values
+      
       const feedType = String(data.feedType || '').toLowerCase();
       if (feedType === 'solid' || feedType === 'water') return null;
 
-      // Try specific field names first (newer schema)
+      
       let amount =
         getNum('bottleAmount') ??
         getNum('amount_ml') ??
@@ -608,7 +608,7 @@ export function extractMetricValue(
 
       if (amount === null || amount <= 0) return null;
 
-      // Determine unit — support both generic 'unit' and field-specific units
+      
       const unit = String(
         data.bottleAmount_unit ||
         data.amount_unit ||
@@ -616,13 +616,13 @@ export function extractMetricValue(
         'ml'
       ).toLowerCase();
 
-      // Reject absurd amounts
+      
       const ml = unit === 'oz' ? amount * 29.5735 : amount;
       if (ml > 500 || ml < 1) return null;
       return ml;
     }
     case 'weight_kg': {
-      // Skip if this is a height or head measurement
+      
       const mType = String(data.measurementType || '').toLowerCase();
       if (mType && mType !== 'weight') return null;
 
@@ -641,7 +641,7 @@ export function extractMetricValue(
 
       const kg = unit === 'lb' ? v * 0.453592 : unit === 'g' ? v / 1000 : v;
 
-      // Sanity: 0.5 – 40 kg
+      
       if (kg < 0.5 || kg > 40) return null;
       return kg;
     }
@@ -673,7 +673,7 @@ export function extractMetricValue(
     case 'diaper_interval_min':
     case 'poop_interval_hr':
     case 'wake_window_min': {
-      // Try duration first (seconds), then minutes, then a generic parse
+      
       const sec = getNum('duration');
       const minFromField = getNum('minutes') ?? getNum('duration_minutes');
       let minutes: number | null = null;
@@ -691,7 +691,7 @@ export function extractMetricValue(
   }
 }
 
-// ─── Reset memory cache for a baby ──────────────────────────────────
+
 
 export async function resetLocalCacheForBaby(babyId: string): Promise<void> {
   const prefix = `${STORAGE_PREFIX}${babyId}:`;
@@ -705,7 +705,7 @@ export async function resetLocalCacheForBaby(babyId: string): Promise<void> {
   }
 }
 
-// ─── Legacy class-shaped export ─────────────────────────────────────
+
 
 export class BayesianEngine {
   learnNormalRange(babyId: string, metric: string): Promise<NormalRange> {

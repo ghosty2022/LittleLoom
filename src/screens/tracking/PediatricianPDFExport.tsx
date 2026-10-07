@@ -1,15 +1,15 @@
-// PediatricianPDFExport.tsx — v4.1
-// Professional PDF Template System with Shareable Templates
-// Full Microsoft Forms-style sharing and response collection
-//
-// FIXES in v4.1:
-//   ✓ presetId state renamed (no longer shadows ReportTemplate interface)
-//   ✓ applyTemplate typed with PresetId string literals
-//   ✓ Full report renders REAL WHO percentile data (was a stub)
-//   ✓ GrowthPercentileCard reads canonical measurementType entries
-//   ✓ guardians rendered in family section
-//   ✓ Removed dead code: simulateResponse, showPreview, formatDate
-//   ✓ Single canonical WHO LMS import (no duplicate zScoreToPercentile)
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
@@ -70,7 +70,7 @@ import {
   zScoreToValue,
 } from '@/hooks/useWHOGrowthCalculator';
 
-// Backwards-compatible wrapper: previous callers used (median, sd) + zToPercentile.
+
 const getGrowthRef = (
   gender: string,
   type: 'weight' | 'height' | 'head',
@@ -438,7 +438,7 @@ const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     if (!growth.length || ageMo < 0) return null;
 
-    // Cluster by measurementType (canonical) with legacy fallback
+    
     const byType: Record<string, TrackerEntry> = {};
     for (const e of growth) {
       const t = String(e.data?.measurementType ?? '').toLowerCase();
@@ -464,7 +464,7 @@ const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby
           if (entry.data?.unit) unit = String(entry.data.unit);
         }
       }
-      // Legacy fallback: read directly from per-key field
+      
       if (val === null) {
         const legacy = growth.find((e) => {
           const v = parseFloat(String(e.data?.[type] ?? ''));
@@ -705,7 +705,7 @@ export const PediatricianPDFExport: React.FC = () => {
   const [selectedReport, setSelectedReport] = useState<DoctorReport | null>(null);
   const [showReportDetail, setShowReportDetail] = useState(false);
 
-  // ─── Template Form State ───────────────────────────────────────────────
+  
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const [showTemplateForm, setShowTemplateForm] = useState(false);
@@ -739,7 +739,7 @@ export const PediatricianPDFExport: React.FC = () => {
     transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
-  // ─── Load saved data ────────────────────────────────────────────────────
+  
   useEffect(() => {
     loadReports();
     loadShareableTemplates();
@@ -874,7 +874,7 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   };
 
-  // ─── Toggle sections ──────────────────────────────────────────────────
+  
   const toggleSection = (id: string) =>
     setSections(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
 
@@ -890,7 +890,7 @@ export const PediatricianPDFExport: React.FC = () => {
     setSections(prev => prev.map(s => ({ ...s, enabled: presets[preset].includes(s.id) })));
   };
 
-  // ─── Filter entries ────────────────────────────────────────────────────
+  
   const filteredEntries = useMemo(() => {
     if (dateRange === 'all') return entries as TrackerEntry[];
     const days = { '7d': 7, '30d': 30, '90d': 90 };
@@ -909,7 +909,7 @@ export const PediatricianPDFExport: React.FC = () => {
     };
   }, [filteredEntries]);
 
-  // ─── Template Handlers ─────────────────────────────────────────────────
+  
   const handleTemplateSelect = (template: ReportTemplate) => {
     setSelectedTemplate(template);
     const initialValues: Record<string, string> = {};
@@ -978,7 +978,7 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   };
 
-  // ─── Generate Template HTML ───────────────────────────────────────────
+  
   const generateTemplateHTML = (template: ReportTemplate, values: Record<string, string>) => {
     const baby = currentBaby;
     const babyName = baby?.name || 'Baby';
@@ -1055,7 +1055,7 @@ export const PediatricianPDFExport: React.FC = () => {
 </html>`;
   };
 
-  // ─── Generate Full Report HTML ────────────────────────────────────────
+  
   const generateFullReportHTML = useCallback(() => {
     const baby = currentBaby;
     const babyName = baby?.name || 'Baby';
@@ -1072,7 +1072,7 @@ export const PediatricianPDFExport: React.FC = () => {
       dateRange === '30d' ? 'Last 30 Days' :
       dateRange === '90d' ? 'Last 90 Days' : 'All Time';
 
-    // ─── Family HTML (parents + guardians) ─────────────────────────────
+    
     const familyHTML = () => {
       const contacts: string[] = [];
       if (parent1) contacts.push(`<div class="contact-card"><strong>${escapeHtml(parent1.fullName || 'Parent 1')}</strong><br/>${escapeHtml(parent1.relationship || 'Parent')}${parent1.phoneNumber ? `<br/>📞 ${escapeHtml(parent1.phoneNumber)}` : ''}${parent1.email ? `<br/>✉️ ${escapeHtml(parent1.email)}` : ''}</div>`);
@@ -1085,7 +1085,7 @@ export const PediatricianPDFExport: React.FC = () => {
         : '<p class="muted">No family contacts recorded.</p>';
     };
 
-    // ─── Real growth percentile table ─────────────────────────────────
+    
     const growthPercentileHTML = () => {
       if (!baby?.birthDate) return '<p class="muted">No birth date on file — percentiles cannot be computed.</p>';
 
@@ -1097,7 +1097,7 @@ export const PediatricianPDFExport: React.FC = () => {
         return '<p class="muted">No growth measurements in this period.</p>';
       }
 
-      // Cluster by measurementType with legacy fallback
+      
       const byType: Record<string, TrackerEntry> = {};
       for (const e of growthEntries) {
         const t = String(e.data?.measurementType ?? '').toLowerCase();
@@ -1172,7 +1172,7 @@ export const PediatricianPDFExport: React.FC = () => {
       `;
     };
 
-    // ─── Baby profile block ───────────────────────────────────────────
+    
     const babyProfileHTML = () => `
       <div class="grid-3">
         <div class="metric"><div class="metric-value">${escapeHtml(babyName)}</div><div class="metric-label">Name</div></div>
@@ -1185,7 +1185,7 @@ export const PediatricianPDFExport: React.FC = () => {
       ${baby?.medicalNotes ? `<div class="info-box"><strong>Medical Notes:</strong> ${escapeHtml(baby.medicalNotes)}</div>` : ''}
     `;
 
-    // ─── Summary block — derived from real tracker entries ──────────
+    
     const summaryHTML = () => {
       const recentVisits = filteredEntries.filter((e) => 
         ['doctor_visit', 'dental_visit', 'therapy', 'vaccine'].includes(e.trackerId)
@@ -1283,7 +1283,7 @@ export const PediatricianPDFExport: React.FC = () => {
 </html>`;
   }, [currentBaby, filteredEntries, sections, dateRange, customNotes, parent1, parent2, guardians]);
 
-  // ─── Generate Full Report PDF ─────────────────────────────────────────
+  
   const generateFullReportPDF = useCallback(async () => {
     const enabledCount = sections.filter(s => s.enabled).length;
     if (!enabledCount) { sweetAlert?.alert?.('No Sections', 'Enable at least one section.'); return; }
@@ -1333,7 +1333,7 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   }, [generateFullReportHTML, sections, currentBaby, sweetAlert, presetId]);
 
-  // ─── Upload Doctor-Filled Report ──────────────────────────────────────
+  
   const uploadDoctorReport = useCallback(async () => {
     if (!currentBaby) {
       sweetAlert?.alert?.('No Baby', 'Select a baby profile first.');
@@ -1383,7 +1383,7 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   }, [currentBaby, sweetAlert]);
 
-  // ─── SHAREABLE TEMPLATE SYSTEM ────────────────────────────────────────
+  
 
   const createShareableTemplate = useCallback(async (template: ReportTemplate) => {
     if (!userProfile) {
@@ -1447,7 +1447,7 @@ export const PediatricianPDFExport: React.FC = () => {
     );
   }, [shareResponses, sweetAlert]);
 
-  // ─── Share Modal ──────────────────────────────────────────────────────
+  
   const ShareModal = () => (
     <Modal visible={showShareModal} transparent animationType="slide" onRequestClose={() => setShowShareModal(false)}>
       <View style={styles.shareModalOverlay}>

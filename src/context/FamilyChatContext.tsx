@@ -1,6 +1,6 @@
-// src/context/FamilyChatContext.tsx
-// Full Supabase real-time implementation with instant messaging
-// FIXED: ref-backed listeners, stable callbacks, no resubscribe storms
+
+
+
 
 import React, {
   createContext,
@@ -269,7 +269,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const currentChatIdRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
 
-  // ⭐ Chat / message refs prevent stale closure bugs in realtime callbacks
+  
   const chatsRef = useRef<FamilyChat[]>([]);
   const messagesRef = useRef<Record<string, FamilyMessage[]>>({});
   const familyCodeRef = useRef<string | null>(null);
@@ -431,7 +431,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             deliveryStatus: 'sent',
           };
 
-          // ⭐ Read mutable state from refs — never from closure
+          
           const chat = chatsRef.current.find(c => c.id === message.chatId);
           const isChatMuted = chat?.isMuted ?? false;
 
@@ -457,7 +457,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             return { ...prev, messages: updatedMessages, chats: updatedChats };
           });
 
-          // Notification only when not self, not current chat, not muted
+          
           const activeChatId = currentChatIdRef.current;
           if (
             !isFromThisDevice &&
@@ -554,7 +554,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     /* ─── Presence ───────────────────────────────────────────── */
     channel.on('presence', { event: 'sync' }, () => {
-      // no-op; hook can be added later
+      
     });
 
     /* ─── Subscribe ──────────────────────────────────────────── */
@@ -587,7 +587,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     realtimeChannelRef.current = channel;
-    // ⭐ Deliberately no state deps — reads from refs
+    
   }, []);
 
   /* ─── Perform Initial Sync ──────────────────────────────────── */
@@ -672,7 +672,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
-      // Sync refs immediately (avoid a render-time race)
+      
       chatsRef.current = chats;
       messagesRef.current = messages;
 
@@ -692,9 +692,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [setupRealtimeListeners]);
 
   /* ─── Kick off sync once family code is known ───────────────── */
-  // Guard on deviceId + familyCode + not-yet-initialized. If the family
-  // code arrives late (async from Supabase), this effect re-fires because
-  // `state.familyCode` is in the deps array.
+  
+  
+  
   useEffect(() => {
     if (!deviceIdRef.current) return;
     if (!state.familyCode) return;
@@ -1000,7 +1000,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         deliveryStatus: 'sending',
       };
 
-      // Optimistic local insert
+      
       setState(prev => {
         const updatedChats = prev.chats.map(c =>
           c.id === chatId ? { ...c, lastMessage: newMessage, updatedAt: now } : c,
@@ -1173,7 +1173,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return;
       }
 
-      // ⭐ Batch: single update for all unread rows
+      
       const ids = unread.map(m => m.id);
       const { error } = await supabase
         .from('family_messages')

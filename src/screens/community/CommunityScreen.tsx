@@ -1,4 +1,4 @@
-// src/screens/community/CommunityScreen.tsx
+
 import {
   ActivityIndicator,
   Dimensions,
@@ -56,9 +56,9 @@ const littleLoomLogo = require('../../../assets/logo.png');
 const { width: SCREEN_W } = Dimensions.get('window');
 const POSTS_PER_PAGE = 12;
 
-// ============================================================
-// CONSTANTS
-// ============================================================
+
+
+
 const DS = {
   primary: '#6366f1',
   primaryLight: '#818cf8',
@@ -136,9 +136,9 @@ const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 
-// ============================================================
-// GRADIENT TEXT COMPONENT - Proper gradient text
-// ============================================================
+
+
+
 const GradientText = ({ 
   children, 
   style, 
@@ -188,9 +188,9 @@ const GradientText = ({
   );
 };
 
-// ============================================================
-// BLURRED IMAGE COMPONENT
-// ============================================================
+
+
+
 const BlurredImage = React.memo(({ 
   imageUri, 
   isSensitive = false, 
@@ -240,9 +240,9 @@ const BlurredImage = React.memo(({
   );
 });
 
-// ============================================================
-// SENTIMENT INDICATOR
-// ============================================================
+
+
+
 const SentimentAnalyzer = {
   analyze: (text: string) => {
     const positiveWords = ['happy', 'joy', 'love', 'great', 'wonderful', 'amazing', 'excellent', 'good', 'beautiful', 'fantastic', 'awesome', 'incredible', 'perfect', 'glad', 'thankful', 'grateful', 'blessed', 'proud', 'exciting', 'milestone', 'achievement', 'success', 'celebrate', 'celebrating'];
@@ -270,9 +270,9 @@ const SentimentAnalyzer = {
   }
 };
 
-// ============================================================
-// THREAD SUMMARIZER
-// ============================================================
+
+
+
 const ThreadSummarizer = {
   summarize: (content: string, maxLength: number = 80) => {
     if (!content || content.length <= maxLength) return content;
@@ -285,9 +285,9 @@ const ThreadSummarizer = {
   }
 };
 
-// ============================================================
-// CATEGORY BADGE COMPONENT
-// ============================================================
+
+
+
 const CategoryBadge = React.memo(({ categoryId, isDark }: { categoryId?: string; isDark: boolean }) => {
   if (!categoryId) return null;
   
@@ -305,8 +305,8 @@ const CategoryBadge = React.memo(({ categoryId, isDark }: { categoryId?: string;
 });
 
 // ============================================================
-// MAIN COMPONENT
-// ============================================================
+
+
 export default function CommunityScreen({ navigation }: Props) {
   const sweetAlert = useSweetAlert();
   useRouteBasedNavVisibility();
@@ -383,7 +383,7 @@ export default function CommunityScreen({ navigation }: Props) {
   const postsCount = posts.length;
   const membersCount = allUsers.length;
 
-  // Update selected topics list for display
+  
   useEffect(() => {
     setSelectedTopicsList(userTopics.slice(0, 20));
   }, [userTopics]);
@@ -404,7 +404,7 @@ export default function CommunityScreen({ navigation }: Props) {
     return allUsers.find(u => u.id === userId);
   }, [contextGetUserById, currentUser, allUsers]);
 
-  // Refresh topics on focus
+  
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       refreshTopics().then(() => {
@@ -607,9 +607,9 @@ export default function CommunityScreen({ navigation }: Props) {
     },
   });
 
-  // ============================================================
-  // RENDER POST
-  // ============================================================
+  
+  
+  
   const renderPost = useCallback(({ item, index }: { item: Post; index: number }) => {
     const topicColor = topics.find(t => t.id === item.topicId)?.color || DS.primary;
     const topicCategory = topics.find(t => t.id === item.topicId)?.category;

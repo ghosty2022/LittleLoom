@@ -1,5 +1,5 @@
-// src/hooks/useGrowthIntelligence.ts
-// FIX: Use direct imports
+
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,7 +8,7 @@ import { differenceInMonths, differenceInDays, differenceInHours, subDays, subMo
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 
-// ... rest of the file remains the same ...
+
 import { TrackerEntry } from '../types/trackers';
 import {
   calculatePercentilePrecise,
@@ -25,17 +25,17 @@ import {
 
 export interface SubScore {
   label: string;
-  value: number; // 0-100
+  value: number; 
   color: string;
-  weight: number; // contribution to composite
+  weight: number; 
   trend: 'up' | 'down' | 'stable';
-  delta: number; // change from last week
+  delta: number; 
 }
 
 export interface MilestoneReadiness {
   category: 'physical' | 'cognitive' | 'social' | 'language' | 'emotional';
   readinessPercent: number;
-  expectedWindow: { start: number; end: number }; // months
+  expectedWindow: { start: number; end: number }; 
   currentAge: number;
   suggestedActivities: string[];
   relatedTrackerIds: string[];
@@ -172,12 +172,12 @@ export const useGrowthIntelligence = () => {
   const { entries, getEntries } = useTracker();
   const { currentBaby, growthData, milestones } = useBaby();
 
-  // Stable refs so downstream useMemo deps don't thrash.
+  
   const getEntriesRef = useRef(getEntries);
   getEntriesRef.current = getEntries;
-  // Stable reference — the tracker context returns a fresh `getEntries`
-  // function on every provider render, which would thrash every memo
-  // below. All call-sites and deps use `getEntriesStable`.
+  
+  
+  
   const getEntriesStable = useCallback(
     (...args: Parameters<typeof getEntries>) =>
       typeof getEntriesRef.current === 'function'
@@ -197,7 +197,7 @@ export const useGrowthIntelligence = () => {
   const gender = useMemo(() => safeGender(currentBaby?.gender), [currentBaby?.gender]);
 
   const mergedGrowthData = useMemo(() => {
-    // ─── Primary source: tracker_entries (real Supabase data) ────
+    
     const rawFromEntries = getEntriesStable('growth', 500) || [];
     const fromEntries = rawFromEntries
       .map((e: any) => {
@@ -206,9 +206,9 @@ export const useGrowthIntelligence = () => {
         if (!Number.isFinite(ts) || ts <= 0) return null;
         
         const d = (e.data || {}) as Record<string, unknown>;
-        // `measurementType` is the canonical field; fall back to `type`
+        
         const rawType = String(d.measurementType ?? d.type ?? '').toLowerCase();
-        // Normalize synonyms
+        
         const type =
           rawType === 'length' ? 'height' :
           rawType === 'hc' || rawType === 'headcircumference' ? 'head' :
@@ -227,7 +227,7 @@ export const useGrowthIntelligence = () => {
       )
       .sort((a, b) => a.timestamp - b.timestamp);
 
-    // ─── Secondary source: BabyContext.growthData (legacy, may be empty) ───
+    
     const fromContext = (growthData || [])
       .map((g: any) => {
         const rawType = String(g?.type ?? '').toLowerCase();
@@ -246,7 +246,7 @@ export const useGrowthIntelligence = () => {
       })
       .filter(g => ['height', 'weight', 'head'].includes(g.type) && Number.isFinite(g.value));
 
-    // ─── Merge, dedupe by (type, date), tracker_entries wins ───
+    
     const seen = new Set<string>();
     const merged: typeof fromEntries = [];
     for (const g of [...fromEntries, ...fromContext]) {
@@ -259,17 +259,17 @@ export const useGrowthIntelligence = () => {
   }, [growthData, getEntriesStable]);
 
   const achievedMilestoneIds = useMemo(() => {
-    // ─── Primary source: tracker_entries with tracker_type='milestone' ──
+    
     const fromTracker = (getEntriesStable('milestone', 300) || [])
       .map(e => {
         const d = (e.data || {}) as Record<string, unknown>;
-        // Try title → name → milestone fields
+        
         const raw = String(d.title ?? d.name ?? d.milestone ?? '').trim();
         return raw ? slug(raw) : '';
       })
       .filter(Boolean);
 
-    // ─── Secondary: BabyContext.milestones (may be empty) ──
+    
     const fromContext = (milestones || [])
       .map(m => slug(String(m?.title ?? m?.name ?? '')))
       .filter(Boolean);
@@ -294,11 +294,11 @@ export const useGrowthIntelligence = () => {
       const d = (entry.data || {}) as Record<string, unknown>;
       const feedType = String(d.feedType || '');
 
-      // Solid food should NOT count toward liquid ml — skip it here.
-      // Variety for solids is handled separately below.
+      
+      
       if (feedType === 'solid') return;
 
-      // Try every field name that might hold the amount
+      
       const amount = safeNumber(
         d.bottleAmount ?? d.amount ?? d.quantity ?? d.amount_ml ?? 0,
         0
@@ -306,7 +306,7 @@ export const useGrowthIntelligence = () => {
 
       let ml = 0;
       if (amount > 0) {
-        // Check every possible unit key (field-specific wins over generic)
+        
         const unit = String(
           d.bottleAmount_unit ??
           d.amount_unit ??
@@ -315,14 +315,14 @@ export const useGrowthIntelligence = () => {
           'ml'
         ).toLowerCase();
         ml = unit === 'oz' ? amount * 29.5735 : amount;
-        // Sanity bound: no single feed is > 500ml
+        
         if (ml > 500 || ml < 0) ml = 0;
       } else if (feedType === 'breast' || feedType === 'breastfeeding') {
-        // Estimate from duration, cap at 140ml per session
+        
         const mins = parseDurationSeconds(d.duration) / 60;
         ml = mins > 0 ? Math.min(140, mins * 9) : BREAST_SESSION_ML;
       }
-      // Water should not count toward nutrition volume either
+      
       if (feedType === 'water') return;
 
       dailyVolumes[day] = (dailyVolumes[day] || 0) + ml;
@@ -377,13 +377,13 @@ export const useGrowthIntelligence = () => {
       const sleepType = String(d.sleepType || '');
       if (sleepType !== 'night' && sleepType !== 'nap') return;
 
-      // Skip ongoing sessions — they don't have a real duration yet
+      
       const status = String(d.status || '');
       if (status === 'ongoing') return;
       const hasEnd = d.endTime && String(d.endTime).length > 0;
       if (!hasEnd && d.duration === undefined) return;
 
-      // Try multiple duration field names, normalize to seconds
+      
       const rawDur =
         d.duration ??
         d.duration_minutes ??
@@ -392,9 +392,9 @@ export const useGrowthIntelligence = () => {
 
       if (rawDur === undefined || rawDur === null) return;
 
-      // parseDurationSeconds handles: raw seconds, "1h 30m" strings, minutes
+      
       const secs = parseDurationSeconds(rawDur);
-      // Guard: only accept real durations (5 min – 20 h)
+      
       if (secs < 300 || secs > 72000) return;
 
       const hours = secs / 3600;
@@ -580,20 +580,20 @@ export const useGrowthIntelligence = () => {
     const achievedTitles = achievedMilestoneIds;
     const currentAge = ageInMonths;
 
-    // Guard: nothing to compute if age is invalid
+    
     if (!Number.isFinite(currentAge) || currentAge < 0) return [];
 
     return Object.entries(MILESTONE_CALENDAR)
       .filter(([name, data]) => {
-        // Already achieved → skip
+        
         if (achievedTitles.has(name)) return false;
-        // Only show milestones in or near the current age window
+        
         return data.window.start <= currentAge + 1 && data.window.end >= currentAge;
       })
       .map(([, data]) => {
         const prerequisitesMet = data.prerequisites.every(p => achievedTitles.has(p));
 
-        // Guard: window span must be positive to avoid divide-by-zero
+        
         const windowSpan = data.window.end - data.window.start;
         const windowProgress = windowSpan > 0
           ? Math.max(0, Math.min(1, (currentAge - data.window.start) / windowSpan))
@@ -633,7 +633,7 @@ export const useGrowthIntelligence = () => {
             data.category === 'cognitive' ? ['play', 'sensory'] : [],
         };
       })
-      // Only surface milestones that are actually actionable (>= 20% ready)
+      
       .filter(r => r.readinessPercent >= 20)
       .sort((a, b) => b.readinessPercent - a.readinessPercent)
       .slice(0, 3);
@@ -655,7 +655,7 @@ export const useGrowthIntelligence = () => {
     const birthDate = safeParseDate(currentBaby?.birthDate);
 
     const calcVelocity = (rawData: typeof heightData, type: 'height' | 'weight' | 'head') => {
-      // Guard: filter out invalid entries before sorting
+      
       const data = (rawData || [])
         .filter(g => {
           if (!g) return false;
@@ -667,7 +667,7 @@ export const useGrowthIntelligence = () => {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       if (data.length < 2) {
-        // Fall back to percentile-only when we lack two readings
+        
         if (data.length === 1 && birthDate) {
           const ageAtMeasurement = Math.max(
             0,
@@ -695,7 +695,7 @@ export const useGrowthIntelligence = () => {
         )
       );
 
-      // Growth = newest minus oldest (positive = growth)
+      
       const totalGrowth = safeNumber(newest.value, 0) - safeNumber(oldest.value, 0);
       const perMonth = safeVelocity(totalGrowth / months);
 
@@ -730,15 +730,15 @@ export const useGrowthIntelligence = () => {
       healthStability,
     ];
 
-    // Only count scores that have actual data (value > 0 or weight > 0)
-    // so a baby without growth data isn't penalized.
+    
+    
     const activeSubscores = subscores.filter(
       s => safeNumber(s.weight, 0) > 0 && Number.isFinite(s.value)
     );
 
     if (activeSubscores.length === 0) return 0;
 
-    // Normalize weights so they sum to 1.0 among active subscores
+    
     const totalWeight = activeSubscores.reduce(
       (sum, s) => sum + safeNumber(s.weight, 0),
       0
@@ -795,8 +795,8 @@ export const useGrowthIntelligence = () => {
     physical: physicalScore,
     cognitive: cognitiveScore,
     health: healthStability,
-    // `sleep` is intentionally a superset of `rest` with history attached.
-    // Typed as any so the SubScore narrowing in consumers doesn't reject it.
+    
+    
     sleep: { ...restScore, history: sleepHistory } as any,
   }), [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability, sleepHistory]);
 

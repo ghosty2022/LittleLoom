@@ -1,10 +1,10 @@
-// src/hooks/useTrackerContext.ts
-// FIX: Safe hook that returns a fallback instead of throwing
+
+
 
 import { useContext } from 'react';
 import { TrackerContext } from '../context/TrackerContext';
 
-// ─── FALLBACK TRACKER CONTEXT ────────────────────────────────────────
+
 
 function getFallbackTrackerContext() {
   return {
@@ -62,7 +62,7 @@ function getFallbackTrackerContext() {
     refreshTrackers: async () => {},
     refreshEntries: async () => {},
     setCurrentBabyId: () => {},
-    // ─── Baby ID accessor ────────────────────────────────────
+    
     getCurrentBabyId: () => null as string | null,
     getCustomTrackers: () => [],
     getSystemTrackers: () => [],

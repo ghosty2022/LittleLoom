@@ -1,4 +1,4 @@
-// src/screens/auth/OnboardingScreen.tsx - SMOOTH & WELCOMING VERSION
+
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -190,7 +190,7 @@ export default function OnboardingScreen() {
 
   const isLastSlide = currentIndex === slides.length - 1;
 
-  // Animated pagination dot width
+  
   const getDotWidth = (index: number) => {
     const inputRange = [
       (index - 1) * SCREEN_WIDTH,

@@ -18,7 +18,7 @@ interface OptimizedImageProps extends Omit<RNImageProps, 'source'> {
   onError?: () => void;
 }
 
-// ─── FIX #1: Static resizeMode map, no string manipulation per render ──
+
 const RESIZE_MODE_MAP: Record<string, RNImageProps['resizeMode']> = {
   contain: 'contain',
   stretch: 'stretch',
@@ -57,7 +57,7 @@ const OptimizedImage = memo<OptimizedImageProps>(({
 
   const resizeMode = RESIZE_MODE_MAP[contentFit] ?? 'cover';
 
-  // ─── FIX #2: Memoized style array, no new object per render ─────────
+  
   const imageStyle = React.useMemo(() => {
     const baseStyle: any = { width, height };
     if (style) {

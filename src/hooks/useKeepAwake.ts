@@ -1,4 +1,4 @@
-// src/hooks/useKeepAwake.ts
+
 
 import { useEffect, useRef } from 'react';
 import * as KeepAwake from 'expo-keep-awake';
@@ -27,7 +27,7 @@ export function useKeepAwake(shouldKeepAwake: boolean = true, reason: string = '
     }
   }, []);
 
-  // Activate/deactivate based on prop
+  
   useEffect(() => {
     if (shouldKeepAwake) {
       activate();
@@ -40,7 +40,7 @@ export function useKeepAwake(shouldKeepAwake: boolean = true, reason: string = '
     };
   }, [shouldKeepAwake, activate, release]);
 
-  // Activate when screen is focused
+  
   useFocusEffect(
     useCallback(() => {
       if (shouldKeepAwake) {

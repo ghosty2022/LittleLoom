@@ -1,4 +1,4 @@
-// babel.config.js
+
 module.exports = function (api) {
   api.cache(true);
 
@@ -26,7 +26,7 @@ module.exports = function (api) {
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
       },
     ],
-    // THIS MUST BE THE LAST PLUGIN
+    
     [
       'react-native-reanimated/plugin',
       {
@@ -35,7 +35,7 @@ module.exports = function (api) {
     ],
   ];
 
-  // Strip console.* in production builds only (keep error + warn)
+  
   if (isProd) {
     plugins.unshift([
       'transform-remove-console',

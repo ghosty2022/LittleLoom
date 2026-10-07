@@ -1,6 +1,6 @@
-// screens/main/MoreScreen.tsx — MODERN EDITION v3.0
-// Unified design language, subtle sync indicator, cleaner hierarchy
-// Fixed: stray duplicate callback that broke Babel parsing
+
+
+
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -44,12 +44,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../utils/supabase';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-// ─── Hooks ──────────────────────────────────────────────────────────
+
 import { useSupabase } from '../../hooks/useSupabase';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useCustomization } from '../../hooks/useCustomization';
 
-// ─── Contexts ──────────────────────────────────────────────────────
+
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';
@@ -57,28 +57,28 @@ import { useSecurity } from '../../context/SecurityContext';
 import { useActivity } from '../../context/ActivityContext';
 import { useUser } from '../../context/UserContext';
 
-// ─── Components ────────────────────────────────────────────────────
+
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { AILearningStatus } from '../../components/AILearningStatus';
 
-// ─── Types ─────────────────────────────────────────────────────────
+
 import type { RootStackParamList } from '../../types/navigation';
 import type { FamilyMember } from '../../types/roles';
 
-// ─── Services ─────────────────────────────────────────────────────
+
 import backupService, { createBackup } from '../../utils/backupService';
 
-// ─── SweetAlert ────────────────────────────────────────────────────
+
 import { useSweetAlert } from '../../components/SweetAlert';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// ═════════════════════════════════════════════════════════════════════
-// ANIMATED PRESSABLE
-// ═════════════════════════════════════════════════════════════════════
+
+
+
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -138,8 +138,8 @@ const PressableScale = React.memo<PressableScaleProps>(({
 });
 
 // ═════════════════════════════════════════════════════════════════════
-// CUSTOM MODAL
-// ═════════════════════════════════════════════════════════════════════
+
+
 
 interface CustomModalProps {
   visible: boolean;
@@ -246,8 +246,8 @@ const CustomModal = React.memo<CustomModalProps>(({
 });
 
 // ═════════════════════════════════════════════════════════════════════
-// PULSING STATUS DOT — subtle "cloud active" indicator
-// ═════════════════════════════════════════════════════════════════════
+
+
 
 const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
   const pulse = useSharedValue(1);
@@ -301,9 +301,9 @@ const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 
   );
 };
 
-// ═════════════════════════════════════════════════════════════════════
-// SECTION HEADER
-// ═════════════════════════════════════════════════════════════════════
+
+
+
 
 interface SectionHeaderProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -373,8 +373,8 @@ const SectionHeader = React.memo<SectionHeaderProps>(({
 });
 
 // ═════════════════════════════════════════════════════════════════════
-// MENU ITEM
-// ═════════════════════════════════════════════════════════════════════
+
+
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -510,9 +510,9 @@ const MenuItem = React.memo<MenuItemProps>(({
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════
-// STAT CARD
-// ═════════════════════════════════════════════════════════════════════
+
+
+
 
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -541,9 +541,9 @@ const StatCard = React.memo<StatCardProps>(
   )
 );
 
-// ═════════════════════════════════════════════════════════════════════
-// QUICK ACTION
-// ═════════════════════════════════════════════════════════════════════
+
+
+
 
 interface QuickActionProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -564,9 +564,9 @@ const QuickAction = React.memo<QuickActionProps>(
   )
 );
 
-// ═════════════════════════════════════════════════════════════════════
-// FAMILY MEMBER ITEM
-// ═════════════════════════════════════════════════════════════════════
+
+
+
 
 interface FamilyMemberProps {
   avatar?: string | number;
@@ -613,9 +613,9 @@ const FamilyMemberItem = React.memo<FamilyMemberProps>(({
   </PressableScale>
 ));
 
-// ═════════════════════════════════════════════════════════════════════
-// BABY SELECTION MODAL
-// ═════════════════════════════════════════════════════════════════════
+
+
+
 
 interface BabySelectionModalProps {
   visible: boolean;
@@ -733,9 +733,9 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════
-// AI LEARNING PROGRESS BAR
-// ═════════════════════════════════════════════════════════════════════
+
+
+
 
 interface AILearningProgressBarProps {
   stats: {

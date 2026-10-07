@@ -62,7 +62,7 @@ class StatePersistenceManager {
   private pendingSaves: Map<string, { data: any; timestamp: number }> = new Map();
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly APP_VERSION = '2.1.0';
-  private readonly MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+  private readonly MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; 
 
   static getInstance(): StatePersistenceManager {
     if (!StatePersistenceManager.instance) {
@@ -307,7 +307,7 @@ class StatePersistenceManager {
       const payload = {
         data,
         timestamp: Date.now(),
-        expiry: expiryMs || 24 * 60 * 60 * 1000, // Default 24 hours
+        expiry: expiryMs || 24 * 60 * 60 * 1000, 
       };
       
       const existing = await AsyncStorage.getItem(STORAGE_KEYS.COMPONENT_STATE);
@@ -390,7 +390,7 @@ class StatePersistenceManager {
   async getNavVisibility(): Promise<boolean> {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEYS.NAV_VISIBILITY);
-      return data !== 'false'; // Default to true
+      return data !== 'false'; 
     } catch (error) {
       return true;
     }

@@ -27,9 +27,9 @@ import Animated, {
   withSequence,
 } from 'react-native-reanimated';
 
-// ═══════════════════════════════════════════════════════════
-// UNIFIED LITTLELOOM THEME — matches CommunityScreen exactly
-// ═══════════════════════════════════════════════════════════
+
+
+
 const LL = {
   primary: '#7c6cf1',
   primaryLight: '#a5b4fc',
@@ -77,9 +77,9 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 type ChatScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Chat'>;
 
-// ═══════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════
+
+
+
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
   return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
@@ -113,9 +113,9 @@ const formatTime = (timestamp: string) => {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
-// ═══════════════════════════════════════════════════════════
-// TYPING DOTS ANIMATION COMPONENT
-// ═══════════════════════════════════════════════════════════
+
+
+
 const TypingDots = React.memo(({ isDark }: { isDark: boolean }) => {
   const dot1 = useSharedValue(0);
   const dot2 = useSharedValue(0);
@@ -154,9 +154,9 @@ const TypingDots = React.memo(({ isDark }: { isDark: boolean }) => {
   );
 });
 
-// ═══════════════════════════════════════════════════════════
-// DELIVERY STATUS COMPONENT
-// ═══════════════════════════════════════════════════════════
+
+
+
 const DeliveryStatus = React.memo(({ status }: { status: FamilyMessage['deliveryStatus'] }) => {
   if (status === 'sending') {
     return <ActivityIndicator size={12} color={LL.gray400} style={{ marginLeft: 4 }} />;
@@ -177,8 +177,8 @@ const DeliveryStatus = React.memo(({ status }: { status: FamilyMessage['delivery
 });
 
 // ═══════════════════════════════════════════════════════════
-// IMAGE PREVIEW MODAL
-// ═══════════════════════════════════════════════════════════
+
+
 const ImagePreviewModal = React.memo(({
   visible,
   imageUrl,
@@ -236,8 +236,8 @@ const ImagePreviewModal = React.memo(({
 });
 
 // ═══════════════════════════════════════════════════════════
-// MESSAGE BUBBLE COMPONENT
-// ═══════════════════════════════════════════════════════════
+
+
 const MessageBubble = React.memo(({
   message,
   isMe,
@@ -406,9 +406,9 @@ const MessageBubble = React.memo(({
   );
 });
 
-// ═══════════════════════════════════════════════════════════
-// REPLY PREVIEW BAR
-// ═══════════════════════════════════════════════════════════
+
+
+
 const ReplyPreviewBar = React.memo(({
   replyTo,
   onCancel,
@@ -436,9 +436,9 @@ const ReplyPreviewBar = React.memo(({
   );
 });
 
-// ═══════════════════════════════════════════════════════════
-// DATE SEPARATOR
-// ═══════════════════════════════════════════════════════════
+
+
+
 const DateSeparator = React.memo(({ date, isDark }: { date: string; isDark: boolean }) => (
   <View style={styles.dateSeparator}>
     <View style={[styles.dateLine, { backgroundColor: isDark ? LL.darkBorder : LL.gray200 }]} />
@@ -447,9 +447,9 @@ const DateSeparator = React.memo(({ date, isDark }: { date: string; isDark: bool
   </View>
 ));
 
-// ═══════════════════════════════════════════════════════════
-// MAIN CHAT SCREEN
-// ═══════════════════════════════════════════════════════════
+
+
+
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const { chatId: otherUserId } = route.params;
   const {
@@ -495,7 +495,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize chat
+  
   useEffect(() => {
     initializeChat();
   }, [chatId]);
@@ -541,9 +541,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     setMessages(fresh);
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // MESSAGE ACTIONS
-  // ═══════════════════════════════════════════════════════════
+  
+  
+  
   const handleSend = useCallback(async () => {
     if (!inputText.trim() || isBlocked) return;
     if (!userProfile) {
@@ -579,9 +579,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     }
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // MEDIA & FILE HANDLING
-  // ═══════════════════════════════════════════════════════════
+  
+  
+  
   const handleImagePick = async (fromCamera: boolean = false) => {
     if (isBlocked) { sweetAlert.alert('Blocked', 'Unblock user to send images', 'warning'); return; }
     try {
@@ -654,12 +654,12 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     );
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // MESSAGE INTERACTIONS
-  // ═══════════════════════════════════════════════════════════
+  
+  
+  
   const handleReaction = async (messageId: string, emoji: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // TODO: Implement reaction storage in CommunityContext
+    
     console.log('Reaction:', messageId, emoji);
   };
 
@@ -708,9 +708,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     refreshMessages();
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // USER ACTIONS
-  // ═══════════════════════════════════════════════════════════
+  
+  
+  
   const handleBlock = () => {
     showConfirmModal({
       title: isBlocked ? 'Unblock User' : 'Block User',
@@ -740,7 +740,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const handleMuteToggle = () => {
-    // TODO: Implement mute in CommunityContext
+    
     sweetAlert.toast('Coming Soon', 'Mute feature will be available soon', 'info');
     setShowOptions(false);
   };
@@ -750,9 +750,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // SEARCH FUNCTIONALITY
-  // ═══════════════════════════════════════════════════════════
+  
+  
+  
   const filteredMessages = useMemo(() => {
     if (!searchQuery.trim()) return messages;
     const q = searchQuery.toLowerCase();
@@ -761,9 +761,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   const searchResultCount = filteredMessages.length;
 
-  // ═══════════════════════════════════════════════════════════
-  // STATUS HELPERS
-  // ═══════════════════════════════════════════════════════════
+  
+  
+  
   const getStatusText = () => {
     if (!user) return '';
     if (isBlocked) return 'Blocked';
@@ -791,9 +791,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     return date.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
-  // ═══════════════════════════════════════════════════════════
-  // RENDER MESSAGE
-  // ═══════════════════════════════════════════════════════════
+  
+  
+  
   const renderMessage = ({ item, index }: { item: FamilyMessage; index: number }) => {
     const isMe = item.senderId === userProfile?.id;
     const showAvatar = !isMe && (index === 0 || messages[index - 1]?.senderId !== item.senderId);
@@ -821,8 +821,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   // ═══════════════════════════════════════════════════════════
-  // RENDER HEADER
-  // ═══════════════════════════════════════════════════════════
+  
+  
   const renderHeader = () => (
     <>
       {/* Search Bar */}
@@ -869,8 +869,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   );
 
   // ═══════════════════════════════════════════════════════════
-  // LOADING / ERROR STATES
-  // ═══════════════════════════════════════════════════════════
+  
+  
   if (isLoading) {
     return (
       <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
@@ -902,8 +902,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // MAIN RENDER
-  // ═══════════════════════════════════════════════════════════
+  
+  
   return (
     <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -1078,13 +1078,13 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// STYLES
-// ═══════════════════════════════════════════════════════════
+
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // Header
+  
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1136,7 +1136,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Search
+  
   searchBar: {
     paddingHorizontal: LL.space.lg,
     paddingVertical: LL.space.md,
@@ -1153,7 +1153,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontSize: LL.text.base.size, paddingVertical: 2 },
   searchResultText: { fontSize: LL.text.xs.size, marginTop: LL.space.sm, fontWeight: '600' },
 
-  // Pinned
+  
   pinnedBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1164,10 +1164,10 @@ const styles = StyleSheet.create({
   },
   pinnedText: { flex: 1, fontSize: LL.text.sm.size, fontWeight: '600' },
 
-  // Messages List
+  
   messagesList: { paddingHorizontal: LL.space.lg, paddingTop: LL.space.sm, paddingBottom: LL.space.lg },
 
-  // Date Separator
+  
   dateSeparator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1178,7 +1178,7 @@ const styles = StyleSheet.create({
   dateLine: { flex: 1, height: 1 },
   dateText: { fontSize: LL.text.xs.size, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
 
-  // Message Bubble
+  
   messageContainer: { marginBottom: LL.space.sm, flexDirection: 'row', alignItems: 'flex-end' },
   myMessage: { justifyContent: 'flex-end' },
   theirMessage: { justifyContent: 'flex-start' },
@@ -1196,7 +1196,7 @@ const styles = StyleSheet.create({
   messageTime: { fontSize: LL.text.xs.size, fontWeight: '500' },
   editedLabel: { fontSize: LL.text.xs.size, fontStyle: 'italic', fontWeight: '500' },
 
-  // Reply Preview inside bubble
+  
   replyPreview: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1208,11 +1208,11 @@ const styles = StyleSheet.create({
   replyContent: { flex: 1 },
   replyName: { fontSize: LL.text.xs.size, fontWeight: '700' },
 
-  // Resend
+  
   resendButton: { flexDirection: 'row', alignItems: 'center', marginBottom: LL.space.sm, gap: 6 },
   resendText: { fontSize: LL.text.xs.size, fontWeight: '600' },
 
-  // Image
+  
   imageContainer: {
     borderRadius: LL.radius.lg,
     overflow: 'hidden',
@@ -1224,14 +1224,14 @@ const styles = StyleSheet.create({
   imagePlaceholder: { ...StyleSheet.absoluteFill, justifyContent: 'center', alignItems: 'center' },
   messageImage: { width: '100%', height: '100%' },
 
-  // File
+  
   fileBubble: { flexDirection: 'row', alignItems: 'center', padding: LL.space.md, gap: LL.space.md },
   fileIconContainer: { width: 44, height: 44, borderRadius: LL.radius.md, alignItems: 'center', justifyContent: 'center' },
   fileInfo: { flex: 1 },
   fileName: { fontSize: LL.text.sm.size, fontWeight: '600' },
   fileSize: { fontSize: LL.text.xs.size, marginTop: 2, fontWeight: '500' },
 
-  // Action Menu
+  
   actionOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' },
   actionMenu: { margin: LL.space.lg, borderRadius: LL.radius['2xl'], padding: LL.space.lg, overflow: 'hidden', ...LL.shadow.lg },
   emojiRow: { flexDirection: 'row', paddingBottom: LL.space.md, borderBottomWidth: 1 },
@@ -1241,7 +1241,7 @@ const styles = StyleSheet.create({
   actionItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: LL.space.md, gap: LL.space.md },
   actionText: { fontSize: LL.text.base.size, fontWeight: '600' },
 
-  // Reply Bar
+  
   replyBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1256,7 +1256,7 @@ const styles = StyleSheet.create({
   replyBarPreview: { fontSize: LL.text.sm.size, fontWeight: '500' },
   replyBarClose: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
-  // Typing
+  
   typingContainer: { paddingHorizontal: LL.space.lg, marginBottom: LL.space.sm },
   typingBubble: {
     alignSelf: 'flex-start',
@@ -1272,7 +1272,7 @@ const styles = StyleSheet.create({
   typingDotsRow: { flexDirection: 'row', gap: 4, alignItems: 'center' },
   typingDot: { width: 6, height: 6, borderRadius: 3 },
 
-  // Blocked Banner
+  
   blockedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1283,7 +1283,7 @@ const styles = StyleSheet.create({
   blockedBannerText: { fontSize: LL.text.sm.size, fontWeight: '700' },
   unblockText: { fontSize: LL.text.sm.size, fontWeight: '800' },
 
-  // Input
+  
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1309,14 +1309,14 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.4 },
   sendBtnGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  // Modal / Options
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
   optionsMenu: { margin: LL.space.lg, borderRadius: LL.radius['2xl'], padding: LL.space.sm, overflow: 'hidden', ...LL.shadow.lg },
   optionItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: LL.space.lg, paddingVertical: LL.space.md, gap: LL.space.md },
   optionItemLast: { borderBottomWidth: 0 },
   optionText: { fontSize: LL.text.base.size, fontWeight: '600' },
 
-  // Image Preview
+  
   imagePreviewOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   imagePreviewContainer: { width: SCREEN_W, height: SCREEN_H, justifyContent: 'center', alignItems: 'center' },
   imagePreviewLoader: { position: 'absolute' },
@@ -1324,7 +1324,7 @@ const styles = StyleSheet.create({
   imagePreviewClose: { position: 'absolute', top: 50, right: 20 },
   imagePreviewCloseGrad: { width: 44, height: 44, borderRadius: LL.radius.full, alignItems: 'center', justifyContent: 'center' },
 
-  // Empty States
+  
   emptyChat: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyIconBg: {
     width: 80,

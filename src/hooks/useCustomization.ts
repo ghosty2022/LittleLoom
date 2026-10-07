@@ -284,7 +284,7 @@ export interface CustomizationSettings {
   hapticFeedback: boolean;
   soundEffects: boolean;
   notifications: boolean;
-  // ─── NEW: Language & Units ───
+  
   language: string;
   units: 'metric' | 'imperial';
 }
@@ -308,17 +308,17 @@ export const DEFAULT_SETTINGS: CustomizationSettings = {
   hapticFeedback: true,
   soundEffects: true,
   notifications: true,
-  // ─── NEW: Language & Units ───
+  
   language: 'en',
   units: 'metric',
 };
 
 const STORAGE_KEY = '@littleloom_customization_v3';
 
-// ─── Module-level cache for instant first read ─────────────────
-// Initialized to DEFAULT_SETTINGS so the FIRST render of any component
-// sees a consistent, non-null object. AsyncStorage hydration happens
-// asynchronously and updates the cache + notifies subscribers.
+
+
+
+
 let _settingsCache: CustomizationSettings = { ...DEFAULT_SETTINGS };
 let _cacheInitialized = false;
 const _subscribers = new Set<(s: CustomizationSettings) => void>();
@@ -333,7 +333,7 @@ const setCachedSettings = (settings: CustomizationSettings) => {
   });
 };
 
-// ─── Bootstrap the cache from AsyncStorage (once per process) ───
+
 let _bootstrapStarted = false;
 const _bootstrapPromise = (async (): Promise<void> => {
   if (_bootstrapStarted) return;
@@ -427,9 +427,9 @@ export const getAnimationDuration = (speed: CustomizationSettings['animationSpee
 
 export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection';
 
-// ═══════════════════════════════════════════════════════════════════════
-// EXPLICIT RETURN TYPE — ensures darkMode and all fields are typed
-// ═══════════════════════════════════════════════════════════════════════
+
+
+
 export interface UseCustomizationReturn {
   settings: CustomizationSettings;
   isLoaded: boolean;
@@ -454,7 +454,7 @@ export interface UseCustomizationReturn {
   highContrast: boolean;
   boldText: boolean;
   notifications: boolean;
-  // ─── NEW: Language & Units ───
+  
   language: string;
   units: 'metric' | 'imperial';
   updateSettings: (newSettings: Partial<CustomizationSettings>) => Promise<void>;
@@ -465,21 +465,21 @@ export interface UseCustomizationReturn {
 export function useCustomization(): UseCustomizationReturn {
   const systemColorScheme = useColorScheme();
 
-  // ─── Initialize from cache (always non-null now) ─────────────
+  
   const [settings, setSettings] = useState<CustomizationSettings>(() => getCachedSettings());
   const [isLoaded, setIsLoaded] = useState(() => _cacheInitialized);
 
   useEffect(() => {
     let mounted = true;
 
-    // If cache is already primed, we're done.
+    
     if (_cacheInitialized) {
       if (mounted) {
         setSettings(getCachedSettings());
         setIsLoaded(true);
       }
     } else {
-      // Wait for the module bootstrap, then sync.
+      
       _bootstrapPromise.then(() => {
         if (mounted) {
           setSettings(getCachedSettings());
@@ -488,7 +488,7 @@ export function useCustomization(): UseCustomizationReturn {
       });
     }
 
-    // Subscribe to cross-component updates
+    
     const unsub = (next: CustomizationSettings) => {
       if (mounted) setSettings(next);
     };
@@ -576,13 +576,13 @@ export function useCustomization(): UseCustomizationReturn {
           break;
       }
     } catch {
-      // Haptics not available
+      
     }
   }, [settings.hapticFeedback]);
 
-  // ═══════════════════════════════════════════════════════════════════
-  // ALWAYS return a complete object — never undefined, never partial
-  // ═══════════════════════════════════════════════════════════════════
+  
+  
+  
   return useMemo(() => ({
     settings,
     isLoaded,
@@ -607,7 +607,7 @@ export function useCustomization(): UseCustomizationReturn {
     highContrast: settings.highContrast,
     boldText: settings.boldText,
     notifications: settings.notifications,
-    // ─── NEW: Language & Units ───
+    
     language: settings.language,
     units: settings.units,
     updateSettings,

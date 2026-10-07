@@ -1,17 +1,17 @@
-// src/screens/auth/LoginScreen.tsx - COMPLETE REDESIGNED
-// Matches SecurityLockScreen theme - glass UI, friendly language, fast
-//
-// ─── CHANGELOG (this version) ────────────────────────────────────────
-//   • "Remember Me" now actually works — saves email to AsyncStorage on
-//     successful sign-in, prefills on mount, and clears when unchecked.
-//   • Failed sign-in explicitly calls supabase.auth.signOut({ local })
-//     so the SDK's auto-refresh can't silently log the user in with a
-//     stale refresh_token behind the wrong-password attempt.
-//   • Navigation effect bails when loginAttempted.current is true, so
-//     a failed login does NOT navigate away.
-//   • The effect that fires on `isAuthenticated` is the single source
-//     of truth for post-sign-in navigation.
-//   • `isAuthenticatedRef` gives async callbacks a fresh view of auth.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
@@ -39,11 +39,11 @@ const { width } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
 
-// ─── Remember Me storage key ──────────────────────────────────────────
+
 const REMEMBER_ME_EMAIL_KEY = '@littleloom_remember_me_email';
 const REMEMBER_ME_FLAG_KEY = '@littleloom_remember_me_enabled';
 
-// ─── OAuth Configuration ──────────────────────────────────────────────
+
 const GOOGLE_CLIENT_ID = Platform.select({
   ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
   android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
@@ -57,7 +57,7 @@ const redirectUri = AuthSession.makeRedirectUri({
   useProxy: true,
 });
 
-// ─── Validation Functions ──────────────────────────────────────────────
+
 const isValidEmail = (email: string): boolean => {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return re.test(email.trim().toLowerCase());
@@ -73,19 +73,19 @@ const isValidUsername = (username: string): boolean => {
   return trimmed.length >= 3 && /^[a-zA-Z0-9_.]+$/.test(trimmed);
 };
 
-// ─── MAIN COMPONENT ────────────────────────────────────────────────────
+
 export default function LoginScreen({ navigation, route }: LoginScreenProps) {
-  // ─── STATE ───
+  
   const [activeTab, setActiveTab] = useState<'signin' | 'join'>('signin');
 
-  // ─── SIGN IN STATE ───
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [rememberMeLoaded, setRememberMeLoaded] = useState(false);
 
-  // ─── JOIN FAMILY STATE ───
+  
   const [inviteCode, setInviteCode] = useState('');
   const [joinFullName, setJoinFullName] = useState('');
   const [joinEmail, setJoinEmail] = useState('');
@@ -132,7 +132,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     findUserByEmailOrUsername,
   } = useAuth();
 
-  // ─── Use FamilyContext for invite validation ─────────────────────
+  
   const {
     validateInviteCode: validateInviteCodeFromFamily,
     getInviteCodeById,
@@ -171,13 +171,13 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const socialAuthInProgress = useRef(false);
   const navigationAttemptedRef = useRef(false);
 
-  // ─── Live ref to isAuthenticated so async callbacks see the latest value
+  
   const isAuthenticatedRef = useRef(isAuthenticated);
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
 
-  // ─── Load Remember Me preferences on mount ──────────────────────────
+  
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -201,7 +201,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     return () => { cancelled = true; };
   }, []);
 
-  // ─── Persist Remember Me whenever it changes (after initial load) ──
+  
   const persistRememberMe = useCallback(
     async (enabled: boolean, emailToSave?: string) => {
       try {
@@ -223,7 +223,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     []
   );
 
-  // ─── OAuth Requests ──────────────────────────────────────────────────
+  
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
       clientId: GOOGLE_CLIENT_ID,
@@ -250,7 +250,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   );
 
-  // ─── Auto-fill invite code from QR scan ─────────────────────────────
+  
   useEffect(() => {
     const code = (route.params as any)?.inviteCode;
     if (code) {
@@ -261,7 +261,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
   const userName = userProfile?.fullName || 'there';
 
-  // ─── GOOGLE RESPONSE HANDLER ────────────────────────────────────────
+  
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { authentication } = googleResponse;
@@ -278,7 +278,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   }, [googleResponse]);
 
-  // ─── FACEBOOK RESPONSE HANDLER ──────────────────────────────────────
+  
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { authentication } = fbResponse;
@@ -295,7 +295,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   }, [fbResponse]);
 
-  // ─── GOOGLE USER INFO ───────────────────────────────────────────────
+  
   const handleGoogleUserInfo = async (accessToken: string) => {
     try {
       const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
@@ -316,7 +316,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  // ─── FACEBOOK USER INFO ─────────────────────────────────────────────
+  
   const handleFacebookUserInfo = async (accessToken: string) => {
     try {
       const response = await fetch(
@@ -342,7 +342,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  // ─── SOCIAL LOGIN HANDLER ───────────────────────────────────────────
+  
   const handleSocialLogin = async (
     provider: 'google' | 'apple' | 'facebook',
     email: string,
@@ -380,7 +380,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  // ─── AUTH EFFECTS ────────────────────────────────────────────────────
+  
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -392,15 +392,15 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     };
   }, []);
 
-  // ─── Single source of truth for post-sign-in navigation ──────
+  
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) return;
     if (isProcessing) return;
     if (navigationAttemptedRef.current) return;
 
-    // If the user just typed wrong credentials, DO NOT let the
-    // authenticated state navigate away.
+    
+    
     if (loginAttempted.current) return;
 
     navigationAttemptedRef.current = true;
@@ -413,7 +413,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     const timer = setTimeout(() => {
       if (!isMounted.current) return;
 
-      // Re-check — the state may have changed during the delay
+      
       if (loginAttempted.current) return;
 
       forceUnlock().catch(() => {});
@@ -456,7 +456,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     );
   }, []);
 
-  // ─── FIXED: CODE VALIDATION with partial sign-up support ────────────
+  
   useEffect(() => {
     if (activeTab !== 'join') return;
     if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
@@ -561,7 +561,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }, 500);
   }, [inviteCode, activeTab, validateInviteCodeFromFamily, getInviteCodeById, getPartialSignupInfo, showInfo, showAlert]);
 
-  // ─── HANDLE PARTIAL SIGNUP RECOVERY ──────────────────────────────────
+  
   const handlePartialSignupRecovery = useCallback(async () => {
     if (isProcessing || authLoading) return;
 
@@ -669,7 +669,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     forceUnlock,
   ]);
 
-  // ─── HANDLE SIGN IN ──────────────────────────────────────────────────
+  
   const handleLogin = useCallback(async () => {
     loginAttempted.current = false;
 
@@ -728,7 +728,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       const success = await signIn(userIdentifier, password);
 
       if (success && isMounted.current) {
-        // ─── Persist Remember Me on success ───────────────────────
+        
         await persistRememberMe(rememberMe, userIdentifier);
 
         showSuccess(
@@ -737,18 +737,18 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         );
         forceUnlock().catch(() => {});
 
-        // Navigation happens in the effect above once isAuthenticated
-        // is actually committed by AuthContext. Do NOT navigate here.
+        
+        
       } else if (isMounted.current) {
-        // ─── FIX: Kill the SDK's stale session on auth failure ──
-        // Without this, the SDK's background auto-refresh can silently
-        // log the user in with a cached refresh_token, even though
-        // signInWithPassword just failed with "invalid credentials".
+        
+        
+        
+        
         try {
           await supabase.auth.signOut({ scope: 'local' });
         } catch {}
 
-        // Show the real error. Do NOT navigate.
+        
         showError(
           'Login Failed',
           'Invalid credentials. Please try again.'
@@ -786,7 +786,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     showSuccess,
   ]);
 
-  // ─── HANDLE JOIN FAMILY ──────────────────────────────────────────────
+  
   const handleJoinFamily = useCallback(async () => {
     joinAttempted.current = false;
 
@@ -897,7 +897,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           await markSignupComplete(trimmedCode, userProfile.id);
         }
 
-        // Also honor Remember Me for the newly-joined user
+        
         await persistRememberMe(rememberMe, joinEmail.trim());
 
         showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
@@ -914,7 +914,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, getPartialSignupInfo, markSignupComplete, userProfile, isProcessing, authLoading, isAuthenticated, setupComplete, triggerHaptic, showError, showSuccess, showInfo, confirm, forceUnlock, navigation, rememberMe, persistRememberMe]);
 
-  // ─── BIOMETRIC LOGIN ─────────────────────────────────────────────────
+  
   const handleBiometricLogin = useCallback(async () => {
     loginAttempted.current = false;
 
@@ -992,7 +992,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     );
   };
 
-  // ─── BIOMETRIC CHECK ─────────────────────────────────────────────────
+  
   useEffect(() => {
     if (biometricCheckComplete.current) return;
 
@@ -1030,7 +1030,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     transform: [{ translateY: formTranslateY.value }],
   }));
 
-  // ─── SOCIAL LOGIN HANDLERS ──────────────────────────────────────────
+  
   const handleGoogleLogin = async () => {
     if (socialAuthInProgress.current) return;
     socialAuthInProgress.current = true;
@@ -1064,24 +1064,24 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  // ─── NAVIGATE TO QR SCANNER ──────────────────────────────────────────
+  
   const handleScanQR = useCallback(() => {
     triggerHaptic('light');
     navigation.navigate('QRScanner' as never);
   }, [navigation, triggerHaptic]);
 
-  // ─── NAVIGATE TO SIGN UP ─────────────────────────────────────────────
+  
   const handleGoToSignUp = useCallback(() => {
     triggerHaptic('light');
     navigation.navigate('SignUp');
   }, [navigation, triggerHaptic]);
 
-  // ─── Toggle Remember Me handler ──────────────────────────────────────
+  
   const handleToggleRememberMe = useCallback(() => {
     triggerHaptic('light');
     setRememberMe((prev) => {
       const next = !prev;
-      // If turning off, wipe stored credentials immediately.
+      
       if (!next) {
         persistRememberMe(false).catch(() => {});
       }
@@ -1089,7 +1089,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     });
   }, [persistRememberMe, triggerHaptic]);
 
-  // ─── RENDER ──────────────────────────────────────────────────────────
+  
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />

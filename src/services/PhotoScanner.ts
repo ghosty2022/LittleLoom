@@ -1,6 +1,6 @@
 
-// src/services/PhotoScanner.ts
-// Scans device gallery for baby-related photos
+
+
 
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Platform } from 'react-native';

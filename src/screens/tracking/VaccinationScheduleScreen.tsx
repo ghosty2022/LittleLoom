@@ -1,6 +1,6 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// IMPORTS
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 import React, {
   memo,
   useCallback,
@@ -56,13 +56,13 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useTheme } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
-// ⚠️ ADJUST THIS PATH to match your project. Common paths:
-//   import { supabase } from '../../lib/supabase';
-//   import { supabase } from '../../services/supabase';
-//   import { supabase } from '../../config/supabase';
+
+
+
+
 import { supabase } from '../../lib/supabase';
 
-// ⚠️ If your TS config doesn't declare __DEV__, keep this:
+
 declare const __DEV__: boolean;
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -314,7 +314,7 @@ async function loadVaccineScheduleFromSupabase(): Promise<VaccineSeries[]> {
 
     const results = await Promise.all(queries);
 
-    // Prefer user-scoped override if it exists
+    
     for (const res of [...results].reverse()) {
       const raw = res?.data?.value;
       if (raw) {
@@ -325,7 +325,7 @@ async function loadVaccineScheduleFromSupabase(): Promise<VaccineSeries[]> {
       }
     }
 
-    // Not present → seed the global row from the bundled constant
+    
     if (VACCINE_SERIES.length > 0) {
       await supabase
         .from('app_settings')
@@ -737,7 +737,7 @@ const VaccineInsights = memo(
       // FIX: baby may be null → skip baby-dependent insights
       const ageMonths = baby ? safeDiffMonths(new Date(), baby.birthDate) : 0;
 
-      // Overdue alerts
+      
       const overdueDoses = doses.filter((d) => d.status === 'overdue');
       if (overdueDoses.length > 0) {
         const mostUrgent = overdueDoses.sort((a, b) => {
@@ -763,7 +763,7 @@ const VaccineInsights = memo(
         });
       }
 
-      // Upcoming due
+      
       const upcomingDue = doses.filter((d) => d.status === 'due').slice(0, 1);
       upcomingDue.forEach((d) => {
         const daysUntil = safeDiffDays(d.dueDate, new Date());
@@ -787,7 +787,7 @@ const VaccineInsights = memo(
         });
       });
 
-      // Recently completed
+      
       const recentlyCompleted = doses.filter((d) => {
         if (!d.completedDate) return false;
         return safeDiffDays(new Date(), d.completedDate) <= 7;
@@ -807,7 +807,7 @@ const VaccineInsights = memo(
         });
       }
 
-      // Age-based flu recommendation
+      
       if (ageMonths >= 6 && ageMonths < 7) {
         const fluDose = doses.find(
           (d) => d.vaccineId === 'flu' && d.doseNumber === 1
@@ -832,7 +832,7 @@ const VaccineInsights = memo(
         }
       }
 
-      // Travel alert
+      
       const travelVaccines = doses.filter((d) => {
         const series = VACCINE_SERIES.find((s) => s.id === d.vaccineId);
         return series?.category === 'travel' && d.status !== 'completed';
@@ -3151,7 +3151,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // Styles used by the BabyRequired modal
+  
   modalIconWrap: { alignItems: 'center', marginBottom: 16 },
   modalIconGradient: {
     width: 72,

@@ -13,7 +13,7 @@ import { useCustomization } from '../hooks/useCustomization';
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 interface CircularProgressProps {
-  progress: number; // 0-100
+  progress: number; 
   size?: number;
   strokeWidth?: number;
   color?: string;

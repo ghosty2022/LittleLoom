@@ -1,6 +1,6 @@
-// ─── admin.js - Centralized Session & CRUD Management ──────────────────
 
-// ─── SUPABASE CONFIG ──────────────────────────────────────────────────────
+
+
 const SUPABASE_URL = 'https://qoozrrljpgsyhxfqxnzf.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm';
 
@@ -10,7 +10,7 @@ let currentUserRole = 'guest';
 let userPermissions = {};
 let realtimeChannel = null;
 
-// ─── SESSION STORAGE KEYS ──────────────────────────────────────────────
+
 const SESSION_KEYS = {
     SESSION_DATA: 'littleloom_session_data',
     SESSION_EXPIRY: 'littleloom_session_expiry',
@@ -18,17 +18,17 @@ const SESSION_KEYS = {
     USER_ROLE: 'littleloom_user_role',
 };
 
-// ─── SESSION TIMEOUT ──────────────────────────────────────────────────────
+
 const SESSION_TIMEOUT_MINUTES = 30;
 let sessionTimer = null;
 let sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
 let sessionWarningShown = false;
 let sessionCountdownInterval = null;
 
-// ─── SUPER ADMIN USER ID ─────────────────────────────────────────────────
+
 const SUPER_ADMIN_USER_ID = 'a3f834ef-7fa5-4732-9a03-af154806ac16';
 
-// ─── ADMIN ROLE PERMISSIONS ──────────────────────────────────────────────
+
 const ADMIN_ROLES = {
     'super_admin': {
         label: 'Super Admin',
@@ -127,7 +127,7 @@ const ADMIN_ROLES = {
     }
 };
 
-// ─── PAGE ROUTES ──────────────────────────────────────────────────────────
+
 const ADMIN_PAGES = {
     'dashboard': 'dashboard.html',
     'babies': 'pages/babies.html',
@@ -156,7 +156,7 @@ const ADMIN_PAGES = {
     'notifications': 'pages/notifications.html'
 };
 
-// ─── INIT ──────────────────────────────────────────────────────────────────
+
 function initSupabase() {
     try {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -168,7 +168,7 @@ function initSupabase() {
     }
 }
 
-// ─── SESSION PERSISTENCE ──────────────────────────────────────────────────
+
 function saveSessionData(data) {
     try {
         sessionStorage.setItem(SESSION_KEYS.SESSION_DATA, JSON.stringify(data));
@@ -219,7 +219,7 @@ function setRememberMe(value) {
     localStorage.setItem(SESSION_KEYS.REMEMBER_ME, value ? 'true' : 'false');
 }
 
-// ─── TOAST ────────────────────────────────────────────────────────────────
+
 function showToast(message, type = 'info', duration = 4000) {
     let container = document.getElementById('toastContainer');
     if (!container) {
@@ -244,7 +244,7 @@ function showToast(message, type = 'info', duration = 4000) {
     }, duration);
 }
 
-// ─── MODAL ────────────────────────────────────────────────────────────────
+
 let modalResolve = null;
 let modalData = null;
 
@@ -310,19 +310,19 @@ function modalCancel() {
     closeModal(false);
 }
 
-// ─── AUTH ──────────────────────────────────────────────────────────────────
+
 async function checkAuth() {
     const overlay = document.getElementById('sessionCheckOverlay');
     if (overlay) overlay.classList.add('show');
 
     try {
-        // First check stored session
+        
         const storedSession = getSessionData();
         
         if (storedSession && storedSession.user) {
             console.log('📦 Found stored session, validating...');
             
-            // Verify with Supabase
+            
             const { data, error } = await supabase.auth.getSession();
             
             if (!error && data.session) {
@@ -339,7 +339,7 @@ async function checkAuth() {
             clearSessionData();
         }
 
-        // Check Supabase session
+        
         const { data, error } = await supabase.auth.getSession();
         
         if (error || !data.session) {
@@ -373,7 +373,7 @@ async function checkAuth() {
 }
 
 function redirectToLogin() {
-    // Don't redirect if already on login page
+    
     if (window.location.pathname.includes('login.html')) return;
     
     const currentPage = window.location.pathname;
@@ -521,7 +521,7 @@ function checkRolePermission(requiredRole) {
     return false;
 }
 
-// ─── SESSION TIMER ──────────────────────────────────────────────────────
+
 function startSessionTimer() {
     if (sessionTimer) clearInterval(sessionTimer);
     sessionTimeRemaining = SESSION_TIMEOUT_MINUTES * 60;
@@ -631,43 +631,43 @@ function extendSession() {
     showToast('⏳ Session extended', 'success');
 }
 
-// ─── NAVIGATION ────────────────────────────────────────────────────────────
+
 function navigateTo(page) {
-    // Close mobile sidebar
+    
     if (window.innerWidth <= 1024) toggleSidebar(false);
     
-    // Check if the user has access to this page
+    
     const navItem = document.querySelector(`.sidebar-nav-item[data-page="${page}"]`);
     if (navItem && navItem.classList.contains('restricted')) {
         showToast('🔒 You do not have permission to access this page', 'warning');
         return;
     }
 
-    // Get the page URL
+    
     const pageUrl = ADMIN_PAGES[page];
     if (!pageUrl) {
         showToast('❌ Page not found: ' + page, 'error');
         return;
     }
 
-    // Navigate to the page with session preservation
+    
     const currentPath = window.location.pathname;
     let targetUrl;
     
-    // Determine if we need to include the full path
+    
     if (currentPath.includes('/admin/')) {
-        // We're in the admin directory
+        
         if (page === 'dashboard') {
             targetUrl = '/admin/dashboard.html';
         } else {
             targetUrl = `/admin/${pageUrl}`;
         }
     } else {
-        // We're at the root or somewhere else
+        
         targetUrl = `/admin/${pageUrl}`;
     }
 
-    // Add a query parameter to preserve session
+    
     const separator = targetUrl.includes('?') ? '&' : '?';
     targetUrl += `${separator}session=${Date.now()}`;
     
@@ -690,7 +690,7 @@ function toggleSidebar(open) {
     }
 }
 
-// ─── SAFE SET FUNCTIONS ──────────────────────────────────────────────────
+
 function safeSetText(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value ?? '—';
@@ -701,7 +701,7 @@ function safeSetHTML(id, value) {
     if (el) el.innerHTML = value ?? '—';
 }
 
-// ─── FORMAT HELPERS ──────────────────────────────────────────────────────
+
 function formatDate(dateStr) {
     if (!dateStr) return '—';
     try {
@@ -757,7 +757,7 @@ function formatNumber(num) {
     return num.toString();
 }
 
-// ─── CRUD OPERATIONS ──────────────────────────────────────────────────────
+
 async function supabaseInsert(table, data) {
     if (!supabase || !session) {
         showToast('Not authenticated', 'error');
@@ -864,7 +864,7 @@ async function supabaseSelect(table, query = {}) {
     }
 }
 
-// ─── LOGOUT ────────────────────────────────────────────────────────────────
+
 async function handleLogout() {
     const confirmed = await new Promise((resolve) => {
         openModal(
@@ -903,7 +903,7 @@ async function handleLogout() {
     }
 }
 
-// ─── UPDATE ALL BADGES ───────────────────────────────────────────────────
+
 async function updateAllBadges() {
     if (!supabase || !session) return;
 
@@ -936,7 +936,7 @@ async function updateAllBadges() {
     }
 }
 
-// ─── DASHBOARD DATA ──────────────────────────────────────────────────────
+
 async function fetchDashboardData() {
     if (!supabase || !session) {
         console.warn('Supabase or session not ready');
@@ -1090,14 +1090,14 @@ function formatSessionTime() {
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-// ─── REFRESH ──────────────────────────────────────────────────────────────
+
 async function refreshAll() {
     showToast('🔄 Refreshing...', 'info');
     await fetchDashboardData();
     showToast('✅ All data refreshed', 'success');
 }
 
-// ─── REALTIME ──────────────────────────────────────────────────────────────
+
 function setupRealtime() {
     if (!supabase || !session) return;
     if (realtimeChannel) {
@@ -1132,7 +1132,7 @@ function setupRealtime() {
         });
 }
 
-// ─── ONLINE/OFFLINE ───────────────────────────────────────────────────────
+
 window.addEventListener('online', () => {
     showToast('🔄 Back online', 'success');
     if (typeof fetchDashboardData === 'function') {
@@ -1144,7 +1144,7 @@ window.addEventListener('offline', () => {
     showToast('📡 You are offline', 'warning');
 });
 
-// ─── EXPOSE GLOBALLY ──────────────────────────────────────────────────────
+
 window.showToast = showToast;
 window.handleLogout = handleLogout;
 window.navigateTo = navigateTo;
@@ -1176,7 +1176,7 @@ window.ADMIN_ROLES = ADMIN_ROLES;
 window.SUPER_ADMIN_USER_ID = SUPER_ADMIN_USER_ID;
 window.ADMIN_PAGES = ADMIN_PAGES;
 
-// ─── INIT ──────────────────────────────────────────────────────────────────
+
 document.addEventListener('DOMContentLoaded', async function() {
     if (!initSupabase()) {
         showToast('Failed to initialize Supabase', 'error');
@@ -1185,7 +1185,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const authed = await checkAuth();
     if (!authed) {
-        // checkAuth handles redirect
+        
         return;
     }
 

@@ -1,17 +1,17 @@
-// src/services/NotificationService.ts
-// ─────────────────────────────────────────────────────────────────────
-// UNIFIED NOTIFICATION SERVICE — Single source of truth
-// 
-// RESPONSIBILITIES:
-//   • Permission management (single request flow)
-//   • Android channel creation (idempotent)
-//   • Notification handler setup (ONCE per app launch)
-//   • Local notification scheduling with retry queue
-//   • Chat/achievement/reminder notification helpers
-//   • Foreground/background awareness
-//   • Badge management
-//   • Deep link response handling
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -19,7 +19,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ─── CHANNEL DEFINITIONS ─────────────────────────────────────────────
+
 
 export const NOTIFICATION_CHANNELS = {
   DEFAULT: 'default',
@@ -39,7 +39,7 @@ export const NOTIFICATION_CHANNELS = {
 
 export type NotificationChannel = typeof NOTIFICATION_CHANNELS[keyof typeof NOTIFICATION_CHANNELS];
 
-// ─── TYPES ───────────────────────────────────────────────────────────
+
 
 export interface NotificationPayload {
   title: string;
@@ -84,7 +84,7 @@ export type NotificationResponseHandler = (
   notification: Notifications.NotificationResponse
 ) => void;
 
-// ─── CONSTANTS ───────────────────────────────────────────────────────
+
 
 const STORAGE_KEYS = {
   SETTINGS: '@littleloom_notification_settings_v3',
@@ -95,7 +95,7 @@ const STORAGE_KEYS = {
 
 const MAX_QUEUE_SIZE = 50;
 const MAX_RETRY_ATTEMPTS = 3;
-const PERMISSION_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+const PERMISSION_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000; 
 
 const DEFAULT_SETTINGS: NotificationSettings = {
   enabled: true,
@@ -112,12 +112,12 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   safetyAlerts: true,
 };
 
-// ─── SERVICE CLASS ───────────────────────────────────────────────────
+
 
 class NotificationService {
   private static instance: NotificationService | null = null;
   
-  // State
+  
   private isInitialized = false;
   private isInitializing = false;
   private permissionGranted = false;
@@ -125,13 +125,13 @@ class NotificationService {
   private settings: NotificationSettings = { ...DEFAULT_SETTINGS };
   private appState: AppStateStatus = AppState.currentState;
   
-  // Queue for failed notifications
+  
   private queue: ScheduledNotification[] = [];
   
-  // Response handlers
+  
   private responseHandlers: Set<NotificationResponseHandler> = new Set();
   
-  // Listener subscriptions
+  
   private notificationListener: Notifications.EventSubscription | null = null;
   private responseListener: Notifications.EventSubscription | null = null;
   private appStateSubscription: { remove: () => void } | null = null;
@@ -145,7 +145,7 @@ class NotificationService {
     return NotificationService.instance;
   }
 
-  // ─── INITIALIZATION ──────────────────────────────────────────────────
+  
 
   /**
    * Initialize the notification service.
@@ -154,7 +154,7 @@ class NotificationService {
   async initialize(): Promise<boolean> {
     if (this.isInitialized) return true;
     if (this.isInitializing) {
-      // Wait for existing init to complete
+      
       return new Promise((resolve) => {
         const check = () => {
           if (this.isInitialized) resolve(true);
@@ -170,33 +170,33 @@ class NotificationService {
     try {
       console.log('[NotificationService] Initializing...');
 
-      // 1. Load settings
+      
       await this.loadSettings();
 
-      // 2. Set up notification handler (MUST be called before any notifications)
+      
       this.setupNotificationHandler();
 
-      // 3. Request permissions
+      
       const granted = await this.requestPermissions();
       this.permissionGranted = granted;
 
-      // 4. Create Android channels
+      
       if (Platform.OS === 'android') {
         await this.createAndroidChannels();
       }
 
-      // 5. Get push token (if device and permission granted)
+      
       if (granted && Device.isDevice) {
         await this.getPushToken();
       }
 
-      // 6. Set up listeners
+      
       this.setupListeners();
 
-      // 7. Load pending queue
+      
       await this.loadQueue();
 
-      // 8. Flush any pending notifications
+      
       this.flushQueue().catch((e) => {
         console.warn('[NotificationService] Queue flush failed:', e);
       });
@@ -212,13 +212,13 @@ class NotificationService {
     } catch (error) {
       console.error('[NotificationService] ❌ Initialization failed:', error);
       this.isInitializing = false;
-      // Still mark as initialized to prevent infinite retry loops
+      
       this.isInitialized = true;
       return false;
     }
   }
 
-  // ─── PERMISSION MANAGEMENT ───────────────────────────────────────────
+  
 
   /**
    * Request notification permissions.
@@ -226,7 +226,7 @@ class NotificationService {
    */
   async requestPermissions(): Promise<boolean> {
     try {
-      // Check existing permission
+      
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       
       if (existingStatus === 'granted') {
@@ -234,7 +234,7 @@ class NotificationService {
         return true;
       }
 
-      // Check cooldown to avoid spamming the user
+      
       const lastRequest = await AsyncStorage.getItem(STORAGE_KEYS.LAST_PERMISSION_REQUEST);
       const lastRequestTime = lastRequest ? parseInt(lastRequest, 10) : 0;
       const timeSinceLastRequest = Date.now() - lastRequestTime;
@@ -244,7 +244,7 @@ class NotificationService {
         return false;
       }
 
-      // Request permission
+      
       console.log('[NotificationService] Requesting permission...');
       const { status } = await Notifications.requestPermissionsAsync({
         ios: {
@@ -288,7 +288,7 @@ class NotificationService {
     return Notifications.getPermissionsAsync();
   }
 
-  // ─── NOTIFICATION HANDLER ────────────────────────────────────────────
+  
 
   /**
    * Set up the notification handler.
@@ -300,11 +300,11 @@ class NotificationService {
         const data = notification.request.content.data || {};
         const type = data.type as string;
         
-        // Determine if we should show based on settings and app state
+        
         const shouldShow = this.shouldShowNotification(type);
         const isInQuietHours = this.isInQuietHours();
         
-        // Safety alerts always show, even in quiet hours
+        
         const isSafetyAlert = type === 'safety_alert' || type === 'sos';
         
         const showAlert = shouldShow && (!isInQuietHours || isSafetyAlert);
@@ -349,7 +349,7 @@ class NotificationService {
     }
   }
 
-  // ─── ANDROID CHANNELS ────────────────────────────────────────────────
+  
 
   /**
    * Create all Android notification channels.
@@ -488,7 +488,7 @@ class NotificationService {
     }
   }
 
-  // ─── PUSH TOKEN ──────────────────────────────────────────────────────
+  
 
   private async getPushToken(): Promise<string | null> {
     try {
@@ -517,31 +517,31 @@ class NotificationService {
     return this.pushToken;
   }
 
-  // ─── LISTENERS ───────────────────────────────────────────────────────
+  
 
   private setupListeners(): void {
-    // Clean up existing listeners
+    
     this.notificationListener?.remove();
     this.responseListener?.remove();
     this.appStateSubscription?.remove();
 
-    // Notification received while app is foregrounded
+    
     this.notificationListener = Notifications.addNotificationReceivedListener(
       (notification) => {
         console.log('[NotificationService] Notification received:', 
           notification.request.identifier);
-        // Store in history
+        
         this.storeNotificationHistory(notification).catch(() => {});
       }
     );
 
-    // User tapped on notification
+    
     this.responseListener = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         console.log('[NotificationService] Notification tapped:', 
           response.notification.request.identifier);
         
-        // Notify all registered handlers
+        
         this.responseHandlers.forEach((handler) => {
           try {
             handler(response);
@@ -552,12 +552,12 @@ class NotificationService {
       }
     );
 
-    // App state changes
+    
     this.appStateSubscription = AppState.addEventListener('change', (nextState) => {
       const prevState = this.appState;
       this.appState = nextState;
 
-      // App came to foreground — flush queue
+      
       if (prevState.match(/inactive|background/) && nextState === 'active') {
         console.log('[NotificationService] App foregrounded, flushing queue');
         this.flushQueue().catch(() => {});
@@ -579,7 +579,7 @@ class NotificationService {
     };
   }
 
-  // ─── SCHEDULING ──────────────────────────────────────────────────────
+  
 
   /**
    * Schedule a local notification.
@@ -588,24 +588,24 @@ class NotificationService {
   async scheduleNotification(
     payload: NotificationPayload
   ): Promise<string | null> {
-    // Check permission
+    
     if (!this.permissionGranted) {
       const granted = await this.checkPermission();
       if (!granted) {
         console.log('[NotificationService] Cannot schedule — no permission');
-        // Queue for later
+        
         await this.enqueue(payload);
         return null;
       }
     }
 
-    // Check settings
+    
     if (!this.settings.enabled || !this.settings.pushEnabled) {
       console.log('[NotificationService] Notifications disabled');
       return null;
     }
 
-    // Check quiet hours (except safety alerts)
+    
     const isSafetyAlert = payload.data?.type === 'safety_alert' 
       || payload.data?.type === 'sos';
     
@@ -635,7 +635,7 @@ class NotificationService {
         }),
       };
 
-      // Add Android-specific properties
+      
       if (Platform.OS === 'android') {
         content.channelId = payload.channelId || NOTIFICATION_CHANNELS.DEFAULT;
         content.priority = this.getAndroidPriority(payload.priority);
@@ -678,7 +678,7 @@ class NotificationService {
     }
   }
 
-  // ─── QUEUE MANAGEMENT ────────────────────────────────────────────────
+  
 
   private async enqueue(payload: NotificationPayload): Promise<void> {
     const item: ScheduledNotification = {
@@ -691,7 +691,7 @@ class NotificationService {
 
     this.queue.push(item);
 
-    // Trim queue if too large
+    
     if (this.queue.length > MAX_QUEUE_SIZE) {
       this.queue = this.queue.slice(-MAX_QUEUE_SIZE);
     }
@@ -720,7 +720,7 @@ class NotificationService {
       const result = await this.scheduleNotification(item.payload);
       
       if (!result) {
-        // Re-queue for later
+        
         this.queue.push(item);
       }
     }
@@ -756,7 +756,7 @@ class NotificationService {
     }
   }
 
-  // ─── SETTINGS ────────────────────────────────────────────────────────
+  
 
   private async loadSettings(): Promise<void> {
     try {
@@ -774,7 +774,7 @@ class NotificationService {
     this.settings = { ...this.settings, ...updates };
     await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
     
-    // Re-create Android channels if vibration changed
+    
     if (updates.vibrationEnabled !== undefined && Platform.OS === 'android') {
       await this.createAndroidChannels();
     }
@@ -784,7 +784,7 @@ class NotificationService {
     return { ...this.settings };
   }
 
-  // ─── QUIET HOURS ─────────────────────────────────────────────────────
+  
 
   isInQuietHours(): boolean {
     const { quietHoursStart, quietHoursEnd } = this.settings;
@@ -798,7 +798,7 @@ class NotificationService {
     const startMinutes = startH * 60 + startM;
     const endMinutes = endH * 60 + endM;
 
-    // Handle overnight quiet hours (e.g., 22:00 - 07:00)
+    
     if (startMinutes > endMinutes) {
       return currentMinutes >= startMinutes || currentMinutes < endMinutes;
     }
@@ -806,7 +806,7 @@ class NotificationService {
     return currentMinutes >= startMinutes && currentMinutes < endMinutes;
   }
 
-  // ─── NOTIFICATION HELPERS ────────────────────────────────────────────
+  
 
   async sendChatNotification(
     senderName: string,
@@ -915,7 +915,7 @@ class NotificationService {
     });
   }
 
-  // ─── CANCELLATION ────────────────────────────────────────────────────
+  
 
   async cancelNotification(id: string): Promise<void> {
     try {
@@ -950,7 +950,7 @@ class NotificationService {
     }
   }
 
-  // ─── QUERIES ─────────────────────────────────────────────────────────
+  
 
   async getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
     try {
@@ -976,7 +976,7 @@ class NotificationService {
     }
   }
 
-  // ─── BADGE MANAGEMENT ────────────────────────────────────────────────
+  
 
   async getBadgeCount(): Promise<number> {
     try {
@@ -1011,7 +1011,7 @@ class NotificationService {
     } catch {}
   }
 
-  // ─── HISTORY ─────────────────────────────────────────────────────────
+  
 
   private async storeNotificationHistory(
     notification: Notifications.Notification
@@ -1030,7 +1030,7 @@ class NotificationService {
         read: false,
       });
 
-      // Keep last 100
+      
       while (history.length > 100) {
         history.pop();
       }
@@ -1056,7 +1056,7 @@ class NotificationService {
     } catch {}
   }
 
-  // ─── STATUS ──────────────────────────────────────────────────────────
+  
 
   isReady(): boolean {
     return this.isInitialized;
@@ -1075,7 +1075,7 @@ class NotificationService {
   }
 }
 
-// ─── SINGLETON EXPORT ────────────────────────────────────────────────
+
 
 export const notificationService = NotificationService.getInstance();
 export default notificationService;

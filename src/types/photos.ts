@@ -1,26 +1,26 @@
-// src/types/photos.ts
-// ═══════════════════════════════════════════════════════════════════════════
-// CANONICAL PHOTO TYPES — the single source of truth for photo data
-// across GalleryScreen, PhotoSyncContext, PhotoScanner, and tracker entries.
-//
-// Prior to this file, three incompatible types existed:
-//   - `GalleryPhoto`     (GalleryScreen)     → tracker-linked display
-//   - `ImportQueueItem`  (PhotoSyncContext)  → upload queue
-//   - `ScannedPhoto`     (PhotoScanner)      → raw device gallery
-//
-// All three now derive from or convert to `UnifiedPhoto`.
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
+
+
+
 
 import type { TrackerEntry } from './trackers';
 
-// ─── PHOTO CATEGORIES ──────────────────────────────────────────────────────
+
 
 export type PhotoType =
   | 'milestone'
   | 'daily'
   | 'sleep'
   | 'feed'
-  | 'feeding'       // legacy alias for 'feed'
+  | 'feeding'       
   | 'potty'
   | 'diaper'
   | 'growth'
@@ -30,7 +30,7 @@ export type PhotoType =
   | 'vaccine'
   | 'tracker'
   | 'auto_import'
-  | 'photo'         // the standalone `photo` tracker
+  | 'photo'         
   | 'all';
 
 /** Normalize legacy/variant type strings to a canonical PhotoType. */
@@ -59,9 +59,9 @@ export type PhotoSource =
 export type BackupStatus = 'synced' | 'pending' | 'failed' | 'local';
 export type SyncStatus = 'synced' | 'pending' | 'conflict';
 
-// ─── AI CLASSIFICATION ─────────────────────────────────────────────────────
-// Populated by `PhotoClassifier.classifyImage()` after a photo is captured
-// or imported. All fields are optional — absence means "not yet classified".
+
+
+
 
 export interface PhotoAIClassification {
   /** Top-N ImageNet labels, most confident first. */
@@ -74,7 +74,7 @@ export interface PhotoAIClassification {
   classifiedAt: number;
 }
 
-// ─── PHOTO METADATA ────────────────────────────────────────────────────────
+
 
 export interface PhotoFace {
   babyId: string;
@@ -115,14 +115,14 @@ export type BabyMood =
   | 'tired'
   | 'sleepy';
 
-// ─── UNIFIED PHOTO ─────────────────────────────────────────────────────────
-// This is THE photo shape used everywhere. All conversion helpers below
-// produce this shape from any input format.
+
+
+
 
 export interface UnifiedPhoto {
   /** Stable unique id — deterministic across surfaces. */
   id: string;
-  /** Local `file://` uri OR remote `https://` URL. Never null. */
+  /** Local `file://` uri OR remote `https:
   uri: string;
   /** Optional remote URL if uploaded to Supabase Storage. */
   publicUrl?: string;
@@ -140,14 +140,14 @@ export interface UnifiedPhoto {
   babyId?: string;
   babyName?: string;
 
-  // ── User metadata (persisted locally) ──
+  
   isFavorite: boolean;
   isPrivate: boolean;
   tags: string[];
   caption?: string;
   mood?: BabyMood;
 
-  // ── Auto-detected metadata ──
+  
   exif?: PhotoExif;
   faces?: PhotoFace[];
   blurHash?: string;
@@ -170,17 +170,17 @@ export interface UnifiedPhoto {
   backupStatus?: BackupStatus;
   syncStatus?: SyncStatus;
 
-  // ── Linkage to tracker entry (the source of truth) ──
+  
   linkedEntry?: LinkedTrackerEntry;
 
-  // ── Diagnostics ──
+  
   /** Filename as it existed on device (for debugging). */
   fileName?: string;
   /** File size in bytes (for upload progress). */
   fileSize?: number;
 }
 
-// ─── CONVERSION HELPERS ────────────────────────────────────────────────────
+
 
 /**
  * Extracts every photo uri from a TrackerEntry, producing a UnifiedPhoto
@@ -195,7 +195,7 @@ export const photosFromTrackerEntry = (
   const raw = entry.photoUris;
   if (!Array.isArray(raw) || raw.length === 0) return [];
 
-  // Flatten in case photoUris contains nested arrays (SmartPhotoField quirk)
+  
   const flat = (raw as unknown[]).flat(Infinity) as unknown[];
 
   const uris: string[] = [];
@@ -283,7 +283,7 @@ export const dedupePhotos = (photos: UnifiedPhoto[]): UnifiedPhoto[] => {
 export const sortPhotosDesc = (photos: UnifiedPhoto[]): UnifiedPhoto[] =>
   [...photos].sort((a, b) => b.timestamp - a.timestamp);
 
-// ─── AI TAG HELPERS ────────────────────────────────────────────────────────
+
 
 /**
  * Attach AI classification results to a photo, returning a new object.

@@ -1,4 +1,4 @@
-// drizzle.config.ts (project root)
+
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({

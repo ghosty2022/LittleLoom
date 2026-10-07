@@ -39,7 +39,7 @@ export const showAlert = (
     return;
   }
 
-  // Map our button style to React Native's Alert button style
+  
   const mappedButtons = buttons.map((btn) => ({
     text: btn.text,
     style: btn.style as 'default' | 'cancel' | 'destructive' | undefined,
@@ -47,7 +47,7 @@ export const showAlert = (
   }));
 
   if (Platform.OS === 'web') {
-    // On web, use confirm for 2-button dialogs, alert for single button
+    
     if (mappedButtons.length === 2) {
       const confirmed = window.confirm(`${title}\n\n${message || ''}`);
       if (confirmed) {

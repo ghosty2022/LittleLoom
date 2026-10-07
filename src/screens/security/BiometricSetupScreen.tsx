@@ -1,5 +1,5 @@
-// screens/security/BiometricSetupScreen.tsx - COMPLETE REDESIGNED
-// Matches SecurityLockScreen theme - glass UI, no shadows, friendly language
+
+
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Easing, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Animated, Platform, Image } from 'react-native';
@@ -187,7 +187,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             console.warn('[BiometricSetup] supportedAuthenticationTypesAsync failed:', e);
           }
 
-          // Android fallback
+          
           if (!isEnrolled) {
             console.log('[BiometricSetup] Trying direct auth verification...');
             try {
@@ -296,7 +296,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     };
   }, []);
 
-  // Animate in - Login screen style
+  
   useEffect(() => {
     if (!shouldReduceMotion) {
       Animated.timing(slideAnim, {
@@ -315,7 +315,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     }
   }, [shouldReduceMotion]);
 
-  // Success animation
+  
   useEffect(() => {
     if (setupComplete) {
       if (shouldReduceMotion) {
@@ -341,13 +341,13 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
       return;
     }
 
-    // Guard against double-tap
+    
     if (isScanning) return;
 
-    // First refresh the context's view of hardware/enrollment
+    
     await refreshBiometricStatus();
 
-    // Read FRESH state from device — never trust the closure's stale values
+    
     let hasHardwareNow = false;
     let isEnrolledNow = false;
     try {
@@ -378,7 +378,7 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
     triggerHaptic('medium');
 
     try {
-      // toggleBiometric is now idempotent — safe to call even if already on
+      
       const enabled = await toggleBiometric(true);
       setIsScanning(false);
 
@@ -729,7 +729,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
   },
-  // ─── Logo ──────────────────────────────────────────────────
+  
   logoContainer: {
     alignItems: 'center',
     marginBottom: 16,
@@ -744,7 +744,7 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
   },
-  // ─── Biometric Icon ────────────────────────────────────────
+  
   iconWrapper: {
     marginBottom: 24,
   },
@@ -778,7 +778,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     paddingHorizontal: 20,
   },
-  // ─── Error ──────────────────────────────────────────────────
+  
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -793,7 +793,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
-  // ─── Options ──────────────────────────────────────────────
+  
   optionsContainer: {
     width: '100%',
     gap: 12,
@@ -839,7 +839,7 @@ const styles = StyleSheet.create({
   optionDescription: {
     fontSize: 14,
   },
-  // ─── Benefits ──────────────────────────────────────────────
+  
   benefitsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -866,7 +866,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  // ─── Buttons ──────────────────────────────────────────────
+  
   buttonContainer: {
     paddingBottom: 40,
     paddingTop: 10,
@@ -910,7 +910,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  // ─── Unavailable ───────────────────────────────────────────
+  
   unavailableCard: {
     borderRadius: 28,
     padding: 32,
@@ -941,12 +941,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  // ─── Loading ──────────────────────────────────────────────
+  
   loadingText: {
     marginTop: 16,
     fontSize: 16,
   },
-  // ─── Success ──────────────────────────────────────────────
+  
   successCircle: {
     width: 120,
     height: 120,

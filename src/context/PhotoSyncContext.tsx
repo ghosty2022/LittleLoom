@@ -1,6 +1,6 @@
-// src/context/PhotoSyncContext.tsx
-// Manages photo import and sync with Supabase Storage
-// FIXED: legacy FS, ref-based queue reads, no stale closures, no infinite loops
+
+
+
 
 import React, {
   createContext,
@@ -164,18 +164,18 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { userProfile } = useAuth();
   const sweetAlert = useSweetAlert();
 
-  // ─── Refs ─────────────────────────────────────────────────────────
-  const queueRef = useRef<ImportQueueItem[]>([]);          // ⭐ always fresh
+  
+  const queueRef = useRef<ImportQueueItem[]>([]);          
   const scannerRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   const isMounted = useRef(true);
   const processingRef = useRef(false);
 
-  // ─── Keep queueRef in sync with state.queue ───────────────────────
+  
   useEffect(() => {
     queueRef.current = state.queue;
   }, [state.queue]);
 
-  // ─── Mount lifecycle ──────────────────────────────────────────────
+  
   useEffect(() => {
     isMounted.current = true;
     loadQueue();
@@ -184,7 +184,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isMounted.current = false;
       scannerRef.current.cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, []);
 
   /* ─── Persistence ────────────────────────────────────────────── */
@@ -204,7 +204,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         queueStats: computeStats(queue),
       }));
     } catch {
-      // First run — no queue file
+      
     }
   }, []);
 
@@ -248,7 +248,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setState(prev => ({ ...prev, lastScanTime: new Date(iso) }));
       }
     } catch {
-      // no-op
+      
     }
   }, []);
 
@@ -339,7 +339,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const info = await MediaLibrary.getAssetInfoAsync(asset);
           localUri = info.localUri || info.uri || asset.uri;
         } catch {
-          // fall back to asset.uri
+          
         }
 
         photos.push({
@@ -438,12 +438,12 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           .from('tracker_entries')
           .insert({
             id: entryId,
-            // tracker_type must match the CHECK constraint. 'custom' is the
-            // safe catch-all; tracker_id distinguishes the real tracker.
+            
+            
             tracker_type: 'custom',
             tracker_id: 'photo',
             baby_id: item.babyId,
-            // timestamptz column — pass an ISO string, NOT ms.
+            
             timestamp: new Date(item.photo.creationDate).toISOString(),
             title: '📸 Photo',
             data: {

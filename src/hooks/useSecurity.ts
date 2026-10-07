@@ -1,6 +1,6 @@
-// src/hooks/useSecurity.ts
-// Safe wrapper — inlines a minimal fallback so early-mounting
-// components don't crash with "must be used within SecurityProvider".
+
+
+
 
 import { useContext } from 'react';
 import { SecurityContext } from '../context/SecurityContext';

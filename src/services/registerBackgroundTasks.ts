@@ -1,4 +1,4 @@
-// src/services/registerBackgroundTasks.ts
+
 
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
@@ -6,11 +6,11 @@ import { Platform } from 'react-native';
 
 const BACKGROUND_SYNC_TASK = 'BACKGROUND_NOTIFICATION_SYNC';
 
-// Define the task if not already defined
+
 if (!TaskManager.isTaskDefined(BACKGROUND_SYNC_TASK)) {
   TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
     try {
-      // Import dynamically to avoid circular dependencies
+      
       const { NotificationSyncService } = require('./EnhancedNotificationService');
       const syncService = NotificationSyncService.getInstance();
       const result = await syncService.performBackgroundSync();
@@ -37,7 +37,7 @@ export async function registerBackgroundTasks(): Promise<void> {
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
     if (!isRegistered) {
       await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-        minimumInterval: 5, // minutes
+        minimumInterval: 5, 
         stopOnTerminate: false,
         startOnBoot: true,
       });

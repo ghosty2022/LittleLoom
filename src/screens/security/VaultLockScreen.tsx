@@ -1,7 +1,7 @@
-// src/screens/security/VaultLockScreen.tsx
-// ═══════════════════════════════════════════════════════════════════════════
-// PIN fallback screen for the private vault when biometrics aren't available.
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+
 
 import React, { useCallback, useState } from 'react';
 import {
@@ -47,7 +47,7 @@ export default function VaultLockScreen() {
       setPin(next);
       setError('');
 
-      // Auto-submit at 4+ digits if user has 4-digit PIN
+      
       if (next.length === 4 || next.length === 6) {
         setTimeout(() => trySubmit(next), 100);
       }
@@ -63,7 +63,7 @@ export default function VaultLockScreen() {
         if (ok) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           navigation.goBack();
-          // The gallery will re-check vault unlock status when it regains focus
+          
         } else {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
           Vibration.vibrate(200);

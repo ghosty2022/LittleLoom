@@ -1,4 +1,4 @@
-// src/components/LogoutButton.tsx
+
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +27,7 @@ export const LogoutButton: React.FC<LogoutButtonProps> = ({
           onPress: async () => {
             try {
               await auth.signOut();
-              // The navigation will automatically redirect to login
+              
               if (onPress) onPress();
             } catch (error) {
               Alert.alert('Error', 'Failed to sign out. Please try again.');

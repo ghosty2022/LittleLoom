@@ -105,21 +105,21 @@ export class ErrorBoundary extends Component<Props, State> {
   handleReload = async () => {
     this.setState({ isReloading: true });
     try {
-      // Try expo-updates first
+      
       if (Updates?.reloadAsync) {
         await Updates.reloadAsync();
         return;
       }
-      // Fallback: try to use DevSettings reload if in dev mode
+      
       if (__DEV__ && NativeModules?.DevSettings?.reload) {
         NativeModules.DevSettings.reload();
         return;
       }
-      // Last resort: force exit on Android, or show message on iOS
+      
       if (Platform.OS === 'android' && NativeModules?.BackHandler) {
         BackHandler.exitApp();
       } else {
-        // If we can't reload, at least clear the error and let user know
+        
         this.setState({ isReloading: false });
         this.handleReset();
       }

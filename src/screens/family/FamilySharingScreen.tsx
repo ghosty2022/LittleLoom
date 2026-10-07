@@ -1,7 +1,7 @@
-// src/screens/family/FamilySharingScreen.tsx
-// SINGLE SOURCE OF TRUTH for family management, permissions, and settings.
-// Tabs: Members | Activity | Access | Settings
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
 
 import {
   StyleSheet,
@@ -58,9 +58,9 @@ const FAMILY_IMAGES_DIR = FileSystem.documentDirectory + 'family_images/';
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 type TabKey = 'members' | 'activity' | 'access' | 'settings';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DESIGN TOKENS
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
@@ -82,8 +82,8 @@ const isEmoji = (value: string | undefined | null): boolean => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ROLE CONFIGURATION
-// ═══════════════════════════════════════════════════════════════════════════
+
+
 
 const ROLE_CONFIG: Record<UserRole, {
   label: string;
@@ -121,7 +121,7 @@ const ROLE_CONFIG: Record<UserRole, {
   },
 };
 
-// ── Granular permission meta ────────────────────────────────────────
+
 type PermissionKey =
   | 'canView' | 'canAddEntry' | 'canEditEntry' | 'canEditOthersEntries'
   | 'canDeleteEntry' | 'canEditBaby' | 'canInvite' | 'canExport' | 'canManageFamily';
@@ -157,9 +157,9 @@ const ROLE_PERMISSION_MAP: Record<UserRole, Record<PermissionKey, boolean>> = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STATUS CONFIG FOR INVITE CODES
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
   active: { label: 'Active', color: '#22c55e', icon: 'checkmark-circle' },
@@ -169,9 +169,9 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof 
   expired: { label: 'Expired', color: '#f59e0b', icon: 'time' },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FAMILY HEALTH SCORE
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 const FamilyHealthScore: React.FC<{
   members: FamilyMember[];
@@ -1254,7 +1254,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     triggerHaptic('light');
   };
 
-  // ─── Header ──────────────────────────────────────────────────────
+  
   const renderHeader = () => (
     <Animated.View style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}>
       <View style={styles.headerTop}>
@@ -1323,7 +1323,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     </Animated.View>
   );
 
-  // ─── Members tab ─────────────────────────────────────────────────
+  
   const renderMembersTab = () => (
     <View style={styles.tabContent}>
       <FamilyHealthScore members={members} isDark={isDark} shouldReduceMotion={shouldReduceMotion} />

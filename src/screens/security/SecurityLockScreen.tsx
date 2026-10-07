@@ -1,5 +1,5 @@
-// screens/security/SecurityLockScreen.tsx - COMPLETE FIXED
-// Properly checks biometric enabled state from context
+
+
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -97,10 +97,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     getBiometricTypeName,
     getBiometricIcon,
     toggleBiometric,
-    settings: securitySettings,   // ← ADD THIS
+    settings: securitySettings,   
   } = useSecurity();
 
-  // ── Track biometric readiness, reading directly from storage to avoid races ──
+  
   const [biometricReady, setBiometricReady] = useState(false);
 
   useEffect(() => {
@@ -136,7 +136,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   
   const sweetAlert = useSweetAlert();
 
-  const hasBiometric = biometricReady;   // uses the storage-backed `biometricReady`
+  const hasBiometric = biometricReady;   
   const hasPin = !!securitySettings?.isPinEnabled || getAvailableAuthMethods().hasPin;
 
   const userName = userProfile?.fullName || 'Welcome Back';
@@ -273,7 +273,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     detectBiometricType();
   }, []);
 
-  // ─── Auto-prompt biometric ──────────────────────────────────────
+  
   useEffect(() => {
     if (!biometricAvailable) {
       console.log('[SecurityLock] Biometric not available - skipping auto-prompt');
@@ -430,7 +430,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   }, [pin.length, isLoading, isLockedOut, triggerHaptic]);
 
-  // ─── Biometric authentication ──────────────────────────────────
+  
   const handleBiometricAuth = useCallback(async () => {
     if (!isBiometricHardwareAvailable) {
       console.log('[SecurityLock] No biometric hardware');
@@ -443,7 +443,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
     await refreshBiometricStatus();
 
-    // ✅ FIXED: Check if biometric is actually enabled
+    
     if (!isBiometricEnabled) {
       console.log('[SecurityLock] Biometric not enabled in settings');
       sweetAlert.warning(

@@ -1,4 +1,4 @@
-// src/components/SweetAlert.tsx - COMPLETE FIXED VERSION
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -35,7 +35,7 @@ import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 export type AlertType = 'success' | 'error' | 'warning' | 'info' | 'question' | 'loading';
 export type AlertStyle = 'toast' | 'modal' | 'bottom-sheet';
@@ -71,7 +71,7 @@ export interface SweetAlertConfig {
     variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
     icon?: keyof typeof Ionicons.glyphMap;
   }[];
-  // Prompt support
+  
   isPrompt?: boolean;
   promptType?: PromptType;
   promptPlaceholder?: string;
@@ -80,7 +80,7 @@ export interface SweetAlertConfig {
   onPromptCancel?: () => void;
 }
 
-// ─── Color System ───────────────────────────────────────────────────
+
 
 const ALERT_CONFIG: Record<AlertType, {
   colors: [string, string];
@@ -133,7 +133,7 @@ const ALERT_CONFIG: Record<AlertType, {
   },
 };
 
-// ─── Event System ───────────────────────────────────────────────────
+
 
 type AlertListener = (config: SweetAlertConfig) => void;
 type HideListener = () => void;
@@ -164,17 +164,17 @@ const emitShow = (config: SweetAlertConfig) => {
 };
 
 const emitHide = () => {
-  // Clear all pending queues
+  
   pendingQueue.length = 0;
   hideListeners.forEach(listener => listener());
 };
 
-// ─── Public API ─────────────────────────────────────────────────────
+
 
 export const showSweetAlert = (config: SweetAlertConfig) => emitShow(config);
 export const hideSweetAlert = () => emitHide();
 
-// ─── Animated Ring (for loading) ──────────────────────────────────
+
 
 const LoadingRing: React.FC<{ color: string; size?: number }> = React.memo(({ color, size = 40 }) => {
   const rotation = useSharedValue(0);
@@ -212,7 +212,7 @@ const LoadingRing: React.FC<{ color: string; size?: number }> = React.memo(({ co
   );
 });
 
-// ─── Progress Bar ───────────────────────────────────────────────────
+
 
 const ProgressBar: React.FC<{ progress: number; color: string }> = React.memo(({ progress, color }) => {
   const widthAnim = useSharedValue(0);
@@ -232,7 +232,7 @@ const ProgressBar: React.FC<{ progress: number; color: string }> = React.memo(({
   );
 });
 
-// ─── Toast Component ────────────────────────────────────────────────
+
 
 interface ToastProps {
   config: SweetAlertConfig;
@@ -881,7 +881,7 @@ interface AlertQueueItem {
   config: SweetAlertConfig;
 }
 
-// ─── Provider Props ─────────────────────────────────────────────────
+
 
 interface SweetAlertProviderProps {
   children: React.ReactNode;
@@ -890,7 +890,7 @@ interface SweetAlertProviderProps {
   reduceMotion?: boolean;
 }
 
-// ─── Provider ───────────────────────────────────────────────────────
+
 
 export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
   children,
@@ -908,7 +908,7 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
     const id = `alert_${++idCounter.current}_${Date.now()}`;
     const fullConfig = { ...config, reduceMotion: config.reduceMotion ?? reduceMotion };
     
-    // Check if this is a prompt
+    
     if (config.isPrompt) {
       setPromptQueue(prev => [...prev, { id, config: fullConfig }]);
       return;
@@ -935,9 +935,9 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
 
     const handleShow: AlertListener = (config) => sweetAlert(config);
     const handleHide: HideListener = () => {
-      // Clear all queues
+      
       setModalQueue(prev => {
-        // If there are items, dismiss them
+        
         return [];
       });
       setToastQueue([]);
@@ -1167,11 +1167,11 @@ export const useSweetAlert = () => {
   }, []);
 
   const hide = useCallback(() => {
-    // This will dismiss all active alerts
+    
     hideSweetAlert();
   }, []);
 
-  // ─── PROMPT FUNCTION ──────────────────────────────────────────────
+  
 
   const prompt = useCallback((
     title: string,
@@ -1201,7 +1201,7 @@ export const useSweetAlert = () => {
     });
   }, []);
 
-  // ─── SECURE PROMPT (password) ─────────────────────────────────────
+  
 
   const securePrompt = useCallback((
     title: string,
@@ -1232,15 +1232,15 @@ export const useSweetAlert = () => {
        prompt, securePrompt]);
 };
 
-// ─── Styles ─────────────────────────────────────────────────────────
+
 
 const styles = StyleSheet.create({
-  // ── Loading ──────────────────────────────────────────────────────
+  
   loadingRing: {
     borderStyle: 'solid',
   },
 
-  // ── Progress ─────────────────────────────────────────────────────
+  
   progressTrack: {
     height: 4,
     borderRadius: 2,
@@ -1254,7 +1254,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
-  // ── Toast ────────────────────────────────────────────────────────
+  
   toastWrapper: {
     position: 'absolute',
     left: 0,
@@ -1326,7 +1326,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ── Modal ────────────────────────────────────────────────────────
+  
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -1426,7 +1426,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ── Prompt ──────────────────────────────────────────────────────
+  
   promptInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1448,7 +1448,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // ── Custom Actions ───────────────────────────────────────────────
+  
   customActionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1468,7 +1468,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // ── Bottom Sheet ─────────────────────────────────────────────────
+  
   sheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',

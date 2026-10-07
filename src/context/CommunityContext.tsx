@@ -1,5 +1,5 @@
-// src/context/CommunityContext.tsx
-// Full Supabase implementation - No local DB
+
+
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
@@ -295,10 +295,10 @@ interface CommunityContextType extends CommunityState {
 
 const CommunityContext = createContext<CommunityContextType | null>(null);
 
-// ─── INITIAL TOPICS ──────────────────────────────────────────────────────
+
 
 export const INITIAL_TOPICS: Topic[] = [
-  // ─── HEALTH & WELLNESS ───────────────────────────
+  
   { 
     id: 'topic_health_fever', 
     name: 'Fever', 
@@ -380,7 +380,7 @@ export const INITIAL_TOPICS: Topic[] = [
     subcategory: 'medical'
   },
 
-  // ─── FEEDING & NUTRITION ──────────────────────────
+  
   { 
     id: 'topic_nutrition_breastfeeding', 
     name: 'Breastfeeding', 
@@ -462,7 +462,7 @@ export const INITIAL_TOPICS: Topic[] = [
     subcategory: 'hydration'
   },
 
-  // ─── SLEEP ──────────────────────────────────────────
+  
   { 
     id: 'topic_sleep_baby', 
     name: 'Baby Sleep', 
@@ -512,7 +512,7 @@ export const INITIAL_TOPICS: Topic[] = [
     subcategory: 'sleep'
   },
 
-  // ─── DEVELOPMENT ────────────────────────────────────
+  
   { 
     id: 'topic_dev_milestones', 
     name: 'Milestones', 
@@ -594,7 +594,7 @@ export const INITIAL_TOPICS: Topic[] = [
     subcategory: 'emotional'
   },
 
-  // ─── PARENTING ──────────────────────────────────────
+  
   { 
     id: 'topic_parenting_potty', 
     name: 'Potty Training', 
@@ -676,7 +676,7 @@ export const INITIAL_TOPICS: Topic[] = [
     subcategory: 'support'
   },
 
-  // ─── HEALTH TRACKERS ──────────────────────────────
+  
   { 
     id: 'topic_tracker_growth', 
     name: 'Growth Tracking', 
@@ -758,7 +758,7 @@ export const INITIAL_TOPICS: Topic[] = [
     subcategory: 'tracking'
   },
 
-  // ─── LIFESTYLE ──────────────────────────────────────
+  
   { 
     id: 'topic_lifestyle_screen_time', 
     name: 'Screen Time', 
@@ -824,7 +824,7 @@ export const INITIAL_TOPICS: Topic[] = [
     subcategory: 'wellness'
   },
 
-  // ─── COMMUNITY ──────────────────────────────────────
+  
   { 
     id: 'topic_community_stories', 
     name: 'Parent Stories', 
@@ -955,7 +955,7 @@ export const TOPIC_CATEGORIES = [
   },
 ];
 
-// ─── SUPABASE TOPIC STATS FETCH ──────────────────────────────────────────
+
 
 export const fetchRealTopicStats = async (): Promise<Topic[]> => {
   try {
@@ -999,7 +999,7 @@ export const fetchRealTopicStats = async (): Promise<Topic[]> => {
   }
 };
 
-// ─── CACHE ──────────────────────────────────────────────────────────────
+
 
 let cachedTopics: Topic[] | null = null;
 let lastFetchTime = 0;
@@ -1024,7 +1024,7 @@ export const refreshTopics = async (): Promise<Topic[]> => {
   return topics;
 };
 
-// ─── ACHIEVEMENTS ──────────────────────────────────────────────────────
+
 
 const ACHIEVEMENTS = {
   FIRST_POST: { id: 'first_post', emoji: '📝', name: 'First Steps', description: 'Made your first post' },
@@ -1039,7 +1039,7 @@ const ACHIEVEMENTS = {
   INFLUENCER: { id: 'influencer', emoji: '👑', name: 'Influencer', description: '10K+ total engagement' },
 };
 
-// ─── HELPERS ───────────────────────────────────────────────────────────
+
 
 const LITTLELOOM_TEAM: CommunityUser = {
   id: 'littleloom_team',
@@ -1171,7 +1171,7 @@ const validateTopicIds = (topicIds: string[]): string[] => {
   return topicIds.filter(id => validTopicIds.has(id));
 };
 
-// ─── PROVIDER ──────────────────────────────────────────────────────────
+
 
 export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -1219,7 +1219,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const lastSyncedProfileRef = useRef('');
 
-  // ─── SYNC WITH AUTH USER ────────────────────────────────────────────
+  
 
   useEffect(() => {
     if (authLoading) return;
@@ -1330,7 +1330,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ─── UPDATE TRENDING DATA ────────────────────────────────────────────
+  
 
   const updateTrendingData = () => {
     setState(prev => {
@@ -1363,7 +1363,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   };
 
-  // ─── PERSIST QUEUE ────────────────────────────────────────────────────
+  
 
   const processPersistQueue = async () => {
     if (isPersisting.current || persistQueue.current.size === 0) return;
@@ -1419,7 +1419,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     persistQueue.current.add(key);
   };
 
-  // ─── APP STATE HANDLING ──────────────────────────────────────────────
+  
 
   const handleAppStateChange = async (nextAppState: AppStateStatus) => {
     if (nextAppState === 'active') {
@@ -1431,7 +1431,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ─── LOAD PERSISTED DATA ─────────────────────────────────────────────
+  
 
   const loadPersistedData = async () => {
     try {
@@ -1565,7 +1565,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // ─── REFRESH TOPICS ──────────────────────────────────────────────────
+  
 
   const refreshTopicsData = useCallback(async (): Promise<Topic[]> => {
     try {
@@ -1582,7 +1582,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── CHECK STREAK ─────────────────────────────────────────────────────
+  
 
   const checkStreak = async () => {
     if (!stateRef.current.currentUser) return;
@@ -1617,7 +1617,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (newStreak === 30) await awardAchievement('streak_30');
   };
 
-  // ─── AWARD ACHIEVEMENT ───────────────────────────────────────────────
+  
 
   const awardAchievement = async (achievementId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -1639,7 +1639,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  // ─── SYNC USER PROFILE ACROSS POSTS ─────────────────────────────────
+  
 
   const syncUserProfileAcrossPosts = useCallback(async (userId: string, profileUpdates: Partial<CommunityUser>) => {
     setState(prev => {
@@ -1679,7 +1679,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── CREATE POST ──────────────────────────────────────────────────────
+  
 
   const createPost = useCallback(async (content: string, topicId: string, images?: string[], isAnonymous?: boolean, mood?: PostMood, poll?: Poll) => {
     const currentUser = stateRef.current.currentUser;
@@ -1769,7 +1769,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     console.log('Post created successfully!');
   }, []);
 
-  // ─── VOTE POLL ───────────────────────────────────────────────────────
+  
 
   const votePoll = useCallback(async (postId: string, optionId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -1820,7 +1820,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  // ─── LIKE POST ───────────────────────────────────────────────────────
+  
 
   const likePost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -1894,7 +1894,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── UNLIKE POST ─────────────────────────────────────────────────────
+  
 
   const unlikePost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -1924,7 +1924,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── REPOST POST ─────────────────────────────────────────────────────
+  
 
   const repostPost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -1990,7 +1990,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── UNREPOST POST ──────────────────────────────────────────────────
+  
 
   const unrepostPost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2020,7 +2020,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── BOOKMARK POST ──────────────────────────────────────────────────
+  
 
   const bookmarkPost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2055,7 +2055,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── SHARE POST ──────────────────────────────────────────────────────
+  
 
   const sharePost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2075,7 +2075,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── DELETE POST ─────────────────────────────────────────────────────
+  
 
   const deletePost = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2134,13 +2134,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
   }, []);
 
-  // ─── GET POST BY ID ─────────────────────────────────────────────────
+  
 
   const getPostById = useCallback((postId: string) => {
     return stateRef.current.posts.find(post => post.id === postId);
   }, []);
 
-  // ─── VOTE HELPFUL ────────────────────────────────────────────────────
+  
 
   const voteHelpful = useCallback(async (postId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2174,7 +2174,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── ADD COMMENT ─────────────────────────────────────────────────────
+  
 
   const addComment = useCallback(async (postId: string, content: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2246,7 +2246,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
 
-  // ─── LIKE COMMENT ────────────────────────────────────────────────────
+  
 
   const likeComment = useCallback(async (postId: string, commentId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2281,7 +2281,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── VOTE COMMENT HELPFUL ───────────────────────────────────────────
+  
 
   const voteCommentHelpful = useCallback(async (postId: string, commentId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2312,7 +2312,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── REPLY TO COMMENT ───────────────────────────────────────────────
+  
 
   const replyToComment = useCallback(async (postId: string, commentId: string, content: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2358,7 +2358,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── JOIN TOPIC ──────────────────────────────────────────────────────
+  
 
   const joinTopic = useCallback(async (topicId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2395,7 +2395,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── LEAVE TOPIC ─────────────────────────────────────────────────────
+  
 
   const leaveTopic = useCallback(async (topicId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2429,19 +2429,19 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── GET TOPIC BY ID ─────────────────────────────────────────────────
+  
 
   const getTopicById = useCallback((topicId: string) => {
     return stateRef.current.topics.find(topic => topic.id === topicId);
   }, []);
 
-  // ─── GET POSTS BY TOPIC ──────────────────────────────────────────────
+  
 
   const getPostsByTopic = useCallback((topicId: string) => {
     return stateRef.current.posts.filter(post => post.topicId === topicId);
   }, []);
 
-  // ─── FOLLOW USER ─────────────────────────────────────────────────────
+  
 
   const followUser = useCallback(async (userId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2534,7 +2534,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── UNFOLLOW USER ──────────────────────────────────────────────────
+  
 
   const unfollowUser = useCallback(async (userId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2601,7 +2601,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── GET USER BY ID ──────────────────────────────────────────────────
+  
 
   const getUserById = useCallback((userId: string) => {
     if (userId === stateRef.current.currentUser?.id) return stateRef.current.currentUser;
@@ -2611,13 +2611,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return undefined;
   }, []);
 
-  // ─── GET USER POSTS ──────────────────────────────────────────────────
+  
 
   const getUserPosts = useCallback((userId: string) => {
     return stateRef.current.posts.filter(post => post.authorId === userId);
   }, []);
 
-  // ─── IS FOLLOWING ────────────────────────────────────────────────────
+  
 
   const isFollowing = useCallback((userId: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2625,7 +2625,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return currentUser.following?.includes(userId) || false;
   }, []);
 
-  // ─── GET FOLLOWERS ──────────────────────────────────────────────────
+  
 
   const getFollowers = useCallback(async (userId: string): Promise<string[]> => {
     try {
@@ -2643,7 +2643,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── GET FOLLOWING ──────────────────────────────────────────────────
+  
 
   const getFollowing = useCallback(async (userId: string): Promise<string[]> => {
     try {
@@ -2658,7 +2658,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── GET ALL USERS ──────────────────────────────────────────────────
+  
 
   const getAllUsers = useCallback((): CommunityUser[] => {
     const users = new Map<string, CommunityUser>();
@@ -2674,7 +2674,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return Array.from(users.values());
   }, []);
 
-  // ─── UPDATE USER BIO ─────────────────────────────────────────────────
+  
 
   const updateUserBio = useCallback(async (bio: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2686,7 +2686,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   }, []);
 
-  // ─── UPDATE USER LOCATION ───────────────────────────────────────────
+  
 
   const updateUserLocation = useCallback(async (country: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2698,7 +2698,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   }, []);
 
-  // ─── UPDATE ONLINE STATUS ──────────────────────────────────────────
+  
 
   const updateOnlineStatus = useCallback(async (status: OnlineStatus) => {
     const currentUser = stateRef.current.currentUser;
@@ -2725,7 +2725,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }));
   }, []);
 
-  // ─── GET USER STATS ──────────────────────────────────────────────────
+  
 
   const getUserStats = useCallback((userId: string) => {
     if (userId === stateRef.current.currentUser?.id) return stateRef.current.currentUser.stats;
@@ -2733,7 +2733,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return user?.stats;
   }, [getUserById]);
 
-  // ─── MARK NOTIFICATION READ ─────────────────────────────────────────
+  
 
   const markNotificationRead = useCallback(async (notificationId: string) => {
     setState(prev => {
@@ -2745,7 +2745,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── MARK ALL NOTIFICATIONS READ ──────────────────────────────────
+  
 
   const markAllNotificationsRead = useCallback(async () => {
     setState(prev => {
@@ -2755,13 +2755,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── GET UNREAD COUNT ───────────────────────────────────────────────
+  
 
   const getUnreadCount = useCallback(() => {
     return stateRef.current.notifications.filter(n => !n.read).length;
   }, []);
 
-  // ─── SEND MESSAGE ───────────────────────────────────────────────────
+  
 
   const sendMessage = useCallback(async (userId: string, content: string, type: MessageType = 'text', imageUrl?: string, fileMeta?: FileMetadata, replyToId?: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -2848,7 +2848,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [getUserById]);
 
-  // ─── EDIT MESSAGE ───────────────────────────────────────────────────
+  
 
   const editMessage = useCallback(async (userId: string, messageId: string, newContent: string) => {
     setState(prev => {
@@ -2871,7 +2871,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── RESEND MESSAGE ─────────────────────────────────────────────────
+  
 
   const resendMessage = useCallback(async (userId: string, messageId: string) => {
     setState(prev => {
@@ -2891,7 +2891,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── DELETE MESSAGE ─────────────────────────────────────────────────
+  
 
   const deleteMessage = useCallback(async (userId: string, messageId: string) => {
     setState(prev => {
@@ -2906,7 +2906,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── GET CHAT MESSAGES ──────────────────────────────────────────────
+  
 
   const getChatMessages = useCallback((userId: string): Message[] => {
     const chats = (stateRef.current as any).chats || [];
@@ -2914,7 +2914,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return chat?.messages || [];
   }, []);
 
-  // ─── MARK CHAT READ ─────────────────────────────────────────────────
+  
 
   const markChatRead = useCallback(async (userId: string) => {
     setState(prev => {
@@ -2927,14 +2927,14 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── GET OR CREATE CHAT ─────────────────────────────────────────────
+  
 
   const getOrCreateChat = useCallback((userId: string) => {
     const chats = (stateRef.current as any).chats || [];
     return chats.find((c: Chat) => c.participantId === userId);
   }, []);
 
-  // ─── SET TYPING STATUS ──────────────────────────────────────────────
+  
 
   const setTypingStatus = useCallback((userId: string, isTyping: boolean) => {
     setState(prev => {
@@ -2966,7 +2966,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── GET TYPING STATUS ──────────────────────────────────────────────
+  
 
   const getTypingStatus = useCallback((userId: string) => {
     const chats = (stateRef.current as any).chats || [];
@@ -2974,7 +2974,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return chat?.isTyping || false;
   }, []);
 
-  // ─── DELETE CHAT ─────────────────────────────────────────────────────
+  
 
   const deleteChat = useCallback(async (userId: string) => {
     setState(prev => {
@@ -2986,7 +2986,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
 
-  // ─── BLOCK USER ──────────────────────────────────────────────────────
+  
 
   const blockUser = useCallback(async (userId: string) => {
     setState(prev => {
@@ -3007,13 +3007,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── IS USER BLOCKED ──────────────────────────────────────────────────
+  
 
   const isUserBlocked = useCallback((userId: string) => {
     return stateRef.current.blockedUsers.includes(userId);
   }, []);
 
-  // ─── REFRESH FEED ────────────────────────────────────────────────────
+  
 
   const refreshFeed = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
@@ -3022,13 +3022,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setState(prev => ({ ...prev, isLoading: false }));
   }, []);
 
-  // ─── LOAD MORE POSTS ────────────────────────────────────────────────
+  
 
   const loadMorePosts = useCallback(async () => {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }, []);
 
-  // ─── UPDATE COMMUNITY PROFILE ──────────────────────────────────────
+  
 
   const updateCommunityProfile = useCallback(async (updates: Partial<CommunityUser>) => {
     const currentUser = stateRef.current.currentUser;
@@ -3044,13 +3044,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [syncUserProfileAcrossPosts]);
 
-  // ─── GET CURRENT USER PROFILE ──────────────────────────────────────
+  
 
   const getCurrentUserProfile = useCallback(() => {
     return stateRef.current.currentUser;
   }, []);
 
-  // ─── CHECK AND AWARD ACHIEVEMENTS ──────────────────────────────────
+  
 
   const checkAndAwardAchievements = useCallback(async (): Promise<string[]> => {
     const currentUser = stateRef.current.currentUser;
@@ -3074,7 +3074,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return newAchievements;
   }, []);
 
-  // ─── GET USER ACHIEVEMENTS ──────────────────────────────────────────
+  
 
   const getUserAchievements = useCallback((userId: string): string[] => {
     if (userId === stateRef.current.currentUser?.id) return stateRef.current.currentUser.achievements;
@@ -3082,7 +3082,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return user?.achievements || [];
   }, [getUserById]);
 
-  // ─── CHECK ONBOARDING STATUS ────────────────────────────────────────
+  
 
   const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean; hasTopics: boolean }> => {
     try {
@@ -3137,13 +3137,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  // ─── UPDATE SELECTED TOPICS ─────────────────────────────────────────
+  
 const updateSelectedTopics = useCallback(async (topics: string[]) => {
   const validTopics = validateTopicIds(topics);
   
   const currentUser = stateRef.current.currentUser;
 
-  // Update Supabase if available
+  
   if (currentUser) {
     try {
       const { data: existingTopics, error: fetchError } = await supabase
@@ -3181,7 +3181,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     }
   }
 
-  // Update topic join status in state
+  
   if (currentUser) {
     setState(prev => {
       const updatedTopics = prev.topics.map(topic => {
@@ -3200,7 +3200,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     });
   }
 
-  // Persist selected topics to ALL storage keys
+  
   await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validTopics));
   await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(validTopics));
 
@@ -3215,7 +3215,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     );
   }
 
-  // Update onboarding status
+  
   const onboardingData = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
   if (onboardingData) {
     const parsed = JSON.parse(onboardingData);
@@ -3232,7 +3232,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     }));
   }
 
-  // Update state
+  
   setState(prev => ({
     ...prev,
     selectedTopics: validTopics,
@@ -3243,14 +3243,14 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
   console.log('[updateSelectedTopics] Updated to:', validTopics.length, 'topics');
 }, []);
 
-  // ─── GET SELECTED TOPICS ────────────────────────────────────────────
+  
 
   const getSelectedTopics = useCallback((): string[] => {
     const rawTopics = stateRef.current.selectedTopics || [];
     return validateTopicIds(rawTopics);
   }, []);
 
-  // ─── GET FEED POSTS ──────────────────────────────────────────────────
+  
 
   const getFeedPosts = useCallback((): Post[] => {
     const currentUser = stateRef.current.currentUser;
@@ -3272,7 +3272,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     });
   }, []);
 
-  // ─── GET POPULAR POSTS ──────────────────────────────────────────────
+  
 
   const getPopularPosts = useCallback((limit: number = 10): Post[] => {
     return [...stateRef.current.posts]
@@ -3280,7 +3280,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
       .slice(0, limit);
   }, []);
 
-  // ─── GET TRENDING TOPICS ─────────────────────────────────────────────
+  
 
   const getTrendingTopics = useCallback((): Topic[] => {
     return stateRef.current.topics
@@ -3288,7 +3288,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
       .sort((a, b) => b.engagementScore - a.engagementScore);
   }, []);
 
-  // ─── INCREMENT VIEW COUNT ────────────────────────────────────────────
+  
 
   const incrementViewCount = useCallback(async (postId: string) => {
     setState(prev => {
@@ -3306,14 +3306,14 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     });
   }, []);
 
-  // ─── GET POST RANK ──────────────────────────────────────────────────
+  
 
   const getPostRank = useCallback((postId: string): number => {
     const sorted = [...stateRef.current.posts].sort((a, b) => b.popularityScore - a.popularityScore);
     return sorted.findIndex(p => p.id === postId) + 1;
   }, []);
 
-  // ─── UPDATE USERNAME ──────────────────────────────────────────────────
+  
 
   const updateUsername = useCallback(async (newUsername: string): Promise<{ success: boolean; message: string }> => {
     const currentUser = stateRef.current.currentUser;
@@ -3341,7 +3341,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     return { success: true, message: 'Username updated successfully' };
   }, [syncUserProfileAcrossPosts]);
 
-  // ─── UPDATE DISPLAY NAME ────────────────────────────────────────────
+  
 
   const updateDisplayName = useCallback(async (newName: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -3358,7 +3358,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     await syncUserProfileAcrossPosts(currentUser.id, { displayName: trimmed });
   }, [syncUserProfileAcrossPosts]);
 
-  // ─── AVATAR HELPERS ──────────────────────────────────────────────────
+  
 
   const COMMUNITY_AVATARS_DIR = FileSystem.documentDirectory + 'community_avatars/';
 
@@ -3440,7 +3440,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     }
   }, [syncUserProfileAcrossPosts]);
 
-  // ─── UPDATE AVATAR ──────────────────────────────────────────────────
+  
 
   const updateAvatar = useCallback(async (avatarUri: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -3456,7 +3456,7 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     await syncUserProfileAcrossPosts(currentUser.id, { avatar: normalized });
   }, [syncUserProfileAcrossPosts]);
 
-  // ─── UPDATE BIO ──────────────────────────────────────────────────────
+  
 
   const updateBio = useCallback(async (bio: string) => {
     const currentUser = stateRef.current.currentUser;
@@ -3470,19 +3470,19 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     await syncUserProfileAcrossPosts(currentUser.id, { bio: bio.trim() });
   }, [syncUserProfileAcrossPosts]);
 
-  // ─── GET USER PROFILE ───────────────────────────────────────────────
+  
 
   const getUserProfile = useCallback(() => {
     return stateRef.current.currentUser;
   }, []);
 
-  // ─── IS AUTHENTICATED ──────────────────────────────────────────────
+  
 
   const checkIsAuthenticated = useCallback(() => {
     return !!stateRef.current.currentUser;
   }, []);
 
-  // ─── CONTEXT VALUE ──────────────────────────────────────────────────
+  
 
   const value = React.useMemo(() => ({
     ...state,

@@ -1,4 +1,4 @@
-// SmartPhotoField.tsx — COMPLETE FIXED V7 (4 PHOTOS MAX + MULTI-SELECT SUPPORT)
+
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
@@ -37,22 +37,22 @@ import { supabase } from '@/utils/supabase';
 import { decode } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system';
 
-// ── Constants ──────────────────────────────────────────────────────────────
+
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_SIZE = SCREEN_W - 48;
 const MAX_ANNOTATION_POINTS = 1500;
 
-// CRITICAL: 4 photos max as requested
+
 const MAX_PHOTOS = 4;
 
-// MUCH smaller for camera to prevent OOM
+
 const MAX_IMAGE_DIMENSION = 1600;
 const CAMERA_MAX_DIMENSION = 900;
 const IMAGE_COMPRESS = 0.7;
 const CAMERA_QUALITY = 0.4;
 const GALLERY_QUALITY = 0.7;
 
-// ── Colors ─────────────────────────────────────────────────────────────────
+
 const COLORS = {
   text: {
     primary: '#1a1a1a',
@@ -76,7 +76,7 @@ const GLASS = {
 const RADIUS = { sm: 6, md: 10, lg: 16, xl: 24 };
 const SPACE = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
 
-// ── Types ──────────────────────────────────────────────────────────────────
+
 interface PhotoMeta {
   uri: string;
   width: number;
@@ -91,7 +91,7 @@ interface PhotoMeta {
 
 interface AIAnalysis {
   labels: string[];
-  confidence: number; // 0 when no real ML model is available
+  confidence: number; 
   suggestions: string[];
   severity?: 'low' | 'medium' | 'high';
   /** `true` only when a real on-device ML model produced this analysis.
@@ -120,7 +120,7 @@ interface SmartPhotoFieldProps {
   onAnalysis?: (analysis: AIAnalysis) => void;
 }
 
-// ── Safe optional native modules ──────────────────────────────────────────
+
 let ImageManipulator: any = null;
 try {
   ImageManipulator = require('expo-image-manipulator');
@@ -135,13 +135,13 @@ try {
   Haptics = null;
 }
 
-// Works across SDK 48 → 54
+
 const MEDIA_IMAGES: any =
   (ImagePicker as any).MediaType?.Images ??
   (ImagePicker as any).MediaTypeOptions?.Images ??
   'Images';
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+
 const formatBytes = (bytes?: number): string => {
   if (!bytes || isNaN(bytes)) return '—';
   if (bytes < 1024) return `${bytes} B`;
@@ -205,26 +205,26 @@ const sweetAlert = {
   },
 };
 
-// ── Contextual Photo Analysis (Non-Mock, Rule-Based) ───────────────────────
-// NOTE: On-device ML is not available. This returns HONEST, context-specific
-// guidance based on tracker type — no fake confidence scores.
-// When a real ML model is integrated, replace analyzePhoto with the model call.
+
+
+
+
 
 interface PhotoAnalysisResult {
   labels: string[];
-  confidence: number; // 0 = no model available, do not display as percentage
+  confidence: number; 
   suggestions: string[];
   severity?: 'low' | 'medium' | 'high';
   modelAvailable: boolean;
 }
 
 const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysisResult> => {
-  // Validate the photo URI is real before "analyzing"
+  
   if (!uri || typeof uri !== 'string' || uri.length === 0) {
     throw new Error('Invalid photo URI');
   }
 
-  // Context-specific guidance (educational, not AI-generated)
+  
   const contextGuidance: Record<string, { suggestions: string[]; severity: 'low' | 'medium' | 'high' }> = {
     skin_condition: {
       suggestions: [
@@ -285,7 +285,7 @@ const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysi
     severity: 'low' as const,
   };
 
-  // ── Real on-device classification via ExecuTorch ───────────────
+  
   let modelLabels: string[] = [];
   let modelConfidence = 0;
   let modelAvailable = false;
@@ -311,7 +311,7 @@ const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysi
   };
 };
 
-// ── Safe image dimension getter ────────────────────────────────────────────
+
 const getImageDimensionsSafe = (
   uri: string
 ): Promise<{ width: number; height: number }> => {
@@ -328,7 +328,7 @@ const getImageDimensionsSafe = (
   });
 };
 
-// ── Native-level image optimization ───────────────────────────────────────
+
 const optimizeImage = async (
   uri: string,
   maxDimension: number = MAX_IMAGE_DIMENSION,
@@ -363,7 +363,7 @@ const optimizeImage = async (
   }
 };
 
-// ── Upload to Supabase Storage ────────────────────────────────────────────
+
 const uploadToSupabase = async (
   uri: string,
   bucket: string = 'tracker-photos',
@@ -405,7 +405,7 @@ const uploadToSupabase = async (
   }
 };
 
-// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
+
 
 const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   value,
@@ -449,25 +449,25 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const mountedRef = useRef(true);
   const localTempUrisRef = useRef<Set<string>>(new Set());
 
-  // ── Cleanup on unmount ────────────────────────────────────────────────
+  
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
 
-      // Best-effort cleanup of any temp files we created
-      // (Photos already uploaded + tracked are NOT deleted)
+      
+      
       const temps = localTempUrisRef.current;
       if (temps.size > 0) {
         Promise.all(
           [...temps].map(async (uri) => {
             try {
-              // Only delete file:// URIs we created, not remote URLs
+              
               if (uri.startsWith('file://') || uri.startsWith('/')) {
                 await FileSystem.deleteAsync(uri, { idempotent: true });
               }
             } catch {
-              // Silent — cleanup is best-effort
+              
             }
           })
         ).catch(() => {});
@@ -475,7 +475,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     };
   }, []);
 
-  // ── Sync external value prop ──────────────────────────────────────────
+  
   useEffect(() => {
     try {
       if (value && value !== currentUri && photos.some((p) => p.uri === value)) {
@@ -486,7 +486,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [value]);
 
-  // ── Init photos (edit mode) ───────────────────────────────────────────
+  
   useEffect(() => {
     try {
       if (hasInitializedPhotos.current) return;
@@ -513,7 +513,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [initialPhotoUris]);
 
-  // ── Notify parent of photo changes ────────────────────────────────────
+  
   useEffect(() => {
     try {
       const currentPhotos = Array.isArray(photos) ? photos : [];
@@ -533,10 +533,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       if (changed) {
         prevPhotosRef.current = currentPhotos;
 
-        // Advanced consumers get full metadata
+        
         onPhotosChange?.(currentPhotos);
 
-        // Most consumers get a flat string[] of URIs
+        
         const uris = currentPhotos
           .map((p) => (typeof p?.uri === 'string' ? p.uri : ''))
           .filter((u): u is string => u.length > 0);
@@ -547,7 +547,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [photos, onPhotosChange, onUrisChange]);
 
-  // ── Permissions ─────────────────────────────────────────────────────
+  
   useEffect(() => {
     (async () => {
       try {
@@ -559,7 +559,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     })();
   }, []);
 
-  // ── Photo processing ──────────────────────────────────────────────────
+  
   const processPhoto = useCallback(
     async (rawUri: string, exif: any, isFromCamera: boolean = false) => {
       if (isProcessingRef.current) return;
@@ -571,34 +571,34 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       try {
         if (!rawUri || typeof rawUri !== 'string') return;
 
-        // CRITICAL: Use maxPhotos limit
+        
         if (photos.length >= maxPhotos) {
           sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
           return;
         }
 
-        // Optimize at native level
+        
         const maxDim = isFromCamera ? CAMERA_MAX_DIMENSION : MAX_IMAGE_DIMENSION;
         const compress = isFromCamera ? CAMERA_QUALITY : IMAGE_COMPRESS;
 
         const uri = await optimizeImage(rawUri, maxDim, compress);
         if (!mountedRef.current) return;
 
-        // Track temp URI for cleanup on unmount (if upload doesn't happen)
+        
         if (uri.startsWith('file://') || uri.startsWith('/')) {
           localTempUrisRef.current.add(uri);
         }
 
-        // Duplicate check
+        
         if (photos.some((p) => p.uri === uri)) {
           sweetAlert.alert('Duplicate', 'This photo is already added.');
           return;
         }
 
-        // Upload to Supabase if enabled
-        // NOTE: We keep BOTH the local URI (for instant display) and the
-        // remote URL (for persistence). The local URI is used as a fallback
-        // if the upload fails or the network drops.
+        
+        
+        
+        
         let storagePath: string | undefined;
         let publicUrl: string | undefined;
 
@@ -621,10 +621,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           }
         }
 
-        // Bail if component unmounted during upload
+        
         if (!mountedRef.current) return;
 
-        // File info
+        
         let fileSize: number | undefined;
         try {
           const fileInfo = await FileSystem.getInfoAsync(uri);
@@ -633,7 +633,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           /* ignore */
         }
 
-        // Dimensions
+        
         const dims = await getImageDimensionsSafe(uri);
         let width = dims.width;
         let height = dims.height;
@@ -655,13 +655,13 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         setCurrentUri(meta.uri);
         onChange?.(meta.uri, meta);
 
-        // If upload succeeded, we don't need to clean up the local copy
-        // during this session (user might tap to re-view).
+        
+        
         if (storagePath) {
           localTempUrisRef.current.delete(uri);
         }
 
-        // Auto-analyze
+        
         if (autoAnalyze) {
           setAnalyzing(true);
           try {
@@ -697,7 +697,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId, onAnalysis]
   );
 
-  // ─── Take Photo ──────────────────────────────────────────────────────────
+  
   const takePhoto = useCallback(async () => {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -727,7 +727,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [processPhoto]);
 
-  // ── Pick Photo ─────────────────────────────────────────────────────────
+  
   const pickPhoto = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -758,7 +758,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [currentUri]);
 
-  // ── Remove photo ──────────────────────────────────────────────────────
+  
   const removePhoto = useCallback(
     (idx: number) => {
       try {
@@ -798,7 +798,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [currentUri, onChange, photos, analysis, analysisHistory]
   );
 
-  // ── Annotation ─────────────────────────────────────────────────────────
+  
   const handleTouchStart = (event: any) => {
     if (!annotating) return;
     const { locationX, locationY } = event.nativeEvent;
@@ -852,7 +852,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     sweetAlert.alert('Saved', 'Annotation saved with photo.');
   };
 
-  // ── Compare ────────────────────────────────────────────────────────────
+  
   const toggleCompareSelect = (idx: number) => {
     try {
       if (idx < 0 || idx >= photos.length) return;
@@ -866,7 +866,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   };
 
-  // ── Zoom / Pan ─────────────────────────────────────────────────────────
+  
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -941,7 +941,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     ],
   }));
 
-  // ── AI Severity Bar ────────────────────────────────────────────────────
+  
   const confidenceProgress = useSharedValue(0);
   useEffect(() => {
     try {
@@ -957,7 +957,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     width: `${interpolate(confidenceProgress.value, [0, 1], [0, 100])}%`,
   }));
 
-  // ── Derived values ─────────────────────────────────────────────────────
+  
   const currentMeta = useMemo(() => {
     try {
       return photos.find((p) => p.uri === currentUri);
@@ -982,7 +982,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [photos, currentUri]);
 
-  // Memoized image sources
+  
   const currentImageSource = useMemo(
     () => (currentUri ? { uri: currentUri } : null),
     [currentUri]
@@ -992,7 +992,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [currentUri]
   );
 
-  // ── Render annotation overlay ──────────────────────────────────────────
+  
   const renderAnnotationOverlay = () => {
     try {
       const allPoints = [...annotationPoints, ...currentPoints];
@@ -1716,7 +1716,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   );
 };
 
-// ── Subcomponents ──────────────────────────────────────────────────────────
+
 const MetaRow = ({
   label,
   value,

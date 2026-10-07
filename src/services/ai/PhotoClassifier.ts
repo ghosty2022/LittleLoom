@@ -1,27 +1,27 @@
-// src/services/ai/PhotoClassifier.ts
-// ─────────────────────────────────────────────────────────────────────
-// On-device image classification using ExecuTorch + MobileNetV2.
-//
-// The `.pte` file bundled at `assets/models/baby_vision.pte` classifies
-// an image into 1000 ImageNet categories (bottle, teddy bear, person,
-// food, furniture, etc.).
-//
-// This service:
-//   • Loads the model once (cached)
-//   • Preprocesses image URIs into 224×224 RGB float tensors
-//   • Runs inference and returns top-N labels with confidence
-//   • Never throws — returns empty array on failure
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 export interface Classification {
   label: string;
-  confidence: number; // 0..1
+  confidence: number; 
 }
 
 export interface ClassificationResult {
@@ -32,33 +32,33 @@ export interface ClassificationResult {
   topConfidence: number;
 }
 
-// ─── ImageNet 1000-class labels (abbreviated — full list required for production) ──
-// We only surface a curated subset relevant to baby/child content.
-// The model still outputs 1000 classes; we filter to ones parents care about.
+
+
+
 
 const PARENT_RELEVANT_LABELS: Record<number, string> = {
-  // ── Baby items ────────────────────────────────────────────────────
+  
   720: 'pill bottle',
   504: 'coffee mug',
   505: 'cup',
   899: 'water bottle',
   907: 'wine bottle',
   737: 'water bottle',
-  // ── Toys ──────────────────────────────────────────────────────────
+  
   850: 'teddy bear',
   851: 'teddy',
   852: 'toy',
   441: 'ball',
   444: 'basketball',
   873: 'plastic bag',
-  // ── People / body ─────────────────────────────────────────────────
-  0: 'tench (fish)', // placeholder — real labels come from full list
-  // See note below
+  
+  0: 'tench (fish)', 
+  
 };
 
-// NOTE: A full ImageNet label list is ~100 KB. Rather than embedding it
-// here, we load it lazily from a bundled JSON asset. See
-// `assets/models/imagenet_labels.json`.
+
+
+
 
 let LABELS_CACHE: string[] | null = null;
 
@@ -66,7 +66,7 @@ async function loadLabels(): Promise<string[]> {
   if (LABELS_CACHE) return LABELS_CACHE;
   try {
     const asset = Asset.fromModule(
-      // Adjust path if you place the labels file elsewhere
+      
       require('../../../assets/models/imagenet_labels.json')
     );
     await asset.downloadAsync();
@@ -80,12 +80,12 @@ async function loadLabels(): Promise<string[]> {
   } catch (e) {
     if (__DEV__) console.warn('[PhotoClassifier] Failed to load labels:', e);
   }
-  // Fallback: return placeholder labels
+  
   LABELS_CACHE = Array.from({ length: 1000 }, (_, i) => `class_${i}`);
   return LABELS_CACHE;
 }
 
-// ─── Model Loading ──────────────────────────────────────────────────
+
 
 type ExecutorchModule = {
   forward: (input: unknown) => Promise<unknown>;
@@ -106,7 +106,7 @@ async function loadModel(): Promise<ExecutorchModule | null> {
 
   modelLoadPromise = (async () => {
     try {
-      // Dynamic import so a missing native module doesn't crash the bundle
+      
       const ReactNativeExecuTorch = await import('react-native-executorch');
       const useExecutorchModule = (ReactNativeExecuTorch as any)
         ?.useExecutorchModule;
@@ -120,7 +120,7 @@ async function loadModel(): Promise<ExecutorchModule | null> {
         return null;
       }
 
-      // Resolve the bundled .pte file to a local filesystem path
+      
       const asset = Asset.fromModule(
         require('../../../assets/models/baby_vision.pte')
       );
@@ -134,9 +134,9 @@ async function loadModel(): Promise<ExecutorchModule | null> {
         return null;
       }
 
-      // NOTE: `useExecutorchModule` is a React hook. For non-React
-      // consumers we use the underlying imperative API. If the library
-      // only exposes the hook, wire this into a React provider instead.
+      
+      
+      
       const module = await (ReactNativeExecuTorch as any).loadModel?.({
         modelSource: modelUri,
       });
@@ -161,7 +161,7 @@ async function loadModel(): Promise<ExecutorchModule | null> {
   return modelLoadPromise;
 }
 
-// ─── Image Preprocessing ────────────────────────────────────────────
+
 
 /**
  * Convert an image URI into a 224×224 RGB float32 tensor input
@@ -174,7 +174,7 @@ async function preprocessImage(
   uri: string
 ): Promise<{ pixels: Uint8Array; width: number; height: number } | null> {
   try {
-    // 1. Resize to 224×224 using ImageManipulator
+    
     const manipulated = await ImageManipulator.manipulateAsync(
       uri,
       [{ resize: { width: 224, height: 224 } }],
@@ -187,11 +187,11 @@ async function preprocessImage(
 
     if (!manipulated.base64) return null;
 
-    // 2. Decode JPEG to raw pixels
-    // React Native has no built-in JPEG decoder — we rely on the
-    // ExecuTorch runtime to accept base64-encoded images directly,
-    // OR we use a small native shim. For now, we return base64 and
-    // let the runtime handle decoding.
+    
+    
+    
+    
+    
     const binary = atob(manipulated.base64);
     const pixels = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
@@ -205,7 +205,7 @@ async function preprocessImage(
   }
 }
 
-// ─── Public API ─────────────────────────────────────────────────────
+
 
 /**
  * Classify an image by URI. Returns the top-N labels sorted by
@@ -233,7 +233,7 @@ export async function classifyImage(
     const preprocessed = await preprocessImage(uri);
     if (!preprocessed) return empty;
 
-    // Run inference
+    
     const output = await model.forward({
       data: preprocessed.pixels,
       width: preprocessed.width,
@@ -241,17 +241,17 @@ export async function classifyImage(
       channels: 3,
     });
 
-    // Output is typically a Float32Array of 1000 logits or probabilities
+    
     const logits = extractLogits(output);
     if (!logits || logits.length !== 1000) return empty;
 
-    // Softmax to normalize into probabilities
+    
     const probs = softmax(Array.from(logits));
 
-    // Load human-readable labels
+    
     const labels = await loadLabels();
 
-    // Build sorted list
+    
     const indexed = probs.map((p, i) => ({ index: i, prob: p }));
     indexed.sort((a, b) => b.prob - a.prob);
 
@@ -271,7 +271,7 @@ export async function classifyImage(
   }
 }
 
-// ─── Internals ──────────────────────────────────────────────────────
+
 
 function extractLogits(output: unknown): Float32Array | number[] | null {
   if (!output) return null;
@@ -292,7 +292,7 @@ function softmax(logits: number[]): number[] {
   return exps.map((x) => x / sum);
 }
 
-// ─── Convenience helpers ────────────────────────────────────────────
+
 
 /**
  * True when the top label looks like a baby-relevant object

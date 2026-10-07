@@ -1,5 +1,5 @@
-// src/hooks/useUnifiedTrackerTheme.ts
-// FIX: Use direct imports, not useSafeContexts
+
+
 
 import { useMemo } from 'react';
 import { useCustomization } from './useCustomization';
@@ -141,17 +141,17 @@ export function useUnifiedTrackerTheme(): UnifiedTrackerTheme {
       highContrast,
       boldText,
       getFullColors: (themeId?: string) => {
-// Guard: if getFullThemeColors is not available from useCustomization,
-// return a minimal safe fallback instead of crashing.
+
+
 const id = themeId || (themeColors?.primary ? 'custom' : 'purple');
 try {
-// Dynamic require to avoid hard dependency on potentially missing export
+
 const { getFullThemeColors } = require('./useCustomization');
 if (getFullThemeColors) {
 return getFullThemeColors(id, isDark ? 'dark' : 'light', appIsDark);
 }
 } catch {
-// Fallback minimal theme if useCustomization doesn't export this
+
 }
 return {
 background: isDark ? '#0f0f1e' : '#f8faff',

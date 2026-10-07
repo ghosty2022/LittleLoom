@@ -23,7 +23,7 @@ import AnimatedReanimated, {
 } from 'react-native-reanimated';
 import { useCustomization } from '../hooks/useCustomization';
 
-// ─── FIX #1: Remove unused Dimensions ───────────────────────────────────
+
 
 export type SpinnerSection = 'main' | 'community' | 'auth' | 'settings' | 'tracking';
 
@@ -79,7 +79,7 @@ interface ThemeColorsSafe {
   [key: string]: any;
 }
 
-// ─── FIX #2: Safe customization hook, replaces all try/catch blocks ─────
+
 const useCustomizationSafe = () => {
   try {
     const c = useCustomization();
@@ -119,21 +119,21 @@ const resolveTheme = (
   return base;
 };
 
-// ─── FIX #3: Static size lookup, no function call per render ────────────
+
 const SIZE_MAP = {
   small: { spinner: 40, fontSize: 13, container: 100 },
   medium: { spinner: 56, fontSize: 15, container: 140 },
   large: { spinner: 72, fontSize: 17, container: 180 },
 };
 
-// ─── FIX #4: Static variant → component map ─────────────────────────────
+
 const VARIANT_MAP = {
   liquid: 'LiquidDots',
   aurora: 'AuroraRings',
   nebula: 'NebulaOrbit',
 } as const;
 
-// ─── ANIMATED SUB-COMPONENTS (memoized) ────────────────────────────────
+
 
 interface LiquidDotProps {
   index: number;
@@ -368,14 +368,14 @@ const NebulaOrbit = memo<{
   );
 });
 
-// ─── FIX #5: Static component registry ──────────────────────────────────
+
 const SPINNER_COMPONENTS = {
   liquid: LiquidDots,
   aurora: AuroraRings,
   nebula: NebulaOrbit,
 };
 
-// ─── MAIN SPINNER (memoized) ───────────────────────────────────────────
+
 
 interface UniversalSpinnerProps {
   visible: boolean;
@@ -408,7 +408,7 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
   const { themeColors, darkMode, shouldReduceMotion } = useCustomizationSafe();
   const isDark = darkMode ?? (colorScheme === 'dark');
 
-  // ─── FIX #6: Stable Animated.Value, lazy init ────────────────────────
+  
   const fadeAnim = useRef<RNAnimated.Value | null>(null);
   if (!fadeAnim.current) fadeAnim.current = new RNAnimated.Value(0);
 
@@ -420,7 +420,7 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
     [section, customColors, themeColors]
   );
 
-  // ─── FIX #7: Batch animation, no staggered effects ───────────────────
+  
   useEffect(() => {
     const duration = shouldReduceMotion ? (visible ? 100 : 50) : (visible ? 200 : 150);
     RNAnimated.timing(fadeAnim.current!, {
@@ -503,7 +503,7 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
   );
 });
 
-// ─── INLINE SPINNER (memoized) ─────────────────────────────────────────
+
 
 interface InlineSpinnerProps {
   size?: number;
@@ -520,7 +520,7 @@ export const InlineSpinner = memo<InlineSpinnerProps>(({
 }) => {
   const { themeColors, shouldReduceMotion } = useCustomizationSafe();
 
-  // ─── FIX #8: Direct lookup, no useMemo overhead ─────────────────────
+  
   const spinnerColor = color
     || (section === 'main' && themeColors?.spinnerColor)
     || SECTION_THEMES[section]?.spinnerColor
@@ -547,7 +547,7 @@ export const InlineSpinner = memo<InlineSpinnerProps>(({
   );
 });
 
-// ─── SECTION SPINNERS (memoized wrappers) ─────────────────────────────
+
 
 export const CommunitySpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((props) => (
   <UniversalSpinner {...props} section="community" />
@@ -565,7 +565,7 @@ export const TrackingSpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((pro
   <UniversalSpinner {...props} section="tracking" />
 ));
 
-// ─── SKELETON LOADER (memoized) ───────────────────────────────────────
+
 
 export const SkeletonLoader = memo<{
   width?: number | string;
@@ -664,7 +664,7 @@ export const ShimmerLoader = memo<ShimmerLoaderProps>(({
   );
 });
 
-// ─── FIX #9: Memoized preset components, not inline arrow functions ────
+
 
 const ShimmerText = memo<{ width?: number; lines?: number; section?: SpinnerSection }>(({ width = 200, lines = 1, section = 'main' }) => (
   <View style={{ gap: 8 }}>

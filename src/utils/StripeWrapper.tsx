@@ -1,8 +1,8 @@
-// src/utils/StripeWrapper.tsx
+
 import React from 'react';
 import { Platform } from 'react-native';
 
-// Only load Stripe on native platforms
+
 let StripeProvider: React.FC<any> = ({ children }) => <>{children}</>;
 let useStripe: any = () => ({ 
   initPaymentSheet: async () => {}, 

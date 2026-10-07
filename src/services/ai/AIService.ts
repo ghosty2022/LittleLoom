@@ -1,4 +1,4 @@
-// src/services/ai/AIService.ts
+
 /**
  * AIService — Lazy orchestrator for all AI features.
  *
@@ -50,8 +50,8 @@ class AIServiceImpl {
   private listeners = new Set<Listener>();
   private initPromise: Promise<AIStatusSnapshot> | null = null;
 
-  // Lazy-loaded module handles (kept as `any` so TS doesn't try to
-  // resolve them at compile-time when the package isn't installed).
+  
+  
   private aiKit: any = null;
   private executorch: any = null;
   private edgeLlm: any = null;
@@ -92,9 +92,9 @@ class AIServiceImpl {
     this.initPromise = (async () => {
       this.update({ status: 'loading' });
 
-      // ── 1. expo-ai-kit ────────────────────────────────────────────
+      
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        
         this.aiKit = require('expo-ai-kit');
         this.snap.packages.aiKit = true;
         console.log('[AIService] ✅ expo-ai-kit loaded');
@@ -106,9 +106,9 @@ class AIServiceImpl {
         console.warn('[AIService] expo-ai-kit unavailable:', e);
       }
 
-      // ── 2. react-native-executorch ────────────────────────────────
+      
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        
         this.executorch = require('react-native-executorch');
         this.snap.packages.executorch = true;
         console.log('[AIService] ✅ react-native-executorch loaded');
@@ -116,9 +116,9 @@ class AIServiceImpl {
         console.warn('[AIService] executorch unavailable:', e);
       }
 
-      // ── 3. edge-llm ───────────────────────────────────────────────
+      
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        
         this.edgeLlm = require('edge-llm');
         this.snap.packages.edgeLlm = true;
         console.log('[AIService] ✅ edge-llm loaded');
@@ -126,9 +126,9 @@ class AIServiceImpl {
         console.warn('[AIService] edge-llm unavailable:', e);
       }
 
-      // ── 4. react-native-smart-ai ──────────────────────────────────
+      
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        
         this.smartAi = require('react-native-smart-ai');
         this.snap.packages.smartAi = true;
         console.log('[AIService] ✅ react-native-smart-ai loaded');
@@ -136,8 +136,8 @@ class AIServiceImpl {
         console.warn('[AIService] smart-ai unavailable:', e);
       }
 
-      // ── 5. Vision model (.pte) ────────────────────────────────────
-      //   Only try to load the bundled model if executorch is present.
+      
+      
       try {
         if (this.executorch && this.executorch.loadModel) {
           const modelAsset = require('../../../assets/models/baby_vision.pte');
@@ -159,7 +159,7 @@ class AIServiceImpl {
         console.warn('[AIService] vision model load failed:', e);
       }
 
-      // ── Verdict ───────────────────────────────────────────────────
+      
       const anyLoaded =
         this.snap.packages.aiKit ||
         this.snap.packages.executorch ||
@@ -186,7 +186,7 @@ class AIServiceImpl {
     return this.initPromise;
   }
 
-  // ── Public accessors (all null-safe) ─────────────────────────────
+  
   getAiKit() {
     return this.aiKit;
   }

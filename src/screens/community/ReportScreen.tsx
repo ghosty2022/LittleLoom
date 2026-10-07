@@ -1,4 +1,4 @@
-// src/screens/community/CommunityVerificationScreen.tsx
+
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import {
   StatusBar,
@@ -84,7 +84,7 @@ const REQUIREMENTS: SecurityRequirement[] = [
     icon: 'shield-checkmark', 
     label: 'Trusted Device', 
     desc: 'Device has been verified',
-    check: () => true, // Will be checked via device fingerprint
+    check: () => true, 
     securityLevel: 'medium'
   },
 ];
@@ -98,7 +98,7 @@ const BENEFITS = [
   { icon: 'people', color: '#0ea5e9', text: 'Priority support from the community team' },
 ];
 
-// ─── Security Level Badge ───
+
 const SecurityBadge = ({ level }: { level: 'low' | 'medium' | 'high' }) => {
   const colors = {
     low: { bg: '#f59e0b15', text: '#f59e0b' },
@@ -130,7 +130,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
   const [securityScore, setSecurityScore] = useState(0);
 
-  // ─── Generate Device Fingerprint ───
+  
   useEffect(() => {
     const generateDeviceFingerprint = async () => {
       try {
@@ -148,7 +148,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
         );
         setDeviceFingerprint(hash);
         
-        // Store device fingerprint in secure storage
+        
         await supabase
           .from('user_devices')
           .upsert({
@@ -170,7 +170,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
     }
   }, [currentUser?.id]);
 
-  // ─── Security Score Calculation ───
+  
   const securityChecks = useMemo(() => {
     const results: Record<string, boolean> = {};
     let score = 0;
@@ -185,7 +185,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
       }
     });
     
-    // Device trust check
+    
     if (deviceFingerprint) {
       score += 2;
       totalChecks += 1;
@@ -199,7 +199,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
   }, [currentUser, profile, deviceFingerprint]);
 
   const allMet = useMemo(() => {
-    // All requirements must be met for full verification
+    
     return Object.values(securityChecks).every(Boolean);
   }, [securityChecks]);
 
@@ -222,13 +222,13 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
       return;
     }
     
-    // ─── Anti-spam / Rate limiting ───
+    
     const lastRequestKey = `verification_request_${currentUser.id}`;
     const lastRequest = await AsyncStorage.getItem(lastRequestKey);
     if (lastRequest) {
       const lastTime = new Date(JSON.parse(lastRequest)).getTime();
       const now = Date.now();
-      if (now - lastTime < 60000) { // 1 minute cooldown
+      if (now - lastTime < 60000) { 
         sweetAlert.alert(
           'Too Many Requests',
           'Please wait a moment before requesting verification again.',
@@ -242,7 +242,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
     triggerHaptic('medium');
     
     try {
-      // ─── Verify device fingerprint matches ───
+      
       if (deviceFingerprint) {
         const { data: deviceData } = await supabase
           .from('user_devices')
@@ -260,7 +260,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
         }
       }
       
-      // ─── Update user profile ───
+      
       await updateCommunityProfile({ 
         isVerified: true,
         verificationDate: new Date().toISOString(),
@@ -274,7 +274,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
         securityScore: securityScore,
       });
       
-      // ─── Log verification event ───
+      
       await supabase
         .from('verification_events')
         .insert({
@@ -285,7 +285,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
           timestamp: new Date().toISOString(),
         });
       
-      // ─── Store last request time ───
+      
       await AsyncStorage.setItem(
         `verification_request_${currentUser.id}`,
         JSON.stringify(new Date().toISOString())
@@ -311,7 +311,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
     if (!isSubmitting) navigation.goBack();
   }, [isSubmitting, navigation]);
 
-  // ─── Status Colors ───
+  
   const status = getVerificationStatus();
   const statusConfig = {
     verified: { icon: 'shield-checkmark', color: '#10b981', title: '✅ Verified Parent', desc: 'Your identity is fully verified. You have full access to all community features.' },
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
 
   scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
 
-  // ─── Security Score ───
+  
   scoreCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 20, marginBottom: 16 },
   scoreRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   scoreLabel: { fontSize: 13, fontWeight: '600', color: '#94a3b8', marginBottom: 4 },
@@ -485,23 +485,23 @@ const styles = StyleSheet.create({
   scoreBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   scoreBadgeText: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
 
-  // ─── Status Card ───
+  
   statusCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 24, alignItems: 'center', marginBottom: 20 },
   statusBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   statusIconBg: { width: 80, height: 80, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   statusTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
   statusDesc: { fontSize: 14, fontWeight: '500', color: '#94a3b8', textAlign: 'center', lineHeight: 20 },
 
-  // ─── Section Title ───
+  
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.3, marginBottom: 12, marginTop: 4 },
 
-  // ─── Benefits ───
+  
   benefitsCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 16, marginBottom: 20 },
   benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   benefitDivider: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
   benefitText: { fontSize: 14, fontWeight: '600', color: '#e2e8f0', flex: 1 },
 
-  // ─── Requirements ───
+  
   requirementsCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 16, marginBottom: 20 },
   reqRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   reqRowMuted: { opacity: 0.6 },
@@ -512,11 +512,11 @@ const styles = StyleSheet.create({
   reqDesc: { fontSize: 12, fontWeight: '500', color: '#94a3b8' },
   reqStatus: { fontSize: 11, fontWeight: '700' },
 
-  // ─── Security Badge ───
+  
   securityBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   securityBadgeText: { fontSize: 10, fontWeight: '700' },
 
-  // ─── Action Button ───
+  
   actionBtn: { height: 56, borderRadius: 16, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', marginHorizontal: 16 },
   actionBtnDisabled: { opacity: 0.6 },
   actionBtnText: { fontSize: 16, fontWeight: '800', color: '#fff' },

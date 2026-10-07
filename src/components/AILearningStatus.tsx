@@ -1,4 +1,4 @@
-// src/components/AILearningStatus.tsx
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,8 +38,8 @@ export const AILearningStatus: React.FC = () => {
       if (raw) enabled = JSON.parse(raw)?.learningEnabled !== false;
     } catch {}
 
-    // If the baby was GDPR-blocked, the toggle is effectively OFF
-    // regardless of the consent flag. Surface that to the user.
+    
+    
     let blocked = false;
     try {
       const blockRaw = await AsyncStorage.getItem(
@@ -89,8 +89,8 @@ export const AILearningStatus: React.FC = () => {
   };
 
   const handleToggle = async () => {
-    // When blocked, redirect to the management screen instead of
-    // silently flipping a toggle that has no effect.
+    
+    
     if (!stats.enabled && stats.blocked) {
       navigation.navigate('AIManagement');
       return;

@@ -27,8 +27,8 @@ export const useSocialAuth = () => {
   const signInWithGoogle = useCallback(async (): Promise<SocialUser | null> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
-      // This hook is currently a thin wrapper / mock.
-      // Real Google flow lives in LoginScreen / SignUpScreen via AuthSession.
+      
+      
       const mockUser: SocialUser = {
         id: `google_${Date.now()}`,
         fullName: 'Google User',
@@ -47,7 +47,7 @@ export const useSocialAuth = () => {
   }, []);
 
   const signInWithApple = useCallback(async (): Promise<SocialUser | null> => {
-    // Apple is intentionally disabled for now
+    
     Alert.alert('Coming Soon', 'Apple Sign-In will be available shortly.');
     return null;
   }, []);

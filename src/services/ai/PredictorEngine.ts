@@ -1,26 +1,26 @@
-// src/services/ai/PredictorEngine.ts
-// ─────────────────────────────────────────────────────────────────────
-// Time-series prediction for sleep, feed, and diaper events.
-//
-// Method: Holt-Winters triple exponential smoothing, adapted for
-// irregular event streams. We model INTER-EVENT INTERVALS (minutes
-// between events) rather than absolute timestamps — that's what
-// actually varies with age, feeding schedule, and routine.
-//
-// FIXES in this version:
-//   ✓ `.gte('timestamp', ISO)` — PostgREST requires timestamptz strings,
-//     not raw ms numbers. Was causing "date/time field value out of range".
-//   ✓ Normalize `row.timestamp` (string | Date | number) to epoch ms
-//     before arithmetic. Previously `curr - prev` produced NaN when
-//     Supabase returned ISO strings, so backfill silently produced 0
-//     intervals and the predictor stayed at the fallback state.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import { getCurrentUserId as getCanonicalUserId } from '@/database/dbHelpers';
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 export type PredictorType = 'sleep' | 'feed' | 'diaper' | 'wake' | 'medication';
 
@@ -56,7 +56,7 @@ export interface Prediction {
   minutesUntil: number;
 }
 
-// ─── Defaults ────────────────────────────────────────────────────────
+
 
 const DEFAULT_PARAMS: HoltWintersParams = {
   alpha: 0.35,
@@ -83,7 +83,7 @@ const supabaseKey = (babyId: string, type: PredictorType) =>
 
 const memCache = new Map<string, PredictorState>();
 
-// ─── Helpers ────────────────────────────────────────────────────────
+
 
 /**
  * Normalize any timestamp representation to epoch milliseconds.
@@ -92,7 +92,7 @@ const memCache = new Map<string, PredictorState>();
  */
 function toMs(ts: unknown): number {
   if (typeof ts === 'number' && Number.isFinite(ts)) {
-    // Heuristic: values below ~1e12 are seconds, above are ms.
+    
     return ts < 1e12 ? ts * 1000 : ts;
   }
   if (typeof ts === 'string') {
@@ -111,7 +111,7 @@ function toISO(ms: number): string {
   return new Date(ms).toISOString();
 }
 
-// ─── Math ────────────────────────────────────────────────────────────
+
 
 const seasonSlot = (timestamp: number, seasonLength: number): number => {
   const hour = new Date(timestamp).getHours();
@@ -180,9 +180,9 @@ const initialState = (babyId: string, type: PredictorType): PredictorState => ({
   updatedAt: Date.now(),
 });
 
-// ─── Persistence ─────────────────────────────────────────────────────
 
-// Canonical helper — declared before any function that uses it.
+
+
 async function getCurrentUserId(): Promise<string | null> {
   return getCanonicalUserId();
 }
@@ -286,7 +286,7 @@ async function loadState(
   return fresh;
 }
 
-// ─── Read all local predictor states (for cohort publishing) ────────
+
 
 export async function getAllPredictorStates(
   babyId: string,
@@ -332,7 +332,7 @@ async function persistState(state: PredictorState): Promise<void> {
     .catch(() => {});
 }
 
-// ─── Core prediction math ────────────────────────────────────────────
+
 
 function predictNext(state: PredictorState): Prediction {
   const now = Date.now();
@@ -404,14 +404,14 @@ export function formatMinutes(mins: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-// ─── Public API ──────────────────────────────────────────────────────
+
 
 export async function observeEvent(
   babyId: string,
   type: PredictorType,
   eventTimestamp: number
 ): Promise<Prediction> {
-  // Validate timestamp
+  
   if (!Number.isFinite(eventTimestamp) || eventTimestamp <= 0) {
     if (__DEV__) console.warn('[Predictor] Invalid eventTimestamp:', eventTimestamp);
     const state = await loadState(babyId, type);
@@ -424,14 +424,14 @@ export async function observeEvent(
   if (state.lastObservedAt > 0) {
     const intervalMin = (eventTimestamp - state.lastObservedAt) / 60000;
 
-    // Per-type acceptable interval bounds (minutes)
-    // Prevents a 3-day-old stale entry from poisoning the model
+    
+    
     const bounds: Record<PredictorType, [number, number]> = {
-      sleep: [20, 20 * 60],      // 20 min – 20 h
-      feed: [30, 12 * 60],       // 30 min – 12 h
-      diaper: [15, 12 * 60],     // 15 min – 12 h
+      sleep: [20, 20 * 60],      
+      feed: [30, 12 * 60],       
+      diaper: [15, 12 * 60],     
       wake: [15, 12 * 60],
-      medication: [60, 24 * 60], // 1 h – 24 h
+      medication: [60, 24 * 60], 
     };
     const [minI, maxI] = bounds[state.type] ?? [1, 24 * 60];
 
@@ -520,7 +520,7 @@ export async function backfillPredictor(
 
   const trackerIds = trackerMap[type];
 
-  // FIX: PostgREST expects a timestamptz string, not raw ms.
+  
   const { data, error } = await supabase
     .from('tracker_entries')
     .select('id, tracker_id, timestamp')
@@ -549,7 +549,7 @@ export async function backfillPredictor(
     const prevRow = data[i - 1];
     const currRow = data[i];
     if (!prevRow || !currRow) continue;
-    // FIX: normalize both timestamps to ms before subtracting.
+    
     const prevMs = toMs(prevRow.timestamp);
     const currMs = toMs(currRow.timestamp);
     if (prevMs === 0 || currMs === 0) continue;

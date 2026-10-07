@@ -1,43 +1,43 @@
-// src/utils/supabase.ts
-// ─────────────────────────────────────────────────────────────────────
-// THE canonical Supabase client for the entire app.
-//
-// Every other file that used to create its own client now imports from
-// here. Duplicate files (src/lib/supabase.ts, src/services/supabaseClient.ts)
-// have been deleted.
-//
-// Uses a hybrid storage adapter (SecureStore for small values,
-// AsyncStorage for large) with in-memory caching to reduce I/O.
-//
-// ─── CRITICAL FIX ────────────────────────────────────────────────────
-// flowType is 'implicit' NOT 'pkce'.
-//
-// PKCE is an OAuth authorization-code flow for WEB apps that receive
-// a `?code=xyz` redirect from the provider. It requires the SDK to
-// persist a `code_verifier` alongside the session.
-//
-// On React Native we sign in directly (email/password or OAuth token
-// exchange), and our custom storage adapter only persists a plain
-// { access_token, refresh_token, user } session. Under 'pkce' the SDK
-// reads back the stored value, expects a `code_verifier`, fails to
-// find it, and silently discards the session.
-//
-// Symptoms of the PKCE bug:
-//   • getSession() returns null on next launch
-//   • AuthContext wipes token + profile
-//   • "Invalid login credentials" on second attempt because the
-//     previous refresh_token was revoked server-side
-//   • BabyContext can't find userId → loadBabies() short-circuits
-//
-// 'implicit' is correct for all React Native apps that don't do
-// browser-based OAuth redirects.
-//
-// ─── SESSION RECOVERY (this version) ─────────────────────────────────
-// Added `recoverSession()` — a hard fallback that reads the raw
-// session JSON directly from AsyncStorage when Supabase's internal
-// `getSession()` returns null on cold start. This is the exact bug
-// that caused BabyContext / FamilyContext to see "no user ID".
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -50,7 +50,7 @@ import {
 
 import { supabaseStorage } from './supabaseStorage';
 
-// ─── Environment Validation ─────────────────────────────────────────
+
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -66,7 +66,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   }
 }
 
-// ─── The Singleton Client ───────────────────────────────────────────
+
 
 export const supabase: SupabaseClient = createClient(
   supabaseUrl || 'https://placeholder-project.supabase.co',
@@ -77,11 +77,11 @@ export const supabase: SupabaseClient = createClient(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
-      // ─── CRITICAL: 'implicit' for React Native ────────────────────
-      // Do NOT change this to 'pkce' unless you switch to a
-      // browser-based OAuth redirect flow that receives ?code=xyz
-      // and can persist the code_verifier. See file header for the
-      // full explanation of what breaks.
+      
+      
+      
+      
+      
       flowType: 'implicit',
     },
     realtime: {
@@ -97,7 +97,7 @@ export const supabase: SupabaseClient = createClient(
   }
 );
 
-// ─── Connection Helpers ─────────────────────────────────────────────
+
 
 /**
  * Lightweight connectivity probe. Does not throw.
@@ -129,7 +129,7 @@ export async function checkSupabaseConnection(): Promise<{
   }
 }
 
-// ─── SESSION RECOVERY (NEW) ─────────────────────────────────────────
+
 
 /**
  * Hard fallback: read the raw Supabase session JSON directly from
@@ -145,14 +145,14 @@ export async function checkSupabaseConnection(): Promise<{
  */
 export async function recoverSession(): Promise<Session | null> {
   try {
-    // 1. First try Supabase's own getSession (fast path)
+    
     const { data, error } = await supabase.auth.getSession();
     if (!error && data.session) {
       return data.session;
     }
 
-    // 2. Scan AsyncStorage for any key that looks like a Supabase
-    //    auth-token. The SDK uses `sb-<project-ref>-auth-token`.
+    
+    
     const keys = await AsyncStorage.getAllKeys();
     const authKeys = keys.filter(
       (k) =>
@@ -167,10 +167,10 @@ export async function recoverSession(): Promise<Session | null> {
 
         const parsed = JSON.parse(raw);
 
-        // Supabase may store either the session directly:
-        //   { access_token, refresh_token, user, expires_at }
-        // or nested under `session` / `currentSession`:
-        //   { session: { access_token, ... } }
+        
+        
+        
+        
         const access_token =
           parsed?.access_token ||
           parsed?.session?.access_token ||
@@ -183,7 +183,7 @@ export async function recoverSession(): Promise<Session | null> {
 
         if (!access_token || !refresh_token) continue;
 
-        // Force the SDK to adopt this session
+        
         const { data: setData, error: setError } =
           await supabase.auth.setSession({
             access_token,
@@ -197,7 +197,7 @@ export async function recoverSession(): Promise<Session | null> {
           return setData.session;
         }
       } catch (parseErr) {
-        // Skip malformed keys
+        
         if (__DEV__) {
           console.warn('[Supabase] Skipped malformed key:', key, parseErr);
         }
@@ -216,7 +216,7 @@ export async function recoverSession(): Promise<Session | null> {
   }
 }
 
-// ─── Session Helpers ────────────────────────────────────────────────
+
 
 /**
  * Safe session getter — never throws, returns null on failure.
@@ -232,7 +232,7 @@ export async function getCurrentSession(): Promise<Session | null> {
       return await recoverSession();
     }
     if (!data.session) {
-      // Cold-start quirk — try recovery before giving up
+      
       return await recoverSession();
     }
     return data.session;
@@ -252,7 +252,7 @@ export async function getCurrentUser(): Promise<User | null> {
     const session = await getCurrentSession();
     if (session?.user) return session.user;
 
-    // Fallback: try directly
+    
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) return null;
     return data.user;
@@ -272,7 +272,7 @@ export async function getCurrentUserId(): Promise<string | null> {
   return user?.id ?? null;
 }
 
-// ─── Refresh with Retry ─────────────────────────────────────────────
+
 
 export async function refreshSessionWithRetry(
   maxRetries: number = 3,
@@ -285,7 +285,7 @@ export async function refreshSessionWithRetry(
         return { session: data.session, success: true };
       }
 
-      // Don't retry auth-rejected refreshes
+      
       if (error?.status === 400 || error?.status === 401) {
         return { session: null, success: false };
       }
@@ -309,7 +309,7 @@ export async function refreshSessionWithRetry(
   return { session: null, success: false };
 }
 
-// ─── Auth State Listener ────────────────────────────────────────────
+
 
 export function onAuthStateChange(
   callback: (event: string, session: Session | null) => void
@@ -320,7 +320,7 @@ export function onAuthStateChange(
   return data.subscription;
 }
 
-// ─── Sign Out ───────────────────────────────────────────────────────
+
 
 /**
  * Sign out from Supabase — LOCAL scope only.
@@ -357,7 +357,7 @@ export async function signOutWithCleanup(): Promise<{
   }
 }
 
-// ─── Profile Helpers ────────────────────────────────────────────────
+
 
 export async function getUserProfile(userId: string) {
   try {
@@ -412,7 +412,7 @@ export async function upsertUserProfile(profile: {
   }
 }
 
-// ─── Storage Utilities (Advanced) ───────────────────────────────────
+
 
 /**
  * Direct access to the underlying storage adapter. Rarely needed.
@@ -436,14 +436,14 @@ export async function clearSupabaseLocalState(): Promise<void> {
       await AsyncStorage.multiRemove(supabaseKeys);
     }
 
-    // Also clear the in-memory cache in the storage adapter
+    
     try {
       const { supabaseStorage: storageAdapter } = await import('./supabaseStorage');
       if (typeof (storageAdapter as any)?.clearCache === 'function') {
         (storageAdapter as any).clearCache();
       }
     } catch {
-      // ignore
+      
     }
   } catch (error) {
     if (__DEV__) {
@@ -452,10 +452,10 @@ export async function clearSupabaseLocalState(): Promise<void> {
   }
 }
 
-// ─── Type Re-exports ────────────────────────────────────────────────
+
 
 export type { SupabaseClient, Session, User } from '@supabase/supabase-js';
 
-// ─── Default Export ─────────────────────────────────────────────────
+
 
 export default supabase;

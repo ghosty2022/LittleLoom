@@ -1,4 +1,4 @@
-// screens/settings/AboutScreen.tsx
+
 import React, { useCallback, useEffect, useState } from 'react';
 import { 
   Dimensions, 
@@ -19,13 +19,13 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useApp } from '../../context/AppContext';
-import { useAuth } from '../../context/AuthContext'; // Use your auth context
+import { useAuth } from '../../context/AuthContext'; 
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import packageJson from '../../../package.json';
-import { supabase } from '../../lib/supabase'; // Add your supabase client import
+import { supabase } from '../../lib/supabase'; 
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;
 
@@ -34,7 +34,7 @@ const CARD_GAP = 12;
 const HORIZONTAL_PADDING = 40;
 const CARD_WIDTH = (SCREEN_WIDTH - HORIZONTAL_PADDING - CARD_GAP) / 2;
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 interface ServiceLink {
   icon: keyof typeof Ionicons.glyphMap;
@@ -62,7 +62,7 @@ interface SocialLink {
   color: string;
 }
 
-// ─── Constants ──────────────────────────────────────────────────────
+
 
 const FEATURES: FeatureItem[] = [
   {
@@ -164,7 +164,7 @@ const TEAM = [
   { name: 'Community', role: 'Powered by Supabase', emoji: '⚡' },
 ];
 
-// ─── Components ─────────────────────────────────────────────────────
+
 
 const SectionHeader: React.FC<{
   icon: keyof typeof Ionicons.glyphMap;
@@ -276,12 +276,12 @@ const FeatureRow: React.FC<{
   </View>
 );
 
-// ─── Main Component ─────────────────────────────────────────────────
+
 
 export default function AboutScreen({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion, avatar } = useCustomization();
   const { colors, isDark: appIsDark } = useApp();
-  const { user } = useAuth(); // Use your auth context instead
+  const { user } = useAuth(); 
   const { sweetAlert } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
@@ -292,11 +292,11 @@ export default function AboutScreen({ navigation }: Props) {
   const [appVersion, setAppVersion] = useState('1.0.0');
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
 
-  // Check Supabase connection
+  
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        // Simple health check - adjust based on your Supabase setup
+        
         const { error } = await supabase.from('tracker_entries').select('id').limit(1);
         setIsSupabaseConnected(!error);
       } catch {
@@ -310,7 +310,7 @@ export default function AboutScreen({ navigation }: Props) {
     try {
       setAppVersion(packageJson.version || '1.0.0');
     } catch {
-      // Use default version
+      
     }
   }, []);
 

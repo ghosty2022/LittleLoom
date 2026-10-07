@@ -1,16 +1,16 @@
-// src/services/ai/backfillBayesian.ts
-// ─────────────────────────────────────────────────────────────────────
-// One-time seed of the Bayesian engine from existing tracker entries.
-// Uses the canonical observeValue() from BayesianEngine.
-//
-// FIXES in this version:
-//   ✓ `.gte('timestamp', ISO)` — PostgREST requires timestamptz strings,
-//     not raw ms numbers (was: "date/time field value out of range").
-//   ✓ Corrupted JSON rows no longer abort the whole backfill.
-//   ✓ `observeValue` failures now log at __DEV__ so bugs are visible.
-//   ✓ Transient network errors no longer permanently mark the baby as
-//     backfilled — we retry on the next launch.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -89,7 +89,7 @@ export async function backfillBayesianIfNeeded(
 
   const cutoff = Date.now() - daysBack * 86400000;
 
-  // PostgREST expects a timestamptz string, not raw milliseconds.
+  
   const { data: entries, error } = await supabase
     .from('tracker_entries')
     .select('tracker_id, data, timestamp')
@@ -99,9 +99,9 @@ export async function backfillBayesianIfNeeded(
     .order('timestamp', { ascending: true });
 
   if (error || !entries) {
-    // Distinguish transient errors (network, timeouts) from permanent
-    // ones (table missing, RLS denial). Transient errors should NOT
-    // mark the baby as backfilled — we want to retry on next launch.
+    
+    
+    
     const msg = error?.message ?? '';
     const isTransient =
       /network|timeout|fetch|connection|5\d\d/i.test(msg);
@@ -126,8 +126,8 @@ export async function backfillBayesianIfNeeded(
     const fieldMap = METRIC_FIELD_MAP[row.tracker_id];
     if (!fieldMap) continue;
 
-    // Guard against corrupted JSON rows — a single bad row must not
-    // abort the whole backfill.
+    
+    
     let data: Record<string, unknown> = {};
     try {
       data =

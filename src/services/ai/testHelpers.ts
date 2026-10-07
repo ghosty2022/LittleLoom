@@ -1,8 +1,8 @@
-// src/services/ai/testHelpers.ts
-// ─────────────────────────────────────────────────────────────────────
-// Debug-only helpers for populating test data. Stripped in production.
-// Call from a dev menu or console only.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
 
 import { supabase } from '@/utils/supabase';
 
@@ -23,10 +23,10 @@ export async function seedTestEntries(
   const rows = [];
 
   for (let i = 0; i < count; i++) {
-    // Space entries ~2h apart going back in time
+    
     const ts = new Date(now - i * 2 * 60 * 60 * 1000);
 
-    // Tracker-specific data payloads
+    
     const data = buildTestData(trackerId, i);
 
     rows.push({

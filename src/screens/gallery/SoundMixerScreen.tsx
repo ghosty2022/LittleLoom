@@ -49,9 +49,9 @@ const DESIGN = {
     md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
     lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
   },
-  // Smooth spring animations for consistent feel
+  
   spring: { damping: 15, stiffness: 120, mass: 1 },
-  // Timing presets
+  
   timing: { fast: 150, normal: 300, slow: 500 },
 };
 
@@ -1037,7 +1037,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
   const { themeColors, avatar: customSettings, isLoaded: customLoaded } = useCustomization();
   const isDark = true;
 
-  // ── State ──
+  
   const [activeTab, setActiveTab] = useState<TabType>('discover');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -1062,7 +1062,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
     transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
-  // ── Playlists ──
+  
   const playlists = useMemo((): Playlist[] => [
     {
       id: 'favorites',
@@ -1150,7 +1150,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
     },
   ], [favorites, importedTracks, customLoaded, themeColors]);
 
-  // ── Handlers ──
+  
   const sweetAlert = useCallback((type: 'success' | 'error' | 'info', title: string, message: string) => {
     setAlert({ visible: true, type, title, message });
     Haptics.notificationAsync(
@@ -1223,18 +1223,18 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
     }
   }, [handlePlayTrack, sweetAlert]);
 
-  // ── Filtered tracks ──
+  
   const filteredTracks = useMemo(() => {
     let tracks = [...ENHANCED_TRACKS];
     
-    // Only add imported tracks that don't conflict with enhanced tracks
+    
     importedTracks.forEach(t => {
       if (!tracks.find(et => et.id === t.id)) {
         tracks.push(t);
       }
     });
     
-    // Extra safety deduplication
+    
     const seen = new Set<string>();
     tracks = tracks.filter(t => {
       if (seen.has(t.id)) return false;
@@ -1252,7 +1252,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
     );
   }, [searchQuery, favorites, importedTracks, activeTab, isFavorite]);
 
-  // ── Tabs ──
+  
   const tabs = [
     { key: 'discover' as TabType, label: 'Discover', icon: 'compass' },
     { key: 'playlists' as TabType, label: 'Playlists', icon: 'albums' },
@@ -1495,7 +1495,7 @@ export default function SoundMixerScreen({ navigation }: SoundMixerScreenProps) 
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // ── Sticky Header ──
+  
   stickyHeader: { 
     position: 'absolute', 
     top: 0, 
@@ -1509,7 +1509,7 @@ const styles = StyleSheet.create({
   stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
 
-  // ── Top Header ──
+  
   topHeader: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -1534,12 +1534,12 @@ const styles = StyleSheet.create({
   iconButton: { borderRadius: 12, overflow: 'hidden' },
   blurIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
 
-  // ── Search ──
+  
   searchContainer: { marginBottom: 16, marginHorizontal: 20 },
   searchBlur: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   searchInput: { flex: 1, fontSize: 15, color: '#fff', marginLeft: 10, fontWeight: '500' },
 
-  // ── Now Playing Hero ──
+  
   nowPlayingHero: { 
     marginHorizontal: 20, 
     borderRadius: 24, 
@@ -1563,7 +1563,7 @@ const styles = StyleSheet.create({
   progressBarBg: { height: 3, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 2, marginTop: 8 },
   progressBarFill: { height: '100%', borderRadius: 2 },
 
-  // ── Tab Bar ──
+  
   tabBar: { 
     flexDirection: 'row', 
     marginHorizontal: 20, 
@@ -1586,7 +1586,7 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 12, fontWeight: '600', color: '#64748b' },
   tabLabelActive: { color: '#818cf8', fontWeight: '700' },
 
-  // ── Glass Card ──
+  
   glassCard: {
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
@@ -1600,7 +1600,7 @@ const styles = StyleSheet.create({
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.04)' },
   glassContent: { flex: 1 },
 
-  // ── Section Header ──
+  
   sectionHeader: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
@@ -1614,7 +1614,7 @@ const styles = StyleSheet.create({
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#818cf8' },
 
-  // ── Smart Recommendations ──
+  
   smartRecsContainer: { flexDirection: 'row', gap: 10, marginHorizontal: 20, marginBottom: 20 },
   smartRecCard: { 
     flex: 1, 
@@ -1636,7 +1636,7 @@ const styles = StyleSheet.create({
   smartRecTrackImg: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: '#1a1a2e' },
   smartRecPlayBtn: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginLeft: 6 },
 
-  // ── Quick Sound Palette ──
+  
   paletteCategoryScroll: { paddingHorizontal: 20, gap: 8, paddingBottom: 12 },
   paletteCategoryChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   paletteCategoryText: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
@@ -1660,7 +1660,7 @@ const styles = StyleSheet.create({
   paletteWaveBar: { width: 3, borderRadius: 1.5 },
   palettePausedBadge: { position: 'absolute', top: '50%', left: '50%', marginLeft: -14, marginTop: -14, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
 
-  // ── Weekly Report ──
+  
   reportContainer: { padding: 8 },
   reportRow: { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 12 },
   reportRowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
@@ -1675,7 +1675,7 @@ const styles = StyleSheet.create({
   reportScoreText: { fontSize: 11, fontWeight: '800' },
   reportTotal: { fontSize: 10, fontWeight: '500', color: '#475569' },
 
-  // ── Playlist Cards ──
+  
   playlistScroll: { paddingHorizontal: 20, gap: 12, paddingBottom: 4 },
   playlistGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: 20, gap: 12 },
   playlistCard: { width: 170, borderRadius: 20, overflow: 'hidden', /* no shadow */ },
@@ -1692,7 +1692,7 @@ const styles = StyleSheet.create({
   playlistCardMetaText: { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
   playlistCardMetaDot: { fontSize: 11, color: 'rgba(255,255,255,0.4)' },
 
-  // ── Track Row ──
+  
   trackList: { paddingHorizontal: 20, marginTop: 8 },
   trackRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, marginBottom: 6, backgroundColor: 'rgba(255,255,255,0.03)' },
   trackRowActive: { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
@@ -1708,12 +1708,12 @@ const styles = StyleSheet.create({
   trackRowFavBtn: { padding: 6, borderRadius: 16 },
   trackRowMoreBtn: { padding: 6, borderRadius: 16 },
 
-  // ── Timer Quick Action ──
+  
   timerQuickAction: { borderRadius: 16, overflow: 'hidden', /* no shadow */ },
   timerQuickGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 10 },
   timerQuickText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  // ── Import Modal ──
+  
   importModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   importModalContent: { width: '90%', maxWidth: 380, borderRadius: 28, padding: 24, overflow: 'hidden', /* no shadow */ },
   importModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
@@ -1727,7 +1727,7 @@ const styles = StyleSheet.create({
   importOptionDesc: { fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
   importModalNote: { fontSize: 11, color: '#475569', textAlign: 'center', marginTop: 12, fontStyle: 'italic' },
 
-  // ── Mix Modal ──
+  
   mixModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   mixModalContent: { width: '92%', maxHeight: '80%', borderRadius: 28, padding: 24, overflow: 'hidden', /* no shadow */ },
   mixModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
@@ -1751,7 +1751,7 @@ const styles = StyleSheet.create({
   mixSaveGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8 },
   mixSaveText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // ── Timer Modal ──
+  
   timerModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   timerModalContent: { width: '90%', borderRadius: 28, padding: 24, overflow: 'hidden', /* no shadow */ },
   timerModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -1775,7 +1775,7 @@ const styles = StyleSheet.create({
   timerStartGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8 },
   timerStartText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // ── Empty State ──
+  
   emptyState: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { color: '#475569', fontSize: 16, marginTop: 12, fontWeight: '500' },
 });

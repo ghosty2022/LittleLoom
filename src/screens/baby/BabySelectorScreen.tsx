@@ -23,7 +23,7 @@ const { width, height } = Dimensions.get('window');
 
 type BabySelectorScreenProps = NativeStackScreenProps<RootStackParamList, 'SwitchBaby'>;
 
-// Helper to read return target from route params
+
 const VALID_ROOT_SCREENS = new Set<string>([
   'Main', 'Onboarding', 'Login', 'SignUp', 'ForgotPassword', 
   'CreateBabyProfile', 'SwitchBaby', 'AddParent', 'UniversalTrackerHub',
@@ -66,7 +66,7 @@ const getReturnLabel = (route: BabySelectorScreenProps['route']): string => {
   return raw;
 };
 
-// ─── ENHANCED GLASSMORPHISM CARD ─────────────────────────────────────
+
 const GlassmorphismCard: React.FC<{ 
   children: React.ReactNode; 
   style?: any; 
@@ -107,7 +107,7 @@ const GlassmorphismCard: React.FC<{
   );
 };
 
-// ─── BABY CARD COMPONENT ─────────────────────────────────────────────
+
 const BabyCard: React.FC<{
   baby: any;
   isSelected: boolean;
@@ -233,7 +233,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
     return () => { isMounted.current = false; };
   }, []);
 
-  // Safe navigation function that checks if we can go back
+  
   const safeGoBack = useCallback(() => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -326,7 +326,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
     safeGoBack();
   }, [safeGoBack]);
 
-  // ─── LOADING STATE ──────────────────────────────────────────────────
+  
   if (babyLoading && babies.length === 0) {
     return (
       <View style={styles.container}>
@@ -433,7 +433,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
         <View style={styles.babyList}>
           {babies.map((baby, index) => {
             const isSelected = baby.id === currentBabyId;
-            // Inject babiesCount for delete check
+            
             const babyWithCount = { ...baby, babiesCount: babies.length };
             
             return (
@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
     left: -width * 0.1,
   },
 
-  // ─── HEADER ─────────────────────────────────────────────────────────
+  
   header: {
     position: 'absolute',
     top: 0,
@@ -604,7 +604,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ─── SCROLL CONTENT ────────────────────────────────────────────────
+  
   scrollContent: {
     flexGrow: 1,
   },
@@ -621,12 +621,12 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
   },
 
-  // ─── BABY LIST ─────────────────────────────────────────────────────
+  
   babyList: {
     gap: 12,
   },
 
-  // ─── BABY CARD ─────────────────────────────────────────────────────
+  
   babyCard: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -717,7 +717,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // ─── ADD BABY CARD ─────────────────────────────────────────────────
+  
   addBabyCard: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -747,7 +747,7 @@ const styles = StyleSheet.create({
     color: '#1e293b',
   },
 
-  // ─── CONTINUE BUTTON ──────────────────────────────────────────────
+  
   continueButton: {
     borderRadius: 16,
     overflow: 'hidden',
@@ -773,7 +773,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // ─── FAMILY INFO ──────────────────────────────────────────────────
+  
   familyInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -798,7 +798,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // ─── GLASS CARD ────────────────────────────────────────────────────
+  
   glassCard: {
     borderRadius: 24,
     overflow: 'hidden',

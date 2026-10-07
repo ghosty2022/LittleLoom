@@ -1,5 +1,5 @@
-// src/components/trackers/TimelinePicker.tsx
-// FIX: Add all missing imports at the top
+
+
 
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
@@ -23,8 +23,8 @@ import { RootStackParamList } from '../../types/navigation';
 import { CATEGORY_CONFIG } from './trackerConstants';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Only enable on old architecture — New Architecture (Fabric) makes this a no-op
-// and spams the console with warnings on every render.
+
+
 if (
   Platform.OS === 'android' &&
   typeof UIManager.setLayoutAnimationEnabledExperimental === 'function' &&
@@ -160,7 +160,7 @@ export const TimelinePicker: React.FC<TimelinePickerProps> = ({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const customization = useCustomization();
   const { fullThemeColors, themeColors, isDark, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion, triggerHaptic } = customization;
-  // ✅ FIX: useTracker is now properly imported
+  
   const { trackers } = useTracker();
 
   const [searchQuery, setSearchQuery] = useState('');

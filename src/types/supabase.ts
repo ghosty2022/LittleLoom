@@ -1,10 +1,10 @@
-// src/types/supabase.ts
-// ─────────────────────────────────────────────────────────────────────
-// Central Supabase type definitions.
-// Pure types only — no runtime code. Safe to import from anywhere.
-// ─────────────────────────────────────────────────────────────────────
 
-// ─── Database Table Types ────────────────────────────────────────────
+
+
+
+
+
+
 
 export type BabyRow = {
   id: string;
@@ -191,7 +191,7 @@ export type AIFeaturesRow = {
   updated_at: string | null;
 };
 
-// ─── Family Chat Types ──────────────────────────────────────────────
+
 
 export type SupabaseMessage = {
   id: string;
@@ -250,7 +250,7 @@ export type SupabaseTypingStatus = {
   timestamp: string;
 };
 
-// ─── Community Types ────────────────────────────────────────────────
+
 
 export type SupabaseCommunityTopic = {
   id: string;
@@ -419,7 +419,7 @@ export type SupabaseCommunityProfile = {
   avatar_url?: string | null;
 };
 
-// ─── Safe Storage Interface ─────────────────────────────────────────
+
 
 export interface SupabaseStorageAdapter {
   getItem: (key: string) => Promise<string | null>;
@@ -427,7 +427,7 @@ export interface SupabaseStorageAdapter {
   removeItem: (key: string) => Promise<void>;
 }
 
-// ─── Auth Types ─────────────────────────────────────────────────────
+
 
 export interface SupabaseAuthResult {
   success: boolean;
@@ -441,6 +441,6 @@ export interface SupabaseConnectionStatus {
   error?: string;
 }
 
-// ─── Re-exports (convenience) ───────────────────────────────────────
+
 
 export type { Session, User } from '@supabase/supabase-js';

@@ -1,4 +1,4 @@
-// src/components/SafeAvatar.tsx - FIXED VERSION
+
 import React, { useCallback, useState, useMemo } from 'react';
 import {
   View,
@@ -84,55 +84,55 @@ export const resolveAvatarSource = (avatar: AvatarSource): ImageSourcePropType |
   // Handle null/undefined
   if (avatar == null) return null;
   
-  // Handle arrays - extract first element or return null
+  
   if (Array.isArray(avatar)) {
-    // If array is empty, return null
+    
     if (avatar.length === 0) return null;
-    // Use the first element of the array
+    
     const firstElement = avatar[0];
-    // Recursively resolve the first element
+    
     return resolveAvatarSource(firstElement);
   }
   
-  // Handle numbers (require() assets)
+  
   if (typeof avatar === 'number') {
     return avatar;
   }
   
-  // Handle strings
+  
   if (typeof avatar === 'string' && avatar.length > 0) {
-    // Check if it's an emoji - these are not images
+    
     if (isEmoji(avatar)) return null;
     
-    // File URI
+    
     if (avatar.startsWith('file://')) {
       return { uri: avatar };
     }
-    // Content URI (Android content provider)
+    
     if (avatar.startsWith('content://')) {
       return { uri: avatar };
     }
-    // Data URI (base64)
+    
     if (avatar.startsWith('data:')) {
       return { uri: avatar };
     }
-    // Remote HTTP/HTTPS URL
+    
     if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
       return { uri: avatar, cache: 'force-cache' };
     }
-    // Absolute file path
+    
     if (avatar.startsWith('/')) {
       return { uri: `file://${avatar}` };
     }
-    // Supabase storage URL (might be missing protocol)
+    
     if (avatar.includes('supabase.co')) {
-      // Add protocol if missing
+      
       if (!avatar.startsWith('http')) {
         return { uri: `https://${avatar}`, cache: 'force-cache' };
       }
       return { uri: avatar, cache: 'force-cache' };
     }
-    // Any other string - assume it's a URI
+    
     return { uri: avatar };
   }
   
@@ -147,7 +147,7 @@ export const normalizeAvatar = (avatar: AvatarSource): string | null => {
   if (avatar == null) return null;
   if (Array.isArray(avatar)) {
     if (avatar.length === 0) return null;
-    // If first element is a string, return it
+    
     if (typeof avatar[0] === 'string') return avatar[0];
     return null;
   }
@@ -162,10 +162,10 @@ export const normalizeAvatar = (avatar: AvatarSource): string | null => {
 export const hasDisplayableImage = (avatar: AvatarSource, hasError: boolean): boolean => {
   if (avatar == null || hasError) return false;
   
-  // Handle arrays
+  
   if (Array.isArray(avatar)) {
     if (avatar.length === 0) return false;
-    // Check the first element
+    
     return hasDisplayableImage(avatar[0], hasError);
   }
   
@@ -220,7 +220,7 @@ const AvatarContent: React.FC<AvatarContentProps> = ({
   borderRadius,
   imageSource,
 }) => {
-  // Normalize avatar to a consistent value
+  
   const normalizedAvatar = useMemo(() => normalizeAvatar(avatar), [avatar]);
   
   if (imageSource) {
@@ -327,8 +327,8 @@ export const SafeAvatar: React.FC<SafeAvatarProps> = ({
   const themeColors = propThemeColors || DEFAULT_THEME_COLORS;
   const shouldReduceMotion = reduceMotion ?? false;
 
-  // Use avatarUrl if provided, otherwise use avatar
-  // FIXED: Normalize both sources to handle arrays
+  
+  
   const effectiveAvatar = useMemo(() => {
     if (avatarUrl != null) return normalizeAvatar(avatarUrl);
     return normalizeAvatar(avatar);
@@ -426,7 +426,7 @@ export const SafeBabyAvatar: React.FC<SafeBabyAvatarProps> = ({
   const themeColors = propThemeColors || DEFAULT_THEME_COLORS;
   const shouldReduceMotion = reduceMotion ?? false;
 
-  // FIXED: Normalize both sources to handle arrays
+  
   const effectiveAvatar = useMemo(() => {
     if (avatarUrl != null) return normalizeAvatar(avatarUrl);
     return normalizeAvatar(avatar);

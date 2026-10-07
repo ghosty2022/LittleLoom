@@ -1,4 +1,4 @@
-// src/screens/community/TopicScreen.tsx
+
 import {
   StyleSheet,
   Dimensions,
@@ -54,7 +54,7 @@ const PILL_MARGIN = 14;
 const SAFE_AREA_BOTTOM = 20;
 const NAV_PILL_TOTAL_HEIGHT = PILL_HEIGHT + PILL_MARGIN + SAFE_AREA_BOTTOM;
 
-// ─── Glass Card Component ───
+
 const GlassCard = React.memo(({ 
   children, 
   style, 
@@ -91,7 +91,7 @@ const GlassCard = React.memo(({
   );
 });
 
-// ─── Sensitive Image with Blur ───
+
 const SensitiveImage = React.memo(({ 
   uri, 
   style, 
@@ -151,7 +151,7 @@ const SensitiveImage = React.memo(({
   );
 });
 
-// ─── Sentiment Indicator ───
+
 const SentimentIndicator = React.memo(({ text, isDark }: { text: string; isDark: boolean }) => {
   const analyzeSentiment = (content: string) => {
     const positiveWords = ['happy', 'joy', 'love', 'great', 'wonderful', 'amazing', 'excellent', 'good', 'beautiful', 'fantastic', 'awesome', 'incredible', 'perfect', 'glad', 'thankful', 'grateful', 'blessed', 'proud', 'exciting', 'milestone', 'achievement', 'success', 'celebrate', 'celebrating'];

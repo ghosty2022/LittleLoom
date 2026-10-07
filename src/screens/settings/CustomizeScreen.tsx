@@ -1,4 +1,4 @@
-// screens/settings/CustomizeScreen.tsx
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -98,7 +98,7 @@ const ACCENT_COLORS = [
   '#06b6d4', '#84cc16',
 ];
 
-// ─── Components ─────────────────────────────────────────────────────
+
 
 const PillSelector = <T extends string>({
   options,
@@ -320,7 +320,7 @@ const SectionHeader = ({
   </View>
 );
 
-// ─── Main Component ─────────────────────────────────────────────────
+
 
 export default function CustomizeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
@@ -424,10 +424,10 @@ export default function CustomizeScreen({ navigation }: Props) {
   const savePreferences = useCallback(async () => {
     setIsSyncing(true);
     try {
-      // Save locally
+      
       await updateSettings(pending);
 
-      // Sync to Supabase if connected
+      
       if (isConnected && user) {
         const { error } = await supabase
           .from('user_preferences')
@@ -493,7 +493,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         setPending(DEFAULT_SETTINGS);
         hapticSuccess();
 
-        // Also reset in Supabase
+        
         if (isConnected && user) {
           try {
             await supabase

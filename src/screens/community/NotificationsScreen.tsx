@@ -1,4 +1,4 @@
-// src/screens/community/NotificationsScreen.tsx
+
 import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import { useCommunity } from '../../context/CommunityContext';
 import { FlatList, RefreshControl, StatusBar, StyleSheet, Text, TouchableOpacity, View, Pressable, ActivityIndicator } from 'react-native';
@@ -14,7 +14,7 @@ import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { supabase } from '../../services/supabaseClient';
 
-// ─── Unified LL Theme ────────────────────────────────────────
+
 const LL = {
   primary: '#7c6cf1',
   primaryDark: '#6b5ce7',
@@ -78,13 +78,13 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
   const [isLoading, setIsLoading] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<string | null>(null);
 
-  // ─── Security Notifications ───
+  
   const securityNotifications = useMemo(() => {
     const securityTypes = ['security', 'system', 'follow'];
     return notifications.filter(n => securityTypes.includes(n.type) || n.type === 'like');
   }, [notifications]);
 
-  // ─── Filter Logic ───
+  
   const filteredNotifications = useMemo(() => {
     if (filter === 'mentions') return notifications.filter(n => n.type === 'mention' || n.type === 'comment');
     if (filter === 'likes') return notifications.filter(n => n.type === 'like' || n.type === 'helpful');
@@ -92,7 +92,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     return notifications;
   }, [notifications, filter, securityNotifications]);
 
-  // ─── Group notifications by date ───
+  
   const groupedNotifications = useMemo(() => {
     const groups: Record<string, any[]> = {};
     const today = new Date();
@@ -161,7 +161,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
       'Notification Options',
       '',
       () => {
-        // Delete notification
+        
         console.log('Delete notification:', notification.id);
         sweetAlert.toast('Deleted', 'Notification removed', 'success');
       },
@@ -176,7 +176,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
 
   const unreadCount = getUnreadCount();
 
-  // ─── Render Notification ───
+  
   const renderNotification = ({ item, index }: { item: any; index: number }) => {
     const icon = NOTIFICATION_ICONS[item.type] || NOTIFICATION_ICONS.system;
     const isSelected = selectedNotification === item.id;
@@ -262,7 +262,7 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
     );
   };
 
-  // ─── Render Section Header ───
+  
   const renderSectionHeader = (title: string) => (
     <View style={[styles.sectionHeader, { backgroundColor: isDark ? LL.darkBg : LL.gray50 }]}>
       <Text style={[styles.sectionHeaderText, { color: isDark ? LL.gray400 : LL.gray500 }]}>

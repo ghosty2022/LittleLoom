@@ -1,5 +1,5 @@
-// src/screens/baby/FamilyDashboardScreen.tsx
-// Redesigned — deduped against Timeline/Growth/FamilySharing screens.
+
+
 
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -50,9 +50,9 @@ const AnimatedScrollView = Animated.ScrollView;
 
 type FamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DESIGN TOKENS
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
@@ -99,7 +99,7 @@ const ROLE_CONFIG: Record<
   },
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+
 
 const isImageUri = (value: string | undefined | null): boolean => {
   if (!value || typeof value !== 'string') return false;
@@ -234,7 +234,7 @@ const GlassCard = memo<GlassCardProps>(({ children, style, onPress, isDark = fal
   );
 });
 
-// ─── StatBadge ───────────────────────────────────────────────────────
+
 
 interface StatBadgeProps {
   icon: string;
@@ -309,9 +309,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// NEW: Today at a Glance
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 interface TodayGlanceStat {
   key: string;
@@ -364,8 +364,8 @@ const TodayAtAGlance = memo<{
 ));
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NEW: Smart Suggestion of the Day (single card, not a horizontal scroller)
-// ═══════════════════════════════════════════════════════════════════════════
+
+
 
 interface SuggestionOfTheDayProps {
   isDark: boolean;
@@ -421,9 +421,9 @@ const SuggestionOfTheDay = memo<SuggestionOfTheDayProps>(
   }
 );
 
-// ═══════════════════════════════════════════════════════════════════════════
-// NEW: Who's Active Today (compact, one line per contributor)
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 interface TodayContributor {
   id: string;
@@ -482,9 +482,9 @@ const WhosActiveToday = memo<{
   );
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN SCREEN
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreenProps) {
   const systemDark = useColorScheme() === 'dark';
@@ -549,7 +549,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
     [currentBabyId, switchBaby, triggerHaptic]
   );
 
-  // ─── Handlers ────────────────────────────────────────────────────
+  
 
   const handleBabyEdit = useCallback(
     (babyId: string) => {
@@ -565,7 +565,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyCenterScreen
   }, [navigation, effectiveUser]);
 
   const handleNavigateFamily = useCallback(() => navigation.navigate('FamilySharing'), [navigation]);
-  // FamilySettings was absorbed into FamilySharing's Settings tab
+  
 const handleNavigateFamilySettings = useCallback(
   () => navigation.navigate('FamilySharing'),
   [navigation],
@@ -578,7 +578,7 @@ const handleNavigateFamilySettings = useCallback(
 
   const { entries: trackerEntries } = useTracker();
 
-  // ─── Today at a Glance data ──────────────────────────────────────
+  
   const todayStats = useMemo<TodayGlanceStat[]>(() => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -595,7 +595,7 @@ const handleNavigateFamilySettings = useCallback(
     ].filter(s => s.count > 0 || ['feed', 'sleep', 'diaper'].includes(s.key));
   }, [trackerEntries]);
 
-  // ─── Suggestion of the Day ───────────────────────────────────────
+  
   const suggestionOfTheDay = useMemo(() => {
     if (currentBaby) {
       const ageMonths = differenceInMonths(new Date(), new Date(currentBaby.birthDate || currentBaby.dateOfBirth || new Date()));
@@ -636,7 +636,7 @@ const handleNavigateFamilySettings = useCallback(
     };
   }, [currentBaby, themeColors.primary]);
 
-  // ─── Who's active today ──────────────────────────────────────────
+  
   const todayContributors = useMemo<TodayContributor[]>(() => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -648,7 +648,7 @@ const handleNavigateFamilySettings = useCallback(
       if (existing) {
         existing.count += 1;
       } else {
-        // Try to match with a family member for avatar
+        
         const memberMatch = members.find(
           (m) => m.userId === e.loggedBy || m.id === e.loggedBy || m.fullName === e.loggedByName
         );
@@ -663,7 +663,7 @@ const handleNavigateFamilySettings = useCallback(
     return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 4);
   }, [trackerEntries, members]);
 
-  // ─── Suggestion action ───────────────────────────────────────────
+  
   const handleSuggestionAction = useCallback(() => {
     triggerHaptic('medium');
     if (suggestionOfTheDay.actionLabel === 'View Insights') {
@@ -677,7 +677,7 @@ const handleNavigateFamilySettings = useCallback(
     }
   }, [suggestionOfTheDay, navigation, sweetAlert, triggerHaptic]);
 
-  // ─── Tap on Today stat ───────────────────────────────────────────
+  
   const handleTodayStatPress = useCallback(
     (key: string) => {
       triggerHaptic('light');
@@ -686,7 +686,7 @@ const handleNavigateFamilySettings = useCallback(
     [navigation, triggerHaptic]
   );
 
-  // ─── Render Header ───────────────────────────────────────────────
+  
   const renderHeader = () => (
     <Animated.View
       style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}
@@ -779,7 +779,7 @@ const handleNavigateFamilySettings = useCallback(
     </Animated.View>
   );
 
-  // ─── Overview Tab ────────────────────────────────────────────────
+  
   const renderOverview = () => (
     <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.tabPanel}>
       {/* Stats Summary */}
@@ -930,7 +930,7 @@ const handleNavigateFamilySettings = useCallback(
     </Animated.View>
   );
 
-  // ─── Growth Tab ──────────────────────────────────────────────────
+  
   const renderGrowth = () => (
     <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.tabPanel}>
       <GlassCard isDark={isDark} style={styles.growthSummaryCard}>
@@ -1098,12 +1098,12 @@ const handleNavigateFamilySettings = useCallback(
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STYLES
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 const styles = StyleSheet.create({
-  // ── Base ──
+  
   container: { flex: 1, backgroundColor: '#f8f9fa' },
   containerDark: { backgroundColor: '#0a0a0a' },
   textDark: { color: '#ffffff' },
@@ -1111,7 +1111,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: DESIGN.spacing.lg },
   bottomSpacer: { height: 40 },
 
-  // ── Avatar ──
+  
   avatarWrapper: { position: 'relative', borderRadius: DESIGN.radius.md, overflow: 'hidden' },
   avatarGradient: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarEmoji: {},
@@ -1126,7 +1126,7 @@ const styles = StyleSheet.create({
   },
   editAvatarGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
-  // ── Header ──
+  
   headerContainer: {
     position: 'absolute',
     top: 0,
@@ -1160,7 +1160,7 @@ const styles = StyleSheet.create({
   babySelectorChip: { marginTop: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
   babySelectorText: { fontSize: 12, fontWeight: '700' },
 
-  // Quick Actions
+  
   quickActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -1171,7 +1171,7 @@ const styles = StyleSheet.create({
   iconAction: { alignItems: 'center', padding: 6, minWidth: 60 },
   iconActionLabel: { fontSize: 11, fontWeight: '600', color: '#64748b', marginTop: 4 },
 
-  // ── Modern Tab Bar ──
+  
   modernTabBar: {
     flexDirection: 'row',
     marginHorizontal: DESIGN.spacing.lg,
@@ -1195,7 +1195,7 @@ const styles = StyleSheet.create({
   modernTabText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
   modernTabTextActive: { fontWeight: '700' },
 
-  // ── Section headers ──
+  
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1209,14 +1209,14 @@ const styles = StyleSheet.create({
   seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   seeAll: { fontSize: 13, fontWeight: '700' },
 
-  // ── Glass Card ──
+  
   glassCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   glassCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
 
-  // ── Tab Panel ──
+  
   tabPanel: { marginTop: 8, gap: 16 },
 
-  // ── Family Stats ──
+  
   familyStatsGradient: { borderRadius: DESIGN.radius.lg, padding: 16 },
   familyStatsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
   familyStat: { alignItems: 'center', flex: 1 },
@@ -1224,7 +1224,7 @@ const styles = StyleSheet.create({
   familyStatLabel: { fontSize: 11, fontWeight: '600', color: '#64748b', marginTop: 4 },
   familyStatDivider: { width: 1, height: 36 },
 
-  // ── Today at a Glance ──
+  
   glanceScroll: { gap: 10, paddingRight: 8, paddingBottom: 2 },
   glanceCard: {
     width: 96,
@@ -1247,7 +1247,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
 
-  // ── Suggestion of the Day ──
+  
   suggestionRow: { flexDirection: 'row', gap: 12, padding: 16 },
   suggestionIconBg: {
     width: 52,
@@ -1274,7 +1274,7 @@ const styles = StyleSheet.create({
   },
   suggestionActionText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Hero Card ──
+  
   heroCard: { padding: 16 },
   heroHeader: { flexDirection: 'row', alignItems: 'center' },
   heroInfo: { flex: 1, marginLeft: 14 },
@@ -1292,13 +1292,13 @@ const styles = StyleSheet.create({
   heroTagText: { fontSize: 12, fontWeight: '700' },
   editBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Active Today contributors ──
+  
   contributorRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
   contributorName: { flex: 1, fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
   contributorCountBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   contributorCountText: { fontSize: 12, fontWeight: '700' },
 
-  // ── Compact family stack ──
+  
   familyStackRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   stackAvatar: {
     borderRadius: 22,
@@ -1314,7 +1314,7 @@ const styles = StyleSheet.create({
   },
   stackAvatarMoreText: { fontSize: 13, fontWeight: '800', color: '#1a1a1a' },
 
-  // ── Growth Tab ──
+  
   growthSummaryCard: { padding: 20 },
   growthStatsRow: { flexDirection: 'row', justifyContent: 'space-around' },
   growthStatItem: { alignItems: 'center', gap: 10 },
@@ -1344,7 +1344,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { flex: 1, fontSize: 15, fontWeight: '700' },
 
-  // ── Modal ──
+  
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -1379,7 +1379,7 @@ const styles = StyleSheet.create({
   },
   modalScrollContent: { padding: 16 },
 
-  // ── Baby Selector ──
+  
   babySelectorContent: { padding: 16 },
   babyOption: {
     flexDirection: 'row',

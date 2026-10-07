@@ -1,4 +1,4 @@
-// UniversalTrackerHubScreen.tsx — COMPLETE REDESIGN with ALL Functionality
+
 
 import React, {
   useCallback,
@@ -49,7 +49,7 @@ import {
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks';
-// REMOVED: useActivity — trackerEntries from useTracker is the single source of truth
+
 import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -312,7 +312,7 @@ const formatDistanceToNow = (timestamp: number): string => {
   if (!timestamp || typeof timestamp !== 'number' || isNaN(timestamp)) return 'just now';
   const now = Date.now();
   const diff = now - timestamp;
-  // If timestamp is in the future, return 'just now'
+  
   if (diff < 0) return 'just now';
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
@@ -335,13 +335,13 @@ const getDateTitle = (timestamp: number): string => {
   const twoDaysAgo = new Date(today);
   twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
   
-  // Check if date is today
+  
   if (date >= today) return 'Today';
   
-  // Check if date is yesterday
+  
   if (date >= yesterday) return 'Yesterday';
   
-  // Check if date is within last 7 days
+  
   const daysDiff = Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
   if (daysDiff < 7) {
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -370,7 +370,7 @@ const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-// ─── THEME ──────────────────────────────────────────────────────────────
+
 
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
@@ -394,7 +394,7 @@ const useHubTheme = () => {
   }), [isDark, colors, fullThemeColors]);
 };
 
-// ─── GLASS CARD ──────────────────────────────────────────────────────────
+
 
 const GlassCard = React.memo(({ 
   children, 
@@ -439,7 +439,7 @@ const GlassCard = React.memo(({
 });
 GlassCard.displayName = 'GlassCard';
 
-// ─── SECTION HEADER ──────────────────────────────────────────────────────
+
 
 const SectionHeader = React.memo(({ 
   title, 
@@ -483,7 +483,7 @@ const SectionHeader = React.memo(({
 });
 SectionHeader.displayName = 'SectionHeader';
 
-// ─── WELLNESS SCORE CARD ──────────────────────────────────────────────────
+
 
 const WellnessScoreCard = React.memo(({ entries, onPress }: { entries: any[]; onPress: () => void }) => {
   const theme = useHubTheme();

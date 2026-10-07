@@ -1,5 +1,5 @@
-// src/database/db.ts
-// Drizzle ORM connection with Expo SQLite + Supabase sync
+
+
 
 import { openDatabaseSync, SQLiteDatabase } from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
@@ -27,14 +27,14 @@ export const db = getDb();
    ──────────────────────────────────────────────────────────────────────── */
 
 const CORE_TABLES_SQL = [
-  // App Settings
+  
   `CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY NOT NULL,
     value TEXT NOT NULL,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
   )`,
 
-  // Babies
+  
   `CREATE TABLE IF NOT EXISTS babies (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
@@ -52,7 +52,7 @@ const CORE_TABLES_SQL = [
     is_deleted INTEGER DEFAULT 0 NOT NULL
   )`,
 
-  // Tracker Entries
+  
   `CREATE TABLE IF NOT EXISTS tracker_entries (
     id TEXT PRIMARY KEY NOT NULL,
     tracker_id TEXT NOT NULL,
@@ -79,7 +79,7 @@ const CORE_TABLES_SQL = [
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
   )`,
 
-  // Family Members
+  
   `CREATE TABLE IF NOT EXISTS family_members (
     id TEXT PRIMARY KEY NOT NULL,
     baby_id TEXT NOT NULL,
@@ -102,7 +102,7 @@ const CORE_TABLES_SQL = [
     is_deleted INTEGER DEFAULT 0 NOT NULL
   )`,
 
-  // Indexes
+  
   `CREATE INDEX IF NOT EXISTS idx_babies_active ON babies (is_active)`,
   `CREATE INDEX IF NOT EXISTS idx_babies_parent ON babies (parent1_id)`,
   `CREATE INDEX IF NOT EXISTS idx_babies_sync ON babies (sync_status)`,
@@ -152,9 +152,9 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const database = getDb();
 
-      // 1. Try Drizzle migrate
+      
       try {
-        // migrations imported from ./migrations/migrations
+        
         const migrations = await import('./migrations/migrations');
         await migrate(database, migrations.default || migrations);
         console.log('[DB] Schema migrations applied');
@@ -162,12 +162,12 @@ export async function initializeDatabase(): Promise<void> {
         console.warn('[DB] Drizzle migrate failed, using fallback:', migrateErr);
       }
 
-      // 2. Ensure tables exist
+      
       if (expoDb) {
         await ensureCoreTablesExist(expoDb);
       }
 
-      // 3. Run data migration
+      
       const { runOneTimeMigration } = await import('./dbHelpers');
       await runOneTimeMigration();
       console.log('[DB] Data migration complete');

@@ -1,14 +1,14 @@
-// src/utils/imageUtils.ts
-// ✅ Use the legacy API
+
+
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Image } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
-// ─── CONSTANTS ──────────────────────────────────────────────────────────────
 
-// Safely get directories with fallbacks
+
+
 const getDocumentDir = (): string => {
   try {
     return FileSystem.documentDirectory || '';
@@ -40,7 +40,7 @@ export const DEFAULT_COMPRESSION = 0.8;
 export const MAX_IMAGE_DIMENSION = 2048;
 export const THUMBNAIL_SIZE = 300;
 
-// ─── SWEETALERT FALLBACK ────────────────────────────────────────────────────
+
 
 type SweetAlertType = {
   alert: (title: string, message: string, type?: 'warning' | 'error' | 'success' | 'info') => void;
@@ -70,7 +70,7 @@ const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'inf
   }
 };
 
-// ─── DIRECTORY HELPERS ──────────────────────────────────────────────────────
+
 
 export async function ensureDirectory(dir: string): Promise<void> {
   if (!dir || dir.length === 0) {
@@ -102,7 +102,7 @@ export async function ensureAllImageDirs(): Promise<void> {
   ]);
 }
 
-// ─── PATH HELPERS ───────────────────────────────────────────────────────────
+
 
 export function getParentImagePath(parentId: string): string {
   return `${PARENT_IMAGES_DIR}${parentId}_avatar_${Date.now()}.jpg`;
@@ -128,7 +128,7 @@ export function getCachePath(filename: string): string {
   return `${CACHE_DIR}${filename}`;
 }
 
-// ─── FILE OPERATIONS ────────────────────────────────────────────────────────
+
 
 export async function copyImage(sourceUri: string, destinationUri: string): Promise<boolean> {
   if (!sourceUri || !destinationUri) {
@@ -195,7 +195,7 @@ export async function readDirectory(dir: string): Promise<string[]> {
   }
 }
 
-// ─── IMAGE PICKER ──────────────────────────────────────────────────────────
+
 
 export interface PickImageOptions {
   allowsEditing?: boolean;
@@ -283,7 +283,7 @@ export async function takePhoto(options?: PickImageOptions): Promise<string | nu
   }
 }
 
-// ─── IMAGE PROCESSING ─────────────────────────────────────────────────────
+
 
 export async function compressImage(uri: string, quality: number = DEFAULT_COMPRESSION): Promise<string> {
   try {
@@ -382,7 +382,7 @@ export async function processImageBatch(
   return results;
 }
 
-// ─── CACHING ──────────────────────────────────────────────────────────────
+
 
 export async function cacheImage(uri: string, customFilename?: string): Promise<string> {
   if (!uri) return '';
@@ -455,7 +455,7 @@ export async function isCacheFull(): Promise<boolean> {
   return size >= MAX_CACHE_SIZE;
 }
 
-// ─── SAVE IMAGE HELPERS ────────────────────────────────────────────────────
+
 
 export interface SaveImageResult {
   success: boolean;
@@ -545,7 +545,7 @@ export async function saveToPhotoLibrary(uri: string): Promise<boolean> {
   }
 }
 
-// ─── VALIDATION HELPERS ───────────────────────────────────────────────────
+
 
 export function normalizeStringValue(value: unknown): string | null {
   if (value == null) return null;
@@ -622,7 +622,7 @@ export function isDisplayableEmoji(value: unknown): boolean {
   return isEmoji(displayValue);
 }
 
-// ─── EXPORT ──────────────────────────────────────────────────────────────
+
 
 export const ImageUtils = {
   ensureDirectory,

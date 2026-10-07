@@ -1,9 +1,9 @@
-// src/services/ai/Telemetry.ts
-// ─────────────────────────────────────────────────────────────────────
-// Lightweight, privacy-respecting telemetry for entry operations.
-// NO PII. NO baby data. Just counts + error categories.
-// Stores locally and flushes to Supabase on next successful save.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -32,12 +32,12 @@ export async function recordEvent(event: TelemetryEvent): Promise<void> {
 
     queue.push({ ...event, ts: Date.now(), sessionId });
 
-    // Cap queue
+    
     while (queue.length > MAX_QUEUE) queue.shift();
 
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
   } catch {
-    // Telemetry must never break the app
+    
   }
 }
 
@@ -48,11 +48,11 @@ export async function flushTelemetry(): Promise<void> {
     const queue: QueuedEvent[] = JSON.parse(raw);
     if (queue.length === 0) return;
 
-    // Don't flush if offline
+    
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Batch insert
+    
     const rows = queue.map((e) => ({
       user_id: user.id,
       session_id: e.sessionId,
@@ -65,7 +65,7 @@ export async function flushTelemetry(): Promise<void> {
 
     const { error } = await supabase.from('app_telemetry').insert(rows);
     if (error) {
-      // Don't clear queue — retry next time
+      
       if (__DEV__) console.warn('[Telemetry] Flush failed:', error.message);
       return;
     }

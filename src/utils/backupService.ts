@@ -1,12 +1,12 @@
-// src/utils/backupService.ts
-// ═══════════════════════════════════════════════════════════════════
-// CANONICAL BACKUP SERVICE — Supabase-first, uniform across app
-// ═══════════════════════════════════════════════════════════════════
-// • Uses expo-file-system/legacy (works on SDK 54)
-// • Backs up Supabase: babies, tracker_entries, family_members, app_settings
-// • XOR+base64 encryption with UTF-8 safe encoding
-// • Works from anywhere in the app (MoreScreen, BackupRestoreScreen, etc.)
-// ═══════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
 
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { supabase } from '@/utils/supabase';
 
-// ─── TYPES ───────────────────────────────────────────────────────────
+
 
 export interface BackupMetadata {
   version: string;
@@ -95,7 +95,7 @@ interface BackupData {
   appSettings: Record<string, string>;
 }
 
-// ─── CONSTANTS ───────────────────────────────────────────────────────
+
 
 const BACKUP_VERSION = '2.0';
 const APP_VERSION = '1.0.0';
@@ -104,7 +104,7 @@ const AUTO_SETTINGS_KEY = '@littleloom_auto_backup_settings_v2';
 const ENC_PREFIX = 'LL_ENC_V1:';
 const SALT = 'littleloom_backup_salt_v1';
 
-// ─── ENCRYPTION (UTF-8 SAFE) ─────────────────────────────────────────
+
 
 const encryptBackupData = async (data: string, password: string): Promise<string> => {
   const hash = await Crypto.digestStringAsync(
@@ -116,7 +116,7 @@ const encryptBackupData = async (data: string, password: string): Promise<string
   for (let i = 0; i < data.length; i++) {
     out += String.fromCharCode(data.charCodeAt(i) ^ key.charCodeAt(i));
   }
-  // UTF-8 safe base64
+  
   return ENC_PREFIX + btoa(unescape(encodeURIComponent(out)));
 };
 
@@ -136,7 +136,7 @@ const decryptBackupData = async (data: string, password: string): Promise<string
   return out;
 };
 
-// ─── HELPERS ─────────────────────────────────────────────────────────
+
 
 const ensureDir = async (): Promise<void> => {
   const info = await FileSystem.getInfoAsync(BACKUP_DIR);
@@ -151,7 +151,7 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 };
 
-// ─── SERVICE ─────────────────────────────────────────────────────────
+
 
 class BackupService {
   private userId: string | null = null;
@@ -164,21 +164,21 @@ class BackupService {
     return this.userId;
   }
 
-  // ─── STATS ─────────────────────────────────────────────────────────
+  
 
   async getCurrentStats(userId?: string) {
     const uid = userId || this.userId;
     if (!uid) return { keys: 0, size: '0 B', babies: 0, entries: 0 };
 
     try {
-      // Babies the user owns or co-parents
+      
       const { data: owned } = await supabase
         .from('babies')
         .select('id')
         .or(`parent1_id.eq.${uid},parent2_id.eq.${uid}`)
         .eq('is_active', true);
 
-      // Babies via family_members
+      
       const { data: memberships } = await supabase
         .from('family_members')
         .select('baby_id')
@@ -229,7 +229,7 @@ class BackupService {
     }
   }
 
-  // ─── CREATE ────────────────────────────────────────────────────────
+  
 
   async createBackup(
     userId?: string,
@@ -241,7 +241,7 @@ class BackupService {
     try {
       await ensureDir();
 
-      // ── 1. Fetch babies (owned + shared) ────────────────────────
+      
       const { data: owned } = await supabase
         .from('babies')
         .select('*')
@@ -266,7 +266,7 @@ class BackupService {
       const appSettings: Record<string, string> = {};
 
       if (ids.length > 0) {
-        // Shared babies not already in `owned`
+        
         const ownedIds = new Set(babies.map(b => b.id));
         const missingIds = ids.filter(id => !ownedIds.has(id));
         if (missingIds.length > 0) {
@@ -299,14 +299,14 @@ class BackupService {
         });
       }
 
-      // ── 2. App settings ─────────────────────────────────────────
+      
       const { data: settings } = await supabase
         .from('app_settings')
         .select('key,value')
         .eq('user_id', uid);
       (settings ?? []).forEach(s => { appSettings[s.key] = s.value; });
 
-      // ── 3. Build payload ────────────────────────────────────────
+      
       const data: BackupData = {
         _version: BACKUP_VERSION,
         _timestamp: new Date().toISOString(),
@@ -324,7 +324,7 @@ class BackupService {
         json = await encryptBackupData(json, opts.password);
       }
 
-      // ── 4. Write file ───────────────────────────────────────────
+      
       const date = new Date().toISOString().split('T')[0];
       const ts = Date.now();
       const name = `backup_${date}_${ts}${opts.encrypted ? '_encrypted' : ''}.json`;
@@ -361,7 +361,7 @@ class BackupService {
     }
   }
 
-  // ─── PREVIEW ───────────────────────────────────────────────────────
+  
 
   isEncrypted(content: string): boolean {
     return content.startsWith(ENC_PREFIX);
@@ -433,7 +433,7 @@ class BackupService {
     }
   }
 
-  // ─── RESTORE ───────────────────────────────────────────────────────
+  
 
   async restoreBackup(
     content: string,
@@ -460,7 +460,7 @@ class BackupService {
 
       const stats = { babies: 0, entries: 0, familyMembers: 0, appSettings: 0 };
 
-      // ── 1. Babies ────────────────────────────────────────────────
+      
       onProgress?.('Restoring babies...', 20);
       for (const baby of parsed.babies) {
         try {
@@ -504,7 +504,7 @@ class BackupService {
         }
       }
 
-      // ── 2. Entries ───────────────────────────────────────────────
+      
       onProgress?.('Restoring entries...', 40);
       const allEntries: any[] = [];
       Object.values(parsed.entries ?? {}).forEach(arr => {
@@ -560,7 +560,7 @@ class BackupService {
         }
       }
 
-      // ── 3. Family members ────────────────────────────────────────
+      
       onProgress?.('Restoring family members...', 85);
       const allFm: any[] = [];
       Object.values(parsed.familyMembers ?? {}).forEach(arr => {
@@ -587,7 +587,7 @@ class BackupService {
         }
       }
 
-      // ── 4. App settings ──────────────────────────────────────────
+      
       onProgress?.('Restoring settings...', 95);
       for (const [key, value] of Object.entries(parsed.appSettings ?? {})) {
         if (key === 'auto_backup_settings' || key === 'auto_backup_settings_v2') continue;
@@ -623,7 +623,7 @@ class BackupService {
     }
   }
 
-  // ─── FILE OPS ──────────────────────────────────────────────────────
+  
 
   async listLocalBackups(): Promise<LocalBackupInfo[]> {
     try {
@@ -653,7 +653,7 @@ class BackupService {
             isEncrypted: enc,
           });
         } catch {
-          // skip bad file
+          
         }
       }
 
@@ -714,7 +714,7 @@ class BackupService {
     }
   }
 
-  // ─── AUTO BACKUP SETTINGS ──────────────────────────────────────────
+  
 
   async getAutoBackupSettings(): Promise<AutoBackupSettings> {
     const defaults: AutoBackupSettings = {
@@ -739,7 +739,7 @@ class BackupService {
       const stored = await AsyncStorage.getItem(AUTO_SETTINGS_KEY);
       if (stored) return { ...defaults, ...JSON.parse(stored) };
     } catch {
-      // fall through
+      
     }
     return defaults;
   }
@@ -772,16 +772,16 @@ class BackupService {
         await this.deleteBackupFile(b.path);
       }
     } catch {
-      // noop
+      
     }
   }
 }
 
-// ─── SINGLETON EXPORT ────────────────────────────────────────────────
+
 
 export const backupService = new BackupService();
 
-// ─── BACKWARDS-COMPAT WRAPPER (used by MoreScreen) ───────────────────
+
 
 /**
  * Convenience function so `MoreScreen.tsx` can call:

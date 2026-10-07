@@ -54,7 +54,7 @@ export default function FollowersScreen({ navigation, route }: FollowersScreenPr
   const { profile } = useUser();
   const sweetAlert = useSweetAlert();
 
-  // Guard against undefined functions
+  
   const safeIsUserBlocked = useCallback((userId: string) => {
     return isUserBlocked ? isUserBlocked(userId) : false;
   }, [isUserBlocked]);

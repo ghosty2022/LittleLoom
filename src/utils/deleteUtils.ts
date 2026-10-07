@@ -1,4 +1,4 @@
-// src/utils/deleteUtils.ts
+
 import { Alert } from 'react-native';
 
 export interface DeleteConfirmationOptions {
@@ -69,7 +69,7 @@ export const confirmDelete = (options: DeleteConfirmationOptions) => {
   );
 };
 
-// Simplified version for baby deletion
+
 export const confirmDeleteBaby = (
   babyName: string,
   onConfirm: (password: string) => Promise<void>,
@@ -85,7 +85,7 @@ export const confirmDeleteBaby = (
   });
 };
 
-// Simplified version for member deletion
+
 export const confirmDeleteMember = (
   memberName: string,
   onConfirm: (password: string) => Promise<void>,
@@ -101,7 +101,7 @@ export const confirmDeleteMember = (
   });
 };
 
-// Simplified version for account deletion
+
 export const confirmDeleteAccount = (
   onConfirm: (password: string) => Promise<void>,
   onCancel?: () => void

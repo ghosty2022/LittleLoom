@@ -1,4 +1,4 @@
-// src/screens/community/PostDetailScreen.tsx
+
 import { StyleSheet, ActivityIndicator, Linking, Dimensions, Image, KeyboardAvoidingView, Modal, StatusBar, Platform, ScrollView, Share, Text, TextInput, TouchableOpacity, View, RefreshControl } from 'react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 
@@ -22,7 +22,7 @@ type PostDetailScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Po
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── Clickable Links ───
+
 const LinkifyText = ({ text, style, numberOfLines }: { text: string; style?: any; numberOfLines?: number }) => {
   if (!text) return null;
   const parts = text.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g);
@@ -63,7 +63,7 @@ const SensitiveImage = ({ uri, style, resizeMode = 'cover' }: { uri: string; sty
   );
 };
 
-// ─── Image Grid ───
+
 const ImageGrid = ({ images }: { images: string[] }) => {
   if (!images || images.length === 0) return null;
 
@@ -132,7 +132,7 @@ const PollWidgetDetail = ({ poll, postId, onVote }: { poll: any; postId: string;
   );
 };
 
-// ─── Action Button ───
+
 const ActionButton = ({
   icon,
   label,
@@ -366,7 +366,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     }, 300);
   }, [post, navigation]);
 
-  // ─── Comment Card ───
+  
   const CommentCard = ({ comment }: { comment: Comment }) => (
     <View style={styles.commentCard}>
       <View style={styles.commentTop}>

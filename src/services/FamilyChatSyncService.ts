@@ -27,7 +27,7 @@ export class FamilyChatSyncService {
     this.isCleanedUp = false;
   }
 
-  // ─── Message Sync ────────────────────────────────────────────
+  
 
   async pushMessages(messages: FamilyMessage[]): Promise<void> {
     if (!this.familyCode) return;
@@ -73,10 +73,10 @@ export class FamilyChatSyncService {
     return (data || []).map(msg => this.fromSupabaseFormat(msg));
   }
 
-  // ─── Real-Time Subscriptions ────────────────────────────────
+  
 
   subscribeToMessages(chatId?: string): void {
-    // Prevent duplicate subscriptions
+    
     if (this.isSubscribed) {
       console.log('[FamilyChatSync] Already subscribed, skipping');
       return;
@@ -92,7 +92,7 @@ export class FamilyChatSyncService {
       this.isCleanedUp = false;
     }
 
-    // Unsubscribe from any existing channels first
+    
     this.unsubscribeFromMessages();
 
     let filter = `family_code=eq.${this.familyCode}`;
@@ -100,7 +100,7 @@ export class FamilyChatSyncService {
       filter += `,chat_id=eq.${chatId}`;
     }
 
-    // Create message channel
+    
     this.messageChannel = supabase
       .channel(`family_messages_${this.familyCode}_${Date.now()}`)
       .on(
@@ -139,7 +139,7 @@ export class FamilyChatSyncService {
           this.isSubscribed = true;
         } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
           this.isSubscribed = false;
-          // Attempt to reconnect after a delay
+          
           setTimeout(() => {
             if (!this.isCleanedUp && this.familyCode) {
               console.log('[FamilyChatSync] Attempting to reconnect...');
@@ -150,7 +150,7 @@ export class FamilyChatSyncService {
         }
       });
 
-    // Subscribe to typing status
+    
     this.subscribeToTyping();
   }
 
@@ -181,7 +181,7 @@ export class FamilyChatSyncService {
       .subscribe((status) => {
         console.log(`[FamilyChatSync] Typing subscription status: ${status}`);
         if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          // Attempt to reconnect
+          
           setTimeout(() => {
             if (!this.isCleanedUp && this.familyCode) {
               console.log('[FamilyChatSync] Attempting to reconnect typing...');
@@ -192,7 +192,7 @@ export class FamilyChatSyncService {
       });
   }
 
-  // ─── Typing Status ────────────────────────────────────────────
+  
 
   async broadcastTyping(chatId: string, isTyping: boolean): Promise<void> {
     if (!this.familyCode) return;
@@ -210,7 +210,7 @@ export class FamilyChatSyncService {
     if (error) console.error('Error broadcasting typing:', error);
   }
 
-  // ─── Message Status Updates ──────────────────────────────────
+  
 
   async markMessageRead(chatId: string, messageId: string, userId: string): Promise<void> {
     if (!this.familyCode) return;
@@ -237,7 +237,7 @@ export class FamilyChatSyncService {
     if (error) console.error('Error marking message read:', error);
   }
 
-  // ─── Chat Sync ───────────────────────────────────────────────
+  
 
   async pushChats(chats: FamilyChat[]): Promise<void> {
     if (!this.familyCode) return;
@@ -301,7 +301,7 @@ export class FamilyChatSyncService {
     }));
   }
 
-  // ─── Local Sync State ────────────────────────────────────────
+  
 
   private async markSynced(messageIds: string[]): Promise<void> {
     const key = `${STORAGE_KEYS.SYNCED_MESSAGE_IDS}_${this.familyCode}`;
@@ -321,7 +321,7 @@ export class FamilyChatSyncService {
     await AsyncStorage.setItem(key, new Date().toISOString());
   }
 
-  // ─── Callbacks ───────────────────────────────────────────────
+  
 
   onMessages(callback: (messages: FamilyMessage[]) => void) {
     this.messageCallbacks.push(callback);
@@ -344,7 +344,7 @@ export class FamilyChatSyncService {
     };
   }
 
-  // ─── Format Converters ──────────────────────────────────────
+  
 
   private toSupabaseFormat(msg: FamilyMessage): any {
     return {
@@ -408,7 +408,7 @@ export class FamilyChatSyncService {
     };
   }
 
-  // ─── Cleanup ────────────────────────────────────────────────
+  
 
   unsubscribeFromMessages(): void {
     this.isSubscribed = false;

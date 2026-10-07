@@ -1,22 +1,22 @@
-// src/context/ActivityContext.tsx
-// ─────────────────────────────────────────────────────────────────────
-// DEPRECATED pass-through adapter.
-//
-// TrackerContext is the single source of truth for all entries.
-// This context exists ONLY so legacy screens that still call
-// `useActivity()` continue to work.
-//
-// It:
-//   • Reads `entries` from useTracker() during render (no state copy)
-//   • Exposes no-op bridge methods (`syncWithBabyContext`, `loadEntries`)
-//   • Never throws — safe to consume outside a provider (returns fallback)
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, { createContext, useContext, useMemo, useCallback } from 'react';
 import { useTracker } from '@/hooks/useTrackerContext';
 import type { TrackerEntry } from '@/types/trackers';
 
-// ActivityEntry is a legacy alias for TrackerEntry.
+
 export type ActivityEntry = TrackerEntry;
 
 interface ActivityContextType {
@@ -31,7 +31,7 @@ interface ActivityContextType {
   getTodayCount: (type: string, babyId?: string) => number;
   getCurrentBabyId: () => string | null;
 
-  // Bridge shims for ContextProvider's ActivitySyncBridge
+  
   syncWithBabyContext: (babyId: string | null) => Promise<void>;
   refreshEntries: () => Promise<void>;
   loadEntries: () => Promise<void>;
@@ -40,13 +40,13 @@ interface ActivityContextType {
 const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
-  // Read everything from TrackerContext. Never copy to local state.
+  
   const tracker = useTracker();
 
   const entries = Array.isArray(tracker?.entries) ? tracker.entries : [];
   const isLoading = !!tracker?.isLoading;
 
-  // ─── Passthroughs that are safe if tracker methods are missing ───
+  
   const getEntriesSafe = useCallback(
     (trackerId?: string): ActivityEntry[] => {
       if (typeof tracker?.getEntries !== 'function') return [];
@@ -97,10 +97,10 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
 
   const syncWithBabyContext = useCallback(
     async (_babyId: string | null) => {
-      // TrackerContext already subscribes to baby changes internally.
-      // This is a no-op shim so the ActivitySyncBridge in
-      // ContextProvider doesn't crash. If a real refresh is needed,
-      // trigger it manually.
+      
+      
+      
+      
       await refreshEntries();
     },
     [refreshEntries]

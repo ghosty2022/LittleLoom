@@ -2,7 +2,7 @@ const { withAppBuildGradle } = require('@expo/config-plugins');
 
 module.exports = function withPackagingOptions(config) {
   return withAppBuildGradle(config, (config) => {
-    // Add packagingOptions to resolve duplicate native library conflicts
+    
     const packagingBlock = `
     packagingOptions {
         pickFirst 'lib/arm64-v8a/libreactnative.so'
@@ -12,7 +12,7 @@ module.exports = function withPackagingOptions(config) {
     }`;
 
     if (!config.modResults.contents.includes('packagingOptions')) {
-      // Insert inside the android { ... } block
+      
       config.modResults.contents = config.modResults.contents.replace(
         /android\s*\{/,
         `android {${packagingBlock}`

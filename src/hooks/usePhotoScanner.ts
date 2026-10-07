@@ -1,4 +1,4 @@
-// src/hooks/usePhotoScanner.ts
+
 
 import { useState, useCallback } from 'react';
 import { PhotoScanner, ScanProgress, ScanResult } from '../services/PhotoScanner';
@@ -26,10 +26,10 @@ export function usePhotoScanner() {
       const scanResult = await scanner.scan({ afterDate });
       setResult(scanResult);
       
-      // PhotoScanner surfaces local device media for user review.
-      // Persisting to tracker entries is the caller's responsibility
-      // via `useTracker().addEntry({ photoUris })` so AI observeEntry
-      // runs on the real entry (not a synthetic one).
+      
+      
+      
+      
       if (__DEV__ && scanResult.media.length > 0) {
         console.log(
           `[PhotoScanner] Surfaced ${scanResult.media.length} local photos ` +
@@ -37,8 +37,8 @@ export function usePhotoScanner() {
         );
       }
 
-      // ── Classify the first few photos on-device (fire-and-forget) ──
-      // This gives users smart tags without blocking the scan.
+      
+      
       (async () => {
         try {
           const { classifyImage } = await import('../services/ai/PhotoClassifier');

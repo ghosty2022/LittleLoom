@@ -1,6 +1,6 @@
-// src/database/migrations/migrations.ts
-// Generated migration index for Drizzle ORM + expo-sqlite
-// Inlines SQL to avoid Metro bundler issues with .sql files
+
+
+
 
 const journal = {
   "version": "7",

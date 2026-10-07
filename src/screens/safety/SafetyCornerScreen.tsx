@@ -1,6 +1,6 @@
-// SafetyCornerScreen.tsx — MODERN v6.1
-// NO SHADOWS — Clean flat design
-// Full Supabase SQL integration with fixed contacts, checklists, and reports
+
+
+
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import {
@@ -67,7 +67,7 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { supabase } from '@/utils/supabase';
 
-// Import the PediatricianPDFExport for report generation
+
 import { PediatricianPDFExport } from '../tracking/PediatricianPDFExport';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -85,7 +85,7 @@ type SafetyCornerScreenProps = BottomTabScreenProps<MainTabParamList, 'SafetyCor
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// ─── DESIGN TOKENS — NO SHADOWS ────────────────────────────────────────────
+
 
 const SPACING = {
   xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
@@ -106,7 +106,7 @@ const SHADOW = {
 
 type SafetyTab = 'overview' | 'emergency' | 'topics' | 'checklists' | 'reports' | 'intelligence';
 
-// ─── THEME HOOK ─────────────────────────────────────────────────────────────
+
 
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
@@ -131,7 +131,7 @@ const useHubTheme = () => {
   }), [isDark, colors, fullThemeColors]);
 };
 
-// ─── GLASS CARD — NO SHADOWS ─────────────────────────────────────────────
+
 
 const GlassCard = memo(({ children, style, onPress, active = false }: { 
   children: React.ReactNode; 
@@ -167,7 +167,7 @@ const GlassCard = memo(({ children, style, onPress, active = false }: {
   );
 });
 
-// ─── SECTION HEADER ────────────────────────────────────────────────────────
+
 
 const SectionHeader = memo(({ 
   title, 
@@ -210,7 +210,7 @@ const SectionHeader = memo(({
   );
 });
 
-// ─── TAB BAR ──────────────────────────────────────────────────────────────
+
 
 const TabBar = memo(({ tabs, activeTab, onChange }: { 
   tabs: { key: SafetyTab; label: string; icon: keyof typeof Ionicons.glyphMap }[]; 
@@ -246,9 +246,9 @@ const TabBar = memo(({ tabs, activeTab, onChange }: {
   );
 });
 
-// ─── MODAL COMPONENTS ──────────────────────────────────────────────────────
 
-// ─── Contact Modal ─────────────────────────────────────────────────────────
+
+
 
 const ContactModal = memo(({ visible, onClose, onAdd, theme }: { 
   visible: boolean; 
@@ -376,7 +376,7 @@ const ContactModal = memo(({ visible, onClose, onAdd, theme }: {
   );
 });
 
-// ─── Checklist Modal ──────────────────────────────────────────────────────
+
 
 const ChecklistModal = memo(({ visible, checklist, onClose, onToggleItem, theme }: { 
   visible: boolean; 
@@ -459,7 +459,7 @@ const ChecklistModal = memo(({ visible, checklist, onClose, onToggleItem, theme 
   );
 });
 
-// ─── Report Modal ──────────────────────────────────────────────────────────
+
 
 const ReportModal = memo(({ 
   visible, 
@@ -541,7 +541,7 @@ const ReportModal = memo(({
                       {report.uri && (
                         <TouchableOpacity 
                           onPress={() => {
-                            // Open the report file
+                            
                             if (Platform.OS === 'ios') {
                               Linking.openURL(report.uri);
                             } else {
@@ -585,7 +585,7 @@ const ReportModal = memo(({
   );
 });
 
-// ─── Reminder Modal ──────────────────────────────────────────────────────
+
 
 const ReminderModal = memo(({ visible, onClose, onSchedule, theme }: { 
   visible: boolean; 
@@ -729,7 +729,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   const [emergencyNumbers, setEmergencyNumbers] = useState<EmergencyNumber | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  // ─── Load emergency numbers based on location ────────────────────────────
+  
 
   useEffect(() => {
     const loadEmergencyNumbers = async () => {
@@ -752,7 +752,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     loadEmergencyNumbers();
   }, [getLocalEmergencyNumbers]);
 
-  // ─── Load data ───────────────────────────────────────────────────────────
+  
 
   useFocusEffect(
     useCallback(() => {
@@ -857,7 +857,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   }, [addDoctorReport, getDoctorReports, triggerHaptic, sweetAlert]);
 
   const handleGeneratePDF = useCallback(() => {
-    // Navigate to the PediatricianPDFExport screen
+    
     navigation.navigate('PediatricianPDFExport');
   }, [navigation]);
 
@@ -934,7 +934,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     ? [theme.bgColors?.[0] || '#0a0a0a', '#1a1a2e']
     : [theme.bgColors?.[0] || '#f8fafc', '#e2e8f0'];
 
-  // ─── Render ─────────────────────────────────────────────────────────────
+  
 
   return (
     <View style={[styles.container, { backgroundColor: bgColors[0] }]}>
@@ -1663,7 +1663,7 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
   );
 }
 
-// ─── STYLES ──────────────────────────────────────────────────────────────────
+
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

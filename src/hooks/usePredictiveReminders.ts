@@ -1,13 +1,13 @@
-// src/hooks/usePredictiveReminders.ts
-// ─────────────────────────────────────────────────────────────────────
-// Predictive reminders based on REAL growth intelligence data.
-//
-// FIXES:
-//   ✓ Removed hardcoded fake values (restScore:70, healthStability:80)
-//   ✓ Imports useGrowthIntelligence for real scores
-//   ✓ Respects consent gate — no reminders if AI learning disabled
-//   ✓ Robust to missing data (no crashes on empty history)
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
 
 import { useCallback, useMemo, useRef } from 'react';
 import {
@@ -21,9 +21,9 @@ import { useBaby } from '../context/BabyContext';
 import { useTracker } from './useTrackerContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 
-// ─── GrowthIndex Cache ──────────────────────────────────────────────
-// Prevents N separate useGrowthIntelligence() computations when N hooks
-// consume the same baby. Memoized per-baby for 5 seconds.
+
+
+
 type GrowthIndex = ReturnType<typeof useGrowthIntelligence>['growthIndex'];
 type AgeMonths = ReturnType<typeof useGrowthIntelligence>['ageInMonths'];
 
@@ -41,7 +41,7 @@ export function getCachedGrowthIntelligence(babyId: string | undefined, compute:
   return fresh;
 }
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 export interface PredictiveReminder {
   id: string;
@@ -51,7 +51,7 @@ export interface PredictiveReminder {
   emoji: string;
   priority: 'high' | 'medium' | 'low';
   suggestedTime: Date;
-  confidence: number; // 0-100
+  confidence: number; 
   basedOn: {
     trackerId: string;
     dataPoint: string;
@@ -66,15 +66,15 @@ export interface PredictiveReminder {
   actedUpon?: boolean;
 }
 
-// ─── The Hook ───────────────────────────────────────────────────────
+
 
 export const usePredictiveReminders = () => {
   const { getEntries } = useTracker();
   const { currentBaby, growthData } = useBaby();
 
-  // Stable ref — `getEntries` is a fresh function reference every provider
-  // render, so memoizing on it directly would thrash. All call-sites below
-  // use `getEntriesStable`.
+  
+  
+  
   const getEntriesRef = useRef(getEntries);
   getEntriesRef.current = getEntries;
   const getEntriesStable = useCallback(
@@ -85,12 +85,12 @@ export const usePredictiveReminders = () => {
     []
   );
 
-  // ─── REAL growth intelligence (was hardcoded) ────────────────────
-  // Call the hook ONCE unconditionally (Rules of Hooks), but memoize
-  // the expensive downstream computation via the module cache above.
+  
+  
+  
   const giResult = useGrowthIntelligence();
-  // Include compositeIndex + entry count in the cache key so we invalidate
-  // whenever the underlying score actually moves.
+  
+  
   const giFingerprint = `${giResult.growthIndex?.compositeIndex ?? 0}:${
     giResult.growthIndex?.lastUpdated ?? 0
   }`;
@@ -105,9 +105,9 @@ export const usePredictiveReminders = () => {
     const now = new Date();
     const suggestions: PredictiveReminder[] = [];
 
-    // ═══════════════════════════════════════════════════════════════
-    // 1. FEEDING — predictive based on average interval
-    // ═══════════════════════════════════════════════════════════════
+    
+    
+    
     const feedEntries = getEntriesStable('feed', 20);
     if (feedEntries.length >= 3) {
       const intervals: number[] = [];
@@ -138,7 +138,7 @@ export const usePredictiveReminders = () => {
             priority: hoursSinceLast > avgInterval * 1.2 ? 'high' : 'medium',
             suggestedTime: addHours(new Date(lastFeed.timestamp), avgInterval),
             confidence: Math.min(95, 60 + hoursSinceLast * 5),
-            // Every dataPoint below is COMPUTED from real tracker_entries
+            
             basedOn: [
               {
                 trackerId: 'feed',
@@ -161,9 +161,9 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // 2. SLEEP — uses REAL rest score from growth index
-    // ═══════════════════════════════════════════════════════════════
+    
+    
+    
     const sleepEntries = getEntriesStable('sleep', 14);
     if (sleepEntries.length >= 5) {
       const bedtimes = sleepEntries
@@ -178,7 +178,7 @@ export const usePredictiveReminders = () => {
         nextBedtime.setHours(avgBedtime, 0, 0, 0);
         if (nextBedtime < now) nextBedtime.setDate(nextBedtime.getDate() + 1);
 
-        // ─── REAL rest score (was hardcoded 70) ────────────────────
+        
         const sleepScore = growthIndex?.restScore?.value ?? 50;
 
         if (sleepScore < 70) {
@@ -191,8 +191,8 @@ export const usePredictiveReminders = () => {
             priority: sleepScore < 50 ? 'high' : 'medium',
             suggestedTime: nextBedtime,
             confidence: Math.min(95, 70 + (70 - sleepScore)),
-            // sleepScore comes from growthIndex.restScore (real tracker_entries)
-            // avgBedtime comes from this session's sleepEntries query
+            
+            
             basedOn: [
               {
                 trackerId: 'sleep',
@@ -218,12 +218,12 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // 3. GROWTH — measurement due
-    // ═══════════════════════════════════════════════════════════════
-    // ─── Growth source: prefer tracker_entries, fall back to BabyContext ──
-    // BabyContext.growthData is empty in the current data model; the real
-    // measurements live in tracker_entries where `measurementType` is set.
+    
+    
+    
+    
+    
+    
     const fromTracker = (getEntriesStable('growth', 50) || []).map((e) => ({
       date: new Date(e.timestamp).toISOString(),
       timestamp: e.timestamp,
@@ -239,7 +239,7 @@ export const usePredictiveReminders = () => {
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     )[0];
 
-    if (lastGrowth?.date) {  // ← also verify date is present
+    if (lastGrowth?.date) {  
       const daysSince = differenceInDays(now, new Date(lastGrowth.date));
       const recommendedInterval = ageInMonths < 6 ? 14 : ageInMonths < 12 ? 30 : 60;
 
@@ -280,9 +280,9 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // 4. MILESTONES — uses REAL milestoneReadiness (was empty [])
-    // ═══════════════════════════════════════════════════════════════
+    
+    
+    
     (Array.isArray(growthIndex?.milestoneReadiness) ? growthIndex.milestoneReadiness : []).forEach((readiness, idx) => {
       if (readiness.readinessPercent > 60) {
         suggestions.push({
@@ -318,9 +318,9 @@ export const usePredictiveReminders = () => {
       }
     });
 
-    // ═══════════════════════════════════════════════════════════════
-    // 5. HEALTH — uses REAL healthStability (was hardcoded 80)
-    // ═══════════════════════════════════════════════════════════════
+    
+    
+    
     const healthScore = growthIndex?.healthStability?.value ?? 100;
     if (healthScore < 60) {
       const tempEntries = getEntriesStable('temperature', 7);
@@ -364,9 +364,9 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // 6. POTTY TRAINING
-    // ═══════════════════════════════════════════════════════════════
+    
+    
+    
     const pottyEntries = getEntriesStable('potty', 30);
     if (pottyEntries.length >= 10) {
       const successful = pottyEntries.filter(e => e.data?.successful).length;
@@ -398,7 +398,7 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    // ─── Sort by priority × confidence ───────────────────────────────
+    
     const priorityWeight = { high: 3, medium: 2, low: 1 };
     return suggestions.sort(
       (a, b) =>
@@ -409,8 +409,8 @@ export const usePredictiveReminders = () => {
     getEntriesStable,
     currentBaby,
     growthData,
-    // growthIndex identity churns; use its updatedAt stamp so we only
-    // recompute when the underlying score actually recomputes.
+    
+    
     growthIndex?.lastUpdated,
     ageInMonths,
   ]);

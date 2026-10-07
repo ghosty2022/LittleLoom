@@ -1,5 +1,5 @@
-// src/types/database.ts
-// Re-export all database types for convenience
+
+
 
 export type {
   Baby,

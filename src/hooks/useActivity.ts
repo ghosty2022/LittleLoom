@@ -1,6 +1,6 @@
-// src/hooks/useActivity.ts
-// Safe wrapper — returns a fallback instead of throwing (matches the
-// convention used by useTrackerContext, useSafeContexts, etc.)
+
+
+
 
 import { useContext } from 'react';
 import { ActivityContext } from '../context/ActivityContext';

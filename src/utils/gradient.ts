@@ -1,4 +1,4 @@
-// src/utils/gradient.ts
+
 import type { ColorValue } from 'react-native';
 
 /**

@@ -1,4 +1,4 @@
-// src/components/LiquidGlassNavigation.tsx
+
 import React, { useCallback, useEffect, memo } from 'react';
 import {
   View,
@@ -31,7 +31,7 @@ import { useRouteBasedNavVisibility } from '../hooks/useRouteBasedNavVisibility'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── CONSTANTS ──────────────────────────────────────────────────────
+
 const PILL_WIDTH = Math.min(SCREEN_WIDTH - 32, 360);
 const PILL_HEIGHT = 60;
 const BOTTOM_MARGIN = 10;
@@ -39,7 +39,7 @@ const HIDDEN_TRANSLATE_Y = 120;
 const TAB_COUNT = 5;
 const SEGMENT_WIDTH = PILL_WIDTH / TAB_COUNT;
 
-// ─── ICON COMPONENTS (memoized) ───────────────────────────────────
+
 const icons = {
   Home: (props: any) => <Ionicons name="home-outline" size={22} {...props} />,
   HomeActive: (props: any) => <Ionicons name="home" size={22} {...props} />,
@@ -103,7 +103,7 @@ const TABS = [
   },
 ];
 
-// ─── DATE DISPLAY ─────────────────────────────────────────────────
+
 const DateDisplay = memo(({ isDark }: { isDark: boolean }) => {
   const [dateStr, setDateStr] = React.useState('');
 
@@ -140,17 +140,17 @@ const TabButton = memo(({
   const rotation = useSharedValue(0);
   const pulseScale = useSharedValue(1);
 
-  // Update animations more efficiently
+  
   useEffect(() => {
     scale.value = withSpring(isActive ? 1.08 : 1, { damping: 20, stiffness: 600, mass: 0.2 });
     glowOpacity.value = withTiming(isActive ? 0.25 : 0, { duration: 250 });
     iconScale.value = withSpring(isActive ? 1.15 : 1, { damping: 18, stiffness: 550, mass: 0.2 });
     labelOpacity.value = withTiming(isActive ? 1 : 0.35, { duration: 250 });
     
-    // Subtle rotation on active
+    
     rotation.value = withSpring(isActive ? 0 : 0, { damping: 15, stiffness: 400 });
     
-    // Pulse animation when becoming active
+    
     if (isActive) {
       pulseScale.value = withSpring(1.2, { damping: 12, stiffness: 300, mass: 0.3 });
       setTimeout(() => {
@@ -159,7 +159,7 @@ const TabButton = memo(({
     }
   }, [isActive]);
 
-  // containerStyle removed - unused
+  
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity: glowOpacity.value,
@@ -181,7 +181,7 @@ const TabButton = memo(({
   const inactiveColor = isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(100, 116, 139, 0.35)';
   const activeLabelColor = isDark ? '#f8fafc' : '#1e293b';
 
-  // Determine which icon to show
+  
   const IconComponent = isActive ? tab.IconActive : tab.Icon;
 
   return (
@@ -245,7 +245,7 @@ const TabButton = memo(({
   );
 });
 
-// ─── ACTIVE COLOR WASH ──────────────────────────────────────────
+
 const ActiveColorWash = memo(({ activeIndex, isDark }: { activeIndex: number; isDark: boolean }) => {
   const washOpacity = useSharedValue(0);
   const translateX = useSharedValue(0);
@@ -288,7 +288,7 @@ const ActiveColorWash = memo(({ activeIndex, isDark }: { activeIndex: number; is
   );
 });
 
-// ─── SLIDING INDICATOR ──────────────────────────────────────────
+
 const SlidingIndicator = memo(({ activeIndex, isDark }: { activeIndex: number; isDark: boolean }) => {
   const translateX = useSharedValue(0);
 
@@ -318,23 +318,23 @@ const SlidingIndicator = memo(({ activeIndex, isDark }: { activeIndex: number; i
   );
 });
 
-// ─── MAIN COMPONENT ─────────────────────────────────────────────
+
 const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const activeIndex = state.index;
   const activeRouteName = state.routes[activeIndex]?.name;
 
-  // ─── VISIBILITY ──────────────────────────────────────────────
+  
   const { isVisible, isFullyHidden } = useRouteBasedNavVisibility();
 
-  // ─── ANIMATED VALUES ──────────────────────────────────────────
+  
   const translateY = useSharedValue(0);
   const opacity = useSharedValue(1);
   const pillScale = useSharedValue(1);
   const borderGlow = useSharedValue(0);
 
-  // ─── UPDATE ANIMATIONS ────────────────────────────────────────
+  
   useEffect(() => {
     if (isFullyHidden) {
       translateY.value = withTiming(HIDDEN_TRANSLATE_Y, { 
@@ -361,7 +361,7 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     opacity: borderGlow.value,
   }));
 
-  // ─── HANDLERS ──────────────────────────────────────────────────
+  
   const handlePress = useCallback((route: string, tab: typeof TABS[0]) => {
     Haptics.impactAsync(tab.haptic);
     const event = navigation.emit({ type: 'tabPress', target: route, canPreventDefault: true });
@@ -373,7 +373,7 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     navigation.navigate('AddEntry');
   }, [navigation]);
 
-  // ─── THEME ─────────────────────────────────────────────────────
+  
   const pillBackground = isDark ? 'rgba(18, 18, 24, 0.92)' : 'rgba(255, 255, 255, 0.94)';
 
   return (

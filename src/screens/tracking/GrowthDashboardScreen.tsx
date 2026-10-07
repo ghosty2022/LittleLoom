@@ -1,6 +1,6 @@
-// GrowthDashboardScreen.tsx — UNIFIED v5.0
-// TrackerHub aesthetics + Growth-specific intelligence
-// Glass cards, cohesive spacing, unified modals, no feature duplication
+
+
+
 
 import React, {
   memo,
@@ -477,26 +477,26 @@ import { predictGrowth } from '@/hooks/useWHOGrowthCalculator';
 const AIGrowthPredictor = memo(({ baby, growthIndex, onPress }: { baby: BabyProfile; growthIndex: any; onPress: () => void }) => {
   const theme = useDashboardTheme();
 
-  // ─── Real WHO-based predictions using the baby's own trajectory ──
-  // Uses the same LMS tables that power percentiles, so predictions are
-  // anchored to this baby's growth data instead of generic milestones.
+  
+  
+  
   const predictions = useMemo(() => {
     if (!baby?.birthDate || !growthIndex) return [];
     const ageNow = safeDiffMonths(new Date(), baby.birthDate);
     const gender: 'boy' | 'girl' = baby.gender === 'girl' ? 'girl' : 'boy';
 
-    // Pull this baby's most-recent measured value per metric
+    
     const dims = (growthIndex as any)?.velocityTrends || {};
     const latestValue = (metric: 'height' | 'weight' | 'head'): number | null => {
       const perMonth = dims?.[metric]?.perMonth;
       if (typeof perMonth !== 'number' || !Number.isFinite(perMonth)) return null;
-      // Back-derive the current value from growth index if not exposed
-      // (the source of truth is useGrowthIntelligence.mergedGrowthData)
+      
+      
       return null;
     };
 
-    // Confidence is derived from how many measurements we have to learn
-    // from — more data → tighter band.
+    
+    
     const nGrowth = (growthIndex as any)?.sampleCounts?.growth ?? 0;
     const confidenceFromN = Math.max(30, Math.min(95, 30 + nGrowth * 5));
 
@@ -520,8 +520,8 @@ const AIGrowthPredictor = memo(({ baby, growthIndex, onPress }: { baby: BabyProf
       };
     };
 
-    // Note: we only render predictions we can back with data.
-    // If growthIndex doesn't expose latest measured values, we hide the card.
+    
+    
     const heightNow = (growthIndex as any)?.latestValues?.height_cm ?? null;
     const weightNow = (growthIndex as any)?.latestValues?.weight_kg ?? null;
     const headNow   = (growthIndex as any)?.latestValues?.head_cm   ?? null;
@@ -760,7 +760,7 @@ const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[
       : 0;
     const avgActivities = allEntries.length > 0 ? allEntries.length / 7 : 0;
 
-    // Calculate scores based on real data thresholds
+    
     const sleepScore = avgSleep > 12 ? 92 : avgSleep > 8 ? 78 : avgSleep > 4 ? 55 : avgSleep > 0 ? 30 : 0;
     const feedScore = avgFeed > 150 ? 88 : avgFeed > 100 ? 72 : avgFeed > 50 ? 50 : avgFeed > 0 ? 25 : 0;
     const activityScore = Math.min(100, Math.round(avgActivities * 20));
@@ -1248,7 +1248,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     return safeDiffMonths(new Date(), currentBaby.birthDate);
   }, [currentBaby]);
 
-  // ── Chart Data ──
+  
   const chartData = useMemo(() => {
     if (!currentBaby) return [];
     const ranges: Record<TimeRange, number> = { '1m': 30, '3m': 90, '6m': 180, '1y': 365, 'all': 3650 };
@@ -1302,7 +1302,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     return velocities;
   }, [chartData, growthData]);
 
-  // ── Stats with WHO percentiles ──
+  
   const stats = useMemo(() => {
     if (!currentBaby) return null;
     const gender = safeGender(currentBaby.gender);
@@ -1345,7 +1345,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     return result;
   }, [growthData, currentBaby, getGrowthData, getPercentile, getStatus]);
 
-  // ── Smart Insights (growth-specific, no duplication with TrackerHub) ──
+  
   const smartInsights = useMemo((): InsightItem[] => {
     if (!currentBaby) return [];
     const items: InsightItem[] = [];
@@ -1446,12 +1446,12 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     }).slice(0, 6);
   }, [growthIndex, timelineCorrelations, milestones, currentBaby, activeMetric, getGrowthData, globalStreak, newlyUnlocked]);
 
-  // ── Handlers ──
+  
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // TODO: wire up actual refresh from BabyContext if you expose one
-      // e.g. await refreshBabyData?.();
+      
+      
       await new Promise(r => setTimeout(r, 400));
     } finally {
       setRefreshing(false);
@@ -1493,7 +1493,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     HAPTIC_LIGHT();
   }, []);
 
-  // ── Loading / No baby ──
+  
   if (!currentBaby) {
     return (
       <View style={[styles.container, { backgroundColor: theme.bgColors[0] }, styles.center]}>
@@ -2056,7 +2056,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { justifyContent: 'center', alignItems: 'center' },
 
-  // ── Glass Card ──
+  
   glassCard: {
     borderRadius: 20,
     overflow: 'hidden',
@@ -2075,7 +2075,7 @@ const styles = StyleSheet.create({
   },
   glassContent: { flex: 1 },
 
-  // ── Section Header ──
+  
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2101,7 +2101,7 @@ const styles = StyleSheet.create({
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Sticky Header ──
+  
   stickyHeader: {
     position: 'absolute',
     top: 0,
@@ -2115,7 +2115,7 @@ const styles = StyleSheet.create({
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
-  // ── Top Header ──
+  
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2161,7 +2161,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // ── Hero Score ──
+  
   heroScore: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -2194,7 +2194,7 @@ const styles = StyleSheet.create({
   heroScoreMiniBarFill: { height: '100%', borderRadius: 3 },
   heroScoreMiniValue: { fontSize: 12, fontWeight: '700', width: 28, textAlign: 'right' },
 
-  // ── Tab Bar ──
+  
   tabBar: { 
     flexDirection: 'row', 
     marginHorizontal: SPACING.lg, 
@@ -2214,7 +2214,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  // ── KPI Grid ──
+  
   kpiGrid: { 
     flexDirection: 'row', 
     flexWrap: 'wrap', 
@@ -2226,7 +2226,7 @@ const styles = StyleSheet.create({
   kpiGridItemLarge: { width: (SCREEN_W - 56) / 2, height: 140 },
   kpiGridItemNormal: { width: (SCREEN_W - 56) / 2, height: 120 },
 
-  // ── KPI Card ──
+  
   kpiCard: { 
     flex: 1, 
     borderRadius: RADIUS.lg, 
@@ -2299,7 +2299,7 @@ const styles = StyleSheet.create({
   kpiStatusDot: { width: 5, height: 5, borderRadius: 3 },
   kpiStatusText: { fontSize: 10, fontWeight: '700' },
 
-  // ── Insight Card ──
+  
   insightCard: {
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
@@ -2320,7 +2320,7 @@ const styles = StyleSheet.create({
   },
   insightActionText: { fontSize: 11, fontWeight: '700' },
 
-  // ── AI Growth Predictor ──
+  
   predictorHeader: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -2355,7 +2355,7 @@ const styles = StyleSheet.create({
   predictorConfidence: { fontSize: 10, fontWeight: '600' },
   predictorAge: { fontSize: 12, fontWeight: '700' },
 
-  // ── Percentile Radar ──
+  
   radarHeader: { padding: 16, paddingBottom: 8 },
   radarTitle: { fontSize: 16, fontWeight: '800' },
   radarSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
@@ -2393,7 +2393,7 @@ const styles = StyleSheet.create({
   radarLegendLabel: { fontSize: 12, fontWeight: '600', flex: 1 },
   radarLegendValue: { fontSize: 12, fontWeight: '700' },
 
-  // ── Velocity Heatmap ──
+  
   heatmapHeader: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
@@ -2423,7 +2423,7 @@ const styles = StyleSheet.create({
   heatmapValue: { fontSize: 13, fontWeight: '700' },
   heatmapWeek: { fontSize: 10, fontWeight: '600' },
 
-  // ── Health Correlation ──
+  
   correlationHeader: { padding: 16, paddingBottom: 8 },
   correlationTitle: { fontSize: 16, fontWeight: '800' },
   correlationSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
@@ -2438,7 +2438,7 @@ const styles = StyleSheet.create({
   correlationBarFill: { height: '100%', borderRadius: 2 },
   correlationValue: { fontSize: 12, fontWeight: '700' },
 
-  // ── Activity Suggestions ──
+  
   suggestionsHeader: { marginHorizontal: SPACING.lg, marginBottom: SPACING.md, marginTop: SPACING.md },
   suggestionsTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   suggestionsSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
@@ -2469,7 +2469,7 @@ const styles = StyleSheet.create({
   suggestionDot: { fontSize: 10 },
   suggestionBenefit: { fontSize: 11, fontWeight: '500', lineHeight: 15, textAlign: 'center' },
 
-  // ── Predictive Milestone Calendar ──
+  
   calendarTimeline: { marginHorizontal: SPACING.lg, gap: 0 },
   calendarItem: { flexDirection: 'row', gap: 12 },
   calendarLeft: { 
@@ -2516,7 +2516,7 @@ const styles = StyleSheet.create({
   calendarDesc: { fontSize: 12, fontWeight: '500', marginBottom: 4, lineHeight: 17 },
   calendarAge: { fontSize: 11, fontWeight: '600' },
 
-  // ── Metric Selector ──
+  
   metricSelector: { 
     flexDirection: 'row', 
     marginHorizontal: SPACING.lg, 
@@ -2532,7 +2532,7 @@ const styles = StyleSheet.create({
   },
   metricSelectorText: { fontSize: 13, fontWeight: '600' },
 
-  // ── Time Range ──
+  
   timeRangeWrap: { 
     flexDirection: 'row', 
     marginHorizontal: SPACING.lg, 
@@ -2548,7 +2548,7 @@ const styles = StyleSheet.create({
   },
   timeRangeText: { fontSize: 12, fontWeight: '600' },
 
-  // ── Chart Mode ──
+  
   chartModeWrap: { 
     flexDirection: 'row', 
     marginHorizontal: SPACING.lg, 
@@ -2567,7 +2567,7 @@ const styles = StyleSheet.create({
   },
   chartModeText: { fontSize: 12, fontWeight: '600' },
 
-  // ── Chart ──
+  
   chartCard: { padding: SPACING.lg, marginBottom: SPACING.lg },
   chartHeader: { 
     flexDirection: 'row', 
@@ -2584,10 +2584,10 @@ const styles = StyleSheet.create({
   addDataBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: RADIUS.sm },
   addDataBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
-  // ── Section ──
+  
   section: { marginBottom: SPACING.xl },
 
-  // ── History ──
+  
   historyCard: { padding: 8 },
   historyRow: { 
     flexDirection: 'row', 
@@ -2612,7 +2612,7 @@ const styles = StyleSheet.create({
   emptyHistory: { padding: 24, alignItems: 'center' },
   emptyHistoryText: { fontSize: 14, fontWeight: '500' },
 
-  // ── Milestone Row ──
+  
   milestoneRow: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -2626,7 +2626,7 @@ const styles = StyleSheet.create({
   milestoneBarFill: { height: '100%', borderRadius: 3 },
   milestonePercent: { fontSize: 14, fontWeight: '800', width: 40, textAlign: 'right' },
 
-  // ── Achieved Card ──
+  
   achievedCard: { padding: 14, marginBottom: 8, marginHorizontal: 16 },
   achievedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   achievedIconBg: { 
@@ -2641,7 +2641,7 @@ const styles = StyleSheet.create({
   achievedTitle: { fontSize: 14, fontWeight: '700' },
   achievedDate: { fontSize: 11, fontWeight: '500' },
 
-  // ── Velocity Grid ──
+  
   velocityGrid: { flexDirection: 'row', gap: 10, marginHorizontal: 16 },
   velocityCard: { flex: 1, padding: 14, alignItems: 'center', gap: 4 },
   velocityLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -2649,7 +2649,7 @@ const styles = StyleSheet.create({
   velocityUnit: { fontSize: 11, fontWeight: '500' },
   velocityPercentile: { fontSize: 12, fontWeight: '600' },
 
-  // ── Empty Insights ──
+  
   emptyInsights: { 
     padding: 40, 
     alignItems: 'center', 
@@ -2673,7 +2673,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // ── Photo Grid ──
+  
   photoGrid: { 
     flexDirection: 'row', 
     flexWrap: 'wrap', 
@@ -2713,7 +2713,7 @@ const styles = StyleSheet.create({
   },
   photoGridAge: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
-  // ── Quick Actions ──
+  
   quickActionsGrid: { 
     flexDirection: 'row', 
     gap: SPACING.md, 
@@ -2735,7 +2735,7 @@ const styles = StyleSheet.create({
   quickActionIcon: { fontSize: 22 },
   quickActionText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  // ── Modals ──
+  
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: { 
     width: '100%', 
@@ -2783,7 +2783,7 @@ const styles = StyleSheet.create({
   saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // ── Baby Switcher Modal ──
+  
   babySwitcherModal: { 
     width: '85%', 
     maxWidth: 360, 
@@ -2804,7 +2804,7 @@ const styles = StyleSheet.create({
   babySwitcherName: { fontSize: 16, fontWeight: '700' },
   babySwitcherMeta: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
-  // ── No Data States ──
+  
   noDataTitle: { fontSize: 24, fontWeight: '800', marginBottom: 8 },
   noDataText: { fontSize: 15, fontWeight: '500', textAlign: 'center', marginHorizontal: 40, marginBottom: 24 },
   createBtn: { 

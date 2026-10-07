@@ -13,9 +13,9 @@ import { useApp } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
 
-// ═══════════════════════════════════════════════════════════
-// UNIFIED LITTLELOOM THEME — matches CommunityScreen exactly
-// ═══════════════════════════════════════════════════════════
+
+
+
 const LL = {
   primary: '#7c6cf1',
   primaryLight: '#a5b4fc',
@@ -80,7 +80,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 
-  // 🔍 SEARCH: Filter chats by participant name
+  
   const filteredChats = useMemo(() => {
     if (!searchQuery.trim()) return sortedChats;
     const q = searchQuery.toLowerCase();

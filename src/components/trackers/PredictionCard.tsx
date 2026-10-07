@@ -1,16 +1,16 @@
-// src/components/trackers/PredictionCard.tsx
-// ─────────────────────────────────────────────────────────────────────
-// Upgraded "What's Next?" card.
-//
-// Improvements over v1:
-//   ✓ Shows the actual predicted clock time ("~2:45 PM")
-//   ✓ Shows sample count + learned interval ("avg 2h 45m · 23 samples")
-//   ✓ Visual confidence bar (not just a % pill)
-//   ✓ Urgency color (red = now, amber = soon, green = later)
-//   ✓ Real "learning" state when n=0 (no more fake 32%)
-//   ✓ Tap → navigates to the correct tracker form
-//   ✓ Pulls live state from AsyncStorage so we can show n + level
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
@@ -34,7 +34,7 @@ import {
   PredictorType,
 } from '../../services/ai/PredictorEngine';
 
-// ─── Per-type visual metadata ────────────────────────────────────────
+
 
 const TYPE_META: Record<
   PredictorType,
@@ -57,7 +57,7 @@ const TYPE_META: Record<
   },
 };
 
-// ─── Read raw predictor state so we can show n + level ──────────────
+
 
 const STORAGE_PREFIX = '@littleloom_predictor_v1:';
 
@@ -75,7 +75,7 @@ const readState = async (
   }
 };
 
-// ─── Urgency ─────────────────────────────────────────────────────────
+
 
 type Urgency = 'now' | 'soon' | 'later' | 'unknown';
 
@@ -112,7 +112,7 @@ interface Row {
   level: number;
 }
 
-// ─── Component ───────────────────────────────────────────────────────
+
 
 export default function PredictionCard() {
   const navigation = useNavigation<any>();
@@ -136,7 +136,7 @@ export default function PredictionCard() {
     try {
       const types: PredictorType[] = ['sleep', 'feed', 'diaper'];
 
-      // Race each load against a 5s timeout so we never hang forever
+      
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('timeout')), 5000)
       );
@@ -170,13 +170,13 @@ export default function PredictionCard() {
     load();
   }, [load]);
 
-  // Refresh every 30s so "in 45m" ticks down
+  
   useEffect(() => {
     const iv = setInterval(load, 30_000);
     return () => clearInterval(iv);
   }, [load]);
 
-  // Merge prediction + state into rows, sorted by urgency
+  
   const rows: Row[] = useMemo(() => {
     return predictions
       .map((p) => {
@@ -205,7 +205,7 @@ export default function PredictionCard() {
 
   if (!currentBaby) return null;
 
-  // Loading state — show spinner but cap at 5s to avoid infinite loop
+  
   if (loading && predictions.length === 0) {
     return (
       <View
@@ -488,7 +488,7 @@ export default function PredictionCard() {
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────
+
 
 const styles = StyleSheet.create({
   wrap: {

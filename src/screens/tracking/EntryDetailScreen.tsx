@@ -1,7 +1,7 @@
-// EntryDetailScreen.tsx — INTELLIGENCE EDITION v7.0
-// Unified with AddEntryScreen theming approach
-// Uses useCustomization + useUnifiedTrackerTheme consistently
-// Glass cards, gradients, and design tokens unified
+
+
+
+
 
 import React, {
   useCallback,
@@ -356,9 +356,9 @@ const KpiCard = ({ title, value, unit, change, changeLabel, icon, color, onPress
    SPARKLINE — Mini trend graph
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// Cross-platform sparkline using SVG-like line segments positioned
-// with rotation applied around the segment's own midpoint (works on
-// both iOS and Android — no transformOrigin needed).
+
+
+
 const Sparkline = ({
   data,
   color,
@@ -393,7 +393,7 @@ const Sparkline = ({
         const dy = pt.y - prev.y;
         const len = Math.sqrt(dx * dx + dy * dy);
         const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-        // Rotate around the segment midpoint so no transformOrigin is needed
+        
         const midX = (prev.x + pt.x) / 2;
         const midY = (prev.y + pt.y) / 2;
         return (
@@ -965,7 +965,7 @@ export default function EntryDetailScreen() {
     navigation.push('EntryDetail', { entryId: e.id, trackerId: e.trackerId });
   }, [navigation, triggerHaptic]);
 
-  // Resolve logged-by name intelligently
+  
   const loggedByDisplay = useMemo(() => {
     if (!entry) return { name: 'You', role: 'parent1', avatar: '' };
     const name = entry.loggedByName || 'You';
@@ -1543,7 +1543,7 @@ const styles = StyleSheet.create({
   },
   glassContent: { flex: 1 },
 
-  // ── Section Header ──
+  
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1569,7 +1569,7 @@ const styles = StyleSheet.create({
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Header ──
+  
   headerContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
   headerButton: { width: 42, height: 42, borderRadius: 14, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
@@ -1578,7 +1578,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
   headerSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 1 },
 
-  // ── Hero ──
+  
   heroCard: { overflow: 'hidden', marginBottom: 16, marginHorizontal: 16 },
   heroGradient: { padding: 20 },
   heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -1597,7 +1597,7 @@ const styles = StyleSheet.create({
   heroBabyName: { color: '#fff', fontSize: 14, fontWeight: '800' },
   heroBabyMeta: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', marginTop: 1 },
 
-  // ── KPI Row ──
+  
   kpiRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1659,7 +1659,7 @@ const styles = StyleSheet.create({
   kpiChange: { fontSize: 11, fontWeight: '700' },
   kpiChangeLabel: { fontSize: 10, fontWeight: '500', marginLeft: 2 },
 
-  // ── Intelligence Panel ──
+  
   intelGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1684,7 +1684,7 @@ const styles = StyleSheet.create({
   intelValue: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
   intelLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, textAlign: 'center' },
 
-  // ── Trend Row ──
+  
   trendRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1700,7 +1700,7 @@ const styles = StyleSheet.create({
   trendBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   trendBadgeText: { fontSize: 12, fontWeight: '700' },
 
-  // ── Similar Entries ──
+  
   similarRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   similarIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   similarEmoji: { fontSize: 20 },
@@ -1709,7 +1709,7 @@ const styles = StyleSheet.create({
   similarValueBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   similarValueText: { fontSize: 12, fontWeight: '800' },
 
-  // ── Card Inner ──
+  
   cardInner: { padding: 16 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   cardHeaderIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
@@ -1717,14 +1717,14 @@ const styles = StyleSheet.create({
   countPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
   countPillText: { fontSize: 11, fontWeight: '800' },
 
-  // ── Photo Strip ──
+  
   photoStrip: { gap: 10 },
   photoThumb: { width: 110, height: 110, borderRadius: 14, overflow: 'hidden' },
   photoImg: { width: '100%', height: '100%' },
   photoBadge: { position: 'absolute', right: 6, bottom: 6, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
   photoBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
 
-  // ── Detail Rows ──
+  
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11 },
   rowBorder: { borderTopWidth: StyleSheet.hairlineWidth },
   rowLabel: { fontSize: 13, fontWeight: '600', width: 118 },
@@ -1737,10 +1737,10 @@ const styles = StyleSheet.create({
   valueChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
   valueChipText: { fontSize: 12, fontWeight: '700' },
 
-  // ── Notes ──
+  
   notesText: { fontSize: 14, lineHeight: 21, fontWeight: '500' },
 
-  // ── Audit ──
+  
   auditRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   auditAvatar: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   auditAvatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
@@ -1751,7 +1751,7 @@ const styles = StyleSheet.create({
   auditSubRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
   auditSubText: { fontSize: 12, fontWeight: '600' },
 
-  // ── Edit History ──
+  
   historyWrap: { marginTop: 12, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   historyHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   historyHeaderText: { flex: 1, fontSize: 13, fontWeight: '800' },
@@ -1764,7 +1764,7 @@ const styles = StyleSheet.create({
   historyChangeLabel: { width: 72, fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   historyChangeText: { flex: 1, fontSize: 11, fontWeight: '500', lineHeight: 16 },
 
-  // ── Same Day ──
+  
   dayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   dayEmojiWrap: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   dayEmoji: { fontSize: 18 },
@@ -1773,14 +1773,14 @@ const styles = StyleSheet.create({
   dayFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 4 },
   dayFooterText: { fontSize: 13, fontWeight: '800' },
 
-  // ── Prev / Next ──
+  
   prevNextBar: { flexDirection: 'row', gap: 10, marginBottom: 16, marginHorizontal: 16 },
   prevNextBtn: { flex: 1, borderWidth: 1, padding: 12, borderRadius: DESIGN.radius.md },
   prevNextLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
   prevNextTitle: { fontSize: 13, fontWeight: '700', marginTop: 3 },
   positionText: { textAlign: 'center', fontSize: 11, fontWeight: '600', marginTop: -8, marginBottom: 16 },
 
-  // ── Action Bar ──
+  
   actionBar: { flexDirection: 'row', gap: 10, marginTop: 4, marginHorizontal: 16 },
   actionBtnPrimary: { flex: 1.4, borderRadius: DESIGN.radius.md, overflow: 'hidden' },
   actionBtnPrimaryInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14 },
@@ -1788,19 +1788,19 @@ const styles = StyleSheet.create({
   actionBtn: { flex: 1, borderRadius: DESIGN.radius.md, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14 },
   actionBtnText: { fontSize: 13, fontWeight: '800' },
 
-  // ── Empty State ──
+  
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyIcon: { width: 88, height: 88, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   emptyTitle: { fontSize: 20, fontWeight: '800', marginBottom: 8 },
   emptyText: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
   emptyBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
 
-  // ── Photo Viewer ──
+  
   viewerContainer: { flex: 1, backgroundColor: '#000' },
   viewerClose: { position: 'absolute', right: 20, width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   viewerCounter: { position: 'absolute', alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   viewerCounterText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
-  // ── Scroll ──
+  
   scrollContent: { paddingHorizontal: 0 },
 });

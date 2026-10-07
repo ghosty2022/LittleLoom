@@ -1667,7 +1667,7 @@ export default function FamilyChatScreen({
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const recordingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // ─── Set current chat ID for notifications ─────────────────────────
+  
   useEffect(() => {
     if (chatId) {
       setCurrentChatId(chatId);
@@ -1678,19 +1678,19 @@ export default function FamilyChatScreen({
     };
   }, [chatId, setCurrentChatId]);
 
-  // ─── Initialize chat ──────────────────────────────────────────────
+  
   useEffect(() => {
     initializeChat();
   }, [initialChatId, memberId]);
 
-  // ─── Auto-refresh messages ────────────────────────────────────────
+  
   useEffect(() => {
     if (!chatId) return;
 
     markChatRead(chatId);
     const interval = setInterval(() => {
       refreshMessages();
-    }, 2000); // Reduced from 1000ms to 2000ms for better performance
+    }, 2000); 
 
     return () => clearInterval(interval);
   }, [chatId]);
@@ -1817,7 +1817,7 @@ export default function FamilyChatScreen({
   };
 
   const showImageSourceAlert = () => {
-    // Use a proper action sheet here; for now default to gallery
+    
     handleImagePick(false);
   };
 
@@ -1868,7 +1868,7 @@ export default function FamilyChatScreen({
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
     try {
-      // Check if file exists first
+      
       const fileInfo = await FileSystem.getInfoAsync(meta.uri);
       if (!fileInfo.exists) {
         showSweetAlert('error', 'File Not Found', 'The file no longer exists');
@@ -1886,7 +1886,7 @@ export default function FamilyChatScreen({
     refreshMessages();
   };
 
-  // Simplified voice recording - using basic Audio API
+  
   const startRecording = async () => {
     try {
       setIsRecording(true);
@@ -2482,7 +2482,7 @@ const FadeInRight = Animated.FadeInRight || {
   })
 };
 
-// Styles remain the same...
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

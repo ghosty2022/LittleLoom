@@ -1,4 +1,4 @@
-// screens/settings/UnitSettingsScreen.tsx
+
 import React, { useState, useCallback, useEffect } from 'react';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -61,7 +61,7 @@ export default function UnitSettingsScreen({ navigation }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load saved unit preference
+  
   useEffect(() => {
     const loadUnits = async () => {
       if (isConnected && user) {
@@ -98,10 +98,10 @@ export default function UnitSettingsScreen({ navigation }: Props) {
     setSystem(newSystem);
 
     try {
-      // Save locally
+      
       await updateSettings({ units: newSystem as any });
 
-      // Save to Supabase if connected
+      
       if (isConnected && user) {
         const { error } = await supabase
           .from('user_preferences')

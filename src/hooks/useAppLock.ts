@@ -1,4 +1,4 @@
-// src/hooks/useAppLock.ts
+
 import { useEffect, useRef } from 'react';
 import { useSecurity } from '../context/SecurityContext';
 import { navigationRef } from '../navigation/navigationRef';
@@ -12,7 +12,7 @@ export const useAppLock = () => {
     if (isLoading) return;
     if (!navigationRef.isReady()) return;
 
-    // Clear any pending timeout
+    
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;

@@ -1,8 +1,8 @@
-// AllTrackersScreen.tsx — UNIFIED HEADER v6.4
-// Matches header style from GrowthDashboard, EnhancedTimeline, and UniversalTrackerHub
-// Proper scroll behavior: top header fades out on scroll with transparency
-// Long press to pin/unpin like Hub screen
-// Hidden trackers modal with unhide functionality
+
+
+
+
+
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
@@ -49,7 +49,7 @@ import { useSweetAlert } from '../../components/SweetAlert';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// ─── DESIGN TOKENS ──────────────────────────────────────────────────────
+
 
 const SPACING = {
   xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
@@ -220,7 +220,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-// ─── SAFE HELPERS ──────────────────────────────────────────────────────────
+
 
 const safeStr = (val: unknown, fallback = ''): string => {
   if (val === undefined || val === null) return fallback;
@@ -249,7 +249,7 @@ const getBabyAge = (birthDate?: string | Date) => {
   return { display, shortDisplay: months > 0 ? `${months}m` : 'Newborn', months };
 };
 
-// ─── THEME HOOK ──────────────────────────────────────────────────────────
+
 
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
@@ -274,7 +274,7 @@ const useHubTheme = () => {
   }), [isDark, colors, fullThemeColors]);
 };
 
-// ─── GLASS CARD ──────────────────────────────────────────────────────────
+
 
 const GlassCard = React.memo(({ 
   children, 
@@ -319,7 +319,7 @@ const GlassCard = React.memo(({
 });
 GlassCard.displayName = 'GlassCard';
 
-// ─── SECTION HEADER ──────────────────────────────────────────────────────
+
 
 const SectionHeader = ({ 
   title, 
@@ -362,7 +362,7 @@ const SectionHeader = ({
   );
 };
 
-// ─── SUB ACTION SHEET ──────────────────────────────────────────────────────
+
 
 const SubActionSheet = React.memo(({
   visible,
@@ -478,7 +478,7 @@ const SubActionSheet = React.memo(({
 });
 SubActionSheet.displayName = 'SubActionSheet';
 
-// ─── HIDDEN TRACKERS MODAL ──────────────────────────────────────────────
+
 
 const HiddenTrackersModal = React.memo(({
   visible,
@@ -662,7 +662,7 @@ export default function AllTrackersScreen() {
   const [showHiddenModal, setShowHiddenModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // ─── SCROLL ANIMATION ──────────────────────────────────────────────────
+  
   const scrollY = useSharedValue(0);
   
   const scrollHandler = useAnimatedScrollHandler({
@@ -672,7 +672,7 @@ export default function AllTrackersScreen() {
     },
   });
 
-  // Top header: stays visible at top, fades out on scroll
+  
   const topHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       scrollY.value,
@@ -698,7 +698,7 @@ export default function AllTrackersScreen() {
     };
   });
 
-  // Sticky header: fades in on scroll
+  
   const stickyHeaderStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       scrollY.value,
@@ -718,7 +718,7 @@ export default function AllTrackersScreen() {
     };
   });
 
-  // ─── LOAD PINNED/HIDDEN ──────────────────────────────────────────────
+  
 
   useEffect(() => {
     Promise.all([
@@ -886,7 +886,7 @@ export default function AllTrackersScreen() {
     setShowHiddenModal(true);
   }, []);
 
-  // ─── RENDER ──────────────────────────────────────────────────────────────
+  
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bgColors[0] }]}>
@@ -1215,7 +1215,7 @@ export default function AllTrackersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // ── Sticky Header ──
+  
   stickyHeader: {
     position: 'absolute',
     top: 0,
@@ -1231,7 +1231,7 @@ const styles = StyleSheet.create({
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500' },
 
-  // ── Top Header ──
+  
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1274,7 +1274,7 @@ const styles = StyleSheet.create({
   babyPillAge: { fontSize: 12, fontWeight: '600' },
   babyPillNoBabyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Glass Card ──
+  
   glassCard: {
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
@@ -1290,7 +1290,7 @@ const styles = StyleSheet.create({
   },
   glassContent: { flex: 1 },
 
-  // ── Section Header ──
+  
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1316,12 +1316,12 @@ const styles = StyleSheet.create({
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Search ──
+  
   searchContainer: { marginHorizontal: 20, marginBottom: 16, marginTop: 8 },
   searchBlur: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 4, overflow: 'hidden' },
   searchInput: { flex: 1, marginLeft: 10, paddingVertical: 12, fontSize: 15 },
 
-  // ── Stats ──
+  
   statsContainer: { marginBottom: 16 },
   statsContent: { paddingHorizontal: 20, gap: 10 },
   kpiCard: { width: 120, padding: 14, borderWidth: 1, borderRadius: 16 },
@@ -1330,7 +1330,7 @@ const styles = StyleSheet.create({
   kpiLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   kpiSub: { fontSize: 10, fontWeight: '500', marginTop: 2 },
 
-  // ── Hidden Banner ──
+  
   hiddenBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1340,7 +1340,7 @@ const styles = StyleSheet.create({
   },
   hiddenBannerText: { fontSize: 13, fontWeight: '600', flex: 1 },
 
-  // ── Category Filter ──
+  
   categoryScroll: {
     paddingHorizontal: SPACING.lg,
     gap: 8,
@@ -1359,7 +1359,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
 
-  // ── Grid ──
+  
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1371,7 +1371,7 @@ const styles = StyleSheet.create({
     width: (SCREEN_WIDTH - 56) / 2,
   },
 
-  // ── Tracker Card ──
+  
   trackerCard: {
     padding: SPACING.md,
     minHeight: 140,
@@ -1440,7 +1440,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
-  // ── Custom Button ──
+  
   customBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1461,7 +1461,7 @@ const styles = StyleSheet.create({
   },
   customText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Empty State ──
+  
   emptyState: { alignItems: 'center', padding: 40, width: '100%' },
   emptyIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   emptyTitle: { fontWeight: '800', marginBottom: 8, textAlign: 'center', fontSize: 22 },
@@ -1476,7 +1476,7 @@ const styles = StyleSheet.create({
   },
   emptyCreateBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  // ── Sub Action Sheet ──
+  
   sheetOverlay: {
     position: 'absolute',
     top: 0,
@@ -1555,7 +1555,7 @@ const styles = StyleSheet.create({
   },
   subActionLabel: { fontWeight: '700', textAlign: 'center', fontSize: 13 },
 
-  // ── Hidden Trackers Modal ──
+  
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' },
   hiddenModalContent: { 
     width: SCREEN_WIDTH - 40, 

@@ -1,4 +1,4 @@
-// src/screens/community/CreatePostScreen.tsx
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useCommunity } from '../../context/CommunityContext';
@@ -56,7 +56,7 @@ const MOODS: { value: PostMood; emoji: string; label: string; color: string; bgC
   { value: 'venting', emoji: '💨', label: 'Venting', color: '#ef4444', bgColor: '#ef444415' },
 ];
 
-// ─── Smart Compose Suggestions ───
+
 const SMART_SUGGESTIONS = [
   "Share a milestone your little one reached 🎉",
   "Ask for sleep training advice 😴",
@@ -190,7 +190,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   const [smartPrompt, setSmartPrompt] = useState('');
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>(SMART_SUGGESTIONS);
 
-  // Auto-detect device location on mount
+  
   useEffect(() => {
     let isMounted = true;
     const detectLocation = async () => {
@@ -219,7 +219,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     return () => { isMounted = false; };
   }, [updateUserLocation]);
 
-  // ─── Smart Compose: Auto-detect topic from content ───
+  
   useEffect(() => {
     if (content.length > 10 && !selectedTopic) {
       const lowerContent = content.toLowerCase();
@@ -256,7 +256,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     }
   }, [content, topics, selectedTopic]);
 
-  // ─── Smart Compose: Filter suggestions based on input ───
+  
   useEffect(() => {
     if (smartPrompt.trim().length > 0) {
       const filtered = SMART_SUGGESTIONS.filter(s => 
@@ -349,7 +349,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     loadDraft();
   }, [isValidImageUri]);
 
-  // ─── Smart Compose: Apply suggestion to content ───
+  
   const applySmartSuggestion = (suggestion: string) => {
     setContent(suggestion);
     setShowSmartCompose(false);
@@ -1239,7 +1239,7 @@ const styles = StyleSheet.create({
     color: 'white' 
   },
 
-  // ─── Smart Compose ───
+  
   smartComposeBanner: {
     flexDirection: 'row',
     alignItems: 'center',

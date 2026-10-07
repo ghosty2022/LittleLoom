@@ -1,30 +1,30 @@
-// src/services/EntryService.ts
-// ─────────────────────────────────────────────────────────────────────
-// Unified entry CRUD service.
-//
-// THE single source of truth for reading/writing tracker entries.
-// Every context uses this — no more direct supabase.from('tracker_entries')
-// calls scattered across the codebase.
-//
-// Responsibilities:
-//   • Save entries (insert or upsert) with offline queue fallback
-//   • Update entries with conflict detection
-//   • Soft-delete entries
-//   • Read entries with filters
-//   • Sanitize payloads for PostgREST (no undefined/NaN/functions)
-//   • Persist on-device AI tags (`ai_tags` JSONB column)
-//
-// Does NOT:
-//   • Manage UI state (contexts do that)
-//   • Handle realtime (useRealtimeSubscription does that)
-//   • Do business logic (streaks, insights — those live in contexts)
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import type { TrackerEntry } from '@/types/trackers';
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 export interface SaveEntryOptions {
   /** Force an upsert even if the entry might already exist */
@@ -56,9 +56,9 @@ export interface GetEntriesOptions {
   aiTags?: string[];
 }
 
-// ─── Payload Sanitizer ──────────────────────────────────────────────
-// PostgREST rejects: undefined, NaN, functions, circular refs.
-// This runs on every write so a bad value never silently corrupts an entry.
+
+
+
 
 export function sanitizePayload(value: unknown): unknown {
   try {
@@ -77,7 +77,7 @@ export function sanitizePayload(value: unknown): unknown {
 
 function sanitizePhotoUris(uris?: unknown): string[] {
   if (!Array.isArray(uris)) return [];
-  // Flatten any nested arrays and coerce objects with .uri to strings
+  
   const flat = (uris as unknown[]).flat(Infinity);
   const strings = flat
     .map((u) => {
@@ -88,7 +88,7 @@ function sanitizePhotoUris(uris?: unknown): string[] {
       return '';
     })
     .filter((u): u is string => u.length > 0);
-  // Dedupe while preserving order
+  
   return [...new Set(strings)];
 }
 
@@ -118,24 +118,24 @@ function sanitizeAiTags(tags?: unknown): string[] {
   return [...new Set(cleaned)].slice(0, 20);
 }
 
-// ─── Map Row → TrackerEntry ─────────────────────────────────────────
-//
-// Canonical row-to-entry mapper. Used by:
-//   • EntryService.getEntries / getEntryById
-//   • TrackerContext's realtime subscription callback
-//
-// Handles every shape Supabase can return:
-//   • timestamptz as ISO string OR epoch ms number
-//   • data as jsonb object OR JSON string
-//   • photo_uris / tags / ai_tags / linked_entries as jsonb array OR null
-//   • Missing timestamp → falls back to created_at → Date.now()
+
+
+
+
+
+
+
+
+
+
+
 
 export function mapRowToEntry(row: any): TrackerEntry {
   if (!row) {
     throw new Error('[mapRowToEntry] Received null/undefined row');
   }
 
-  // ── Timestamp: normalize to epoch ms, never NaN ──────────────────
+  
   const rawTs = row.timestamp ?? row.created_at;
   const tsMs =
     typeof rawTs === 'number'
@@ -145,8 +145,8 @@ export function mapRowToEntry(row: any): TrackerEntry {
         : Date.now();
   const timestamp = Number.isFinite(tsMs) ? tsMs : Date.now();
 
-  // ── Photo URIs: jsonb array → clean string[] ─────────────────────
-  // Prefer publicUrl over uri when both exist (survives cache clears).
+  
+  
   const photoUris: string[] | undefined = (() => {
     const raw = row.photo_uris ?? row.photos ?? row.photo_urls;
     if (!Array.isArray(raw)) return undefined;
@@ -157,7 +157,7 @@ export function mapRowToEntry(row: any): TrackerEntry {
         if (typeof u === 'string') return u;
         if (u && typeof u === 'object') {
           const obj = u as any;
-          // Prefer remote URL for persistence
+          
           if (typeof obj.publicUrl === 'string' && obj.publicUrl.length > 0) {
             return obj.publicUrl;
           }
@@ -176,14 +176,14 @@ export function mapRowToEntry(row: any): TrackerEntry {
     return deduped.length > 0 ? deduped : undefined;
   })();
 
-  // ── Tags: jsonb array → clean string[] ───────────────────────────
+  
   const tags: string[] | undefined = Array.isArray(row.tags)
     ? row.tags.filter(
         (t: unknown): t is string => typeof t === 'string' && t.length > 0
       )
     : undefined;
 
-  // ── AI Tags: jsonb array → clean lowercase string[] ──────────────
+  
   const aiTags: string[] | undefined = (() => {
     const raw = row.ai_tags;
     if (!Array.isArray(raw) || raw.length === 0) return undefined;
@@ -202,15 +202,15 @@ export function mapRowToEntry(row: any): TrackerEntry {
     return deduped.length > 0 ? deduped : undefined;
   })();
 
-  // ── Linked entries: jsonb array or [] ────────────────────────────
+  
   const linkedEntries = Array.isArray(row.linked_entries)
     ? row.linked_entries
     : [];
 
-  // ── Data: jsonb object OR JSON string ────────────────────────────
+  
   let parsedData: Record<string, unknown> = {};
   if (row.data && typeof row.data === 'object') {
-    // Defensive copy — we're about to mutate this
+    
     parsedData = { ...(row.data as Record<string, unknown>) };
   } else if (typeof row.data === 'string') {
     try {
@@ -220,7 +220,7 @@ export function mapRowToEntry(row: any): TrackerEntry {
     }
   }
 
-  // ── Edited-at: normalize to epoch ms or undefined ────────────────
+  
   let editedAt: number | undefined;
   if (typeof row.edited_at === 'number') {
     editedAt = row.edited_at;
@@ -229,12 +229,12 @@ export function mapRowToEntry(row: any): TrackerEntry {
     editedAt = Number.isFinite(parsed) ? parsed : undefined;
   }
 
-  // ── Normalize duration if present ────────────────────────────────
-  // Duration should always be in SECONDS for consistency
+  
+  
   if (parsedData.duration !== undefined) {
     const rawDur = parsedData.duration;
     if (typeof rawDur === 'string') {
-      // Parse "1h 30m" / "90m" / "3600s" strings
+      
       const str = rawDur.trim().toLowerCase();
       const asNum = Number(str);
       if (Number.isFinite(asNum)) {
@@ -251,7 +251,7 @@ export function mapRowToEntry(row: any): TrackerEntry {
         parsedData.duration = total > 0 ? total : undefined;
       }
     }
-    // Guard against absurd values
+    
     if (typeof parsedData.duration === 'number' && parsedData.duration > 86400) {
       if (__DEV__) console.warn('[mapRowToEntry] Absurd duration:', parsedData.duration);
       parsedData.duration = undefined;
@@ -282,7 +282,7 @@ export function mapRowToEntry(row: any): TrackerEntry {
   };
 }
 
-// ─── Build Supabase Payload ─────────────────────────────────────────
+
 
 export interface RawEntryInput {
   id: string;
@@ -307,8 +307,8 @@ export interface RawEntryInput {
 export function buildSupabasePayload(input: RawEntryInput) {
   const now = new Date().toISOString();
 
-  // Guard: if the input timestamp is missing or invalid, fall back to now.
-  // This prevents "Invalid Date" from being written to the DB.
+  
+  
   const tsMs =
     typeof input.timestamp === 'number' && Number.isFinite(input.timestamp)
       ? input.timestamp
@@ -342,8 +342,8 @@ export function buildSupabasePayload(input: RawEntryInput) {
   };
 }
 
-// ─── Save Entry ─────────────────────────────────────────────────────
-// The canonical write path. Call this from every context.
+
+
 
 export async function saveEntry(
   input: RawEntryInput,
@@ -351,7 +351,7 @@ export async function saveEntry(
 ): Promise<SaveEntryResult> {
   const payload = buildSupabasePayload(input);
 
-  // ─── Offline-only mode (used for queueing) ───────────────────────
+  
   if (options.offlineOnly) {
     return { ok: true, queued: true };
   }
@@ -362,8 +362,8 @@ export async function saveEntry(
       return { ok: false, error: 'No authenticated user' };
     }
 
-    // ─── Duplicate guard: same tracker + same baby + within 5s ────
-    // Catches double-tap save and offline-queue replays.
+    
+    
     const fiveSecondsAgo = new Date(
       new Date(input.timestamp).getTime() - 5000
     ).toISOString();
@@ -399,14 +399,14 @@ export async function saveEntry(
 
     const startMs = Date.now();
 
-    // ─── Idempotency: always upsert on id ────────────────────────
+    
     const { error } = await supabase
       .from('tracker_entries')
       .upsert(payload, { onConflict: 'id' });
 
     if (error) throw new Error(error.message);
 
-    // ─── Telemetry (non-blocking) ────────────────────────────────
+    
     import('@/services/ai/Telemetry')
       .then(({ recordEvent }) => {
         recordEvent({
@@ -427,7 +427,7 @@ export async function saveEntry(
       );
     }
 
-    // ─── Telemetry for failure ────────────────────────────────────
+    
     import('@/services/ai/Telemetry')
       .then(({ recordEvent }) => {
         recordEvent({
@@ -442,7 +442,7 @@ export async function saveEntry(
   }
 }
 
-// ─── Error categorizer (used by telemetry) ──────────────────────────
+
 
 function categorizeError(msg?: string): string {
   if (!msg) return 'unknown';
@@ -453,7 +453,7 @@ function categorizeError(msg?: string): string {
   return 'other';
 }
 
-// ─── Update Entry ───────────────────────────────────────────────────
+
 
 export interface UpdateEntryInput {
   id: string;
@@ -517,7 +517,7 @@ export async function updateEntry(
   }
 }
 
-// ─── Soft Delete Entry ──────────────────────────────────────────────
+
 
 export async function softDeleteEntry(
   entryId: string
@@ -543,7 +543,7 @@ export async function softDeleteEntry(
   }
 }
 
-// ─── Restore Entry ──────────────────────────────────────────────────
+
 
 export async function restoreEntry(
   entryId: string
@@ -566,7 +566,7 @@ export async function restoreEntry(
   }
 }
 
-// ─── Get Entries ────────────────────────────────────────────────────
+
 
 export async function getEntries(
   options: GetEntriesOptions
@@ -593,7 +593,7 @@ export async function getEntries(
       query = query.lte('timestamp', new Date(options.until).toISOString());
     }
 
-    // AI tag filter — PostgREST jsonb contains operator
+    
     if (Array.isArray(options.aiTags) && options.aiTags.length > 0) {
       query = query.contains('ai_tags', options.aiTags);
     }
@@ -622,7 +622,7 @@ export async function getEntries(
   }
 }
 
-// ─── Get Single Entry ───────────────────────────────────────────────
+
 
 export async function getEntryById(
   entryId: string
@@ -641,8 +641,8 @@ export async function getEntryById(
   }
 }
 
-// ─── Cache Helpers ──────────────────────────────────────────────────
-// Simple AsyncStorage cache so reads succeed offline.
+
+
 
 const CACHE_PREFIX = '@littleloom_entry_cache:';
 
@@ -676,7 +676,7 @@ async function readFromCache(
     if (options.until !== undefined) {
       filtered = filtered.filter(e => e.timestamp <= options.until!);
     }
-    // AI tag filter — applied in-memory for offline reads
+    
     if (Array.isArray(options.aiTags) && options.aiTags.length > 0) {
       const needles = options.aiTags.map((t) => t.toLowerCase());
       filtered = filtered.filter((e) =>
@@ -703,35 +703,35 @@ async function writeCache(
   } catch {}
 }
 
-// ─── Cache Warm-Up (called from context after successful read) ─────
+
 
 export async function warmCache(
   babyId: string,
   entries: TrackerEntry[]
 ): Promise<void> {
   try {
-    // Read existing cache and merge — preserve older entries that
-    // may not be in the fresh query result.
+    
+    
     const existing = await readFromCache({ babyId, includeDeleted: true });
 
-    // Build a map keyed by id, newest data wins
+    
     const merged = new Map<string, TrackerEntry>();
     for (const e of existing) merged.set(e.id, e);
     for (const e of entries) merged.set(e.id, e);
 
-    // Sort by timestamp descending and keep the newest 500
+    
     const final = [...merged.values()]
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 500);
 
     await writeCache(babyId, final);
   } catch {
-    // Fall back to overwrite if merge fails
+    
     await writeCache(babyId, entries);
   }
 }
 
-// ─── Get Cached Entries (offline read) ──────────────────────────────
+
 
 export async function getCachedEntries(
   babyId: string
@@ -745,7 +745,7 @@ export async function getCachedEntries(
   }
 }
 
-// ─── Cleanup (used on sign-out) ─────────────────────────────────────
+
 
 export async function clearEntryCache(): Promise<void> {
   try {
@@ -757,7 +757,7 @@ export async function clearEntryCache(): Promise<void> {
   } catch {}
 }
 
-// ─── Convenience: get all entries for one tracker ───────────────────
+
 
 export async function getEntriesForTracker(
   babyId: string,
@@ -767,7 +767,7 @@ export async function getEntriesForTracker(
   return getEntries({ babyId, trackerId, limit });
 }
 
-// ─── Convenience: get entries in a date range ───────────────────────
+
 
 export async function getEntriesInRange(
   babyId: string,
@@ -777,7 +777,7 @@ export async function getEntriesInRange(
   return getEntries({ babyId, since: fromMs, until: toMs, limit: 2000 });
 }
 
-// ─── Convenience: get entries containing any AI tag ─────────────────
+
 
 export async function getEntriesByAiTags(
   babyId: string,
@@ -787,7 +787,7 @@ export async function getEntriesByAiTags(
   return getEntries({ babyId, aiTags: tags, limit });
 }
 
-// ─── Convenience: count entries for one tracker ─────────────────────
+
 
 export async function countEntriesForTracker(
   babyId: string,
@@ -808,8 +808,8 @@ export async function countEntriesForTracker(
   }
 }
 
-// ─── Singleton-style Export ─────────────────────────────────────────
-// Declared LAST so every helper it references is already defined.
+
+
 
 export const EntryService = {
   saveEntry,
@@ -827,7 +827,7 @@ export const EntryService = {
   sanitizePhotoUris,
   sanitizeTags,
   sanitizeAiTags,
-  // Convenience helpers
+  
   getEntriesForTracker,
   getEntriesInRange,
   getEntriesByAiTags,

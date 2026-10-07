@@ -1,21 +1,21 @@
-// src/hooks/useVaultUnlock.ts
-// ═══════════════════════════════════════════════════════════════════════════
-// Vault unlock hook — works with biometric AND/OR PIN AND/OR app lock.
-//
-// Behaviour:
-//   • unlock() prompts biometric first; falls back to PIN if biometric fails
-//   • If NO security is configured at all, refuses and tells user to set up
-//   • Auto-relocks after `relockAfterMs` of inactivity (default 60s)
-//   • Auto-relocks when app backgrounds
-//   • Exposes lock() for manual relock
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
+
+
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { useSecurity } from '../context/SecurityContext';
 import { useSweetAlert } from '../components/SweetAlert';
 
-const RELOCK_AFTER_MS = 60_000; // 60s of inactivity → re-lock
+const RELOCK_AFTER_MS = 60_000; 
 
 export interface VaultUnlockState {
   /** True while the vault is currently unlocked in memory. */
@@ -62,7 +62,7 @@ export const useVaultUnlock = (): VaultUnlockState => {
         return;
       }
 
-      // Fallback: read directly from storage (worst case).
+      
       const bioEnabled = await security.readBiometricEnabledFromStorage?.();
       const bioHw = security.isBiometricHardwareAvailable && security.isBiometricEnrolled;
 
@@ -132,7 +132,7 @@ export const useVaultUnlock = (): VaultUnlockState => {
       if (isUnlocked) return true;
       if (isAuthenticating) return false;
 
-      // Refresh status first — user may have just enabled biometric in settings
+      
       await refreshSecurityStatus();
 
       const bioAvailable =
@@ -151,7 +151,7 @@ export const useVaultUnlock = (): VaultUnlockState => {
       setIsAuthenticating(true);
 
       try {
-        // 1) Try biometric first if available
+        
         if (bioAvailable) {
           const result = await security.authenticateWithBiometric(reason);
           if (result.success) {
@@ -163,13 +163,13 @@ export const useVaultUnlock = (): VaultUnlockState => {
           if (result.error === 'user_cancel' || result.error === 'system_cancel') {
             return false;
           }
-          // Biometric failed for another reason — fall through to PIN
+          
         }
 
-        // 2) Try PIN if configured
+        
         if (pinAvailable && security.verifyPin) {
-          // We can't render a PIN entry here, so we navigate to SecurityLock.
-          // Return false and let the caller navigate.
+          
+          
           if (__DEV__) console.log('[Vault] Falling back to PIN via SecurityLock');
           return false;
         }

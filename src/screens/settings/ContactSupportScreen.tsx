@@ -1,4 +1,4 @@
-// screens/settings/ContactSupportScreen.tsx
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
   Alert, 
@@ -208,7 +208,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
   const [user, setUser] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   
-  // Check Supabase connection and get user
+  
   useEffect(() => {
     const checkSupabase = async () => {
       try {
@@ -238,7 +238,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
   
-  // Update email when user changes
+  
   useEffect(() => {
     if (user?.email) {
       setEmail(user.email);
@@ -293,7 +293,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
     setIsSending(true);
     setSendProgress(0);
 
-    // Simulate progress
+    
     const progressInterval = setInterval(() => {
       setSendProgress(prev => {
         if (prev >= 90) {
@@ -305,7 +305,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
     }, 200);
 
     try {
-      // Send to Supabase support table or email
+      
       const supportData = {
         email,
         category,
@@ -317,7 +317,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
         created_at: new Date().toISOString(),
       };
 
-      // Store in support_tickets table
+      
       const { error } = await supabase
         .from('support_tickets')
         .insert([supportData]);

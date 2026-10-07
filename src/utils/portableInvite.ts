@@ -11,7 +11,7 @@ import { supabase } from '@/utils/supabase';
    ============================================================ */
 
 export interface PortableInvitePayload {
-  familyId: string; // babyId
+  familyId: string; 
   babyName: string;
   babyDob?: string;
   babyGender?: string;

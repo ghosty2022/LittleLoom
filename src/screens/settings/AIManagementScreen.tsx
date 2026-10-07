@@ -1,18 +1,18 @@
-// src/screens/settings/AIManagementScreen.tsx — INTELLIGENCE EDITION v2.0
-// Unified with AddEntryScreen theming approach
-// Uses useCustomization + GlassCard design language consistently
-// Glass cards, gradients, and design tokens unified
-//
-// FIXES in v2.0:
-//   ✓ GDPR blocked state now shows unblock option
-//   ✓ Rich glass card UI matching AddEntryScreen
-//   ✓ Per-metric sparkline trends
-//   ✓ Cohort contributor counts
-//   ✓ Manual observation testing
-//   ✓ Export learning data
-//   ✓ Detailed metric drill-down modal
-//   ✓ AI health score (composite)
-//   ✓ Real-time learning progress
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, {
   useCallback,
@@ -858,7 +858,7 @@ export default function AIManagementScreen() {
       const cohort = ageToCohort(currentBaby.birthDate);
       const infoMap: Record<string, CohortInfo> = {};
 
-      // Fetch cohort priors for metrics that have enough local samples
+      
       for (const row of metrics) {
         if ((row.range?.samples || 0) >= PARTIAL_THRESHOLD) {
           try {
@@ -1017,7 +1017,7 @@ const handleUnblockCohort = useCallback(async () => {
               triggerHaptic('success');
               await loadSettings();
 
-              // Re-run bootstrap so the next publish happens immediately
+              
               try {
                 const { bootstrapAI } = await import('../../services/ai/bootstrap');
                 bootstrapAI(currentBaby.id, true).catch(() => {});
@@ -1108,7 +1108,7 @@ const handleUnblockCohort = useCallback(async () => {
         ? metrics.reduce((sum, r) => sum + (r.range?.confidence || 0), 0) / metrics.length
         : 0;
 
-    // Composite health score (0-100)
+    
     const learningProgress = metrics.length > 0 ? (learnedCount / metrics.length) * 60 : 0;
     const confidenceScore = avgConfidence * 30;
     const sampleScore = Math.min(10, (totalSamples / 200) * 10);
@@ -1135,7 +1135,7 @@ const handleUnblockCohort = useCallback(async () => {
   const filteredMetrics = useMemo(() => {
     if (filterCategory === 'all') return metrics;
 
-    // Sort: learned first, then partial, then not started
+    
     return [...metrics]
       .filter(m => METRIC_META[m.metric].category === filterCategory)
       .sort((a, b) => {
@@ -1177,7 +1177,7 @@ const handleUnblockCohort = useCallback(async () => {
     const progress = Math.min(100, (samples / LEARNED_THRESHOLD) * 100);
     const cohortInfo = cohortInfoMap[row.metric];
 
-    // Generate a simple sparkline from mean + stddev (visual placeholder)
+    
     const sparkData = samples >= PARTIAL_THRESHOLD
       ? [row.range.lower95, row.range.mean - row.range.stddev * 0.5, row.range.mean, row.range.mean + row.range.stddev * 0.5, row.range.upper95]
       : [];

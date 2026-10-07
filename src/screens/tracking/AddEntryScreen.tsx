@@ -1,13 +1,13 @@
-// AddEntryScreen.tsx — INTELLIGENCE EDITION v8.0
-// Fixes in this version:
-//   1. No duplicate photo field (removed the standalone SmartPhotoField; the
-//      DynamicTrackerForm renders one when the tracker defines a `photo` field)
-//   2. No duplicate feed pattern suggestions (progressive hook is the single source)
-//   3. TIME_SENSITIVE list trimmed to only trackers with a genuine startTime
-//   4. buildTitle reads amount_unit / solidAmount_unit correctly
-//   5. confirmSave finalizes duration from start/end before saving
-//   6. Recent strip only renders when entries exist and edit mode is off
-//   7. cleanImageUris helper used everywhere so photo URIs are always flat strings
+
+
+
+
+
+
+
+
+
+
 
 import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
@@ -63,13 +63,13 @@ import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
 import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
-// progressive object now includes .hasRealData and .entryCount
+
 import { useAnomalyFeedback } from '../../hooks/useAnomalyFeedback';
 import type { ProgressiveCorrelation } from '../../hooks/useTrackerProgressive';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── Fabric detection ───────────────────────────────────────────────────
+
 const IS_FABRIC =
   (global as any).nativeFabricUIManager != null ||
   typeof (global as any).RN$Bridgeless !== 'undefined' ||
@@ -83,7 +83,7 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ─── Design tokens ──────────────────────────────────────────────────────
+
 const DESIGN = {
   radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
   spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
@@ -92,7 +92,7 @@ const DESIGN = {
 type AddEntryRouteProp = RouteProp<RootStackParamList, 'AddEntry'>;
 type AddEntryNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-// ─── Types ──────────────────────────────────────────────────────────────
+
 interface YesterdayEntry {
   id: string;
   timestamp: number;
@@ -135,7 +135,7 @@ const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-// ─── Sanitizers ─────────────────────────────────────────────────────────
+
 
 /** Flatten any photo URI shape into a deduped string[]. */
 const cleanImageUris = (raw: unknown): string[] => {
@@ -153,7 +153,7 @@ const cleanImageUris = (raw: unknown): string[] => {
   return [...new Set(strings)];
 };
 
-// ─── Field-value formatting ─────────────────────────────────────────────
+
 const formatFieldValue = (key: string, value: unknown): string | null => {
   if (value === undefined || value === null || value === '') return null;
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -186,7 +186,7 @@ const prettifyFieldKey = (k: string) =>
     .trim()
     .replace(/^\w/, (c) => c.toUpperCase());
 
-// ─── Duration formatting ────────────────────────────────────────────────
+
 const formatDuration = (seconds: unknown): string => {
   const s = Number(seconds);
   if (!Number.isFinite(s) || s <= 0) return '';
@@ -197,7 +197,7 @@ const formatDuration = (seconds: unknown): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-// ─── GlassCard ──────────────────────────────────────────────────────────
+
 const GlassCard = memo(
   ({
     children,
@@ -260,7 +260,7 @@ const glassStyles = StyleSheet.create({
   glassContent: { flex: 1 },
 });
 
-// ─── SmartContextHeader ─────────────────────────────────────────────────
+
 const SmartContextHeader = memo(
   ({
     tracker,
@@ -591,7 +591,7 @@ const suggestionStyles = StyleSheet.create({
   dismissBtn: { marginLeft: 4, padding: 2 },
 });
 
-// ─── TimeWheelSelector ──────────────────────────────────────────────────
+
 const TimeWheelSelector = memo(
   ({
     date,
@@ -868,7 +868,7 @@ const insightStripStyles = StyleSheet.create({
   priorityText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
 });
 
-// ─── StreakGoalRing ─────────────────────────────────────────────────────
+
 const StreakGoalRing = memo(
   ({
     streak,
@@ -1002,7 +1002,7 @@ const ringStyles = StyleSheet.create({
   actionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });
 
-// ─── YesterdayStrip ─────────────────────────────────────────────────────
+
 const YesterdayStrip = memo(
   ({
     entries,
@@ -1166,7 +1166,7 @@ const yesterdayStyles = StyleSheet.create({
   moreText: { fontSize: 10, fontWeight: '600', marginTop: 4 },
 });
 
-// ─── ConfirmModal ───────────────────────────────────────────────────────
+
 interface ConfirmModalProps {
   visible: boolean;
   onClose: () => void;
@@ -1527,7 +1527,7 @@ const modalStyles = StyleSheet.create({
   confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
 
-// ─── YesterdayEntriesModal ──────────────────────────────────────────────
+
 interface YesterdayEntriesModalProps {
   visible: boolean;
   onClose: () => void;
@@ -1946,9 +1946,9 @@ const yesterdayModalStyles = StyleSheet.create({
 
 // (DatePickerModal removed — the picker is now driven by useDateTimePicker)
 
-// ═══════════════════════════════════════════════════════════════════════
-// TRACKER CONTENT
-// ═══════════════════════════════════════════════════════════════════════
+
+
+
 
 function TrackerContent({
   tracker,
@@ -2022,7 +2022,7 @@ function TrackerContent({
     refresh: refreshProgressive,
   } = progressive;
 
-  // ── Derived data ─────────────────────────────────────────────────
+  
   const recentEntries = useMemo(() => {
     if (!tracker || !currentBaby) return [];
     return getEntries(tracker.id, 3);
@@ -2056,7 +2056,7 @@ function TrackerContent({
     return entries.length > 0 ? new Date(entries[0].timestamp) : null;
   }, [tracker, getEntries, currentBaby]);
 
-  // ── Quick templates ─────────────────────────────────────────────
+  
   const quickTemplates = useMemo((): QuickTemplate[] => {
     if (!tracker) return [];
     const base: QuickTemplate[] = [];
@@ -2165,7 +2165,7 @@ function TrackerContent({
     return base;
   }, [tracker]);
 
-  // ── Smart suggestions — progressive hook is the single source ────
+  
   const smartSuggestions = useMemo((): SmartSuggestion[] => {
     if (!tracker) return [];
     const items: SmartSuggestion[] = [];
@@ -2185,7 +2185,7 @@ function TrackerContent({
     return items;
   }, [tracker, suggestions]);
 
-  // ── Context insights ────────────────────────────────────────────
+  
   const contextInsights = useMemo((): ContextInsight[] => {
     if (!tracker || !currentBaby) return [];
     const items: ContextInsight[] = [];
@@ -2222,7 +2222,7 @@ function TrackerContent({
     return items;
   }, [tracker, currentBaby, entriesToday, isAtRisk, streak, hoursUntilBreak, timeContext]);
 
-  // ── Effects ─────────────────────────────────────────────────────
+  
   useEffect(() => {
     if (selectedTrackerId) {
       refreshProgressive();
@@ -2252,7 +2252,7 @@ function TrackerContent({
     setYesterdayEntries(filtered);
   }, [tracker, getEntries, editEntryId, currentBaby, setYesterdayEntries]);
 
-  // ── Seed prefill / suggestions / correlation prefill ─────────────
+  
   useEffect(() => {
     if (!tracker) return;
     let didApplyCorrelation = false;
@@ -2260,7 +2260,7 @@ function TrackerContent({
       const newData = { ...prev };
       let hasChanges = false;
 
-      // Only seed startTime for trackers that genuinely have a startTime field
+      
       const TIME_SENSITIVE = ['sleep', 'feed', 'dream_feed'];
       if (
         TIME_SENSITIVE.includes(tracker.id) &&
@@ -2304,7 +2304,7 @@ function TrackerContent({
     date,
   ]);
 
-  // ── Load entry for edit mode ────────────────────────────────────
+  
   useEffect(() => {
     if (!editEntryId || !tracker) return;
     const entry = getEntries(tracker.id).find((e: any) => e.id === editEntryId);
@@ -2319,7 +2319,7 @@ function TrackerContent({
     }
   }, [editEntryId, tracker, getEntries, setDate, setPendingData, setPendingOptions]);
 
-  // ── Anomaly detection ───────────────────────────────────────────
+  
   useEffect(() => {
     if (!currentBaby?.id || !tracker) return;
 
@@ -2360,7 +2360,7 @@ function TrackerContent({
     return () => clearTimeout(timeout);
   }, [pendingData, currentBaby?.id, tracker?.id]);
 
-  // ── Callbacks ───────────────────────────────────────────────────
+  
   const dateRef = useRef(date);
   dateRef.current = date;
 
@@ -2402,9 +2402,9 @@ function TrackerContent({
     );
   }, [datePicker, setDate]);
 
-  // Android-only: opening the picker via the imperative API
-  // already handles "date then time" internally in the hook.
-  // On iOS, `datePicker.iosPicker.visible` drives the modal.
+  
+  
+  
 
   const buildTitle = useCallback(
     (data: Record<string, unknown>): string => {
@@ -2438,9 +2438,9 @@ function TrackerContent({
               ? 'Night Sleep'
               : d.sleepType || 'Sleep';
 
-          // Only append duration when it's a real computed value.
-          // The `dur` value comes from formatDuration() which handles
-          // raw seconds, strings, and ISO — never produces "3600".
+          
+          
+          
           const durationText = dur ? ` • ${dur}` : '';
           return `${sleepLabel}${durationText}`.trim();
         }
@@ -2498,10 +2498,10 @@ function TrackerContent({
   const confirmSave = useCallback(async () => {
     if (!tracker) return;
     try {
-      // Final data assembly — compute duration from start/end if missing
+      
       const finalData: Record<string, unknown> = { ...pendingData };
 
-      // ─── Duration computation for sleep/feed ──────────────────────
+      
       const durationTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
       if (durationTrackers.includes(tracker.id)) {
         const hasStart = finalData.startTime && String(finalData.startTime).length > 0;
@@ -2512,26 +2512,26 @@ function TrackerContent({
           const endMs = new Date(String(finalData.endTime)).getTime();
           if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
             const durationSeconds = Math.round((endMs - startMs) / 1000);
-            // Only set duration if it's meaningful (>= 60 seconds)
+            
             if (durationSeconds >= 60) {
               finalData.duration = durationSeconds;
               finalData.status = 'completed';
             } else {
-              // Too short — mark as ongoing or skip
+              
               delete finalData.duration;
               finalData.status = hasEnd ? 'completed' : 'ongoing';
             }
           } else {
-            // Invalid times — mark ongoing
+            
             delete finalData.duration;
             finalData.status = 'ongoing';
           }
         } else if (hasStart && !hasEnd) {
-          // Ongoing session — no duration yet
+          
           delete finalData.duration;
           finalData.status = 'ongoing';
         } else if (hasEnd && !hasStart) {
-          // End time without start — can't compute duration
+          
           delete finalData.duration;
           finalData.status = 'completed';
         }
@@ -2590,7 +2590,7 @@ function TrackerContent({
   const handleApplySuggestion = useCallback(
     (suggestion: SmartSuggestion) => {
       HAPTIC_LIGHT();
-      // Merge the suggestion into pendingData
+      
       setPendingData((prev: any) => {
         const next = { ...prev };
         if (suggestion.fieldId && suggestion.value !== undefined) {
@@ -2598,7 +2598,7 @@ function TrackerContent({
         }
         return next;
       });
-      // Mark as applied so it disappears from the suggestion strip
+      
       setAppliedSuggestions((prev: Set<string>) => {
         const next = new Set(prev);
         next.add(suggestion.id);
@@ -2666,7 +2666,7 @@ function TrackerContent({
       templates,
       trends,
       timeContext,
-      // Pass real entries so form can show recent values if needed
+      
       yesterdayEntries: yesterdayEntries.slice(0, 5),
       todayEntries: getEntries(tracker?.id ?? '').filter((e: any) => {
         const t = e.timestamp;
@@ -2847,7 +2847,7 @@ function TrackerContent({
 
           {/* Learning-mode banner — shown when we don't have enough data */}
           {(() => {
-            // Defensive: progressive may not yet expose hasRealData
+            
             const hasRealData =
               typeof progressive?.hasRealData === 'boolean'
                 ? progressive.hasRealData
@@ -2914,7 +2914,7 @@ function TrackerContent({
             const suggestions = progressive?.relatedTrackerSuggestions;
             if (!Array.isArray(suggestions) || suggestions.length === 0) return null;
             
-            // Deduplicate by trackerId — only show each tracker once
+            
             const seen = new Set<string>();
             const unique = suggestions.filter((s: any) => {
               if (!s?.trackerId || seen.has(s.trackerId)) return false;
@@ -3359,7 +3359,7 @@ function TrackerContent({
                 }
               }}
               // Prevent the form from re-seeding state on every render
-              // (fixes the "reset while typing" bug)
+              
               key={selectedTrackerId || 'no-tracker'}
             />
           </View>
@@ -3455,7 +3455,7 @@ function TrackerContent({
               {/* Lazy-require to keep the native module off the Android bundle */}
               {(() => {
                 try {
-                  // eslint-disable-next-line @typescript-eslint/no-var-requires
+                  
                   const DateTimePicker = require('@react-native-community/datetimepicker').default;
                   return (
                     <DateTimePicker
@@ -3479,8 +3479,8 @@ function TrackerContent({
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// MAIN SCREEN — WRAPPER COMPONENT
-// ═══════════════════════════════════════════════════════════════════════
+
+
 
 export default function AddEntryScreen() {
   const navigation = useNavigation<AddEntryNavigationProp>();
@@ -3549,9 +3549,9 @@ export default function AddEntryScreen() {
     [route.params]
   );
 
-  // Force a fresh form instance every time the user picks a different tracker.
-  // This prevents stale state (field values, photo URIs, suggestions) from
-  // leaking between trackers.
+  
+  
+  
   const [formInstanceKey, setFormInstanceKey] = useState(0);
 
   const handleTrackerSelect = useCallback((trackerId: string) => {
@@ -3570,7 +3570,7 @@ export default function AddEntryScreen() {
     setAppliedSuggestions(new Set());
     setShowYesterdayModal(false);
     setYesterdayEntries([]);
-    // Increment key so the form remounts with clean internal state
+    
     setFormInstanceKey((k) => k + 1);
     setDate(new Date());
   }, []);
@@ -3757,8 +3757,8 @@ export default function AddEntryScreen() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// STYLES
-// ═══════════════════════════════════════════════════════════════════════
+
+
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

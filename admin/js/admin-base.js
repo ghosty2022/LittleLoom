@@ -1,9 +1,9 @@
-// ─── ADMIN BASE - Shared functionality for all admin pages ──────────────
+
 
 (function() {
     'use strict';
 
-    // ─── CONFIG ──────────────────────────────────────────────────────────
+    
     const CONFIG = {
         SUPABASE_URL: 'https://qoozrrljpgsyhxfqxnzf.supabase.co',
         SUPABASE_ANON_KEY: 'sb_publishable_RNzz7jvsGmrRp9c94JiPuA_ooZt_gmm',
@@ -169,7 +169,7 @@
         ]
     };
 
-    // ─── STATE ──────────────────────────────────────────────────────────
+    
     let supabase = null;
     let session = null;
     let currentUserRole = 'guest';
@@ -178,7 +178,7 @@
     let sessionTimeRemaining = 30 * 60;
     let sessionWarningShown = false;
 
-    // ─── INIT SUPABASE ──────────────────────────────────────────────────
+    
     function initSupabase() {
         try {
             supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
@@ -191,7 +191,7 @@
         }
     }
 
-    // ─── SESSION FUNCTIONS ─────────────────────────────────────────────
+    
     function getSessionData() {
         try {
             let data = sessionStorage.getItem(CONFIG.SESSION_KEYS.SESSION_DATA);
@@ -242,9 +242,9 @@
         localStorage.setItem(CONFIG.SESSION_KEYS.REMEMBER_ME, value ? 'true' : 'false');
     }
 
-    // ─── AUTH CHECK ─────────────────────────────────────────────────────
+    
     async function checkAuth() {
-        // Check if we're on login page
+        
         if (window.location.pathname.includes('login.html') || window.location.pathname.endsWith('/login')) {
             return true;
         }
@@ -375,7 +375,7 @@
         }
     }
 
-    // ─── UI UPDATE ─────────────────────────────────────────────────────
+    
     function updateUIForAuth(session) {
         const emailEl = document.getElementById('sidebarEmail');
         const nameEl = document.getElementById('sidebarName');
@@ -442,7 +442,7 @@
         return false;
     }
 
-    // ─── SESSION TIMER ─────────────────────────────────────────────────
+    
     function startSessionTimer() {
         if (sessionTimer) clearInterval(sessionTimer);
         sessionTimeRemaining = CONFIG.SESSION_TIMEOUT_MINUTES * 60;
@@ -452,7 +452,7 @@
             sessionTimeRemaining--;
             updateSessionDisplay();
 
-            // Show warning when 30 seconds left - subtle status change
+            
             if (sessionTimeRemaining <= 30 && !sessionWarningShown) {
                 sessionWarningShown = true;
                 const sessionEl = document.getElementById('statusBarSession');
@@ -528,7 +528,7 @@
         }
     }
 
-    // ─── LOGOUT ─────────────────────────────────────────────────────────
+    
     async function handleLogout() {
         const confirmed = await new Promise((resolve) => {
             openModal(
@@ -562,7 +562,7 @@
         }
     }
 
-    // ─── TOAST ──────────────────────────────────────────────────────────
+    
     function showToast(message, type = 'info', duration = 4000) {
         let container = document.getElementById('toastContainer');
         if (!container) {
@@ -587,7 +587,7 @@
         }, duration);
     }
 
-    // ─── MODAL ──────────────────────────────────────────────────────────
+    
     let modalResolve = null;
     let modalData = null;
 
@@ -637,7 +637,7 @@
         closeModal(false);
     }
 
-    // ─── NAVIGATION ─────────────────────────────────────────────────────
+    
     function navigateTo(page) {
         if (window.innerWidth <= 1024) {
             const sidebar = document.getElementById('sidebar');
@@ -670,7 +670,7 @@
         }
     }
 
-    // ─── BUILD SIDEBAR ──────────────────────────────────────────────────
+    
     function buildSidebar() {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
@@ -726,7 +726,7 @@
         sidebar.innerHTML = html;
     }
 
-    // ─── EXPOSE GLOBALLY ────────────────────────────────────────────────
+    
     window._CONFIG = CONFIG;
     window._supabaseClient = null;
     window._initSupabase = initSupabase;

@@ -1,5 +1,5 @@
-// hooks/usePhotoCapture.ts
-// Complete photo capture hook using expo-image-picker
+
+
 
 import { useState, useCallback } from 'react';
 import { Alert, Platform, Linking } from 'react-native';
@@ -43,7 +43,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
-  // ─── Permission Helpers ────────────────────────────────────────
+  
 
   const requestCameraPermission = useCallback(async (): Promise<boolean> => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -91,7 +91,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
     return true;
   }, []);
 
-  // ─── Capture Methods ───────────────────────────────────────────
+  
 
   const takePhoto = useCallback(async (): Promise<CapturedPhoto | null> => {
     if (photos.length >= (opts.maxPhotos || 5)) {
@@ -130,7 +130,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
       triggerHaptic('success');
       setPhotos(prev => [...prev, photo]);
 
-      // ── On-device classification (fire-and-forget) ──────────────
+      
       try {
         const { classifyImage } = await import('../services/ai/PhotoClassifier');
         const result = await classifyImage(asset.uri, 3);
@@ -139,7 +139,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
             `[PhotoCapture] Tagged: ${result.topLabel} (${Math.round(result.topConfidence * 100)}%)`
           );
         }
-        // Attach the tag to the photo object so callers can persist it
+        
         (photo as any).aiTags = result.labels.map((l) => l.label);
       } catch (e) {
         if (__DEV__) console.warn('[PhotoCapture] classification failed:', e);
@@ -193,7 +193,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
 
       triggerHaptic('success');
       setPhotos(prev => [...prev, ...newPhotos]);
-      // NOTE: persistence handled by the caller (see above).
+      
       return newPhotos;
     } catch (error) {
       console.error('Library error:', error);
@@ -204,7 +204,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
     }
   }, [photos.length, opts, requestLibraryPermission, triggerHaptic]);
 
-  // ─── Photo Management ──────────────────────────────────────────
+  
 
   const removePhoto = useCallback((index: number) => {
     triggerHaptic('light');
@@ -228,7 +228,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
     setPhotos(uris.map(uri => ({ uri, width: 0, height: 0 })));
   }, []);
 
-  // ─── Action Sheet Handler ──────────────────────────────────────
+  
 
   const showPhotoOptions = useCallback(() => {
     Alert.alert(

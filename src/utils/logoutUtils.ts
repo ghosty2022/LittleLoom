@@ -1,4 +1,4 @@
-// src/utils/logoutUtils.ts
+
 import { Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 
@@ -20,7 +20,7 @@ export const showLogoutConfirmation = async (
         onPress: async () => {
           try {
             await authContext.signOut();
-            // Navigation will automatically redirect to login
+            
             if (onLogoutComplete) {
               onLogoutComplete();
             }

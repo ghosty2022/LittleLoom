@@ -1,6 +1,6 @@
-// src/screens/main/HomeScreen.tsx - COMPLETE FIXED V3.0
-// Instant render (cached), Timeline-style activity, theme-safe text,
-// correct navigation, real per-tracker badge counts, modern header.
+
+
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -28,7 +28,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
-// REMOVED: useActivity — trackerEntries from useTracker is the single source of truth
+
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCommunity } from '../../context/CommunityContext';
@@ -71,7 +71,7 @@ const { width, height } = Dimensions.get('window');
 const SCREEN_W = width;
 const SCREEN_H = height;
 
-// Use the logo image instead of text
+
 const littleLoomLogo = require('../../../assets/logo 4.png');
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1343,7 +1343,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   const borderColor = isDark ? (fullTheme?.border || 'rgba(255,255,255,0.06)') : 'rgba(0,0,0,0.04)';
 
   // Slightly smaller logo since the right cluster has 4 icons.
-  // Still bigger than the original (0.14) but respects small phones.
+  
   const logoSize = Math.min(SCREEN_W * 0.16, 64);
 
   return (
@@ -1944,7 +1944,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     const todayTime = today.getTime();
     const DAY = 86400000;
 
-    // If nothing logged today, start counting from yesterday (streak still alive)
+    
     let cursor = dayKeys.has(String(todayTime)) ? todayTime : todayTime - DAY;
     if (!dayKeys.has(String(cursor))) return 0;
 
@@ -1970,8 +1970,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     const todayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today));
     const yesterdayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), yesterday));
 
-    // Helper: pull duration seconds from entry.data.duration OR entry.duration.
-    // DynamicTrackerForm saves to entry.data.duration as seconds.
+    
+    
     const getDurationSeconds = (a: any): number => {
       const raw =
         a?.data?.duration ??

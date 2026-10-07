@@ -1,18 +1,18 @@
-// src/hooks/useTrackerAchievements.ts
-// FIX: Use direct imports, not useSafeContexts
+
+
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { differenceInDays, differenceInHours, isSameDay, subDays, format, addHours, addDays } from 'date-fns';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../utils/supabase';
 
-// FIX: Direct imports from context sources
+
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
-// Inline computeStreak — no external dependency, no fallback mock data.
-// Uses real tracker entries passed in.
+
+
 const computeStreak = (
   entries: any[],
   trackerId?: string
@@ -42,7 +42,7 @@ const computeStreak = (
   let longestStreak = 0;
   const lastLoggedAt = filtered[0].timestamp;
 
-  // Count consecutive days with entries
+  
   const loggedDays = new Set(
     filtered.map((e: any) => {
       const ts = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
@@ -52,14 +52,14 @@ const computeStreak = (
     })
   );
 
-  // Current streak: count backwards from today
+  
   let checkDate = todayTime;
   while (loggedDays.has(checkDate)) {
     currentStreak++;
     checkDate -= 86400000;
   }
 
-  // If no entry today but entry yesterday, streak is still "alive" but at risk
+  
   if (currentStreak === 0 && loggedDays.has(todayTime - 86400000)) {
     currentStreak = 1;
     checkDate = todayTime - 2 * 86400000;
@@ -69,7 +69,7 @@ const computeStreak = (
     }
   }
 
-  // Longest streak
+  
   const sortedDays = [...loggedDays].sort((a, b) => a - b);
   let tempStreak = 1;
   longestStreak = 1;
@@ -93,8 +93,8 @@ const computeStreak = (
   };
 };
 
-// ... rest of the file remains the same ...
-// Type definitions
+
+
 export type AchievementCategory =
   | 'milestone'
   | 'streak'
@@ -183,15 +183,15 @@ const CATEGORY_META: Record<AchievementCategory, { label: string; icon: string; 
    ─────────────────────────────────────────────────────────────── */
 
 export const useTrackerAchievements = (): TrackerAchievementSummary => {
-  // FIX: Use direct imports that don't go through useSafeContexts
+  
   const tracker = useTracker();
   const baby = useBaby();
   const { growthIndex } = useGrowthIntelligence();
   const { reminders: predictiveReminders } = usePredictiveReminders();
 
-  // ─── Stable refs — keep the 200+ achievement useMemo from re-running
-  //     on every provider render (tracker.getEntries + tracker.entries
-  //     are fresh references every pass).
+  
+  
+  
   const getEntriesRef = useRef(tracker?.getEntries);
   getEntriesRef.current = tracker?.getEntries;
   const getEntriesStable = useCallback(
@@ -215,7 +215,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
   useEffect(() => {
     const load = async () => {
       try {
-        // 1. Local first (fast)
+        
         const [savedIds, savedAt] = await Promise.all([
           AsyncStorage.getItem(ACHIEVEMENTS_UNLOCKED_KEY),
           AsyncStorage.getItem(ACHIEVEMENTS_UNLOCKED_AT_KEY),
@@ -225,7 +225,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
         if (savedIds) { localIds = JSON.parse(savedIds); setUnlockedHistory(new Set(localIds)); }
         if (savedAt) { localAt = JSON.parse(savedAt); setUnlockedAtMap(localAt); }
 
-        // 2. Cloud merge (authoritative — might have more from another device)
+        
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (user?.id) {
@@ -246,7 +246,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
             const cloudIds: string[] = cloudIdsRes.data?.value ? JSON.parse(cloudIdsRes.data.value) : [];
             const cloudAt: Record<string, number> = cloudAtRes.data?.value ? JSON.parse(cloudAtRes.data.value) : {};
 
-            // Union of local + cloud
+            
             const mergedIds = new Set<string>([...localIds, ...cloudIds]);
             const mergedAt = { ...localAt, ...cloudAt };
             if (mergedIds.size > localIds.length || Object.keys(mergedAt).length > Object.keys(localAt).length) {
@@ -279,11 +279,11 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
         if (!updatedAt[id]) updatedAt[id] = now;
       });
 
-      // ─── Local cache (fast) ─────────────────────────────────
+      
       await AsyncStorage.setItem(ACHIEVEMENTS_UNLOCKED_KEY, JSON.stringify([...updated]));
       await AsyncStorage.setItem(ACHIEVEMENTS_UNLOCKED_AT_KEY, JSON.stringify(updatedAt));
 
-      // ─── Cloud sync via app_settings (survives reinstall) ───
+      
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user?.id) {
@@ -322,10 +322,10 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
 
   /* ── Core achievement builder ── */
   const achievements: Achievement[] = useMemo(() => {
-    // Guard against missing baby
+    
     if (!baby?.currentBaby?.id) return [];
     
-    // Guard against missing growthIndex
+    
     const gi = growthIndex ?? null;
 
     const babyId = baby.currentBaby.id;
@@ -375,7 +375,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
       (e: any) => Number(e.data?.quality) >= 4 || e.data?.quality === 'good' || e.data?.quality === 'excellent'
     ).length;
 
-    // Distinct feed types — counts unique values across breast/bottle/solid/water
+    
     const feedTypes = new Set(
       feedEntries
         .map((e: any) => {
@@ -399,7 +399,7 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
     const earlyBird = allEntries.some((e: any) => new Date(e.timestamp).getHours() < 7);
     const nightOwl = allEntries.some((e: any) => new Date(e.timestamp).getHours() >= 22);
 
-    // Photo count — handle string[], PhotoMeta[], and nested arrays
+    
     const photoCount = allEntries.filter((e: any) => {
       const raw = e.photoUris;
       if (!Array.isArray(raw)) return false;
@@ -417,9 +417,9 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
 
     const usedTypes = new Set(allEntries.map((e: any) => e.trackerId)).size;
 
-    // NOTE: `gi` is already declared at the top of this memo (line ~350).
-    // Reuse it here — do NOT redeclare.
-    // ─── Use `??` not `||` so legitimate 0 values aren't overwritten ──
+    
+    
+    
     const restScore = gi?.restScore?.value ?? 0;
     const healthStability = gi?.healthStability?.value ?? 0;
     const milestoneReadiness = gi?.milestoneReadiness || [];
@@ -1064,17 +1064,17 @@ export const useTrackerAchievements = (): TrackerAchievementSummary => {
       ...predictiveAchievements,
     ];
 
-    // NOTE: `getEntries` is called via the stable ref captured at the top
-    //       of the hook so the memo doesn't thrash. See top of hook for
-    //       `getEntriesStable`.
+    
+    
+    
     return built.map((a) => ({ ...a, unlockedAt: unlockedAtMap[a.id] }));
   }, [
     achievementsFingerprint,
     baby?.currentBaby?.id,
     baby?.currentBaby?.birthDate,
-    // Score + reminder count are already hashed into achievementsFingerprint.
-    // We also include `growthIndex.lastUpdated` so the memo refreshes when
-    // the score actually recomputes (not just when it changes value).
+    
+    
+    
     growthIndex?.lastUpdated,
     unlockedHistory,
     unlockedAtMap,

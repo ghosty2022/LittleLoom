@@ -1,6 +1,6 @@
-// src/hooks/useDatabase.ts
-// Safe wrapper — falls back to a no-op shape when the provider isn't
-// mounted yet, instead of crashing the tree.
+
+
+
 
 import { useContext } from 'react';
 import { DatabaseContext } from '../context/DatabaseContext';

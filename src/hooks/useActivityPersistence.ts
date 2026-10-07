@@ -129,9 +129,9 @@ export function useEmergencySave<T>(
   const dataRef = useRef(data);
   const hasSavedRef = useRef(false);
 
-  // Stable ref — saveFn changes every render in most call-sites, which
-  // would cause the AppState listener to be torn down and re-registered
-  // repeatedly. On Android this can drop pending callbacks mid-invoke.
+  
+  
+  
   const saveFnRef = useRef(saveFn);
   saveFnRef.current = saveFn;
 
@@ -184,7 +184,7 @@ export function useComponentPersistence<T extends Record<string, any>>(
   const {
     persistOnDismount = true,
     restoreOnMount = true,
-    expiryMs = 24 * 60 * 60 * 1000, // 24 hours
+    expiryMs = 24 * 60 * 60 * 1000, 
   } = options || {};
 
   const [state, setState] = useState<T>(initialState);

@@ -17,7 +17,7 @@ interface OptimizedIconProps {
   style?: TextStyle;
 }
 
-// ─── FIX #1: Module-level lookup table, no object allocation per render ─
+
 const ICON_COMPONENTS: Record<IconSet, React.ComponentType<any>> = {
   Ionicons,
   MaterialIcons,
@@ -27,7 +27,7 @@ const ICON_COMPONENTS: Record<IconSet, React.ComponentType<any>> = {
   AntDesign,
 };
 
-// ─── FIX #2: Pre-computed fallback, no warn in production ──────────────
+
 const FALLBACK_ICON = Ionicons;
 const FALLBACK_NAME = 'help-circle-outline';
 
@@ -41,7 +41,7 @@ const OptimizedIcon = memo<OptimizedIconProps>(({
   const IconComponent = ICON_COMPONENTS[set];
 
   if (!IconComponent) {
-    // Only warn in dev, not production
+    
     if (__DEV__) console.warn(`Icon set "${set}" not found, falling back to Ionicons`);
     return <FALLBACK_ICON name={FALLBACK_NAME} size={size} color={color} style={style} />;
   }

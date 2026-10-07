@@ -1,4 +1,4 @@
-// screens/settings/LanguageSettingsScreen.tsx
+
 import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useState, useCallback, useEffect } from 'react';
 import {
@@ -77,7 +77,7 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load saved language preference
+  
   useEffect(() => {
     const loadLanguage = async () => {
       if (isConnected && user) {
@@ -114,10 +114,10 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
     setSelected(code);
 
     try {
-      // Save locally
+      
       await updateSettings({ language: code as any });
 
-      // Save to Supabase if connected
+      
       if (isConnected && user) {
         const { error } = await supabase
           .from('user_preferences')

@@ -1,4 +1,4 @@
-// App.tsx — LittleLoom (AI-enabled, lazy-loaded)
+
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -32,15 +32,15 @@ import { ensureAllImageDirs } from '@/utils/imageUtils';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
 
-// ─── AI (lazy — does NOT pull heavy packages into the main chunk) ─────
+
 import { AIBootstrapGate } from '@/components/AIBootstrapGate';
 
-// ─── SweetAlert ───────────────────────────────────────────────────────
+
 import SweetAlertProvider from '@/components/SweetAlert';
 import { setSweetAlert } from '@/utils/imageUtils';
 import { useSweetAlert } from '@/components/SweetAlert';
 
-// ─── Notifications (unified service) ──────────────────────────────────
+
 import { notificationService } from '@/services/NotificationService';
 
 LogBox.ignoreLogs([
@@ -50,7 +50,7 @@ LogBox.ignoreLogs([
   'Navigation state from different app version',
   'Reanimated',
   'Worklets',
-  // AI packages sometimes warn about missing native modules in dev
+  
   'expo-ai-kit',
   'react-native-executorch',
   'edge-llm',
@@ -58,7 +58,7 @@ LogBox.ignoreLogs([
 
 SplashScreen.preventAutoHideAsync();
 
-// CRITICAL: Only preload the fonts you actually need before first paint.
+
 const ESSENTIAL_FONTS = {
   Ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
 };
@@ -205,7 +205,7 @@ export default function App(): React.ReactElement | null {
   const notificationInitRef = useRef(false);
   const sessionCleanupDoneRef = useRef(false);
 
-  // ── PHASE -1: One-time cleanup of corrupted session keys ──────────
+  
   useEffect(() => {
     if (sessionCleanupDoneRef.current) return;
     sessionCleanupDoneRef.current = true;
@@ -263,7 +263,7 @@ export default function App(): React.ReactElement | null {
     clearCorruptedSession();
   }, []);
 
-  // ── PHASE 0: read theme from DB immediately ───────────────────────
+  
   useEffect(() => {
     let mounted = true;
 
@@ -295,14 +295,14 @@ export default function App(): React.ReactElement | null {
     };
   }, [systemScheme]);
 
-  // ── PHASE 1: parallel init, aggressive timeout ────────────────────
+  
   useEffect(() => {
     if (!themeLoaded || initStartedRef.current) return;
     initStartedRef.current = true;
 
     const init = async () => {
       try {
-        // Essential fonts only — with a hard 2s timeout.
+        
         const essentialTasks = Promise.all([
           Font.loadAsync(ESSENTIAL_FONTS).catch((e) => {
             console.warn('[App] Font loading failed:', e);
@@ -328,7 +328,7 @@ export default function App(): React.ReactElement | null {
         }
         setReady(true);
 
-        // Background tasks — never await in the critical path.
+        
         runBackgroundTasks().catch((e) => {
           console.warn('[App] Background tasks error:', e);
         });
@@ -354,7 +354,7 @@ export default function App(): React.ReactElement | null {
 
   const runBackgroundTasks = async () => {
     try {
-      // Non-essential fonts
+      
       const additionalFonts = {
         MaterialIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
         MaterialCommunityIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'),
@@ -450,7 +450,7 @@ export default function App(): React.ReactElement | null {
     }
   };
 
-  // ── PHASE 2: save nav state on background + flush notif queue ─────
+  
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       if (next === 'active') {

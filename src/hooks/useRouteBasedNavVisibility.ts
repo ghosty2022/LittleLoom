@@ -1,4 +1,4 @@
-// src/hooks/useRouteBasedNavVisibility.ts
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigationState } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -11,7 +11,7 @@ interface NavState {
   progress: number;
 }
 
-// Singleton state — shared across all instances
+
 let _currentState: NavState = { isVisible: true, isFullyHidden: false, progress: 1 };
 let _listeners = new Set<(state: NavState) => void>();
 let _forcedRoute: string | null = null;
@@ -21,29 +21,29 @@ const emit = (state: NavState) => {
   _listeners.forEach(cb => cb(state));
 };
 
-// ─── ROUTE CLASSIFICATION ─────────────────────────────────────────
 
-// These routes ALWAYS show the tab bar (Home main screen only)
+
+
 const ALWAYS_VISIBLE_ROUTES = new Set(['Home']);
 
-// These routes are TAB BAR SCREENS — nav shows briefly then hides when entering content
-// Actually, we don't need this. The tab bar is part of the navigator, not the screen.
-// The tab bar shows when the tab is focused. We control per-tab behavior.
 
-// Routes where tab bar is COMPLETELY HIDDEN
+
+
+
+
 const ALWAYS_HIDDEN_ROUTES = new Set([
-  // Auth
+  
   'Onboarding', 'Login', 'SignUp', 'ForgotPassword',
-  // Setup
+  
   'CoParentInviteScreen', 'Parent2Setup', 'BabyOptional', 'CreateBabyProfile', 'AddParent',
-  // Security
+  
   'SecurityLock', 'BiometricSetup', 'SecurityCenter',
-  // Community sub-screens
+  
   'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile', 
   'Chat', 'ChatList', 'Notifications', 'CommunityProfile', 
   'TopicMembers', 'Followers', 'Following', 'SearchUsers', 'BlockedUsers', 'Report',
   'CommunitySplash', 'CommunityOnboarding',
-  // Main stack screens
+  
   'Timeline', 'PottyTracker', 'FeedTracker', 'SleepTracker',
   'Profile', 'SwitchBaby', 'EditProfile', 'EditGuardian',
   'Gallery', 'FamilyChatList', 'FamilyChat',
@@ -55,19 +55,19 @@ const ALWAYS_HIDDEN_ROUTES = new Set([
   'VaccinationSchedule',
 ]);
 
-// Tab names where the tab bar should HIDE when entering the tab's main screen
-// (i.e., not Home — Home stays visible)
+
+
 const HIDE_ON_ENTER_TABS = new Set(['Track', 'Grow', 'Connect', 'More']);
 
-// ─── HOOK ───────────────────────────────────────────────────────────
+
 export const useRouteBasedNavVisibility = () => {
   const [state, setState] = useState<NavState>(_currentState);
 
-  // Get current route from navigation state
+  
   const routeName = useNavigationState((state) => {
     if (!state || typeof state.index !== 'number') return '';
     
-    // Find the deepest active route
+    
     let route = state.routes?.[state.index];
     if (!route) return '';
     
@@ -79,7 +79,7 @@ export const useRouteBasedNavVisibility = () => {
     return route?.name || '';
   });
 
-  // Get parent tab info
+  
   const parentTab = useNavigationState((state) => {
     if (!state || typeof state.index !== 'number') return null;
     const mainRoute = state.routes?.[state.index];
@@ -100,33 +100,33 @@ export const useRouteBasedNavVisibility = () => {
     return unsub(setState);
   }, []);
 
-  // Core logic: determine visibility based on route
+  
   useEffect(() => {
     const currentRoute = _forcedRoute || routeName;
     
-    // 1. Always hidden routes
+    
     if (ALWAYS_HIDDEN_ROUTES.has(currentRoute)) {
       emit({ isVisible: false, isFullyHidden: true, progress: 0 });
       return;
     }
 
-    // 2. Home tab — always visible
+    
     if (currentRoute === 'Home') {
       emit({ isVisible: true, isFullyHidden: false, progress: 1 });
       return;
     }
 
-    // 3. Track, Grow, Connect, More tabs — hide when entering
+    
     if (HIDE_ON_ENTER_TABS.has(currentRoute)) {
       emit({ isVisible: false, isFullyHidden: true, progress: 0 });
       return;
     }
 
-    // 4. Community main — check if we should show (only on tab switch, not persist)
-    // Actually, CommunityMain is handled by the tab navigator itself
-    // The tab bar shows when the tab is focused. We let the navigator handle that.
+    
+    
+    
 
-    // Default: hidden for safety
+    
     emit({ isVisible: false, isFullyHidden: true, progress: 0 });
   }, [routeName, parentTab]);
 
@@ -139,7 +139,7 @@ export const useRouteBasedNavVisibility = () => {
   }, []);
 
   const reset = useCallback(() => {
-    // Re-evaluate based on current route
+    
     const currentRoute = routeName;
     if (ALWAYS_HIDDEN_ROUTES.has(currentRoute)) {
       emit({ isVisible: false, isFullyHidden: true, progress: 0 });

@@ -1,5 +1,5 @@
-// src/screens/auth/SignUpScreen.tsx - COMPLETE FIXED VERSION
-// FIX: Invite code validation, partial sign-up handling, and user isolation
+
+
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Animated, {
@@ -44,7 +44,7 @@ const { width } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
 
-// ─── OAuth Configuration ──────────────────────────────────────────────
+
 const GOOGLE_CLIENT_ID = Platform.select({
   ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
   android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
@@ -58,18 +58,18 @@ const redirectUri = AuthSession.makeRedirectUri({
   useProxy: true,
 });
 
-// ─── Email Validation ──────────────────────────────────────────────────
+
 const isValidEmail = (email: string): boolean => {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return re.test(email.trim().toLowerCase());
 };
 
-// ─── MAIN COMPONENT ────────────────────────────────────────────────────
+
 export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
-  // ─── TAB STATE ───
+  
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
 
-  // ─── CREATE ACCOUNT STATE ───
+  
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -77,7 +77,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // ─── JOIN FAMILY STATE ───
+  
   const [inviteCode, setInviteCode] = useState('');
   const [joinFullName, setJoinFullName] = useState('');
   const [joinEmail, setJoinEmail] = useState('');
@@ -111,7 +111,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     userProfile,
   } = useAuth();
 
-  // ─── FIX: Use FamilyContext for invite validation ─────────────────────
+  
   const { 
     validateInviteCode: validateInviteCodeFromFamily,
     getPartialSignupInfo,
@@ -136,7 +136,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const codeDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socialAuthInProgress = useRef(false);
 
-  // ─── OAuth Requests ──────────────────────────────────────────────────
+  
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
       clientId: GOOGLE_CLIENT_ID,
@@ -163,7 +163,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   );
 
-  // ─── Auto-fill invite code from QR scan ─────────────────────────────
+  
   useEffect(() => {
     const code = (route.params as any)?.inviteCode;
     if (code) {
@@ -172,7 +172,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   }, [route.params]);
 
-  // ─── Cleanup ─────────────────────────────────────────────────────────
+  
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -181,13 +181,13 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     };
   }, []);
 
-  // ─── Animations ──────────────────────────────────────────────────────
+  
   useEffect(() => {
     logoScale.value = withDelay(0, withSpring(1, { damping: 12, stiffness: 100 }));
     formTranslateY.value = withDelay(200, withSpring(0, { damping: 15, stiffness: 100 }));
   }, []);
 
-  // ─── GOOGLE RESPONSE HANDLER ────────────────────────────────────────
+  
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { authentication } = googleResponse;
@@ -204,7 +204,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   }, [googleResponse]);
 
-  // ─── FACEBOOK RESPONSE HANDLER ──────────────────────────────────────
+  
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { authentication } = fbResponse;
@@ -221,7 +221,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   }, [fbResponse]);
 
-  // ─── GOOGLE USER INFO ───────────────────────────────────────────────
+  
   const handleGoogleUserInfo = async (accessToken: string) => {
     try {
       const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
@@ -242,7 +242,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   };
 
-  // ─── FACEBOOK USER INFO ─────────────────────────────────────────────
+  
   const handleFacebookUserInfo = async (accessToken: string) => {
     try {
       const response = await fetch(
@@ -268,7 +268,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   };
 
-  // ─── SOCIAL SIGN UP HANDLER ─────────────────────────────────────────
+  
   const handleSocialSignUp = async (
     provider: 'google' | 'apple' | 'facebook',
     email: string,
@@ -284,7 +284,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
     setIsProcessing(true);
     try {
-      // Try social sign-in first
+      
       if (typeof signInWithSocial === 'function') {
         const success = await signInWithSocial({
           id: `${provider}_${Date.now()}`,
@@ -301,7 +301,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         }
       }
 
-      // Fallback: create account with strong temporary password
+      
       const strongTempPassword = `tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
       const success = await signUp(name, email, strongTempPassword);
@@ -322,7 +322,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   };
 
-  // ─── SOCIAL BUTTON HANDLERS ─────────────────────────────────────────
+  
   const handleGoogleSignUp = async () => {
     if (socialAuthInProgress.current) return;
     socialAuthInProgress.current = true;
@@ -356,7 +356,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }
   };
 
-  // ─── FIXED: CODE VALIDATION using FamilyContext ──────────────────────
+  
   useEffect(() => {
     if (activeTab !== 'join') return;
     if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
@@ -376,7 +376,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     
     codeDebounceTimer.current = setTimeout(async () => {
       try {
-        // ─── First check for partial signup info ────────────────────
+        
         const partialInfo = await getPartialSignupInfo(trimmed);
         console.log('[SignUp] 📊 Partial signup info:', partialInfo);
 
@@ -394,7 +394,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
             });
             setShowPartialRecovery(true);
             
-            // Pre-fill fields with partial data if available
+            
             if (partialInfo.email) setJoinEmail(partialInfo.email);
             if (partialInfo.phone) setJoinPhone(partialInfo.phone);
             if (partialInfo.name) setJoinFullName(partialInfo.name);
@@ -410,7 +410,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           return;
         }
 
-        // ─── Use FamilyContext validateInviteCode ──────────────────
+        
         const result = await validateInviteCodeFromFamily(trimmed);
 
         console.log('[SignUp] 📊 Validation result:', result);
@@ -441,7 +441,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     }, 500);
   }, [inviteCode, activeTab, validateInviteCodeFromFamily, getPartialSignupInfo]);
 
-  // ─── HANDLE PARTIAL SIGNUP RECOVERY ──────────────────────────────────
+  
   const handlePartialSignupRecovery = useCallback(async () => {
     if (isProcessing || authLoading) return;
     
@@ -476,11 +476,11 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
-    // Check if user already exists
+    
     try {
       const existingUser = await findUserByEmail(joinEmail.trim());
       if (existingUser) {
-        // User exists - try to recover the partial signup
+        
         showInfo('Account Found', 'You already have an account. Would you like to sign in instead?');
         navigation.navigate('Login', { email: joinEmail.trim() });
         return;
@@ -494,7 +494,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     triggerHaptic('medium');
 
     try {
-            // ─── First, create the account via signUp ──────────────────────
+            
       const signUpResult = await signUp(
         joinFullName.trim(), 
         joinEmail.trim(), 
@@ -502,13 +502,13 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       );
 
       if (signUpResult.success && isMounted.current) {
-        // Fetch the newly created user to get their ID reliably
+        
         const { data: { user } } = await supabase.auth.getUser();
         
-        // ─── Now mark the partial signup as complete ──────────────────
+        
         const recoveryResult = await recoverPartialSignup(
           trimmedCode,
-          user?.id || '', // Use the freshly fetched user ID
+          user?.id || '', 
           joinEmail.trim(),
           joinPhone.trim() || undefined,
           joinFullName.trim()
@@ -518,7 +518,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           showSuccess('Welcome to the family!', recoveryResult.message);
           navigation.replace('BabyOptional');
         } else {
-          // Even if recovery fails, the user is signed up
+          
           showSuccess('Account Created!', 'Your account has been created. Please complete your family setup.');
           navigation.replace('BabyOptional');
         }
@@ -553,7 +553,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     navigation,
   ]);
 
-  // ─── CREATE ACCOUNT HANDLER ─────────────────────────────────────────
+  
   const handleSignUp = useCallback(async () => {
     if (signUpAttempted.current || isProcessing || authLoading) return;
 
@@ -588,7 +588,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
-    // Check for existing account
+    
     try {
       const existingUser = await findUserByEmail(email.trim());
       if (existingUser) {
@@ -614,7 +614,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
         navigation.replace('BabyOptional');
       } else {
-        // Double-check existence on failure
+        
         try {
           const existing = await findUserByEmail(email.trim());
           if (existing) {
@@ -652,7 +652,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     navigation,
   ]);
 
-  // ─── JOIN FAMILY HANDLER ────────────────────────────────────────────
+  
   const handleJoinFamily = useCallback(async () => {
     if (joinAttempted.current || isProcessing || authLoading) return;
 
@@ -699,7 +699,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
-    // Prevent duplicate accounts
+    
     try {
       const existingUser = await findUserByEmail(joinEmail.trim());
       if (existingUser) {
@@ -727,7 +727,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       );
 
       if (result.success && isMounted.current) {
-        // ─── If this was a partial signup, mark it as complete ──────
+        
         if (codeInfo?.isPartial && userProfile?.id) {
           await markSignupComplete(trimmedCode, userProfile.id);
         }
@@ -775,7 +775,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     transform: [{ translateY: formTranslateY.value }],
   }));
 
-  // ─── RENDER ──────────────────────────────────────────────────────────
+  
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />

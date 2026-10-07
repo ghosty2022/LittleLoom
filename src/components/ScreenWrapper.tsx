@@ -1,4 +1,4 @@
-// src/components/ScreenWrapper.tsx
+
 import React from 'react';
 import {
   View,
@@ -28,7 +28,7 @@ interface ScreenWrapperProps {
 const DOCK_HEIGHT = 72;
 const SAFE_BOTTOM = 8;
 
-// Only Home shows the tab bar persistently
+
 const ALWAYS_VISIBLE_ROUTES = new Set(['Home']);
 
 export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
@@ -57,7 +57,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 
   const isAlwaysVisible = ALWAYS_VISIBLE_ROUTES.has(routeName);
 
-  // Home gets dock height padding, everything else just safe area
+  
   const bottomPadding = isAlwaysVisible && !forceHideTabBar
     ? Math.max(insets.bottom, SAFE_BOTTOM) + DOCK_HEIGHT + extraBottomPadding
     : Math.max(insets.bottom, SAFE_BOTTOM) + extraBottomPadding;

@@ -1,4 +1,4 @@
-// src/components/AIBootstrapGate.tsx
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -29,8 +29,8 @@ type UIPhase = 'idle' | 'warming' | 'ready' | 'failed';
 export const AIBootstrapGate: React.FC = () => {
   const { currentBaby } = useBaby();
 
-  // useTheme is optional here — if your AppContext exports different
-  // keys, adjust accordingly. This is defensive so it works either way.
+  
+  
   const theme = (() => {
     try {
       return useTheme();
@@ -49,7 +49,7 @@ export const AIBootstrapGate: React.FC = () => {
 
   const [phase, setPhase] = useState<UIPhase>('idle');
 
-  // ── Animated opacity for the pill ─────────────────────────────────
+  
   const opacity = useRef(new Animated.Value(0)).current;
 
   const fadeIn = () => {
@@ -75,7 +75,7 @@ export const AIBootstrapGate: React.FC = () => {
     hideTimerRef.current = setTimeout(() => fadeOut(true), ms);
   };
 
-  // ── Subscribe to bootstrap phase ──────────────────────────────────
+  
   useEffect(() => {
     const unsub = subscribeBootstrap((snap) => {
       if (__DEV__) {
@@ -96,7 +96,7 @@ export const AIBootstrapGate: React.FC = () => {
         fadeIn();
         scheduleHide(3000);
       } else {
-        // 'idle'
+        
         fadeOut(true);
       }
     });
@@ -105,10 +105,10 @@ export const AIBootstrapGate: React.FC = () => {
       unsub();
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, []);
 
-  // ── Baby change → bootstrap ───────────────────────────────────────
+  
   useEffect(() => {
     const id = currentBaby?.id ?? null;
     if (!id) return;
@@ -116,7 +116,7 @@ export const AIBootstrapGate: React.FC = () => {
 
     lastBabyIdRef.current = id;
 
-    // Optimistically show "warming" — subscribeBootstrap will confirm
+    
     setPhase('warming');
     fadeIn();
 
@@ -130,7 +130,7 @@ export const AIBootstrapGate: React.FC = () => {
       .catch((err) => {
         console.warn('[AIBootstrapGate] bootstrapAI failed:', err);
 
-        // Retry in 30s so we don't hammer the network on permanent errors
+        
         if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
         retryTimerRef.current = setTimeout(() => {
           if (lastBabyIdRef.current === id) {
@@ -140,7 +140,7 @@ export const AIBootstrapGate: React.FC = () => {
       });
   }, [currentBaby?.id]);
 
-  // ── App foreground → opportunistic re-bootstrap ───────────────────
+  
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       const prev = appStateRef.current;
@@ -157,7 +157,7 @@ export const AIBootstrapGate: React.FC = () => {
     return () => sub.remove();
   }, []);
 
-  // ── Cleanup timers ────────────────────────────────────────────────
+  
   useEffect(() => {
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
@@ -165,7 +165,7 @@ export const AIBootstrapGate: React.FC = () => {
     };
   }, []);
 
-  // ── Pill rendering ────────────────────────────────────────────────
+  
   if (phase === 'idle') return null;
 
   const pillBg = isDark ? 'rgba(30, 30, 46, 0.92)' : 'rgba(255, 255, 255, 0.96)';

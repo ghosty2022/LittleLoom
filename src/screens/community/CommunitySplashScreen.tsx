@@ -1,4 +1,4 @@
-// src/screens/community/CommunitySplashScreen.tsx
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
@@ -21,7 +21,7 @@ import { getSectionState, updateSectionState } from '../../hooks/useIntelligentS
 const { width, height } = Dimensions.get('window');
 const littleLoomLogo = require('../../../assets/logo.png');
 
-// Splash Colors
+
 const SPLASH_COLORS = ['#667eea', '#764ba2', '#f093fb'];
 const SPLASH_COLORS_DARK = ['#0f172a', '#1e293b', '#334155'];
 
@@ -146,7 +146,7 @@ export default function CommunitySplashScreen({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
 
-    // Float animation for logo
+    
     const floatAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim, {

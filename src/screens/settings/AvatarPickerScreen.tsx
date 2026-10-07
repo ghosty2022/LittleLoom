@@ -1,4 +1,4 @@
-// screens/settings/AvatarPickerScreen.tsx
+
 import { useSweetAlert } from '../../components/SweetAlert';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -115,7 +115,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
   const [user, setUser] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   
-  // Check Supabase connection and get user
+  
   useEffect(() => {
     const checkSupabase = async () => {
       try {
@@ -171,12 +171,12 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
       const fileName = `avatar_${babyId}_${Date.now()}.${fileExt}`;
       const filePath = `avatars/${user.id}/${fileName}`;
 
-      // Read file as base64
+      
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Upload to Supabase storage
+      
       const { data, error } = await supabase.storage
         .from('avatars')
         .upload(filePath, Buffer.from(base64, 'base64'), {
@@ -186,7 +186,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
 
       if (error) throw error;
 
-      // Get public URL
+      
       const { data: urlData } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
@@ -227,7 +227,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
 
         setSelectedAvatar(permanentUri);
 
-        // Upload to cloud if connected
+        
         if (isConnected && babyId) {
           setIsSyncing(true);
           const cloudUrl = await uploadAvatarToCloud(permanentUri);
@@ -278,7 +278,7 @@ export const AvatarPickerScreen: React.FC<AvatarPickerScreenProps> = ({
 
         setSelectedAvatar(permanentUri);
 
-        // Upload to cloud if connected
+        
         if (isConnected && babyId) {
           setIsSyncing(true);
           const cloudUrl = await uploadAvatarToCloud(permanentUri);

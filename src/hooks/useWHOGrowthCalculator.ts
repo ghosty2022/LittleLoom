@@ -13,8 +13,8 @@ import React, { useCallback, useMemo } from 'react';
 
 export interface LMSParams {
   L: number;  // Box-Cox power (skewness)
-  M: number;  // Median
-  S: number;  // Coefficient of variation (CV)
+  M: number;  
+  S: number;  
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

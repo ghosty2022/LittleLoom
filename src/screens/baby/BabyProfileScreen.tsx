@@ -1,8 +1,8 @@
-// src/screens/BabyFamilyCenterScreen.tsx
-// ─────────────────────────────────────────────────────────────────────
-// Baby profile + family center. Reads from BabyContext (profile) and
-// TrackerContext (recent activity). Single source of truth — no mock data.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
 
 import {
   StyleSheet,
@@ -64,7 +64,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────
+
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const DELIVERY_TYPES = ['Vaginal', 'C-Section', 'VBAC', 'Other'];
 const BIRTH_ATTENDANTS = ['Obstetrician', 'Midwife', 'Family Doctor', 'Doula', 'Other'];
@@ -86,7 +86,7 @@ const MILESTONE_CATEGORIES = [
 
 const EMOJI_OPTIONS = ['👶', '👧', '👦', '🧒', '👼', '🤱', '🍼', '🧸', '🎈', '🌟', '🦁', '🐯', '🐻', '🐨', '🐼', '🐸', '🦄', '🌈', '⭐', '🔆'];
 
-// ─── TRACKER META ────────────────────────────────────────────────────
+
 const TRACKER_META: Record<string, { emoji: string; color: string; label: string }> = {
   feed:        { emoji: '🍼', color: '#fa709a', label: 'Feeding' },
   sleep:       { emoji: '🌙', color: '#11998e', label: 'Sleep' },
@@ -111,8 +111,8 @@ const TRACKER_META: Record<string, { emoji: string; color: string; label: string
 type BabyFamilyCenterScreenProps = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 type ProfileTab = 'overview' | 'milestones' | 'health' | 'danger';
 
-// ─── HELPER: DB ↔ form enum conversion ───────────────────────────────────
-// DB stores snake_case ("c_section", "family_doctor"); form shows Title Case.
+
+
 const dbToFormEnum = (value?: string | null): string => {
   if (!value) return '';
   return value
@@ -126,13 +126,13 @@ const formEnumToDb = (value?: string | null): string | null => {
   return value.toLowerCase().replace(/[\s-]+/g, '_');
 };
 
-// Safe string coercion for numeric fields (DB returns numbers).
+
 const numToStr = (v: unknown): string => {
   if (v === null || v === undefined || v === '') return '';
   return String(v);
 };
 
-// ─── UPLOAD IMAGE TO SUPABASE ────────────────────────────────────────────
+
 const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<string | null> => {
   try {
     const base64 = await FileSystem.readAsStringAsync(localUri, {
@@ -169,7 +169,7 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
   }
 };
 
-// ─── HELPERS ────────────────────────────────────────────────────────────
+
 const isImageUri = (value: string | undefined | null | any[]): boolean => {
   if (!value) return false;
   if (Array.isArray(value)) value = value.length > 0 ? value[0] : null;
@@ -318,7 +318,7 @@ const SafeBabyAvatar = React.memo(({ avatar, gender = 'other', size = 72, showEd
       typeof normalizedAvatar === 'string' &&
       (normalizedAvatar.startsWith('http') ||
         normalizedAvatar.startsWith('file://') ||
-        normalizedAvatar.startsWith('ph://') ||
+        normalizedAvatar.startsWith('ph:
         normalizedAvatar.startsWith('assets-library://'))
     ) {
       return { uri: normalizedAvatar };
@@ -479,7 +479,7 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark, color
   );
 });
 
-// ─── MAIN COMPONENT ──────────────────────────────────────────────────────
+
 export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamilyCenterScreenProps) {
   const { mode = 'baby', babyId: routeBabyId } = route.params || { mode: 'baby' };
   const { isDark, colors: appColors } = useApp();
@@ -503,23 +503,23 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
 
   const isBabyMode = mode === 'baby';
 
-  // ─── REFS ──────────────────────────────────────────────────────────────
+  
   const isLoadingRef = useRef(false);
   const isMountedRef = useRef(true);
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const initialLoadDoneForId = useRef<string | null>(null);
 
-  // ─── COMPUTED CURRENT BABY (prefer fresh `babies` entry) ──────────────
+  
   const currentBabyData = useMemo(() => {
     if (!isBabyMode) return null;
     const id = routeBabyId || currentBaby?.id;
     if (!id) return null;
-    // Prefer the freshest copy from `babies` (updates after loadBabies),
-    // then fall back to `currentBaby` (may lag by a render).
+    
+    
     return babies.find(b => b.id === id) || currentBaby || null;
   }, [isBabyMode, routeBabyId, babies, currentBaby]);
 
-  // ─── STATE ──────────────────────────────────────────────────────────────
+  
   const [babyName, setBabyName] = useState('');
   const [selectedSkin, setSelectedSkin] = useState(2);
   const [selectedGender, setSelectedGender] = useState('boy');
@@ -534,7 +534,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
 
-  // ─── Health / Birth state ───────────────────────────────────────────────
+  
   const [bloodType, setBloodType] = useState('');
   const [allergies, setAllergies] = useState('');
   const [medicalNotes, setMedicalNotes] = useState('');
@@ -563,7 +563,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
   }>({ visible: false, type: null });
 
-  // ─── Refs ──────────────────────────────────────────────────────────────
+  
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
 
@@ -576,10 +576,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; },
   });
 
-  // ─── LOAD DATA FROM BABY (single source of truth) ─────────────────────
-  // Handles every combination of types the DB might return: numbers,
-  // strings, null, snake_case enums from the DB. Normalizes everything
-  // into the form-friendly shape.
+  
+  
+  
+  
   const loadDataFromBaby = useCallback((baby: any) => {
     if (!baby) return;
 
@@ -615,7 +615,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     setIsEditing(false);
   }, []);
 
-  // ─── REFRESH BABY DATA (lightweight) ───────────────────────────────────
+  
   const refreshBabyDataLight = useCallback(async () => {
     if (isLoadingRef.current) return;
     const targetId = currentBabyData?.id || routeBabyId || currentBaby?.id;
@@ -627,11 +627,11 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       await refreshEntries();
       await loadFamily();
 
-      // Read the fresh baby from the source list, not a captured closure.
-      // `loadBabies(true)` updates the provider state; but since this
-      // callback closes over the old `babies` array, we instead re-read
-      // via a short-lived async read from Supabase — cheap and always
-      // correct.
+      
+      
+      
+      
+      
       const { data: fresh } = await supabase
         .from('babies')
         .select('*')
@@ -639,7 +639,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
         .maybeSingle();
 
       if (fresh && isMountedRef.current) {
-        // Map minimally to the shape loadDataFromBaby expects
+        
         loadDataFromBaby({
           id: fresh.id,
           name: fresh.name,
@@ -683,7 +683,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   }, [currentBabyData?.id, routeBabyId, currentBaby?.id, loadBabies, refreshEntries, loadFamily, loadDataFromBaby]);
 
-  // ─── LOAD FULL DATA ────────────────────────────────────────────────────
+  
   const loadFullData = useCallback(async () => {
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
@@ -703,7 +703,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   }, [loadBabies, loadFamily, refreshEntries, currentBabyData, loadDataFromBaby]);
 
-  // ─── INITIAL LOAD (per baby) ───────────────────────────────────────────
+  
   useEffect(() => {
     if (!currentBabyData) return;
     if (initialLoadDoneForId.current === currentBabyData.id) return;
@@ -719,7 +719,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     };
   }, []);
 
-  // ─── FOCUS EFFECT ──────────────────────────────────────────────────────
+  
   useFocusEffect(
     useCallback(() => {
       if (currentBabyData && !isLoadingRef.current) {
@@ -734,7 +734,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }, [currentBabyData, refreshBabyDataLight])
   );
 
-  // ─── IMAGE HANDLING ────────────────────────────────────────────────────
+  
   const ensureDirExists = async () => {
     const dir = FileSystem.documentDirectory + 'baby_images/';
     try {
@@ -869,13 +869,13 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  // ─── SAVE HANDLING ─────────────────────────────────────────────────────
+  
   const checkForChanges = useCallback(() => {
     if (!currentBabyData) return [];
     const changes: string[] = [];
     const b: any = currentBabyData;
 
-    // Compare against normalized current values
+    
     const currentWeight = numToStr(b.weight);
     const currentHeight = numToStr(b.height);
     const currentBirthWeight = numToStr(b.birthWeight);
@@ -1041,7 +1041,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  // ─── MILESTONE HANDLING ────────────────────────────────────────────────
+  
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestone, setNewMilestone] = useState({
     title: '',
@@ -1052,9 +1052,9 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
 
   const handleAddMilestone = async () => {
     if (!currentBabyData || !newMilestone.title) return;
-    // Write via useTracker so it lands in the same table other screens read.
+    
     const { addEntry } = require('../../hooks/useTrackerContext').useTracker;
-    void addEntry; // placeholder; we use tracker below
+    void addEntry; 
     const success = await addMilestone({
       babyId: currentBabyData.id,
       title: newMilestone.title,
@@ -1094,7 +1094,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     );
   };
 
-  // ─── DELETE BABY ────────────────────────────────────────────────────────
+  
   const { verifyPassword } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -1149,7 +1149,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     );
   }, [currentBabyData, deleteBaby, navigation, sweetAlert, verifyPassword, isDeleting]);
 
-  // ─── DATE PICKER ──────────────────────────────────────────────────────
+  
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
@@ -1158,14 +1158,14 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   };
 
-  // ─── TAB CHANGE ────────────────────────────────────────────────────────
+  
   const handleTabChange = useCallback((tab: ProfileTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  // ─── REFRESH ────────────────────────────────────────────────────────────
+  
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -1177,9 +1177,9 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     }
   }, [loadFullData]);
 
-  // ─── COMPUTED: RECENT ACTIVITY ─────────────────────────────────────────
-  // Match on `babyId` only. Fall back to current baby's id if entry has
-  // no babyId, so we never show an empty list when data exists.
+  
+  
+  
   const recentActivities = useMemo(() => {
     if (!currentBabyData?.id) return [];
     const id = currentBabyData.id;
@@ -1214,7 +1214,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   const genderOption = GENDER_OPTIONS.find(g => g.value === selectedGender);
   const ageDisplay = calculateAge(currentBabyData?.birthDate || new Date().toISOString());
 
-  // ─── TABS ───────────────────────────────────────────────────────────────
+  
   const tabs = [
     { key: 'overview' as ProfileTab, label: 'Overview', icon: 'grid-outline' },
     { key: 'milestones' as ProfileTab, label: 'Milestones', icon: 'trophy-outline' },
@@ -1222,7 +1222,7 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
     { key: 'danger' as ProfileTab, label: 'Danger', icon: 'warning-outline' },
   ];
 
-  // ─── RENDER PICKER ─────────────────────────────────────────────────────
+  
   const renderPickerModal = () => {
     const type = pickerState.type;
     if (!type || !pickerState.visible) return null;

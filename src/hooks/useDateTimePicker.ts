@@ -1,38 +1,38 @@
-// src/hooks/useDateTimePicker.ts
-// ─────────────────────────────────────────────────────────────────────
-// Cross-platform date/time picker that NEVER renders the declarative
-// <DateTimePicker> component on Android — only uses the imperative
-// DateTimePickerAndroid.open() API. This eliminates the
-// "Cannot read property 'dismiss' of undefined" crash entirely.
-//
-// iOS     → returns state so the caller renders <DateTimePicker>
-//           inside a modal.
-// Android → opens the native picker imperatively, one call at a time.
-//
-// Usage:
-//   const picker = useDateTimePicker();
-//   picker.open({ value: date, mode: 'datetime' }, (next) => {
-//     if (next) setDate(next);
-//   });
-//   ...
-//   {/* iOS only — render the picker inside a modal */}
-//   {Platform.OS === 'ios' && picker.iosPicker.visible && (
-//     <DateTimePicker
-//       value={picker.iosPicker.value}
-//       mode={picker.iosPicker.mode === 'datetime' ? 'date' : picker.iosPicker.mode}
-//       display="spinner"
-//       onValueChange={picker.handleIosChange}
-//     />
-//   )}
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import DateTimePickerAndroid from '@react-native-community/datetimepicker';
 
-// The package exports both named exports AND a default. We only need
-// the imperative API on Android and the pure state on iOS, so we
-// lazy-require to avoid pulling the native module in on wrong platform.
+
+
+
 type Mode = 'date' | 'time' | 'datetime';
 
 interface OpenOptions {
@@ -83,17 +83,17 @@ export function useDateTimePicker(): DateTimePickerHook {
     (opts: OpenOptions, onResult: (date: Date | null) => void) => {
       const safeValue = isSafeDate(opts.value) ? opts.value : new Date();
 
-      // ─── ANDROID: imperative API only ──────────────────────────
+      
       if (Platform.OS === 'android') {
-        // Guard against rapid double-taps that would try to open two
-        // native pickers at once.
+        
+        
         if (androidBusyRef.current) return;
         androidBusyRef.current = true;
 
-        // Lazy require so we never pull the imperative API on iOS.
+        
         let AndroidAPI: any = null;
         try {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          
           AndroidAPI = require('@react-native-community/datetimepicker')
             .DateTimePickerAndroid;
         } catch {
@@ -108,13 +108,13 @@ export function useDateTimePicker(): DateTimePickerHook {
 
         const finish = (result: Date | null) => {
           androidBusyRef.current = false;
-          // Defer callback to avoid calling setState during a native event.
+          
           setTimeout(() => onResult(result), 0);
         };
 
-        // For 'datetime', the native Android module does NOT support
-        // a combined picker. Chain date → time in two sequential calls
-        // using the SDK-native sequencing, NOT nested promises.
+        
+        
+        
         if (opts.mode === 'datetime') {
           try {
             AndroidAPI.open({
@@ -132,9 +132,9 @@ export function useDateTimePicker(): DateTimePickerHook {
                 withDate.setMonth(dateSelected.getMonth());
                 withDate.setDate(dateSelected.getDate());
 
-                // Chain into time picker — but from a fresh tick so
-                // the native module fully dismisses the date picker
-                // before we open the time picker.
+                
+                
+                
                 setTimeout(() => {
                   try {
                     AndroidAPI.open({
@@ -168,7 +168,7 @@ export function useDateTimePicker(): DateTimePickerHook {
           return;
         }
 
-        // Single-mode (date OR time)
+        
         try {
           AndroidAPI.open({
             value: safeValue,
@@ -200,7 +200,7 @@ export function useDateTimePicker(): DateTimePickerHook {
         return;
       }
 
-      // ─── iOS: pure state, caller renders <DateTimePicker> ──────
+      
       iosCallbackRef.current = onResult;
       setIosPicker({
         visible: true,

@@ -1,18 +1,18 @@
-// DynamicTrackerForm.tsx — COMPLETE V10
-// ═══════════════════════════════════════════════════════════════════════════
-// FIXED IN V10:
-//   ✓ Added `pain_scale` field type (0–10 slider with emoji anchors)
-//   ✓ Added `time` field type with dedicated picker (was broken → text input)
-//   ✓ Added `video` field placeholder (no longer silent fallthrough)
-//   ✓ `SmartNumberField` respects `field.step` for decimal precision
-//   ✓ `SmartQuantityField` uses canonical SOLID_UNITS / LIQUID_UNITS
-//   ✓ `updateField` clears sibling fields properly on all cross-field changes
-//   ✓ `handleSubmit` duration computation covers ALL duration trackers
-//   ✓ `SmartDurationField` supports ongoing for tummy_time / pumping / bath
-//   ✓ Fixed TS narrowing on `suggestion.value` (no more `!` where unneeded)
-//   ✓ Removed unused imports (SCREEN_W) and dead module-level comment
-//   ✓ Inputs disabled while submitting (prevent double-tap edits)
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, {
   useCallback,
@@ -57,8 +57,8 @@ import {
 import { MOOD_EMOJIS } from './trackerConstants';
 import { isFieldVisible } from '../../utils/form';
 
-// ─── Per-tracker default values ────────────────────────────────────────────
-// Applied only when no user data or prefill exists for that field.
+
+
 const TRACKER_DEFAULTS: Record<string, Record<string, unknown>> = {
   mood: { mood: 3 },
   crying: { intensity: 3 },
@@ -73,7 +73,7 @@ const TRACKER_DEFAULTS: Record<string, Record<string, unknown>> = {
   water: { vessel: 'sippy' },
   vitamin: { given: true },
   screen_time: { device: 'tv' },
-  bedtime: { routineDuration: 1800 }, // 30 min default
+  bedtime: { routineDuration: 1800 }, 
   play: { engagement: 3 },
   tummy_time: { tolerance: 3 },
   reading: { engagement: 3 },
@@ -108,11 +108,11 @@ const TREND_ICONS = {
   same: 'remove-outline',
 };
 
-// ─── Validation helpers ────────────────────────────────────────────────────
-const MAX_FUTURE_MS = 5 * 60 * 1000; // 5 minutes ahead is OK (clock skew)
 
-// ─── Growth value sanity bounds by age (in months) ─────────────────────────
-// Based on WHO growth standards + 2 SD margins.
+const MAX_FUTURE_MS = 5 * 60 * 1000; 
+
+
+
 const GROWTH_BOUNDS = {
   weight: (ageMonths: number): { min: number; max: number } => {
     if (ageMonths < 3) return { min: 1.5, max: 9 };
@@ -148,7 +148,7 @@ const validateGrowthValue = (
   const type = measurementType?.toLowerCase();
   if (!['weight', 'height', 'head'].includes(type)) return null;
 
-  // Normalize to metric for bounds check
+  
   let normalizedValue = value;
   if (type === 'weight' && unit === 'lb') normalizedValue = value * 0.453592;
   else if (type === 'weight' && unit === 'oz') normalizedValue = value * 0.0283495;
@@ -172,7 +172,7 @@ const isFutureTimestamp = (value: unknown): boolean => {
   return d.getTime() - Date.now() > MAX_FUTURE_MS;
 };
 
-// ─── Duration formatter ────────────────────────────────────────────────────
+
 const formatDurationSeconds = (seconds: number): string => {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0m';
   const mins = Math.floor(seconds / 60);
@@ -183,7 +183,7 @@ const formatDurationSeconds = (seconds: number): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-// ─── Streak badge ──────────────────────────────────────────────────────────
+
 const StreakBadge: React.FC<{
   streak: TrackerProgressiveState['streak'];
   color: string;
@@ -492,7 +492,7 @@ const SmartMultiSelectField: React.FC<{
   );
 };
 
-// ─── Smart Select Field ────────────────────────────────────────────────────
+
 const SmartSelectField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -838,7 +838,7 @@ const SmartTextField: React.FC<{
   );
 };
 
-// ─── Smart Number Field ────────────────────────────────────────────────────
+
 const SmartNumberField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -915,7 +915,7 @@ const SmartNumberField: React.FC<{
     suggestion.value !== undefined &&
     suggestion.value !== '';
 
-  // Respect field.step for decimal precision
+  
   const step = Number.isFinite(field.step as any) && Number(field.step) > 0
     ? Number(field.step)
     : 1;
@@ -1052,7 +1052,7 @@ const SmartNumberField: React.FC<{
   );
 };
 
-// ─── Smart Duration Field ──────────────────────────────────────────────────
+
 const SmartDurationField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -1113,7 +1113,7 @@ const SmartDurationField: React.FC<{
       ? Number(yesterdayValue)
       : null;
 
-  // All trackers whose duration is meaningful for ongoing/completed tracking
+  
   const supportsOngoing = [
     'sleep',
     'feed',
@@ -1400,7 +1400,7 @@ const SmartMoodField: React.FC<{
   );
 };
 
-// ─── Smart Pain Scale Field (0–10) ─────────────────────────────────────────
+
 const PAIN_EMOJIS = ['😊', '🙂', '😐', '😕', '😣', '😖', '😫', '😭', '😱', '🆘', '🚨'];
 
 const SmartPainScaleField: React.FC<{
@@ -1466,7 +1466,7 @@ const SmartPainScaleField: React.FC<{
   );
 };
 
-// ─── Smart Temperature Field ───────────────────────────────────────────────
+
 const SmartTemperatureField: React.FC<{
   field: FieldConfig;
   data: Record<string, unknown>;
@@ -1606,7 +1606,7 @@ const SmartTemperatureField: React.FC<{
   );
 };
 
-// ─── Smart Quantity Field ──────────────────────────────────────────────────
+
 const SmartQuantityField: React.FC<{
   field: FieldConfig;
   data: Record<string, unknown>;
@@ -1630,8 +1630,8 @@ const SmartQuantityField: React.FC<{
 }) => {
   const unitKey = `${field.id}_unit`;
 
-  // Solid food gets solid units (g/oz/tbsp/servings/pieces)
-  // Anything else gets liquid units (ml/oz)
+  
+  
   const isSolidFood =
     field.id?.toLowerCase().includes('solid') ||
     field.id?.toLowerCase().includes('food') ||
@@ -1642,7 +1642,7 @@ const SmartQuantityField: React.FC<{
     (field as any).unitOptions ||
     (isSolidFood ? CANONICAL_SOLID_UNITS : CANONICAL_LIQUID_UNITS);
 
-  // Region-aware default unit
+  
   const defaultUnit = useMemo(() => {
     try {
       const locale =
@@ -1676,7 +1676,7 @@ const SmartQuantityField: React.FC<{
 
   const selectedUnit = (data[unitKey] as string) || defaultUnit;
 
-  // Respect field.step for decimal precision
+  
   const step = Number.isFinite(field.step as any) && Number(field.step) > 0
     ? Number(field.step)
     : 1;
@@ -1791,7 +1791,7 @@ const SmartQuantityField: React.FC<{
   );
 };
 
-// ─── Smart DateTime Field (with Ongoing support) ───────────────────────────
+
 const SmartDateTimeField: React.FC<{
   field: FieldConfig;
   data: Record<string, unknown>;
@@ -2039,7 +2039,7 @@ const SmartTimeField: React.FC<{
 }) => {
   const datePicker = useDateTimePicker();
 
-  // Parse "HH:mm" into a Date for the picker
+  
   const parsedDate = useMemo(() => {
     const d = new Date();
     if (typeof value === 'string' && /^\d{1,2}:\d{2}/.test(value)) {
@@ -2203,7 +2203,7 @@ const SmartTimeField: React.FC<{
   );
 };
 
-// ─── MAIN COMPONENT ────────────────────────────────────────────────────────
+
 export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   tracker,
   initialData = {},
@@ -2250,7 +2250,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     todayEntries = [],
   } = progressiveState || {};
 
-  // ─── Medication smart-fill from last entry ──────────────────────────────
+  
   const medicationQuickFill = useMemo(() => {
     if (tracker.id !== 'medication') return null;
     const last = (yesterdayEntries[0] || todayEntries[0]) as any;
@@ -2260,7 +2260,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     return { name, dosage, type };
   }, [tracker.id, yesterdayEntries, todayEntries]);
 
-  // ─── Initial data ───────────────────────────────────────────────────────
+  
   const [data, setData] = useState<Record<string, unknown>>(() => {
     const defaults = {
       ...(medicationQuickFill || {}),
@@ -2268,7 +2268,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     };
     const merged = { ...defaults, ...prefillData, ...initialData };
 
-    // High-confidence suggestions auto-fill only if nothing is set
+    
     suggestions.forEach((s) => {
       if (
         merged[s.fieldId] === undefined &&
@@ -2303,7 +2303,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
 
   const userEditedFields = useRef<Set<string>>(new Set());
 
-  // ─── Apply prefill and high-confidence suggestions ──────────────────────
+  
   useEffect(() => {
     setData((prev) => {
       const merged = { ...prefillData, ...initialData };
@@ -2327,7 +2327,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         setAppliedPrefill(null);
       }
 
-      // Restore user edits so live updates don't clobber them
+      
       userEditedFields.current.forEach((key) => {
         if (prev[key] !== undefined) {
           merged[key] = prev[key];
@@ -2338,7 +2338,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     });
   }, [prefillData, suggestions, initialData, appliedPrefill]);
 
-  // ─── Validation ─────────────────────────────────────────────────────────
+  
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
     tracker.fields.forEach((field) => {
@@ -2350,12 +2350,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           return;
         }
       } catch {
-        // Continue
+        
       }
 
       const value = data[field.id];
 
-      // Required check
+      
       if (field.required) {
         if (
           value === undefined ||
@@ -2368,7 +2368,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         }
       }
 
-      // Future-date guard
+      
       if (
         (field.type === 'datetime' ||
           field.type === 'date' ||
@@ -2379,7 +2379,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         return;
       }
 
-      // Min/max sanity bounds
+      
       if (
         (field.type === 'number' ||
           field.type === 'quantity' ||
@@ -2396,7 +2396,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         }
       }
 
-      // Growth-specific sanity bounds
+      
       if (
         tracker.id === 'growth' &&
         field.id === 'value' &&
@@ -2415,7 +2415,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         }
       }
 
-      // Temperature sanity
+      
       if (
         tracker.id === 'temperature' &&
         field.id === 'value' &&
@@ -2436,7 +2436,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     return Object.keys(newErrors).length === 0;
   }, [tracker.fields, data, currentBabyAgeMonths, tracker.id]);
 
-  // ─── Submit ─────────────────────────────────────────────────────────────
+  
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
 
@@ -2450,7 +2450,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     triggerHaptic('success');
 
     try {
-      // Trim strings, drop empty values, clean arrays
+      
       const finalData: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(data)) {
         if (typeof v === 'string') {
@@ -2468,7 +2468,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         }
       }
 
-      // ─── Auto-compute duration for duration-trackers ─────────────────
+      
       const DURATION_TRACKERS = [
         'sleep',
         'feed',
@@ -2505,11 +2505,11 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             finalData.status = 'completed';
           }
         } else if (hasStart) {
-          // Ongoing — no endTime, no duration
+          
           delete finalData.duration;
           finalData.status = 'ongoing';
         } else if (hasEnd) {
-          // End only
+          
           delete finalData.duration;
           finalData.status = 'completed';
         }
@@ -2549,14 +2549,14 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     photoAiTags,
   ]);
 
-  // ─── Field update with cross-field auto-linking ─────────────────────────
+  
   const updateField = useCallback(
     (fieldId: string, value: unknown) => {
       userEditedFields.current.add(fieldId);
       setData((prev) => {
         const next = { ...prev, [fieldId]: value };
 
-        // ── Feed: reset sibling fields when feedType changes ────────────
+        
         if (tracker.id === 'feed' && fieldId === 'feedType') {
           if (value === 'breast') {
             delete next.bottleAmount;
@@ -2607,7 +2607,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           }
         }
 
-        // ── Sleep: reset endTime/duration when status → ongoing ─────────
+        
         if (
           tracker.id === 'sleep' &&
           fieldId === 'status' &&
@@ -2617,7 +2617,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           delete next.duration;
         }
 
-        // ── Diaper: reset stool fields when type → wet/dry ──────────────
+        
         if (tracker.id === 'diaper' && fieldId === 'type') {
           if (value === 'wet' || value === 'dry') {
             delete next.color;
@@ -2629,21 +2629,21 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           }
         }
 
-        // ── Potty: accident → mark unsuccessful automatically ───────────
+        
         if (tracker.id === 'potty' && fieldId === 'type') {
           if (value === 'accident') {
             next.successful = false;
           }
         }
 
-        // ── Growth: reset value + unit when measurementType changes ─────
+        
         if (tracker.id === 'growth' && fieldId === 'measurementType') {
           delete next.value;
           delete next.value_unit;
           delete next.percentile;
         }
 
-        // ── Auto-link start/end times for duration trackers ─────────────
+        
         const durationTrackers = [
           'sleep',
           'feed',
@@ -2686,7 +2686,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           }
         }
 
-        // ── Auto-calculate BMI for growth ───────────────────────────────
+        
         if (tracker.id === 'growth') {
           const weight = Number(
             next.weight ?? next.weight_kg ?? prev.weight
@@ -2716,7 +2716,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     [tracker.id]
   );
 
-  // ─── Apply yesterday data ───────────────────────────────────────────────
+  
   const applyYesterdayData = useCallback(
     (yestData: Record<string, unknown>) => {
       triggerHaptic('light');
@@ -2729,7 +2729,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     [triggerHaptic, info]
   );
 
-  // ─── Suggestion getters ─────────────────────────────────────────────────
+  
   const getFieldSuggestion = useCallback(
     (fieldId: string): ProgressiveSuggestion | undefined => {
       return suggestions.find(
@@ -2754,7 +2754,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     [trends]
   );
 
-  // ─── Field renderer ─────────────────────────────────────────────────────
+  
   const renderField = useCallback(
     (field: FieldConfig) => {
       try {
@@ -2765,7 +2765,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           return null;
         }
       } catch {
-        // Render anyway
+        
       }
 
       const suggestion = getFieldSuggestion(field.id);
@@ -3094,7 +3094,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               maxPhotos={field.max || 4}
               initialPhotoUris={photoUris}
               onAnalysis={(analysis) => {
-                // Collect AI labels across all photos in this form
+                
                 if (analysis.modelAvailable && analysis.labels.length > 0) {
                   setPhotoAiTags((prev) => {
                     const merged = new Set([...prev, ...analysis.labels]);

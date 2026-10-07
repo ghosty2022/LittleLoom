@@ -1,10 +1,10 @@
-// src/components/trackers/TrackerEntryCard.tsx
-// FIXED: 
-//   - "Ongoing" badge for sleep/feed with status='ongoing'
-//   - Duration displays as "1h 30m" instead of raw seconds
-//   - Quantity fields show their actual unit (g/oz/ml/tbsp/servings/pieces)
-//   - Solid food amount uses solidAmount field
-//   - Defensive photo URI handling
+
+
+
+
+
+
+
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
@@ -26,19 +26,19 @@ interface TrackerEntryCardProps {
   index?: number;
 }
 
-// ─── Duration formatter ─────────────────────────────────────────────────
-// Handles: raw seconds (3600), ISO strings, "1h 30m" strings, and minutes
+
+
 const formatDuration = (value: unknown): string | null => {
   if (value === undefined || value === null || value === '') return null;
 
-  // String that's already formatted (e.g., "1h 30m")
+  
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    // If it looks like a formatted duration, return as-is
+    
     if (/^\d+[hm](\s*\d+[m])?$/i.test(trimmed) || /^\d+h\s*\d+m$/i.test(trimmed)) {
       return trimmed;
     }
-    // Try parsing as number
+    
     const parsed = Number(trimmed);
     if (Number.isFinite(parsed) && parsed > 0) {
       return formatDuration(parsed);
@@ -49,7 +49,7 @@ const formatDuration = (value: unknown): string | null => {
   const s = Number(value);
   if (!Number.isFinite(s) || s <= 0) return null;
 
-  // Guard against absurd values (> 24 hours) — likely a bug
+  
   if (s > 86400) {
     if (__DEV__) console.warn('[TrackerEntryCard] Absurd duration:', s);
     return null;
@@ -66,7 +66,7 @@ const formatDuration = (value: unknown): string | null => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-// ─── Extract a display value for a field ────────────────────────────────
+
 const getFieldDisplayValue = (
   field: any,
   entryData: Record<string, unknown>
@@ -74,18 +74,18 @@ const getFieldDisplayValue = (
   const value = entryData[field.id];
   if (value === undefined || value === null || value === '') return null;
 
-  // ── Toggle ────────────────────────────────────────────────────
+  
   if (field.type === 'toggle') {
     return value ? 'Yes' : 'No';
   }
 
-  // ── Select ────────────────────────────────────────────────────
+  
   if (field.type === 'select' && field.options) {
     const option = field.options.find((o: any) => o.id === value);
     return option ? option.label : String(value);
   }
 
-  // ── Multi-select ──────────────────────────────────────────────
+  
   if (field.type === 'multiselect') {
     if (!Array.isArray(value) || value.length === 0) return null;
     if (field.options) {
@@ -97,29 +97,29 @@ const getFieldDisplayValue = (
     return value.map(String).join(', ');
   }
 
-  // ── Duration ──────────────────────────────────────────────────
+  
   if (field.type === 'duration') {
     const formatted = formatDuration(value);
-    // formatDuration handles seconds → "1h 30m" conversion
-    // Return null if it couldn't be parsed, so it doesn't show "3600"
+    
+    
     return formatted;
   }
 
-  // ── Rating ────────────────────────────────────────────────────
+  
   if (field.type === 'rating') {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return null;
     return '⭐'.repeat(Math.min(5, Math.max(1, Math.round(n))));
   }
 
-  // ── Mood ──────────────────────────────────────────────────────
+  
   if (field.type === 'mood_emoji') {
     const moods = ['😭', '😟', '😐', '🙂', '😄'];
     const n = Number(value);
     return moods[n - 1] || '😐';
   }
 
-  // ── Photo ─────────────────────────────────────────────────────
+  
   if (field.type === 'photo') {
     if (Array.isArray(value)) {
       const count = (value as unknown[])
@@ -138,7 +138,7 @@ const getFieldDisplayValue = (
     return null;
   }
 
-  // ── Quantity / measurement / number with unit ─────────────────
+  
   if (
     field.type === 'quantity' ||
     field.type === 'measurement' ||
@@ -148,22 +148,22 @@ const getFieldDisplayValue = (
     const unit = (entryData[unitKey] as string) || field.unit || '';
     const num = Number(value);
 
-    // Guard: don't display NaN or Infinity
+    
     if (Number.isFinite(num)) {
-      // Round to reasonable precision (max 2 decimals)
+      
       const displayNum = Number.isInteger(num)
         ? num
         : Math.round(num * 100) / 100;
       return unit ? `${displayNum} ${unit}` : String(displayNum);
     }
-    // Non-numeric but non-empty string value
+    
     if (typeof value === 'string' && value.trim().length > 0) {
       return unit ? `${value} ${unit}` : value;
     }
     return null;
   }
 
-  // ── Temperature ───────────────────────────────────────────────
+  
   if (field.type === 'temperature') {
     const unitKey = `${field.id}_unit`;
     const unit = (entryData[unitKey] as string) || 'celsius';
@@ -173,7 +173,7 @@ const getFieldDisplayValue = (
     return `${value}${unitLabel}`;
   }
 
-  // ── Datetime / time ──────────────────────────────────────────
+  
   if (field.type === 'datetime' || field.type === 'date') {
     try {
       const d = new Date(String(value));
@@ -184,7 +184,7 @@ const getFieldDisplayValue = (
     }
   }
 
-  // ── Text / default ────────────────────────────────────────────
+  
   if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
     return null;
   }
@@ -234,20 +234,20 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     }
   }, [entryDate, isToday]);
 
-  // ── Ongoing status detection ──────────────────────────────────────
+  
   const isOngoing = useMemo(() => {
-    // Only sleep and feed (and dream_feed) support ongoing status
+    
     const ongoingTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
     if (!ongoingTrackers.includes(entry.trackerId)) return false;
 
     const data = entry.data || {};
     
-    // Explicit status field wins
+    
     const status = data.status;
     if (status === 'ongoing' || status === 'started') return true;
     if (status === 'completed' || status === 'ended') return false;
 
-    // If startTime exists but endTime is missing → ongoing
+    
     const hasStart = data.startTime && String(data.startTime).length > 0;
     const hasEnd = data.endTime && String(data.endTime).length > 0;
     if (hasStart && !hasEnd) return true;
@@ -255,9 +255,9 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     return false;
   }, [entry.trackerId, entry.data]);
 
-  // ── Compact card ──────────────────────────────────────────────────
+  
   if (compact) {
-    // Compact subtitle: prefer ongoing → duration → time
+    
     const durationFormatted = formatDuration(entry.data?.duration);
     const compactSubtitle = isOngoing
       ? 'Ongoing'
@@ -265,7 +265,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
       ? durationFormatted
       : timeString;
 
-    // Count photos once
+    
     const photoCount = (() => {
       const raw = entry.photoUris;
       if (!Array.isArray(raw)) return 0;
@@ -362,24 +362,24 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     );
   }
 
-  // ── Full card ─────────────────────────────────────────────────────
+  
   const renderDataPreview = () => {
     if (!tracker || !entry.data || typeof entry.data !== 'object') return null;
 
-    // Fields to skip — they're either internal bookkeeping or
-    // already surfaced in the title above.
+    
+    
     const SKIP_IN_PREVIEW = new Set([
       'status', 'startTime', 'endTime', 'duration',
       'sleepType', 'feedType', 'title',
-      'side',        // Already implied by title for breast feeds
-      'measurementType', // Already implied by title for growth
-      'unit',        // Merged with value
-      'value_unit',  // Merged with value
-      'bottleAmount_unit', // Merged with amount
-      'solidAmount_unit',  // Merged with amount
+      'side',        
+      'measurementType', 
+      'unit',        
+      'value_unit',  
+      'bottleAmount_unit', 
+      'solidAmount_unit',  
     ]);
 
-    // Prioritize meaningful fields over toggles/notes
+    
     const PRIORITY_ORDER = [
       'bottleAmount', 'solidAmount', 'amount', 'value',
       'quality', 'mood', 'severity', 'temperature',
@@ -390,12 +390,12 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     const allFields = (tracker.fields || [])
       .filter((f: any) => !SKIP_IN_PREVIEW.has(f.id))
       .filter((f: any) => {
-        // Only show fields with actual data
+        
         const v = entry.data[f.id];
         return v !== undefined && v !== null && v !== '';
       });
 
-    // Sort by priority, then keep first 3
+    
     const previewFields = allFields
       .sort((a: any, b: any) => {
         const ai = PRIORITY_ORDER.indexOf(a.id);
@@ -642,7 +642,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
       )}
 
       {(() => {
-        // Defensive: photoUris might be string[] OR PhotoMeta[] OR contain nested junk
+        
         const raw = entry.photoUris;
         const flatUris: string[] = Array.isArray(raw)
           ? (raw as unknown[])
@@ -650,7 +650,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
               .map((u) => {
                 if (typeof u === 'string') return u;
                 if (u && typeof u === 'object') {
-                  // Prefer the remote URL for display (survives cache clears)
+                  
                   const obj = u as any;
                   return typeof obj.publicUrl === 'string' ? obj.publicUrl :
                          typeof obj.uri === 'string' ? obj.uri : '';
@@ -660,7 +660,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
               .filter((u): u is string => typeof u === 'string' && u.length > 0)
           : [];
 
-        // Deduplicate — SmartPhotoField may emit both local + remote for one photo
+        
         const uniqueUris = [...new Set(flatUris)];
 
         if (uniqueUris.length === 0) return null;
@@ -795,7 +795,7 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  // ── Compact ───────────────────────────────────────────────────
+  
   compactCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -816,7 +816,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
 
-  // ── Data preview ──────────────────────────────────────────────
+  
   dataPreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -833,7 +833,7 @@ const styles = StyleSheet.create({
   dataChipLabel: { fontSize: 11, fontWeight: '500' },
   dataChipValue: { fontSize: 12, fontWeight: '600', maxWidth: 140, marginLeft: 4 },
 
-  // ── Notes / tags ──────────────────────────────────────────────
+  
   notes: {
     marginTop: 10,
     lineHeight: 20,
@@ -852,7 +852,7 @@ const styles = StyleSheet.create({
   tagText: { fontWeight: '600' },
   moreTags: { fontWeight: '500', alignSelf: 'center' },
 
-  // ── Photos ────────────────────────────────────────────────────
+  
   photoStrip: {
     flexDirection: 'row',
     gap: 8,

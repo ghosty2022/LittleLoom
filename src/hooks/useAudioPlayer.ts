@@ -1,14 +1,14 @@
-// src/hooks/useAudioPlayer.ts
-// Local audio player hook built on expo-audio.
-//
-// FIX: expo-audio's `useAudioPlayer` accepts a string source, a
-//      require(), or a {uri} object — but only the string form is
-//      guaranteed across SDK versions. We pass the URI string.
-//
-// FIX: `useAudioPlayerState` is not the canonical export name;
-//      `useAudioPlayerStatus` is. Importing the wrong symbol caused
-//      the status object to be `undefined` on some SDK versions,
-//      which silently broke position/duration updates.
+
+
+
+
+
+
+
+
+
+
+
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
@@ -32,7 +32,7 @@ export const useAudioPlayer = (uri: string) => {
     isLoading: false,
   });
 
-  // Pass the URI string directly — see FIX note at top of file.
+  
   const player = useExpoAudioPlayer(uri);
   const status = useAudioPlayerStatus(player);
   const isMounted = useRef(true);

@@ -1,8 +1,8 @@
-// src/hooks/useTrackerProgressive.ts
-// FIX: Use direct imports, not useSafeContexts
-// FIXED: Suggestions now require real confidence (>= 60%), no more fake/guessing data
-// FIXED: Ongoing sleep/feed entries get proper status handling
-// FIXED: Duplicate suggestions are deduplicated
+
+
+
+
+
 
 import { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import {
@@ -12,7 +12,7 @@ import {
   isSameDay,
 } from 'date-fns';
 
-// FIX: Direct imports from context sources (NOT useSafeContexts)
+
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
 import { TrackerEntry, TrackerStreak, TrackerInsight, UnifiedTrackerConfig, ReminderRule, FieldConfig } from '../types/trackers';
@@ -32,7 +32,7 @@ export interface ProgressiveSuggestion {
   fieldId: string;
   value: unknown;
   source: SuggestionSource;
-  confidence: number; // 0-100
+  confidence: number; 
   label: string;
   emoji: string;
 }
@@ -110,27 +110,27 @@ export interface TrackerProgressiveState {
   isLoading: boolean;
   lastUpdated: number;
 
-  // ─── NEW: data-quality signals ──────────────────────────────────
+  
   /** Number of entries logged for this tracker */
   entryCount: number;
   /** True when we have enough data (≥5 entries) for meaningful suggestions */
   hasRealData: boolean;
 
-  // ✅ ADDED: entry collections returned by the hook
+  
   todayEntries: TrackerEntry[];
   yesterdayEntries: TrackerEntry[];
   recentEntries: TrackerEntry[];
 
-  // ✅ ADDED: helper methods
+  
   getAllYesterday: () => Record<string, unknown>;
   dismissInsight: (insightId: string) => void;
   refresh: () => void;
 
-  // ✅ NEW: expose growth-intelligence driven reminders
+  
   generateReminders: (entries: TrackerEntry[], trackers: any[], score: any) => any[];
   checkNewAchievements: (entries: TrackerEntry[], score: any, unlocked: string[]) => any[];
 
-  // ✅ NEW: related tracker suggestions (chips after logging)
+  
   relatedTrackerSuggestions: Array<{
     id: string;
     trackerId: string;
@@ -139,7 +139,7 @@ export interface TrackerProgressiveState {
     reason: string;
   }>;
 
-  // ✅ NEW: routine consistency score
+  
   routineScore: {
     score: number;
     label: string;
@@ -206,25 +206,25 @@ const validateSuggestion = (
   // Require HIGH confidence — 70% minimum for actionable suggestions
   if (confidence < 70) return null;
 
-  // Reject empty/null/undefined values
+  
   if (value === undefined || value === null || value === '') return null;
 
-  // Reject values that are clearly nonsense (e.g., NaN, "undefined")
+  
   if (typeof value === 'number' && !Number.isFinite(value)) return null;
   if (typeof value === 'string' && value.trim() === '') return null;
 
-  // Reject "0" as a value for fields that expect a positive number
+  
   if (typeof value === 'number' && value === 0) return null;
 
-  // Reject negative numbers for measurements
+  
   if (typeof value === 'number' && value < 0) return null;
 
-  // Reject absurd durations (> 24 hours in seconds)
+  
   if (fieldId.toLowerCase().includes('duration') && typeof value === 'number' && value > 86400) {
     return null;
   }
 
-  // Reject absurd amounts (> 2000ml or > 500g)
+  
   if (
     (fieldId.toLowerCase().includes('amount') || fieldId.toLowerCase().includes('quantity')) &&
     typeof value === 'number' &&
@@ -244,11 +244,11 @@ export const useTrackerProgressive = (trackerId: string) => {
   const tracker = useTracker();
   const baby = useBaby();
 
-  // (safeGetEntries is declared above, after useState)
+  
 
-  // ─── Debounce entry-driven recomputes ──────────────────────────
-  // When entries change rapidly (bulk import, quick successive logs),
-  // we wait 300ms before invalidating memos. Prevents thrashing.
+  
+  
+  
   const [debouncedEntryCount, setDebouncedEntryCount] = useState(
     tracker.entries?.length ?? 0
   );
@@ -271,23 +271,23 @@ export const useTrackerProgressive = (trackerId: string) => {
   const tc = useTimelineCorrelations();
   const timelineCorrelations = tc?.correlations ?? [];
 
-  // ─── Stable fingerprint: re-run the AI-correlation memo only when the
-  //     underlying score or entry count actually moves. Prevents the
-  //     progressive state from thrashing on every render.
+  
+  
+  
   const aiFingerprint = `${growthIndex?.compositeIndex ?? 0}:${
     growthIndex?.lastUpdated ?? 0
   }:${debouncedEntryCount}`;
 
-  // ─── Stable fingerprint of everything in the tracker context that the
-  //     memos below actually read. Replaces the raw `tracker` object in
-  //     deps arrays — `tracker` is a new object on every provider render.
+  
+  
+  
   const trackerFingerprint = `${
     tracker.entries?.length ?? 0
   }:${tracker.getInsights?.()?.length ?? 0}:${
     tracker.getPendingReminders?.()?.length ?? 0
   }`;
 
-  // ─── AI-discovered correlations (cached, no recompute) ──────────
+  
   const [aiCorrelations, setAiCorrelations] = useState<any[]>([]);
   useEffect(() => {
     const babyId = baby?.currentBaby?.id;
@@ -299,12 +299,12 @@ export const useTrackerProgressive = (trackerId: string) => {
     return () => { cancelled = true; };
   }, [
     baby?.currentBaby?.id,
-    // Re-read whenever the tracker entries change — TrackerContext
-    // invalidates the server cache after INVALIDATE_THRESHOLD new logs.
+    
+    
     tracker.entries?.length,
   ]);
 
-  // ─── Safe entry accessor — must be declared BEFORE any useMemo that uses it ───
+  
   const safeGetEntries = useCallback(
     (id: string, limit?: number) => {
       if (typeof tracker?.getEntries !== 'function') return [] as TrackerEntry[];
@@ -331,8 +331,8 @@ export const useTrackerProgressive = (trackerId: string) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Extract stable reference — the tracker context object is recreated
-  // by React on every provider render.
+  
+  
   const getTemplatesFn = tracker.getTemplates;
   useEffect(() => {
     if (trackerId && typeof getTemplatesFn === 'function') {
@@ -411,8 +411,8 @@ export const useTrackerProgressive = (trackerId: string) => {
       hourCounts[h] = (hourCounts[h] || 0) + 1;
     });
 
-    // Only show "usual times" if we have enough data.
-    // Require: >= 20% of entries at that hour AND at least 3 total occurrences.
+    
+    
     const totalEntries = recentEntries.length;
     const minCount = Math.max(3, Math.ceil(totalEntries * 0.15));
 
@@ -482,18 +482,18 @@ export const useTrackerProgressive = (trackerId: string) => {
       return { score: 0, label: 'Building routine', sessions: weekEntries.length };
     }
 
-    // Group by hour of day
+    
     const hourBuckets: Record<number, number> = {};
     weekEntries.forEach(e => {
       const hour = new Date(e.timestamp).getHours();
       hourBuckets[hour] = (hourBuckets[hour] || 0) + 1;
     });
 
-    // How many distinct hour buckets do we have vs total?
+    
     const distinctHours = Object.keys(hourBuckets).length;
     const concentration = 1 - (distinctHours / Math.min(24, weekEntries.length));
 
-    // Also factor in day-coverage: how many of the last 7 days had entries?
+    
     const distinctDays = new Set(
       weekEntries.map(e => new Date(e.timestamp).toDateString())
     ).size;
@@ -530,7 +530,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       reason: string;
     }> = [];
 
-    // Pairs that commonly co-occur
+    
     const PAIRS: Record<string, Array<{ id: string; emoji: string; label: string }>> = {
       feed: [
         { id: 'diaper', emoji: '👶', label: 'Log diaper' },
@@ -563,10 +563,10 @@ export const useTrackerProgressive = (trackerId: string) => {
     const seenTrackerIds = new Set<string>();
 
     related.forEach(({ id, emoji, label }) => {
-      // Skip if already added (dedupe)
+      
       if (seenTrackerIds.has(id)) return;
       
-      // Skip if related tracker already logged recently.
+      
       const recentForRelated = safeGetEntries(id, 5)
         .filter((e: TrackerEntry) => {
           const ts = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
@@ -595,10 +595,10 @@ export const useTrackerProgressive = (trackerId: string) => {
     const prefill: Record<string, unknown> = {};
     const suggMap = new Map<string, ProgressiveSuggestion>();
 
-    // ─── Fields that MUST NOT be auto-prefilled from yesterday ──────
-    // These are time-sensitive or state-tracking fields where stale
-    // values would be actively harmful (e.g., copying yesterday's
-    // startTime would create an entry 24h in the past).
+    
+    
+    
+    
     const NEVER_PREFILL = new Set([
       'startTime', 'endTime', 'dateGiven', 'startedAt', 'departure',
       'return', 'dropoff', 'pickup', 'followUpDate', 'nextDue',
@@ -617,14 +617,14 @@ export const useTrackerProgressive = (trackerId: string) => {
       );
     };
 
-    // ─── 1. Yesterday's data — but ONLY for stable fields ────────
+    
     const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday && Object.keys(yesterday).length > 0) {
       Object.entries(yesterday).forEach(([fieldId, value]) => {
-        // Skip time/date fields — they must always be freshly set
+        
         if (isNeverPrefill(fieldId)) return;
         
-        // Skip status/state fields — a new entry starts fresh
+        
         if (
           fieldId === 'status' || 
           fieldId === 'completed' || 
@@ -648,13 +648,13 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    // ─── 2. Pattern suggestions (from tracker context) ───────────
-    //      Only surface suggestions when we have REAL data (>= 5 entries)
+    
+    
     const entryCount = trackerEntries.length;
     const patternSuggestions = entryCount >= 5 ? (tracker.getSmartSuggestions(trackerId) || {}) : {};
     Object.entries(patternSuggestions).forEach(([fieldId, value]) => {
       if (prefill[fieldId] === undefined && value !== undefined) {
-        // Validate before adding — require 80% confidence for patterns
+        
         const validated = validateSuggestion(fieldId, value, 80);
         if (validated) {
           prefill[fieldId] = value;
@@ -668,23 +668,23 @@ export const useTrackerProgressive = (trackerId: string) => {
       }
     });
 
-    // ─── 3. Time-based suggestions for time/datetime fields ──────
-    //      Only prefill START times, never END times (so ongoing works)
+    
+    
     if (trackerConfig?.fields) {
       trackerConfig.fields.forEach((field) => {
         if (prefill[field.id] !== undefined) return;
 
         if (field.type === 'time' || field.type === 'datetime') {
-          // Never auto-fill endTime — that would make sessions instantly "complete"
+          
           const fieldIdLower = field.id.toLowerCase();
           const isEndField = fieldIdLower.includes('end') || fieldIdLower === 'endtime';
           
           if (isEndField) {
-            // Skip endTime — leave it empty so "ongoing" state works
+            
             return;
           }
 
-          // For datetime, use ISO string; for time, use HH:mm
+          
           if (field.type === 'datetime') {
             const isoNow = now.toISOString();
             prefill[field.id] = isoNow;
@@ -712,9 +712,9 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    // ─── 4. Partner's recent entries (co-parenting) ──────────────
-    //      Only surface DATA fields, never time/status/duration —
-    //      those would create duplicate or nonsensical entries.
+    
+    
+    
     const partnerEntry = trackerEntries.find(
       (e) =>
         e.loggedByRole === 'parent2' &&
@@ -730,7 +730,7 @@ export const useTrackerProgressive = (trackerId: string) => {
           : `${Math.round(partnerTimeAgo / 60)}h ago`;
 
       Object.entries(partnerEntry.data || {}).forEach(([fieldId, value]) => {
-        // Skip time/status fields — partner's timing is not ours
+        
         if (isNeverPrefill(fieldId)) return;
         if (fieldId === 'status' || fieldId === 'duration') return;
 
@@ -741,7 +741,7 @@ export const useTrackerProgressive = (trackerId: string) => {
           value !== '' &&
           value !== null
         ) {
-          // Validate partner suggestions (require 75+ confidence)
+          
           const validated = validateSuggestion(fieldId, value, 75);
           if (validated) {
             suggMap.set(fieldId, {
@@ -755,12 +755,12 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    // ─── 5. Correlation-based suggestions ────────────────────────
-    //      IMPORTANT: correlations only INFORM the suggestion chip,
-    //      they do NOT auto-prefill the form. The parent must
-    //      actively tap the suggestion.
-    //      Confidence is capped at 70 since these are statistical,
-    //      not deterministic.
+    
+    
+    
+    
+    
+    
     const safeCorrelations = timelineCorrelations || [];
     safeCorrelations
       .filter((c) => {
@@ -769,14 +769,14 @@ export const useTrackerProgressive = (trackerId: string) => {
         return relatedId === trackerId || primaryId === trackerId;
       })
       .forEach((c) => {
-        // Only surface the suggestion — do NOT write to `prefill`
+        
         if (trackerId === 'medication' && c.type === 'health_alert') {
           if (!suggMap.has('reason')) {
             suggMap.set('reason', {
               fieldId: 'reason',
               value: 'Fever',
               source: 'correlation',
-              confidence: 70, // Capped — this is a guess, not a fact
+              confidence: 70, 
               label: c.insight || 'Recent health alert detected',
               emoji: '🔗',
             });
@@ -797,8 +797,8 @@ export const useTrackerProgressive = (trackerId: string) => {
         }
       });
 
-    // ─── Deduplicate suggestions: only ONE per field ────────────
-    //      Priority: yesterday > pattern > partner > correlation > time
+    
+    
     const sourceRank: Record<string, number> = {
       yesterday: 5,
       pattern: 4,
@@ -808,7 +808,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       time_based: 1,
     };
 
-    // Group by fieldId, keep highest-priority (then highest-confidence)
+    
     const byField = new Map<string, ProgressiveSuggestion>();
     for (const sugg of suggMap.values()) {
       const existing = byField.get(sugg.fieldId);
@@ -826,7 +826,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       }
     }
 
-    // Cap the total number of suggestions shown to avoid overwhelm
+    
     const MAX_SUGGESTIONS = 6;
     const suggestions = Array.from(byField.values())
       .sort((a, b) => b.confidence - a.confidence)
@@ -856,9 +856,9 @@ export const useTrackerProgressive = (trackerId: string) => {
       'solidAmount', 'waterAmount',
     ]);
 
-    // Compute trends across ALL entries for each field (not just [0])
+    
     if (todayEntries.length > 0 && yesterdayEntries.length > 0) {
-      // Collect all numeric values per field for today and yesterday
+      
       const collectNumeric = (entries: TrackerEntry[]): Record<string, number[]> => {
         const acc: Record<string, number[]> = {};
         entries.forEach(e => {
@@ -892,7 +892,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    // Fallback: compare prefill (yesterday) to today's actual entries
+    
     const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday) {
       Object.entries(yesterday).forEach(([fieldId, yestVal]) => {
@@ -916,8 +916,8 @@ export const useTrackerProgressive = (trackerId: string) => {
      INSIGHTS
      ═══════════════════════════════════════════════════════════ */
 
-  // Bump this counter whenever the tracker context changes so memoized
-  // insight lists re-compute after dismissInsight / new entries.
+  
+  
   const [contextTick, setContextTick] = useState(0);
 
   useEffect(() => {
@@ -947,7 +947,7 @@ export const useTrackerProgressive = (trackerId: string) => {
   const correlations = useMemo((): ProgressiveCorrelation[] => {
     const safeTimelineCorrelations = timelineCorrelations || [];
 
-    // ─── Merge AI-discovered correlations into the timeline list ──
+    
     const aiAsTimeline: any[] = (aiCorrelations || [])
       .filter((c: any) => c.metricA === trackerId || c.metricB === trackerId)
       .map((c: any) => {

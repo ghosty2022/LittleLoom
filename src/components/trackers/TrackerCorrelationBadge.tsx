@@ -46,16 +46,16 @@ export const TrackerCorrelationBadge: React.FC<TrackerCorrelationBadgeProps> = (
           },
         ]}
         onPress={() => {
-          // Navigate to the tracker that this correlation is about
+          
           const trackerId = correlation?.primaryEntry?.trackerId;
           if (!trackerId) return;
-          // UniversalTrackerHub takes a `type` param that maps to tracker IDs
+          
           try {
             (navigation as any).navigate('UniversalTrackerHub', {
               type: trackerId,
             });
           } catch {
-            // Fallback to AddEntry if hub isn't available
+            
             (navigation as any).navigate('AddEntry', { trackerId });
           }
         }}

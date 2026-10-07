@@ -5,14 +5,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
-// Dimensions no longer needed
+
 
 export type AvatarType = 'photo' | 'emoji' | 'illustration' | 'gradient' | 'letter';
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | 'profile';
 export type BabyGender = 'boy' | 'girl' | 'other';
 export type AvatarTheme = 'pastel' | 'vibrant' | 'neutral' | 'warm' | 'cool';
 
-// AvatarConfig removed - unused
+
 
 const SIZE_MAP: Record<AvatarSize, number> = {
   xs: 28,
@@ -71,18 +71,18 @@ export const ALL_EMOJIS = Object.values(BABY_EMOJIS).flat();
 export const ILLUSTRATION_AVATARS = {
   baby: {
     boy: [
-      'https://cdn-icons-png.flaticon.com/512/2922/2922506.png',  // Baby boy
-      'https://cdn-icons-png.flaticon.com/512/2922/2922510.png',  // Toddler boy
-      'https://cdn-icons-png.flaticon.com/512/2922/2922511.png',  // Boy with pacifier
+      'https://cdn-icons-png.flaticon.com/512/2922/2922506.png',  
+      'https://cdn-icons-png.flaticon.com/512/2922/2922510.png',  
+      'https://cdn-icons-png.flaticon.com/512/2922/2922511.png',  
     ],
     girl: [
-      'https://cdn-icons-png.flaticon.com/512/2922/2922507.png',  // Baby girl
-      'https://cdn-icons-png.flaticon.com/512/2922/2922509.png',  // Toddler girl
-      'https://cdn-icons-png.flaticon.com/512/2922/2922512.png',  // Girl with bow
+      'https://cdn-icons-png.flaticon.com/512/2922/2922507.png',  
+      'https://cdn-icons-png.flaticon.com/512/2922/2922509.png',  
+      'https://cdn-icons-png.flaticon.com/512/2922/2922512.png',  
     ],
     other: [
-      'https://cdn-icons-png.flaticon.com/512/2922/2922508.png',  // Neutral baby
-      'https://cdn-icons-png.flaticon.com/512/2922/2922513.png',  // Sleeping baby
+      'https://cdn-icons-png.flaticon.com/512/2922/2922508.png',  
+      'https://cdn-icons-png.flaticon.com/512/2922/2922513.png',  
     ],
   },
 
@@ -218,8 +218,8 @@ const getInitials = (name: string): string => {
 };
 
 interface LittleLoomAvatarProps {
-  source?: string | null;  // Photo URI, emoji, or illustration URL
-  name?: string;           // For letter fallback
+  source?: string | null;  
+  name?: string;           
 
   size?: AvatarSize | number;
   gender?: BabyGender;
@@ -268,7 +268,7 @@ export const LittleLoomAvatar: React.FC<LittleLoomAvatarProps> = ({
 
   const avatarSize = typeof size === 'string' ? SIZE_MAP[size] : size;
   const genderConfig = GENDER_CONFIG[gender];
-  // skinToneColor removed - unused
+  
 
   const avatarType: AvatarType = useMemo(() => {
     if (isImageUri(source) && !hasError) return 'photo';

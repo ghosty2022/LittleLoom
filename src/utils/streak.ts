@@ -1,4 +1,4 @@
-// utils/streak.ts -- Shared streak computation
+
 import { differenceInHours } from 'date-fns';
 
 export interface StreakData {

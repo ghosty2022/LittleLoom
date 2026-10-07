@@ -1,12 +1,12 @@
-// src/hooks/useReportRoute.ts
-// Reports the current route to AppContext so the navigator can decide
-// whether the glass tab bar should be visible.
-//
-// FIX: AppContext exposes `setCommunityScreen(boolean)`, not
-//      `setCommunityRoute(name)`. The old version read a non-existent
-//      function off the safe context and was a silent no-op.
-//
-// We use the real API and translate route name → boolean.
+
+
+
+
+
+
+
+
+
 
 import { useEffect } from 'react';
 import { useRoute } from '@react-navigation/native';

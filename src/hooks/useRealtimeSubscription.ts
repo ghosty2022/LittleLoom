@@ -1,4 +1,4 @@
-// src/hooks/useRealtimeSubscription.ts
+
 
 import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
@@ -28,7 +28,7 @@ export function useRealtimeSubscription({
     if (!enabled || !table) return;
 
     try {
-      // Clean up any existing subscription
+      
       if (channelRef.current) {
         await supabase.removeChannel(channelRef.current);
         channelRef.current = null;
@@ -83,7 +83,7 @@ export function useRealtimeSubscription({
     }
   }, [table, filter, onInsert, onUpdate, onDelete, enabled]);
 
-  // Setup subscription on mount
+  
   useEffect(() => {
     let cleanup: (() => void) | undefined;
 

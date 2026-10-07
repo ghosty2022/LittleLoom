@@ -82,7 +82,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
 
   const progressive = useTrackerProgressive(tracker.id);
 
-  // ─── Defensive destructure with safe defaults ──────────────────────
+  
   const prefillData = useMemo(
     () => safeObject(progressive?.prefillData),
     [progressive?.prefillData]
@@ -145,20 +145,20 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
   const dismissInsight = progressive?.dismissInsight;
   const refresh = progressive?.refresh;
 
-  // ─── Theme color fallbacks ─────────────────────────────────────────
+  
   const successColor = pickColor(themeColors, 'success');
   const warningColor = pickColor(themeColors, 'warning');
   const errorColor = pickColor(themeColors, 'error');
   const infoColor = pickColor(themeColors, 'info');
 
-  // Pull real streak data from achievements hook (single source of truth)
+  
   const { streak: globalStreak } = useTrackerAchievements();
 
   const [mode, setMode] = useState<'dashboard' | 'form' | 'history' | 'insights'>('dashboard');
-  // NOTE: linkedEntryId is reserved for future correlation-driven linking.
+  
   const [linkedEntryId, setLinkedEntryId] = useState<string | undefined>(undefined);
-  // One-shot override merged over prefillData when opening the form from a
-  // template or correlation action. Cleared on plain quick-log and after save.
+  
+  
   const [formPreset, setFormPreset] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
@@ -178,7 +178,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
       tags: options.tags,
     });
 
-    if (!entry) return; // context already showed the error alert — do NOT claim success
+    if (!entry) return; 
 
     if (options.linkedEntryId) {
       await linkEntries(entry.id, options.linkedEntryId, 'related');
@@ -197,7 +197,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
 
   const quickLog = useCallback(() => {
     triggerHaptic('light');
-    setFormPreset(null); // plain quick-log must not inherit a stale preset
+    setFormPreset(null); 
     setMode('form');
   }, [triggerHaptic]);
 
@@ -856,7 +856,7 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
       .filter(
         (entry, index, self) =>
           entry && index === self.findIndex((e) => e.id === entry.id)
-      ); // Deduplicate + guard null
+      ); 
 
     return (
       <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>

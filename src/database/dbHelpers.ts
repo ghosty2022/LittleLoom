@@ -1,5 +1,5 @@
-// src/database/dbHelpers.ts
-// Full Supabase implementation - No local DB, No Drizzle
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -34,20 +34,20 @@ export interface UserRegistryEntry {
 
 const USER_REGISTRY_KEY = 'littleloom_user_registry';
 
-// ─── USER ID CACHE ────────────────────────────────────────────────────────
+
 let cachedUserId: string | null = null;
 let cachedUserIdTimestamp: number = 0;
-const USER_ID_CACHE_TTL = 30000; // 30 seconds
+const USER_ID_CACHE_TTL = 30000; 
 let isRefreshingSession = false;
 
-// ─── TEST DATABASE CONNECTION ──────────────────────────────────────────
+
 export async function testDatabaseConnection(): Promise<{ 
   success: boolean; 
   userId: string | null; 
   message: string 
 }> {
   try {
-    // Get current user
+    
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
@@ -58,7 +58,7 @@ export async function testDatabaseConnection(): Promise<{
       };
     }
     
-    // Test if we can read from babies table
+    
     const { data, error: readError } = await supabase
       .from('babies')
       .select('id')
@@ -72,7 +72,7 @@ export async function testDatabaseConnection(): Promise<{
       };
     }
     
-    // Test if we can insert a test record (will be rolled back)
+    
     const testId = `test_${Date.now()}`;
     const { error: insertError } = await supabase
       .from('babies')
@@ -86,7 +86,7 @@ export async function testDatabaseConnection(): Promise<{
         updated_at: new Date().toISOString(),
       });
     
-    // Clean up test record
+    
     await supabase.from('babies').delete().eq('id', testId);
     
     if (insertError) {
@@ -111,7 +111,7 @@ export async function testDatabaseConnection(): Promise<{
   }
 }
 
-// ─── Clear user ID cache (call on logout) ─────────────────────────────
+
 export function clearUserIdCache(): void {
   cachedUserId = null;
   cachedUserIdTimestamp = 0;
@@ -119,7 +119,7 @@ export function clearUserIdCache(): void {
 
 /* ─── UTILITY ───────────────────────────────────────────────────────────── */
 
-// Safely check if a table exists in Supabase
+
 export async function tableExists(tableName: string): Promise<boolean> {
   try {
     const { error } = await supabase
@@ -140,31 +140,31 @@ export async function tableExists(tableName: string): Promise<boolean> {
   }
 }
 
-// ─── Get current user ID (NO refresh spam) ───────────────────────────
-//
-// This used to call `supabase.auth.refreshSession()` whenever the
-// session was missing, which produced an infinite loop on cold start:
-//
-//   [DB] Session expired, attempting refresh...
-//   [DB] Session refresh failed
-//   [DB] Session expired, attempting refresh...
-//   ...
-//
-// Session lifecycle is owned by AuthContext. This helper only reads
-// the cached session — never mutates it. If there's no session, we
-// simply return null. The caller (BabyContext / FamilyContext) already
-// knows how to fall back to AuthContext.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export async function getCurrentUserId(): Promise<string | null> {
   const now = Date.now();
 
-  // 1. Serve from cache if fresh
+  
   if (cachedUserId !== null && (now - cachedUserIdTimestamp) < USER_ID_CACHE_TTL) {
     return cachedUserId;
   }
 
-  // 2. Single attempt at reading the session — no retries, no refresh,
-  //    no logging. If it's missing, that's a valid state (user not
-  //    signed in yet).
+  
+  
+  
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user?.id) {
@@ -173,7 +173,7 @@ export async function getCurrentUserId(): Promise<string | null> {
       return cachedUserId;
     }
 
-    // 3. Fall back to getUser() — only once, no loops
+    
     const { data: { user } } = await supabase.auth.getUser();
     if (user?.id) {
       cachedUserId = user.id;
@@ -181,17 +181,17 @@ export async function getCurrentUserId(): Promise<string | null> {
       return user.id;
     }
   } catch {
-    // Silent — no log spam. AuthContext handles error reporting.
+    
   }
 
-  // Cache the "no user" result briefly so we don't hammer the SDK
+  
   cachedUserId = null;
   cachedUserIdTimestamp = now;
   return null;
 }
 
-// Get current session — silent, no retries, no logging.
-// Session lifecycle is owned by AuthContext.
+
+
 export async function getCurrentSession() {
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -201,9 +201,9 @@ export async function getCurrentSession() {
   }
 }
 
-// ─── FORCE REFRESH SESSION ──────────────────────────────────────────────
-// No-op warning: kept for backward compatibility. Callers should
-// prefer AuthContext.refreshSession() instead.
+
+
+
 export async function forceRefreshSession(): Promise<boolean> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -297,7 +297,7 @@ export async function findUserByEmail(email: string): Promise<UserRegistryEntry 
       }
     }
     
-    // Try to find from Supabase profiles
+    
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
@@ -554,7 +554,7 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
 
     const now = new Date().toISOString();
     
-    // Try update first
+    
     let query = supabase
       .from('app_settings')
       .update({ value, updated_at: now })
@@ -712,7 +712,7 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
       return [];
     }
 
-    // Fetch from Supabase
+    
     const { data: parent1Babies, error: error1 } = await supabase
       .from('babies')
       .select('*')
@@ -720,7 +720,7 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
       .eq('is_active', true);
 
     if (error1) {
-      // If it's an RLS error, try to handle it gracefully
+      
       if (error1.message?.includes('infinite recursion') || error1.message?.includes('policy')) {
         console.error('[DB] RLS policy error - please check your RLS policies:', error1.message);
         return [];
@@ -742,7 +742,7 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
       console.error('[DB] parent2 query error:', error2.message);
     }
 
-    // Combine and deduplicate
+    
     const allBabies: any[] = [];
     const seenIds = new Set<string>();
 
@@ -756,7 +756,7 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
     if (parent1Babies) parent1Babies.forEach(addBaby);
     if (parent2Babies) parent2Babies.forEach(addBaby);
 
-    // Cache babies in AsyncStorage for offline access
+    
     if (allBabies.length > 0) {
       try {
         await AsyncStorage.setItem(`@littleloom_babies_${userId}`, JSON.stringify(allBabies));
@@ -769,7 +769,7 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
   } catch (error) {
     console.error('[DB] getAllBabiesFromDb error:', error);
     
-    // Try to return cached babies
+    
     try {
       const userId = await getCurrentUserId();
       if (userId) {
@@ -797,7 +797,7 @@ export async function getBabyByIdFromDb(id: string, forceSync: boolean = false) 
     if (error) {
       console.warn(`[DB] getBabyByIdFromDb error for ${id}:`, error.message);
       
-      // Try cached
+      
       try {
         const userId = await getCurrentUserId();
         if (userId) {
@@ -836,7 +836,7 @@ export async function getBabyCountFromDb(): Promise<number> {
     if (error) {
       console.warn('[DB] getBabyCountFromDb error:', error.message);
       
-      // Try cached
+      
       try {
         const cached = await AsyncStorage.getItem(`@littleloom_babies_${userId}`);
         if (cached) {
@@ -900,7 +900,7 @@ export async function createBabyInDb(data: {
       throw error;
     }
 
-    // Invalidate cache
+    
     if (userId) {
       await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
     }
@@ -950,7 +950,7 @@ export async function updateBabyInDb(id: string, updates: Partial<{
       throw error;
     }
 
-    // Invalidate cache
+    
     if (userId) {
       await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
     }
@@ -1643,7 +1643,7 @@ export type AppSetting = {
   updated_at: string;
 };
 
-// ─── BACKUP HELPERS ──────────────────────────────────────────────────────
+
 
 export async function getLastBackupTime(): Promise<number | null> {
   try {
@@ -1658,7 +1658,7 @@ export async function setLastBackupTime(time: number): Promise<void> {
   try {
     await AsyncStorage.setItem('@littleloom_last_backup_time', String(time));
   } catch {
-    // Ignore
+    
   }
 }
 

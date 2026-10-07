@@ -1,5 +1,5 @@
-// src/context/SafetyContext.tsx
-// Full Supabase-compatible safety features with SQL integration
+
+
 
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
@@ -474,7 +474,7 @@ const defaultChecklists: SafetyChecklist[] = [
   },
 ];
 
-// ─── SQL Emergency Numbers by Country ──────────────────────────────────────
+
 export const EMERGENCY_NUMBERS_BY_COUNTRY: Record<string, {
   police: string;
   ambulance: string;
@@ -707,7 +707,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const getLocalEmergencyNumbers = useCallback(async (): Promise<EmergencyContact[]> => {
     const contacts: EmergencyContact[] = [];
     
-    // Try to get country from location
+    
     let countryCode = 'US';
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -725,7 +725,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       console.warn('[SafetyContext] Could not determine country from location, using US as fallback');
     }
 
-    // Get country-specific emergency numbers
+    
     const countryNumbers = EMERGENCY_NUMBERS_BY_COUNTRY[countryCode] || EMERGENCY_NUMBERS_BY_COUNTRY['US'];
     
     contacts.push({
@@ -784,11 +784,11 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   /* ── Import device contacts using new expo-contacts API ── */
   const importDeviceContacts = useCallback(async () => {
     try {
-      // ─── Correct permission flow for contacts ────────────────────
-      // The previous version mistakenly called Location.requestPermissionsAsync()
-      // which asked for LOCATION access instead of contacts. That meant
-      // contacts were never actually granted permission, so the import
-      // silently returned zero contacts on iOS, and could crash on Android.
+      
+      
+      
+      
+      
       const { status } = await Contact.requestPermissionsAsync();
       if (status !== 'granted') {
         sweetAlert.alert(
@@ -804,7 +804,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return;
       }
 
-      // Get all contacts with phone numbers using the new API
+      
       const contacts = await Contact.getAllDetails([
         'fullName',
         'givenName',
@@ -820,7 +820,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return;
       }
 
-      // Filter contacts with phone numbers
+      
       const contactsWithNumbers = contacts.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
       
       if (contactsWithNumbers.length === 0) {
@@ -828,7 +828,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return;
       }
 
-      // Map to emergency contacts (limit to 10 to avoid overwhelming)
+      
       const newContacts: EmergencyContact[] = contactsWithNumbers.slice(0, 10).map((contact, index) => {
         const name = contact.fullName || contact.givenName || 'Unnamed Contact';
         const phoneNumber = contact.phoneNumbers?.[0]?.number || '';
@@ -848,7 +848,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return;
       }
 
-      // Merge with existing contacts
+      
       setState((prev) => {
         const existingNumbers = new Set(prev.emergencyContacts.map(c => c.number));
         const uniqueNewContacts = newContacts.filter(c => !existingNumbers.has(c.number));
@@ -861,7 +861,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       sweetAlert.success('Contacts Imported', `Imported ${newContacts.length} contacts successfully.`);
       
-      // Save to AsyncStorage
+      
       try {
         const data = JSON.stringify({
           emergencyContacts: state.emergencyContacts,
@@ -1321,7 +1321,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }));
       triggerHaptic('success');
       
-      // Save to AsyncStorage
+      
       try {
         const data = JSON.stringify({
           emergencyContacts: state.emergencyContacts,

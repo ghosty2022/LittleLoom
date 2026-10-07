@@ -1,5 +1,5 @@
-// src/context/FamilyContext.tsx
-// COMPLETE FIXED VERSION - Handles partial sign-ups and displays user info
+
+
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';

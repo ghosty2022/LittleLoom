@@ -1,5 +1,5 @@
-// src/context/MediaContext.tsx
-// Full Supabase Storage implementation
+
+
 
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { Alert, Platform } from 'react-native';
@@ -133,7 +133,7 @@ const getCacheSize = async (): Promise<number> => {
   try {
     const info = await FileSystem.getInfoAsync(CACHE_DIR);
     if (!info.exists) return 0;
-    // Rough estimate
+    
     return 0;
   } catch {
     return 0;
@@ -434,19 +434,19 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
 
     try {
-      // Process image
+      
       const compressedUri = await compressImage(uri);
       const fileExt = getFileExtension(compressedUri);
       const mimeType = getMimeType(fileExt);
       const fileName = `${type}_${id}_${Date.now()}.${fileExt}`;
       const storagePath = `${type}/${id}/${fileName}`;
 
-      // Read file as base64
+      
       const fileData = await FileSystem.readAsStringAsync(compressedUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Upload to Supabase
+      
       const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(storagePath, decode(fileData), {
@@ -459,10 +459,10 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw new Error(uploadError.message);
       }
 
-      // Get public URL
+      
       const publicUrl = getPublicUrl(bucket, storagePath);
 
-      // Get dimensions
+      
       const dims = await getImageDimensions(compressedUri);
       const size = await getFileSize(compressedUri);
 
@@ -522,7 +522,7 @@ export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     updateUpload(uploadId, { status: 'uploading', progress: 0, error: undefined });
 
     try {
-      // Re-upload with same parameters
+      
       const { uri, type, storagePath } = upload;
       if (!storagePath) {
         throw new Error('No storage path available');

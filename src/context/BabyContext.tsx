@@ -1,28 +1,28 @@
-// src/context/BabyContext.tsx
-// ─────────────────────────────────────────────────────────────────────
-// Baby profile + family membership context.
-//
-// RESPONSIBILITIES:
-//   • Load and cache babies the current user has access to
-//   • Track the "current baby" selection
-//   • Expose role/permission helpers (parent1, parent2, guardian, viewer)
-//   • Provide baby CRUD (create, update, delete, switch)
-//
-// NOT RESPONSIBLE FOR:
-//   • Tracker entries → use `useTracker()` from `@/hooks/useTrackerContext`
-//
-// ─── CRITICAL FIX (this version) ─────────────────────────────────────
-// `getCurrentUserId()` used to call `supabase.auth.getSession()` and
-// returned null when the SDK's local-only getSession returned
-// `{ session: null }` on cold start (SDK 2.45+ behavior). That made
-// `loadBabies()` short-circuit and the user saw zero babies even
-// though AuthContext had already verified a session.
-//
-// We now read the user ID from `useAuth()` FIRST (that context is
-// always authoritative), and only fall back to `supabase.auth.*` as a
-// last resort. AuthContext keeps `.session` and `.userProfile` in
-// sync across every auth state transition, so this is always fresh.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Alert } from 'react-native';
@@ -32,7 +32,7 @@ import { supabase } from '@/utils/supabase';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from './AuthContext';
 
-// ─── STORAGE KEYS ────────────────────────────────────────────────────────
+
 export const STORAGE_KEYS = {
   HAS_SKIPPED_BABY: '@littleloom_has_skipped_baby',
   CURRENT_BABY_ID: '@littleloom_current_baby_id',
@@ -41,7 +41,7 @@ export const STORAGE_KEYS = {
   BABY_SYNC_VERSION: '@littleloom_baby_sync_version',
 } as const;
 
-// ─── TYPES ──────────────────────────────────────────────────────────────
+
 export type Gender = 'boy' | 'girl' | 'other';
 
 export interface BabyProfile {
@@ -107,7 +107,7 @@ export interface ActivityEntry {
 
 export type ActivityType = string;
 
-// ─── STATE ──────────────────────────────────────────────────────────────
+
 interface BabyState {
   isLoading: boolean;
   isSyncing: boolean;
@@ -149,7 +149,7 @@ interface BabyContextType extends BabyState {
   getCurrentBabyId: () => string | null;
   subscribeToBabyChanges: (callback: (babyId: string | null) => void) => () => void;
 
-  // ─── Deprecated stubs (kept for backward compat, no-op) ──────────
+  
   addGrowthMeasurement: (measurement: any) => Promise<boolean>;
   getGrowthData: (type?: any) => any[];
   getLatestMeasurements: () => Record<string, any | null>;
@@ -178,7 +178,7 @@ interface BabyContextType extends BabyState {
   getBabyStats: () => { streak: number; milestones: number; photos: number; entries: number };
   updateBabyStats: (updates: Partial<BabyProfile>) => Promise<void>;
 
-  // ─── Deprecated entry methods (kept for backward compat, no-op) ──
+  
   entries: ActivityEntry[];
   isLoadingEntries: boolean;
   loadEntries: () => Promise<void>;
@@ -194,7 +194,7 @@ interface BabyContextType extends BabyState {
 
 const BabyContext = createContext<BabyContextType | null>(null);
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────
+
 const generateId = (): string => {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).substring(2, 11);
@@ -204,11 +204,11 @@ const generateId = (): string => {
 type BabyChangeCallback = (babyId: string | null) => void;
 let babyChangeSubscribers: BabyChangeCallback[] = [];
 
-// ═══════════════════════════════════════════════════════════════════════
-// PROVIDER
-// ═══════════════════════════════════════════════════════════════════════
+
+
+
 export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // ─── Auth is the authoritative source for user identity ──────────
+  
   const auth = useAuth();
   const authUserId: string | null =
     auth?.userProfile?.id ??
@@ -236,7 +236,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isLoadingEntries] = useState(false);
 
-  // ─── Refs ──────────────────────────────────────────────────────────
+  
   const loadBabiesRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
   const backfillRanRef = useRef(false);
   const initRef = useRef(false);
@@ -252,14 +252,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const authStateListenerRef = useRef<any>(null);
   const lastBroadcastedBabyIdRef = useRef<string | null>(null);
 
-  // ─── Keep currentUserIdRef in sync with AuthContext ───────────────
+  
   useEffect(() => {
     if (authUserId) {
       currentUserIdRef.current = authUserId;
     }
   }, [authUserId]);
 
-  // ─── Age calculation ────────────────────────────────────────────────
+  
   const calculateAge = useCallback((birthDate: string): string => {
     const birth = new Date(birthDate);
     const now = new Date();
@@ -290,7 +290,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       : `${years} year${years !== 1 ? 's' : ''}`;
   }, []);
 
-  // ─── Map database row to BabyProfile ──────────────────────────────
+  
   const mapBabyRowToProfile = useCallback(
     (
       row: any,
@@ -349,7 +349,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [calculateAge]
   );
 
-  // ─── Realtime: babies ──────────────────────────────────────────────
+  
   useRealtimeSubscription({
     table: 'babies',
     enabled: true,
@@ -407,7 +407,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
   });
 
-  // ─── Realtime: family_members ──────────────────────────────────────
+  
   useRealtimeSubscription({
     table: 'family_members',
     enabled: true,
@@ -425,7 +425,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
   });
 
-  // ─── Broadcast helpers ─────────────────────────────────────────────
+  
   const broadcastBabyChange = useCallback((babyId: string | null) => {
     if (lastBroadcastedBabyIdRef.current === babyId) return;
     lastBroadcastedBabyIdRef.current = babyId;
@@ -453,13 +453,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // ─── getCurrentUserId ──────────────────────────────────────────────
-  // ─── CRITICAL FIX: read from AuthContext FIRST, then Supabase ─────
-  // AuthContext has already verified the session. It exposes both
-  // `userProfile.id` and `session.user.id`. Reading from there avoids
-  // the SDK 2.45+ "getSession returns null on cold start" quirk.
+  
+  
+  
+  
+  
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
-    // ─── 1. AuthContext (authoritative, always fresh) ─────────────
+    
     const fromAuth =
       auth?.userProfile?.id ??
       (auth?.session?.user?.id ?? null);
@@ -468,16 +468,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return fromAuth;
     }
 
-    // ─── 2. Cached ref (set previously) ───────────────────────────
+    
     if (currentUserIdRef.current) {
       return currentUserIdRef.current;
     }
 
-    // ─── 3. Supabase getSession — single attempt, no retry ────────
-    // Previously this retried 3x with 400ms delays. That caused a
-    // 1.2s stall on every cold start when there was no session,
-    // and combined with DatabaseContext's refresh loop produced the
-    // "Session expired" log flood. AuthContext owns retry logic now.
+    
+    
+    
+    
+    
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (!error && session?.user?.id) {
@@ -485,10 +485,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return session.user.id;
       }
     } catch {
-      // Silent — caller has other fallbacks
+      
     }
 
-    // ─── 4. Read directly from AsyncStorage (Supabase's storage key) ─
+    
     try {
       const keys = await AsyncStorage.getAllKeys();
       const authKey = keys.find(
@@ -499,7 +499,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (stored) {
           try {
             const parsed = JSON.parse(stored);
-            // Supabase stores: { access_token, refresh_token, user, expires_at }
+            
             const userId =
               parsed?.user?.id ||
               parsed?.session?.user?.id ||
@@ -518,7 +518,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (__DEV__) console.warn('[BabyContext] AsyncStorage recovery failed:', e);
     }
 
-    // ─── 5. Supabase getUser (network fallback) ───────────────────
+    
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (!error && user?.id) {
@@ -533,7 +533,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   }, [auth?.userProfile?.id, auth?.session?.user?.id]);
 
-  // ─── loadBabies ────────────────────────────────────────────────────
+  
   const loadBabies = useCallback(async (force = false) => {
     if (loadInProgressRef.current && !force) {
       if (__DEV__) console.log('[BabyContext] Load already in progress, skipping');
@@ -550,7 +550,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       let userId = await getCurrentUserId();
 
-      // ─── Retry once: session hydration can lag on cold start ────────
+      
       if (!userId) {
         await new Promise(r => setTimeout(r, 500));
         userId = await getCurrentUserId();
@@ -558,7 +558,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!userId) {
         if (__DEV__) console.warn('[BabyContext] No authenticated user after retry');
-        // Don't wipe existing babies — just mark not-loading.
+        
         if (isMounted.current) {
           setState(prev => ({
             ...prev,
@@ -582,7 +582,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userPermissions: Record<string, Record<string, boolean>> = {};
       const seenBabyIds = new Set<string>();
 
-      // ─── QUERY 1: parent1 ────────────────────────────────────────
+      
       try {
         const { data, error } = await supabase
           .from('babies')
@@ -612,7 +612,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Parent1 query failed:', e);
       }
 
-      // ─── QUERY 2: parent2 ────────────────────────────────────────
+      
       try {
         const { data, error } = await supabase
           .from('babies')
@@ -642,7 +642,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Parent2 query failed:', e);
       }
 
-      // ─── QUERY 3: family_members ─────────────────────────────────
+      
       try {
         if (__DEV__) {
           console.log('[BabyContext] Querying family_members for user:', userId);
@@ -753,7 +753,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Family members query failed:', e);
       }
 
-      // ─── QUERY 4: invite_codes fallback ──────────────────────────
+      
       if (allBabies.length === 0) {
         if (__DEV__) {
           console.log(
@@ -827,12 +827,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log(`[BabyContext] Total babies found: ${allBabies.length}`);
       }
 
-      // ─── MAP TO PROFILES ─────────────────────────────────────────
+      
       const babies: BabyProfile[] = allBabies.map((baby: any) =>
         mapBabyRowToProfile(baby, userRoles[baby.id] || 'viewer')
       );
 
-      // ─── CACHE ───────────────────────────────────────────────────
+      
       if (babies.length > 0) {
         try {
           await AsyncStorage.setItem(
@@ -850,7 +850,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
       }
 
-      // ─── DETERMINE CURRENT BABY ID ───────────────────────────────
+      
       let currentId: string | null = null;
 
       if (babies.length > 0) {
@@ -931,7 +931,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? babies.find(b => b.id === currentId) || null
         : null;
 
-      // ─── hasSkippedBaby ──────────────────────────────────────────
+      
       let hasSkippedBaby = false;
       try {
         const { data: skipData } = await supabase
@@ -947,7 +947,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!isMounted.current) return;
 
-      // ─── One-time AI backfill ────────────────────────────────────
+      
       if (babies.length > 0 && !backfillRanRef.current) {
         backfillRanRef.current = true;
         import('@/services/ai/backfillBayesian')
@@ -986,7 +986,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .catch(() => {});
       }
 
-      // ─── UPDATE STATE ────────────────────────────────────────────
+      
       if (__DEV__) {
         console.log(
           `[BabyContext] Setting state: ${babies.length} babies, current: ${currentId}`
@@ -1063,7 +1063,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadBabies(true);
   }, [loadBabies]);
 
-  // ─── Auth state listener ────────────────────────────────────────────
+  
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -1108,19 +1108,19 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadBabies]);
 
-  // ─── React to AuthContext identity change ──────────────────────────
-  // When AuthContext updates (signIn/signOut/refresh), re-run loadBabies.
+  
+  
   useEffect(() => {
     if (authUserId) {
       initRef.current = false;
       backfillRanRef.current = false;
-      // Small delay so AuthContext's own state commit lands first.
+      
       const t = setTimeout(() => {
         if (isMounted.current) loadBabies(true);
       }, 300);
       return () => clearTimeout(t);
     } else {
-      // User logged out — clear.
+      
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1135,7 +1135,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authUserId, loadBabies]);
 
-  // ─── Initial load ───────────────────────────────────────────────────
+  
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
@@ -1143,7 +1143,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initialize = async () => {
       if (__DEV__) console.log('[BabyContext] Initializing...');
 
-      // Try AuthContext first
+      
       const fromAuth = authUserId;
       if (fromAuth) {
         currentUserIdRef.current = fromAuth;
@@ -1151,7 +1151,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Fall back to Supabase getSession
+      
       let hasSession = false;
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -1182,7 +1182,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
           }
         } catch {
-          // continue retrying
+          
         }
       }
 
@@ -1214,7 +1214,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadBabies, authUserId]);
 
-  // ─── Auto-refresh on app focus ──────────────────────────────────────
+  
   useEffect(() => {
     if (appStateListenerRef.current) {
       appStateListenerRef.current.remove?.();
@@ -1243,7 +1243,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // ─── Auto-refresh every 5 minutes ───────────────────────────────────
+  
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -1264,7 +1264,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // ─── Age auto-refresh ───────────────────────────────────────────────
+  
   useEffect(() => {
     if (ageIntervalRef.current) {
       clearInterval(ageIntervalRef.current);
@@ -1298,7 +1298,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [state.babies.length, calculateAge]);
 
-  // ─── getBabyAge ─────────────────────────────────────────────────────
+  
   const getBabyAge = useCallback(
     (babyId?: string): string => {
       const id = babyId || state.currentBabyId;
@@ -1309,7 +1309,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [state.babies, state.currentBabyId]
   );
 
-  // ─── ROLE-BASED ACCESS HELPERS ──────────────────────────────────────
+  
   const getUserRoleForBaby = useCallback(
     (babyId?: string): 'parent1' | 'parent2' | 'guardian' | 'viewer' | null => {
       const id = babyId || state.currentBabyId;
@@ -1369,12 +1369,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const id = babyId || state.currentBabyId;
       if (!id) return false;
 
-      // ─── FIX: A user can view a baby if ANY of these is true:
-      //     1. The baby is in the loaded list
-      //     2. They have an explicit role for the baby
-      //     3. They have an explicit view permission for the baby
-      // This prevents false negatives during the brief window
-      // between sign-in and loadBabies() completing.
+      
+      
+      
+      
+      
+      
       if (state.babies.some(b => b.id === id)) return true;
 
       const role = state.userRoles[id];
@@ -1403,7 +1403,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [state.currentBabyId, state.userPermissions]
   );
 
-  // ─── Skip / Clear skip ──────────────────────────────────────────────
+  
   const skipBaby = useCallback(async () => {
     const userId = await getCurrentUserId();
     if (!userId) return;
@@ -1449,7 +1449,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [getCurrentUserId]);
 
-  // ─── Create baby ────────────────────────────────────────────────────
+  
   const createBaby = useCallback(
     async (
       data: Omit<
@@ -1648,7 +1648,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [calculateAge, getCurrentUserId, broadcastBabyChange]
   );
 
-  // ─── Update baby ────────────────────────────────────────────────────
+  
   const updateBaby = useCallback(
     async (id: string, updates: Partial<BabyProfile>) => {
       try {
@@ -1728,7 +1728,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [mapBabyRowToProfile, canEditBaby, state.userRoles]
   );
 
-  // ─── Delete baby ────────────────────────────────────────────────────
+  
   const deleteBaby = useCallback(
     async (id: string): Promise<boolean> => {
       if (!canManageBaby(id)) {
@@ -1819,16 +1819,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ]
   );
 
-  // ─── Switch baby ────────────────────────────────────────────────────
-  // FIX: This used to call canViewBaby() BEFORE fetching the baby.
-  //       canViewBaby() checks `state.babies`, which may not be
-  //       populated yet during onboarding / first login. That made
-  //       the "Permission Denied" alert fire for the user's OWN baby.
-  //
-  //       Now we fetch the baby row from Supabase first. If the row
-  //       exists AND is active, the user has at least view access
-  //       (RLS already enforces this server-side). We only then
-  //       update the cached selection.
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   const switchBaby = useCallback(
     async (id: string): Promise<boolean> => {
       try {
@@ -1838,9 +1838,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return false;
         }
 
-        // ─── Fetch the baby directly. RLS on `babies` already
-        //     restricts this to rows the user can access. If the
-        //     query succeeds, they're allowed to view it.
+        
+        
+        
         const { data: baby, error } = await supabase
           .from('babies')
           .select('*')
@@ -1853,7 +1853,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return false;
         }
 
-        // ─── Persist the selection ─────────────────────────────────
+        
         try {
           await supabase
             .from('app_settings')
@@ -1872,8 +1872,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, id);
 
-        // ─── Determine the user's role for this baby ───────────────
-        // Prefer the cached role. If missing, infer from the row.
+        
+        
         const cachedRole = state.userRoles[id];
         const inferredRole: 'parent1' | 'parent2' | 'guardian' | 'viewer' =
           baby.parent1_id === userId
@@ -1888,8 +1888,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (isMounted.current) {
           setState(prev => {
-            // ─── Ensure the baby is in the list and roles/perms are
-            //     populated even if loadBabies() hasn't finished yet.
+            
+            
             const alreadyInList = prev.babies.some(b => b.id === id);
             const nextBabies = alreadyInList
               ? prev.babies.map(b => (b.id === id ? babyProfile : b))
@@ -1954,7 +1954,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ]
   );
 
-  // ─── Refresh current baby ───────────────────────────────────────────
+  
   const refreshCurrentBaby = useCallback(async () => {
     if (!state.currentBabyId) return;
 
@@ -2003,7 +2003,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getCurrentUserId,
   ]);
 
-  // ─── DEPRECATED ENTRY STUBS (silent, no warnings) ───────────────────
+  
   const entries = useMemo<ActivityEntry[]>(() => [], []);
 
   const loadEntries = useCallback(async () => {}, []);
@@ -2021,7 +2021,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [state.currentBabyId]
   );
 
-  // ── Growth stubs (silent) ────────────────────────────────────────
+  
   const addGrowthMeasurement = useCallback(async () => false, []);
   const getGrowthData = useCallback(() => [] as any[], []);
   const getLatestMeasurements = useCallback(
@@ -2030,47 +2030,47 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
   const deleteGrowthMeasurement = useCallback(async () => false, []);
 
-  // ── Milestone stubs (silent) ─────────────────────────────────────
+  
   const addMilestone = useCallback(async () => false, []);
   const getMilestones = useCallback(() => [] as any[], []);
   const deleteMilestone = useCallback(async () => false, []);
 
-  // ── Sleep stubs (silent) ─────────────────────────────────────────
+  
   const addSleepLog = useCallback(async () => false, []);
   const getSleepLogs = useCallback(() => [] as any[], []);
   const endSleepSession = useCallback(async () => false, []);
   const getTodaySleepCount = useCallback(() => 0, []);
 
-  // ── Feeding stubs (silent) ───────────────────────────────────────
+  
   const addFeedingLog = useCallback(async () => false, []);
   const getFeedingLogs = useCallback(() => [] as any[], []);
   const getTodayFeedCount = useCallback(() => 0, []);
 
-  // ── Potty stubs (silent) ─────────────────────────────────────────
+  
   const addPottyLog = useCallback(async () => false, []);
   const getPottyLogs = useCallback(() => [] as any[], []);
   const getPottyStreak = useCallback(() => 0, []);
   const getTodayPottyCount = useCallback(() => 0, []);
   const getPottySuccessRate = useCallback(() => 0, []);
 
-  // ── Medication stubs (silent) ────────────────────────────────────
+  
   const addMedicationLog = useCallback(async () => false, []);
   const getMedicationLogs = useCallback(() => [] as any[], []);
 
-  // ── Generic activity stubs (silent) ──────────────────────────────
+  
   const addActivity = useCallback(async () => false, []);
   const getRecentActivities = useCallback(() => [] as ActivityEntry[], []);
   const getActivitiesByType = useCallback(() => [] as ActivityEntry[], []);
   const deleteActivity = useCallback(async () => false, []);
 
-  // ── Stats stubs (silent) ─────────────────────────────────────────
+  
   const getBabyStats = useCallback(
     () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
     []
   );
   const updateBabyStats = useCallback(async () => {}, []);
 
-  // ─── MEMOIZED VALUE ─────────────────────────────────────────────────
+  
   const value = useMemo<BabyContextType>(
     () => ({
       ...state,

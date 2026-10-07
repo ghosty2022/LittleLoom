@@ -1,14 +1,14 @@
-// src/hooks/useSafeContexts.ts
-// Safe context hooks that never throw — for use in components that may
-// render before contexts are ready.
-//
-// FIX: No circular dependencies. This file does NOT import from any hook
-//      that uses the tracker context.
-//
-// FIX: `useSafeApp` now forwards the REAL AppContext methods
-//      (`setCommunityScreen`, `isCommunityScreen`) instead of returning
-//      hard-coded dummies. `useReportRoute` and anything else that reads
-//      those off `useSafeApp()` will now work.
+
+
+
+
+
+
+
+
+
+
+
 
 import { useContext } from 'react';
 import { useTheme as useThemeOriginal } from '../context/AppContext';
@@ -17,7 +17,7 @@ import { useBaby as useBabyOriginal } from '../context/BabyContext';
 import { useActivity as useActivityOriginal } from '../context/ActivityContext';
 import useCustomizationOriginal from './useCustomization';
 
-// Direct import of the context, NOT the hook wrapper
+
 import { TrackerContext } from '../context/TrackerContext';
 import { UserContext } from '../context/UserContext';
 
@@ -42,7 +42,7 @@ const DEFAULT_APP_COLORS = {
 };
 
 const DEFAULT_FULL_THEME = {
-  // Base theme colors (matches ThemeColors shape)
+  
   primary: '#667eea',
   secondary: '#764ba2',
   accent: '#fa709a',
@@ -51,7 +51,7 @@ const DEFAULT_FULL_THEME = {
   darkText: '#4338ca',
   lightText: '#ffffff',
 
-  // FullThemeColors additions
+  
   background: '#f4f6fa',
   surface: '#ffffff',
   surfaceElevated: '#ffffff',
@@ -136,18 +136,18 @@ const DEFAULT_CUSTOMIZATION = {
   triggerHaptic: async () => {},
 };
 
-// ─── SAFE APP ──────────────────────────────────────────────────────────
+
 
 function useSafeApp() {
   try {
-    // useThemeOriginal() returns the FULL AppContext value (theme aliases
-    // + isCommunityScreen + setCommunityScreen + notification helpers).
-    // We spread it first, then override only the nav-visibility shims
-    // that don't exist on the real context.
+    
+    
+    
+    
     const app = useThemeOriginal() as any;
     return {
       ...app,
-      // Navigation-visibility shims (consumed by LiquidGlassNavigation)
+      
       isNavVisible: true,
       isNavCompact: false,
       showNav: () => {},
@@ -155,7 +155,7 @@ function useSafeApp() {
       toggleCompact: () => {},
       forceShowNav: () => {},
       forceHideNav: () => {},
-      // Real AppContext state — do NOT override these with dummies
+      
       isCommunityScreen: app?.isCommunityScreen ?? false,
       setCommunityScreen:
         typeof app?.setCommunityScreen === 'function'
@@ -190,7 +190,7 @@ function useSafeApp() {
   }
 }
 
-// ─── SAFE AUTH ─────────────────────────────────────────────────────────
+
 
 function useSafeAuth() {
   try {
@@ -247,7 +247,7 @@ function useSafeAuth() {
   }
 }
 
-// ─── SAFE BABY ─────────────────────────────────────────────────────────
+
 
 function useSafeBaby() {
   try {
@@ -318,7 +318,7 @@ function useSafeBaby() {
   }
 }
 
-// ─── SAFE ACTIVITY ─────────────────────────────────────────────────────
+
 
 function useSafeActivity() {
   try {
@@ -350,22 +350,22 @@ function useSafeActivity() {
   }
 }
 
-// ─── SAFE CUSTOMIZATION ────────────────────────────────────────────────
+
 
 function useSafeCustomization() {
   try {
     return useCustomizationOriginal();
   } catch (e) {
-    // Match the exact return shape of useCustomization() so consumers
-    // never see `undefined.fullThemeColors` etc.
+    
+    
     return DEFAULT_CUSTOMIZATION;
   }
 }
 
-// ─── SAFE TRACKER ──────────────────────────────────────────────────────
 
-// SINGLE SOURCE OF TRUTH — mirrored exactly in
-// `src/hooks/useTrackerContext.ts`. Keep the two in sync.
+
+
+
 function getFallbackTrackerContext() {
   return {
     isLoading: false,
@@ -449,7 +449,7 @@ function useSafeTracker() {
   }
 }
 
-// ─── SAFE USER ─────────────────────────────────────────────────────────
+
 
 function getFallbackUserContext() {
   return {
@@ -502,7 +502,7 @@ function useSafeUser() {
   }
 }
 
-// ─── UNIFIED THEME ─────────────────────────────────────────────────────
+
 
 export function useUnifiedTheme() {
   const app = useSafeApp();
@@ -546,7 +546,7 @@ export function useUnifiedTheme() {
   };
 }
 
-// ─── EXPORTS ───────────────────────────────────────────────────────────
+
 
 export {
   useSafeApp,

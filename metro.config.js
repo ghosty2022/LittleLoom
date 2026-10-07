@@ -1,15 +1,15 @@
-// metro.config.js
+
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// ─── SVG Support ──────────────────────────────────────────────────────
+
 config.transformer = {
   ...config.transformer,
   babelTransformerPath: require.resolve('react-native-svg-transformer'),
 
-  // Keep memory sane on Windows
+  
   minifierConfig: {
     keep_classnames: true,
     keep_fnames: true,
@@ -18,23 +18,37 @@ config.transformer = {
   },
 };
 
-// ─── Source extensions ──────────────────────────────────────────────
+
+
+const defaultSourceExts = config.resolver.sourceExts;
+const defaultAssetExts = config.resolver.assetExts;
+
 config.resolver = {
   ...config.resolver,
 
-  sourceExts: [
-    'js', 'jsx', 'ts', 'tsx', 'json', 'cjs', 'mjs', 'svg',
-  ],
+  
+  
+  sourceExts: Array.from(
+    new Set([
+      ...defaultSourceExts.filter((ext) => ext !== 'svg'),
+      'svg',
+      'cjs',
+      'mjs',
+    ])
+  ),
 
-  // `pte` is a BINARY ASSET, not a source file.
-  assetExts: [
-    ...config.resolver.assetExts.filter((ext) => ext !== 'svg'),
-    'pte',
-    'bin',
-    'onnx',
-    'tflite',
-    'gguf',
-  ],
+  
+  
+  assetExts: Array.from(
+    new Set([
+      ...defaultAssetExts.filter((ext) => ext !== 'svg'),
+      'pte',
+      'bin',
+      'onnx',
+      'tflite',
+      'gguf',
+    ])
+  ),
 
   alias: {
     '@': path.resolve(__dirname, 'src'),
@@ -58,23 +72,23 @@ config.resolver = {
     /[\/\\]android[\/\\]build[\/\\].*/,
     /[\/\\]ios[\/\\]Pods[\/\\].*/,
     /[\/\\]ios[\/\\]build[\/\\].*/,
-    // Block AI model caches that sometimes get created
+    
     /[\/\\]\.cache[\/\\].*/,
     /[\/\\]executorch[\/\\].*/,
   ],
 };
 
-// ─── CRITICAL: Force single-instance of react/react-native ──────────
+
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
   react: path.resolve(__dirname, 'node_modules/react'),
   'react-native': path.resolve(__dirname, 'node_modules/react-native'),
 };
 
-// ─── Reduce Metro worker memory pressure on Windows ─────────────────
+
 config.maxWorkers = 2;
 
-// ─── Speed up: don't watch these folders ────────────────────────────
+
 config.watchFolders = [
   path.resolve(__dirname, 'src'),
   path.resolve(__dirname, 'assets'),

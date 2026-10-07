@@ -65,7 +65,7 @@ import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
-// Safe SVG import — degrades to a static ring if react-native-svg isn't installed
+
 let Svg: any = null;
 let Circle: any = null;
 let Defs: any = null;
@@ -111,9 +111,9 @@ const DESIGN = {
    ═══════════════════════════════════════════════════════════════ */
 
 // NOTE: setNotificationHandler is called EXACTLY ONCE per app launch,
-// inside src/services/NotificationService.ts during initialize().
-// Do NOT call it here — that would overwrite the unified handler and
-// break per-channel routing.
+
+
+
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -255,9 +255,9 @@ const GlassCard = React.memo(({ children, style, onPress, active = false }: any)
    SECTION HEADER — Matching Achievements screen
    ═══════════════════════════════════════════════════════════════ */
 
-// ✅ FIXED: Handle undefined/null title and subtitle values
+
 const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark }: any) => {
-  // Convert to string and provide fallback for null/undefined
+  
   const safeTitle = title != null ? String(title) : '';
   const safeSubtitle = subtitle != null ? String(subtitle) : '';
   
@@ -1088,22 +1088,22 @@ export default function RemindersScreen({ navigation, route }: Props) {
   }, [baby?.id]);
 
   /* ---- Notification listener ---- */
-  // NOTE: Notification tap handling is centralized in AppNavigator via
-  // `notificationService.addResponseHandler()`. Adding a second listener
-  // here would race with that handler and double-fire navigation.
-  //
-  // If you need screen-specific behavior on tap, read `route.params`
-  // instead — AppNavigator forwards the notification's `data` into the
-  // target screen's params.
-  //
-  // Example: for reminders, AppNavigator sends the user to
-  // `TrackerReminders` with params from the notification. If you want to
-  // highlight the specific reminder, read `route.params?.reminderId`.
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   useEffect(() => {
     const reminderId = (route.params as any)?.reminderId;
     if (reminderId) {
-      // Optional: scroll to / highlight the tapped reminder
-      // console.log('[TrackerReminders] Opened for reminder:', reminderId);
+      
+      
     }
   }, [route.params]);
 
@@ -1229,7 +1229,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
     const insights: DailyInsight[] = [];
     const now = new Date();
 
-    // Streak insight
+    
     const babyActs = activities.filter((a) => a.babyId === baby.id);
     let streak = 0;
     let currentDate = new Date();
@@ -1246,7 +1246,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
       });
     }
 
-    // Overdue reminders insight
+    
     const overdueCount = reminders.filter(r => {
       const [h, m] = r.time.split(':').map(Number);
       const reminderMinutes = h * 60 + m;
@@ -1261,7 +1261,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
       });
     }
 
-    // Upcoming insight
+    
     const upcomingCount = reminders.filter(r => {
       const [h, m] = r.time.split(':').map(Number);
       const reminderMinutes = h * 60 + m;
@@ -1362,10 +1362,10 @@ export default function RemindersScreen({ navigation, route }: Props) {
           sound: true,
           badge: 1,
           data: {
-            // `screen` MUST match a route registered in AppNavigator.
-            // The registered route is `TrackerReminders`, not `Reminders`.
+            
+            
             screen: 'TrackerReminders',
-            // `type` is what the unified handler routes on first.
+            
             type: 'reminder',
             reminderId: reminder.id,
             category: reminder.category,

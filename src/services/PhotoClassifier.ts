@@ -1,5 +1,5 @@
-// src/services/PhotoClassifier.ts
-// Heuristic-based photo classification for baby detection
+
+
 
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -135,7 +135,7 @@ export class PhotoClassifier {
         if (sizeMB > 100) score -= 20;
       }
     } catch {
-      // Ignore
+      
     }
 
     return Math.max(0, Math.min(100, score));

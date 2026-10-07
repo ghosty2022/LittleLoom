@@ -1,13 +1,13 @@
-// src/services/ai/CohortPriors.ts
-// ─────────────────────────────────────────────────────────────────────
-// Cross-family learning: aggregates per-baby posteriors into
-// age-cohort priors, then injects them into cold-start babies.
-//
-// Privacy model:
-//   - Only metric names, posterior parameters, and age buckets leave
-//     the device. No baby_id, no user_id, no raw values.
-//   - Requires explicit opt-in via `@littleloom_ai_collaborative_v1`.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -35,7 +35,7 @@ export interface CohortPrior {
   updatedAt: number;
 }
 
-// ─── Age cohort helper ──────────────────────────────────────────────
+
 
 export function ageToCohort(birthDateISO: string): AgeCohort {
   const birth = new Date(birthDateISO);
@@ -54,12 +54,12 @@ export function ageToCohort(birthDateISO: string): AgeCohort {
   return '24mo+';
 }
 
-// ─── Opt-in gate ────────────────────────────────────────────────────
+
 
 export async function isCollaborativeLearningEnabled(): Promise<boolean> {
   try {
     const v = await AsyncStorage.getItem(COLLABORATIVE_OPT_IN_KEY);
-    if (v === null) return false; // default OFF until user opts in
+    if (v === null) return false; 
     return v === 'true';
   } catch {
     return false;
@@ -70,7 +70,7 @@ export async function setCollaborativeLearningEnabled(enabled: boolean): Promise
   await AsyncStorage.setItem(COLLABORATIVE_OPT_IN_KEY, enabled ? 'true' : 'false');
 }
 
-// ─── Fetch cohort priors (with 24h cache) ───────────────────────────
+
 
 export async function getCohortPrior(
   metric: MetricKey,
@@ -117,7 +117,7 @@ export async function getCohortPrior(
   }
 }
 
-// ─── Publish local posterior into the cohort pool ──────────────────
+
 
 export interface PublishResult {
   published: number;
@@ -136,7 +136,7 @@ export async function publishToCohort(
     return { published: 0, skipped: metrics.length, reason: 'opt_out' };
   }
 
-  // GDPR blocklist check
+  
   try {
     const v = await AsyncStorage.getItem(`${GDPR_BLOCKLIST_KEY}${babyId}`);
     if (v === 'true') {
@@ -147,7 +147,7 @@ export async function publishToCohort(
   const minSamples = options.minSamples ?? 30;
   const cohort = ageToCohort(birthDateISO);
 
-  // Throttle: publish at most once per 12h per device
+  
   const lastPublishRaw = await AsyncStorage.getItem(LAST_PUBLISH_KEY);
   const lastPublish = lastPublishRaw ? parseInt(lastPublishRaw, 10) : 0;
   if (Date.now() - lastPublish < 12 * 60 * 60 * 1000) {
@@ -161,7 +161,7 @@ export async function publishToCohort(
     try {
       const local = await getLearnedRange(babyId, metric);
 
-      // Don't pollute the pool with under-sampled data
+      
       if (local.samples < minSamples || local.confidence < 0.3) {
         skipped++;
         continue;
@@ -169,7 +169,7 @@ export async function publishToCohort(
 
       const sigmaSq = local.stddev * local.stddev;
 
-      // Upsert into cohort table with running-average merge
+      
       const { data: existing } = await supabase
         .from('ai_cohort_priors')
         .select('*')
@@ -180,7 +180,7 @@ export async function publishToCohort(
       let payload: any;
 
       if (existing) {
-        // Confidence-weighted merge: contributors with more samples dominate
+        
         const existingWeight = Number(existing.sample_count) || 1;
         const localWeight = local.samples;
         const totalWeight = existingWeight + localWeight;
@@ -213,7 +213,7 @@ export async function publishToCohort(
 
         if (error) {
           if (__DEV__) console.warn('[Cohort] Update rejected:', error.message);
-          // Distinguish network errors (retryable) from trigger rejections
+          
           const isNetworkError =
             /network|timeout|fetch|connection/i.test(error.message);
           if (isNetworkError) {
@@ -267,8 +267,8 @@ export async function publishToCohort(
   return { published, skipped };
 }
 
-// ─── Inject cohort prior into a cold-start baby ────────────────────
-// Returns true if a prior was found and should be used.
+
+
 
 export async function tryLoadCohortPrior(
   babyId: string,
@@ -279,11 +279,11 @@ export async function tryLoadCohortPrior(
   return getCohortPrior(metric, cohort);
 }
 
-// ─── Age-cohort re-bucketing ────────────────────────────────────────
-// Called from bootstrap.ts. Detects when a baby has crossed an age
-// bucket boundary (e.g., 6mo → 12mo) and clears stale local caches.
 
-// LAST_COHORT_KEY declared at top of file
+
+
+
+
 
 export interface CohortCheckResult {
   changed: boolean;
@@ -306,7 +306,7 @@ export async function checkAndHandleCohortChange(
     lastCohort = (raw as AgeCohort) || null;
   } catch {}
 
-  // First run: just record current cohort, nothing to clear
+  
   if (lastCohort === null) {
     await AsyncStorage.setItem(storageKey, currentCohort);
     return {
@@ -317,7 +317,7 @@ export async function checkAndHandleCohortChange(
     };
   }
 
-  // No change
+  
   if (lastCohort === currentCohort) {
     return {
       changed: false,
@@ -327,21 +327,21 @@ export async function checkAndHandleCohortChange(
     };
   }
 
-  // Cohort changed — clear cached cohort priors for this baby
+  
   const clearedCaches: string[] = [];
   for (const metric of metrics) {
-    // Clear old cohort's cached prior
+    
     const oldKey = `${COHORT_CACHE_PREFIX}${metric}:${lastCohort}`;
     const newKey = `${COHORT_CACHE_PREFIX}${metric}:${currentCohort}`;
     try {
       await AsyncStorage.removeItem(oldKey);
       clearedCaches.push(oldKey);
-      await AsyncStorage.removeItem(newKey); // force fresh fetch
+      await AsyncStorage.removeItem(newKey); 
       clearedCaches.push(newKey);
     } catch {}
   }
 
-  // Also clear local Bayesian memory cache so priors get re-loaded
+  
   try {
     const { resetLocalCacheForBaby } = await import('./BayesianEngine');
     if (typeof resetLocalCacheForBaby === 'function') {
@@ -365,18 +365,18 @@ export async function checkAndHandleCohortChange(
     clearedCaches,
   };
 }
-// ─── GDPR: Delete all cohort contributions for a baby ──────────────
-// NOTE: Because cohort priors are aggregated without baby_id, we
-// cannot surgically remove one baby's contribution from an already-
-// merged posterior. What we CAN do:
-//   1. Delete the local device's cached cohort data.
-//   2. Delete this device's auth-scoped rows from ai_cohort_write_log.
-//   3. Mark the baby as "do not contribute" in app_settings.
-//   4. Log a GDPR erasure event for audit trail.
-//
-// The aggregate itself is irreversible — this is documented in the
-// privacy policy and matches the standard approach used by federated
-// learning systems.
+
+
+
+
+
+
+
+
+
+
+
+
 
 export async function deleteCohortContributions(
   babyId: string,
@@ -385,9 +385,9 @@ export async function deleteCohortContributions(
   const clearedCaches: string[] = [];
 
   try {
-    // 1. Clear all local cohort caches
+    
     const keys = await AsyncStorage.getAllKeys();
-    // Match all cohort-related keys by prefix
+    
     const COHORT_KEY_PREFIXES = [
       COHORT_CACHE_PREFIX,
       '@littleloom_predictor_cohort_v1:',
@@ -395,14 +395,14 @@ export async function deleteCohortContributions(
       '@littleloom_predictor_v1:',
     ];
     const cohortKeys = keys.filter(k => {
-      // Full-key matches
+      
       if (
         k === LAST_PUBLISH_KEY ||
         k === '@littleloom_predictor_last_publish_v1'
       ) {
         return true;
       }
-      // Prefix matches
+      
       return COHORT_KEY_PREFIXES.some(prefix => k.startsWith(prefix));
     });
     if (cohortKeys.length > 0) {
@@ -410,21 +410,21 @@ export async function deleteCohortContributions(
       clearedCaches.push(...cohortKeys);
     }
 
-    // 2. Delete this user's cohort write log rows (auth-scoped)
+    
     await supabase
       .from('ai_cohort_write_log')
       .delete()
       .eq('user_id', userId);
 
-    // 2a. Clear predictor publish throttle too
+    
     try {
       await AsyncStorage.removeItem(PREDICTOR_LAST_PUBLISH_KEY);
     } catch {}
 
-    // 3. Blocklist this baby from future contributions
+    
     await AsyncStorage.setItem(`${GDPR_BLOCKLIST_KEY}${babyId}`, 'true');
 
-    // 4. Audit log
+    
     try {
       await supabase.from('audit_logs').insert({
         user_id: userId,
@@ -461,7 +461,7 @@ export async function deleteCohortContributions(
   }
 }
 
-// ─── Check whether a baby is blocked from contributing ─────────────
+
 
 export async function isCohortContributionBlocked(
   babyId: string
@@ -474,26 +474,26 @@ export async function isCohortContributionBlocked(
   }
 }
 
-// ─── Unblock a baby from cohort contributions ──────────────────────
-// Reverses deleteCohortContributions. After calling this, the baby
-// can publish to the cohort pool again (assuming collaborative
-// learning is enabled globally).
+
+
+
+
 
 export async function unblockCohortContributions(
   babyId: string,
   userId: string
 ): Promise<{ success: boolean; message: string }> {
   try {
-    // 1. Remove the blocklist flag
+    
     await AsyncStorage.removeItem(`${GDPR_BLOCKLIST_KEY}${babyId}`);
 
-    // 2. Clear BOTH publish throttles so the next bootstrap publishes immediately
+    
     await AsyncStorage.removeItem(LAST_PUBLISH_KEY);
     try {
       await AsyncStorage.removeItem(PREDICTOR_LAST_PUBLISH_KEY);
     } catch {}
 
-    // 3. Audit log
+    
     try {
       await supabase.from('audit_logs').insert({
         user_id: userId,

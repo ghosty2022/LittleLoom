@@ -1,23 +1,23 @@
-// src/context/AuthContext.tsx
-// Full Supabase Auth - No local DB fallbacks - FIXED RLS and Avatar issues
-//
-// ─── CHANGELOG (this version) ────────────────────────────────────────
-//   • validateCurrentSession:
-//       - Reads isAuthenticatedRef.current (not state.isAuthenticated)
-//         to avoid stale-closure bugs in the periodic check
-//       - Distinguishes transient errors (network) from a genuine
-//         `session === null` — only wipes state on the latter
-//       - Retries getSession() once after 400ms before declaring
-//         the user logged out, in case auto-refresh is in flight
-//   • signOut:
-//       - Uses { scope: 'local' } so refresh_token is NOT revoked
-//         server-side. Prevents the "Invalid login credentials on
-//         second attempt" bug where an internal cleanup signOut
-//         killed the user's session before their next login.
-//   • Periodic 5-minute check:
-//       - Double-confirms the session is genuinely dead before
-//         triggering signOut. A single failed check no longer logs
-//         the user out.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Alert } from 'react-native';
@@ -29,7 +29,7 @@ import { supabase } from '@/utils/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { clearUserIdCache } from '@/database/dbHelpers';
 
-// ─── SINGLE SOURCE OF TRUTH FOR ONBOARDING ─────────────────────────────
+
 export const ONBOARDING_KEY = '@littleloom_onboarding_complete_v3';
 export const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
 
@@ -244,8 +244,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const lastActiveTimeRef = useRef<number>(Date.now());
   const isAuthenticatedRef = useRef<boolean>(false);
 
-  // ─── Refs holding latest state values so callbacks with empty deps
-  //     can still read them without stale closures. ────────────────
+  
+  
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
@@ -297,15 +297,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.remove();
   }, []);
 
-  // ─── SESSION MANAGEMENT ─────────────────────────────────────────────────
+  
 
   const refreshSession = useCallback(async (): Promise<boolean> => {
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
 
       if (error || !session) {
-        // Only log — do NOT wipe. A transient error here is not a
-        // reason to log the user out.
+        
+        
         if (error && __DEV__) {
           console.warn('[Auth] Refresh session failed:', error.message);
         }
@@ -345,17 +345,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
 
-      // ─── Transient error — do NOT wipe user state ────────────────
+      
       if (error) {
         if (__DEV__) {
           console.warn('[Auth] Session check failed (transient):', error.message);
         }
-        // Read from ref — avoids stale closure when this callback has
-        // an empty deps array.
+        
+        
         return Boolean(isAuthenticatedRef.current);
       }
 
-      // ─── Genuinely no session — retry once before wiping ─────────
+      
       if (!session) {
         await new Promise((r) => setTimeout(r, 400));
         const { data: { session: retry } } = await supabase.auth.getSession();
@@ -367,7 +367,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return true;
         }
 
-        // Confirmed dead — wipe local state.
+        
         if (__DEV__) console.warn('[Auth] No session — clearing local state');
         await Promise.all([
           secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
@@ -391,7 +391,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      // ─── Valid session — keep state fresh ───────────────────────
+      
       if (isMounted.current) {
         setState(prev => ({ ...prev, session }));
       }
@@ -422,7 +422,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (error) {
       if (__DEV__) console.error('[Auth] Session validation error:', error);
-      // Fail-safe: don't wipe on unexpected errors.
+      
       return Boolean(isAuthenticatedRef.current);
     }
   }, []);
@@ -442,7 +442,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [validateCurrentSession]);
 
-  // ─── SIGN IN ────────────────────────────────────────────────────────────
+  
 
   const performSignInInternal = useCallback(async (email: string, password: string, isBiometric: boolean = false): Promise<{ success: boolean; message?: string; user?: User }> => {
     try {
@@ -458,14 +458,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (authError || !authData?.user) {
         console.warn('[Auth] Supabase sign in failed:', authError?.message);
 
-        // ─── FIX: Kill any stale SDK session so auto-refresh can't ──
-        //     silently log this user in behind our back. Without this,
-        //     a wrong-password attempt still ends up authenticated
-        //     because the SDK refreshes an old refresh_token.
-        //
-        //     We only do this when the failure is auth-related
-        //     (invalid credentials / no user). Network failures are
-        //     left alone.
+        
+        
+        
+        
+        
+        
+        
+        
         const msg = (authError?.message || '').toLowerCase();
         const isAuthFailure =
           msg.includes('invalid') ||
@@ -529,7 +529,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userMeta = user.user_metadata || {};
       const fullName = userMeta.full_name || userMeta.fullName || userEmail.split('@')[0];
 
-      // Load community profile data from AsyncStorage
+      
       const [commUsername, commHandle, commBio, commAvatar, commDisplayName, commStats, commTopics] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_USERNAME),
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_HANDLE),
@@ -540,9 +540,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS),
       ]);
 
-      // ─── FIX: Read the live profile from the profiles table ────
-      // The auth user_metadata may be stale. The profiles table is
-      // the authoritative source for full_name, email, and avatar.
+      
+      
+      
       let liveFullName = fullName;
       let liveEmail = userEmail;
       let liveAvatar = userMeta.avatar || '👤';
@@ -650,7 +650,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock, performSignInInternal]);
 
-  // ─── SIGN UP ───────────────────────────────────────────────────────────
+  
 
   const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
     if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
@@ -757,7 +757,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock, performSignInInternal, refreshSession]);
 
-  // ─── SOCIAL SIGN IN ────────────────────────────────────────────────────
+  
 
   const signInWithSocial = useCallback(async (socialUser: SocialUser): Promise<{ success: boolean; message?: string }> => {
     if (!acquireSignInLock()) return { success: false, message: 'Another sign in operation in progress' };
@@ -822,35 +822,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock]);
 
-  // ─── SIGN OUT ──────────────────────────────────────────────────────────
+  
 
   const signOut = useCallback(async (): Promise<void> => {
     if (signInLock.current) await new Promise(resolve => setTimeout(resolve, 1000));
     try {
       if (__DEV__) console.log('[Auth] Starting sign out process...');
 
-      // Clear navigation lock
+      
       await AsyncStorage.setItem('littleloom_security_lock', 'false');
 
-      // ─── Sign out LOCALLY only — do NOT revoke the server token ──
-      // `scope: 'local'` clears the session from this device's storage
-      // WITHOUT invalidating the refresh_token server-side.
-      //
-      // Why this matters: the previous default (`scope: 'global'`)
-      // revoked the refresh_token on every signOut call. Our
-      // `validateCurrentSession()` and periodic 5-minute check can
-      // legitimately fail to reach Supabase (network hiccup, cold
-      // start), and each of those failures used to trigger a global
-      // signOut — which then made the user's NEXT login attempt fail
-      // with "Invalid login credentials" because the server had
-      // already revoked the token.
-      //
-      // Local-only cleanup preserves the user's ability to sign back
-      // in immediately, and matches how Supabase's own docs recommend
-      // handling signOut in mobile apps.
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
       await supabase.auth.signOut({ scope: 'local' });
 
-      // Clear all secure storage
+      
       await Promise.all([
         secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
         secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
@@ -860,7 +860,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
 
-      // Clear all AsyncStorage auth-related keys
+      
       await AsyncStorage.multiRemove([
         ASYNC_KEYS.ONBOARDING_COMPLETE,
         ASYNC_KEYS.NAVIGATION_LOCK,
@@ -875,10 +875,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         '@littleloom_bayes_backfilled_v1',
       ]);
 
-      // Clear user ID cache
+      
       clearUserIdCache();
 
-      // Reset state to unauthenticated - COMPLETE RESET
+      
       if (isMounted.current) {
         setState({
           isLoading: false,
@@ -903,7 +903,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       if (__DEV__) console.error('[Auth] Sign out error:', error);
 
-      // Even if there's an error, try to reset the auth state
+      
       if (isMounted.current) {
         setState({
           isLoading: false,
@@ -926,7 +926,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // ─── BIOMETRIC FUNCTIONS ──────────────────────────────────────────────
+  
 
   const checkBiometricAvailability = useCallback(async (): Promise<boolean> => {
     try {
@@ -1099,7 +1099,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [acquireBiometricLock, releaseBiometricLock, checkBiometricAvailability, hasBiometricLoginCredentials, authenticateWithBiometric, performSignInInternal]);
 
-  // ─── USER PROFILE FUNCTIONS ───────────────────────────────────────────
+  
 
   const updateUserProfile = useCallback(async (updates: Partial<UserProfile>): Promise<boolean> => {
     const currentProfile = stateRef.current.userProfile;
@@ -1145,7 +1145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return stateRef.current.userProfile;
   }, []);
 
-  // ─── COMMUNITY PROFILE FUNCTIONS ──────────────────────────────────────
+  
 
   const updateCommunityProfile = useCallback(async (updates: { username?: string; handle?: string; bio?: string; avatar?: string; displayName?: string }): Promise<boolean> => {
     const currentProfile = stateRef.current.userProfile;
@@ -1283,7 +1283,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return await updateCommunityProfile({ avatar: avatarUri });
   }, [updateCommunityProfile]);
 
-  // ─── USERNAME AVAILABILITY ────────────────────────────────────────────
+  
 
   const isUsernameAvailable = useCallback(async (username: string): Promise<{ available: boolean; message: string }> => {
     try {
@@ -1338,7 +1338,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [isUsernameAvailable, updateCommunityProfile]);
 
-  // ─── SETUP FUNCTIONS ──────────────────────────────────────────────────
+  
 
   const skipSetup = useCallback(async (step: 'parent2' | 'baby'): Promise<void> => {
     try {
@@ -1440,7 +1440,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setupCompleteCallbackRef.current = callback;
   }, []);
 
-  // ─── ONBOARDING FUNCTIONS ─────────────────────────────────────────────
+  
 
   const markOnboardingSeen = useCallback(async (): Promise<void> => {
     try {
@@ -1469,7 +1469,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [hasBiometricLoginCredentials]);
 
-  // ─── UTILITY FUNCTIONS ────────────────────────────────────────────────
+  
 
   const isAppActive = useCallback((): boolean => {
     return appStateRef.current === 'active';
@@ -1492,7 +1492,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     releaseBiometricLock();
   }, [releaseSignInLock, releaseBiometricLock]);
 
-  // ─── PASSWORD FUNCTIONS ───────────────────────────────────────────────
+  
 
   const forgotPassword = useCallback(async (email: string): Promise<{ success: boolean; message: string }> => {
     try {
@@ -1532,7 +1532,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // ─── ACCOUNT FUNCTIONS ────────────────────────────────────────────────
+  
 
   const deleteAccount = useCallback(async (password: string): Promise<{ success: boolean; message: string }> => {
     return { success: false, message: 'Account deletion requires additional verification. Please contact support.' };
@@ -1542,7 +1542,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, message: 'Account deletion requires additional verification. Please contact support.' };
   }, []);
 
-  // ─── SIGN UP WITH INVITE CODE ─────────────────────────────────────────
+  
 
   const signUpWithInviteCode = useCallback(async (
     code: string,
@@ -1553,7 +1553,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const trimmedCode = code.trim().toUpperCase();
 
-      // ─── 1. Validate the invite code from the database ──────────────
+      
       const { data: inviteData, error: inviteError } = await supabase
         .from('invite_codes')
         .select('*')
@@ -1568,7 +1568,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!inviteData) {
-        // ─── Check if this is a partial signup ──────────────────────────
+        
         const { data: partialData, error: partialError } = await supabase
           .from('invite_codes')
           .select('*')
@@ -1580,20 +1580,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (!partialError && partialData) {
           if (__DEV__) console.log('[Auth] Continuing partial signup for code:', trimmedCode);
-          // Proceed with signup but don't mark as used again
+          
         } else {
           return { success: false, message: 'Invalid or expired invite code' };
         }
       }
 
-      // ─── 2. Check if expired ─────────────────────────────────────────
+      
       const now = Date.now();
       const expiresAt = (inviteData?.created_at || 0) + (inviteData?.expires_in_days || 7) * 24 * 60 * 60 * 1000;
       if (inviteData && now > expiresAt) {
         return { success: false, message: 'Invite code has expired' };
       }
 
-      // ─── 3. Check if user already exists ─────────────────────────────
+      
       const { data: existingUser } = await supabase
         .from('profiles')
         .select('id')
@@ -1604,18 +1604,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
       }
 
-      // ─── 4. Proceed with signup ──────────────────────────────────────
+      
       const signUpResult = await signUp(fullName, email, password);
 
       if (!signUpResult.success) {
         return { success: false, message: signUpResult.message || 'Signup failed' };
       }
 
-      // ─── 5. Get the newly created user ──────────────────────────────
+      
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // ─── 6. Mark the invite code as used ──────────────────────────
+        
         if (inviteData) {
           const { error: updateError } = await supabase
             .from('invite_codes')
@@ -1650,7 +1650,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
 
-        // ─── 7. Create family member entry ─────────────────────────────
+        
         const familyMemberId = `fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
         try {
@@ -1726,7 +1726,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (__DEV__) console.log('[Auth] Family member created successfully:', familyMemberId);
           }
 
-          // ─── 8. If role is parent2, update baby's parent2_id ──────────
+          
           if (role === 'parent2') {
             try {
               const { error: updateBabyError } = await supabase
@@ -1763,7 +1763,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [signUp]);
 
-  // ─── FIND USER FUNCTIONS ──────────────────────────────────────────────
+  
 
   const findUserByEmail = useCallback(async (email: string): Promise<{ userId: string; email: string; fullName: string; role: string } | null> => {
     try {
@@ -1800,13 +1800,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return await findUserByEmailOrUsername(identifier);
   }, [findUserByEmailOrUsername]);
 
-  // ─── CHECK SESSION ────────────────────────────────────────────────────
+  
 
   const checkSession = useCallback(async (): Promise<boolean> => {
     return await validateCurrentSession();
   }, [validateCurrentSession]);
 
-  // ─── INITIALIZATION ─────────────────────────────────────────────────────
+  
 
   useEffect(() => {
     if (initComplete.current) return;
@@ -1850,13 +1850,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         let effectiveSession = session;
 
         if (session && token) {
-          // ─── Trust the cached session first ─────────────────────
+          
           isValidSession = true;
           if (userProfileStr) {
             try { userProfile = JSON.parse(userProfileStr); } catch {}
           }
 
-          // Optional background verify
+          
           supabase.auth.getUser().then(({ data, error }) => {
             if (error && /jwt|invalid|expired/i.test(error.message)) {
               if (__DEV__) console.warn('[Auth] Token rejected by server:', error.message);
@@ -1867,10 +1867,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }).catch(() => {});
         } else if (token && !session) {
-          // ─── FIX: Token exists but session is null ──────────────
-          // This happens when Supabase's internal getSession() fails
-          // on cold start but our stored token is still valid.
-          // We try to recover the session from AsyncStorage.
+          
+          
+          
+          
           try {
             const keys = await AsyncStorage.getAllKeys();
             const authKey = keys.find(
@@ -1902,9 +1902,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (userProfile && isValidSession) {
-          // ─── FIX: Refresh live name/email/avatar from Supabase ─────
-          // The cached profile may have the fallback "Parent" name.
-          // Always pull the authoritative values from the profiles table.
+          
+          
+          
           try {
             const liveUserId =
               userProfile.id ||
@@ -1959,7 +1959,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
           };
 
-          // Persist the enriched profile so subsequent boots are fast
+          
           try {
             await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile));
           } catch {}
@@ -2038,10 +2038,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const user = session.user;
         const userMeta = user.user_metadata || {};
 
-        // ─── FIX: Don't overwrite the cached profile with a
-        //     fallback-only stub. Only update the session here; the
-        //     profile is authored by performSignInInternal and/or
-        //     initAuth, which both read the live profiles row.
+        
+        
+        
+        
         const existingProfile = stateRef.current.userProfile;
         const sameUser = existingProfile?.id === user.id;
 
@@ -2106,7 +2106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // ─── PERIODIC SESSION CHECK ─────────────────────────────────────────
+  
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -2116,10 +2116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const isValid = await validateCurrentSession();
           if (!isValid && isMounted.current) {
-            // ─── Double-confirm before hard signOut ────────────────
-            // A single failed validation could be a network blip.
-            // Ask once more after a short delay; only sign out if
-            // the session is confirmed dead on both attempts.
+            
+            
+            
+            
             await new Promise((r) => setTimeout(r, 1500));
             const { data: { session } } = await supabase.auth.getSession();
             if (!session && isMounted.current) {
@@ -2143,7 +2143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [state.isAuthenticated, validateCurrentSession, signOut]);
 
-  // ─── CONTEXT VALUE ────────────────────────────────────────────────────
+  
 
   const value = React.useMemo(() => ({
     ...state,

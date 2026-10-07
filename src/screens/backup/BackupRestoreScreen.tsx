@@ -1,7 +1,7 @@
-// src/screens/backup/BackupRestoreScreen.tsx
-// ═══════════════════════════════════════════════════════════════════
-// Backup & Restore UI — uses canonical backupService (single source)
-// ═══════════════════════════════════════════════════════════════════
+
+
+
+
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -45,9 +45,9 @@ const COLORS = {
   orange: '#e67e22',
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// HOISTED SUBCOMPONENTS
-// ═══════════════════════════════════════════════════════════════════
+
+
+
 
 const StatPill: React.FC<{
   icon: string;
@@ -164,8 +164,8 @@ const LocalBackupItem: React.FC<{
 ));
 
 // ═══════════════════════════════════════════════════════════════════
-// MODALS
-// ═══════════════════════════════════════════════════════════════════
+
+
 
 const EncryptModal: React.FC<{
   visible: boolean;
@@ -518,8 +518,8 @@ const AutoBackupModal: React.FC<{
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// MAIN SCREEN
-// ═══════════════════════════════════════════════════════════════════
+
+
 
 export default function BackupRestoreScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
@@ -558,7 +558,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     encryptBackups: false,
   });
 
-  // ─── Load on mount ─────────────────────────────────────────────────
+  
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -593,7 +593,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     setLastBackup(backups.length > 0 ? backups[0].dateFormatted : null);
   }, []);
 
-  // ─── Create ────────────────────────────────────────────────────────
+  
   const handleCreateBackup = useCallback(
     async (encrypted = false, password?: string) => {
       const uid = userIdRef.current;
@@ -631,7 +631,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     [autoBackupSettings.keepCount, refreshBackups, sweetAlert, triggerHaptic]
   );
 
-  // ─── Restore ───────────────────────────────────────────────────────
+  
   const performRestore = useCallback(
     async (content: string, password?: string) => {
       const uid = userIdRef.current;
@@ -726,7 +726,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     [pendingContent, performRestore, sweetAlert]
   );
 
-  // ─── Local backup actions ──────────────────────────────────────────
+  
   const handleLocalBackupPress = useCallback(
     async (backup: LocalBackupInfo) => {
       triggerHaptic('light');
@@ -845,7 +845,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     );
   }, [localBackups, sweetAlert, refreshBackups]);
 
-  // ─── Render ────────────────────────────────────────────────────────
+  
   if (isLoading) {
     return (
       <LinearGradient

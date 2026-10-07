@@ -1,8 +1,8 @@
-// src/services/ai/CohortOfflineQueue.ts
-// ─────────────────────────────────────────────────────────────────────
-// Persistent queue for cohort publish operations that failed due to
-// network errors. Flushes on next bootstrap / app foreground.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -41,7 +41,7 @@ export async function enqueueCohortOp(
 ): Promise<void> {
   const queue = await loadQueue();
 
-  // Deduplicate by natural key
+  
   const naturalKey =
     table === 'ai_cohort_priors'
       ? `${payload.metric ?? ''}:${payload.age_cohort ?? ''}`
@@ -65,13 +65,13 @@ export async function enqueueCohortOp(
   };
 
   if (existingIndex >= 0) {
-    // Replace older version with newer payload
+    
     queue[existingIndex] = item;
   } else {
     queue.push(item);
   }
 
-  // Cap queue size (drop oldest)
+  
   while (queue.length > MAX_QUEUE_SIZE) {
     queue.shift();
   }
@@ -92,11 +92,11 @@ export async function flushCohortQueue(): Promise<{
   const retained: CohortQueueItem[] = [];
 
   for (const item of queue) {
-    // Drop items older than 7 days (stale)
+    
     if (Date.now() - item.enqueuedAt > 7 * 24 * 60 * 60 * 1000) {
       continue;
     }
-    // Drop items with too many attempts
+    
     if (item.attempts >= 5) {
       continue;
     }

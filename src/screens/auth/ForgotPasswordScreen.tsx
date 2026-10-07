@@ -73,7 +73,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
     setIsLoading(true);
     triggerHaptic('medium');
 
-    // Simulate API call
+    
     setTimeout(() => {
       setIsLoading(false);
       setSent(true);

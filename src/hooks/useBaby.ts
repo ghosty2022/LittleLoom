@@ -1,5 +1,5 @@
-// src/hooks/useBaby.ts
-// Safe wrapper — delegates to useSafeContexts fallback.
+
+
 
 import { useContext } from 'react';
 import { BabyContext } from '../context/BabyContext';

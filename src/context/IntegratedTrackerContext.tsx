@@ -1,5 +1,5 @@
-// src/context/IntegratedTrackerContext.tsx
-// Growth-aware, achievement-driven tracker with Supabase
+
+
 
 import React, { createContext, useContext, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,9 +10,9 @@ import { useTracker } from './TrackerContext';
 import { useBaby, GrowthMeasurement } from './BabyContext';
 import { useAuth } from './AuthContext';
 
-// Static imports — Rules of Hooks requires the same hook order every render.
-// If these modules ever need to be optional, gate them with a build-time
-// feature flag, not a runtime try/catch.
+
+
+
 import { useGrowthIntelligence } from '../hooks/useGrowthIntelligence';
 import { usePredictiveReminders } from '../hooks/usePredictiveReminders';
 
@@ -82,14 +82,14 @@ interface IntegratedTrackerContextType extends IntegratedTrackerState {
 
 const IntegratedTrackerContext = createContext<IntegratedTrackerContextType | null>(null);
 
-// Canonical storage key — matches useTrackerAchievements so both hooks
-// read/write the SAME unlocked set.
+
+
 const ACHIEVEMENT_STORAGE_KEY = '@littleloom_achievements_unlocked_v2';
 const ACHIEVEMENT_UNLOCKED_AT_KEY = '@littleloom_achievements_unlocked_at';
 const REMINDER_DISMISSED_KEY = '@littleloom_dismissed_reminders';
 const CORRELATIONS_KEY = '@littleloom_tracker_correlations';
 
-// ─── CORRELATION ENGINE ────────────────────────────────────────────────
+
 const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
   const correlations: TrackerCorrelation[] = [];
 
@@ -178,7 +178,7 @@ const analyzeCorrelations = (entries: any[]): TrackerCorrelation[] => {
   return correlations;
 };
 
-// ─── PREDICTIVE ACHIEVEMENT ENGINE ─────────────────────────────────────
+
 const buildPredictiveAchievements = (
   entries: any[],
   reminders: any[],
@@ -257,11 +257,11 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     predictiveAchievements: [],
   });
 
-    // ─── Stable ref so effects can read current state without re-subscribing ───
+    
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // ─── FIXED: Use refs to track previous values and prevent infinite loops ──
+  
   const prevEntriesRef = useRef<any[]>([]);
   const prevGrowthDataRef = useRef<any[]>([]);
   const prevBabyIdRef = useRef<string | null>(null);
@@ -287,11 +287,11 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
   }, []);
 
   /* ── Calculate everything whenever entries or growth data change ── */
-  // FIXED: Added proper dependency tracking to prevent infinite loops
+  
   useEffect(() => {
     const babyId = currentBaby?.id || null;
 
-    // Check if we should process
+    
     const entriesChanged = JSON.stringify(entries) !== JSON.stringify(prevEntriesRef.current);
     const growthDataChanged = JSON.stringify(growthData) !== JSON.stringify(prevGrowthDataRef.current);
     const babyChanged = babyId !== prevBabyIdRef.current;
@@ -300,7 +300,7 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
       return;
     }
 
-    // Update refs
+    
     prevEntriesRef.current = entries;
     prevGrowthDataRef.current = growthData;
     prevBabyIdRef.current = babyId;
@@ -359,9 +359,9 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     }
 
     processingRef.current = false;
-    // NOTE: `state.unlockedAchievements` intentionally omitted from deps
-    // because the effect reads it via `stateRef.current` below, avoiding
-    // the recompute cascade that fired on every dismissAchievement call.
+    
+    
+    
   }, [
     entries,
     growthData,
@@ -437,11 +437,11 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     const updatedAt = { ...(state as any).unlockedAtMap };
     if (!updatedAt[id]) updatedAt[id] = Date.now();
 
-    // Local cache
+    
     await AsyncStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(updated));
     await AsyncStorage.setItem(ACHIEVEMENT_UNLOCKED_AT_KEY, JSON.stringify(updatedAt));
 
-    // Cloud sync (matches useTrackerAchievements)
+    
     try {
       const { supabase } = await import('@/utils/supabase');
       const { data: { user } } = await supabase.auth.getUser();

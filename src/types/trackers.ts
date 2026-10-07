@@ -1,21 +1,21 @@
-// src/types/trackers.ts
-// ═══════════════════════════════════════════════════════════════════════════
-// CANONICAL TYPES for the tracker system.
-//
-// This file is the single source of truth for:
-//   • TrackerCategory, FieldType, FieldConfig, FieldOption
-//   • Unit option sets (LIQUID, SOLID, WEIGHT, LENGTH, TEMPERATURE)
-//   • TrackerEntry, UnifiedTrackerConfig, TrackerInsight, TrackerStreak
-//   • ReminderRule, ProgressiveTrackerState
-//   • DEFAULT_TRACKER_IDS (must stay in sync with config/defaultTrackers.ts)
-//
-// NOTE: `ActivityType` is imported from BabyContext for backward compat
-// with legacy code, but new code must use `TrackerEntry.trackerId` instead.
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { ActivityType as LegacyActivityType } from '../context/BabyContext';
 
-// ─── CATEGORIES ────────────────────────────────────────────────────────────
+
 export type TrackerCategory =
   | 'essential'
   | 'health'
@@ -31,9 +31,9 @@ export type TrackerCategory =
   | 'household'
   | 'custom';
 
-// ─── FIELD TYPES ───────────────────────────────────────────────────────────
-// Every field type the DynamicTrackerForm knows how to render.
-// Adding a new type here REQUIRES a corresponding case in DynamicTrackerForm.
+
+
+
 export type FieldType =
   | 'text'
   | 'number'
@@ -53,10 +53,10 @@ export type FieldType =
   | 'quantity'
   | 'slider'
   | 'mood_emoji'
-  | 'pain_scale';     // 0–10 numeric scale (rendered as slider with emoji anchors)
+  | 'pain_scale';     
 
-// ─── UNIT OPTION SETS ──────────────────────────────────────────────────────
-// Shared across defaultTrackers.ts so unit definitions never drift.
+
+
 
 export interface UnitOption {
   id: string;
@@ -116,11 +116,11 @@ export interface FieldOption {
   triggers?: {
     alertParent?: boolean;
     scheduleFollowUp?: { hours: number; message: string };
-    linkToTracker?: string; // e.g., selecting "Fever" links to Temperature tracker
+    linkToTracker?: string; 
   };
 }
 
-// ─── FIELD CONFIG ──────────────────────────────────────────────────────────
+
 export interface FieldConfig {
   id: string;
   label: string;
@@ -164,7 +164,7 @@ export interface FieldConfig {
   hint?: string;
 }
 
-// ─── REMINDER RULES ────────────────────────────────────────────────────────
+
 export interface ReminderRule {
   id: string;
   trackerId: string;
@@ -212,7 +212,7 @@ export interface ReminderRule {
   updatedAt: number;
 }
 
-// ─── TRACKER ENTRY ─────────────────────────────────────────────────────────
+
 export interface TrackerEntry {
   id: string;
   babyId: string;
@@ -267,7 +267,7 @@ export interface TrackerEntry {
   isDeleted?: boolean;
 }
 
-// ─── UNIFIED TRACKER CONFIG ────────────────────────────────────────────────
+
 export interface UnifiedTrackerConfig {
   id: string;
   name: string;
@@ -320,7 +320,7 @@ export interface UnifiedTrackerConfig {
   }[];
 }
 
-// ─── TRACKER INSIGHT ───────────────────────────────────────────────────────
+
 export interface TrackerInsight {
   id: string;
   trackerId: string;
@@ -349,7 +349,7 @@ export interface TrackerInsight {
   confidence: number;
 }
 
-// ─── TRACKER STREAK ────────────────────────────────────────────────────────
+
 export interface TrackerStreak {
   trackerId: string;
   currentStreak: number;
@@ -360,7 +360,7 @@ export interface TrackerStreak {
   goalProgress?: number;
 }
 
-// ─── STORAGE KEYS ──────────────────────────────────────────────────────────
+
 export const TRACKER_STORAGE_KEYS = {
   CUSTOM_TRACKERS: '@littleloom_custom_trackers_v2',
   TRACKER_SETTINGS: '@littleloom_tracker_settings_v2',
@@ -375,37 +375,37 @@ export const TRACKER_STORAGE_KEYS = {
   CHAINS: (babyId: string) => `@littleloom_chains_${babyId}`,
 } as const;
 
-// ─── CANONICAL BUILT-IN TRACKER IDS ────────────────────────────────────────
-// MUST stay in sync with DEFAULT_TRACKERS in config/defaultTrackers.ts.
-// If they drift, isCustomTracker() will misclassify built-ins as custom.
+
+
+
 export const DEFAULT_TRACKER_IDS = [
-  // Essential
+  
   'feed', 'sleep', 'diaper', 'potty', 'bath', 'pumping',
-  // Health
+  
   'growth', 'temperature', 'medication', 'symptom',
   'vaccine', 'doctor_visit', 'teething', 'allergy',
   'skin_condition',
-  // Development
+  
   'milestone', 'tummy_time', 'play', 'reading', 'speech',
-  // Emotional
+  
   'mood', 'crying',
-  // Physical care
+  
   'nail_care', 'oral_hygiene', 'sunscreen', 'skin_care',
-  // Nutrition
+  
   'solid_food', 'water', 'vitamin', 'allergen_intro',
-  // Safety
+  
   'accident', 'car_seat', 'babyproofing',
-  // Schedule
+  
   'bedtime', 'screen_time',
-  // Parental
+  
   'note', 'photo', 'journal',
-  // Travel
+  
   'trip', 'daycare', 'babysitter',
-  // Special needs
+  
   'reflux', 'colic', 'constipation', 'diarrhea',
-  // Household
+  
   'supply_inventory', 'expenses', 'cleaning',
-  // Legacy aliases — kept so old entries still resolve correctly
+  
   'nap', 'dream_feed', 'breastfeeding', 'injury', 'eczema',
 ] as const;
 
@@ -417,7 +417,7 @@ export const isCustomTracker = (id: string): boolean =>
   id.startsWith('custom_') ||
   !DEFAULT_TRACKER_IDS.includes(id as DefaultTrackerId);
 
-// ─── PROGRESSIVE TRACKER STATE ─────────────────────────────────────────────
+
 export interface ProgressiveTrackerState {
   todayEntries: TrackerEntry[];
   yesterdayEntries: TrackerEntry[];

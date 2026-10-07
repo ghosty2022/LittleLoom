@@ -1,5 +1,5 @@
-// src/context/UserContext.tsx
-// Full Supabase implementation - No local DB
+
+
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
@@ -19,7 +19,7 @@ const ASYNC_KEYS = {
   COMMUNITY_SELECTED_TOPICS: '@community_selected_topics',
 } as const;
 
-// ─── TYPES ──────────────────────────────────────────────────────────────
+
 
 export interface CommunityProfile {
   userId: string;
@@ -125,7 +125,7 @@ interface UserContextType extends UserState {
 
 const UserContext = createContext<UserContextType | null>(null);
 
-// ─── HELPERS ────────────────────────────────────────────────────────────
+
 
 const createDefaultCommunityProfile = (userProfile: UserProfile): CommunityProfile => ({
   userId: userProfile.id,
@@ -149,7 +149,7 @@ const createDefaultCommunityProfile = (userProfile: UserProfile): CommunityProfi
   },
 });
 
-// ─── PROVIDER ────────────────────────────────────────────────────────────
+
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading: authLoading, userProfile: authProfile, updateUserProfile: updateAuthProfile } = useAuth();
@@ -161,10 +161,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const usernameLockRef = useRef(false);
   const loadingRef = useRef(false);
 
-  // ─── Load User from Supabase ───────────────────────────────────────────
+  
 
   const loadUser = useCallback(async () => {
-    // FIXED: Prevent concurrent loads
+    
     if (loadingRef.current) {
       console.log('[UserContext] Load already in progress');
       return;
@@ -300,7 +300,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authProfile]);
 
-  // ─── FIXED: INIT with proper dependency management ──────────────────────
+  
 
   useEffect(() => {
     if (initRef.current) return;
@@ -314,13 +314,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initialize();
   }, [authLoading, loadUser]);
 
-  // ─── FIXED: Update when auth changes ──────────────────────────────────
+  
   useEffect(() => {
     if (!isReady) return;
     if (authLoading) return;
 
     if (isAuthenticated && authProfile) {
-      // Only reload if profile ID changed or state is empty
+      
       if (state.profile?.id !== authProfile.id || !state.profile) {
         loadUser();
       }
@@ -331,7 +331,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isAuthenticated, authLoading, isReady, authProfile, loadUser, state.profile?.id]);
 
-  // ─── Check Username Available ─────────────────────────────────────────
+  
 
   const checkUsernameAvailable = useCallback(async (
     username: string,
@@ -381,7 +381,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { available: true, message: 'Username is available' };
   }, [state.usernameRegistry]);
 
-  // ─── Register Username ────────────────────────────────────────────────
+  
 
   const registerUsername = useCallback(async (username: string, userId: string): Promise<boolean> => {
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
@@ -421,7 +421,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.usernameRegistry, checkUsernameAvailable]);
 
-  // ─── Unregister Username ──────────────────────────────────────────────
+  
 
   const unregisterUsername = useCallback(async (username: string): Promise<boolean> => {
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
@@ -443,7 +443,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.usernameRegistry]);
 
-  // ─── Update Username ──────────────────────────────────────────────────
+  
 
   const updateUsername = useCallback(async (
     oldUsername: string,
@@ -495,7 +495,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.usernameRegistry, checkUsernameAvailable]);
 
-  // ─── Update Profile ────────────────────────────────────────────────────
+  
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!state.profile) return;
@@ -545,7 +545,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.profile, state.permissions, updateAuthProfile]);
 
-  // ─── Persist Picked Image ─────────────────────────────────────────────
+  
 
   const COMMUNITY_AVATARS_DIR = FileSystem.documentDirectory + 'community_avatars/';
 
@@ -603,7 +603,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // ─── Pick and Upload Avatar ──────────────────────────────────────────
+  
 
   const pickAndUploadAvatar = useCallback(async (): Promise<string | null> => {
     try {
@@ -643,7 +643,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.profile, state.communityProfile, updateProfile, updateCommunityProfile, persistPickedImage]);
 
-  // ─── Update Avatar ─────────────────────────────────────────────────────
+  
 
   const updateAvatar = useCallback(async (uri: string) => {
     await updateProfile({ avatar: uri });
@@ -652,7 +652,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [updateProfile, state.communityProfile]);
 
-  // ─── Update Preferences ───────────────────────────────────────────────
+  
 
   const updatePreferences = useCallback(async (prefs: Partial<UserProfile['preferences']>) => {
     if (!state.profile) return;
@@ -661,13 +661,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [state.profile, updateProfile]);
 
-  // ─── Has Permission ───────────────────────────────────────────────────
+  
 
   const hasPermission = useCallback((action: keyof Permission): boolean => {
     return state.permissions?.[action] ?? false;
   }, [state.permissions]);
 
-  // ─── Can Access Feature ──────────────────────────────────────────────
+  
 
   const canAccessFeature = useCallback((feature: string): boolean => {
     const featurePermissions: Record<string, (p: Permission) => boolean> = {
@@ -682,7 +682,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return state.permissions ? featurePermissions[feature]?.(state.permissions) ?? true : false;
   }, [state.permissions]);
 
-  // ─── Load Community Profile ──────────────────────────────────────────
+  
 
   const loadCommunityProfile = useCallback(async (userId?: string): Promise<CommunityProfile | null> => {
     if (!userId || userId === state.profile?.id) {
@@ -721,7 +721,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.profile, state.communityProfile]);
 
-  // ─── Update Community Profile ─────────────────────────────────────────
+  
 
   const updateCommunityProfile = useCallback(async (updates: Partial<CommunityProfile>) => {
     if (!state.communityProfile) return;
@@ -769,7 +769,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.communityProfile, updateUsername]);
 
-  // ─── Toggle Privacy ───────────────────────────────────────────────────
+  
 
   const toggleCommunityPrivacy = useCallback(async () => {
     if (!state.communityProfile) return;
@@ -781,20 +781,20 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [state.communityProfile, updateCommunityProfile]);
 
-  // ─── Get Community Stats ─────────────────────────────────────────────
+  
 
   const getCommunityStats = useCallback(async (): Promise<CommunityProfile['stats']> => {
     return state.communityProfile?.stats || { posts: 0, followers: 0, following: 0, helpful: 0 };
   }, [state.communityProfile]);
 
-  // ─── Is Community Profile Complete ──────────────────────────────────
+  
 
   const isCommunityProfileComplete = useCallback(() => {
     if (!state.communityProfile) return false;
     return !!(state.communityProfile.bio && state.communityProfile.displayName && state.communityProfile.handle);
   }, [state.communityProfile]);
 
-  // ─── Update Selected Topics ──────────────────────────────────────────
+  
 
   const updateSelectedTopics = useCallback(async (topics: string[]) => {
     if (!state.communityProfile) return;
@@ -808,25 +808,25 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({ ...prev, communityProfile: newProfile }));
   }, [state.communityProfile]);
 
-  // ─── Get Selected Topics ─────────────────────────────────────────────
+  
 
   const getSelectedTopics = useCallback(() => {
     return state.communityProfile?.preferences?.selectedTopics || [];
   }, [state.communityProfile]);
 
-  // ─── Sync Profile To Posts ───────────────────────────────────────────
+  
 
   const syncProfileToPosts = useCallback(async () => {
     console.log('[UserContext] syncProfileToPosts called');
   }, []);
 
-  // ─── Get Display Name ────────────────────────────────────────────────
+  
 
   const getDisplayName = useCallback(() => {
     return state.communityProfile?.displayName || state.profile?.fullName || 'Anonymous';
   }, [state.communityProfile, state.profile]);
 
-  // ─── Get User Type ────────────────────────────────────────────────────
+  
 
   const getUserType = useCallback((): 'parent' | 'guardian' | 'community' => {
     if (!state.profile) return 'community';
@@ -834,7 +834,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return 'parent';
   }, [state.profile]);
 
-  // ─── Clear User Data ──────────────────────────────────────────────────
+  
 
   const clearUserData = useCallback(async () => {
     if (state.communityProfile?.handle) {
@@ -850,21 +850,21 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initRef.current = false;
   }, [state.communityProfile, unregisterUsername]);
 
-  // ─── Update Community Display Name ──────────────────────────────────
+  
 
   const updateCommunityDisplayName = useCallback(async (name: string) => {
     if (!state.communityProfile) return;
     await updateCommunityProfile({ displayName: name.trim() });
   }, [state.communityProfile, updateCommunityProfile]);
 
-  // ─── Update Community Bio ────────────────────────────────────────────
+  
 
   const updateCommunityBio = useCallback(async (bio: string) => {
     if (!state.communityProfile) return;
     await updateCommunityProfile({ bio: bio.trim() });
   }, [state.communityProfile, updateCommunityProfile]);
 
-  // ─── Update Community Avatar ─────────────────────────────────────────
+  
 
   const updateCommunityAvatar = useCallback(async (uri: string) => {
     if (!state.communityProfile) return;
@@ -872,7 +872,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await updateProfile({ avatar: uri });
   }, [state.communityProfile, updateCommunityProfile, updateProfile]);
 
-  // ─── Update Community Handle ─────────────────────────────────────────
+  
 
   const updateCommunityHandle = useCallback(async (handle: string): Promise<{ success: boolean; message: string }> => {
     if (!state.communityProfile) {
@@ -890,13 +890,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return result;
   }, [state.communityProfile, updateCommunityProfile, updateUsername]);
 
-  // ─── Get Community Handle ────────────────────────────────────────────
+  
 
   const getCommunityHandle = useCallback(() => {
     return state.communityProfile?.handle || state.profile?.fullName || 'Anonymous';
   }, [state.communityProfile, state.profile]);
 
-  // ─── Sync With Auth Profile ──────────────────────────────────────────
+  
 
   const syncWithAuthProfile = useCallback(async () => {
     if (!authProfile) return;
@@ -921,11 +921,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authProfile, updateProfile, updateCommunityProfile]);
 
-  // ─── Get Auth Profile ─────────────────────────────────────────────────
+  
 
   const getAuthProfile = useCallback(() => state.profile, [state.profile]);
 
-  // ─── Context Value ────────────────────────────────────────────────────
+  
 
   const value = useMemo(() => ({
     ...state,

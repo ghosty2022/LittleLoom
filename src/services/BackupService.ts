@@ -58,8 +58,8 @@ export interface LocalBackupInfo {
 export interface AutoBackupSettings {
   enabled: boolean;
   frequency: 'daily' | 'weekly' | 'monthly';
-  timeOfDay: string; // HH:mm format
-  keepCount: number; // how many backups to keep
+  timeOfDay: string; 
+  keepCount: number; 
   lastBackupDate?: string;
   includeMedia: boolean;
   encryptBackups: boolean;
@@ -155,21 +155,21 @@ const BACKUP_KEYS = [
 ];
 
 const DYNAMIC_KEY_PATTERNS = [
-  /^@littleloom_growth_/,      // Growth data per baby
-  /^@littleloom_milestones_/,  // Milestones per baby
-  /^@littleloom_sleep_/,       // Sleep logs per baby
-  /^@littleloom_feeding_/,     // Feeding logs per baby
-  /^@littleloom_potty_/,       // Potty logs per baby
-  /^@littleloom_medication_/,  // Medication logs per baby
-  /^@littleloom_activities_/,  // Activities per baby
-  /^littleloom_guardians_/,    // Guardians per baby
-  /^@littleloom_family_chats_/,     // Family chats per family code
-  /^@littleloom_family_msgs_/,      // Family messages per chat
-  /^@community_user_stats_/,        // User stats per user
-  /^@community_selected_topics_/,   // Selected topics per user
-  /^@community_user_followers_/,    // Followers per user
-  /^@community_user_following_/,    // Following per user
-  /^@littleloom_favorites_/,        // Favorites per baby
+  /^@littleloom_growth_/,      
+  /^@littleloom_milestones_/,  
+  /^@littleloom_sleep_/,       
+  /^@littleloom_feeding_/,     
+  /^@littleloom_potty_/,       
+  /^@littleloom_medication_/,  
+  /^@littleloom_activities_/,  
+  /^littleloom_guardians_/,    
+  /^@littleloom_family_chats_/,     
+  /^@littleloom_family_msgs_/,      
+  /^@community_user_stats_/,        
+  /^@community_selected_topics_/,   
+  /^@community_user_followers_/,    
+  /^@community_user_following_/,    
+  /^@littleloom_favorites_/,        
 ];
 
 /**

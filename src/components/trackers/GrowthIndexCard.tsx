@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
 import { useGrowthIntelligence, SubScore } from '../../hooks/useGrowthIntelligence';
-// SafeAvatar removed - unused
+
 import { useCustomization } from '../../hooks/useCustomization';
 
 interface SubScoreBarProps {

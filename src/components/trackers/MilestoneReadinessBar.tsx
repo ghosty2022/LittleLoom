@@ -17,8 +17,8 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
   const navigation = useNavigation();
   const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
 
-  // Defensive: readinessPercent may be undefined if the readiness object
-  // came from an older cached value.
+  
+  
   const safeReadinessPercent = Math.max(
     0,
     Math.min(100, Number(readiness.readinessPercent) || 0)

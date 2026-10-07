@@ -1,4 +1,4 @@
-// src/screens/community/CommunityVerificationScreen.tsx
+
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   StatusBar,

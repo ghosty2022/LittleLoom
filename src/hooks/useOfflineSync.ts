@@ -1,30 +1,30 @@
-// src/hooks/useOfflineSync.ts
-// ─────────────────────────────────────────────────────────────────────
-// Offline operation queue with automatic retry.
-//
-// FIXES in this version vs the previous:
-//   ✓ NetInfo check — won't attempt sync when device is offline
-//   ✓ No silent data loss — failed ops after max retries are marked
-//     `permanentlyFailed` and kept for manual retry, not deleted
-//   ✓ Fixed stale closure bug in `enqueue` — uses functional setState
-//   ✓ Unified with canonical Supabase client via `../utils/supabase`
-//   ✓ Optional `onPermanentFailure` callback for UI hooks
-//   ✓ `flush()` method to force sync manually
-//   ✓ `getFailedOperations()` for diagnostics
-//   ✓ `retryFailed()` to move failed ops back to pending
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../utils/supabase';
 
-// ─── Constants ──────────────────────────────────────────────────────
+
 
 const OFFLINE_QUEUE_KEY = '@littleloom_offline_queue';
 const MAX_RETRIES = 3;
 
-// ─── Types ──────────────────────────────────────────────────────────
+
 
 export interface OfflineOperation {
   id: string;
@@ -57,13 +57,13 @@ export interface UseOfflineSyncOptions {
   autoSync?: boolean;
 }
 
-// ─── ID Generator ───────────────────────────────────────────────────
+
 
 const generateOpId = (): string => {
   return `op_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 };
 
-// ─── The Hook ───────────────────────────────────────────────────────
+
 
 export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
   const {
@@ -77,29 +77,29 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(true);
 
-  // ─── Refs to avoid stale closures ─────────────────────────────
+  
   const queueRef = useRef<OfflineOperation[]>([]);
   const isSyncingRef = useRef(false);
   const isMountedRef = useRef(true);
   const onPermanentFailureRef = useRef(onPermanentFailure);
   const onSyncCompleteRef = useRef(onSyncComplete);
-  // Filled in after `performSync` is defined so the NetInfo listener
-  // always calls the latest version.
+  
+  
   const performSyncRef = useRef<(() => Promise<SyncResult>) | null>(null);
 
-  // Keep refs in sync with latest props/state
+  
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { isSyncingRef.current = isSyncing; }, [isSyncing]);
   useEffect(() => { onPermanentFailureRef.current = onPermanentFailure; }, [onPermanentFailure]);
   useEffect(() => { onSyncCompleteRef.current = onSyncComplete; }, [onSyncComplete]);
 
-  // ─── Lifecycle ────────────────────────────────────────────────
+  
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
 
-  // ─── Persistence ──────────────────────────────────────────────
+  
 
   /**
    * Save the queue to AsyncStorage and update state.
@@ -172,16 +172,16 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
         if (isMountedRef.current) setIsOnline(true);
       }
 
-      // Subscribe to changes
+      
       unsubscribe = NetInfo.addEventListener((state) => {
         const nowOnline = !!state.isConnected;
         if (!isMountedRef.current) return;
 
         setIsOnline((prev) => {
-          // Auto-sync when coming back online
+          
           if (!prev && nowOnline && autoSync) {
-            // Fire-and-forget; performSync is fetched from a ref
-            // so this listener doesn't capture a stale closure.
+            
+            
             setTimeout(() => {
               performSyncRef.current?.();
             }, 100);
@@ -196,10 +196,10 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [autoSync]);
 
-  // ─── Enqueue ──────────────────────────────────────────────────
+  
 
   /**
    * Add an operation to the queue.
@@ -234,7 +234,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
     [persistQueue]
   );
 
-  // ─── Sync (internal) ──────────────────────────────────────────
+  
 
   /**
    * The actual sync worker. Extracted so we can call it from
@@ -242,7 +242,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
    * circular dependencies in useCallback.
    */
   const performSync = useCallback(async (): Promise<SyncResult> => {
-    // Guard against concurrent syncs
+    
     if (isSyncingRef.current) {
       return {
         success: false,
@@ -256,14 +256,14 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
       return { success: true, errors: [], synced: 0 };
     }
 
-    // Check network first
+    
     let online = isOnline;
     try {
       const netState = await NetInfo.fetch();
       online = !!netState.isConnected;
       if (isMountedRef.current) setIsOnline(online);
     } catch {
-      // Assume we can try
+      
     }
 
     if (!online) {
@@ -274,7 +274,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
       };
     }
 
-    // Check auth
+    
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return {
@@ -292,7 +292,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
     let syncedCount = 0;
 
     for (const op of currentQueue) {
-      // Skip ops already marked as permanently failed — user must manually retry
+      
       if (op.permanentlyFailed) {
         failedOps.push(op);
         continue;
@@ -303,7 +303,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
 
         switch (op.operation) {
           case 'insert': {
-            // Only inject user_id if not already present
+            
             const insertPayload = opData.user_id
               ? opData
               : { ...opData, user_id: user.id };
@@ -318,8 +318,8 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
             }
             const updatePayload: Record<string, unknown> = { ...opData };
             delete updatePayload.id;
-            // Ensure the row is scoped to the authenticated user so RLS
-            // policies don't silently drop it.
+            
+            
             if (!updatePayload.user_id) {
               updatePayload.user_id = user.id;
             }
@@ -336,8 +336,8 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
             if (!opData.id) {
               throw new Error('Delete operation missing id');
             }
-            // Scope the delete to the authenticated user so RLS
-            // policies don't silently drop the row on a mismatch.
+            
+            
             const { error } = await supabase
               .from(op.table)
               .delete()
@@ -351,7 +351,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
             throw new Error(`Unknown operation: ${op.operation}`);
         }
 
-        // Success
+        
         successIds.add(op.id);
         syncedCount++;
 
@@ -370,7 +370,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
         }
 
         if (nextRetries >= MAX_RETRIES) {
-          // Mark as permanently failed — DON'T drop
+          
           const failedOp: OfflineOperation = {
             ...op,
             retries: nextRetries,
@@ -393,7 +393,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
             console.error('[OfflineSync] onPermanentFailure callback threw:', cbErr);
           }
         } else {
-          // Retry later
+          
           failedOps.push({
             ...op,
             retries: nextRetries,
@@ -404,8 +404,8 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
       }
     }
 
-    // Build the new queue = failed ops only (successful ones are dropped)
-    // Preserve original order
+    
+    
     const newQueue = currentQueue
       .filter((op) => !successIds.has(op.id))
       .map((op) => {
@@ -444,23 +444,23 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
     return result;
   }, [isOnline, persistQueue]);
 
-  // Keep the ref in sync with the latest performSync
+  
   useEffect(() => {
     performSyncRef.current = performSync;
   }, [performSync]);
 
-  // ─── Public Sync ──────────────────────────────────────────────
+  
 
   const sync = useCallback(async (): Promise<SyncResult> => {
     return performSync();
   }, [performSync]);
 
-  // ─── Auto-sync on mount if queue non-empty ────────────────────
+  
   useEffect(() => {
     if (!autoSync) return;
     if (queue.length === 0) return;
 
-    // Delay slightly so app has time to initialize auth
+    
     const timer = setTimeout(() => {
       performSync().catch((err) => {
         if (__DEV__) {
@@ -470,10 +470,10 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
     }, 3000);
 
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [autoSync, queue.length]);
 
-  // ─── Manual Retry ─────────────────────────────────────────────
+  
 
   /**
    * Reset permanently-failed ops back to pending so they'll retry.
@@ -520,7 +520,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
     await persistQueue([]);
   }, [persistQueue]);
 
-  // ─── Diagnostics ──────────────────────────────────────────────
+  
 
   const getQueueStatus = useCallback(() => {
     const currentQueue = queueRef.current;
@@ -544,23 +544,23 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
     return queueRef.current.filter((op) => !op.permanentlyFailed);
   }, []);
 
-  // ─── Public API ───────────────────────────────────────────────
+  
 
   return {
-    // State
+    
     queue,
     isSyncing,
     lastSync,
     isOnline,
 
-    // Actions
+    
     enqueue,
     sync,
     retryFailed,
     removeOperation,
     clearQueue,
 
-    // Diagnostics
+    
     getQueueStatus,
     getFailedOperations,
     getPendingOperations,

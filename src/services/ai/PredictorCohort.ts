@@ -1,9 +1,9 @@
-// src/services/ai/PredictorCohort.ts
-// ─────────────────────────────────────────────────────────────────────
-// Cross-family learning for the PredictorEngine (Holt-Winters).
-// Publishes level/trend/seasonal parameters per age cohort, and
-// injects them into cold-start babies.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -17,15 +17,15 @@ export type PredictorKind = 'sleep' | 'feed' | 'diaper' | 'wake' | 'medication';
 export interface PredictorCohortPrior {
   kind: PredictorKind;
   ageCohort: AgeCohort;
-  level: number;       // baseline inter-event interval (minutes)
-  trend: number;       // per-event drift (minutes)
-  seasonal: number[];  // 6-slot seasonal decomposition
+  level: number;       
+  trend: number;       
+  seasonal: number[];  
   sampleCount: number;
   contributorCount: number;
   updatedAt: number;
 }
 
-// ─── Fetch cohort predictor prior (24h cache) ──────────────────────
+
 
 export async function getPredictorCohortPrior(
   kind: PredictorKind,
@@ -52,12 +52,12 @@ export async function getPredictorCohortPrior(
 
     if (error || !data) return null;
 
-    // Validate numeric fields
+    
     const level = Number(data.level);
     const trend = Number(data.trend);
     if (!Number.isFinite(level) || !Number.isFinite(trend)) return null;
 
-    // Normalize seasonal to exactly 6 slots
+    
     const rawSeasonal = Array.isArray(data.seasonal) ? data.seasonal : [];
     const seasonal = rawSeasonal.slice(0, 6).map(Number).filter(Number.isFinite);
     while (seasonal.length < 6) seasonal.push(0);
@@ -80,7 +80,7 @@ export async function getPredictorCohortPrior(
   }
 }
 
-// ─── Publish local predictor state to cohort pool ──────────────────
+
 
 export interface PredictorPublishResult {
   published: number;
@@ -99,7 +99,7 @@ export async function publishPredictorToCohort(
     return { published: 0, skipped: states.length, reason: 'opt_out' };
   }
 
-  // Respect the per-baby GDPR blocklist
+  
   try {
     const mod = await import('./CohortPriors');
     if (typeof mod.isCohortContributionBlocked === 'function') {
@@ -112,7 +112,7 @@ export async function publishPredictorToCohort(
 
   const minSamples = options.minSamples ?? 30;
 
-  // Throttle to once per 12h
+  
   const lastRaw = await AsyncStorage.getItem(PREDICTOR_LAST_PUBLISH_KEY);
   const last = lastRaw ? parseInt(lastRaw, 10) : 0;
   if (Date.now() - last < 12 * 60 * 60 * 1000) {
@@ -134,7 +134,7 @@ export async function publishPredictorToCohort(
         continue;
       }
 
-      // Sanity bounds per kind (mirrors PredictorEngine FALLBACK_INTERVALS)
+      
       const fallbacks: Record<PredictorKind, number> = {
         sleep: 180, feed: 150, diaper: 120, wake: 90, medication: 360,
       };
@@ -152,7 +152,7 @@ export async function publishPredictorToCohort(
         .maybeSingle();
 
       if (existing) {
-        // Weighted merge by sample count
+        
         const existingWeight = Number(existing.sample_count) || 1;
         const localWeight = state.n;
         const totalWeight = existingWeight + localWeight;
@@ -164,7 +164,7 @@ export async function publishPredictorToCohort(
           (Number(existing.trend) * existingWeight +
             state.trend * localWeight) / totalWeight;
 
-        // Seasonal merge: average slot-by-slot, padded to 6
+        
         const existingSeasonal: number[] = Array.isArray(existing.seasonal)
           ? existing.seasonal : [0, 0, 0, 0, 0, 0];
         const localSeasonal: number[] = state.seasonal.slice(0, 6);

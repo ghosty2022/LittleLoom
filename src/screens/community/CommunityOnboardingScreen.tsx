@@ -1,4 +1,4 @@
-// src/screens/community/CommunityOnboardingScreen.tsx
+
 import {
   StyleSheet,
   Dimensions,
@@ -24,7 +24,7 @@ import { useUser } from '../../context/UserContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { updateSectionState } from '../../hooks/useIntelligentSplash';
-// Storage keys for consistency
+
 const STORAGE_KEYS = {
   SELECTED_TOPICS: '@community_selected_topics_v2',
 };
@@ -57,7 +57,7 @@ interface CategoryWithTopics {
   expanded: boolean;
 }
 
-// ─── Topic Card Component ───
+
 const TopicCard = React.memo(({ 
   topic, 
   isSelected, 
@@ -175,14 +175,14 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
 
   const flatListRef = useRef<FlatList>(null);
 
-  // Load theme and topics
+  
   useEffect(() => {
     const loadData = async () => {
       try {
         const darkMode = settings?.darkMode ?? false;
         setIsDark(darkMode);
 
-        // Load saved topics
+        
         const [onboardingData, selectedData] = await Promise.all([
           AsyncStorage.getItem(ONBOARDING_KEY),
           AsyncStorage.getItem('@community_selected_topics_v2'),
@@ -286,13 +286,13 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       if (prev.includes(topicId)) {
         return prev.filter(id => id !== topicId);
       } else {
-        // No maximum limit - allow selecting as many as they want
+        
         return [...prev, topicId];
       }
     });
   }, []);
 const handleComplete = useCallback(async () => {
-  // Check minimum 5 topics
+  
   if (selectedTopics.length < MIN_TOPICS) {
     sweetAlert.alert(
       'Select More Topics', 
@@ -310,11 +310,11 @@ const handleComplete = useCallback(async () => {
       timestamp: new Date().toISOString(),
     };
 
-    // Save to ALL storage keys
+    
     await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(data));
     await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(selectedTopics));
     
-    // Also save user-specific topics
+    
     if (currentUser?.id) {
       await AsyncStorage.setItem(
         `@community_selected_topics_v2_${currentUser.id}`,
@@ -322,21 +322,21 @@ const handleComplete = useCallback(async () => {
       );
     }
 
-    // Update UserContext
+    
     try {
       await updateUserTopics(selectedTopics);
     } catch (e) {
       console.warn('[CommunityOnboarding] Failed to update user topics:', e);
     }
     
-    // Update section state
+    
     try {
       await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
     } catch (e) {
       console.warn('[CommunityOnboarding] Failed to update section state:', e);
     }
 
-    // Force refresh topics in context
+    
     try {
       const { refreshTopics } = require('../../context/CommunityContext');
       await refreshTopics();
@@ -365,16 +365,16 @@ const handleComplete = useCallback(async () => {
   const handleSkip = useCallback(async () => {
     if (isEditing) return;
 
-    // Auto-select 3 topics (minimum 5, so we'll auto-select 5)
+    
     const autoSelectTopics = categoriesWithTopics
       .flatMap(cat => cat.topics.slice(0, 2))
       .slice(0, 5)
       .map(t => t.id);
 
-    // Ensure we have at least MIN_TOPICS
+    
     let topicsToSave = [...autoSelectTopics];
     if (topicsToSave.length < MIN_TOPICS) {
-      // Add more topics from the first category
+      
       const allTopics = categoriesWithTopics.flatMap(cat => cat.topics);
       const remaining = allTopics.filter(t => !topicsToSave.includes(t.id));
       const needed = MIN_TOPICS - topicsToSave.length;
@@ -642,14 +642,14 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
-  // List
+  
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 120,
   },
 
-  // Category
+  
   categoryContainer: {
     marginBottom: 12,
     borderRadius: 16,
@@ -703,7 +703,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  // Topics
+  
   categoryTopicsContainer: {
     paddingHorizontal: 12,
     paddingBottom: 12,
@@ -750,7 +750,7 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
   },
 
-  // Bottom Bar
+  
   bottomBar: {
     position: 'absolute',
     bottom: 0,

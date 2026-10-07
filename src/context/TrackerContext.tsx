@@ -1,5 +1,5 @@
-// src/context/TrackerContext.tsx
-// Full Supabase implementation - Reads baby data from BabyContext
+
+
 
 import React, {
   createContext,
@@ -33,17 +33,17 @@ import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { createCustomTracker, validateCustomTracker, DEFAULT_TRACKERS } from '@/config/defaultTrackers';
 import { useBaby } from './BabyContext';
-// observeValue is now reached transitively via bootstrap.observeEntry
+
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { EntryService, mapRowToEntry } from '@/services/EntryService';
 
-// ─── IMPORTANT: DO NOT import FamilyContext at module scope. ─────
-//     FamilyContext → BabyContext → (indirectly) TrackerContext
-//     creates a circular dependency. Node/Metro resolves cycles by
-//     returning `undefined` for the not-yet-initialized export, which
-//     makes `TrackerProvider` itself undefined at render time.
-//
-//     We resolve `useFamily` lazily inside a safe hook below.
+
+
+
+
+
+
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -205,9 +205,9 @@ const EDIT_HISTORY_KEY = '@littleloom_edit_history_v1';
 
 /* ─── TRACKER TYPE MAPPING ──────────────────────────────────────────────── */
 
-// Database allowed values: 'feed', 'sleep', 'potty', 'milestone', 'custom', 'growth', 'medication'
+
 const TRACKER_TYPE_MAP: Record<string, string> = {
-  // Essential - map to appropriate types
+  
   'feed': 'feed',
   'dream_feed': 'feed',
   'breastfeeding': 'feed',
@@ -224,7 +224,7 @@ const TRACKER_TYPE_MAP: Record<string, string> = {
   
   'medication': 'medication',
   
-  // All others map to 'custom'
+  
   'bath': 'custom',
   'pumping': 'custom',
   'burp': 'custom',
@@ -314,10 +314,10 @@ const getTrackerType = (trackerId: string): string => {
   return TRACKER_TYPE_MAP[trackerId] || 'custom';
 };
 
-// ─── Bayesian learning — delegates to the canonical bootstrap helper ──
-// There is exactly ONE metric map (TRACKER_TO_METRICS in bootstrap.ts).
-// Both add and update paths route through observeEntry, so BayesianEngine
-// always receives values extracted with the same rules.
+
+
+
+
 async function learnFromEntry(
   babyId: string,
   trackerId: string,
@@ -334,7 +334,7 @@ async function learnFromEntry(
   }
 }
 
-// ─── Predictor mapping — which trackers feed which predictors ──────
+
 const PREDICTOR_TRACKER_MAP: Record<string, 'sleep' | 'feed' | 'diaper' | 'wake' | 'medication'> = {
   sleep: 'sleep',
   feed: 'feed',
@@ -342,7 +342,7 @@ const PREDICTOR_TRACKER_MAP: Record<string, 'sleep' | 'feed' | 'diaper' | 'wake'
   medication: 'medication',
 };
 
-// ─── Feed an event timestamp to the Predictor Engine ────────────────
+
 async function predictFromEntry(
   babyId: string,
   trackerId: string,
@@ -467,7 +467,7 @@ const generateInsights = (
     e.babyId === currentBabyId && !e.isDeleted && e.timestamp >= weekAgo
   );
 
-  // Medication streak insight
+  
   const medEntries = recentEntries.filter(e => e.trackerId === 'medication');
   if (medEntries.length >= 3) {
     const streak = calculateStreak('medication', entries, currentBabyId);
@@ -486,7 +486,7 @@ const generateInsights = (
     }
   }
 
-  // Temperature insight
+  
   const tempEntries = recentEntries.filter(e => e.trackerId === 'temperature');
   if (tempEntries.length >= 2) {
     const temps = tempEntries.map(e => {
@@ -518,7 +518,7 @@ const generateInsights = (
     }
   }
 
-  // Sleep quality insight
+  
   const sleepEntries = recentEntries.filter(e => e.trackerId === 'sleep');
   if (sleepEntries.length >= 5) {
     const qualities = sleepEntries.map(e => Number(e.data['quality']) || 0).filter(q => q > 0);
@@ -552,10 +552,10 @@ const generateInsights = (
    PROVIDER
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// ─── Safe lazy accessor for FamilyContext ─────────────────────────
-// We can't call `useFamily()` at module scope (circular import), and
-// we can't call it before FamilyProvider mounts (context is null).
-// So we use a ref-based subscription that updates members lazily.
+
+
+
+
 function useFamilyMembersSafe(): any[] {
   const [members, setMembers] = React.useState<any[]>([]);
 
@@ -565,11 +565,11 @@ function useFamilyMembersSafe(): any[] {
       try {
         const mod = await import('@/context/FamilyContext');
         if (cancelled) return;
-        // The FamilyContext module exposes a `FamilyContext` object.
-        // We read its current value via a tiny inline consumer.
-        // (react's useContext can't be called outside render, so we
-        // fall back to reading the module's internal state if exposed,
-        // otherwise return []).
+        
+        
+        
+        
+        
         const anyMod = mod as any;
         if (anyMod?.__getFamilySnapshot) {
           setMembers(anyMod.__getFamilySnapshot().members || []);
@@ -588,21 +588,21 @@ function useFamilyMembersSafe(): any[] {
 
 export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile } = useAuth();
-  // ─── Lazy-resolve family members without a circular import ────
-  //     (currently unused — myRole is derived from userProfile.role
-  //      to avoid the circular dependency entirely)
+  
+  
+  
   useFamilyMembersSafe();
   const { triggerHaptic } = useCustomization();
   const { success, toast, alert: sweetAlert } = useSweetAlert();
   
-  // ─── READ BABY FROM BABYCONTEXT ──────────────────────────────────────
+  
   const {
     getCurrentBabyId: getBabyIdFromContext,
     subscribeToBabyChanges,
     hasPermissionForBaby,
   } = useBaby();
 
-  // ─── Offline queue for failed Supabase writes ────────────────────────
+  
   const { enqueue: enqueueOffline } = useOfflineSync({
     onPermanentFailure: (op) => {
       if (__DEV__) {
@@ -635,23 +635,23 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const isRefreshingRef = useRef(false);
   const subscriptionRef = useRef<(() => void) | null>(null);
 
-  // ─── Current baby ID in state (for reactive contexts) ─────────────
-  // We ALSO keep a ref for synchronous reads before state commits.
-  // Declared here so downstream callbacks can safely reference it.
+  
+  
+  
   const [currentBabyIdState, setCurrentBabyIdState] = useState<string | null>(
     () => getBabyIdFromContext()
   );
 
-  // Keep ref in sync
+  
   useEffect(() => {
     currentBabyIdRef.current = currentBabyIdState;
   }, [currentBabyIdState]);
 
-  // (We expose only the ref-based getter via context — the state
-  //  value `currentBabyIdState` is used internally for permissions
-  //  and effect deps where reactivity matters.)
+  
+  
+  
 
-  // ─── Subscribe to baby changes from BabyContext ─────────────────────
+  
   useEffect(() => {
     if (subscriptionRef.current) {
       subscriptionRef.current();
@@ -695,15 +695,15 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, []);
 
-  // ─── Detect initial baby ────────────────────────────────────────────
-  // NOTE: `currentBabyIdState` is declared LATER in this component
-  // (below, near the permission block). We must NOT reference it here
-  // or we get a TDZ crash. Use only the ref for synchronous reads.
+  
+  
+  
+  
   const getCurrentBabyId = useCallback((): string | null => {
     return currentBabyIdRef.current;
   }, []);
 
-  // ─── Internal refresh function ──────────────────────────────────────
+  
   const refreshEntriesInternal = useCallback(async () => {
     const babyId = currentBabyIdRef.current;
     if (!babyId) {
@@ -742,9 +742,9 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   /* ─── Permission helpers ──────────────────────────────────────────── */
 
-  // Derive role directly from userProfile.role to avoid the
-  // FamilyContext circular import entirely. `members` was only
-  // used to look up a role we already have on the profile.
+  
+  
+  
   const myRole = useMemo(() => {
     if (!userProfile) return null;
     const role = (userProfile as any)?.role;
@@ -752,14 +752,14 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         role === 'guardian' || role === 'viewer') {
       return role;
     }
-    // Default to parent1 for the account owner.
+    
     return 'parent1';
   }, [userProfile]);
 
-  // (See above for `currentBabyIdState` declaration and the sync effect.
-  //  `getCurrentBabyIdSafe` is declared below, after `currentBabyIdState`
-  //  is in scope — but currently we only need the ref-based version, so
-  //  we don't need a separate state-aware getter here.)
+  
+  
+  
+  
 
   const currentBabyPermissions = useMemo(() => {
     if (!currentBabyIdState) return null;
@@ -799,7 +799,7 @@ const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
 
   const isOwn = entry.loggedBy === userProfile.id;
 
-  // ─── Granular JSON check ────────────────────────────────────────
+  
   if (currentBabyPermissions) {
     if (isOwn && !currentBabyPermissions.canEditEntry) return false;
     if (!isOwn && !currentBabyPermissions.canEditOthersEntries) return false;
@@ -807,10 +807,10 @@ const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
     if (!['parent1', 'parent2'].includes(myRole) && !isOwn) return false;
   }
 
-  // Parent1/Parent2 always can edit
+  
   if (['parent1', 'parent2'].includes(myRole)) return true;
 
-  // Tracker-level override for guardians
+  
   if (isOwn) {
     const tracker = state.trackers.find(t => t.id === entry.trackerId);
     const trackerAllows = tracker?.permissions?.allowGuardiansEditOwn ?? false;
@@ -853,7 +853,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     try {
       const entries = await EntryService.getEntries({ babyId });
 
-      // Warm the cache so subsequent offline reads succeed
+      
       if (entries.length > 0) {
         EntryService.warmCache(babyId, entries).catch(() => {});
       }
@@ -861,9 +861,9 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       return entries;
     } catch (error) {
       console.warn('[Tracker] loadEntries failed, trying cache:', error);
-      // Offline fallback: EntryService.getEntries already reads the cache
-      // on network failure (see EntryService), but if that throws too,
-      // return an empty list rather than crashing the tree.
+      
+      
+      
       try {
         const cached = await EntryService.getCachedEntries?.(babyId);
         return Array.isArray(cached) ? cached : [];
@@ -882,23 +882,23 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     }
   }, []);
 
-  // Uses the canonical mapRowToEntry from EntryService (imported above).
+  
 
   /* ─── REAL-TIME SYNC ─────────────────────────────────────────────── */
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
-  // ─── Realtime subscription ────────────────────────────────────────
-  // IMPORTANT: We depend on `currentBabyIdState` (a state value) rather
-  // than `getCurrentBabyId` (a stable ref-based getter). `getCurrentBabyId`
-  // has `[]` deps and never changes identity, so the effect below would
-  // only run once at mount — meaning switching baby would leave the
-  // channel bound to the OLD baby and new entries would never arrive
-  // via realtime.
+  
+  
+  
+  
+  
+  
+  
   useEffect(() => {
     const babyId = currentBabyIdState;
     if (!babyId) return;
 
-    // Tear down any existing channel
+    
     if (realtimeChannelRef.current) {
       supabase.removeChannel(realtimeChannelRef.current);
       realtimeChannelRef.current = null;
@@ -924,7 +924,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
             if (payload.eventType === 'INSERT') {
               const row = payload.new as any;
               const mapped = mapRowToEntry(row);
-              // Dedupe — we may already have it optimistically
+              
               if (current.some(e => e.id === mapped.id)) return prev;
               updated = [mapped, ...current];
             } else if (payload.eventType === 'UPDATE') {
@@ -938,7 +938,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
               return prev;
             }
 
-            // Rebuild the byTracker map
+            
             const byTracker: Record<string, TrackerEntry[]> = {};
             updated.filter(e => !e.isDeleted).forEach(e => {
               if (!byTracker[e.trackerId]) byTracker[e.trackerId] = [];
@@ -967,7 +967,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     };
   }, [currentBabyIdState]);
 
-  // NOTE: mapRowToEntry is declared above the realtime effect — do not re-declare.
+  
 
   /* ─── Initialize ──────────────────────────────────────────────────── */
 
@@ -1479,7 +1479,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       //     (throttled to once per 12h by CohortPriors; no need to publish
       //     on every single entry — that's wasteful and can race.)
 
-      // ─── Streak check uses the snapshot captured inside the setState ──
+      
       const streak = calculateStreak(trackerId, entriesSnapshot, babyId);
       if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
         triggerHaptic('success');
@@ -1550,7 +1550,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         return false;
       }
 
-      // ─── Functional update avoids stale-state clobbering ─────────────
+      
       setState(prev => {
         const updatedEntries = prev.entries.map(e =>
           e.id === entryId ? {
@@ -1558,7 +1558,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
             ...updates,
             editedBy: userProfile?.id,
             editedAt: Date.now(),
-            // Ensure arrays are clean
+            
             photoUris: updates.photoUris !== undefined
               ? sanitizePhotoUris(updates.photoUris)
               : e.photoUris,
@@ -1590,7 +1590,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         };
       });
 
-      // ─── Bayesian learning: re-observe the corrected value ───────
+      
       if (updates.data && babyId) {
         const merged = { ...entry.data, ...updates.data } as Record<string, unknown>;
         learnFromEntry(babyId, entry.trackerId, merged, entry.timestamp).catch(() => {});
@@ -1622,7 +1622,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         return false;
       }
 
-      // ─── Functional update avoids stale-state clobbering ─────────────
+      
       setState(prev => {
         const updatedEntries = prev.entries.map(e =>
           e.id === entryId ? { ...e, isDeleted: true } : e
@@ -2093,13 +2093,13 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 };
 
 // ⚠️ Do NOT export useTracker here. The canonical hook lives in
-//    `src/hooks/useTrackerContext.ts` and returns a safe fallback
-//    instead of throwing (so components that mount before
-//    TrackerProvider finishes can still render).
-//
-//    Any file that needs the hook should import:
-//        import { useTracker } from '@/hooks/useTrackerContext';
-//    or  import { useTracker } from '@/hooks';
-//
+
+
+
+
+
+
+
+
 export { TrackerContext };
 export default TrackerProvider;

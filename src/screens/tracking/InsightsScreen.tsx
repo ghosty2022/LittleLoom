@@ -16,8 +16,8 @@ import {
 import { useCustomization } from '../../hooks/useCustomization';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
-// REMOVED: useActivity — useTracker is the single source of truth across all screens
-// import { useActivity } from '../../context/ActivityContext';
+
+
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
@@ -138,9 +138,9 @@ const _SolidCard: React.FC<{
   active?: boolean;
   borderColor?: string;
 }> = React.memo(({ children, style, onPress, active, borderColor }) => {
-  const isDark = false; // Will be overridden by theme prop in parent
+  const isDark = false; 
 
-  // We accept borderColor prop for theming
+  
   const Wrapper = onPress ? TouchableOpacity : View;
 
   return (
@@ -383,12 +383,12 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
   const insets = useSafeAreaInsets();
   const focusCategory: string | undefined = (route.params as any)?.focusCategory;
   const { triggerHaptic, themeColors, darkMode } = useCustomization();
-  // REMOVED fontSizeMultiplier — unused in this screen
+  
   const { userProfile } = useAuth();
   const { currentBaby, growthData, milestones, babies, getGrowthData, loadBabies } = useBaby();
-  // REMOVED: useActivity — trackerEntries from useTracker is the single source of truth
+  
   const { growthIndex } = useGrowthIntelligence();
-  // Load TimelineCorrelations (UI patterns) AND discovered correlations (AI)
+  
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
 
   const [aiCorrelations, setAiCorrelations] = useState<DiscoveredCorrelation[]>([]);
@@ -398,13 +398,13 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     (async () => {
       try {
         const { discoverCorrelations, getCachedCorrelations } = require('../services/ai/CorrelationEngine');
-        // 1. Show cache instantly if available
+        
         const cached = await getCachedCorrelations(currentBaby.id);
         if (!cancelled && Array.isArray(cached) && cached.length > 0) {
           setAiCorrelations(cached);
         }
-        // 2. Recompute — CorrelationEngine already writes to
-        //    ai_correlation_cache on success, so next open is instant.
+        
+        
         const fresh = await discoverCorrelations(currentBaby.id, 45);
         if (!cancelled && Array.isArray(fresh)) setAiCorrelations(fresh);
       } catch (e) {
@@ -495,7 +495,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     const now = Date.now();
     const ageMonths = currentBaby.birthDate ? safeDiffMonths(new Date(), currentBaby.birthDate) : 0;
 
-    // Growth Intelligence insights
+    
     if (growthIndex) {
       if (growthIndex.nutritionScore?.value < 50) {
         items.push({
@@ -551,7 +551,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       }
     }
 
-    // Timeline correlations (UI patterns)
+    
     timelineCorrelations.slice(0, 3).forEach((c, i) => {
       items.push({
         id: `corr-${c.id || i}`,
@@ -565,7 +565,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       });
     });
 
-    // AI-discovered correlations
+    
     aiCorrelations.slice(0, 5).forEach((c, i) => {
       items.push({
         id: `ai-corr-${c.id}`,
@@ -582,7 +582,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       });
     });
 
-    // Recent milestone
+    
     const recentMilestone = [...milestones].sort((a, b) => {
       const da = safeParseDate(a.achievedAt);
       const db = safeParseDate(b.achievedAt);
@@ -602,7 +602,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       });
     }
 
-    // Growth drop alert
+    
     const growthTypes = ['height', 'weight', 'head'] as const;
     growthTypes.forEach(type => {
       const typeData = getGrowthData(type);
@@ -629,7 +629,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       }
     });
 
-    // WHO percentile insights
+    
     growthTypes.forEach(type => {
       const data = getGrowthData(type).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       const latest = data[0];
@@ -668,7 +668,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       }
     });
 
-    // Streak alerts
+    
     if (globalStreak?.streakAtRisk && globalStreak.currentStreak > 0) {
       items.push({
         id: 'streak-risk',
@@ -697,7 +697,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       });
     }
 
-    // Age-based tips
+    
     if (ageMonths < 3) {
       items.push({
         id: 'tip-newborn',
@@ -722,7 +722,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       });
     }
 
-    // Sleep pattern insight
+    
     const todaySleep = getTrackerEntries('sleep').filter((e: any) => isSameDay(new Date(e.timestamp), new Date()));
     if (todaySleep.length === 0 && new Date().getHours() > 14) {
       items.push({
@@ -738,7 +738,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       });
     }
 
-    // Tracker-engine insights (med streak, fever, sleep quality, feed-mood, growth reminder)
+    
     getEngineInsights().forEach((i) => {
       items.push({
         id: `engine-${i.id}`,
@@ -803,14 +803,14 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     const avg = Math.round(total / 7);
     const maxDay = weeklyPattern.reduce((max, d) => d.total > max.total ? d : max, weeklyPattern[0]);
 
-    // Calculate streak
+    
     let streak = 0;
     for (let i = weeklyPattern.length - 1; i >= 0; i--) {
       if (weeklyPattern[i].total > 0) streak++;
       else break;
     }
 
-    // Top category
+    
     const catCounts: Record<string, number> = {};
     weeklyPattern.forEach(d => {
       catCounts['feed'] = (catCounts['feed'] || 0) + d.feeds;

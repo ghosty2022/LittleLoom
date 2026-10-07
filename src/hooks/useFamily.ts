@@ -1,6 +1,6 @@
-// src/hooks/useFamily.ts
-// Safe wrapper — FamilyContext is not yet exposed via useSafeContexts,
-// so we inline a minimal fallback here.
+
+
+
 
 import { useContext } from 'react';
 import { FamilyContext } from '../context/FamilyContext';

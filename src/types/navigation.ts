@@ -1,11 +1,11 @@
-// src/types/navigation.ts (Updated with QRScanner)
+
 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 
-// ─── Base Types ─────────────────────────────────────────────────────────
+
 
 export interface BabyProfile {
   id: string;
@@ -85,7 +85,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission> = {
   },
 };
 
-// ─── Supabase & Community Types ──────────────────────────────────────
+
 
 export interface CommunityMemberProfile {
   id: string;
@@ -147,7 +147,7 @@ export interface OfflineQueueItem {
   retries: number;
 }
 
-// ─── Auth Types ──────────────────────────────────────────────────────
+
 
 export interface AuthState {
   isLoading: boolean;
@@ -165,10 +165,10 @@ export interface AuthState {
   refreshToken?: string;
 }
 
-// ─── Root Stack Navigation ──────────────────────────────────────────
+
 
 export type RootStackParamList = {
-  // ── Auth Flow ──
+  
   Splash: undefined;
   Onboarding: undefined;
   Login: {
@@ -181,18 +181,18 @@ export type RootStackParamList = {
   } | undefined;
   ForgotPassword: undefined;
 
-  // ── QR Scanner ──
+  
   QRScanner: undefined;
 
-  // ── Setup Flow ──
+  
   CoParentInviteScreen: { fromSetup?: boolean } | undefined;
   BabyOptional: undefined;
   CreateBabyProfile: { fromSetup?: boolean } | undefined;
 
-  // ── Main Tab ──
+  
   Main: undefined;
 
-  // ── Baby Management ──
+  
   SwitchBaby: { returnTo?: keyof RootStackParamList; returnLabel?: string } | undefined;
   BabyProfileScreen: { babyId: string } | undefined;
   EditProfile: {
@@ -201,7 +201,7 @@ export type RootStackParamList = {
     parentId?: string;
   } | undefined;
 
-  // ── Tracking ──
+  
   UniversalTrackerHub: undefined;
   AllTrackers: undefined;
   TimelinePicker: undefined;
@@ -218,12 +218,12 @@ export type RootStackParamList = {
   EntryDetail: { entryId: string; trackerId?: string };
   CreateCustomTracker: undefined;
 
-  // ── Trackers ──
+  
   PottyTracker: { babyId?: string; trackerId?: string } | undefined;
   FeedTracker: { babyId?: string; trackerId?: string } | undefined;
   SleepTracker: { babyId?: string; trackerId?: string } | undefined;
 
-  // ── Growth & Health ──
+  
   GrowthDashboard: { babyId?: string } | undefined;
   VaccinationSchedule: {
     babyId?: string;
@@ -231,28 +231,28 @@ export type RootStackParamList = {
   } | undefined;
   PediatricianPDFExport: { babyId?: string } | undefined;
 
-  // ── Achievements ──
+  
   Achievements: {
     babyId?: string;
     highlightAchievement?: string;
     openReminderSetup?: boolean;
   } | undefined;
 
-  // ── Insights ──
+  
   Insights: {
     babyId?: string;
     timeframe?: 'week' | 'month' | 'year';
     focusCategory?: string;
   } | undefined;
 
-  // ── Reminders ──
+  
   TrackerReminders: {
     fromAchievement?: string;
     suggestedType?: 'potty' | 'feed' | 'sleep' | 'milestone' | 'streak';
     babyId?: string;
   } | undefined;
 
-  // ── Family ──
+  
   FamilySharing: { openInvite?: boolean } | undefined;
   FamilyDashboard: { babyId?: string } | undefined;
   SecureAccessList: undefined;
@@ -272,11 +272,11 @@ export type RootStackParamList = {
     fromChat?: boolean;
   } | undefined;
 
-  // ── Gallery & Media ──
+  
   Gallery: { babyId?: string } | undefined;
   SoundMixer: undefined;
 
-  // ── Security ──
+  
   SecurityLock: { redirectTo?: string } | undefined;
   BiometricSetup: { mode?: 'setup' | 'change' } | undefined;
   SecurityCenter: {
@@ -284,38 +284,38 @@ export type RootStackParamList = {
     fromForgotPassword?: boolean;
   } | undefined;
 
-  // ── Private Vault (PIN fallback for gallery) ──
+  
   VaultLock: undefined;
 
-  // ── Safety ──
+  
   SafetyCorner: undefined;
 
-  // ── Settings ──
+  
   Customize: undefined;
   LanguageSettings: undefined;
   UnitSettings: undefined;
   BackupRestore: undefined;
   AIManagement: undefined;
 
-  // ── Support ──
+  
   HelpCenter: undefined;
   ContactSupport: undefined;
   PrivacyPolicy: undefined;
   TermsOfService: undefined;
   About: undefined;
 
-  // ── Profile ──
+  
   Profile: {
     userId?: string;
     tab?: 'parents' | 'guardians';
     selectedId?: string;
   } | undefined;
 
-  // ── More / Settings ──
+  
   More: undefined;
   SyncSettings: undefined;
 
-  // ── Community (Supabase-powered) ──
+  
   CommunityMain: undefined;
   CommunityProfile: { userId?: string } | undefined;
   CommunityMemberProfile: { userId: string };
@@ -344,7 +344,7 @@ export type RootStackParamList = {
   };
 };
 
-// ─── Community Stack ─────────────────────────────────────────────────
+
 
 export type CommunityStackParamList = {
   CommunitySplash: undefined;
@@ -376,7 +376,7 @@ export type CommunityStackParamList = {
   };
 };
 
-// ─── Main Tab ────────────────────────────────────────────────────────
+
 
 export type MainTabParamList = {
   Home: undefined;
@@ -386,7 +386,7 @@ export type MainTabParamList = {
   Connect: undefined;
 };
 
-// ─── Screen Props ──────────────────────────────────────────────────
+
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> =
   NativeStackScreenProps<RootStackParamList, T>;
@@ -400,12 +400,12 @@ export type MainTabScreenProps<T extends keyof MainTabParamList> =
     RootStackScreenProps<keyof RootStackParamList>
   >;
 
-// ─── Navigation Props ──────────────────────────────────────────────
+
 
 export type NavigationProp = RootStackScreenProps<keyof RootStackParamList>['navigation'];
 export type CommunityNavigationProp = CommunityStackScreenProps<keyof CommunityStackParamList>['navigation'];
 
-// ─── Specific Screen Props ─────────────────────────────────────────
+
 
 export type TimelineNavigationProp = NativeStackScreenProps<RootStackParamList, 'Timeline'>['navigation'];
 export type TimelineRouteProp = RouteProp<RootStackParamList, 'Timeline'>;
@@ -443,7 +443,7 @@ export type CommunityMemberProfileRouteProp = RouteProp<CommunityStackParamList,
 
 export type QRScannerNavigationProp = NativeStackScreenProps<RootStackParamList, 'QRScanner'>['navigation'];
 
-// ─── Navigation State ──────────────────────────────────────────────
+
 
 export type NavigationState =
   | 'LOADING'
@@ -454,14 +454,14 @@ export type NavigationState =
   | 'SECURITY_LOCK'
   | 'MAIN';
 
-// ─── Params for deep linking ──────────────────────────────────────
+
 
 export interface DeepLinkParams {
   screen: keyof RootStackParamList;
   params?: Record<string, any>;
 }
 
-// ─── Navigation Theme ──────────────────────────────────────────────
+
 
 export interface NavigationTheme {
   dark: boolean;
@@ -479,13 +479,13 @@ export interface NavigationTheme {
   };
 }
 
-// ─── Route Types for Navigation Helpers ──────────────────────────
+
 
 export type MainTabRoute = keyof MainTabParamList;
 export type RootStackRoute = keyof RootStackParamList;
 export type CommunityStackRoute = keyof CommunityStackParamList;
 
-// ─── Navigation Utilities ──────────────────────────────────────────
+
 
 export const isRootStackScreen = (name: string): name is RootStackRoute => {
   const rootScreens: RootStackRoute[] = [

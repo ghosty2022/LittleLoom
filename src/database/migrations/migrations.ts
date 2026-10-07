@@ -1,4 +1,4 @@
-// src/database/migrations/migrations.ts
+
 const journal = {
   "version": "7",
   "dialect": "sqlite",

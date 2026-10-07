@@ -5,7 +5,7 @@ const SPLASH_KEYS = {
   MAIN_APP_SHOWN: '@littleloom_main_splash_shown',
   COMMUNITY_SHOWN: '@littleloom_community_splash_shown',
   LAST_SPLASH_DATE: '@littleloom_last_splash_date',
-  SPLASH_FREQUENCY: '@littleloom_splash_frequency', // 'always', 'daily', 'weekly', 'never'
+  SPLASH_FREQUENCY: '@littleloom_splash_frequency', 
   SECTION_PREFERENCES: '@littleloom_section_preferences',
 } as const;
 
@@ -16,7 +16,7 @@ export interface SplashConfig {
   frequency: SplashFrequency;
   showOnColdStart: boolean;
   showOnSectionSwitch: boolean;
-  minSplashInterval: number; // ms
+  minSplashInterval: number; 
   respectReduceMotion: boolean;
   respectCompactView: boolean;
 }
@@ -33,7 +33,7 @@ export const DEFAULT_SPLASH_CONFIG: SplashConfig = {
   frequency: 'daily',
   showOnColdStart: true,
   showOnSectionSwitch: true,
-  minSplashInterval: 300000, // 5 minutes
+  minSplashInterval: 300000, 
   respectReduceMotion: true,
   respectCompactView: true,
 };
@@ -180,9 +180,9 @@ export function useIntelligentSplash(
 
   useEffect(() => {
     const init = async () => {
-      // Load config first — the previous version evaluated the splash
-      // decision against DEFAULT_SPLASH_CONFIG, ignoring the user's
-      // saved preference.
+      
+      
+      
       const loadedConfig = await loadSplashConfig();
       const state = await getSectionState(section);
       const splashCheck = await shouldShowSplash(

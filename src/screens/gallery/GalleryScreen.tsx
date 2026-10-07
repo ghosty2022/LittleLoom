@@ -1,35 +1,35 @@
-// src/screens/GalleryScreen.tsx
-// ═══════════════════════════════════════════════════════════════════════════
-// GALLERY V2 — Production-Ready, Real Data, Real Features
-//
-// 17 MAJOR FEATURES:
-//   1. Real photo loading from tracker entries + local media
-//   2. AI Smart Stacks (burst-grouped photos)
-//   3. Memory Lane (this day last week/month/year)
-//   4. Face Clustering (from tracker data + baby profile)
-//   5. Auto-generated Photo Stories (weekly/monthly)
-//   6. Smart Search with filters + fuzzy matching
-//   7. Photo Insights (real analytics)
-//   8. Live Photo Detail Viewer with zoom/pan
-//   9. Batch selection (share, delete, download, favorite, tag)
-//  10. Vault with biometric unlock (real SecurityContext integration)
-//  11. Real cloud backup status per photo
-//  12. Tracker-linked photos (jump to entry)
-//  13. Type/album filters (milestone, sleep, feed, etc.)
-//  14. Timeline view (chronological with sticky headers)
-//  15. List view with metadata
-//  16. Edit mode (caption, tags, favorite, privacy)
-//  17. Empty states + real camera integration
-//
-// FIXES:
-//   ✓ Removed fake `Photo` types (uses real TrackerEntry.photoUris)
-//   ✓ Wired to TrackerContext (single source of truth)
-//   ✓ Vault uses real SecurityContext.authenticateWithBiometric
-//   ✓ Proper error handling everywhere
-//   ✓ Debounced search
-//   ✓ Virtualized FlatList for large galleries
-//   ✓ Memory-safe image loading with thumbnails
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import React, {
   useCallback,
@@ -146,9 +146,9 @@ const STORAGE_KEYS = {
 type GalleryTab = 'all' | 'albums' | 'timeline' | 'favorites' | 'vault';
 type ViewMode = 'grid' | 'list';
 
-// NOTE: GalleryPhoto now lives in `../../types/photos` as `UnifiedPhoto`.
-// Use that type directly — it's shared with PhotoSyncContext, PhotoScanner,
-// and every other photo surface.
+
+
+
 type GalleryPhoto = UnifiedPhoto;
 
 interface DateGroup {
@@ -201,7 +201,7 @@ const safeNotification = (type: Haptics.NotificationFeedbackType) => {
   } catch {}
 };
 
-// (URI normalization now lives in `photosFromTrackerEntry` in types/photos.ts)
+
 
 /** Format bytes for display */
 const formatBytes = (bytes: number): string => {
@@ -1500,7 +1500,7 @@ export default function GalleryScreen() {
   // Optional — PhotoSyncContext may not be mounted in every stack.
   let syncedPhotos: UnifiedPhoto[] = [];
   try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
+    
     const syncCtx = require('../../context/PhotoSyncContext').usePhotoSync?.();
     if (syncCtx && typeof syncCtx.getUnifiedPhotos === 'function') {
       syncedPhotos = syncCtx.getUnifiedPhotos();
@@ -1519,7 +1519,7 @@ export default function GalleryScreen() {
     refreshSecurityStatus: refreshVaultSecurity,
   } = useVaultUnlock();
 
-  // ── UI state ──
+  
   const [activeTab, setActiveTab] = useState<GalleryTab>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
@@ -1534,7 +1534,7 @@ export default function GalleryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [aiTagFilter, setAiTagFilter] = useState<string | null>(null);
 
-  // ── Persisted metadata (single source of truth, loaded via photoService) ──
+  
   const [meta, setMeta] = useState<PhotoMetadata>(() => ({
     favorites: new Set(),
     privates: new Set(),
@@ -1569,16 +1569,16 @@ export default function GalleryScreen() {
   /* ── When returning from VaultLock, re-evaluate vault state ── */
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      // If the user came back from VaultLockScreen after successfully
-      // entering their PIN, VaultLockScreen will have called verifyPin()
-      // which sets nothing here — but the very next interaction with the
-      // vault will trigger unlockVault() again and succeed because the
-      // SecurityContext has cleared its own lock state.
+      
+      
+      
+      
+      
       if (activeTab === 'vault' && !vaultUnlocked) {
-        // Auto-attempt unlock on focus, but silently fail if user cancels.
+        
         unlockVault('Unlock Private Vault').then((ok) => {
           if (!ok && hasAnySecurity) {
-            // Stay on the locked empty state — user can tap the button.
+            
           }
         });
       }
@@ -1654,8 +1654,8 @@ export default function GalleryScreen() {
 
     const trackerPhotos = buildUnifiedGallery(entries, meta, nameMap);
 
-    // Merge in any photos from the auto-import queue (uploaded ones).
-    // Deduplicate by uri so nothing shows twice.
+    
+    
     const seen = new Set(trackerPhotos.map((p) => p.uri));
     const merged = [...trackerPhotos];
     for (const sp of syncedPhotos) {
@@ -1671,31 +1671,31 @@ export default function GalleryScreen() {
   const filteredPhotos = useMemo(() => {
     let list = enrichedPhotos;
 
-    // Vault: only private photos (if unlocked) or none
+    
     if (activeTab === 'vault') {
       if (!vaultUnlocked) return [];
       list = list.filter((p) => p.isPrivate);
     } else {
-      // Never show private photos outside the vault
+      
       list = list.filter((p) => !p.isPrivate);
     }
 
-    // Favorites tab
+    
     if (activeTab === 'favorites') {
       list = list.filter((p) => p.isFavorite);
     }
 
-    // Album filter
+    
     if (activeAlbumFilter) {
       list = list.filter((p) => p.type === activeAlbumFilter);
     }
 
-    // Baby filter
+    
     if (activeBabyFilter) {
       list = list.filter((p) => p.babyId === activeBabyFilter);
     }
 
-    // AI tag filter
+    
     if (aiTagFilter) {
       const needle = aiTagFilter.toLowerCase();
       list = list.filter((p) =>
@@ -1703,11 +1703,11 @@ export default function GalleryScreen() {
       );
     }
 
-    // Search
+    
     if (debouncedSearch) {
       const q = debouncedSearch.toLowerCase().trim();
 
-      // Smart filter chips
+      
       if (q === 'favorites') {
         list = list.filter((p) => p.isFavorite);
       } else if (q === 'this week') {
@@ -1794,13 +1794,13 @@ export default function GalleryScreen() {
     async (tab: GalleryTab) => {
       safeHaptic();
 
-      // Leaving the vault → re-lock immediately (privacy-first)
+      
       if (tab !== 'vault' && vaultUnlocked) {
         lockVault();
       }
 
       if (tab === 'vault' && !vaultUnlocked) {
-        // Refresh status — user may have toggled biometric in Settings.
+        
         await refreshVaultSecurity();
 
         const unlocked = await unlockVault('Unlock Private Vault');
@@ -1811,14 +1811,14 @@ export default function GalleryScreen() {
           return;
         }
 
-        // Biometric failed OR no biometric → check if PIN exists
-        // and route to the PIN entry screen.
+        
+        
         if (hasAnySecurity) {
           navigation.navigate('VaultLock' as never);
           return;
         }
 
-        // No security configured at all — bail with helpful message.
+        
         sweetAlert(
           'Vault Locked',
           'Enable biometrics or set a PIN in Settings → Security to use the private vault.',
@@ -1912,8 +1912,8 @@ export default function GalleryScreen() {
     (photoId: string) => {
       safeHaptic();
 
-      // If we're moving a photo INTO the vault, make sure security is
-      // configured so the user doesn't lock themselves out.
+      
+      
       const isCurrentlyPrivate = meta.privates.has(photoId);
       if (!isCurrentlyPrivate && !hasAnySecurity) {
         sweetAlert(
@@ -1998,7 +1998,7 @@ export default function GalleryScreen() {
 
   const handleStackOpen = useCallback((stack: PhotoStack) => {
     safeHaptic();
-    // Open first photo of the stack
+    
     if (stack.photos[0]) {
       setSelectedPhoto(stack.photos[0]);
       setShowDetail(true);
@@ -2007,10 +2007,10 @@ export default function GalleryScreen() {
 
   const handleStoryOpen = useCallback((story: PhotoStory) => {
     safeHaptic();
-    // Filter to that week
+    
     setActiveAlbumFilter(null);
     setSearchQuery('');
-    // Could navigate to story detail — for now, alert
+    
     sweetAlert(
       story.title,
       `${story.photoCount} photos from ${story.dateRange}`,

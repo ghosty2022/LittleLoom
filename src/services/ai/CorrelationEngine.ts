@@ -1,31 +1,31 @@
-// src/services/ai/CorrelationEngine.ts
-// ─────────────────────────────────────────────────────────────────────
-// Discovers real patterns in a baby's tracker history.
-//
-// Approach:
-//   1. Group entries into "days"
-//   2. For each candidate relationship (A → B), compute stats
-//   3. Rank by effect size × sample size × recency
-//
-// No ML. Just honest Pearson correlation, Cohen's d, and
-// count-based conditional probability. We only surface correlations that
-// are:
-//   - Statistically meaningful (|r| > 0.3 or |d| > 0.5)
-//   - Well-sampled (n >= 8)
-//   - Actionable (a parent can DO something about it)
-//
-// FIXES in this version:
-//   ✓ All `.gte('timestamp', cutoff)` / `.gt(...)` calls now convert the
-//     numeric millisecond value to an ISO string. Supabase's PostgREST
-//     layer expects timestamptz strings, not raw numbers — sending a
-//     number produced "date/time field value out of range" on every
-//     query.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 
-// Re-export formatMinutes so consumers can import from one place
+
 export { formatMinutes } from './PredictorEngine';
 
 export type CorrelationKind =
@@ -53,7 +53,7 @@ export interface DiscoveredCorrelation {
   metricB: string;
 }
 
-// ─── Data helpers ────────────────────────────────────────────────────
+
 
 type Entry = {
   tracker_id: string;
@@ -109,7 +109,7 @@ const cohensD = (a: number[], b: number[]): number => {
   return pooled === 0 ? 0 : (ma - mb) / pooled;
 };
 
-// ─── Detectors ───────────────────────────────────────────────────────
+
 
 function detectFeedBeforeSleep(entries: Entry[]): DiscoveredCorrelation | null {
   const sleeps = entries.filter((e) => e.tracker_id === 'sleep');
@@ -277,8 +277,8 @@ function detectOutdoorVsSleep(entries: Entry[]): DiscoveredCorrelation | null {
   const byDay = groupByDay(entries);
   const days: { outdoor: number; sleep: number }[] = [];
 
-  // Both 'outdoor' and 'outdoor_time' are valid tracker IDs in this app.
-  // Also match the legacy 'walk' tracker which is a form of outdoor time.
+  
+  
   const OUTDOOR_IDS = new Set(['outdoor', 'outdoor_time', 'walk']);
 
   for (const [, dayEntries] of byDay) {
@@ -286,10 +286,10 @@ function detectOutdoorVsSleep(entries: Entry[]): DiscoveredCorrelation | null {
       .filter((e) => OUTDOOR_IDS.has(e.tracker_id))
       .reduce((sum, e) => {
         const d = e.data || {};
-        // Duration is stored in SECONDS per the schema
+        
         const seconds = Number(d.duration ?? 0);
         const minutes = Number(d.minutes ?? 0);
-        // Prefer minutes if explicitly present; otherwise seconds/60
+        
         const mins = minutes > 0 ? minutes : seconds > 0 ? seconds / 60 : 0;
         return sum + mins;
       }, 0);
@@ -336,7 +336,7 @@ function detectOutdoorVsSleep(entries: Entry[]): DiscoveredCorrelation | null {
   };
 }
 
-// ─── Public API ──────────────────────────────────────────────────────
+
 
 const DETECTORS: Array<(entries: Entry[]) => DiscoveredCorrelation | null> = [
   detectFeedBeforeSleep,
@@ -351,8 +351,8 @@ export async function discoverCorrelations(
 ): Promise<DiscoveredCorrelation[]> {
   const cutoff = Date.now() - daysBack * 86400000;
 
-  // FIX: PostgREST timestamptz filters expect ISO strings, not raw
-  // millisecond numbers.
+  
+  
   const { data, error } = await supabase
     .from('tracker_entries')
     .select('tracker_id, timestamp, data')
@@ -407,9 +407,9 @@ export async function discoverCorrelations(
       a.effectSize * Math.log(a.samples + 1)
   );
 
-  // ─── Persist to cache so subsequent reads are instant ─────────
-  //     Skip the write if the baby is GDPR-blocked, so we never
-  //     re-populate a table we were explicitly asked to clear.
+  
+  
+  
   let isBlocked = false;
   try {
     const { isCohortContributionBlocked } = await import('./CohortPriors');
@@ -444,11 +444,11 @@ export async function discoverCorrelations(
   return results;
 }
 
-// ─── Read from cache (instant, no query) ────────────────────────────
 
-// ─── Invalidate cache after N new entries ──────────────────────────
 
-const INVALIDATE_THRESHOLD = 5; // refresh after 5 new entries
+
+
+const INVALIDATE_THRESHOLD = 5; 
 const LAST_INVALIDATE_KEY_PREFIX = '@littleloom_corr_invalidate_v1:';
 
 export async function invalidateCorrelationCacheIfStale(
@@ -462,8 +462,8 @@ export async function invalidateCorrelationCacheIfStale(
     const raw = await AsyncStorage.getItem(key);
     const lastTimestamp = raw ? parseInt(raw, 10) : 0;
 
-    // Count entries CREATED since the last invalidation (by timestamp, not id).
-    // This is resilient to soft-deletes and edits.
+    
+    
     let query = supabase
       .from('tracker_entries')
       .select('id', { count: 'exact', head: true })
@@ -471,7 +471,7 @@ export async function invalidateCorrelationCacheIfStale(
       .eq('is_deleted', false);
 
     if (lastTimestamp > 0) {
-      // FIX: ISO string, not raw ms.
+      
       query = query.gt('timestamp', new Date(lastTimestamp).toISOString());
     }
 
@@ -480,13 +480,13 @@ export async function invalidateCorrelationCacheIfStale(
     const newEntryCount = count ?? 0;
 
     if (force || newEntryCount >= INVALIDATE_THRESHOLD) {
-      // Delete cached rows so next read recomputes
+      
       await supabase
         .from('ai_correlation_cache')
         .delete()
         .eq('baby_id', babyId);
 
-      // Record the timestamp of the newest entry we just accounted for
+      
       const { data: newest } = await supabase
         .from('tracker_entries')
         .select('timestamp')

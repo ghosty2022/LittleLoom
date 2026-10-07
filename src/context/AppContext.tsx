@@ -1,5 +1,5 @@
-// src/context/AppContext.tsx
-// Full Supabase-compatible app context
+
+
 
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useColorScheme, AppState, AppStateStatus, Platform } from 'react-native';
@@ -13,7 +13,7 @@ import { supabase } from '@/utils/supabase';
 import { getAppSetting, setAppSetting } from '@/database/dbHelpers';
 import { useCustomization, AppearanceMode } from '../hooks/useCustomization';
 
-// ─── TASK DEFINITION ──────────────────────────────────────────────
+
 
 const BACKGROUND_SYNC_TASK = 'BACKGROUND_NOTIFICATION_SYNC';
 
@@ -31,7 +31,7 @@ if (!TaskManager.isTaskDefined(BACKGROUND_SYNC_TASK)) {
   });
 }
 
-// ─── TYPES ──────────────────────────────────────────────────────────
+
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -95,7 +95,7 @@ export interface ScheduledNotification {
 }
 
 export interface AppContextType {
-  // Theme
+  
   themeMode: ThemeMode;
   appearance: AppearanceMode;
   isDark: boolean;
@@ -110,7 +110,7 @@ export interface AppContextType {
   isCommunityScreen: boolean;
   setCommunityScreen: (isCommunity: boolean) => void;
 
-  // Notifications
+  
   notificationSettings: NotificationSettings;
   isNotificationReady: boolean;
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<void>;
@@ -126,11 +126,11 @@ export interface AppContextType {
   enableKeepAwake: (reason?: string) => Promise<void>;
   releaseKeepAwake: () => Promise<void>;
 
-  // Navigation handler
+  
   setNavigationRef: (ref: any) => void;
 }
 
-// ─── COLORS ─────────────────────────────────────────────────────────
+
 
 const LIGHT_COLORS: ThemeColors = {
   background: '#f8faff', surface: '#ffffff', card: '#ffffff',
@@ -168,7 +168,7 @@ const PURE_WHITE_COLORS: ThemeColors = {
   navBackground: '#ffffff', handleBar: 'rgba(0,0,0,0.15)', shadowColor: '#000000',
 };
 
-// ─── STORAGE KEYS ──────────────────────────────────────────────────
+
 
 const THEME_STORAGE_KEY = 'theme_mode';
 const APPEARANCE_STORAGE_KEY = 'appearance';
@@ -177,14 +177,14 @@ const NOTIFICATION_HISTORY_KEY = '@littleloom_notification_history';
 const PENDING_NOTIFICATIONS_KEY = '@littleloom_pending_notifications';
 const DEVICE_ID_KEY = '@littleloom_device_id';
 
-// ─── STATIC CACHE ──────────────────────────────────────────────────
+
 
 let _cachedAppearance: AppearanceMode | null = null;
 let _cachedThemeMode: ThemeMode | null = null;
 let _themeLoaded = false;
 let _navigationRef: any = null;
 
-// ─── DEFAULT SETTINGS ─────────────────────────────────────────────
+
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: true,
@@ -205,7 +205,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   activityReminders: true,
 };
 
-// ─── BACKGROUND SYNC FUNCTION ─────────────────────────────────────
+
 
 async function performBackgroundNotificationSync(): Promise<{ hasUpdates: boolean }> {
   try {
@@ -257,7 +257,7 @@ async function performBackgroundNotificationSync(): Promise<{ hasUpdates: boolea
   }
 }
 
-// ─── STORAGE HELPERS ──────────────────────────────────────────────
+
 
 async function loadNotificationSettings(): Promise<NotificationSettings> {
   try {
@@ -322,7 +322,7 @@ async function getDeviceId(): Promise<string> {
   }
 }
 
-// ─── CONTEXT ──────────────────────────────────────────────────────
+
 
 const AppContext = createContext<AppContextType>({
   themeMode: 'system',
@@ -359,14 +359,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const systemColorScheme = useColorScheme();
   const customization = useCustomization();
 
-  // ─── Theme State ──────────────────────────────────────────────────
+  
 
   const [themeMode, setThemeModeState] = useState<ThemeMode>(_cachedThemeMode ?? 'system');
   const [appearance, setAppearanceState] = useState<AppearanceMode>(_cachedAppearance ?? 'system');
   const [themeReady, setThemeReady] = useState(_themeLoaded);
   const [isCommunityScreen, setIsCommunityScreen] = useState(false);
 
-  // ─── Notification State ──────────────────────────────────────────
+  
 
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [isNotificationReady, setIsNotificationReady] = useState(false);
@@ -379,7 +379,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const initStarted = useRef(false);
   const isMounted = useRef(true);
 
-  // ─── FIXED: Cleanup on unmount ──────────────────────────────────
+  
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -403,7 +403,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [keepAwakeRef]);
 
-  // ─── Load Theme ──────────────────────────────────────────────────
+  
 
   useEffect(() => {
     if (_themeLoaded) return;
@@ -455,7 +455,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { mounted = false; };
   }, [customization.settings.appearance]);
 
-  // ─── Sync with customization ─────────────────────────────────────
+  
 
   useEffect(() => {
     if (!customization?.isLoaded || !_themeLoaded) return;
@@ -478,7 +478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [customization.isLoaded, customization.settings.appearance]);
 
-  // ─── FIXED: Initialize Notifications ────────────────────────────
+  
 
   const ensureNotificationsInitialized = useCallback(async () => {
     if (isInitialized.current) return true;
@@ -532,11 +532,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // NOTE: Notification channels, notification handler, and listeners
-      // are now owned EXCLUSIVELY by src/services/NotificationService.ts.
-      // AppContext only manages the background fetch task and settings sync.
-      // Do NOT call setNotificationHandler or setNotificationChannelAsync here —
-      // doing so overwrites the unified handler and breaks per-channel routing.
+      
+      
+      
+      
+      
 
       if (settings.allowBackgroundSync) {
         try {
@@ -572,11 +572,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // ─── Notification Handlers ──────────────────────────────────────
-  // NOTE: Notification response handling is owned by NotificationService.
-  // Register a handler via `notificationService.addResponseHandler()` in
-  // AppNavigator (see useNotificationSetup hook). These stubs remain only
-  // as a safety net for cases where AppNavigator isn't mounted yet.
+  
+  
+  
+  
+  
 
   const handleNotificationReceived = useCallback((notification: Notifications.Notification) => {
     console.log('[AppContext] Notification received (fallback):', notification.request.identifier);
@@ -643,7 +643,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // ─── Notification Storage ───────────────────────────────────────
+  
 
   const storeNotification = useCallback(async (notification: Notifications.Notification) => {
     try {
@@ -676,7 +676,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // ─── Theme Functions ─────────────────────────────────────────────
+  
 
   const setThemeMode = useCallback(async (mode: ThemeMode) => {
     setThemeModeState(mode);
@@ -741,7 +741,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]).catch(() => {});
   }, [customization]);
 
-  // ─── Computed Theme Values ──────────────────────────────────────
+  
 
   const isDark = useMemo(() => {
     if (appearance === 'system') return systemColorScheme === 'dark';
@@ -759,7 +759,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return isDark ? DARK_COLORS : LIGHT_COLORS;
   }, [isDark, isTrueBlack, isPureWhite]);
 
-  // ─── Notification Functions ─────────────────────────────────────
+  
 
   const isInQuietHours = useCallback((): boolean => {
     if (!notificationSettings.quietHoursStart || !notificationSettings.quietHoursEnd) {
@@ -783,7 +783,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [notificationSettings]);
 
-  // ─── Wrapped notification functions ──────────────────────────────
+  
 
   const scheduleNotification = useCallback(async (
     payload: NotificationPayload,
@@ -919,8 +919,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await saveNotificationSettings(newSettings);
     await ensureNotificationsInitialized();
 
-    // Mirror relevant settings into the unified NotificationService so
-    // the handler/scheduler in that service sees the latest values.
+    
+    
     try {
       const { notificationService } = await import('@/services/NotificationService');
       await notificationService.updateSettings({
@@ -996,7 +996,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsCommunityScreen(isComm);
   }, []);
 
-  // ─── Context Value ──────────────────────────────────────────────
+  
 
   const value = useMemo(() => ({
     themeMode,

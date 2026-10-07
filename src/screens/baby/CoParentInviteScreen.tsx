@@ -1,6 +1,6 @@
-// src/screens/baby/CoParentInviteScreen.tsx - COMPLETE FIXED VERSION
-// FIX: Shows ALL codes with status, includes modal with code details, partial sign-up recovery
-// FIX: Displays email, phone, and name used during partial sign-up
+
+
+
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -334,7 +334,7 @@ function CodeDetailsModal({
                       ? `📱 You started signing up for LittleLoom but didn't finish.\n\n🎫 Code: ${code.code}\n🔗 https://littleloom.app/join?code=${code.code}`
                       : `👋 Join me on LittleLoom! Use code: ${code.code}\n🔗 https://littleloom.app/join?code=${code.code}`;
                     
-                    // Add partial user info to the message if available
+                    
                     if (isPartial) {
                       if (partialEmail) message += `\n\n📧 Your email: ${partialEmail}`;
                       if (partialPhone) message += `\n📱 Your phone: ${partialPhone}`;
@@ -392,7 +392,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const dynamicSecondary = themeColors.secondary || colors.primaryLight;
   const dynamicGradient = [dynamicPrimary, dynamicSecondary] as [string, string];
 
-  // ── State ──
+  
   const [role, setRole] = useState<RoleKey>('parent2');
   const [relationship, setRelationship] = useState('');
   const [fullName, setFullName] = useState('');
@@ -405,13 +405,13 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const [isLoadingCodes, setIsLoadingCodes] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' as const });
   
-  // ── Modal State ──
+  
   const [selectedCode, setSelectedCode] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
   const isOnboarding = useMemo(() => !setupComplete, [setupComplete]);
 
-  // ── Animated rings ──
+  
   const ringProgress = useSharedValue(0);
 
   useEffect(() => {
@@ -432,7 +432,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     transform: [{ scale: interpolate(ringProgress.value, [0, 1], [1, 1.4]) }],
   }));
 
-  // ── Success checkmark animation ──
+  
   const checkScale = useSharedValue(0);
   const checkRotate = useSharedValue(0);
   const checkStyle = useAnimatedStyle(() => ({
@@ -447,7 +447,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     checkRotate.value = withSequence(withTiming(-180, { duration: 0 }), withSpring(0, { damping: 12, stiffness: 150 }));
   }, [checkScale, checkRotate]);
 
-  // ── Load active codes on mount ──
+  
   useEffect(() => {
     loadActiveCodes();
   }, []);
@@ -457,7 +457,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     try {
       const codes = await getActiveInviteCodes();
       if (codes) {
-        // Sort: partial first (needs attention), then active, then others
+        
         const sorted = codes.sort((a, b) => {
           const priority: Record<string, number> = { partial: 0, active: 1, used: 2, expired: 3, revoked: 4 };
           const priorityA = priority[a.status] ?? 5;
@@ -483,7 +483,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     return true;
   };
 
-  // ─── Generate code with proper 6-character format ─────────────
+  
   const handleGenerate = useCallback(async () => {
     if (!validate()) return;
     if (!currentBaby?.id) {
@@ -515,7 +515,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     }
   }, [relationship, fullName, email, phone, currentBaby, userProfile, role, triggerHaptic, showToast, triggerSuccessAnim, generateInviteCode]);
   
-  // ─── Handle Share ──────────────────────────────────────────────────────
+  
   const handleShare = useCallback(async (method: 'copy' | 'whatsapp' | 'sms' | 'email' | 'native') => {
     if (!generatedCode) return;
     const roleLabel = ROLE_META[role].label;
@@ -542,7 +542,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     }
   }, [generatedCode, role, currentBaby, triggerHaptic, showToast]);
 
-  // ─── Handle Revoke ────────────────────────────────────────────────────
+  
   const handleRevoke = useCallback(async (code: string) => {
     const success = await revokeInviteCode(code);
     if (success) {
@@ -554,17 +554,17 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     }
   }, [revokeInviteCode, generatedCode, showToast]);
 
-  // ─── Handle Resend Partial ────────────────────────────────────────────
+  
   const handleResendPartial = useCallback(async (code: string) => {
     try {
-      // Get partial info
+      
       const partialInfo = await getPartialSignupInfo(code);
       if (!partialInfo.exists) {
         showToast('No partial signup found for this code', 'error');
         return;
       }
 
-      // Generate share message with ALL partial info
+      
       const roleLabel = ROLE_META[role]?.label || 'Family Member';
       const babyName = currentBaby?.name || 'our baby';
       
@@ -574,7 +574,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       message += `👤 Role: ${roleLabel}\n\n`;
       message += `🔗 Continue here: https://littleloom.app/join?code=${code}\n\n`;
       
-      // ─── Include ALL user info ──────────────────────────────────────
+      
       if (partialInfo.name) {
         message += `👤 Your name: ${partialInfo.name}\n`;
       }
@@ -667,7 +667,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     return STATUS_CONFIG[status]?.label || status;
   };
 
-  // ─── Render Status Badge ──────────────────────────────────────────────
+  
   const renderStatusBadge = (status: string) => {
     const config = STATUS_CONFIG[status];
     if (!config) return null;

@@ -1,5 +1,5 @@
-// src/database/schema.ts
-// Drizzle ORM schema — fully aligned with Supabase tables
+
+
 
 import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
@@ -13,7 +13,7 @@ export const babies = sqliteTable('babies', {
   name: text('name').notNull(),
   avatar: text('avatar'),
   dateOfBirth: text('date_of_birth').notNull(),
-  gender: text('gender'), // 'male' | 'female' | 'other'
+  gender: text('gender'), 
   bloodType: text('blood_type'),
   medicalNotes: text('medical_notes'),
   parent1Id: text('parent1_id'),
@@ -45,7 +45,7 @@ export const trackerEntries = sqliteTable('tracker_entries', {
   photoUris: text('photo_uris', { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
   location: text('location'),
   mood: text('mood'),
-  // Legacy fields for backward compatibility (populated from data JSON)
+  
   loggedBy: text('logged_by'),
   loggedByName: text('logged_by_name'),
   loggedByRole: text('logged_by_role'),
@@ -54,7 +54,7 @@ export const trackerEntries = sqliteTable('tracker_entries', {
   syncedAt: text('synced_at'),
   editedBy: text('edited_by'),
   editedAt: integer('edited_at'),
-  // Soft delete
+  
   isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
   syncStatus: text('sync_status').notNull().default('pending'),
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -78,7 +78,7 @@ export const familyMembers = sqliteTable('family_members', {
   email: text('email').notNull(),
   fullName: text('full_name').notNull(),
   avatar: text('avatar'),
-  role: text('role').notNull(), // 'parent1' | 'parent2' | 'guardian' | 'viewer'
+  role: text('role').notNull(), 
   relationship: text('relationship').notNull().default('Family'),
   permissions: text('permissions', { mode: 'json' }).$type<Record<string, boolean>>().notNull().default(sql`'{}'`),
   addedAt: text('added_at').notNull().default(sql`CURRENT_TIMESTAMP`),

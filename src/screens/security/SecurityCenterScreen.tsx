@@ -1,4 +1,4 @@
-// screens/security/SecurityCenterScreen.tsx - COMPLETE FIXED with BiometricSetup navigation
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -192,25 +192,25 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     };
   }, []);
 
-  // ─── FIXED: Biometric check with proper debounce ────────────────
+  
   const [forceUpdate, setForceUpdate] = useState(false);
   const [localBioEnabled, setLocalBioEnabled] = useState<boolean>(false);
 
-  // Sync from context whenever it changes
+  
   useEffect(() => {
     setLocalBioEnabled(isBiometricEnabled ?? false);
   }, [isBiometricEnabled]);
 
-  // On focus, re-read from context AFTER refreshing capabilities
+  
   const wasFocusedRef = useRef(false);
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', async () => {
       if (!isMounted.current) return;
       await refreshBiometricStatus();
 
-      // Read the freshest value directly from AsyncStorage — never trust
-      // the context closure here, because the SecurityContext may have
-      // been updated on a different screen while we were backgrounded.
+      
+      
+      
       let enabledFromStorage = false;
       try {
         const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
@@ -225,8 +225,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   }, [navigation, refreshBiometricStatus]);
 
   useEffect(() => {
-    // One-time capability check on mount (debounced) — focus listener
-    // is already handled by the previous effect, so we don't add another.
+    
+    
     const checkBiometrics = async () => {
       try {
         await checkBiometricCapabilities();
@@ -495,24 +495,24 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
-  // ─── FIXED: Navigate to BiometricSetup ──────────────────────────
+  
   const navigateToBiometricSetup = useCallback(() => {
-    // Navigate to BiometricSetup and ensure we return here
+    
     navigation.navigate('BiometricSetup');
   }, [navigation]);
 
-  // ─── FIXED: Toggle biometric — accepts the target value from the Switch ──
+  
   const handleToggleBiometric = useCallback(async (targetValue?: boolean) => {
     if (biometricLoading) return;
 
-    // Fall back to toggling current state if caller didn't pass a value
+    
     const newState = typeof targetValue === 'boolean' ? targetValue : !localBioEnabled;
 
-    // If enabling, verify hardware is available & enrolled
+    
     if (newState) {
       await refreshBiometricStatus();
 
-      // Read fresh values from context after refresh
+      
       const hasHardwareNow = isBiometricHardwareAvailable;
       const isEnrolledNow = isBiometricEnrolled;
 
@@ -543,7 +543,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       const result = await toggleBiometric(newState);
 
       if (result) {
-        // Optimistic local update — context will also update
+        
         setLocalBioEnabled(newState);
         await refreshBiometricStatus();
         setForceUpdate(prev => !prev);
@@ -553,7 +553,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           newState ? 'Biometric unlock enabled' : 'Biometric unlock disabled'
         );
       } else {
-        // Revert UI — the toggle didn't take
+        
         setLocalBioEnabled(!newState);
         sweetAlert.error(
           'Failed',
@@ -609,7 +609,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const score = useMemo(() => getSecurityScore(), [getSecurityScore]);
   const scoreLabel = useMemo(() => getScoreLabel(score), [score, getScoreLabel]);
 
-  // ─── Render Dashboard ──────────────────────────────────────────
+  
   const renderDashboard = () => (
     <AnimatedRe.View entering={FadeInUp.duration(500)} style={styles.section}>
       <View style={[styles.scoreCard, isDark && styles.scoreCardDark]}>
@@ -682,7 +682,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         }
         onPress={() => {
           if (!isBiometricHardwareAvailable || !isBiometricEnrolled) {
-            // Show SweetAlert with option to navigate to BiometricSetup
+            
             sweetAlert.confirm(
               'Biometric Not Available',
               'Please set up biometrics in your device settings first, or continue to setup.',
@@ -751,7 +751,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             const newValue = !securitySettings.isAppLockEnabled;
             await toggleAppLock(newValue);
             triggerHaptic(newValue ? 'success' : 'light');
-            // Force a re-render so MoreScreen sees the new value on return
+            
             setForceUpdate(prev => !prev);
             sweetAlert.success(
               newValue ? 'App Lock On' : 'App Lock Off',
@@ -769,7 +769,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
-  // ─── Render PIN Section ────────────────────────────────────────
+  
   const renderPinSection = () => {
     const isSetup = pinMode === 'create';
     const isChange = pinMode === 'change';
@@ -902,7 +902,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   };
 
-  // ─── Render Questions Section ──────────────────────────────────
+  
   const renderQuestionsSection = () => (
     <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
       <View style={styles.pinHeader}>
@@ -1035,7 +1035,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
-  // ─── FIXED: Render Biometric Section with Setup Link ──────────────────────────────────
+  
   const renderBiometricSection = () => {
     const bioName = getBiometricTypeName();
     const bioConfig = availableBiometricTypes[0];
@@ -1203,7 +1203,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
-  // ─── Render ────────────────────────────────────────────────────
+  
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>

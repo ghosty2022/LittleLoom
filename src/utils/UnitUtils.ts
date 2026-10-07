@@ -93,7 +93,7 @@ export function formatVolume(value: number, unit: VolumeUnit, decimals: number =
 }
 
 export function smartWeightDisplay(valueKg: number, locale: string = 'en'): string {
-  const isMetric = !['US', 'LR', 'MM'].includes(locale); // US, Liberia, Myanmar use imperial
+  const isMetric = !['US', 'LR', 'MM'].includes(locale); 
   if (isMetric) {
     if (valueKg < 1) return formatWeight(valueKg * 1000, 'g', 0);
     return formatWeight(valueKg, 'kg', 2);

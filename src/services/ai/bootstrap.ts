@@ -1,12 +1,12 @@
-// src/services/ai/bootstrap.ts
-// ─────────────────────────────────────────────────────────────────────
-// Wires every AI engine to the app's lifecycle.
-// Call `bootstrapAI(babyId)` once per app launch / baby switch.
-//
-// IMPORTANT: Every heavy engine is imported LAZILY via `await import()`.
-// This keeps the cold-start JS bundle small — Metro doesn't have to
-// transform executorch / edge-llm / ai-kit until AFTER the UI is up.
-// ─────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
@@ -16,8 +16,8 @@ const LAUNCH_FLAG = '@littleloom_ai_bootstrapped_v1';
 const LAST_FEATURE_RUN = '@littleloom_last_feature_run_v1';
 const BOOTSTRAPPED_FOR_KEY = '@littleloom_ai_bootstrapped_for_v1';
 
-// Map tracker entries → Bayesian metrics
-// (Type-only import — erased at compile time, zero runtime cost.)
+
+
 import type { MetricKey } from './BayesianEngine';
 
 const TRACKER_TO_METRICS: Record<string, MetricKey[]> = {
@@ -33,7 +33,7 @@ const TRACKER_TO_METRICS: Record<string, MetricKey[]> = {
   wake_time: ['wake_window_min'],
 };
 
-// ─── Bootstrap observability (for the UI pill) ──────────────────────
+
 export type BootstrapPhase = 'idle' | 'running' | 'done' | 'failed';
 
 export interface BootstrapSnapshot {
@@ -75,12 +75,12 @@ export function subscribeBootstrap(fn: BootstrapListener): () => void {
   };
 }
 
-// ─── Module-level run guard ─────────────────────────────────────────
+
 let bootstrappedFor: string | null = null;
 let isRunning = false;
 let runningBabyId: string | null = null;
 
-// ─── Helper: cache baby meta early so engines can resolve priors ────
+
 async function cacheBabyMetaEarly(babyId: string): Promise<void> {
   try {
     const metaKey = `@littleloom_baby_meta_v1:${babyId}`;
@@ -109,7 +109,7 @@ async function cacheBabyMetaEarly(babyId: string): Promise<void> {
   }
 }
 
-// ─── Helper: resolve persisted "bootstrappedFor" on cold start ─────
+
 async function resolveBootstrappedFor(): Promise<string | null> {
   if (bootstrappedFor !== null) return bootstrappedFor;
   try {
@@ -121,7 +121,7 @@ async function resolveBootstrappedFor(): Promise<string | null> {
   return bootstrappedFor;
 }
 
-// ─── Main entry ─────────────────────────────────────────────────────
+
 
 export async function bootstrapAI(
   babyId: string,
@@ -129,11 +129,11 @@ export async function bootstrapAI(
 ): Promise<void> {
   if (!babyId) return;
 
-  // Cross-check persisted flag (survives Fast Refresh during dev)
+  
   const persisted = await resolveBootstrappedFor();
   if (!force && persisted === babyId && bootstrappedFor === babyId) {
-    // Already done for this baby — reflect that in the snapshot so the
-    // UI doesn't spin forever if it subscribes after the fact.
+    
+    
     if (currentSnapshot.phase === 'idle') {
       emitBootstrap({
         phase: 'done',
@@ -144,7 +144,7 @@ export async function bootstrapAI(
     return;
   }
 
-  // If already running for a different baby, skip (prevents race conditions)
+  
   if (isRunning && runningBabyId !== babyId) {
     if (__DEV__) {
       console.log(
@@ -164,13 +164,13 @@ export async function bootstrapAI(
     finishedAt: undefined,
   });
 
-  // Helper to abort if baby switches mid-bootstrap
+  
   const aborted = () => runningBabyId !== babyId;
 
   try {
     console.log(`[AI Bootstrap] Starting for baby ${babyId}...`);
 
-    // ── Step -1: Make sure the native AI runtime is loaded first ────
+    
     try {
       const snap = await AIService.init();
       if (snap.status === 'unavailable') {
@@ -194,7 +194,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 0a: Flush pending telemetry from prior session ─────────
+    
     try {
       const { flushTelemetry } = await import('./Telemetry');
       await flushTelemetry();
@@ -204,7 +204,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 0b: Flush pending cohort ops from prior offline sessions ─
+    
     try {
       const { flushCohortQueue, getCohortQueueSize } = await import(
         './CohortOfflineQueue'
@@ -221,12 +221,12 @@ export async function bootstrapAI(
       if (__DEV__) console.warn('[AI Bootstrap] Queue flush failed:', e);
     }
 
-    // ── Step 0c: Cache baby meta EARLY ──────────────────────────────
+    
     await cacheBabyMetaEarly(babyId);
 
     if (aborted()) return;
 
-    // ── Step 1: Backfill Bayesian learning (90 days) ────────────────
+    
     try {
       const { backfillBayesianIfNeeded } = await import('./backfillBayesian');
       const bayesResult = await backfillBayesianIfNeeded(babyId, 90);
@@ -242,7 +242,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 2: Backfill predictor state (30 days) ──────────────────
+    
     try {
       const { backfillPredictor } = await import('./PredictorEngine');
       await Promise.all([
@@ -257,7 +257,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 3: Feature engineering for today ───────────────────────
+    
     try {
       const { featureEngineer } = await import('./FeatureEngineer');
       const today = new Date();
@@ -271,7 +271,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 4: Backfill 7 days of features if stale (>24h) ─────────
+    
     try {
       const lastRun = await AsyncStorage.getItem(LAST_FEATURE_RUN);
       const lastRunTs = lastRun ? parseInt(lastRun, 10) : 0;
@@ -288,7 +288,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 4a: Check for age-cohort boundary crossing ─────────────
+    
     try {
       const { checkAndHandleCohortChange } = await import('./CohortPriors');
       const { data: babyRow } = await supabase
@@ -328,7 +328,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 4b: Refresh correlation cache if stale (>24h) ──────────
+    
     try {
       const { getCachedCorrelations, discoverCorrelations } = await import(
         './CorrelationEngine'
@@ -351,7 +351,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 4c: Publish predictor states to cohort pool ────────────
+    
     try {
       const { publishPredictorToCohort } = await import('./PredictorCohort');
       const { getAllPredictorStates } = await import('./PredictorEngine');
@@ -393,7 +393,7 @@ export async function bootstrapAI(
 
     if (aborted()) return;
 
-    // ── Step 5: Publish local posteriors to cohort pool (opt-in) ────
+    
     try {
       const { publishToCohort, isCollaborativeLearningEnabled } =
         await import('./CohortPriors');
@@ -440,7 +440,7 @@ export async function bootstrapAI(
       if (__DEV__) console.warn('[AI Bootstrap] Cohort publish failed:', e);
     }
 
-    // ── Mark done ───────────────────────────────────────────────────
+    
     bootstrappedFor = babyId;
     await AsyncStorage.setItem(BOOTSTRAPPED_FOR_KEY, babyId);
     console.log('[AI Bootstrap] ✅ Complete');
@@ -462,8 +462,8 @@ export async function bootstrapAI(
   }
 }
 
-// ─── Live event observer ────────────────────────────────────────────
-// Call this AFTER addEntry succeeds, so AI learns in real time.
+
+
 
 export async function observeEntry(
   babyId: string,
@@ -478,7 +478,7 @@ export async function observeEntry(
   if (!metrics || metrics.length === 0) return;
 
   try {
-    // Lazy-load the Bayesian engine + extractor only when actually needed.
+    
     const { observeValue, extractMetricValue } = await import(
       './BayesianEngine'
     );
@@ -494,7 +494,7 @@ export async function observeEntry(
   }
 }
 
-// ─── Reset everything ───────────────────────────────────────────────
+
 
 export async function resetAIForBaby(babyId: string): Promise<void> {
   try {

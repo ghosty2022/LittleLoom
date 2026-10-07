@@ -1,4 +1,4 @@
-// src/navigation/CommunityNavigator.tsx - COMPLETE FIXED VERSION
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Text, StatusBar, FlatList, TextInput, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useRoute } from '@react-navigation/native';
@@ -91,7 +91,7 @@ const TIMEZONE_MAP: Record<string, string> = {
 const getCountryFromCode = (code: string) => COUNTRY_MAP[code.toUpperCase()] || null;
 const getCountryFromTz = (tz: string) => TIMEZONE_MAP[tz] || null;
 
-// ─── AUTOMATIC COUNTRY DETECTION ──────────────────────────────────────
+
 const useAutomaticCountryDetection = () => {
   const { currentUser, updateUserLocation } = useCommunity();
   const [isDetecting, setIsDetecting] = useState(false);
@@ -169,7 +169,7 @@ const useAutomaticCountryDetection = () => {
   return isDetecting;
 };
 
-// ─── LOADING VIEW ──────────────────────────────────────────────────────
+
 const InlineLoadingView = React.memo(({ text }: { text: string }) => (
   <View style={styles.inlineLoadingContainer}>
     <LinearGradient
@@ -285,14 +285,14 @@ const SearchUsersScreen = () => {
 };
 
 const BlockedUsersScreen = () => {
-  // `unblockUser` may not exist in older CommunityContext versions —
-  // fall back to `blockUser` (which toggles) or a no-op.
+  
+  
   const community = useCommunity() as any;
   const blockedUsers: string[] = community.blockedUsers ?? [];
   const getUserById = community.getUserById ?? (() => undefined);
   const unblockUser =
     community.unblockUser ??
-    community.blockUser ?? // blockUser toggles, so passing a blocked id unblocks
+    community.blockUser ?? 
     (async (_id: string) => {});
 
   return (
@@ -338,7 +338,7 @@ const BlockedUsersScreen = () => {
   );
 };
 
-// ─── AUTH CHECK HOOK ────────────────────────────────────────────────────
+
 function useCommunityAuthCheck() {
   const [isValid, setIsValid] = useState<boolean | null>(null);
   
@@ -365,11 +365,11 @@ function useCommunityAuthCheck() {
   return isValid;
 }
 
-// ─── MAIN COMMUNITY NAVIGATOR ──────────────────────────────────────────
+
 const CommunityNavigator = React.memo(() => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
-  // NOTE: navigation state is intentionally not bubbled up here — the
-  // root navigator already handles tab-level state. Keeping this pure.
+  
+  
   const { profile: userProfile } = useUser();
   const { settings, shouldReduceMotion } = useCustomization();
   
@@ -397,7 +397,7 @@ const CommunityNavigator = React.memo(() => {
   useEffect(() => {
     if (isAuthValid === false) {
       console.log('[CommunityNavigator] Auth invalid — rendering auth-required view');
-      // Ensure we exit the loading phase so the auth-required UI can render.
+      
       if (phase === 'loading') {
         setPhase('main');
       }
@@ -411,7 +411,7 @@ const CommunityNavigator = React.memo(() => {
 
     const initialize = async () => {
   try {
-    // Force refresh topics first
+    
     try {
       const { refreshTopics } = require('../context/CommunityContext');
       await refreshTopics();
@@ -427,7 +427,7 @@ const CommunityNavigator = React.memo(() => {
       console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
     }
 
-    // Check if user actually has selected topics in the context
+    
     const selectedTopics = await AsyncStorage.getItem('@community_selected_topics_v2');
     const hasStoredTopics = selectedTopics ? JSON.parse(selectedTopics).length > 0 : false;
     
@@ -456,16 +456,16 @@ const CommunityNavigator = React.memo(() => {
     setPhase('main');
   }, [markSplashShown]);
 
-  // ─── COMMUNITY NOTIFICATION RESPONSE HANDLER ───────────────────────
-  // Registers a handler with the unified NotificationService that reacts
-  // to community-related notification taps (chat, follow, comment, like,
-  // mention, etc.) by pushing the correct community screen onto the
-  // community stack.
+  
+  
+  
+  
+  
   const communityNavRef = useRef<any>(null);
 
   useEffect(() => {
-    // Only wire this up once the main phase is active — otherwise
-    // the community stack isn't mounted and navigate() calls are no-ops.
+    
+    
     if (phase !== 'main') return;
 
     const handleCommunityNotification = (
@@ -476,7 +476,7 @@ const CommunityNavigator = React.memo(() => {
       const screen = data.screen as string;
       const params = (data.params as Record<string, unknown>) || {};
 
-      // Only intercept community-type notifications here.
+      
       const isCommunityType =
         type === 'community_notification' ||
         type === 'chat_message' ||
@@ -494,7 +494,7 @@ const CommunityNavigator = React.memo(() => {
 
       if (!isCommunityType) return;
 
-      // Navigation may not be ready yet — retry once after a tick.
+      
       const nav = communityNavRef.current;
       if (!nav || !nav.isReady?.()) {
         setTimeout(() => {
@@ -507,7 +507,7 @@ const CommunityNavigator = React.memo(() => {
       }
 
       try {
-        // Route by explicit `screen` first, then fall back to `type`.
+        
         const targetScreen = screen || (
           type === 'chat_message' ? 'Chat' :
           type === 'community_notification' ? 'Notifications' :
@@ -521,11 +521,11 @@ const CommunityNavigator = React.memo(() => {
 
         if (!targetScreen) return;
 
-        // Ensure we're on the community main screen first so the back
-        // button behaves predictably for the user.
+        
+        
         const currentRoute = nav.getCurrentRoute?.()?.name;
         if (currentRoute && currentRoute !== 'CommunityMain' && currentRoute !== targetScreen) {
-          // Reset to the target so back-stack is clean.
+          
           nav.navigate(targetScreen, params);
         } else {
           nav.navigate(targetScreen, params);
@@ -536,7 +536,7 @@ const CommunityNavigator = React.memo(() => {
         }
       } catch (error) {
         console.warn('[CommunityNavigator] Failed to handle notification:', error);
-        // Fallback — bounce to community main so the user isn't stuck.
+        
         try {
           communityNavRef.current?.navigate?.('CommunityMain');
         } catch {}
@@ -564,7 +564,7 @@ const CommunityNavigator = React.memo(() => {
     }
   }, [markSplashShown, checkOnboardingStatus]);
 
-  // ─── Auth invalid ─────────────────────────────────────────────────────
+  
   if (isAuthValid === false) {
     return (
       <View style={[styles.placeholderContainer, { backgroundColor: CommunityColors.background.main }]}>
@@ -592,7 +592,7 @@ const CommunityNavigator = React.memo(() => {
     );
   }
 
-  // ─── Splash phase ─────────────────────────────────────────────────────
+  
   if (phase === 'splash') {
     return (
       <Stack.Navigator

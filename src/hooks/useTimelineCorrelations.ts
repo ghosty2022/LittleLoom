@@ -1,20 +1,20 @@
-// src/hooks/useTimelineCorrelations.ts
-// FIX: Use direct imports
+
+
 
 import { useMemo } from 'react';
 import { differenceInHours, differenceInDays } from 'date-fns';
 
-// FIX: Direct import from context source
+
 import { useTracker } from './useTrackerContext';
 import { TimelineCorrelation } from '../components/trackers/TrackerCorrelationBadge';
 
-// ... rest of the file remains the same ...
+
 export const useTimelineCorrelations = () => {
   const { entries, getEntries } = useTracker();
 
   const correlations = useMemo((): TimelineCorrelation[] => {
     const results: TimelineCorrelation[] = [];
-    // Guard against undefined entries
+    
     const safeEntries = Array.isArray(entries) ? entries : [];
     if (safeEntries.length === 0) return [];
     
@@ -25,7 +25,7 @@ export const useTimelineCorrelations = () => {
       const sleepAfter = allEntries.find(e =>
         e.trackerId === 'sleep' &&
         e.timestamp > feed.timestamp &&
-        e.timestamp - feed.timestamp < 2 * 60 * 60 * 1000 // 2 hours
+        e.timestamp - feed.timestamp < 2 * 60 * 60 * 1000 
       );
 
       if (sleepAfter) {
@@ -46,7 +46,7 @@ export const useTimelineCorrelations = () => {
 
     growthEntries.forEach(growth => {
       const nearbyMilestone = milestoneEntries.find(m =>
-        Math.abs(m.timestamp - growth.timestamp) < 7 * 24 * 60 * 60 * 1000 // 7 days
+        Math.abs(m.timestamp - growth.timestamp) < 7 * 24 * 60 * 60 * 1000 
       );
 
       if (nearbyMilestone) {
@@ -121,7 +121,7 @@ export const useTimelineCorrelations = () => {
         }
       });
 
-    // Deduplicate by id, then sort by confidence × recency, then cap
+    
     const seen = new Set<string>();
     const deduped = results.filter(c => {
       if (seen.has(c.id)) return false;
@@ -129,12 +129,12 @@ export const useTimelineCorrelations = () => {
       return true;
     });
 
-    // Score each correlation: confidence weighted by how recent it is
+    
     const nowMs = Date.now();
     const scored = deduped.map(c => {
       const primaryTs = c.primaryEntry?.timestamp || 0;
       const ageHours = (nowMs - primaryTs) / 3600000;
-      // Recency multiplier: 1.0 for fresh, halves every 48h
+      
       const recencyMultiplier = 1 / (1 + ageHours / 48);
       return {
         correlation: c,
@@ -144,7 +144,7 @@ export const useTimelineCorrelations = () => {
 
     scored.sort((a, b) => b.score - a.score);
 
-    // Only keep correlations with real signal (confidence >= 60)
+    
     return scored
       .filter(({ correlation }) => correlation.confidence >= 60)
       .slice(0, 10)

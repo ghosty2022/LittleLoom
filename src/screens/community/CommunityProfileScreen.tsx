@@ -1,4 +1,4 @@
-// src/screens/community/CommunityProfileScreen.tsx
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -118,7 +118,7 @@ type ProfileTab = 'overview' | 'posts' | 'achievements' | 'settings';
 const COMMUNITY_AVATARS_BUCKET = 'community_avatars';
 const COMMUNITY_COVERS_BUCKET = 'community_covers';
 
-// ─── HELPERS ────────────────────────────────────────────────────────────
+
 const isEmojiAvatar = (avatar: string | undefined): boolean => {
   if (!avatar) return false;
   const emojiRegex = /[\u{1F000}-\u{1FFFF}]|[\u2600-\u{27BF}]|[\u{2700}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{1FB00}-\u{1FBFF}]|[\u{1FC00}-\u{1FCFF}]|[\u{1FD00}-\u{1FDFF}]|[\u{1FE00}-\u{1FEFF}]|[\u{1FF00}-\u{1FFFF}]/u;
@@ -131,7 +131,7 @@ const generateUniqueFileName = (userId: string, ext: string): string => {
   return `${userId}_${timestamp}_${random}.${ext}`;
 };
 
-// ─── INTERFACES ─────────────────────────────────────────────────────────
+
 interface ActivityScore { overall: number; engagement: number; consistency: number; helpfulness: number; creativity: number; }
 interface WeeklyImpact { postsThisWeek: number; helpfulVotes: number; newConnections: number; rankChange: number; trend: 'up' | 'down' | 'stable'; }
 interface CommunityStanding { percentile: number; rank: string; nextMilestone: string; progressToNext: number; }
@@ -143,7 +143,7 @@ interface TopicAffinity { topicId: string; topicName: string; emoji: string; col
 interface PeerComparison { metric: string; userValue: number; avgValue: number; percentile: number; icon: string; color: string; }
 interface ContentStreak { type: string; current: number; best: number; color: string; icon: string; }
 
-// ─── COMPONENTS ────────────────────────────────────────────────────────
+
 const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const Wrapper = onPress ? TouchableOpacity : View;
@@ -313,11 +313,11 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const initialLoadDone = useRef(false);
   const isMountedRef = useRef(true);
 
-  // ─── COMPUTED DATA ──────────────────────────────────────────────────
+  
   const userPostList = useMemo(() => getUserPosts(currentUser?.id || ''), [currentUser, getUserPosts]);
   const allUsers = useMemo(() => getAllUsers(), [getAllUsers]);
 
-  // ─── ACTIVITY SCORE ─────────────────────────────────────────────────
+  
   const activityScore: ActivityScore = useMemo(() => {
     const posts = userPostList;
     const totalPosts = posts.length;
@@ -335,7 +335,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return { overall, engagement, consistency, helpfulness, creativity };
   }, [userPostList]);
 
-  // ─── INFLUENCE METRICS ─────────────────────────────────────────────
+  
   const influenceMetrics: InfluenceMetric[] = useMemo(() => {
     const totalPosts = userPostList.length;
     const totalLikes = userPostList.reduce((sum, p) => sum + (p.likes || 0), 0);
@@ -356,7 +356,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     ];
   }, [userPostList]);
 
-  // ─── WEEKLY IMPACT ──────────────────────────────────────────────────
+  
   const weeklyImpact: WeeklyImpact = useMemo(() => {
     const now = new Date();
     const weekAgo = new Date(now);
@@ -377,7 +377,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     };
   }, [userPostList]);
 
-  // ─── COMMUNITY STANDING ────────────────────────────────────────────
+  
   const communityStanding: CommunityStanding = useMemo(() => {
     const userPostCount = userPostList.length;
     const allPostCounts = allUsers.map(u => getUserPosts(u.id).length);
@@ -411,7 +411,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return { percentile, rank: rankLabel, nextMilestone, progressToNext };
   }, [userPostList, allUsers, getUserPosts]);
 
-  // ─── CONTENT BREAKDOWN ─────────────────────────────────────────────
+  
   const contentBreakdown: ContentBreakdown = useMemo(() => ({
     posts: userPostList.length,
     comments: userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0),
@@ -419,7 +419,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     shares: userPostList.reduce((sum, p) => sum + (p.reposts || 0), 0),
   }), [userPostList]);
 
-  // ─── ENGAGEMENT DATA ───────────────────────────────────────────────
+  
   const engagementData: EngagementPoint[] = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const dayMap: Record<string, number> = {};
@@ -440,7 +440,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return days.map(day => ({ day: day.slice(0, 1), value: Math.round(dayMap[day] || 0) }));
   }, [userPostList]);
 
-  // ─── SMART SUGGESTIONS ─────────────────────────────────────────────
+  
   const smartSuggestions: SmartSuggestion[] = useMemo(() => {
     const suggestions: SmartSuggestion[] = [];
     const topics = getSelectedTopics();
@@ -476,7 +476,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return suggestions;
   }, [getSelectedTopics, userPostList, currentUser, followerCount, navigation]);
 
-  // ─── TOPIC AFFINITY ────────────────────────────────────────────────
+  
   const topicAffinities: TopicAffinity[] = useMemo(() => {
     const affinities: TopicAffinity[] = [];
     const topicCounts: Record<string, number> = {};
@@ -496,7 +496,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return affinities.sort((a, b) => b.affinity - a.affinity).slice(0, 4);
   }, [userPostList]);
 
-  // ─── PEER COMPARISON ───────────────────────────────────────────────
+  
   const peerComparisons: PeerComparison[] = useMemo(() => {
     const avgPosts = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).length, 0) / Math.max(1, allUsers.length);
     const avgHelpful = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).reduce((s, p) => s + (p.helpfulVotes || 0), 0), 0) / Math.max(1, allUsers.length);
@@ -522,7 +522,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     ];
   }, [userPostList, allUsers, getUserPosts]);
 
-  // ─── CONTENT STREAKS ───────────────────────────────────────────────
+  
   const contentStreaks: ContentStreak[] = useMemo(() => {
     const postDates = userPostList.map(p => new Date(p.timestamp).toDateString());
     const uniquePostDays = [...new Set(postDates)];
@@ -550,7 +550,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     ];
   }, [userPostList]);
 
-  // ─── ANIMATIONS ─────────────────────────────────────────────────────
+  
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolation.CLAMP),
     transform: [{ translateY: interpolate(scrollY.value, [0, 100], [-10, 0], Extrapolation.CLAMP) }],
@@ -560,14 +560,14 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } 
   });
 
-  // ─── EFFECTS ────────────────────────────────────────────────────────
+  
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => {});
     const hide = Keyboard.addListener('keyboardDidHide', () => {});
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  // Load data only when currentUser changes and not already loading
+  
   useEffect(() => {
     if (currentUser && !initialLoadDone.current && !isLoadingRef.current) {
       loadUserData();
@@ -581,7 +581,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       if (currentUser && !isLoadingRef.current) {
-        // Refresh data on focus but don't show full loading
+        
         refreshUserData();
       }
       return () => {};
@@ -592,7 +592,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     loadActivityLog();
   }, []);
 
-  // ─── REFRESH USER DATA (light refresh without full reload) ────────
+  
   const refreshUserData = useCallback(async () => {
     if (isLoadingRef.current || !currentUser) return;
     isLoadingRef.current = true;
@@ -616,7 +616,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   }, [currentUser, getUserPosts, getSelectedTopics, getFollowers, getFollowing]);
 
-  // ─── LOAD ACTIVITY LOG ─────────────────────────────────────────────
+  
   const loadActivityLog = async () => {
     try {
       const log = await AsyncStorage.getItem('@community_activity_log');
@@ -628,7 +628,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
-  // ─── GENERATE USERNAME ─────────────────────────────────────────────
+  
   const generateIntelligentUsername = useCallback((displayName: string, userId: string): string => {
     let base = displayName
       .toLowerCase()
@@ -640,7 +640,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return `${base}_${suffix}`;
   }, []);
 
-  // ─── CHECK USERNAME ────────────────────────────────────────────────
+  
   const checkUsername = useCallback(async (username: string) => {
     if (!username || username.length < 3) {
       setUsernameCheckStatus(null);
@@ -658,7 +658,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   }, [checkUsernameAvailable, currentUser?.id]);
 
-  // ─── DEBOUNCED USERNAME CHECK ─────────────────────────────────────
+  
   useEffect(() => {
     if (usernameDebounceRef.current) {
       clearTimeout(usernameDebounceRef.current);
@@ -680,12 +680,12 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     };
   }, [formData.handle, checkUsername]);
 
-  // ─── ENHANCED LOCATION DETECTION ───────────────────────────────────
+  
   useEffect(() => {
     let isMounted = true;
     const detectLocation = async () => {
       try {
-        // First try to get cached location
+        
         const cachedLocation = await AsyncStorage.getItem('@user_location_cache');
         if (cachedLocation) {
           const parsed = JSON.parse(cachedLocation);
@@ -711,12 +711,12 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           
           if (reverseGeocode.length > 0 && isMounted) {
             const place = reverseGeocode[0];
-            // Get detailed location info
+            
             const city = place.city || place.district || place.subregion || '';
             const region = place.region || place.state || '';
             const country = place.country || '';
             
-            // Build full location string with priority to city
+            
             const locationParts = [];
             if (city) locationParts.push(city);
             if (region && region !== city) locationParts.push(region);
@@ -726,7 +726,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             
             const locationData = { city, region, country, full: fullLocation };
             
-            // Cache the location
+            
             await AsyncStorage.setItem('@user_location_cache', JSON.stringify({
               data: locationData,
               timestamp: Date.now(),
@@ -746,7 +746,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return () => { isMounted = false; };
   }, []);
 
-  // ─── LOAD USER DATA ────────────────────────────────────────────────
+  
   const loadUserData = async () => {
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
@@ -800,7 +800,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     isLoadingRef.current = false;
   };
 
-  // ─── REFRESH ────────────────────────────────────────────────────────
+  
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -816,9 +816,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   }, [refreshFeed, refreshTopicsData]);
 
-  // ═══════════════════════════════════════════════════════════════════
-  // ─── UPLOAD IMAGE TO SUPABASE STORAGE ─────────────────────────────
-  // ═══════════════════════════════════════════════════════════════════
+  
+  
+  
   const uploadImageToStorage = useCallback(async (localUri: string, userId: string, type: 'avatar' | 'cover'): Promise<string | null> => {
     try {
       if (type === 'avatar') {
@@ -827,21 +827,21 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         setCoverUploading(true);
       }
       
-      // Read file as base64 using legacy API
+      
       const fileData = await FileSystem.readAsStringAsync(localUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Determine file extension
+      
       const ext = localUri.split('.').pop()?.toLowerCase() || 'jpg';
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const fileName = generateUniqueFileName(userId, safeExt);
       
-      // Use different paths for avatar and cover
+      
       const bucket = type === 'avatar' ? COMMUNITY_AVATARS_BUCKET : COMMUNITY_COVERS_BUCKET;
       const filePath = type === 'avatar' ? `avatars/${fileName}` : `covers/${fileName}`;
 
-      // Upload to Supabase Storage
+      
       const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(filePath, decode(fileData), {
@@ -857,7 +857,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         return null;
       }
 
-      // Get public URL
+      
       const { data: urlData } = supabase.storage
         .from(bucket)
         .getPublicUrl(filePath);
@@ -865,7 +865,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       const publicUrl = urlData.publicUrl;
       console.log(`[uploadImageToStorage] Uploaded ${type} to:`, publicUrl);
 
-      // Update the profiles table
+      
       const updateData = type === 'avatar' 
         ? { avatar_url: publicUrl, community_avatar: publicUrl }
         : { cover_photo_url: publicUrl, community_cover: publicUrl };
@@ -893,9 +893,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   }, []);
 
-  // ═══════════════════════════════════════════════════════════════════
-  // ─── IMAGE HANDLING ────────────────────────────────────────────────
-  // ═══════════════════════════════════════════════════════════════════
+  
+  
+  
   const COMMUNITY_IMAGES_DIR = FileSystem.documentDirectory + 'community_images/';
 
   const persistCommunityImage = async (sourceUri: string): Promise<string | null> => {
@@ -935,7 +935,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
-  // ─── HANDLE IMAGE PICK ─────────────────────────────────────────────
+  
   const handleImagePick = async (type: 'avatar' | 'cover') => {
     if (type === 'avatar') setShowImagePicker(false);
     else setShowCoverPicker(false);
@@ -976,7 +976,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         return;
       }
       
-      // Upload to Supabase Storage
+      
       const uploadedUrl = await uploadImageToStorage(permanentUri, userId, type);
       
       if (uploadedUrl) {
@@ -992,7 +992,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           sweetAlert.success('Cover Updated', 'Cover photo saved to cloud');
         }
       } else {
-        // Fallback: use local URI
+        
         if (type === 'avatar') {
           setFormData(prev => ({ ...prev, avatar: permanentUri }));
           await updateCommunityProfile({ avatar: permanentUri });
@@ -1006,7 +1006,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       }
       
       triggerHaptic('success');
-      // Refresh only the user data, not the whole page
+      
       await refreshUserData();
     } catch (error) {
       console.error(`[handleImagePick] Error:`, error);
@@ -1016,7 +1016,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
-  // ─── HANDLE TAKE PHOTO ─────────────────────────────────────────────
+  
   const handleTakePhoto = async (type: 'avatar' | 'cover') => {
     if (type === 'avatar') setShowImagePicker(false);
     else setShowCoverPicker(false);
@@ -1088,7 +1088,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
-  // ─── HANDLE REMOVE IMAGE ───────────────────────────────────────────
+  
   const handleRemoveImage = async (type: 'avatar' | 'cover') => {
     if (type === 'avatar') setShowImagePicker(false);
     else setShowCoverPicker(false);
@@ -1119,14 +1119,14 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     );
   };
 
-  // ─── HANDLE EMOJI SELECT ───────────────────────────────────────────
+  
   const handleEmojiSelect = (emoji: string) => {
     setFormData(prev => ({ ...prev, avatar: emoji }));
     setShowEmojiPicker(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  // ─── PROFILE ACTIONS ───────────────────────────────────────────────
+  
   const handleShareProfile = async () => {
     if (!currentUser) return;
     try { 
@@ -1236,7 +1236,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     navigation.navigate('ChatList');
   };
 
-  // ─── SAVE PROFILE ──────────────────────────────────────────────────
+  
   const handleSave = async () => {
     if (!currentUser) return;
     if (!formData.displayName.trim()) { 
@@ -1323,7 +1323,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  // ─── RENDER FUNCTIONS ──────────────────────────────────────────────
+  
   const renderStickyHeader = () => (
     <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
@@ -1531,7 +1531,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     { key: 'settings' as ProfileTab, label: 'Settings', icon: 'settings-outline' },
   ];
 
-  // ─── OVERVIEW TAB ──────────────────────────────────────────────────
+  
   const renderOverviewTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
       {/* KPI Row */}

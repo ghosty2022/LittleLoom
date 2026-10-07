@@ -1,4 +1,4 @@
-// src/screens/tracking/QRScannerScreen.tsx - COMPLETE FIXED
+
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Vibration } from 'react-native';
@@ -28,27 +28,27 @@ export default function QRScannerScreen() {
     console.log('[QRScanner] Scanned data:', data);
     console.log('[QRScanner] Barcode type:', type);
     
-    // Try to extract invite code from QR data
-    // Supports multiple formats:
-    // - code=XXXXXX
-    // - XXXXXX (just the code)
-    // - https://littleloom.app/join?code=XXXXXX
-    // - littleloom://join?code=XXXXXX
+    
+    
+    
+    
+    
+    
     let code: string | null = null;
     
-    // Check for code=XXXXXX format
+    
     const match = data.match(/[&?]code=([A-Z0-9]{6})/i);
     if (match?.[1]) {
       code = match[1];
       console.log('[QRScanner] Found code in URL parameter:', code);
     } else {
-      // Check for code=XXXXXX without query params
+      
       const directMatch = data.match(/code[:=]\s*([A-Z0-9]{6})/i);
       if (directMatch?.[1]) {
         code = directMatch[1];
         console.log('[QRScanner] Found code with code: prefix:', code);
       } else {
-        // Try to find a 6-character alphanumeric code in the data
+        
         const codeMatch = data.match(/\b([A-Z0-9]{6})\b/i);
         if (codeMatch?.[1]) {
           code = codeMatch[1].toUpperCase();
@@ -62,9 +62,9 @@ export default function QRScannerScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Vibration.vibrate(100);
       
-      // Navigate back to Login with the invite code
+      
       setTimeout(() => {
-        // @ts-ignore - navigation can handle this
+        
         navigation.navigate('Login', { inviteCode: code, activeTab: 'join' });
       }, 300);
     } else {

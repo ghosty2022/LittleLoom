@@ -1,4 +1,4 @@
-// src/hooks/useCountdown.ts
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface CountdownState {

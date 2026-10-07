@@ -1,9 +1,9 @@
-// src/services/photoService.ts
-// ═══════════════════════════════════════════════════════════════════════════
-// PHOTO SERVICE — The single bridge between tracker entries, local photos,
-// and the gallery UI. Wraps AsyncStorage metadata so all screens share
-// exactly one source of truth.
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { TrackerEntry } from '../types/trackers';
@@ -30,7 +30,7 @@ export interface PhotoMetadata {
   localPhotos: UnifiedPhoto[];
 }
 
-// ─── LOAD ──────────────────────────────────────────────────────────────────
+
 
 export const loadPhotoMetadata = async (): Promise<PhotoMetadata> => {
   try {
@@ -61,7 +61,7 @@ export const loadPhotoMetadata = async (): Promise<PhotoMetadata> => {
   }
 };
 
-// ─── SAVE ──────────────────────────────────────────────────────────────────
+
 
 export const saveFavorites = async (favorites: Set<string>): Promise<void> => {
   try {
@@ -99,7 +99,7 @@ export const saveLocalPhotos = async (
   } catch {}
 };
 
-// ─── BUILD UNIFIED GALLERY ─────────────────────────────────────────────────
+
 
 /**
  * Builds the complete unified photo list from tracker entries + local captures.
@@ -146,7 +146,7 @@ export const buildUnifiedGallery = (
   return sortPhotosDesc(dedupePhotos([...fromTrackers, ...fromLocal]));
 };
 
-// ─── GETTERS (safe, no throw) ──────────────────────────────────────────────
+
 
 export const isFavorite = (meta: PhotoMetadata, id: string): boolean =>
   meta.favorites.has(id);
@@ -166,7 +166,7 @@ export const getTags = (
   fallback: string[] = []
 ): string[] => meta.tags[id] ?? fallback;
 
-// ─── TOGGLE HELPERS (immutable) ────────────────────────────────────────────
+
 
 export const toggleInSet = <T,>(set: Set<T>, value: T): Set<T> => {
   const next = new Set(set);
@@ -175,7 +175,7 @@ export const toggleInSet = <T,>(set: Set<T>, value: T): Set<T> => {
   return next;
 };
 
-// ─── MUTATION HELPERS ──────────────────────────────────────────────────────
+
 
 export const buildLocalCapturePhoto = (
   uri: string,

@@ -17,7 +17,7 @@ export const CommunityColors = {
   info: '#4D96FF',
   
   background: {
-    main: '#FFF5F5',        // Warm white
+    main: '#FFF5F5',        
     card: '#FFFFFF',
     elevated: '#FFFAFA',
     overlay: 'rgba(255, 107, 107, 0.05)',

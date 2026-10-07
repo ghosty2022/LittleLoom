@@ -1,6 +1,6 @@
-// EnhancedTimelineScreen.tsx — INSTANT LOADING
-// No loading screens, renders immediately with available data
-// UNIFIED THEMING v5.0 — Matches TrackerHub & GrowthDashboard
+
+
+
 
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 
@@ -55,7 +55,7 @@ interface SmartSection {
   component: React.ReactNode;
 }
 
-// ─── DESIGN TOKENS — Unified with TrackerHub ──────────────────────────────
+
 
 const SPACING = {
   xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
@@ -74,7 +74,7 @@ const SHADOW = {
   xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
 };
 
-// ─── SAFE HELPERS ───────────────────────────────────────────────────────────
+
 
 const safeArray = <T,>(arr: T[] | undefined | null): T[] => arr || [];
 const safeString = (s: string | undefined | null): string => s || '';
@@ -111,7 +111,7 @@ const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
   try { return format(p, fmt); } catch { return '—'; }
 };
 
-// ─── THEME HOOK — Unified with TrackerHub ──────────────────────────────────
+
 
 const useHubTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
@@ -137,7 +137,7 @@ const useHubTheme = () => {
   }), [isDark, colors, fullThemeColors]);
 };
 
-// ─── HELPER FUNCTIONS ──────────────────────────────────────────────────────
+
 
 const getDateTitle = (timestamp: number): string => {
   const date = new Date(timestamp);
@@ -197,7 +197,7 @@ const getRarityGradient = (rarity: string): [string, string] => {
   }
 };
 
-// ─── GLASS CARD — Matches TrackerHub exactly ──────────────────────────────
+
 
 const GlassCard = ({ children, style, onPress, active = false, shadow = 'md' }: { 
   children: React.ReactNode; 
@@ -235,7 +235,7 @@ const GlassCard = ({ children, style, onPress, active = false, shadow = 'md' }: 
   );
 };
 
-// ─── SECTION HEADER — Matches TrackerHub exactly ──────────────────────────
+
 
 const SectionHeader = ({ 
   title, 
@@ -278,7 +278,7 @@ const SectionHeader = ({
   );
 };
 
-// ─── TAB BAR — Unified style ──────────────────────────────────────────────
+
 
 const TabBar = ({ tabs, activeTab, onChange }: { 
   tabs: { key: TimelineTab; label: string; icon: keyof typeof Ionicons.glyphMap }[]; 
@@ -314,7 +314,7 @@ const TabBar = ({ tabs, activeTab, onChange }: {
   );
 };
 
-// ─── AI Pattern Predictor ──────────────────────────────────────────────────
+
 
 const AIPatternPredictor = ({ entries, theme, onPress }: { entries: TrackerEntry[]; theme: any; onPress: () => void }) => {
   const predictions = useMemo(() => {
@@ -365,7 +365,7 @@ const AIPatternPredictor = ({ entries, theme, onPress }: { entries: TrackerEntry
   );
 };
 
-// ─── Activity Balance Radar ────────────────────────────────────────────────
+
 
 const ActivityBalanceRadar = ({ entries, theme }: { entries: TrackerEntry[]; theme: any }) => {
   const dimensions = useMemo(() => {

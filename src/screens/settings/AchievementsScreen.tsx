@@ -907,7 +907,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Achievements'>;
 export default function AchievementsScreen({ navigation, route }: Props) {
   const scrollY = useSharedValue(0);
   const { currentBaby, babies, refreshCurrentBaby } = useBaby();
-  // FIXED: Use useTrackerProgressive instead of useTracker
+  
   const { entries } = useTrackerProgressive();
   const {
     achievements,
@@ -1445,7 +1445,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
 
-  // ── Glass Card ──
+  
   glassCard: {
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
@@ -1464,7 +1464,7 @@ const styles = StyleSheet.create({
   },
   glassContent: { flex: 1 },
 
-  // ── Sticky Header ──
+  
   stickyHeader: {
     position: 'absolute',
     top: 0,
@@ -1479,13 +1479,13 @@ const styles = StyleSheet.create({
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
-  // ── Scroll Content ──
+  
   scrollContent: {
     paddingTop: Platform.OS === 'ios' ? 16 : 8,
     paddingBottom: 30,
   },
 
-  // ── Top Header ──
+  
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1520,7 +1520,7 @@ const styles = StyleSheet.create({
   },
   pointsText: { fontSize: 13, fontWeight: '700', color: '#f59e0b' },
 
-  // ── Section Header ──
+  
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1534,7 +1534,7 @@ const styles = StyleSheet.create({
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Baby Card ──
+  
   babyRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   babyInfo: { flex: 1, marginLeft: 14 },
   babyName: { fontSize: 18, fontWeight: '800', marginBottom: 2 },
@@ -1565,7 +1565,7 @@ const styles = StyleSheet.create({
   warningAction: { marginLeft: 'auto', backgroundColor: '#ef4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   warningActionText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  // ── Streak Flame Ring ──
+  
   streakRingSection: { alignItems: 'center', marginVertical: 8 },
   streakRingContainer: { alignItems: 'center' },
   streakRingWrap: { justifyContent: 'center', alignItems: 'center' },
@@ -1578,7 +1578,7 @@ const styles = StyleSheet.create({
   streakRingValue: { fontSize: 28, fontWeight: '800' },
   streakRingLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
 
-  // ── Level Badge ──
+  
   levelBadgeRow: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
   levelBadgeLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   levelBadgeCircle: {
@@ -1596,7 +1596,7 @@ const styles = StyleSheet.create({
   levelBadgeBarFill: { height: '100%', borderRadius: 3 },
   levelBadgePercent: { fontSize: 12, fontWeight: '700' },
 
-  // ── Weekly Challenge ──
+  
   challengeHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 10 },
   challengeIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   challengeMeta: { flex: 1 },
@@ -1615,7 +1615,7 @@ const styles = StyleSheet.create({
   challengeStepDot: { width: 8, height: 8, borderRadius: 4 },
   challengeStepLabel: { fontSize: 10, fontWeight: '600' },
 
-  // ── Overview Card ──
+  
   overviewCard: { borderRadius: 28, padding: 20 },
   overviewRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   overviewInfo: { flex: 1, marginLeft: 16 },
@@ -1629,7 +1629,7 @@ const styles = StyleSheet.create({
   rarityCount: { fontSize: 16, fontWeight: '800' },
   rarityLabel: { fontSize: 10, fontWeight: '500', marginTop: 2, opacity: 0.6 },
 
-  // ── Rarity Showcase ──
+  
   rarityScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
   rarityShowcaseCard: {
     width: 110,
@@ -1646,7 +1646,7 @@ const styles = StyleSheet.create({
   rarityShowcaseBarFill: { height: '100%', borderRadius: 2 },
   rarityShowcasePercent: { fontSize: 10, fontWeight: '600' },
 
-  // ── Next Unlock Predictor ──
+  
   predictorList: { marginHorizontal: 16, gap: 8 },
   predictorCard: {
     flexDirection: 'row',
@@ -1668,7 +1668,7 @@ const styles = StyleSheet.create({
   predictorMiniBar: { width: '100%', height: 4, borderRadius: 2, overflow: 'hidden' },
   predictorMiniBarFill: { height: '100%', borderRadius: 2 },
 
-  // ── Achievement Timeline ──
+  
   timelineContainer: { marginHorizontal: 16 },
   timelineItem: { flexDirection: 'row', gap: 12 },
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
@@ -1684,7 +1684,7 @@ const styles = StyleSheet.create({
   timelinePoints: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   timelinePointsText: { fontSize: 11, fontWeight: '800' },
 
-  // ── Tab Bar ──
+  
   tabBar: {
     flexDirection: 'row',
     marginHorizontal: 16,
@@ -1707,7 +1707,7 @@ const styles = StyleSheet.create({
   tabBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, minWidth: 20, alignItems: 'center', marginLeft: 2 },
   tabBadgeText: { fontSize: 10, fontWeight: '800' },
 
-  // ── Category Filter ──
+  
   filterScroll: { marginBottom: 16, marginTop: 4 },
   filterChip: {
     flexDirection: 'row',
@@ -1725,7 +1725,7 @@ const styles = StyleSheet.create({
   filterBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, minWidth: 20, alignItems: 'center' },
   filterBadgeText: { fontSize: 10, fontWeight: '800' },
 
-  // ── Achievement Card ──
+  
   achievementCard: {
     borderRadius: 20,
     padding: 14,
@@ -1789,13 +1789,13 @@ const styles = StyleSheet.create({
   earnedSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   earnedSummaryText: { fontSize: 11, color: '#10b981', fontWeight: '600' },
 
-  // ── Progress ──
+  
   progressItem: { alignItems: 'center' },
   progressSvgContainer: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
   progressValue: { position: 'absolute', fontWeight: '800' },
   progressLabel: { color: '#64748b', marginTop: 6, fontWeight: '600' },
 
-  // ── Alert ──
+  
   alertContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1816,7 +1816,7 @@ const styles = StyleSheet.create({
   alertTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
   alertMessage: { fontSize: 13, color: '#64748b' },
 
-  // ── No Baby ──
+  
   noBabyGradient: { padding: 40, alignItems: 'center', borderRadius: 24 },
   noBabyEmoji: { fontSize: 56, marginBottom: 16 },
   noBabyTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
@@ -1824,7 +1824,7 @@ const styles = StyleSheet.create({
   noBabyButton: { backgroundColor: '#fff', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 16, marginTop: 8 },
   noBabyButtonText: { fontSize: 15, fontWeight: '700' },
 
-  // ── Modal ──
+  
   modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
   modal: { width: SCREEN_W - 60, borderRadius: 28, overflow: 'hidden', /* no shadow */ },
   modalHeaderGradient: { padding: 24, alignItems: 'center' },

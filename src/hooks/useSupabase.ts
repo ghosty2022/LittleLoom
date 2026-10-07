@@ -1,4 +1,4 @@
-// src/hooks/useSupabase.ts
+
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
 import { User, Session } from '@supabase/supabase-js';
@@ -18,15 +18,15 @@ export function useSupabase() {
     isLoading: true,
   });
 
-  // Check connection and get user
+  
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        // Test connection with a lightweight query
+        
         const { error } = await supabase.from('tracker_entries').select('id').limit(1);
         const isConnected = !error;
 
-        // Get current user
+        
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
@@ -48,7 +48,7 @@ export function useSupabase() {
 
     checkConnection();
 
-    // Subscribe to auth changes
+    
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       setState(prev => ({
         ...prev,
@@ -62,7 +62,7 @@ export function useSupabase() {
     };
   }, []);
 
-  // Refresh connection status
+  
   const refreshConnection = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
     try {

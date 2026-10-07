@@ -1,4 +1,4 @@
-// screens/settings/HelpCenterScreen.tsx
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { 
   Dimensions, 
@@ -177,7 +177,7 @@ export default function HelpCenterScreen({ navigation }: Props) {
   const [isConnected, setIsConnected] = useState(false);
   const [user, setUser] = useState<any>(null);
   
-  // Check Supabase connection and get user
+  
   useEffect(() => {
     const checkSupabase = async () => {
       try {

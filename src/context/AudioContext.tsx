@@ -1,5 +1,5 @@
-// src/context/AudioContext.tsx
-// Full Supabase implementation with storage support
+
+
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
@@ -10,7 +10,7 @@ import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/utils/supabase';
 import { decode } from 'base64-arraybuffer';
 
-// SAFE: Get useBaby only if available
+
 let useBabySafe: any = null;
 try {
   const babyModule = require('./BabyContext');
@@ -101,8 +101,8 @@ const IMPORTED_STORAGE_KEY = '@littleloom_imported_tracks';
 const SLEEP_TIMER_KEY = '@littleloom_sleep_timer';
 const AUDIO_BUCKET = 'audio';
 
-// ─── SAFE Baby access ─────────────────────────────────────────────────────
-// Use a try-catch wrapper to handle case where BabyContext isn't ready
+
+
 const useBabySafeWrapper = () => {
   try {
     const { useBaby } = require('./BabyContext');
@@ -114,7 +114,7 @@ const useBabySafeWrapper = () => {
 };
 
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // ─── SAFE: Get baby data only if available ──────────────────────────
+  
   let babyData: any = null;
   try {
     const { useBaby } = require('./BabyContext');
@@ -143,7 +143,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ─── Load favorites using safe baby ID ───────────────────────────────
+  
   const getBabyId = useCallback(() => {
     return currentBaby?.id || null;
   }, [currentBaby]);
@@ -229,7 +229,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   /* ─── Play Track ─────────────────────────────────────────────────────── */
-  // ─── Keep a ref so the auto-next effect always sees the latest list ──
+  
   const importedTracksRef = useRef<AudioTrack[]>([]);
   useEffect(() => { importedTracksRef.current = importedTracks; }, [importedTracks]);
 
@@ -241,8 +241,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       player.play();
       setPlayerMode('mini');
 
-      // Read from ref — avoids stale `importedTracks` in the auto-next
-      // effect that calls `playTrack` after a track finishes.
+      
+      
       const allTracks = [...SOUND_TRACKS, ...importedTracksRef.current];
       const index = allTracks.findIndex(t => t.id === track.id);
       if (index !== -1) setCurrentIndex(index);
