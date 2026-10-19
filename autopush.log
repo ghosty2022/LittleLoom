@@ -1,0 +1,26 @@
+ƒ 1 Using git: C:\Program Files\Git\cmd\git.exe  -ForegroundColor DarkGray
+
+# Verify this folder is a git repo
+ = (& git rev-parse --is-inside-work-tree 2>)
+if ( -ne 0 -or  -ne 'true') {
+    Write-Host  ƒ?O Not a git repository: C:\Users\ondie\Desktop\LittleLoom -ForegroundColor Red
+    exit 1
+}
+Write-Host ƒ1  Repo OK: C:\Users\ondie\Desktop\LittleLoom
+
+==============================================================
+  LittleLoom Auto-Commit  |  every 10 min  |  Ctrl+C to stop
+==============================================================
+
+==============================================================
+  CYCLE #1  |  2026-10-19 19:14:42
+==============================================================
+
+  GIT
+  |-- Branch      : main
+  |-- Changed     : 2 file(s)
+  '-- Last commit : a461b4e auto: 2026-10-19 19:11 (3 minutes ago)
+
+  Staging and committing...
+  Committed: [main 3b03f84] auto: 2026-10-19 19:14
+  Pushing to origin/main...
