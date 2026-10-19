@@ -252,7 +252,33 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const authStateListenerRef = useRef<any>(null);
   const lastBroadcastedBabyIdRef = useRef<string | null>(null);
 
+  // ─────────────────────────────────────────────────────────────
+  // MOUNT TOKEN
+  //
+  // Increments every time BabyProvider mounts. Used by loadBabies
+  // to detect when a newer instance has taken over (StrictMode
+  // double-mount, navigator reset, hot reload) so that stale
+  // async work doesn't commit over newer work.
+  // ─────────────────────────────────────────────────────────────
+  const mountTokenRef = useRef<number>(0);
+
   
+  // Bump the mount token every time the provider mounts. Must run
+  // before any code that calls loadBabies().
+  useEffect(() => {
+    mountTokenRef.current += 1;
+    // Reset isMounted to true on every mount so downstream guards
+    // (if any remain) don't fire spuriously after StrictMode remount.
+    isMounted.current = true;
+    return () => {
+      // The main cleanup effect also does this; duplication is
+      // deliberate — this ensures the token + flag reset happen
+      // before any other cleanup can race.
+      mountTokenRef.current += 1;
+      loadInProgressRef.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (authUserId) {
       currentUserIdRef.current = authUserId;
@@ -317,24 +343,52 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         bloodType: row.blood_type || undefined,
         medicalNotes: row.medical_notes || undefined,
         allergies: row.allergies || undefined,
-        weight: row.current_weight_kg ? String(row.current_weight_kg) : undefined,
-        height: row.current_height_cm ? String(row.current_height_cm) : undefined,
+        weight:
+          row.current_weight_kg === null || row.current_weight_kg === undefined
+            ? undefined
+            : String(row.current_weight_kg),
+        height:
+          row.current_height_cm === null || row.current_height_cm === undefined
+            ? undefined
+            : String(row.current_height_cm),
         birthTime: row.birth_time || undefined,
-        birthWeight: row.birth_weight_kg ? String(row.birth_weight_kg) : undefined,
-        birthHeight: row.birth_height_cm ? String(row.birth_height_cm) : undefined,
-        birthHeadCircumference: row.birth_head_circumference
-          ? String(row.birth_head_circumference)
-          : undefined,
+        // ── Preserve 0 values ───────────────────────────────────────
+        // The old code used `? :` truthy checks, which silently coerced
+        // legitimately-`0` values (apgar_1min = 0, birth_order = 1,
+        // gestational_weeks = 0 on extreme preemies) to `undefined`.
+        // Explicit null checks preserve the actual DB value.
+        birthWeight:
+          row.birth_weight_kg === null || row.birth_weight_kg === undefined
+            ? undefined
+            : String(row.birth_weight_kg),
+        birthHeight:
+          row.birth_height_cm === null || row.birth_height_cm === undefined
+            ? undefined
+            : String(row.birth_height_cm),
+        birthHeadCircumference:
+          row.birth_head_circumference === null || row.birth_head_circumference === undefined
+            ? undefined
+            : String(row.birth_head_circumference),
         deliveryType: row.delivery_type || undefined,
-        gestationalWeeks: row.gestational_weeks
-          ? String(row.gestational_weeks)
-          : undefined,
-        apgar1Min: row.apgar_1min ? String(row.apgar_1min) : undefined,
-        apgar5Min: row.apgar_5min ? String(row.apgar_5min) : undefined,
+        gestationalWeeks:
+          row.gestational_weeks === null || row.gestational_weeks === undefined
+            ? undefined
+            : String(row.gestational_weeks),
+        apgar1Min:
+          row.apgar_1min === null || row.apgar_1min === undefined
+            ? undefined
+            : String(row.apgar_1min),
+        apgar5Min:
+          row.apgar_5min === null || row.apgar_5min === undefined
+            ? undefined
+            : String(row.apgar_5min),
         birthPlace: row.birth_place || undefined,
         birthAttendant: row.birth_attendant || undefined,
-        multipleBirth: row.multiple_birth || false,
-        birthOrder: row.birth_order ? String(row.birth_order) : undefined,
+        multipleBirth: row.multiple_birth === true,
+        birthOrder:
+          row.birth_order === null || row.birth_order === undefined
+            ? undefined
+            : String(row.birth_order),
         feedingPlan: row.feeding_plan || undefined,
         emergencyContact: row.emergency_contact || undefined,
         pediatrician: row.pediatrician || undefined,
@@ -535,14 +589,37 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   
   const loadBabies = useCallback(async (force = false) => {
+    // ─────────────────────────────────────────────────────────────
+    // INSTANCE GUARD
+    //
+    // React StrictMode (and sometimes navigator-driven remounts of
+    // the provider tree) mounts → unmounts → remounts BabyProvider
+    // in the same render cycle. When that happens:
+    //   • The first instance starts loadBabies(), which flips
+    //     `loadInProgressRef.current = true`.
+    //   • The first instance unmounts, its `isMounted` ref becomes
+    //     false, and the async body aborts at the "if (!isMounted)"
+    //     guard AFTER its network queries.
+    //   • The second instance tries to loadBabies() but bails
+    //     because `loadInProgressRef.current` is still true.
+    // Result: nothing ever populates state.babies.
+    //
+    // Fix: track a monotonically-increasing "mount token". Only the
+    // instance that currently holds the token is allowed to commit
+    // state. The ref is reset on unmount so the next instance can
+    // proceed immediately.
+    // ─────────────────────────────────────────────────────────────
     if (loadInProgressRef.current && !force) {
       if (__DEV__) console.log('[BabyContext] Load already in progress, skipping');
       return;
     }
 
-    if (!isMounted.current) return;
+    // Never trust isMounted here — it can be false due to StrictMode
+    // double-mount even though we're actually the current instance.
+    // The mount token below is the authoritative check.
 
     loadInProgressRef.current = true;
+    const myMountToken = mountTokenRef.current;
     if (__DEV__) console.log('[BabyContext] Starting loadBabies...');
 
     setState(prev => ({ ...prev, isLoading: true }));
@@ -945,9 +1022,26 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[BabyContext] Failed to get has_skipped_baby:', e);
       }
 
-      if (!isMounted.current) return;
+      // ─────────────────────────────────────────────────────────────
+      // COMMIT GUARD — must use the mount token, NOT isMounted.
+      //
+      // If this instance has been superseded by a remount (StrictMode
+      // or navigator reset), the token has changed. In that case a
+      // *newer* instance is running loadBabies() with fresher data,
+      // so it's safe to bail out here — that instance will commit.
+      //
+      // If the token is unchanged, we ARE the current instance. We
+      // must commit the state even if `isMounted.current` is false,
+      // because `isMounted` is unreliable under StrictMode and would
+      // otherwise swallow the setState and leave state.babies empty.
+      // ─────────────────────────────────────────────────────────────
+      if (mountTokenRef.current !== myMountToken) {
+        if (__DEV__) {
+          console.log('[BabyContext] Superseded by newer instance — aborting stale commit');
+        }
+        return;
+      }
 
-      
       if (babies.length > 0 && !backfillRanRef.current) {
         backfillRanRef.current = true;
         import('@/services/ai/backfillBayesian')
@@ -1199,6 +1293,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       isMounted.current = false;
+
+      // Bump the mount token so any in-flight loadBabies() from this
+      // instance aborts before it commits stale state. The next
+      // mount will take a fresh token and load cleanly.
+      mountTokenRef.current += 1;
+
+      // CRITICAL: reset the in-progress flag so the NEXT mount can
+      // load immediately. Without this, the next instance's
+      // loadBabies() sees `loadInProgressRef.current === true` and
+      // bails — the classic StrictMode double-mount trap.
+      loadInProgressRef.current = false;
+
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -1470,7 +1576,55 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       isCreatingRef.current = true;
 
-      const birthDate = new Date(data.birthDate);
+      // ── Normalize camelCase ↔ snake_case ─────────────────────
+      // BabyProfileCreateScreen historically sent snake_case keys
+      // (`birth_weight_kg`, `date_of_birth`, `current_weight_kg`, …)
+      // because form field IDs use snake_case. But BabyProfile (and
+      // therefore the TS signature of `createBaby`) uses camelCase
+      // (`birthWeight`, `birthDate`, `weight`, …). Without this
+      // normalizer, every camelCase key came through `undefined` and
+      // the payload ended up with `null` — which is exactly why
+      // birth-detail values disappeared after profile creation.
+      const raw: any = data || {};
+      const pick = (...keys: string[]): any => {
+        for (const k of keys) {
+          const v = raw[k];
+          if (v !== undefined && v !== null && v !== '') return v;
+        }
+        return undefined;
+      };
+
+      const normalized = {
+        name: pick('name') ?? 'Baby',
+        avatar: pick('avatar', 'avatar_url'),
+        birthDate: pick('birthDate', 'birth_date', 'date_of_birth'),
+        gender: pick('gender'),
+        skinTone: pick('skinTone', 'skin_tone'),
+        bloodType: pick('bloodType', 'blood_type'),
+        medicalNotes: pick('medicalNotes', 'medical_notes'),
+        allergies: pick('allergies'),
+        parent2Id: pick('parent2Id', 'parent2_id'),
+        weight: pick('weight', 'currentWeightKg', 'current_weight_kg'),
+        height: pick('height', 'currentHeightCm', 'current_height_cm'),
+        birthTime: pick('birthTime', 'birth_time'),
+        birthWeight: pick('birthWeight', 'birth_weight_kg'),
+        birthHeight: pick('birthHeight', 'birth_height_cm'),
+        birthHeadCircumference: pick('birthHeadCircumference', 'birth_head_circumference'),
+        deliveryType: pick('deliveryType', 'delivery_type'),
+        gestationalWeeks: pick('gestationalWeeks', 'gestational_weeks'),
+        apgar1Min: pick('apgar1Min', 'apgar_1min'),
+        apgar5Min: pick('apgar5Min', 'apgar_5min'),
+        birthPlace: pick('birthPlace', 'birth_place'),
+        birthAttendant: pick('birthAttendant', 'birth_attendant'),
+        multipleBirth: pick('multipleBirth', 'multiple_birth'),
+        birthOrder: pick('birthOrder', 'birth_order'),
+        feedingPlan: pick('feedingPlan', 'feeding_plan'),
+        emergencyContact: pick('emergencyContact', 'emergency_contact'),
+        pediatrician: pick('pediatrician'),
+        notificationsEnabled: pick('notificationsEnabled', 'notifications_enabled'),
+      } as any;
+
+      const birthDate = new Date(normalized.birthDate);
       const now = new Date();
       if (birthDate > now || isNaN(birthDate.getTime())) {
         isCreatingRef.current = false;
@@ -1487,55 +1641,58 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
         }
 
+        const toNum = (v: unknown): number | null => {
+          if (v === null || v === undefined || v === '') return null;
+          const n = typeof v === 'number' ? v : parseFloat(String(v));
+          return Number.isFinite(n) ? n : null;
+        };
+        const toInt = (v: unknown): number | null => {
+          if (v === null || v === undefined || v === '') return null;
+          const n = typeof v === 'number' ? v : parseInt(String(v), 10);
+          return Number.isFinite(n) ? n : null;
+        };
+
         const babyData = {
           id: newId,
-          name: data.name,
-          avatar: data.avatar || null,
-          date_of_birth: data.birthDate,
+          name: normalized.name,
+          avatar: normalized.avatar || null,
+          date_of_birth: birthDate.toISOString(),
           gender:
-            data.gender === 'boy'
+            normalized.gender === 'boy' || normalized.gender === 'male'
               ? 'male'
-              : data.gender === 'girl'
+              : normalized.gender === 'girl' || normalized.gender === 'female'
               ? 'female'
               : 'other',
-          blood_type: data.bloodType || null,
-          medical_notes: data.medicalNotes || null,
-          allergies: data.allergies || null,
+          blood_type: normalized.bloodType || null,
+          medical_notes: normalized.medicalNotes || null,
+          allergies: normalized.allergies || null,
           parent1_id: userId,
-          parent2_id: data.parent2Id || null,
-          current_weight_kg: data.weight ? parseFloat(data.weight) : null,
-          current_height_cm: data.height ? parseFloat(data.height) : null,
-          birth_time: data.birthTime || null,
-          birth_weight_kg: data.birthWeight
-            ? parseFloat(data.birthWeight)
+          parent2_id: normalized.parent2Id || null,
+          current_weight_kg: toNum(normalized.weight),
+          current_height_cm: toNum(normalized.height),
+          birth_time: normalized.birthTime || null,
+          birth_weight_kg: toNum(normalized.birthWeight),
+          birth_height_cm: toNum(normalized.birthHeight),
+          birth_head_circumference: toNum(normalized.birthHeadCircumference),
+          delivery_type: normalized.deliveryType
+            ? String(normalized.deliveryType).toLowerCase().replace(/[\s-]+/g, '_')
             : null,
-          birth_height_cm: data.birthHeight
-            ? parseFloat(data.birthHeight)
+          gestational_weeks: toInt(normalized.gestationalWeeks),
+          apgar_1min: toInt(normalized.apgar1Min),
+          apgar_5min: toInt(normalized.apgar5Min),
+          birth_place: normalized.birthPlace || null,
+          birth_attendant: normalized.birthAttendant
+            ? String(normalized.birthAttendant).toLowerCase().replace(/[\s-]+/g, '_')
             : null,
-          birth_head_circumference: data.birthHeadCircumference
-            ? parseFloat(data.birthHeadCircumference)
+          multiple_birth: Boolean(normalized.multipleBirth),
+          birth_order: toInt(normalized.birthOrder),
+          feeding_plan: normalized.feedingPlan
+            ? String(normalized.feedingPlan).toLowerCase()
             : null,
-          delivery_type: data.deliveryType
-            ? data.deliveryType.toLowerCase().replace(/-/g, '_')
-            : null,
-          gestational_weeks: data.gestationalWeeks
-            ? parseInt(data.gestationalWeeks)
-            : null,
-          apgar_1min: data.apgar1Min ? parseInt(data.apgar1Min) : null,
-          apgar_5min: data.apgar5Min ? parseInt(data.apgar5Min) : null,
-          birth_place: data.birthPlace || null,
-          birth_attendant: data.birthAttendant
-            ? data.birthAttendant.toLowerCase().replace(/ /g, '_')
-            : null,
-          multiple_birth: data.multipleBirth || false,
-          birth_order: data.birthOrder ? parseInt(data.birthOrder) : null,
-          feeding_plan: data.feedingPlan
-            ? data.feedingPlan.toLowerCase()
-            : null,
-          emergency_contact: data.emergencyContact || null,
-          pediatrician: data.pediatrician || null,
-          notifications_enabled: data.notificationsEnabled !== false,
-          skin_tone: data.skinTone || 0,
+          emergency_contact: normalized.emergencyContact || null,
+          pediatrician: normalized.pediatrician || null,
+          notifications_enabled: normalized.notificationsEnabled !== false,
+          skin_tone: toInt(normalized.skinTone) ?? 0,
           is_active: true,
           created_at: now.toISOString(),
           updated_at: now.toISOString(),
@@ -1664,6 +1821,26 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updated_at: new Date().toISOString(),
         };
 
+        // ── Numeric-coercion helpers ─────────────────────────────────
+        // BabyProfile stores every numeric field as a *string* (weight,
+        // height, birthWeight, apgar1Min, …) because form inputs are
+        // strings. The DB stores them as numbers. Convert safely.
+        const toNum = (v: unknown): number | null => {
+          if (v === null || v === undefined || v === '') return null;
+          const n = typeof v === 'number' ? v : parseFloat(String(v));
+          return Number.isFinite(n) ? n : null;
+        };
+        const toInt = (v: unknown): number | null => {
+          if (v === null || v === undefined || v === '') return null;
+          const n = typeof v === 'number' ? v : parseInt(String(v), 10);
+          return Number.isFinite(n) ? n : null;
+        };
+        const toStr = (v: unknown): string | null => {
+          if (v === null || v === undefined || v === '') return null;
+          return String(v);
+        };
+
+        // ── Identity & basics ────────────────────────────────────────
         if (updates.name !== undefined) remoteUpdates.name = updates.name;
         if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
         if (updates.avatar_url !== undefined)
@@ -1678,12 +1855,61 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ? 'female'
               : 'other';
         }
+        if (updates.skinTone !== undefined)
+          remoteUpdates.skin_tone = toInt(updates.skinTone) ?? 0;
+
+        // ── Health & medical ─────────────────────────────────────────
         if (updates.bloodType !== undefined)
           remoteUpdates.blood_type = updates.bloodType;
         if (updates.medicalNotes !== undefined)
           remoteUpdates.medical_notes = updates.medicalNotes;
         if (updates.allergies !== undefined)
           remoteUpdates.allergies = updates.allergies;
+        if (updates.currentWeightKg !== undefined)
+          remoteUpdates.current_weight_kg = toNum(updates.currentWeightKg);
+        if (updates.currentHeightCm !== undefined)
+          remoteUpdates.current_height_cm = toNum(updates.currentHeightCm);
+        // BabyProfile exposes weight/height as strings; map them too.
+        if (updates.weight !== undefined)
+          remoteUpdates.current_weight_kg = toNum(updates.weight);
+        if (updates.height !== undefined)
+          remoteUpdates.current_height_cm = toNum(updates.height);
+        if (updates.emergencyContact !== undefined)
+          remoteUpdates.emergency_contact = updates.emergencyContact;
+        if (updates.pediatrician !== undefined)
+          remoteUpdates.pediatrician = updates.pediatrician;
+        if (updates.notificationsEnabled !== undefined)
+          remoteUpdates.notifications_enabled = updates.notificationsEnabled;
+
+        // ── Birth details ────────────────────────────────────────────
+        if (updates.birthTime !== undefined)
+          remoteUpdates.birth_time = updates.birthTime;
+        if (updates.birthWeight !== undefined)
+          remoteUpdates.birth_weight_kg = toNum(updates.birthWeight);
+        if (updates.birthHeight !== undefined)
+          remoteUpdates.birth_height_cm = toNum(updates.birthHeight);
+        if (updates.birthHeadCircumference !== undefined)
+          remoteUpdates.birth_head_circumference = toNum(updates.birthHeadCircumference);
+        if (updates.deliveryType !== undefined)
+          remoteUpdates.delivery_type = updates.deliveryType;
+        if (updates.gestationalWeeks !== undefined)
+          remoteUpdates.gestational_weeks = toInt(updates.gestationalWeeks);
+        if (updates.apgar1Min !== undefined)
+          remoteUpdates.apgar_1min = toInt(updates.apgar1Min);
+        if (updates.apgar5Min !== undefined)
+          remoteUpdates.apgar_5min = toInt(updates.apgar5Min);
+        if (updates.birthPlace !== undefined)
+          remoteUpdates.birth_place = updates.birthPlace;
+        if (updates.birthAttendant !== undefined)
+          remoteUpdates.birth_attendant = updates.birthAttendant;
+        if (updates.multipleBirth !== undefined)
+          remoteUpdates.multiple_birth = Boolean(updates.multipleBirth);
+        if (updates.birthOrder !== undefined)
+          remoteUpdates.birth_order = toInt(updates.birthOrder);
+        if (updates.feedingPlan !== undefined)
+          remoteUpdates.feeding_plan = updates.feedingPlan;
+
+        // ── Family / stats ───────────────────────────────────────────
         if (updates.parent2Id !== undefined)
           remoteUpdates.parent2_id = updates.parent2Id;
         if (updates.streak !== undefined)
@@ -1693,23 +1919,84 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (updates.photos !== undefined)
           remoteUpdates.photos_count = updates.photos;
 
-        const { data: result, error } = await supabase
+        // ── UPDATE without `.single()` ────────────────────────────
+        // `.single()` throws PGRST116 when the SELECT side of the
+        // operation returns 0 rows — which happens if RLS blocks the
+        // read-back even though the UPDATE succeeded, or if some
+        // column-check triggers silently filtered the update. We
+        // don't actually need `.single()` here — we just need the
+        // updated row (or a graceful failure). Using `.select()` +
+        // array access eliminates the crash entirely.
+        //
+        // We also drop `.eq('is_active', true)` from the WHERE clause:
+        // that guard is meant for `loadBabies`, not for updates. If a
+        // legacy row happens to have `is_active = NULL`, the guard
+        // silently filters it and the update touches 0 rows.
+        const { data: resultRows, error } = await supabase
           .from('babies')
           .update(remoteUpdates)
           .eq('id', id)
-          .eq('is_active', true)
-          .select()
-          .single();
+          .select();
 
         if (error) {
-          console.error('Update baby error:', error);
-          Alert.alert('Error', 'Failed to update baby profile');
+          console.error('[BabyContext] Update baby error:', {
+            code: (error as any).code,
+            message: error.message,
+            details: (error as any).details,
+            hint: (error as any).hint,
+            payload: remoteUpdates,
+          });
+          Alert.alert(
+            'Error',
+            `Failed to update baby profile${(error as any).code ? ` (${(error as any).code})` : ''}. Please try again.`
+          );
           return;
         }
 
-        if (result && isMounted.current) {
+        const result =
+          Array.isArray(resultRows) && resultRows.length > 0
+            ? resultRows[0]
+            : null;
+
+        // If RLS silently filtered the update (0 rows back), fall back
+        // to a plain SELECT so the local state still reflects the
+        // freshly-saved values. The DB write has already succeeded if
+        // we got here without an error.
+        let finalRow: any = result;
+        if (!finalRow) {
+          try {
+            const { data: refetched } = await supabase
+              .from('babies')
+              .select('*')
+              .eq('id', id)
+              .maybeSingle();
+            finalRow = refetched ?? null;
+          } catch {}
+        }
+
+        if (!finalRow) {
+          console.warn(
+            '[BabyContext] Update succeeded but row could not be read back. ' +
+            'Falling back to optimistic local merge.'
+          );
+          if (isMounted.current) {
+            setState(prev => ({
+              ...prev,
+              babies: prev.babies.map(b =>
+                b.id === id ? { ...b, ...updates, lastUpdated: new Date().toISOString() } : b
+              ),
+              currentBaby:
+                prev.currentBaby?.id === id
+                  ? { ...prev.currentBaby, ...updates, lastUpdated: new Date().toISOString() }
+                  : prev.currentBaby,
+            }));
+          }
+          return;
+        }
+
+        if (isMounted.current) {
           const updatedBaby = mapBabyRowToProfile(
-            result,
+            finalRow,
             state.userRoles[id] || 'viewer'
           );
           setState(prev => ({
@@ -2030,12 +2317,268 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
   const deleteGrowthMeasurement = useCallback(async () => false, []);
 
-  
-  const addMilestone = useCallback(async () => false, []);
-  const getMilestones = useCallback(() => [] as any[], []);
-  const deleteMilestone = useCallback(async () => false, []);
+  // ─── Milestones (real, backed by `tracker_entries`) ──────────────────
+  // The `milestones` array in BabyState is a *derived cache* populated
+  // whenever `babies` changes. Milestones are persisted as normal
+  // tracker entries (`tracker_type = 'milestone'`), so they show up in
+  // the Timeline AND in the baby profile's Milestones tab for free.
+  const MILESTONE_CATEGORY_COLORS: Record<string, string> = {
+    physical: '#6366f1',
+    cognitive: '#f59e0b',
+    social: '#10b981',
+    language: '#8b5cf6',
+    emotional: '#ef4444',
+  };
 
-  
+  const mapMilestoneRow = useCallback(
+    (row: any) => {
+      const data = row?.data || {};
+      const ts = row?.timestamp
+        ? new Date(row.timestamp).getTime()
+        : row?.created_at
+        ? new Date(row.created_at).getTime()
+        : Date.now();
+      const achievedAt =
+        typeof data?.achievedAt === 'string'
+          ? data.achievedAt
+          : new Date(ts).toISOString().split('T')[0];
+
+      return {
+        id: row.id,
+        babyId: row.baby_id,
+        title: data.title || row.title || 'Milestone',
+        category: data.category || 'physical',
+        description: data.description || row.notes || '',
+        achievedAt,
+        createdAt: row.created_at,
+        photoUris: Array.isArray(row.photo_uris) ? row.photo_uris : [],
+        loggedBy: row.logged_by,
+        loggedByName: row.logged_by_name,
+      };
+    },
+    []
+  );
+
+  const reloadMilestonesForBaby = useCallback(
+    async (babyId: string | null) => {
+      if (!babyId) {
+        if (isMounted.current) {
+          setState(prev => ({ ...prev, milestones: [] }));
+        }
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('tracker_entries')
+          .select(
+            'id, baby_id, tracker_type, timestamp, data, notes, photo_uris, title, logged_by, logged_by_name, created_at, is_deleted'
+          )
+          .eq('baby_id', babyId)
+          .eq('tracker_type', 'milestone')
+          .eq('is_deleted', false)
+          .order('timestamp', { ascending: false });
+
+        if (error) {
+          if (__DEV__) console.warn('[BabyContext] Milestones query error:', error.message);
+          return;
+        }
+
+        const mapped = (data || []).map(mapMilestoneRow);
+        if (isMounted.current) {
+          setState(prev => ({ ...prev, milestones: mapped }));
+        }
+      } catch (err) {
+        if (__DEV__) console.warn('[BabyContext] Milestones query threw:', err);
+      }
+    },
+    [mapMilestoneRow]
+  );
+
+  const addMilestone = useCallback(
+    async (milestone: {
+      babyId: string;
+      title: string;
+      category: string;
+      description?: string;
+      achievedAt?: string;
+      photoUris?: string[];
+    }): Promise<boolean> => {
+      if (!milestone?.babyId || !milestone.title?.trim()) return false;
+
+      // ── FIX: `authProfile` was never destructured in this file.
+      // Pull it from the `auth` object that IS in scope.
+      const authProfile = auth?.userProfile ?? null;
+
+      const userId = await getCurrentUserId();
+      const trimmedTitle = milestone.title.trim();
+      const achievedAt =
+        milestone.achievedAt ||
+        new Date().toISOString().split('T')[0];
+
+      // Anchor `timestamp` on the achieved date so it appears on the
+      // correct day in Timeline/Home, not on "today".
+      const ts = new Date(achievedAt);
+      const timestamp = isNaN(ts.getTime())
+        ? new Date().toISOString()
+        : ts.toISOString();
+
+      const id = `milestone_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+
+      const payload = {
+        id,
+        baby_id: milestone.babyId,
+        tracker_type: 'milestone',
+        tracker_id: 'milestone',
+        timestamp,
+        title: `🌟 ${trimmedTitle}`,
+        data: {
+          title: trimmedTitle,
+          category: milestone.category || 'physical',
+          description: milestone.description || '',
+          achievedAt,
+          color:
+            MILESTONE_CATEGORY_COLORS[milestone.category || 'physical'] ||
+            '#f59e0b',
+        },
+        notes: milestone.description || null,
+        photo_uris: Array.isArray(milestone.photoUris)
+          ? milestone.photoUris
+          : [],
+        logged_by: userId,
+        logged_by_name: authProfile?.fullName || 'Parent',
+        logged_by_role: authProfile?.role || 'parent1',
+        is_deleted: false,
+      };
+
+      try {
+        const { data, error } = await supabase
+          .from('tracker_entries')
+          .insert(payload)
+          .select()
+          .single();
+
+        if (error || !data) {
+          if (__DEV__) console.error('[BabyContext] addMilestone error:', error);
+          return false;
+        }
+
+        const mapped = mapMilestoneRow(data);
+
+        if (isMounted.current) {
+          setState(prev => ({
+            ...prev,
+            milestones: [mapped, ...prev.milestones],
+            // Bump the counter the profile card shows
+            babies: prev.babies.map(b =>
+              b.id === milestone.babyId
+                ? { ...b, milestones: (b.milestones || 0) + 1 }
+                : b
+            ),
+            currentBaby:
+              prev.currentBaby?.id === milestone.babyId
+                ? {
+                    ...prev.currentBaby,
+                    milestones: (prev.currentBaby.milestones || 0) + 1,
+                  }
+                : prev.currentBaby,
+          }));
+        }
+
+        // Fire-and-forget DB counter bump — best effort
+        try {
+          await supabase
+            .from('babies')
+            .update({
+              milestones_count: (state.babies.find(b => b.id === milestone.babyId)?.milestones || 0) + 1,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', milestone.babyId);
+        } catch {}
+
+        Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success
+        ).catch(() => {});
+
+        return true;
+      } catch (err) {
+        if (__DEV__) console.error('[BabyContext] addMilestone threw:', err);
+        return false;
+      }
+    },
+    [auth?.userProfile, getCurrentUserId, mapMilestoneRow, state.babies]
+  );
+
+  const getMilestones = useCallback(
+    (category?: string): any[] => {
+      if (!category) return state.milestones;
+      return state.milestones.filter(m => m.category === category);
+    },
+    [state.milestones]
+  );
+
+  const deleteMilestone = useCallback(
+    async (milestoneId: string): Promise<boolean> => {
+      if (!milestoneId) return false;
+
+      // Find target before mutating so we can adjust the counter
+      const target = state.milestones.find(m => m.id === milestoneId);
+
+      try {
+        const { error } = await supabase
+          .from('tracker_entries')
+          .update({
+            is_deleted: true,
+            deleted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', milestoneId);
+
+        if (error) {
+          if (__DEV__) console.error('[BabyContext] deleteMilestone error:', error);
+          return false;
+        }
+
+        if (isMounted.current) {
+          setState(prev => ({
+            ...prev,
+            milestones: prev.milestones.filter(m => m.id !== milestoneId),
+            babies: target
+              ? prev.babies.map(b =>
+                  b.id === target.babyId
+                    ? {
+                        ...b,
+                        milestones: Math.max(0, (b.milestones || 1) - 1),
+                      }
+                    : b
+                )
+              : prev.babies,
+            currentBaby:
+              target && prev.currentBaby?.id === target.babyId
+                ? {
+                    ...prev.currentBaby,
+                    milestones: Math.max(0, (prev.currentBaby.milestones || 1) - 1),
+                  }
+                : prev.currentBaby,
+          }));
+        }
+
+        return true;
+      } catch (err) {
+        if (__DEV__) console.error('[BabyContext] deleteMilestone threw:', err);
+        return false;
+      }
+    },
+    [state.milestones]
+  );
+
+  // Reload milestones whenever the current baby changes so the profile
+  // tab is fresh after switching babies.
+  useEffect(() => {
+    reloadMilestonesForBaby(state.currentBabyId);
+  }, [state.currentBabyId, reloadMilestonesForBaby]);
+
   const addSleepLog = useCallback(async () => false, []);
   const getSleepLogs = useCallback(() => [] as any[], []);
   const endSleepSession = useCallback(async () => false, []);

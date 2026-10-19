@@ -166,9 +166,17 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   const dismissLockScreen = useCallback(() => {
     setTimeout(() => {
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
+      // Always replace, never goBack. Going back leaves SecurityLock in the
+      // stack history, so if the navigator's state effect runs while on the
+      // popped screen it can immediately re-lock (see logs: "State: MAIN /
+      // Current route: SecurityLock → Main (reset)" followed by "State:
+      // SECURITY_LOCK / Current route: Home → SecurityLock (reset)").
+      try {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main' as never }],
+        });
+      } catch {
         navigation.replace('Main' as never);
       }
     }, 250);
@@ -252,6 +260,30 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     };
   }, [resetUnlockLock]);
 
+  // ── BAIL-OUT: if no security method is configured, don't trap the user ──
+  // This covers the "sign-out → sign-in" case where AsyncStorage still has the
+  // SECURITY_LOCK flag set but the PIN/biometric config has been wiped or
+  // isBiometricEnabled was never re-hydrated.
+  const bailOutChecked = useRef(false);
+  useEffect(() => {
+    if (bailOutChecked.current) return;
+    if (isLoading) return;
+    if (biometricReady) return; // still hydrating
+    bailOutChecked.current = true;
+
+    const hasAnyAuthMethod = hasPin || hasBiometric;
+    if (hasAnyAuthMethod) return;
+
+    console.log('[SecurityLock] No auth method configured — force-unlocking');
+    (async () => {
+      try {
+        await forceUnlock?.();
+        await AsyncStorage.removeItem('littleloom_security_lock');
+      } catch {}
+      dismissLockScreen();
+    })();
+  }, [biometricReady, hasPin, hasBiometric, isLoading, forceUnlock, dismissLockScreen]);
+
   useEffect(() => {
     Animated.spring(pinProgress, {
       toValue: pin.length,
@@ -321,15 +353,18 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
+      // Reset only OUR local state on focus — do NOT clear the global
+      // unlock/biometric-prompt locks here. Those are managed by the
+      // unmount effect and forceUnlock/unlockApp. Clearing them mid-
+      // prompt is what caused the "Biometric not available - skipping
+      // auto-prompt" loop in the logs.
       hasAutoPrompted.current = false;
-      unlockInProgress.current = false;
-      resetUnlockLock();
       setShowForgotPin(false);
       setVerifyAnswers(['', '', '']);
       refreshBiometricStatus();
     });
     return unsubscribe;
-  }, [navigation, resetUnlockLock, refreshBiometricStatus]);
+  }, [navigation, refreshBiometricStatus]);
 
   const shake = useCallback(() => {
     triggerHaptic('error');
@@ -860,6 +895,9 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 style={[styles.unlockButton, { backgroundColor: '#fff' }]}
                 onPress={async () => {
                   await forceUnlock?.();
+                  try {
+                    await AsyncStorage.removeItem('littleloom_security_lock');
+                  } catch {}
                   sweetAlert.success('Unlocked', 'Welcome back!');
                   dismissLockScreen();
                 }}

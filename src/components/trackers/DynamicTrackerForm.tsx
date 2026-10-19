@@ -2345,7 +2345,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       try {
         if (
           typeof isFieldVisible === 'function' &&
-          !isFieldVisible(field)
+          !isFieldVisible(field, data)
         ) {
           return;
         }
@@ -2452,7 +2452,28 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     try {
       
       const finalData: Record<string, unknown> = {};
+
+      // Only include fields that are currently visible AND have a value.
+      // This prevents hidden `showIf` branches (e.g. breast-only fields
+      // when feedType === 'bottle') from leaking into the saved entry,
+      // which was the source of "validation error" loops on feed/sleep.
+      const visibleFieldIds = new Set(
+        tracker.fields
+          .filter((f) => {
+            try {
+              return typeof isFieldVisible === 'function'
+                ? isFieldVisible(f, data)
+                : true;
+            } catch {
+              return true;
+            }
+          })
+          .map((f) => f.id)
+      );
+
       for (const [k, v] of Object.entries(data)) {
+        if (!visibleFieldIds.has(k)) continue;
+
         if (typeof v === 'string') {
           const trimmed = v.trim();
           if (trimmed.length > 0) finalData[k] = trimmed;
@@ -2760,7 +2781,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       try {
         if (
           typeof isFieldVisible === 'function' &&
-          !isFieldVisible(field)
+          !isFieldVisible(field, data)
         ) {
           return null;
         }
@@ -3090,11 +3111,14 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               label={field.label}
               trackerContext={tracker.id}
               value={photoUris[0]}
+              // Single shared buffer — all photo fields on the same
+              // tracker write to the same `photoUris` state, so nothing
+              // is lost when a tracker has more than one photo field.
               onUrisChange={(uris) => setPhotoUris(uris)}
-              maxPhotos={field.max || 4}
+              // `field.max` is not part of FieldConfig; fall back to 4.
+              maxPhotos={4}
               initialPhotoUris={photoUris}
               onAnalysis={(analysis) => {
-                
                 if (analysis.modelAvailable && analysis.labels.length > 0) {
                   setPhotoAiTags((prev) => {
                     const merged = new Set([...prev, ...analysis.labels]);

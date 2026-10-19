@@ -115,6 +115,8 @@ interface SecurityContextType extends SecurityState {
   getBiometricEnrolled: () => boolean;
   getBiometricEnabled: () => boolean;
   readBiometricEnabledFromStorage: () => Promise<boolean>;
+  /** Re-read PIN hash from SecureStore and sync into state. */
+  rehydratePinStatus: () => Promise<boolean>;
   /** Fresh synchronous snapshot of "is any security configured" + specifics. */
   getSecuritySnapshot: () => {
     hasAnySecurity: boolean;
@@ -353,7 +355,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-    
+
     const init = async () => {
       if (!isAuthenticated) {
         if (isMounted.current) {
@@ -367,7 +369,6 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         setState(prev => ({ ...prev, ...loadedState }));
       }
 
-      
       if (biometricCheckTimerRef.current) {
         clearTimeout(biometricCheckTimerRef.current);
       }
@@ -380,6 +381,48 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
     init();
   }, [isAuthenticated, loadSecurityState]);
+
+  // Re-hydrate security state whenever authentication flips (covers sign-out → sign-in).
+  // Without this, `settings.isBiometricEnabled` / `isPinEnabled` / `isSecurityLocked`
+  // stay stale from the previous session.
+  const previousAuthRef = useRef<boolean>(isAuthenticated);
+  useEffect(() => {
+    if (previousAuthRef.current === isAuthenticated) return;
+    previousAuthRef.current = isAuthenticated;
+
+    // Reset all runtime flags so the fresh session re-evaluates from storage.
+    unlockInProgressRef.current = false;
+    securityCheckLockRef.current = false;
+    biometricPromptInProgressRef.current = false;
+    checkedThisCycleRef.current = false;
+    lastBiometricCheckRef.current = 0;
+
+    if (!isAuthenticated) {
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          isSecurityLocked: false,
+          settings: {
+            ...defaultSettings,
+            availableAuthTypes: prev.settings.availableAuthTypes,
+            biometricTypeName: prev.settings.biometricTypeName,
+          },
+          securityQuestions: [],
+        }));
+      }
+      return;
+    }
+
+    // Fresh sign-in: re-read from storage
+    (async () => {
+      const loadedState = await loadSecurityState();
+      if (loadedState && isMounted.current) {
+        setState(prev => ({ ...prev, ...loadedState }));
+      }
+      await checkBiometricCapabilities();
+    })();
+  }, [isAuthenticated, loadSecurityState, checkBiometricCapabilities]);
 
   
   useEffect(() => {
@@ -648,7 +691,28 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       return false;
     }
     const hashedPin = await hashPin(pin);
+
+    // 1) Local (device) copy — used for local unlock + offline recovery
     await secureStorage.setItem(SECURE_KEYS.PIN_HASH, hashedPin);
+
+    // 2) Server mirror — used by reset-password-with-pin edge function.
+    //    Best-effort: a network failure must NOT block the user from
+    //    setting a PIN locally.
+    try {
+      const { supabase } = require('@/utils/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) {
+        await supabase
+          .from('user_pin_recovery')
+          .upsert(
+            { user_id: user.id, pin_hash: hashedPin, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[Security] PIN mirror to DB failed:', e);
+    }
+
     if (isMounted.current) {
       setState(prev => ({ ...prev, settings: { ...prev.settings, isPinEnabled: true } }));
     }
@@ -671,7 +735,20 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   }, [verifyPin, setupPin]);
 
   const clearPinOnly = useCallback(async () => {
+    // 1) Remove device-side hash
     await secureStorage.deleteItem(SECURE_KEYS.PIN_HASH);
+
+    // 2) Remove server-side mirror so the reset function cannot be used
+    try {
+      const { supabase } = require('@/utils/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) {
+        await supabase.from('user_pin_recovery').delete().eq('user_id', user.id);
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[Security] PIN mirror deletion failed:', e);
+    }
+
     if (isMounted.current) {
       setState(prev => ({
         ...prev,
@@ -849,6 +926,10 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'true');
     await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
 
+    // Reset the resume-check gate so the *next* resume runs checkSecurityOnResume again
+    // (and can immediately re-lock if the timeout has elapsed).
+    checkedThisCycleRef.current = false;
+
     if (isMounted.current) {
       setState(prev => ({ ...prev, isSecurityLocked: true }));
     }
@@ -900,7 +981,9 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
         manualLockTimeRef.current = 0;
         lastUnlockTimeRef.current = Date.now();
-        checkedThisCycleRef.current = true;
+        // Allow the next resume cycle to naturally re-evaluate the timeout
+        // instead of permanently suppressing the check for this session.
+        checkedThisCycleRef.current = false;
         await AsyncStorage.removeItem(ASYNC_KEYS.MANUAL_LOCK_TIME);
         if (isMounted.current) {
           setState(prev => ({ ...prev, isSecurityLocked: false }));
@@ -922,7 +1005,11 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     await AsyncStorage.setItem(ASYNC_KEYS.LAST_ACTIVE, Date.now().toString());
     manualLockTimeRef.current = 0;
     lastUnlockTimeRef.current = Date.now();
-    checkedThisCycleRef.current = true;
+    // DO NOT pre-set checkedThisCycleRef to true — that would suppress the
+    // next resume check and leave the app in an unlocked-but-should-be-locked
+    // state on the following background→foreground cycle. Let the next
+    // resume run naturally and decide based on fresh timestamps.
+    checkedThisCycleRef.current = false;
     await AsyncStorage.removeItem(ASYNC_KEYS.MANUAL_LOCK_TIME);
     if (isMounted.current) {
       setState(prev => ({ ...prev, isSecurityLocked: false }));
@@ -1017,13 +1104,25 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
 
   const getBiometricTypeName = useCallback(() => {
     const types = state.settings.availableAuthTypes;
-    if (!types || types.length === 0) return 'Biometric';
-    const names: string[] = [];
-    if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) names.push('Face ID');
-    if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) names.push('Fingerprint');
-    if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) names.push('Iris Scan');
-    return names.length > 1 ? names.join(' or ') : names[0] || 'Biometric';
-  }, [state.settings.availableAuthTypes]);
+
+    // Hardware capability labels (used for setup prompts)
+    const hardwareName = (() => {
+      if (!types || types.length === 0) return 'Biometric';
+      const names: string[] = [];
+      if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) names.push('Face ID');
+      if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) names.push('Fingerprint');
+      if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) names.push('Iris Scan');
+      return names.length > 1 ? names.join(' or ') : names[0] || 'Biometric';
+    })();
+
+    // When biometric is NOT actually enabled, the UI label must not claim it is.
+    // Callers that need the hardware name (setup flows) should read it from
+    // `availableBiometricTypes[0]?.name` or `settings.biometricTypeName`.
+    if (!state.settings.isBiometricEnabled) {
+      return hardwareName; // used by "Enable X" / "Set Up X" prompts only
+    }
+    return hardwareName;
+  }, [state.settings.availableAuthTypes, state.settings.isBiometricEnabled]);
 
   const getBiometricIcon = useCallback(() => {
     const types = state.settings.availableAuthTypes;
@@ -1089,6 +1188,27 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     try {
       const val = await AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED);
       return val === 'true';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // Re-read PIN existence from SecureStore and sync into state.
+  // Called by MoreScreen on focus so the "PIN Code" status and
+  // "No Security Enabled" modal reflect reality after the user
+  // set/changed/removed a PIN in SecurityCenter.
+  const rehydratePinStatus = useCallback(async (): Promise<boolean> => {
+    try {
+      const pinHash = await secureStorage.getItem(SECURE_KEYS.PIN_HASH);
+      const hasPin = !!pinHash;
+      if (isMounted.current) {
+        setState(prev =>
+          prev.settings.isPinEnabled === hasPin
+            ? prev
+            : { ...prev, settings: { ...prev.settings, isPinEnabled: hasPin } }
+        );
+      }
+      return hasPin;
     } catch {
       return false;
     }
@@ -1184,6 +1304,17 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   }, [state.settings.hasSecurityQuestions, state.securityQuestions]);
 
   const clearSecurityState = useCallback(async () => {
+    // Reset ALL runtime locks so a fresh sign-in re-evaluates from scratch.
+    unlockInProgressRef.current = false;
+    securityCheckLockRef.current = false;
+    biometricPromptInProgressRef.current = false;
+    checkedThisCycleRef.current = false;
+    lastBiometricCheckRef.current = 0;
+    biometricCheckInProgressRef.current = false;
+    manualLockTimeRef.current = 0;
+    lastUnlockTimeRef.current = 0;
+    lastActiveRef.current = Date.now();
+
     await AsyncStorage.multiRemove([
       ASYNC_KEYS.SECURITY_LOCK,
       ASYNC_KEYS.LAST_ACTIVE,
@@ -1259,6 +1390,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     getBiometricEnrolled,
     getBiometricEnabled,
     readBiometricEnabledFromStorage,
+    rehydratePinStatus,
     isAppLocked: state.isSecurityLocked,
     getSecuritySnapshot: () => {
       const hasBiometric = Boolean(
@@ -1310,6 +1442,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     getBiometricEnrolled,
     getBiometricEnabled,
     readBiometricEnabledFromStorage,
+    rehydratePinStatus,
     state.settings.isBiometricEnabled,
     state.settings.isPinEnabled,
     state.settings.isAppLockEnabled,

@@ -130,6 +130,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     userProfile,
     findUserByEmail,
     findUserByEmailOrUsername,
+    findUserByEmailOrUsernameOrPhone,
   } = useAuth();
 
   
@@ -711,17 +712,31 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('medium');
 
     try {
+      // signIn() resolves email | username | phone → canonical email internally.
+      // We only do a pre-resolve so we can show a helpful error and so the
+      // biometric credentials get saved with the canonical email.
       let userIdentifier = trimmedIdentifier;
 
-      if (isUsername) {
+      if (!isEmail) {
         try {
-          const user = await findUserByEmailOrUsername(trimmedIdentifier);
+          const user = await findUserByEmailOrUsernameOrPhone(trimmedIdentifier);
           if (user && user.email) {
             userIdentifier = user.email;
-            console.log('[Login] Found email for username:', userIdentifier);
+            if (__DEV__) console.log('[Login] Resolved identifier to email:', userIdentifier);
+          } else {
+            showError(
+              'Account Not Found',
+              'No account matches that email, username, or phone number.'
+            );
+            triggerHaptic('error');
+            loginAttempted.current = false;
+            setIsProcessing(false);
+            return;
           }
         } catch (e) {
-          console.warn('[Login] Could not resolve username to email:', e);
+          if (__DEV__) console.warn('[Login] Identifier resolve failed:', e);
+          // Fall through: signIn() will also try to resolve internally.
+          // If it can't, it returns { success: false } with a helpful message.
         }
       }
 
@@ -736,6 +751,17 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           'Successfully signed in'
         );
         forceUnlock().catch(() => {});
+
+        // Offer biometric enrollment with the canonical email, NOT the
+        // identifier the user typed. loginWithBiometric() must be able to
+        // hand a real email to Supabase.
+        if (
+          isBiometricAvailable &&
+          !(await hasBiometricLoginCredentials()) &&
+          await shouldShowBiometricPrompt()
+        ) {
+          promptEnableBiometricLogin(userIdentifier, password);
+        }
 
         
         
@@ -777,6 +803,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     hasParent2,
     hasBaby,
     shouldShowBiometricPrompt,
+    findUserByEmailOrUsernameOrPhone,
     hasSeenOnboarding,
     forceUnlock,
     navigation,

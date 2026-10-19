@@ -197,20 +197,38 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const [localBioEnabled, setLocalBioEnabled] = useState<boolean>(false);
 
   
+  // Mirror context → local ONLY when no toggle is in-flight.
+  // The toggle is the authority during its own operation.
   useEffect(() => {
-    setLocalBioEnabled(isBiometricEnabled ?? false);
-  }, [isBiometricEnabled]);
+    if (biometricLoading) return;
+    // Re-read storage rather than trusting `isBiometricEnabled` from
+    // context — context can lag behind disk by one render.
+    let mounted = true;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
+        if (mounted && !biometricLoading) {
+          setLocalBioEnabled(stored === 'true');
+        }
+      } catch {
+        if (mounted && !biometricLoading) {
+          setLocalBioEnabled(isBiometricEnabled ?? false);
+        }
+      }
+    })();
+    return () => { mounted = false; };
+  }, [isBiometricEnabled, biometricLoading]);
 
   
-  const wasFocusedRef = useRef(false);
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', async () => {
       if (!isMounted.current) return;
       await refreshBiometricStatus();
 
-      
-      
-      
+      // If a toggle is mid-flight, do not stomp localBioEnabled — the
+      // toggle itself will write the correct value once storage settles.
+      if (biometricLoading) return;
+
       let enabledFromStorage = false;
       try {
         const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
@@ -218,11 +236,14 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       } catch {}
 
       if (!isMounted.current) return;
+      // Re-check after the await — toggle may have started while we were
+      // reading storage.
+      if (biometricLoading) return;
       setLocalBioEnabled(enabledFromStorage);
       setForceUpdate(prev => !prev);
     });
     return unsubscribe;
-  }, [navigation, refreshBiometricStatus]);
+  }, [navigation, refreshBiometricStatus, biometricLoading]);
 
   useEffect(() => {
     
@@ -502,10 +523,13 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   }, [navigation]);
 
   
-  const handleToggleBiometric = useCallback(async (targetValue?: boolean) => {
-    if (biometricLoading) return;
+  // Hard guard that survives double-taps even when React state hasn't flushed
+  const biometricToggleInFlightRef = useRef(false);
 
-    
+  const handleToggleBiometric = useCallback(async (targetValue?: boolean) => {
+    if (biometricToggleInFlightRef.current || biometricLoading) return;
+    biometricToggleInFlightRef.current = true;
+
     const newState = typeof targetValue === 'boolean' ? targetValue : !localBioEnabled;
 
     
@@ -542,8 +566,17 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     try {
       const result = await toggleBiometric(newState);
 
-      if (result) {
-        
+      // Read storage — the ONLY authority for what the switch should show.
+      // toggleBiometric's boolean return can be `true` from the "already in
+      // target state" short-circuit even when AsyncStorage was NOT updated
+      // by this call, so we cannot trust it alone.
+      let storedAfter = newState;
+      try {
+        const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
+        storedAfter = stored === 'true';
+      } catch {}
+
+      if (result && storedAfter === newState) {
         setLocalBioEnabled(newState);
         await refreshBiometricStatus();
         setForceUpdate(prev => !prev);
@@ -553,19 +586,30 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           newState ? 'Biometric unlock enabled' : 'Biometric unlock disabled'
         );
       } else {
-        
-        setLocalBioEnabled(!newState);
-        sweetAlert.error(
-          'Failed',
-          'Could not change biometric setting. Please ensure biometrics are set up in your device settings.'
-        );
+        // Trust storage, not the boolean return
+        setLocalBioEnabled(storedAfter);
+        if (!result) {
+          sweetAlert.error(
+            'Failed',
+            'Could not change biometric setting. Please ensure biometrics are set up in your device settings.'
+          );
+        }
       }
     } catch (error) {
       console.error('Biometric toggle error:', error);
-      setLocalBioEnabled(!newState);
+      // Don't assume — re-read storage
+      try {
+        const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
+        setLocalBioEnabled(stored === 'true');
+      } catch {
+        setLocalBioEnabled(false);
+      }
       sweetAlert.error('Error', 'An error occurred while changing biometric settings.');
     } finally {
       setBiometricLoading(false);
+      // Small delay to let any concurrent effects (focus handler, context
+      // mirror) settle before allowing the next toggle.
+      setTimeout(() => { biometricToggleInFlightRef.current = false; }, 300);
     }
   }, [
     isBiometricHardwareAvailable,
@@ -670,7 +714,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             : !isBiometricEnrolled
             ? 'Not enrolled on device'
             : isBiometricEnabled
-            ? 'Biometric unlock active'
+            ? `${getBiometricTypeName()} unlock active`
             : 'Tap to enable'
         }
         status={

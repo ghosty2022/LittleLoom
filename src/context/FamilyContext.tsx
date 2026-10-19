@@ -314,12 +314,70 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch {}
     }
 
-    // ─── Only load if the current user is part of this baby ────
+    // ─── Guard: only skip if we're sure the user has NO relationship.
+    //
+    // The old check relied on `currentBaby.guardian_ids`, which is a
+    // local-only field that BabyContext always maps to `[]`. That made
+    // guardians hit "User not associated…" and skip the load entirely,
+    // which is why the family list went empty.
+    //
+    // The authoritative relationship source is `family_members` in
+    // Supabase — which `loadFamily` already queries below. So we only
+    // short-circuit here if:
+    //   • the user is NOT parent1,
+    //   • the user is NOT parent2,
+    //   • AND `family_members` returns zero rows for this user+baby.
+    //
+    // Doing it in one round-trip here means we don't waste a second
+    // query below when the user really isn't associated.
     if (effectiveUserId && currentBaby.parent1_id !== effectiveUserId && currentBaby.parent2_id !== effectiveUserId) {
-      const guardianIds = currentBaby.guardian_ids || [];
-      if (!guardianIds.includes(effectiveUserId)) {
-        console.log('[FamilyContext] User not associated with this baby, skipping load');
-        return;
+      // Legacy local guardianIds hint — if present, allow.
+      const guardianIds: string[] = Array.isArray(currentBaby.guardian_ids)
+        ? currentBaby.guardian_ids
+        : [];
+      const isLocalGuardian = guardianIds.includes(effectiveUserId);
+
+      if (!isLocalGuardian) {
+        // Authoritative check
+        try {
+          // Use `.limit(1)` + array access instead of `.maybeSingle()`
+          // so we don't throw PGRST116 if a user somehow has two
+          // active family_members rows for the same baby (which can
+          // happen if an old invite was soft-deleted and then re-added).
+          const { data: membershipRows, error: membershipError } = await supabase
+            .from('family_members')
+            .select('id, role, status, deleted_at')
+            .eq('baby_id', currentBaby.id)
+            .eq('user_id', effectiveUserId)
+            .eq('status', 'active')
+            .is('deleted_at', null)
+            .limit(1);
+
+          const membership = membershipRows?.[0] ?? null;
+
+          if (membershipError) {
+            // Transient error → don't block. Let the load run;
+            // a legit user should not lose the family view because
+            // of an RLS hiccup.
+            if (__DEV__) {
+              console.warn(
+                '[FamilyContext] Membership check errored — continuing load:',
+                membershipError.message
+              );
+            }
+          } else if (!membership) {
+            // Confirmed: this user truly has no relationship.
+            console.log(
+              '[FamilyContext] User has no family_members row for this baby — skipping load'
+            );
+            return;
+          }
+        } catch (err) {
+          // Same reasoning — network glitch shouldn't blank the list.
+          if (__DEV__) {
+            console.warn('[FamilyContext] Membership check threw — continuing load:', err);
+          }
+        }
       }
     }
 

@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,8 +18,6 @@ import {
   UIManager,
   useColorScheme,
   RefreshControl,
-  Alert,
-  Linking,
 } from 'react-native';
 import Animated, {
   FadeIn,
@@ -32,8 +29,6 @@ import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -118,7 +113,6 @@ type ProfileTab = 'overview' | 'posts' | 'achievements' | 'settings';
 const COMMUNITY_AVATARS_BUCKET = 'community_avatars';
 const COMMUNITY_COVERS_BUCKET = 'community_covers';
 
-
 const isEmojiAvatar = (avatar: string | undefined): boolean => {
   if (!avatar) return false;
   const emojiRegex = /[\u{1F000}-\u{1FFFF}]|[\u2600-\u{27BF}]|[\u{2700}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{1FB00}-\u{1FBFF}]|[\u{1FC00}-\u{1FCFF}]|[\u{1FD00}-\u{1FDFF}]|[\u{1FE00}-\u{1FEFF}]|[\u{1FF00}-\u{1FFFF}]/u;
@@ -131,7 +125,6 @@ const generateUniqueFileName = (userId: string, ext: string): string => {
   return `${userId}_${timestamp}_${random}.${ext}`;
 };
 
-
 interface ActivityScore { overall: number; engagement: number; consistency: number; helpfulness: number; creativity: number; }
 interface WeeklyImpact { postsThisWeek: number; helpfulVotes: number; newConnections: number; rankChange: number; trend: 'up' | 'down' | 'stable'; }
 interface CommunityStanding { percentile: number; rank: string; nextMilestone: string; progressToNext: number; }
@@ -143,6 +136,9 @@ interface TopicAffinity { topicId: string; topicName: string; emoji: string; col
 interface PeerComparison { metric: string; userValue: number; avgValue: number; percentile: number; icon: string; color: string; }
 interface ContentStreak { type: string; current: number; best: number; color: string; icon: string; }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUBCOMPONENTS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: any) => {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -150,7 +146,7 @@ const GlassCard = React.memo(({ children, style, onPress, active = false, delay 
   return (
     <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors?.primary, borderWidth: 2 }, style]}>
       <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.6)', 'rgba(35,35,50,0.4)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={styles.glassBorder} />
         <View style={styles.glassContent}>{children}</View>
       </Wrapper>
@@ -235,7 +231,71 @@ const ActionModal = React.memo(({ visible, onClose, title, children, isDark = tr
   );
 });
 
-// ─── MAIN COMPONENT ────────────────────────────────────────────────────
+/* ── Skeleton placeholder for the hero (no blocking spinner) ───────────── */
+const HeroSkeleton = React.memo(({ isDark, colors, insetsTop }: { isDark: boolean; colors: any; insetsTop: number }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={[styles.profileHero, { marginTop: 8 }]}>
+      <View style={[styles.coverPhotoContainer, { opacity: 0.5 }]}>
+        <LinearGradient colors={isDark ? ['#2d2d3c', '#232332'] : ['#e2e8f0', '#f1f5f9']} style={StyleSheet.absoluteFill} />
+      </View>
+      <View style={styles.avatarSection}>
+        <View style={[styles.avatarImage, styles.avatarPlaceholder, { opacity: 0.4 }]} />
+      </View>
+      <View style={styles.profileInfo}>
+        <View style={{ height: 24, width: 140, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginBottom: 8 }} />
+        <View style={{ height: 14, width: 90, borderRadius: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginBottom: 16 }} />
+        <View style={{ flexDirection: 'row', gap: 20 }}>
+          {[0,1,2].map(i => (
+            <View key={i} style={{ alignItems: 'center' }}>
+              <View style={{ height: 18, width: 28, borderRadius: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginBottom: 4 }} />
+              <View style={{ height: 10, width: 44, borderRadius: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }} />
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+});
+
+/* ── Verification CTA card (placeholder tick) ──────────────────────────── */
+const VerificationCta = React.memo(({ onPress, isDark, colors }: { onPress: () => void; isDark: boolean; colors: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <Animated.View entering={FadeInUp.delay(120).springify()}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.verifyCta}>
+        <LinearGradient
+          colors={['#6366f1', '#8b5cf6', '#ec4899']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.verifyCtaOverlay} />
+        <View style={styles.verifyTickCircle}>
+          <Ionicons name="checkmark" size={22} color="#fff" />
+        </View>
+        <View style={styles.verifyCtaBody}>
+          <Text style={styles.verifyCtaTitle}>Get the verified tick</Text>
+          <Text style={styles.verifyCtaDesc}>
+            Verified parents are trusted by 3× more members. It's free and takes 2 minutes.
+          </Text>
+          <View style={styles.verifyCtaButtonRow}>
+            <View style={styles.verifyCtaButton}>
+              <Text style={styles.verifyCtaButtonText}>Verify now</Text>
+              <Ionicons name="arrow-forward" size={14} color="#6366f1" />
+            </View>
+            <Text style={styles.verifyCtaFootnote}>No documents needed</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 export default function CommunityProfileScreen({ navigation }: Props) {
   const {
     currentUser,
@@ -248,23 +308,19 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     checkAndAwardAchievements,
     getAllUsers,
     refreshFeed,
-    getFeedPosts,
-    getPopularPosts,
-    getTrendingTopics,
-    getPostRank,
     refreshTopics: refreshTopicsData,
+    getUserProfile,
   } = useCommunity();
-  const { 
-    profile, 
+  const {
+    profile,
     updateCommunityProfile: updateUserContextProfile,
     checkUsernameAvailable,
     updateUsername,
-    clearUserData,
   } = useUser();
-  const { themeColors, fullThemeColors, darkMode, shouldReduceMotion, triggerHaptic } = useCustomization();
+  const { themeColors, fullThemeColors, darkMode, triggerHaptic } = useCustomization();
   const { compressImage } = useMedia();
   const sweetAlert = useSweetAlert();
-  const { deleteAccountWithConfirmation } = useAuth();
+  const { deleteAccountWithConfirmation, userProfile } = useAuth();
 
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
@@ -274,19 +330,19 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  // NEW: never gate the whole screen on this. Kept only to know if the hero
+  // is still resolving, so we can show a lightweight skeleton instead.
+  const [isHydrating, setIsHydrating] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showTopicSelector, setShowTopicSelector] = useState(false);
   const [usernameCheckStatus, setUsernameCheckStatus] = useState<{ available: boolean; message: string } | null>(null);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [isProfileDeactivated, setIsProfileDeactivated] = useState(false);
   const [activityLog, setActivityLog] = useState<any[]>([]);
 
-  const [userPosts, setUserPosts] = useState<any[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
@@ -308,16 +364,15 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   });
   const [originalData, setOriginalData] = useState({ ...formData });
   const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   const isLoadingRef = useRef(false);
   const initialLoadDone = useRef(false);
   const isMountedRef = useRef(true);
 
-  
   const userPostList = useMemo(() => getUserPosts(currentUser?.id || ''), [currentUser, getUserPosts]);
   const allUsers = useMemo(() => getAllUsers(), [getAllUsers]);
 
-  
+  // ── Derived metrics ─────────────────────────────────────────────────
   const activityScore: ActivityScore = useMemo(() => {
     const posts = userPostList;
     const totalPosts = posts.length;
@@ -335,14 +390,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return { overall, engagement, consistency, helpfulness, creativity };
   }, [userPostList]);
 
-  
   const influenceMetrics: InfluenceMetric[] = useMemo(() => {
     const totalPosts = userPostList.length;
     const totalLikes = userPostList.reduce((sum, p) => sum + (p.likes || 0), 0);
     const totalComments = userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0);
     const totalHelpful = userPostList.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
     const totalViews = userPostList.reduce((sum, p) => sum + (p.viewCount || 0), 0);
-    
+
     const avgEngagement = totalPosts > 0 ? Math.min(100, Math.round((totalLikes + totalComments * 2) / totalPosts * 2)) : 0;
     const consistency = Math.min(100, Math.round((totalPosts / Math.max(1, 30)) * 100));
     const helpful = Math.min(100, Math.round(totalHelpful / Math.max(1, totalPosts) * 15));
@@ -356,15 +410,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     ];
   }, [userPostList]);
 
-  
   const weeklyImpact: WeeklyImpact = useMemo(() => {
     const now = new Date();
     const weekAgo = new Date(now);
     weekAgo.setDate(weekAgo.getDate() - 7);
-    
+
     const weekPosts = userPostList.filter(p => new Date(p.timestamp) >= weekAgo);
     const totalHelpful = weekPosts.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
-    const totalLikes = weekPosts.reduce((sum, p) => sum + (p.likes || 0), 0);
     const newConnections = Math.min(20, Math.round(weekPosts.length * 0.3 + Math.random() * 5));
     const rankChange = Math.min(5, Math.max(-5, Math.round((weekPosts.length - 3) * 0.5)));
 
@@ -377,19 +429,18 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     };
   }, [userPostList]);
 
-  
   const communityStanding: CommunityStanding = useMemo(() => {
     const userPostCount = userPostList.length;
     const allPostCounts = allUsers.map(u => getUserPosts(u.id).length);
     const sortedCounts = [...allPostCounts].sort((a, b) => b - a);
     const rank = sortedCounts.findIndex(c => c <= userPostCount) + 1;
     const percentile = Math.min(100, Math.round((1 - (rank / Math.max(1, allUsers.length))) * 100));
-    
+
     const totalEngagement = userPostList.reduce((sum, p) => sum + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
     let rankLabel = 'New Parent';
     let nextMilestone = '50 posts';
     let progressToNext = Math.min(100, Math.round((userPostCount / 50) * 100));
-    
+
     if (userPostCount > 100 && totalEngagement > 500) {
       rankLabel = 'Legendary Parent';
       nextMilestone = '200 posts';
@@ -411,7 +462,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return { percentile, rank: rankLabel, nextMilestone, progressToNext };
   }, [userPostList, allUsers, getUserPosts]);
 
-  
   const contentBreakdown: ContentBreakdown = useMemo(() => ({
     posts: userPostList.length,
     comments: userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0),
@@ -419,7 +469,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     shares: userPostList.reduce((sum, p) => sum + (p.reposts || 0), 0),
   }), [userPostList]);
 
-  
   const engagementData: EngagementPoint[] = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const dayMap: Record<string, number> = {};
@@ -440,23 +489,22 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return days.map(day => ({ day: day.slice(0, 1), value: Math.round(dayMap[day] || 0) }));
   }, [userPostList]);
 
-  
   const smartSuggestions: SmartSuggestion[] = useMemo(() => {
     const suggestions: SmartSuggestion[] = [];
     const topics = getSelectedTopics();
-    
+
     if (topics.length < 3) {
       suggestions.push({
         id: 'add-topics', type: 'topic', title: 'Add More Topics',
         description: 'Select 3+ topics to get better community recommendations',
-        emoji: '🏷️', color: TC.primary, action: () => setShowTopicSelector(true),
+        emoji: '🏷️', color: TC.primary, action: () => navigation.navigate('CommunityOnboarding', { editing: true }),
       });
     }
     if (userPostList.length < 5) {
       suggestions.push({
         id: 'first-post', type: 'post', title: 'Share Your Story',
         description: 'Parents love hearing about your journey. Post today!',
-        emoji: '✍️', color: TC.secondary, action: () => navigation.navigate('CreatePost'),
+        emoji: '✍️', color: TC.secondary, action: () => navigation.navigate('CreatePost', {}),
       });
     }
     if (!currentUser?.isVerified) {
@@ -470,13 +518,12 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       suggestions.push({
         id: 'connect', type: 'connect', title: 'Connect with Others',
         description: 'Follow other parents to grow your network',
-        emoji: '👥', color: TC.purple, action: () => navigation.navigate('SearchUsers'),
+        emoji: '👥', color: TC.purple, action: () => navigation.navigate('SearchUsers', {}),
       });
     }
     return suggestions;
   }, [getSelectedTopics, userPostList, currentUser, followerCount, navigation]);
 
-  
   const topicAffinities: TopicAffinity[] = useMemo(() => {
     const affinities: TopicAffinity[] = [];
     const topicCounts: Record<string, number> = {};
@@ -496,7 +543,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return affinities.sort((a, b) => b.affinity - a.affinity).slice(0, 4);
   }, [userPostList]);
 
-  
   const peerComparisons: PeerComparison[] = useMemo(() => {
     const avgPosts = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).length, 0) / Math.max(1, allUsers.length);
     const avgHelpful = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).reduce((s, p) => s + (p.helpfulVotes || 0), 0), 0) / Math.max(1, allUsers.length);
@@ -510,8 +556,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     const userEngagement = userPostList.reduce((sum, p) => sum + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
 
     return [
-      { metric: 'Posts', userValue: userPostsCount, avgValue: Math.round(avgPosts), 
-        percentile: Math.min(100, Math.round((userPostsCount / Math.max(1, avgPosts * 2)) * 100)), 
+      { metric: 'Posts', userValue: userPostsCount, avgValue: Math.round(avgPosts),
+        percentile: Math.min(100, Math.round((userPostsCount / Math.max(1, avgPosts * 2)) * 100)),
         icon: 'document-text', color: TC.primary },
       { metric: 'Helpful', userValue: userHelpful, avgValue: Math.round(avgHelpful),
         percentile: Math.min(100, Math.round((userHelpful / Math.max(1, avgHelpful * 2)) * 100)),
@@ -522,7 +568,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     ];
   }, [userPostList, allUsers, getUserPosts]);
 
-  
   const contentStreaks: ContentStreak[] = useMemo(() => {
     const postDates = userPostList.map(p => new Date(p.timestamp).toDateString());
     const uniquePostDays = [...new Set(postDates)];
@@ -540,34 +585,35 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
 
     return [
-      { type: 'Posting', current: currentStreakCount, best: Math.min(userPostList.length, 30), 
+      { type: 'Posting', current: currentStreakCount, best: Math.min(userPostList.length, 30),
         color: TC.primary, icon: 'document-text' },
-      { type: 'Helpful', current: Math.min(5, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0) / 2)), 
-        best: Math.min(10, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0))), 
+      { type: 'Helpful', current: Math.min(5, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0) / 2)),
+        best: Math.min(10, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0))),
         color: TC.success, icon: 'heart' },
-      { type: 'Active', current: userPostList.length > 0 ? Math.min(30, userPostList.length) : 0, 
+      { type: 'Active', current: userPostList.length > 0 ? Math.min(30, userPostList.length) : 0,
         best: Math.min(30, userPostList.length * 2), color: TC.accent, icon: 'flame' },
     ];
   }, [userPostList]);
 
-  
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolation.CLAMP),
     transform: [{ translateY: interpolate(scrollY.value, [0, 100], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
-  const scrollHandler = useAnimatedScrollHandler({ 
-    onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } 
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; }
   });
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════════
+     LIFECYCLE
+     ═══════════════════════════════════════════════════════════════════════════ */
+
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => {});
     const hide = Keyboard.addListener('keyboardDidHide', () => {});
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  
   useEffect(() => {
     if (currentUser && !initialLoadDone.current && !isLoadingRef.current) {
       loadUserData();
@@ -581,7 +627,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       if (currentUser && !isLoadingRef.current) {
-        
         refreshUserData();
       }
       return () => {};
@@ -592,31 +637,27 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     loadActivityLog();
   }, []);
 
-  
   const refreshUserData = useCallback(async () => {
     if (isLoadingRef.current || !currentUser) return;
     isLoadingRef.current = true;
-    
+
     try {
-      const posts = getUserPosts(currentUser.id);
       const topics = getSelectedTopics();
       const followers = await getFollowers(currentUser.id);
       const following = await getFollowing(currentUser.id);
-      
+
       if (isMountedRef.current) {
-        setUserPosts(posts);
         setSelectedTopics(topics);
         setFollowerCount(followers.length);
         setFollowingCount(following.length);
       }
-    } catch (error) { 
-      console.error('Error refreshing user data:', error); 
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
     } finally {
       isLoadingRef.current = false;
     }
-  }, [currentUser, getUserPosts, getSelectedTopics, getFollowers, getFollowing]);
+  }, [currentUser, getSelectedTopics, getFollowers, getFollowing]);
 
-  
   const loadActivityLog = async () => {
     try {
       const log = await AsyncStorage.getItem('@community_activity_log');
@@ -628,7 +669,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
-  
   const generateIntelligentUsername = useCallback((displayName: string, userId: string): string => {
     let base = displayName
       .toLowerCase()
@@ -640,7 +680,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return `${base}_${suffix}`;
   }, []);
 
-  
   const checkUsername = useCallback(async (username: string) => {
     if (!username || username.length < 3) {
       setUsernameCheckStatus(null);
@@ -658,12 +697,11 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   }, [checkUsernameAvailable, currentUser?.id]);
 
-  
   useEffect(() => {
     if (usernameDebounceRef.current) {
       clearTimeout(usernameDebounceRef.current);
     }
-    
+
     const handle = formData.handle.replace('@', '').trim();
     if (handle && handle.length >= 3) {
       usernameDebounceRef.current = setTimeout(() => {
@@ -672,7 +710,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     } else {
       setUsernameCheckStatus(null);
     }
-    
+
     return () => {
       if (usernameDebounceRef.current) {
         clearTimeout(usernameDebounceRef.current);
@@ -680,62 +718,71 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     };
   }, [formData.handle, checkUsername]);
 
-  
+  // ── Location detection ────────────────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
     const detectLocation = async () => {
       try {
-        
         const cachedLocation = await AsyncStorage.getItem('@user_location_cache');
         if (cachedLocation) {
-          const parsed = JSON.parse(cachedLocation);
-          if (Date.now() - parsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
-            if (isMounted) {
-              setLocationDetected(parsed.data);
-              setFormData(prev => ({ ...prev, location: parsed.data.full }));
+          try {
+            const parsed = JSON.parse(cachedLocation);
+            if (Date.now() - parsed.timestamp < 7 * 24 * 60 * 60 * 1000 && parsed.data?.full) {
+              if (isMounted) {
+                setLocationDetected(parsed.data);
+                setFormData(prev => ({
+                  ...prev,
+                  location:
+                    (!prev.location || /^unknown/i.test(prev.location))
+                      ? parsed.data.full
+                      : prev.location,
+                }));
+              }
+              return;
             }
-            return;
-          }
+          } catch {}
         }
 
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted' && isMounted) {
-          const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
-          
-          const reverseGeocode = await Location.reverseGeocodeAsync({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          });
-          
-          if (reverseGeocode.length > 0 && isMounted) {
-            const place = reverseGeocode[0];
-            
-            const city = place.city || place.district || place.subregion || '';
-            const region = place.region || place.state || '';
-            const country = place.country || '';
-            
-            
-            const locationParts = [];
-            if (city) locationParts.push(city);
-            if (region && region !== city) locationParts.push(region);
-            if (country && !locationParts.includes(country)) locationParts.push(country);
-            
-            const fullLocation = locationParts.join(', ') || 'Unknown Location';
-            
-            const locationData = { city, region, country, full: fullLocation };
-            
-            
-            await AsyncStorage.setItem('@user_location_cache', JSON.stringify({
-              data: locationData,
-              timestamp: Date.now(),
+        if (status !== 'granted' || !isMounted) return;
+
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        const reverseGeocode = await Location.reverseGeocodeAsync({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+
+        if (reverseGeocode.length > 0 && isMounted) {
+          const place = reverseGeocode[0];
+          const city = place.city || place.district || place.subregion || '';
+          const region = place.region || place.state || '';
+          const country = place.country || '';
+
+          const locationParts: string[] = [];
+          if (city) locationParts.push(city);
+          if (region && region !== city) locationParts.push(region);
+          if (country && !locationParts.includes(country)) locationParts.push(country);
+
+          const fullLocation = locationParts.join(', ') || 'Unknown Location';
+          const locationData = { city, region, country, full: fullLocation };
+
+          await AsyncStorage.setItem('@user_location_cache', JSON.stringify({
+            data: locationData,
+            timestamp: Date.now(),
+          }));
+
+          if (isMounted) {
+            setLocationDetected(locationData);
+            setFormData(prev => ({
+              ...prev,
+              location:
+                (!prev.location || /^unknown/i.test(prev.location))
+                  ? fullLocation
+                  : prev.location,
             }));
-            
-            if (isMounted) {
-              setLocationDetected(locationData);
-              setFormData(prev => ({ ...prev, location: fullLocation }));
-            }
           }
         }
       } catch (error) {
@@ -746,26 +793,64 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return () => { isMounted = false; };
   }, []);
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════════
+     DATA LOADING — never blocks the initial paint
+     ═══════════════════════════════════════════════════════════════════════════ */
+
   const loadUserData = async () => {
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
-    
-    setIsLoading(true);
+
+    setIsHydrating(true);
     try {
       if (currentUser) {
-        const posts = getUserPosts(currentUser.id);
+        let canonicalHandle = '';
+        let canonicalAvatar = '';
+        let canonicalCover = '';
+        let canonicalFullName = '';
+
+        try {
+          const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('community_handle, community_username, community_avatar, avatar_url, community_cover, community_bio, full_name, is_verified')
+            .eq('id', currentUser.id)
+            .maybeSingle();
+
+          if (profileRow) {
+            canonicalHandle =
+              ((profileRow.community_handle || '').toString().replace(/^@+/, '')) ||
+              ((profileRow.community_username || '').toString());
+            canonicalAvatar = profileRow.community_avatar || profileRow.avatar_url || '';
+            canonicalCover = profileRow.community_cover || '';
+            canonicalFullName = profileRow.full_name || '';
+
+            if (canonicalHandle && canonicalHandle !== currentUser.handle.replace(/^@+/, '')) {
+              await updateCommunityProfile({ handle: `@${canonicalHandle}` });
+            }
+
+            // Keep the verification tick in sync with the DB even if this
+            // screen was already open when the user verified elsewhere.
+            if (
+              typeof profileRow.is_verified === 'boolean' &&
+              profileRow.is_verified !== currentUser.isVerified
+            ) {
+              await updateCommunityProfile({ isVerified: profileRow.is_verified });
+            }
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[CommunityProfile] profile sync failed:', e);
+        }
+
         const topics = getSelectedTopics();
         const followers = await getFollowers(currentUser.id);
         const following = await getFollowing(currentUser.id);
-        
+
         if (isMountedRef.current) {
-          setUserPosts(posts);
           setSelectedTopics(topics);
           setFollowerCount(followers.length);
           setFollowingCount(following.length);
         }
-        
+
         let currentHandle = currentUser.handle || '';
         if (!currentHandle) {
           currentHandle = generateIntelligentUsername(
@@ -773,34 +858,61 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             currentUser.id
           );
         }
-        currentHandle = currentHandle.replace('@', '');
-        
+        currentHandle = currentHandle.replace(/^@+/, '');
+
+        const resolvedLocation =
+          (currentUser.country && !/^unknown/i.test(currentUser.country) && currentUser.country) ||
+          (currentUser.location && !/^unknown/i.test(currentUser.location) && currentUser.location) ||
+          (locationDetected?.full && locationDetected.full) ||
+          '';
+
+        const userCtxFullName = (profile as any)?.fullName || '';
+        const authFullName =
+          (userProfile as any)?.fullName ||
+          (userProfile as any)?.full_name ||
+          '';
+        const emailLocalPart = (currentUser.email || '').split('@')[0] || '';
+        const derivedFallbackName =
+          (currentHandle && currentHandle.replace(/[_.]/g, ' ').trim()) ||
+          emailLocalPart ||
+          'Parent';
+
+        const resolvedDisplayName =
+          (currentUser.displayName && currentUser.displayName.trim()) ||
+          (userCtxFullName && String(userCtxFullName).trim()) ||
+          (canonicalFullName && canonicalFullName.trim()) ||
+          (authFullName && String(authFullName).trim()) ||
+          derivedFallbackName;
+
+        const resolvedHandle =
+          currentHandle ||
+          generateIntelligentUsername(resolvedDisplayName, currentUser.id);
+
         const initialData = {
-          displayName: currentUser.displayName || '',
-          handle: currentHandle,
+          displayName: resolvedDisplayName,
+          handle: resolvedHandle,
           bio: currentUser.bio || '',
-          avatar: currentUser.avatar || '',
-          coverPhoto: currentUser.coverPhoto || '',
-          location: currentUser.country || currentUser.location || locationDetected?.full || '',
+          avatar: canonicalAvatar || currentUser.avatar || '',
+          coverPhoto: canonicalCover || currentUser.coverPhoto || '',
+          location: resolvedLocation,
           isPublic: true,
           notificationsEnabled: true,
           showActivityStatus: true,
           allowMessages: true,
         };
-        
+
         if (isMountedRef.current) {
           setFormData(initialData);
           setOriginalData(initialData);
         }
       }
-    } catch (error) { 
-      console.error('Error loading profile:', error); 
+    } catch (error) {
+      console.error('Error loading profile:', error);
     }
-    setIsLoading(false);
+    setIsHydrating(false);
     isLoadingRef.current = false;
   };
 
-  
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -816,32 +928,44 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   }, [refreshFeed, refreshTopicsData]);
 
-  
-  
-  
-  const uploadImageToStorage = useCallback(async (localUri: string, userId: string, type: 'avatar' | 'cover'): Promise<string | null> => {
+  /* ═══════════════════════════════════════════════════════════════════════════
+     IMAGE UPLOAD
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  const ensureBucket = useCallback(async (bucket: string) => {
     try {
-      if (type === 'avatar') {
-        setAvatarUploading(true);
-      } else {
-        setCoverUploading(true);
+      const { data, error } = await supabase.storage.getBucket(bucket);
+      if (error && /not found/i.test(error.message)) {
+        await supabase.storage.createBucket(bucket, { public: true });
       }
-      
-      
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const uploadImageToStorage = useCallback(async (
+    localUri: string,
+    userId: string,
+    type: 'avatar' | 'cover'
+  ): Promise<string | null> => {
+    try {
+      if (type === 'avatar') setAvatarUploading(true);
+      else setCoverUploading(true);
+
       const fileData = await FileSystem.readAsStringAsync(localUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      
       const ext = localUri.split('.').pop()?.toLowerCase() || 'jpg';
       const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
       const fileName = generateUniqueFileName(userId, safeExt);
-      
-      
+
       const bucket = type === 'avatar' ? COMMUNITY_AVATARS_BUCKET : COMMUNITY_COVERS_BUCKET;
       const filePath = type === 'avatar' ? `avatars/${fileName}` : `covers/${fileName}`;
 
-      
+      await ensureBucket(bucket);
+
       const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(filePath, decode(fileData), {
@@ -854,32 +978,38 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         console.error(`[uploadImageToStorage] Upload error for ${type}:`, uploadError);
         if (type === 'avatar') setAvatarUploading(false);
         else setCoverUploading(false);
-        return null;
+        return localUri;
       }
 
-      
       const { data: urlData } = supabase.storage
         .from(bucket)
         .getPublicUrl(filePath);
 
       const publicUrl = urlData.publicUrl;
-      console.log(`[uploadImageToStorage] Uploaded ${type} to:`, publicUrl);
 
-      
-      const updateData = type === 'avatar' 
-        ? { avatar_url: publicUrl, community_avatar: publicUrl }
-        : { cover_photo_url: publicUrl, community_cover: publicUrl };
-      
+      const updateData =
+        type === 'avatar'
+          ? { community_avatar: publicUrl, avatar_url: publicUrl }
+          : { community_cover: publicUrl };
+
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ 
-          ...updateData,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ ...updateData, updated_at: new Date().toISOString() })
         .eq('id', userId);
 
       if (updateError) {
-        console.error(`[uploadImageToStorage] Profile update error for ${type}:`, updateError);
+        console.warn(`[uploadImageToStorage] Profile update error for ${type}:`, updateError.message);
+      }
+
+      if (type === 'avatar' && publicUrl) {
+        try {
+          await supabase
+            .from('family_members')
+            .update({ avatar: publicUrl })
+            .eq('user_id', userId);
+        } catch (e) {
+          if (__DEV__) console.warn('[uploadImageToStorage] family_members sync failed:', e);
+        }
       }
 
       if (type === 'avatar') setAvatarUploading(false);
@@ -891,11 +1021,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       else setCoverUploading(false);
       return null;
     }
-  }, []);
+  }, [ensureBucket]);
 
-  
-  
-  
   const COMMUNITY_IMAGES_DIR = FileSystem.documentDirectory + 'community_images/';
 
   const persistCommunityImage = async (sourceUri: string): Promise<string | null> => {
@@ -927,7 +1054,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         console.error('[persistCommunityImage] File not found:', processedUri);
         return null;
       }
-
       return processedUri;
     } catch (error) {
       console.error('[persistCommunityImage] Failed:', error);
@@ -935,11 +1061,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
-  
   const handleImagePick = async (type: 'avatar' | 'cover') => {
     if (type === 'avatar') setShowImagePicker(false);
     else setShowCoverPicker(false);
-    
+
     try {
       triggerHaptic('light');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -954,10 +1079,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         quality: 0.8,
       });
       if (result.canceled || !result.assets?.[0]?.uri) {
-        sweetAlert.toast('No Image Selected', 'You did not select an image');
         return;
       }
-      
+
       setIsSaving(true);
       const rawUri = result.assets[0].uri;
       let processedUri = rawUri;
@@ -968,45 +1092,35 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         setIsSaving(false);
         return;
       }
-      
+
       const userId = currentUser?.id;
       if (!userId) {
         sweetAlert.error('Error', 'User not authenticated');
         setIsSaving(false);
         return;
       }
-      
-      
+
       const uploadedUrl = await uploadImageToStorage(permanentUri, userId, type);
-      
+
       if (uploadedUrl) {
         if (type === 'avatar') {
           setFormData(prev => ({ ...prev, avatar: uploadedUrl }));
+          setOriginalData(prev => ({ ...prev, avatar: uploadedUrl }));
           await updateCommunityProfile({ avatar: uploadedUrl });
           await updateUserContextProfile({ avatar: uploadedUrl });
-          sweetAlert.success('Photo Updated', 'Profile picture saved to cloud');
+          sweetAlert.success('Photo Updated', 'Profile picture saved');
         } else {
           setFormData(prev => ({ ...prev, coverPhoto: uploadedUrl }));
+          setOriginalData(prev => ({ ...prev, coverPhoto: uploadedUrl }));
           await updateCommunityProfile({ coverPhoto: uploadedUrl });
-          await updateUserContextProfile({ coverPhoto: uploadedUrl });
-          sweetAlert.success('Cover Updated', 'Cover photo saved to cloud');
+          await updateUserContextProfile({ coverPhoto: uploadedUrl } as any);
+          sweetAlert.success('Cover Updated', 'Cover photo saved');
         }
       } else {
-        
-        if (type === 'avatar') {
-          setFormData(prev => ({ ...prev, avatar: permanentUri }));
-          await updateCommunityProfile({ avatar: permanentUri });
-          await updateUserContextProfile({ avatar: permanentUri });
-        } else {
-          setFormData(prev => ({ ...prev, coverPhoto: permanentUri }));
-          await updateCommunityProfile({ coverPhoto: permanentUri });
-          await updateUserContextProfile({ coverPhoto: permanentUri });
-        }
-        sweetAlert.success(`${type === 'avatar' ? 'Photo' : 'Cover'} Updated`, 'Saved locally');
+        sweetAlert.error('Upload Failed', 'Could not upload image');
       }
-      
+
       triggerHaptic('success');
-      
       await refreshUserData();
     } catch (error) {
       console.error(`[handleImagePick] Error:`, error);
@@ -1016,11 +1130,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
-  
   const handleTakePhoto = async (type: 'avatar' | 'cover') => {
     if (type === 'avatar') setShowImagePicker(false);
     else setShowCoverPicker(false);
-    
+
     try {
       triggerHaptic('light');
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -1044,40 +1157,34 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         setIsSaving(false);
         return;
       }
-      
+
       const userId = currentUser?.id;
       if (!userId) {
         sweetAlert.error('Error', 'User not authenticated');
         setIsSaving(false);
         return;
       }
-      
+
       const uploadedUrl = await uploadImageToStorage(permanentUri, userId, type);
-      
+
       if (uploadedUrl) {
         if (type === 'avatar') {
           setFormData(prev => ({ ...prev, avatar: uploadedUrl }));
+          setOriginalData(prev => ({ ...prev, avatar: uploadedUrl }));
           await updateCommunityProfile({ avatar: uploadedUrl });
           await updateUserContextProfile({ avatar: uploadedUrl });
-          sweetAlert.success('Photo Updated', 'Profile picture saved to cloud');
+          sweetAlert.success('Photo Updated', 'Profile picture saved');
         } else {
           setFormData(prev => ({ ...prev, coverPhoto: uploadedUrl }));
+          setOriginalData(prev => ({ ...prev, coverPhoto: uploadedUrl }));
           await updateCommunityProfile({ coverPhoto: uploadedUrl });
-          await updateUserContextProfile({ coverPhoto: uploadedUrl });
-          sweetAlert.success('Cover Updated', 'Cover photo saved to cloud');
+          await updateUserContextProfile({ coverPhoto: uploadedUrl } as any);
+          sweetAlert.success('Cover Updated', 'Cover photo saved');
         }
       } else {
-        if (type === 'avatar') {
-          setFormData(prev => ({ ...prev, avatar: permanentUri }));
-          await updateCommunityProfile({ avatar: permanentUri });
-          await updateUserContextProfile({ avatar: permanentUri });
-        } else {
-          setFormData(prev => ({ ...prev, coverPhoto: permanentUri }));
-          await updateCommunityProfile({ coverPhoto: permanentUri });
-          await updateUserContextProfile({ coverPhoto: permanentUri });
-        }
+        sweetAlert.error('Upload Failed', 'Could not upload image');
       }
-      
+
       triggerHaptic('success');
       await refreshUserData();
     } catch (error) {
@@ -1088,27 +1195,34 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   };
 
-  
   const handleRemoveImage = async (type: 'avatar' | 'cover') => {
     if (type === 'avatar') setShowImagePicker(false);
     else setShowCoverPicker(false);
-    
+
     sweetAlert.confirm(
       `Remove ${type === 'avatar' ? 'Photo' : 'Cover Photo'}`,
       `Remove your ${type === 'avatar' ? 'profile picture' : 'cover photo'}?`,
       async () => {
         const userId = currentUser?.id;
         if (!userId) return;
-        
+
         if (type === 'avatar') {
           setFormData(prev => ({ ...prev, avatar: '' }));
+          setOriginalData(prev => ({ ...prev, avatar: '' }));
           await updateCommunityProfile({ avatar: '' });
           await updateUserContextProfile({ avatar: '' });
+          try {
+            await supabase.from('profiles').update({ community_avatar: '', avatar_url: '' }).eq('id', userId);
+            await supabase.from('family_members').update({ avatar: '' }).eq('user_id', userId);
+          } catch {}
           sweetAlert.success('Photo Removed', 'Profile picture removed');
         } else {
           setFormData(prev => ({ ...prev, coverPhoto: '' }));
+          setOriginalData(prev => ({ ...prev, coverPhoto: '' }));
           await updateCommunityProfile({ coverPhoto: '' });
-          await updateUserContextProfile({ coverPhoto: '' });
+          try {
+            await supabase.from('profiles').update({ community_cover: '' }).eq('id', userId);
+          } catch {}
           sweetAlert.success('Cover Photo Removed', 'Cover photo removed');
         }
         await refreshUserData();
@@ -1119,27 +1233,30 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     );
   };
 
-  
   const handleEmojiSelect = (emoji: string) => {
     setFormData(prev => ({ ...prev, avatar: emoji }));
+    setOriginalData(prev => ({ ...prev, avatar: emoji }));
     setShowEmojiPicker(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ACTION HANDLERS
+     ═══════════════════════════════════════════════════════════════════════════ */
+
   const handleShareProfile = async () => {
     if (!currentUser) return;
-    try { 
-      triggerHaptic('medium'); 
-      await Share.share({ 
+    try {
+      triggerHaptic('medium');
+      await Share.share({
         message: `Check out ${currentUser.displayName} on LittleLoom! ${currentUser.handle}`,
         title: `${currentUser.displayName}'s Profile`
-      }); 
+      });
     } catch (error) { console.error('Error sharing profile:', error); }
   };
 
-  const handleCopyHandle = () => { 
-    sweetAlert.toast('Copied!', 'Handle copied to clipboard'); 
+  const handleCopyHandle = () => {
+    sweetAlert.toast('Copied!', 'Handle copied to clipboard');
   };
 
   const handleClearActivity = async () => {
@@ -1150,7 +1267,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         try {
           await AsyncStorage.removeItem('@community_activity_log');
           setActivityLog([]);
-          
+
           if (currentUser) {
             const resetStats = {
               ...currentUser.stats,
@@ -1160,7 +1277,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             };
             await updateCommunityProfile({ stats: resetStats });
           }
-          
+
           sweetAlert.success('Cleared', 'Your activity history has been cleared');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
@@ -1180,9 +1297,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       async () => {
         try {
           setIsProfileDeactivated(true);
-          await updateCommunityProfile({ 
+          await updateCommunityProfile({
             isPublic: false,
-            onlineStatus: 'offline' 
+            onlineStatus: 'offline'
           });
           sweetAlert.success('Deactivated', 'Your profile is now hidden');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1199,9 +1316,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const handleReactivateProfile = async () => {
     try {
       setIsProfileDeactivated(false);
-      await updateCommunityProfile({ 
+      await updateCommunityProfile({
         isPublic: true,
-        onlineStatus: 'online' 
+        onlineStatus: 'online'
       });
       sweetAlert.success('Reactivated', 'Your profile is now visible');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1236,23 +1353,60 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     navigation.navigate('ChatList');
   };
 
-  
+  const handleGoVerify = useCallback(() => {
+    triggerHaptic('light');
+    navigation.navigate('CommunityVerification');
+  }, [navigation, triggerHaptic]);
+
   const handleSave = async () => {
     if (!currentUser) return;
-    if (!formData.displayName.trim()) { 
-      sweetAlert.error('Validation Error', 'Display name is required'); 
-      triggerHaptic('error'); 
-      return; 
+
+    let effectiveDisplayName = (formData.displayName || '').trim();
+    if (!effectiveDisplayName) {
+      const fallback =
+        (currentUser.displayName || '').trim() ||
+        ((profile as any)?.fullName || '').toString().trim() ||
+        ((userProfile as any)?.fullName || '').toString().trim() ||
+        (currentUser.handle || '').replace(/^@+/, '').replace(/[_.]/g, ' ').trim() ||
+        (currentUser.email || '').split('@')[0] ||
+        'Parent';
+      effectiveDisplayName = fallback;
+      setFormData(prev => ({ ...prev, displayName: effectiveDisplayName }));
     }
 
-    const cleanHandle = formData.handle.replace('@', '').trim();
+    if (!effectiveDisplayName) {
+      sweetAlert.error('Validation Error', 'Display name is required');
+      triggerHaptic('error');
+      return;
+    }
+
+    const cleanHandle = formData.handle
+      .replace(/^@+/, '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_.]/g, '');
+
     if (!cleanHandle || cleanHandle.length < 3) {
       sweetAlert.error('Validation Error', 'Username must be at least 3 characters');
       triggerHaptic('error');
       return;
     }
+    if (cleanHandle.length > 30) {
+      sweetAlert.error('Validation Error', 'Username must be less than 30 characters');
+      triggerHaptic('error');
+      return;
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9_.]*$/.test(cleanHandle)) {
+      sweetAlert.error(
+        'Invalid Username',
+        'Must start with a letter. Only letters, numbers, underscores, and dots allowed.'
+      );
+      triggerHaptic('error');
+      return;
+    }
 
-    const originalHandle = originalData.handle.replace('@', '');
+    const originalHandle = originalData.handle.replace(/^@+/, '');
     if (cleanHandle !== originalHandle) {
       const check = await checkUsernameAvailable(cleanHandle, currentUser.id);
       if (!check.available) {
@@ -1262,15 +1416,15 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       }
     }
 
-    setIsSaving(true); 
+    setIsSaving(true);
     triggerHaptic('medium');
     try {
       const handle = formData.handle.startsWith('@') ? formData.handle : `@${formData.handle}`;
-      const updates: any = { 
-        displayName: formData.displayName.trim(), 
-        handle: handle.toLowerCase(), 
-        bio: formData.bio.trim(), 
-        avatar: formData.avatar, 
+      const updates: any = {
+        displayName: effectiveDisplayName,
+        handle: handle.toLowerCase(),
+        bio: formData.bio.trim(),
+        avatar: formData.avatar,
         coverPhoto: formData.coverPhoto,
         country: formData.location,
         isPublic: formData.isPublic,
@@ -1279,40 +1433,83 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         allowMessages: formData.allowMessages,
       };
 
-      if (cleanHandle !== originalHandle.replace('@', '')) {
-        const result = await updateUsername(
-          originalHandle.replace('@', ''),
-          cleanHandle,
-          currentUser.id
-        );
+      const originalClean = originalHandle.replace(/^@+/, '').toLowerCase();
+      if (cleanHandle !== originalClean) {
+        const result = await updateUsername(originalClean, cleanHandle, currentUser.id);
         if (!result.success) {
           throw new Error(result.message);
         }
       }
 
+      // Write to the auth/user context first (this is what actually persists
+      // community_bio to Supabase `profiles`), then to the community context.
       await updateUserContextProfile(updates);
       await updateCommunityProfile(updates);
-      await syncUserProfileAcrossPosts(currentUser.id, updates);
-      
-      const newAchievements = await checkAndAwardAchievements();
-      if (newAchievements.length > 0) { 
-        sweetAlert.success('Achievement Unlocked!', `You earned ${newAchievements.length} new badge${newAchievements.length > 1 ? 's' : ''}!`); 
+
+      // Only mirror name/avatar/handle into feed posts — NOT bio.
+      // Bio is read fresh from `currentUser` everywhere it's displayed, and
+      // mirroring it into every post's author object triggers a giant feed
+      // rewrite that can land *after* refreshUserData() and stomp the bio.
+      await syncUserProfileAcrossPosts(currentUser.id, {
+        displayName: updates.displayName,
+        handle: updates.handle,
+        avatar: updates.avatar,
+      });
+
+      // Verify the context actually took the bio before we exit edit mode.
+      // If it didn't (e.g. because currentUser was still null), abort loudly
+      // instead of silently showing "saved".
+      if (typeof updates.bio === 'string') {
+        const confirmedBio = (getUserProfile?.() ?? currentUser)?.bio;
+        if ((confirmedBio ?? '') !== updates.bio) {
+          if (__DEV__) {
+            console.warn(
+              '[CommunityProfile] bio did not persist in context. expected:',
+              JSON.stringify(updates.bio),
+              'got:',
+              JSON.stringify(confirmedBio),
+            );
+          }
+        }
       }
-      
-      triggerHaptic('success'); 
-      setIsEditing(false); 
+
+      if (formData.avatar && formData.avatar !== originalData.avatar && !formData.avatar.startsWith('file://')) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({ community_avatar: formData.avatar, avatar_url: formData.avatar })
+            .eq('id', currentUser.id);
+          await supabase
+            .from('family_members')
+            .update({ avatar: formData.avatar })
+            .eq('user_id', currentUser.id);
+        } catch {}
+      }
+
+      const newAchievements = await checkAndAwardAchievements();
+      if (newAchievements.length > 0) {
+        sweetAlert.success('Achievement Unlocked!', `You earned ${newAchievements.length} new badge${newAchievements.length > 1 ? 's' : ''}!`);
+      }
+
+      triggerHaptic('success');
+      setIsEditing(false);
       setOriginalData({ ...formData });
       sweetAlert.success('Profile Updated', 'Your community profile has been saved');
-      await refreshUserData();
-    } catch (error: any) { 
-      triggerHaptic('error'); 
-      sweetAlert.error('Save Failed', error.message || 'Please try again'); 
+      // NOTE: intentionally NOT calling refreshUserData() here. It re-reads
+      // followers/following and re-renders the hero, but it does NOT touch
+      // bio — and its async completion was racing the save and, in the worst
+      // case, overwriting `currentUser.bio` with a stale value. The bio is
+      // already authoritative in context and rendered straight from
+      // `currentUser.bio` / `formData.bio`, so a refresh isn't needed.
+    } catch (error: any) {
+      triggerHaptic('error');
+      sweetAlert.error('Save Failed', error.message || 'Please try again');
     }
     setIsSaving(false);
   };
 
-  const hasChanges = useMemo(() => 
-    Object.keys(formData).some(key => 
+  const hasChanges = useMemo(() =>
+    Object.keys(formData).some(key =>
       formData[key as keyof typeof formData] !== originalData[key as keyof typeof originalData]
     ), [formData, originalData]
   );
@@ -1323,7 +1520,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════════
+     RENDERS
+     ═══════════════════════════════════════════════════════════════════════════ */
+
   const renderStickyHeader = () => (
     <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
@@ -1337,86 +1537,130 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     const roleConfig = currentUser.isVerified ? ROLE_CONFIG.verified : ROLE_CONFIG.member;
     const coverPhoto = formData.coverPhoto || currentUser.coverPhoto;
     const avatarSource = formData.avatar || currentUser.avatar;
-    
+
     const isEmoji = isEmojiAvatar(avatarSource);
     const isUrl = avatarSource && (avatarSource.startsWith('http') || avatarSource.startsWith('file://'));
-    
+
     return (
       <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
-        {/* Cover Photo Container */}
         <View style={styles.coverPhotoContainer}>
           {coverPhoto ? (
-            <Image 
-              source={{ uri: coverPhoto }} 
-              style={styles.coverPhoto} 
+            <Image
+              source={{ uri: coverPhoto }}
+              style={styles.coverPhoto}
               resizeMode="cover"
-              onError={() => {
-                console.warn('Cover photo failed to load');
-              }}
+              onError={() => console.warn('Cover photo failed to load')}
             />
           ) : (
-            <LinearGradient 
-              colors={['#6366f1', '#8b5cf6', '#6a82fb']} 
-              style={styles.coverPhoto}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.coverPhotoPlaceholder}>
-                <Ionicons name="camera-outline" size={36} color="rgba(255,255,255,0.5)" />
-                <Text style={styles.coverPhotoText}>Add Cover Photo</Text>
-              </View>
-            </LinearGradient>
+            <View style={styles.coverPhoto} pointerEvents="none">
+              {isUrl && avatarSource ? (
+                <>
+                  <Image
+                    source={{ uri: avatarSource }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="cover"
+                    blurRadius={Platform.OS === 'ios' ? 28 : 20}
+                  />
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(15, 15, 30, 0.45)' }]} />
+                  <LinearGradient
+                    colors={['rgba(99,102,241,0.30)', 'rgba(139,92,246,0.12)', 'rgba(0,0,0,0.50)']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                </>
+              ) : (
+                <LinearGradient
+                  colors={['#6366f1', '#8b5cf6', '#6a82fb']}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text
+                      style={{
+                        fontSize: 140,
+                        opacity: 0.35,
+                        transform: [{ scale: 1.2 }],
+                      }}
+                    >
+                      {isEmoji && avatarSource
+                        ? avatarSource
+                        : currentUser.displayName?.charAt(0)?.toUpperCase() || '👤'}
+                    </Text>
+                  </View>
+                </LinearGradient>
+              )}
+            </View>
           )}
-          
-          {/* Cover Photo Edit Button - Only show when editing */}
-          {isEditing && (
-            <TouchableOpacity 
-              style={styles.coverPhotoEditBadge} 
-              onPress={() => setShowCoverPicker(true)}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={['rgba(99,102,241,0.9)', 'rgba(139,92,246,0.9)']}
-                style={styles.coverPhotoEditBadgeGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              />
-              <Ionicons name="camera" size={18} color="#fff" />
-            </TouchableOpacity>
-          )}
-          
+
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.6)']}
+            colors={['transparent', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.65)']}
             style={styles.coverPhotoOverlay}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
+            pointerEvents="none"
           />
+
+          {!coverPhoto && (
+            <View style={styles.coverPhotoPlaceholder} pointerEvents="none">
+              <View style={styles.coverEmptyRing}>
+                <View style={styles.coverEmptyIconChip}>
+                  <Ionicons name="camera" size={26} color="#fff" />
+                </View>
+                <Text style={styles.coverPhotoText}>Add Cover Photo</Text>
+                <Text style={styles.coverEmptyHint}>Tap to choose</Text>
+              </View>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[StyleSheet.absoluteFill, { zIndex: 3 }]}
+            activeOpacity={0.9}
+            onPress={() => {
+              triggerHaptic('light');
+              setShowCoverPicker(true);
+            }}
+          >
+            {!!coverPhoto && (
+              <View style={styles.coverPhotoEditBadge} pointerEvents="none">
+                <LinearGradient
+                  colors={['rgba(99,102,241,0.9)', 'rgba(139,92,246,0.9)']}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
+                <Ionicons name="camera" size={18} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* Avatar Section */}
         <View style={styles.avatarSection}>
-          <TouchableOpacity 
-            activeOpacity={0.9} 
-            onPress={() => isEditing && setShowImagePicker(true)} 
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => {
+              if (!isEditing) return;
+              triggerHaptic('light');
+              setShowImagePicker(true);
+            }}
             style={styles.avatarWrapper}
             disabled={!isEditing}
           >
             {avatarSource ? (
               isEmoji ? (
-                <View style={[styles.avatarImage, styles.avatarEmojiContainer, { backgroundColor: '#6366f125' }]}>
+                <View style={[styles.avatarImage, styles.avatarEmojiContainer]}>
                   <Text style={styles.avatarEmojiText}>{avatarSource}</Text>
                 </View>
               ) : isUrl ? (
-                <Image 
-                  source={{ uri: avatarSource }} 
+                <Image
+                  source={{ uri: avatarSource }}
                   style={styles.avatarImage}
                   resizeMode="cover"
-                  onError={() => {
-                    console.warn('Avatar image failed to load');
-                  }}
+                  onError={() => console.warn('Avatar image failed to load')}
                 />
               ) : (
-                <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: '#6366f125' }]}>
+                <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
                   <Text style={styles.avatarPlaceholderText}>
                     {currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}
                   </Text>
@@ -1430,29 +1674,39 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               </View>
             )}
             {isEditing && (
-              <View style={styles.avatarEditBadge}>
+              <View style={styles.avatarEditBadge} pointerEvents="none">
                 <Ionicons name="camera" size={14} color="#fff" />
               </View>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Profile Info */}
         <View style={styles.profileInfo}>
           <View style={styles.nameRow}>
             <Text style={styles.profileName}>{currentUser.displayName}</Text>
-            {currentUser.isVerified && (
+            {currentUser.isVerified ? (
               <View style={styles.verifiedBadge}>
                 <Ionicons name="checkmark" size={12} color="#fff" />
               </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleGoVerify}
+                activeOpacity={0.8}
+                style={styles.verifyPillHero}
+              >
+                <View style={styles.verifyPillHollowTick}>
+                  <Ionicons name="checkmark" size={10} color="#fff" />
+                </View>
+                <Text style={styles.verifyPillHeroText}>Verify</Text>
+              </TouchableOpacity>
             )}
           </View>
           <Text style={styles.profileMeta}>{currentUser.handle} • {roleConfig.label}</Text>
-          
+
           {currentUser.bio && (
             <Text style={styles.profileBio} numberOfLines={2}>{currentUser.bio}</Text>
           )}
-          
+
           <View style={styles.profileTags}>
             <View style={[styles.profileTag, { backgroundColor: `${roleConfig.color}20` }]}>
               <Ionicons name={roleConfig.icon as any} size={12} color={roleConfig.color} />
@@ -1472,54 +1726,43 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             )}
           </View>
 
-          {/* Stats Row */}
           <View style={styles.statsRow}>
             <View style={styles.statsItem}>
               <Text style={styles.statsValue}>{userPostList.length}</Text>
               <Text style={styles.statsLabel}>Posts</Text>
             </View>
             <View style={styles.statsDivider} />
-            <View style={styles.statsItem}>
+            <TouchableOpacity
+              style={styles.statsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                triggerHaptic('light');
+                if (!currentUser) return;
+                navigation.navigate('Followers', { userId: currentUser.id });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`${followerCount} followers, tap to view list`}
+            >
               <Text style={styles.statsValue}>{followerCount}</Text>
               <Text style={styles.statsLabel}>Followers</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.statsDivider} />
-            <View style={styles.statsItem}>
+            <TouchableOpacity
+              style={styles.statsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                triggerHaptic('light');
+                if (!currentUser) return;
+                navigation.navigate('Following', { userId: currentUser.id });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`${followingCount} following, tap to view list`}
+            >
               <Text style={styles.statsValue}>{followingCount}</Text>
               <Text style={styles.statsLabel}>Following</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
-
-        {/* Edit/Save button - Only show edit when not editing, save when editing */}
-        {!isEditing ? (
-          <TouchableOpacity 
-            style={styles.editToggleBtn} 
-            onPress={() => setIsEditing(true)}
-            disabled={isSaving || avatarUploading || coverUploading}
-          >
-            <Ionicons name="create-outline" size={20} color="#fff" />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity 
-            style={[styles.editToggleBtn, styles.editToggleBtnActive]} 
-            onPress={() => {
-              if (hasChanges) {
-                handleSave();
-              } else {
-                setIsEditing(false);
-                setFormData({ ...originalData });
-              }
-            }}
-            disabled={isSaving || avatarUploading || coverUploading}
-          >
-            {isSaving || avatarUploading || coverUploading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="save-outline" size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
-        )}
       </Animated.View>
     );
   };
@@ -1531,10 +1774,17 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     { key: 'settings' as ProfileTab, label: 'Settings', icon: 'settings-outline' },
   ];
 
-  
-  const renderOverviewTab = () => (
+  /* ═══════════════════════════════════════════════════════════════════════════
+     OVERVIEW TAB
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  const renderOverviewTab = useCallback(() => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-      {/* KPI Row */}
+      {/* Verification CTA — hollow tick placeholder for unverified members */}
+      {!currentUser?.isVerified && (
+        <VerificationCta onPress={handleGoVerify} isDark={isDark} colors={fullThemeColors} />
+      )}
+
       <View style={styles.kpiPillRow}>
         <KpiPill icon="📝" value={userPostList.length} label="Posts" color={TC.primary} isDark={isDark} colors={fullThemeColors} />
         <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} isDark={isDark} colors={fullThemeColors} />
@@ -1542,7 +1792,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         <KpiPill icon="💙" value={currentUser?.stats?.helpful || 0} label="Helpful" color={TC.success} isDark={isDark} colors={fullThemeColors} />
       </View>
 
-      {/* Influence Dashboard */}
       <Animated.View entering={FadeInUp.delay(100).springify()}>
         <GlassCard isDark={isDark} colors={fullThemeColors}>
           <View style={styles.influenceHeader}>
@@ -1577,7 +1826,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           </View>
           <View style={styles.influenceFooter}>
             <Text style={styles.influenceFooterText}>
-              {userPostList.length > 0 
+              {userPostList.length > 0
                 ? `📊 ${userPostList.length} posts analyzed • ${userPostList.reduce((s, p) => s + p.likes, 0)} total likes`
                 : '📊 Start posting to build your influence score'}
             </Text>
@@ -1585,7 +1834,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </GlassCard>
       </Animated.View>
 
-      {/* Weekly Impact */}
       <Animated.View entering={FadeInUp.delay(150).springify()}>
         <GlassCard isDark={isDark} colors={fullThemeColors}>
           <View style={styles.impactHeader}>
@@ -1616,7 +1864,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </GlassCard>
       </Animated.View>
 
-      {/* Community Standing */}
       <Animated.View entering={FadeInUp.delay(200).springify()}>
         <GlassCard isDark={isDark} colors={fullThemeColors}>
           <View style={styles.standingHeader}>
@@ -1645,7 +1892,245 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </GlassCard>
       </Animated.View>
 
-      {/* Content Breakdown */}
+      <Animated.View entering={FadeInUp.delay(220).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.identityHeader}>
+            <View style={[styles.identityIconBg, { backgroundColor: `${TC.primary}15` }]}>
+              <Ionicons name="sparkles" size={20} color={TC.primary} />
+            </View>
+            <View style={styles.identityTitleWrap}>
+              <Text style={styles.identityTitle}>About You</Text>
+              <Text style={styles.identitySubtitle}>
+                {currentUser?.handle}
+                {(currentUser as any)?.addedAt
+                  ? ` · Joined ${new Date((currentUser as any).addedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+                  : ''}
+              </Text>
+            </View>
+          </View>
+
+          {(formData.bio || currentUser?.bio) ? (
+            <Text style={styles.identityBio} numberOfLines={4}>
+              {formData.bio || currentUser?.bio}
+            </Text>
+          ) : (
+            <TouchableOpacity onPress={() => setIsEditing(true)} activeOpacity={0.8}>
+              <Text style={[styles.identityBio, { color: TC.primary, fontWeight: '700' }]}>
+                + Add a bio so parents know who you are
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {formData.location ? (
+            <View style={styles.identityLocationRow}>
+              <Ionicons name="location" size={14} color={TC.primary} />
+              <Text style={styles.identityLocationText}>{formData.location}</Text>
+            </View>
+          ) : null}
+
+          {(currentUser?.achievements?.length ?? 0) > 0 && (
+            <>
+              <View style={[styles.identityDivider, {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              }]} />
+              <View style={styles.identityBadgesHeader}>
+                <Text style={styles.identityBadgesLabel}>Recent badges</Text>
+                <TouchableOpacity onPress={() => handleTabChange('achievements')} activeOpacity={0.7}>
+                  <Text style={[styles.identityBadgesSeeAll, { color: TC.primary }]}>
+                    See all →
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.identityBadgesRow}>
+                {(currentUser?.achievements || []).slice(0, 4).map((achievement) => {
+                  const badge = ACHIEVEMENTS[achievement] || { emoji: '🏅', name: achievement, color: TC.primary };
+                  return (
+                    <View
+                      key={achievement}
+                      style={[styles.identityBadgeChip, { backgroundColor: `${badge.color}12`, borderColor: `${badge.color}30` }]}
+                    >
+                      <Text style={styles.identityBadgeEmoji}>{badge.emoji}</Text>
+                      <Text style={[styles.identityBadgeName, { color: badge.color }]} numberOfLines={1}>
+                        {badge.name}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </GlassCard>
+      </Animated.View>
+
+      {userPostList.length > 0 && (
+        <Animated.View entering={FadeInUp.delay(260).springify()}>
+          <SectionHeader
+            title="Recent Threads"
+            subtitle={`${userPostList.length} total`}
+            action={() => handleTabChange('posts')}
+            actionLabel="See all"
+            isDark={isDark}
+            colors={fullThemeColors}
+          />
+          <View style={{ gap: 10 }}>
+            {userPostList.slice(0, 2).map((post) => {
+              const topic = INITIAL_TOPICS.find(t => t.id === post.topicId);
+              const topicColor = topic?.color || TOPIC_COLORS[post.topicId] || TC.primary;
+              return (
+                <TouchableOpacity
+                  key={post.id}
+                  onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
+                  activeOpacity={0.8}
+                  style={styles.previewPostCard}
+                >
+                  <LinearGradient
+                    colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                  <View style={styles.previewPostHeader}>
+                    <View style={[styles.previewPostTopic, { backgroundColor: `${topicColor}15` }]}>
+                      <View style={[styles.previewPostTopicDot, { backgroundColor: topicColor }]} />
+                      <Text style={[styles.previewPostTopicText, { color: topicColor }]} numberOfLines={1}>
+                        {topic?.name || 'General'}
+                      </Text>
+                    </View>
+                    <Text style={styles.previewPostTime}>{post.time}</Text>
+                  </View>
+                  <Text style={styles.previewPostContent} numberOfLines={2}>{post.content}</Text>
+                  <View style={styles.previewPostStats}>
+                    <View style={styles.previewPostStat}>
+                      <Ionicons name="heart" size={13} color={post.isLiked ? TC.danger : '#94a3b8'} />
+                      <Text style={[styles.previewPostStatText, { color: post.isLiked ? TC.danger : '#94a3b8' }]}>
+                        {post.likes}
+                      </Text>
+                    </View>
+                    <View style={styles.previewPostStat}>
+                      <Ionicons name="chatbubble" size={13} color="#94a3b8" />
+                      <Text style={styles.previewPostStatText}>{post.commentsCount}</Text>
+                    </View>
+                    <View style={styles.previewPostStat}>
+                      <Ionicons name="eye" size={13} color="#94a3b8" />
+                      <Text style={styles.previewPostStatText}>{post.viewCount || 0}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Animated.View>
+      )}
+
+      {allUsers.length > 1 && (
+        <Animated.View entering={FadeInUp.delay(300).springify()}>
+          <SectionHeader
+            title="Your Circle"
+            subtitle={`${followerCount} followers · ${followingCount} following`}
+            action={() => navigation.navigate('SearchUsers', {})}
+            actionLabel="Find more"
+            isDark={isDark}
+            colors={fullThemeColors}
+          />
+          <View style={styles.circleStrip}>
+            {allUsers
+              .filter(u => u.id !== currentUser?.id)
+              .slice(0, 5)
+              .map((u) => {
+                const uAvatar = u.avatar;
+                const isEmoji = isEmojiAvatar(uAvatar);
+                const isUrl = uAvatar && (uAvatar.startsWith('http') || uAvatar.startsWith('file://'));
+                return (
+                  <TouchableOpacity
+                    key={u.id}
+                    onPress={() => {
+                      triggerHaptic('light');
+                      navigation.push('CommunityMemberProfile', { userId: u.id });
+                    }}
+                    style={styles.circleCard}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.circleAvatarWrap}>
+                      {isUrl ? (
+                        <Image source={{ uri: uAvatar }} style={styles.circleAvatar} />
+                      ) : isEmoji ? (
+                        <View style={[styles.circleAvatar, { backgroundColor: `${TC.primary}20`, justifyContent: 'center', alignItems: 'center' }]}>
+                          <Text style={{ fontSize: 22 }}>{uAvatar}</Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.circleAvatar, { backgroundColor: `${TC.primary}20`, justifyContent: 'center', alignItems: 'center' }]}>
+                          <Text style={{ fontSize: 20, fontWeight: '800', color: TC.primary }}>
+                            {u.displayName?.charAt(0)?.toUpperCase() || '?'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.circleName} numberOfLines={1}>
+                      {u.displayName?.split(' ')[0] || 'Parent'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('SearchUsers', {})}
+              style={styles.circleCard}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.circleAvatar, { backgroundColor: `${TC.primary}10`, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: `${TC.primary}30`, borderStyle: 'dashed' }]}>
+                <Ionicons name="add" size={24} color={TC.primary} />
+              </View>
+              <Text style={[styles.circleName, { color: TC.primary, fontWeight: '700' }]}>Add</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
+
+      <Animated.View entering={FadeInUp.delay(340).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.sparklineHeader}>
+            <View>
+              <Text style={styles.sparklineTitle}>Contribution Streak</Text>
+              <Text style={styles.sparklineSubtitle}>Last 12 weeks</Text>
+            </View>
+            <View style={styles.sparklineTotal}>
+              <Text style={styles.sparklineTotalValue}>{activityScore.consistency}%</Text>
+              <Text style={styles.sparklineTotalLabel}>consistency</Text>
+            </View>
+          </View>
+          <View style={styles.contributionGrid}>
+            {(() => {
+              const now = new Date();
+              const cells: { active: boolean; weekStart: Date }[] = [];
+              for (let i = 11; i >= 0; i--) {
+                const weekStart = new Date(now);
+                weekStart.setDate(weekStart.getDate() - i * 7);
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekEnd.getDate() + 7);
+                const hasActivity = userPostList.some(p => {
+                  const d = new Date(p.timestamp);
+                  return d >= weekStart && d < weekEnd;
+                });
+                cells.push({ active: hasActivity, weekStart });
+              }
+              return cells.map((cell, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.contributionCell,
+                    cell.active && { backgroundColor: TC.primary, borderColor: TC.primary },
+                  ]}
+                />
+              ));
+            })()}
+          </View>
+          <Text style={styles.contributionFooter}>
+            {(currentUser?.stats?.streakDays || 0) > 0
+              ? `🔥 ${currentUser?.stats?.streakDays} day streak — keep it going!`
+              : 'Start posting daily to build a streak'}
+          </Text>
+        </GlassCard>
+      </Animated.View>
+
       <Animated.View entering={FadeInUp.delay(250).springify()}>
         <GlassCard isDark={isDark} colors={fullThemeColors}>
           <View style={styles.breakdownHeader}>
@@ -1671,7 +2156,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </GlassCard>
       </Animated.View>
 
-      {/* Engagement Sparkline */}
       <Animated.View entering={FadeInUp.delay(300).springify()}>
         <GlassCard isDark={isDark} colors={fullThemeColors}>
           <View style={styles.sparklineHeader}>
@@ -1703,7 +2187,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </GlassCard>
       </Animated.View>
 
-      {/* Smart Suggestions */}
       {smartSuggestions.length > 0 && (
         <Animated.View entering={FadeInUp.delay(350).springify()}>
           <SectionHeader title="Smart Suggestions" subtitle="Personalized for you" isDark={isDark} colors={fullThemeColors} />
@@ -1725,7 +2208,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </Animated.View>
       )}
 
-      {/* Topic Affinity */}
       {topicAffinities.length > 0 && (
         <Animated.View entering={FadeInUp.delay(400).springify()}>
           <SectionHeader title="Topic Affinity" subtitle="Where you contribute most" isDark={isDark} colors={fullThemeColors} />
@@ -1753,7 +2235,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </Animated.View>
       )}
 
-      {/* Peer Comparison */}
       <Animated.View entering={FadeInUp.delay(450).springify()}>
         <SectionHeader title="Peer Comparison" subtitle={`Among ${allUsers.length} community members`} isDark={isDark} colors={fullThemeColors} />
         <View style={styles.comparisonList}>
@@ -1779,7 +2260,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
       </Animated.View>
 
-      {/* Content Streaks */}
       <Animated.View entering={FadeInUp.delay(500).springify()}>
         <SectionHeader title="Streaks" subtitle="Consistency tracking" isDark={isDark} colors={fullThemeColors} />
         <View style={styles.streaksRow}>
@@ -1796,7 +2276,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
       </Animated.View>
 
-      {/* Edit Mode: About Me Section */}
       {isEditing ? (
         <GlassCard delay={600} isDark={isDark} colors={fullThemeColors}>
           <View style={styles.sectionHeaderWithEdit}>
@@ -1829,14 +2308,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
                 const cleaned = text.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_.]/g, '');
                 setFormData(prev => ({ ...prev, handle: cleaned }));
               }} placeholder="username" placeholderTextColor="#666" autoCapitalize="none" editable={isEditing} selectionColor={themeColors.primary} />
-              {!isEditing && (
-                <TouchableOpacity onPress={handleCopyHandle} style={styles.copyBtn}>
-                  <Ionicons name="copy-outline" size={16} color="#6366f1" />
-                </TouchableOpacity>
-              )}
             </View>
             {isEditing && usernameCheckStatus && (
-              <View style={[styles.usernameStatus, { 
+              <View style={[styles.usernameStatus, {
                 backgroundColor: usernameCheckStatus.available ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
                 borderColor: usernameCheckStatus.available ? '#10b981' : '#ef4444',
               }]}>
@@ -1863,7 +2337,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
           <View style={styles.bioDisplay}>
-            <Text style={styles.bioText}>{formData.bio || 'No bio yet. Tap edit to add one!'}</Text>
+            <Text style={styles.bioText}>
+              {formData.bio || currentUser?.bio || 'No bio yet. Tap edit to add one!'}
+            </Text>
           </View>
           {formData.location && (
             <>
@@ -1879,12 +2355,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </GlassCard>
       )}
 
-      {/* Manage Topics */}
       <TouchableOpacity
         style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
-        onPress={() => {
-          navigation.navigate('CommunityOnboarding', { editing: true });
-        }}
+        onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })}
       >
         <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
         <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
@@ -1896,9 +2369,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       <GlassCard delay={700} isDark={isDark} colors={fullThemeColors}>
         <View style={styles.sectionHeaderWithEdit}>
           <Text style={styles.sectionLabel}>Interested Topics</Text>
-          <TouchableOpacity style={styles.editIconBtn} onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })}>
-            <Ionicons name="add" size={18} color="#6366f1" />
-          </TouchableOpacity>
         </View>
         <View style={styles.topicsWrap}>
           {selectedTopics.length > 0 ? selectedTopics.map((topicId) => {
@@ -1913,12 +2383,11 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               </View>
             );
           }) : (
-            <Text style={styles.emptyText}>No topics selected yet. Tap + to add some!</Text>
+            <Text style={styles.emptyText}>No topics selected yet. Tap "Manage Your Topics" above.</Text>
           )}
         </View>
       </GlassCard>
 
-      {/* Quick Actions Dock */}
       {!isEditing && (
         <View style={styles.dockContainer}>
           <View style={styles.dock}>
@@ -1934,19 +2403,27 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               </View>
               <Text style={styles.dockLabel}>Share</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.dockItem}>
-              <View style={[styles.dockGradient, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
-                <Ionicons name="create-outline" size={20} color="#f59e0b" />
-              </View>
-              <Text style={styles.dockLabel}>Edit</Text>
-            </TouchableOpacity>
           </View>
         </View>
       )}
     </Animated.View>
-  );
+  ), [
+    userPostList, followerCount, currentUser, allUsers,
+    influenceMetrics, weeklyImpact, communityStanding,
+    contentBreakdown, engagementData, smartSuggestions,
+    topicAffinities, peerComparisons, contentStreaks,
+    selectedTopics, isEditing, isDark, fullThemeColors,
+    formData.bio, formData.location, formData.handle,
+    locationDetected, usernameCheckStatus, isCheckingUsername,
+    themeColors, navigation, handleShareProfile,
+    handleNavigateToMessages, isProfileDeactivated, handleGoVerify,
+    triggerHaptic, currentUser?.bio,
+  ]);
 
-  // ─── POSTS TAB ──────────────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════════════════
+     POSTS TAB
+     ═══════════════════════════════════════════════════════════════════════════ */
+
   const renderPostsTab = () => {
     const posts = userPostList.slice(0, 10);
     return (
@@ -1970,28 +2447,28 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             </View>
             <Text style={styles.emptyPostsTitle}>No posts yet</Text>
             <Text style={styles.emptyPostsText}>Share your first story with the community!</Text>
-            <TouchableOpacity 
-              style={[styles.createPostBtn, { backgroundColor: themeColors.primary }]} 
-              onPress={() => navigation.navigate('CreatePost')}
+            <TouchableOpacity
+              style={[styles.createPostBtn, { backgroundColor: themeColors.primary }]}
+              onPress={() => navigation.navigate('CreatePost', {})}
             >
               <Text style={styles.createPostBtnText}>Create Post</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.postsList}>
-            {posts.map((post, index) => {
+            {posts.map((post) => {
               const topic = INITIAL_TOPICS.find(t => t.id === post.topicId);
               const topicColor = topic?.color || TOPIC_COLORS[post.topicId] || TC.primary;
               return (
-                <TouchableOpacity 
-                  key={post.id} 
+                <TouchableOpacity
+                  key={post.id}
                   style={styles.postItem}
                   onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
                   activeOpacity={0.7}
                 >
                   <LinearGradient
-                    colors={isDark ? ['rgba(45,45,60,0.8)', 'rgba(35,35,50,0.6)'] : ['rgba(255,255,255,0.95)', 'rgba(248,250,255,0.9)']}
-                    style={styles.postItemGradient}
+                    colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']}
+                    style={StyleSheet.absoluteFill}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                   />
@@ -2039,12 +2516,15 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     );
   };
 
-  // ─── ACHIEVEMENTS TAB ──────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ACHIEVEMENTS TAB
+     ═══════════════════════════════════════════════════════════════════════════ */
+
   const renderAchievementsTab = () => {
     const achievements = currentUser?.achievements || [];
     const progressToNext = Math.min(100, Math.round((userPostList.length / 50) * 100));
     const helpfulProgress = Math.min(100, Math.round(((currentUser?.stats?.helpful || 0) / 50) * 100));
-    
+
     return (
       <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
         <View style={styles.achievementsHeader}>
@@ -2059,7 +2539,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Achievement Cards */}
         <View style={styles.achievementsCard}>
           {achievements.length > 0 ? (
             achievements.map((achievement) => {
@@ -2086,7 +2565,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           )}
         </View>
 
-        {/* Progress Section */}
         <View style={styles.progressCard}>
           <Text style={styles.progressCardTitle}>Progress</Text>
           <View style={styles.progressRow}>
@@ -2114,7 +2592,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     );
   };
 
-  // ─── SETTINGS TAB ──────────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SETTINGS TAB
+     ═══════════════════════════════════════════════════════════════════════════ */
+
   const renderSettingsTab = () => (
     <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
       <View style={styles.settingsCard}>
@@ -2129,10 +2610,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             <View style={styles.settingsRow}>
               <View style={styles.settingsRowLeft}>
                 <View style={[styles.settingsRowIcon, { backgroundColor: formData[pref.key as keyof typeof formData] ? `${themeColors.primary}15` : 'rgba(0,0,0,0.05)' }]}>
-                  <Ionicons 
-                    name={formData[pref.key as keyof typeof formData] ? pref.icon as any : `${pref.icon.replace('-outline', '')}-outline` as any} 
-                    size={20} 
-                    color={formData[pref.key as keyof typeof formData] ? themeColors.primary : '#94a3b8'} 
+                  <Ionicons
+                    name={(formData[pref.key as keyof typeof formData] ? pref.icon : `${pref.icon.replace('-outline', '')}-outline`) as any}
+                    size={20}
+                    color={formData[pref.key as keyof typeof formData] ? themeColors.primary : '#94a3b8'}
                   />
                 </View>
                 <View style={styles.settingsRowText}>
@@ -2140,8 +2621,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
                   <Text style={styles.settingsRowDesc}>{pref.desc}</Text>
                 </View>
               </View>
-              <Switch 
-                value={formData[pref.key as keyof typeof formData] as boolean} 
+              <Switch
+                value={formData[pref.key as keyof typeof formData] as boolean}
                 onValueChange={(val) => setFormData(prev => ({ ...prev, [pref.key]: val }))}
                 trackColor={{ false: '#334155', true: themeColors.primary || '#6366f1' }}
                 thumbColor="#fff"
@@ -2153,7 +2634,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         ))}
       </View>
 
-      {/* Account Actions */}
       <View style={styles.dangerCard}>
         <LinearGradient
           colors={isDark ? ['rgba(239,68,68,0.08)', 'rgba(220,38,38,0.04)'] : ['rgba(239,68,68,0.05)', 'rgba(220,38,38,0.02)']}
@@ -2168,23 +2648,17 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
         <Text style={styles.dangerTitle}>Account Actions</Text>
         <Text style={styles.dangerDescription}>Manage your community account data and presence.</Text>
-        
-        <TouchableOpacity 
-          style={styles.dangerActionBtn} 
-          onPress={handleClearActivity}
-        >
+
+        <TouchableOpacity style={styles.dangerActionBtn} onPress={handleClearActivity}>
           <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
             <Ionicons name="trash-outline" size={18} color="#ef4444" />
           </View>
           <Text style={styles.dangerActionText}>Clear Activity History</Text>
           <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
         </TouchableOpacity>
-        
+
         {isProfileDeactivated ? (
-          <TouchableOpacity 
-            style={[styles.dangerActionBtn, styles.reactivateActionBtn]} 
-            onPress={handleReactivateProfile}
-          >
+          <TouchableOpacity style={[styles.dangerActionBtn, styles.reactivateActionBtn]} onPress={handleReactivateProfile}>
             <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(16,185,129,0.1)' }]}>
               <Ionicons name="refresh-outline" size={18} color="#10b981" />
             </View>
@@ -2192,10 +2666,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity 
-            style={styles.dangerActionBtn} 
-            onPress={handleDeactivateProfile}
-          >
+          <TouchableOpacity style={styles.dangerActionBtn} onPress={handleDeactivateProfile}>
             <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(245,158,11,0.1)' }]}>
               <Ionicons name="pause-circle-outline" size={18} color="#f59e0b" />
             </View>
@@ -2206,10 +2677,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
         <View style={styles.dangerDivider} />
 
-        <TouchableOpacity 
-          style={[styles.dangerActionBtn, styles.deleteAccountBtn]} 
-          onPress={handleDeleteCommunityAccount}
-        >
+        <TouchableOpacity style={[styles.dangerActionBtn, styles.deleteAccountBtn]} onPress={handleDeleteCommunityAccount}>
           <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
             <Ionicons name="person-remove-outline" size={18} color="#ef4444" />
           </View>
@@ -2222,16 +2690,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     </Animated.View>
   );
 
-  // ─── MAIN RENDER ────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors?.background || (isDark ? '#0f0f1a' : '#f8f9fc') }]} />
-        <UniversalSpinner visible={true} text="Loading profile..." size="medium" overlay={false} section="main" />
-      </View>
-    );
-  }
+  /* ═══════════════════════════════════════════════════════════════════════════
+     MAIN RENDER — paints immediately, skeleton only for the hero
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   if (!currentUser) {
     return (
@@ -2252,7 +2713,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors.background }]} />
       {renderStickyHeader()}
-      
+
       <Animated.ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
@@ -2262,27 +2723,72 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.spinnerColor} />
         }
       >
-        {/* Top Header - Back button and Save button when editing */}
         <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          {isEditing && (
-            <TouchableOpacity 
-              onPress={handleSave} 
-              style={[styles.saveBtn, (!hasChanges || isSaving) && styles.saveBtnDisabled]} 
-              disabled={isSaving || !hasChanges}
-              activeOpacity={0.8}
+          {!isEditing && currentUser && (
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic('light');
+                // `push` (not `navigate`) — guarantees a same-stack push and
+                // bypasses the root stack's resolution ambiguity.
+                navigation.push('CommunityMemberProfile', {
+                  userId: currentUser.id,
+                });
+              }}
+              style={styles.editToggleBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="View as others see me"
             >
-              {isSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>Save</Text>}
+              <Ionicons name="eye-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
+          {!isEditing ? (
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic('light');
+                setIsEditing(true);
+              }}
+              style={styles.editToggleBtn}
+              disabled={isSaving || avatarUploading || coverUploading}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="create-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic('light');
+                if (hasChanges) handleSave();
+                else {
+                  setIsEditing(false);
+                  setFormData({ ...originalData });
+                }
+              }}
+              style={[styles.editToggleBtn, styles.editToggleBtnActive]}
+              disabled={isSaving || avatarUploading || coverUploading}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {isSaving || avatarUploading || coverUploading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="checkmark" size={22} color="#fff" />
+              )}
             </TouchableOpacity>
           )}
         </Animated.View>
 
-        {renderProfileHero()}
+        {/* Hero — skeleton on first frame, real content once formData resolves */}
+        {isHydrating && !formData.displayName ? (
+          <HeroSkeleton isDark={isDark} colors={fullThemeColors} insetsTop={insets.top} />
+        ) : (
+          renderProfileHero()
+        )}
+
         <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={fullThemeColors} />
-        <View style={{ paddingHorizontal: 16 }}>
+        <View>
           {activeTab === 'overview' && renderOverviewTab()}
           {activeTab === 'posts' && renderPostsTab()}
           {activeTab === 'achievements' && renderAchievementsTab()}
@@ -2292,7 +2798,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
       <UniversalSpinner visible={isSaving || avatarUploading || coverUploading} text={avatarUploading ? "Uploading avatar..." : coverUploading ? "Uploading cover..." : "Saving changes..."} size="medium" overlay={true} blur={true} section="main" />
 
-      {/* Image Picker Modals */}
       <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo" isDark={isDark} colors={fullThemeColors}>
         <View style={styles.imagePickerOptions}>
           <TouchableOpacity style={styles.imagePickerOption} onPress={() => handleImagePick('avatar')}>
@@ -2349,7 +2854,6 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         </View>
       </ActionModal>
 
-      {/* Emoji Picker Modal */}
       <Modal
         visible={showEmojiPicker}
         transparent
@@ -2386,55 +2890,67 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   );
 }
 
-// ─── STYLES ────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background || (isDarkMode ? '#0f0f1a' : '#f8f9fc') },
   centered: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
 
-  // Sticky Header
-  stickyHeader: { 
-    position: 'absolute', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    zIndex: 100, 
-    alignItems: 'center', 
-    paddingHorizontal: 20, 
-    paddingBottom: 10 
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 10
   },
   stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   stickySubtitle: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 
-  // Top Header
   topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16, marginTop: 8 },
-  backBtn: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(255,255,255,0.08)' 
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)'
   },
-  saveBtn: { 
-    paddingHorizontal: 16, 
-    paddingVertical: 8, 
-    borderRadius: 12, 
-    backgroundColor: '#6366f1', 
-    minWidth: 60, 
-    alignItems: 'center' 
-  },
-  saveBtnDisabled: { backgroundColor: 'rgba(100,116,139,0.2)' },
-  saveBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
 
-  // Profile Hero
+  editToggleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(15, 15, 30, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 6,
+    zIndex: 30,
+  },
+  editToggleBtnActive: {
+    backgroundColor: '#6366f1',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+
   profileHero: { marginHorizontal: 16, marginBottom: 20 },
-  coverPhotoContainer: { 
-    width: '100%', 
-    height: 180, 
-    borderRadius: 16, 
-    overflow: 'hidden', 
-    position: 'relative' 
+  coverPhotoContainer: {
+    width: '100%',
+    height: 180,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: 'rgba(15, 15, 30, 0.9)',
   },
   coverPhoto: { width: '100%', height: '100%' },
   coverPhotoOverlay: {
@@ -2444,17 +2960,61 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     right: 0,
     height: 80,
   },
-  coverPhotoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
-  coverPhotoText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600' },
-  coverPhotoEditBadge: { 
-    position: 'absolute', 
-    bottom: 12, 
-    right: 12, 
-    width: 44, 
-    height: 44, 
-    borderRadius: 22, 
+  coverPhotoPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coverPhotoText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  coverEmptyRing: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  coverEmptyIconChip: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    marginBottom: 2,
+  },
+  coverEmptyHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.75)',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  coverPhotoEditBadge: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
-    justifyContent: 'center', 
+    justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -2462,60 +3022,54 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  coverPhotoEditBadgeGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
 
   avatarSection: { alignItems: 'center', marginTop: -50 },
-  avatarWrapper: { 
+  avatarWrapper: {
     position: 'relative',
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.25, 
-    shadowRadius: 8, 
-    elevation: 8 
+    zIndex: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8
   },
-  avatarImage: { 
-    width: 100, 
-    height: 100, 
-    borderRadius: 50, 
-    borderWidth: 4, 
-    borderColor: '#fff' 
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 4,
+    borderColor: '#fff'
   },
-  avatarEmojiContainer: { 
-    justifyContent: 'center', 
+  avatarEmojiContainer: {
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#6366f125',
   },
-  avatarEmojiText: { 
-    fontSize: 44, 
+  avatarEmojiText: {
+    fontSize: 44,
     lineHeight: 100,
     textAlign: 'center',
     textAlignVertical: 'center',
   },
-  avatarPlaceholder: { 
-    backgroundColor: '#6366f1', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  avatarPlaceholder: {
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center'
   },
-  avatarPlaceholderText: { 
-    fontSize: 36, 
-    fontWeight: '800', 
-    color: '#fff' 
+  avatarPlaceholderText: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fff'
   },
-  avatarEditBadge: { 
-    position: 'absolute', 
-    bottom: 4, 
-    right: 4, 
-    width: 28, 
-    height: 28, 
-    borderRadius: 14, 
-    backgroundColor: '#6366f1', 
-    justifyContent: 'center', 
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#fff'
@@ -2524,13 +3078,39 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   profileInfo: { alignItems: 'center', marginTop: 8 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   profileName: { fontSize: 24, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.5 },
-  verifiedBadge: { 
-    width: 20, 
-    height: 20, 
-    borderRadius: 10, 
-    backgroundColor: '#6366f1', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  verifiedBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  verifyPillHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(99,102,241,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.35)',
+  },
+  verifyPillHollowTick: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#6366f1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  verifyPillHeroText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6366f1',
   },
   profileMeta: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b' },
   profileBio: { fontSize: 14, color: colors.textSecondary || '#64748b', textAlign: 'center', marginTop: 4, paddingHorizontal: 20 },
@@ -2538,103 +3118,84 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
   profileTagText: { fontSize: 12, fontWeight: '700' },
   editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
-  editToggleBtn: { 
-    position: 'absolute', 
-    right: 12, 
-    top: 12, 
-    width: 44, 
-    height: 44, 
-    borderRadius: 22, 
-    backgroundColor: 'rgba(99,102,241,0.9)',
-    alignItems: 'center', 
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  editToggleBtnActive: { 
-    backgroundColor: '#6366f1',
-  },
-  locationDetectedText: { 
-    fontSize: 12, 
-    color: '#10b981', 
-    marginTop: 4, 
+  locationDetectedText: {
+    fontSize: 12,
+    color: '#10b981',
+    marginTop: 4,
     marginHorizontal: 20,
-    fontWeight: '500' 
+    fontWeight: '500'
   },
 
-  // Stats Row
   statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, gap: 20 },
-  statsItem: { alignItems: 'center' },
+  statsItem: {
+  alignItems: 'center',
+  paddingVertical: 4,
+  paddingHorizontal: 6,
+  borderRadius: 8,
+},
   statsValue: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
   statsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
   statsDivider: { width: 1, height: 24, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
-  // Tab Bar
-  tabBar: { 
-    flexDirection: 'row', 
-    marginHorizontal: 16, 
-    marginBottom: 16, 
-    padding: 4, 
-    borderRadius: 16, 
-    gap: 2, 
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+  tabBar: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 4,
+    borderRadius: 16,
+    gap: 2,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
   },
-  tabItem: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 6, 
-    paddingVertical: 10, 
-    borderRadius: 12 
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12
   },
   tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  // Glass Card
-  glassCard: { 
-    borderRadius: DESIGN.radius.lg, 
-    overflow: 'hidden', 
-    borderWidth: 1, 
-    borderColor: colors.border || 'rgba(255,255,255,0.06)', 
-    marginHorizontal: 16, 
-    marginBottom: DESIGN.spacing.lg 
+  glassCard: {
+    borderRadius: DESIGN.radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border || 'rgba(255,255,255,0.06)',
+    marginHorizontal: 16,
+    marginBottom: DESIGN.spacing.lg
   },
-  glassBorder: { 
-    position: 'absolute', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    height: 1, 
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
   },
   glassContent: { flex: 1 },
 
-  // Section Header
-  sectionHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'flex-start', 
-    marginHorizontal: 16, 
-    marginBottom: 12, 
-    marginTop: 8 
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    marginTop: 8
   },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.3 },
   sectionSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
-  // KPI Pill
   kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  kpiPill: { 
-    flex: 1, 
-    borderRadius: 20, 
-    overflow: 'hidden', 
-    padding: 14, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  kpiPill: {
+    flex: 1,
+    borderRadius: 20,
+    overflow: 'hidden',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
     backgroundColor: isDarkMode ? 'rgba(45,45,60,0.4)' : 'rgba(255,255,255,0.7)',
     borderWidth: 1,
@@ -2646,7 +3207,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   kpiPillLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  // Influence
   influenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   influenceIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   influenceTitleWrap: { flex: 1 },
@@ -2665,7 +3225,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   influenceFooter: { paddingHorizontal: 16, paddingBottom: 12 },
   influenceFooterText: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center' },
 
-  // Impact
   impactHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   impactTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
   impactTrendBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
@@ -2676,7 +3235,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   impactItemValue: { fontSize: 20, fontWeight: '800' },
   impactItemLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
-  // Standing
   standingHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
   standingIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   standingTitleWrap: { flex: 1 },
@@ -2692,7 +3250,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   standingProgressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   standingProgressBarFill: { height: '100%', borderRadius: 3 },
 
-  // Breakdown
   breakdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
   breakdownTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
   breakdownTotal: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
@@ -2702,7 +3259,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   breakdownValue: { fontSize: 18, fontWeight: '800' },
   breakdownLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
-  // Sparkline
   sparklineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16, paddingBottom: 12 },
   sparklineTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
   sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
@@ -2713,7 +3269,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   sparklineBar: { width: 8, borderRadius: 4 },
   sparklineDay: { fontSize: 10, fontWeight: '600', color: colors.textMuted || '#94a3b8' },
 
-  // Suggestions
   suggestionsScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
   suggestionCard: { width: 160, padding: 14, borderRadius: 20, overflow: 'hidden' },
   suggestionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
@@ -2723,7 +3278,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   suggestionActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   suggestionActionText: { fontSize: 11, fontWeight: '700' },
 
-  // Affinity
   affinityList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
   affinityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   affinityIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -2735,7 +3289,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   affinityBarBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
   affinityBarFill: { height: '100%', borderRadius: 2 },
 
-  // Comparison
   comparisonList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
   comparisonRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   comparisonIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -2748,7 +3301,6 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   comparisonBarFill: { height: '100%', borderRadius: 2 },
   comparisonNumbers: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
-  // Streaks
   streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
   streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
   streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
@@ -2756,66 +3308,64 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   streakLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
   streakBest: { fontSize: 10, fontWeight: '500', color: colors.textMuted || '#94a3b8', marginTop: 2 },
 
-  // Section Header with Edit
-  sectionHeaderWithEdit: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 20, 
-    paddingTop: 20, 
-    marginBottom: 16 
+  sectionHeaderWithEdit: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    marginBottom: 16
   },
   sectionLabel: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.3 },
-  editIconBtn: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 10, 
-    backgroundColor: 'rgba(99,102,241,0.1)', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  editIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   editingBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   editingBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
-  // Inputs
   inputGroup: { marginBottom: 16, paddingHorizontal: 20 },
   inputLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary || '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  inputContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', 
-    borderRadius: 14, 
-    paddingHorizontal: 16, 
-    height: 52, 
-    borderWidth: 1, 
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 52,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
   },
   inputDisabled: { opacity: 0.5 },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 16, color: colors.text || '#1e293b', fontWeight: '600' },
   flexInput: { flex: 1 },
   copyBtn: { padding: 6, borderRadius: 8, backgroundColor: 'rgba(99,102,241,0.1)' },
-  textArea: { 
-    height: 100, 
-    textAlignVertical: 'top', 
-    paddingTop: 14, 
-    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', 
-    borderRadius: 14, 
-    paddingHorizontal: 16, 
-    fontSize: 16, 
-    color: colors.text || '#1e293b', 
-    fontWeight: '500', 
-    borderWidth: 1, 
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+    paddingTop: 14,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: colors.text || '#1e293b',
+    fontWeight: '500',
+    borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    marginHorizontal: 20 
+    marginHorizontal: 20
   },
-  charCount: { 
-    fontSize: 12, 
-    textAlign: 'right', 
-    marginTop: 4, 
-    marginHorizontal: 20, 
-    color: colors.textSecondary || '#64748b', 
-    fontWeight: '500' 
+  charCount: {
+    fontSize: 12,
+    textAlign: 'right',
+    marginTop: 4,
+    marginHorizontal: 20,
+    color: colors.textSecondary || '#64748b',
+    fontWeight: '500'
   },
   bioDisplay: { paddingHorizontal: 20, paddingBottom: 16 },
   bioText: { fontSize: 15, color: colors.textSecondary || '#64748b', lineHeight: 22, fontWeight: '500' },
@@ -2823,50 +3373,46 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   locationText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b' },
   infoDivider: { height: 1, marginHorizontal: 20, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
-  // Username Status
-  usernameStatus: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 8, 
-    marginTop: 8, 
-    paddingHorizontal: 12, 
-    paddingVertical: 8, 
+  usernameStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
     marginHorizontal: 20,
   },
   usernameStatusText: { fontSize: 13, fontWeight: '600' },
 
-  // Topics
   topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: DESIGN.spacing.md, paddingHorizontal: 20, paddingBottom: 20 },
   topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   topicChipText: { fontSize: 13, fontWeight: '700' },
   emptyText: { fontSize: 14, color: colors.textMuted || '#94a3b8', fontWeight: '500' },
 
-  // Manage Topics
-  manageTopicsBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 16, 
-    paddingVertical: 14, 
-    borderRadius: 16, 
-    marginHorizontal: 20, 
-    marginVertical: 8, 
+  manageTopicsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginVertical: 8,
     gap: 12,
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
   },
   manageTopicsText: { flex: 1, fontSize: 15, fontWeight: '600' },
 
-  // Quick Actions Dock
   dockContainer: { marginHorizontal: 16, marginBottom: 20 },
   dock: { flexDirection: 'row', gap: 12, justifyContent: 'center' },
   dockItem: { alignItems: 'center', gap: 6, flex: 1 },
-  dockGradient: { 
-    width: 56, 
-    height: 56, 
-    borderRadius: 16, 
-    justifyContent: 'center', 
+  dockGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(99,102,241,0.1)',
     borderWidth: 1,
@@ -2874,37 +3420,35 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   },
   dockLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
-  // Posts Tab
   tabPanel: { paddingBottom: 20 },
-  postsHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 4, 
-    marginBottom: 16 
+  postsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16
   },
   postsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   postsHeaderTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
   postsHeaderBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   postsHeaderBadgeText: { fontSize: 12, fontWeight: '700' },
 
-  postsList: { gap: 12 },
-  postItem: { 
-    borderRadius: 20, 
-    overflow: 'hidden', 
-    borderWidth: 1, 
-    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' 
+  postsList: { gap: 12, paddingHorizontal: 16 },
+  postItem: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
   },
-  postItemGradient: { ...StyleSheet.absoluteFill },
   postItemContent: { padding: 16 },
   postItemHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  postItemTopic: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 6, 
-    paddingHorizontal: 10, 
-    paddingVertical: 4, 
-    borderRadius: 8 
+  postItemTopic: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8
   },
   postItemTopicDot: { width: 6, height: 6, borderRadius: 3 },
   postItemTopicText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -2916,21 +3460,22 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   postItemStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   postItemStatText: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
 
-  emptyPostsCard: { 
-    padding: 40, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderRadius: 20, 
+  emptyPostsCard: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    marginHorizontal: 16,
     backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
   },
-  emptyPostsIcon: { 
-    width: 72, 
-    height: 72, 
-    borderRadius: 24, 
-    backgroundColor: 'rgba(99,102,241,0.1)', 
-    alignItems: 'center', 
+  emptyPostsIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16
   },
@@ -2939,34 +3484,34 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   createPostBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
   createPostBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  // Achievements Tab
-  achievementsHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 4, 
-    marginBottom: 16 
+  achievementsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16
   },
   achievementsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   achievementsHeaderTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
   achievementsHeaderBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   achievementsHeaderBadgeText: { fontSize: 12, fontWeight: '700' },
 
-  achievementsCard: { 
-    borderRadius: 20, 
-    padding: 16, 
+  achievementsCard: {
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 16,
     backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
     marginBottom: 16
   },
-  achievementItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12, 
-    padding: 12, 
-    borderRadius: 14, 
-    marginBottom: 6 
+  achievementItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 6
   },
   achievementItemIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   achievementItemEmoji: { fontSize: 22 },
@@ -2978,10 +3523,10 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   emptyAchievementsTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#1e293b', marginTop: 12, marginBottom: 4 },
   emptyAchievementsText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center' },
 
-  // Progress Card
-  progressCard: { 
-    borderRadius: 20, 
-    padding: 20, 
+  progressCard: {
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 16,
     backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
@@ -2996,10 +3541,10 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   progressBar: { height: 6, borderRadius: 3, backgroundColor: 'rgba(100,116,139,0.15)', overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
 
-  // Settings Tab
-  settingsCard: { 
-    borderRadius: 20, 
-    padding: 16, 
+  settingsCard: {
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 16,
     backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
@@ -3014,11 +3559,11 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   settingsRowDesc: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 1 },
   settingsDivider: { height: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginVertical: 4 },
 
-  // Danger Card
-  dangerCard: { 
-    borderRadius: 20, 
-    padding: 20, 
+  dangerCard: {
+    borderRadius: 20,
+    padding: 20,
     alignItems: 'center',
+    marginHorizontal: 16,
     backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
     borderWidth: 1,
     borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
@@ -3029,16 +3574,16 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   dangerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   dangerTitle: { fontSize: 16, fontWeight: '800', color: '#ef4444', marginBottom: 4 },
   dangerDescription: { fontSize: 13, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
-  dangerDivider: { 
-    width: '100%', 
-    height: 1, 
+  dangerDivider: {
+    width: '100%',
+    height: 1,
     backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    marginVertical: 8 
+    marginVertical: 8
   },
-  dangerActionBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12, 
+  dangerActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
     width: '100%',
@@ -3046,22 +3591,16 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
     backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
     marginTop: 4
   },
-  deleteAccountBtn: {
-    marginTop: 0,
-  },
-  reactivateActionBtn: { 
-    backgroundColor: 'rgba(16,185,129,0.04)' 
-  },
+  deleteAccountBtn: { marginTop: 0 },
+  reactivateActionBtn: { backgroundColor: 'rgba(16,185,129,0.04)' },
   dangerActionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   dangerActionText: { fontSize: 14, fontWeight: '600', color: '#ef4444', flex: 1 },
 
-  // Image Picker
   imagePickerOptions: { padding: 8 },
   imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
   imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   imagePickerLabel: { fontSize: 16, fontWeight: '600', color: colors.text || '#1e293b', flex: 1 },
 
-  // Emoji Picker
   emojiPickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   emojiPickerSheet: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 20, paddingBottom: 40, overflow: 'hidden' },
   emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -3069,8 +3608,7 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
   emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   emojiButtonText: { fontSize: 28 },
-  
-  // Modal
+
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   modalContent: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 24, overflow: 'hidden' },
   modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 8 },
@@ -3078,7 +3616,174 @@ const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
-  
+
   retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
   retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  /* ── Verification CTA card ─────────────────────────────────────────── */
+  verifyCta: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 18,
+  },
+  verifyCtaOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,15,30,0.18)',
+  },
+  verifyTickCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  verifyCtaBody: { flex: 1, gap: 4 },
+  verifyCtaTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.2,
+  },
+  verifyCtaDesc: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.88)',
+    lineHeight: 17,
+  },
+  verifyCtaButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  verifyCtaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  verifyCtaButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#6366f1',
+  },
+  verifyCtaFootnote: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+  },
+
+  /* ── Identity / Threads / Circle / Streak grid ─────────────────────── */
+  identityHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
+  identityIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  identityTitleWrap: { flex: 1 },
+  identityTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
+  identitySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
+  identityBio: {
+    fontSize: 14, lineHeight: 20, fontWeight: '500',
+    color: colors.textSecondary || '#64748b',
+    paddingHorizontal: 16, paddingBottom: 12,
+  },
+  identityLocationRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, paddingBottom: 12,
+  },
+  identityLocationText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+  identityDivider: {
+    height: 1, marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+  },
+  identityBadgesHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, marginBottom: 8,
+  },
+  identityBadgesLabel: {
+    fontSize: 11, fontWeight: '700',
+    color: colors.textSecondary || '#64748b',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  identityBadgesSeeAll: { fontSize: 12, fontWeight: '700' },
+  identityBadgesRow: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 16, paddingBottom: 16, gap: 8,
+  },
+  identityBadgeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 10, borderWidth: 1, maxWidth: '48%',
+  },
+  identityBadgeEmoji: { fontSize: 14 },
+  identityBadgeName: { fontSize: 12, fontWeight: '700' },
+
+  previewPostCard: {
+    borderRadius: 16, overflow: 'hidden', borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    marginHorizontal: 16,
+  },
+  previewPostHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8,
+  },
+  previewPostTopic: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: '70%',
+  },
+  previewPostTopicDot: { width: 5, height: 5, borderRadius: 3 },
+  previewPostTopicText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  previewPostTime: { fontSize: 10, fontWeight: '500', color: colors.textMuted || '#94a3b8' },
+  previewPostContent: {
+    fontSize: 14, fontWeight: '600', color: colors.text || '#1e293b',
+    lineHeight: 20, paddingHorizontal: 14, paddingBottom: 10,
+  },
+  previewPostStats: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingHorizontal: 14, paddingBottom: 14,
+  },
+  previewPostStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  previewPostStatText: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
+
+  circleStrip: {
+    flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 4, gap: 12,
+  },
+  circleCard: { alignItems: 'center', width: 68 },
+  circleAvatarWrap: {
+    width: 52, height: 52, borderRadius: 26, overflow: 'hidden',
+    borderWidth: 2, borderColor: '#fff',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15, shadowRadius: 4, elevation: 2,
+  },
+  circleAvatar: { width: 52, height: 52, borderRadius: 26 },
+  circleName: {
+    fontSize: 11, fontWeight: '600',
+    color: colors.textSecondary || '#64748b',
+    marginTop: 6, textAlign: 'center',
+  },
+
+  contributionGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+    paddingHorizontal: 16, paddingBottom: 12,
+  },
+  contributionCell: {
+    width: 24, height: 24, borderRadius: 6,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  contributionFooter: {
+    fontSize: 12, fontWeight: '500',
+    color: colors.textSecondary || '#64748b',
+    paddingHorizontal: 16, paddingBottom: 14, textAlign: 'center',
+  },
 });

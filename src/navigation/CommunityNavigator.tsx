@@ -111,8 +111,9 @@ const useAutomaticCountryDetection = () => {
         if (cached) {
           const { country, timestamp } = JSON.parse(cached);
           if (Date.now() - timestamp < COUNTRY_CACHE_TTL) {
+            if (mounted) done.current = true; // guard immediately
             await updateUserLocation(country);
-            if (mounted) { done.current = true; setIsDetecting(false); }
+            if (mounted) setIsDetecting(false);
             return;
           }
         }
@@ -366,7 +367,7 @@ function useCommunityAuthCheck() {
 }
 
 
-const CommunityNavigator = React.memo(() => {
+const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscreenStateChange?: (fullscreen: boolean) => void } = {}) => {
   const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
   
   
@@ -393,6 +394,13 @@ const CommunityNavigator = React.memo(() => {
   const initDone = useRef(false);
 
   const isReady = !isLoading && isInitialized && splashReady;
+
+  // Notify parent tabs to hide/show the liquid-glass tab bar.
+  // Onboarding + splash must be truly full-screen (no tab bar overlay).
+  useEffect(() => {
+    const shouldBeFullscreen = phase === 'onboarding' || phase === 'splash' || phase === 'loading';
+    onFullscreenStateChange?.(shouldBeFullscreen);
+  }, [phase, onFullscreenStateChange]);
 
   useEffect(() => {
     if (isAuthValid === false) {
@@ -554,7 +562,39 @@ const CommunityNavigator = React.memo(() => {
 
   const handleOnboardingComplete = useCallback(async () => {
     try {
-      await AsyncStorage.setItem(COMMUNITY_ONBOARDING_KEY, 'true');
+      // Read whatever the onboarding screen just wrote, and make sure the
+      // onboarding flag is a JSON object (NOT the string 'true'), because
+      // checkOnboardingStatus parses it as JSON.
+      const [rawOnboarding, rawTopics] = await Promise.all([
+        AsyncStorage.getItem(COMMUNITY_ONBOARDING_KEY),
+        AsyncStorage.getItem(COMMUNITY_TOPICS_KEY),
+      ]);
+
+      const parsedTopics: string[] = rawTopics ? JSON.parse(rawTopics) : [];
+
+      let parsedOnboarding: any = null;
+      if (rawOnboarding) {
+        try {
+          parsedOnboarding = JSON.parse(rawOnboarding);
+        } catch {
+          parsedOnboarding = null;
+        }
+      }
+
+      const finalOnboarding = {
+        completed: true,
+        selectedTopics:
+          parsedOnboarding?.selectedTopics?.length > 0
+            ? parsedOnboarding.selectedTopics
+            : parsedTopics,
+        timestamp: new Date().toISOString(),
+      };
+
+      await AsyncStorage.setItem(
+        COMMUNITY_ONBOARDING_KEY,
+        JSON.stringify(finalOnboarding)
+      );
+
       await checkOnboardingStatus();
       setPhase('main');
       await markSplashShown();

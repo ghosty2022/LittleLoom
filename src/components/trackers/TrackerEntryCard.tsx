@@ -1,15 +1,6 @@
-
-
-
-
-
-
-
-
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { format } from 'date-fns';
 
 import { useCustomization } from '../../hooks/useCustomization';
@@ -26,19 +17,14 @@ interface TrackerEntryCardProps {
   index?: number;
 }
 
-
-
 const formatDuration = (value: unknown): string | null => {
   if (value === undefined || value === null || value === '') return null;
 
-  
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    
     if (/^\d+[hm](\s*\d+[m])?$/i.test(trimmed) || /^\d+h\s*\d+m$/i.test(trimmed)) {
       return trimmed;
     }
-    
     const parsed = Number(trimmed);
     if (Number.isFinite(parsed) && parsed > 0) {
       return formatDuration(parsed);
@@ -49,7 +35,6 @@ const formatDuration = (value: unknown): string | null => {
   const s = Number(value);
   if (!Number.isFinite(s) || s <= 0) return null;
 
-  
   if (s > 86400) {
     if (__DEV__) console.warn('[TrackerEntryCard] Absurd duration:', s);
     return null;
@@ -66,7 +51,6 @@ const formatDuration = (value: unknown): string | null => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-
 const getFieldDisplayValue = (
   field: any,
   entryData: Record<string, unknown>
@@ -74,18 +58,15 @@ const getFieldDisplayValue = (
   const value = entryData[field.id];
   if (value === undefined || value === null || value === '') return null;
 
-  
   if (field.type === 'toggle') {
     return value ? 'Yes' : 'No';
   }
 
-  
   if (field.type === 'select' && field.options) {
     const option = field.options.find((o: any) => o.id === value);
     return option ? option.label : String(value);
   }
 
-  
   if (field.type === 'multiselect') {
     if (!Array.isArray(value) || value.length === 0) return null;
     if (field.options) {
@@ -97,29 +78,22 @@ const getFieldDisplayValue = (
     return value.map(String).join(', ');
   }
 
-  
   if (field.type === 'duration') {
-    const formatted = formatDuration(value);
-    
-    
-    return formatted;
+    return formatDuration(value);
   }
 
-  
   if (field.type === 'rating') {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return null;
     return '⭐'.repeat(Math.min(5, Math.max(1, Math.round(n))));
   }
 
-  
   if (field.type === 'mood_emoji') {
     const moods = ['😭', '😟', '😐', '🙂', '😄'];
     const n = Number(value);
     return moods[n - 1] || '😐';
   }
 
-  
   if (field.type === 'photo') {
     if (Array.isArray(value)) {
       const count = (value as unknown[])
@@ -138,7 +112,6 @@ const getFieldDisplayValue = (
     return null;
   }
 
-  
   if (
     field.type === 'quantity' ||
     field.type === 'measurement' ||
@@ -148,22 +121,18 @@ const getFieldDisplayValue = (
     const unit = (entryData[unitKey] as string) || field.unit || '';
     const num = Number(value);
 
-    
     if (Number.isFinite(num)) {
-      
       const displayNum = Number.isInteger(num)
         ? num
         : Math.round(num * 100) / 100;
       return unit ? `${displayNum} ${unit}` : String(displayNum);
     }
-    
     if (typeof value === 'string' && value.trim().length > 0) {
       return unit ? `${value} ${unit}` : value;
     }
     return null;
   }
 
-  
   if (field.type === 'temperature') {
     const unitKey = `${field.id}_unit`;
     const unit = (entryData[unitKey] as string) || 'celsius';
@@ -173,7 +142,6 @@ const getFieldDisplayValue = (
     return `${value}${unitLabel}`;
   }
 
-  
   if (field.type === 'datetime' || field.type === 'date') {
     try {
       const d = new Date(String(value));
@@ -184,7 +152,6 @@ const getFieldDisplayValue = (
     }
   }
 
-  
   if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
     return null;
   }
@@ -234,20 +201,20 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     }
   }, [entryDate, isToday]);
 
-  
+  // ─── Live ticker: only runs while an ongoing entry is visible ──────
+  // The 30s cadence is plenty for "2h 15m"; we don't want a 1s interval
+  // burning CPU across every card in a list.
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+
   const isOngoing = useMemo(() => {
-    
     const ongoingTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
     if (!ongoingTrackers.includes(entry.trackerId)) return false;
 
     const data = entry.data || {};
-    
-    
     const status = data.status;
     if (status === 'ongoing' || status === 'started') return true;
     if (status === 'completed' || status === 'ended') return false;
 
-    
     const hasStart = data.startTime && String(data.startTime).length > 0;
     const hasEnd = data.endTime && String(data.endTime).length > 0;
     if (hasStart && !hasEnd) return true;
@@ -255,9 +222,14 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     return false;
   }, [entry.trackerId, entry.data]);
 
-  
+  useEffect(() => {
+    if (!isOngoing) return;
+    const id = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [isOngoing]);
+
+  // ─── Compact variant ────────────────────────────────────────────────
   if (compact) {
-    
     const durationFormatted = formatDuration(entry.data?.duration);
     const compactSubtitle = isOngoing
       ? 'Ongoing'
@@ -265,7 +237,6 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
       ? durationFormatted
       : timeString;
 
-    
     const photoCount = (() => {
       const raw = entry.photoUris;
       if (!Array.isArray(raw)) return 0;
@@ -362,24 +333,21 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     );
   }
 
-  
+  // ─── Full variant: data chips preview ───────────────────────────────
   const renderDataPreview = () => {
     if (!tracker || !entry.data || typeof entry.data !== 'object') return null;
 
-    
-    
     const SKIP_IN_PREVIEW = new Set([
       'status', 'startTime', 'endTime', 'duration',
       'sleepType', 'feedType', 'title',
-      'side',        
-      'measurementType', 
-      'unit',        
-      'value_unit',  
-      'bottleAmount_unit', 
-      'solidAmount_unit',  
+      'side',
+      'measurementType',
+      'unit',
+      'value_unit',
+      'bottleAmount_unit',
+      'solidAmount_unit',
     ]);
 
-    
     const PRIORITY_ORDER = [
       'bottleAmount', 'solidAmount', 'amount', 'value',
       'quality', 'mood', 'severity', 'temperature',
@@ -390,12 +358,10 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     const allFields = (tracker.fields || [])
       .filter((f: any) => !SKIP_IN_PREVIEW.has(f.id))
       .filter((f: any) => {
-        
         const v = entry.data[f.id];
         return v !== undefined && v !== null && v !== '';
       });
 
-    
     const previewFields = allFields
       .sort((a: any, b: any) => {
         const ai = PRIORITY_ORDER.indexOf(a.id);
@@ -535,7 +501,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
         )}
       </View>
 
-      {/* Ongoing badge for sleep/feed */}
+      {/* Ongoing badge for sleep/feed with live timer */}
       {isOngoing && (
         <View
           style={[
@@ -577,7 +543,7 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
                   const startLabel = format(start, 'h:mm a');
                   const elapsedMin = Math.max(
                     0,
-                    Math.floor((Date.now() - start.getTime()) / 60000)
+                    Math.floor((nowTick - start.getTime()) / 60000)
                   );
                   if (elapsedMin < 1) return `since ${startLabel}`;
                   const elapsedText =
@@ -642,7 +608,6 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
       )}
 
       {(() => {
-        
         const raw = entry.photoUris;
         const flatUris: string[] = Array.isArray(raw)
           ? (raw as unknown[])
@@ -650,7 +615,6 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
               .map((u) => {
                 if (typeof u === 'string') return u;
                 if (u && typeof u === 'object') {
-                  
                   const obj = u as any;
                   return typeof obj.publicUrl === 'string' ? obj.publicUrl :
                          typeof obj.uri === 'string' ? obj.uri : '';
@@ -660,7 +624,6 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
               .filter((u): u is string => typeof u === 'string' && u.length > 0)
           : [];
 
-        
         const uniqueUris = [...new Set(flatUris)];
 
         if (uniqueUris.length === 0) return null;
@@ -795,7 +758,7 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  
+  // ── Compact ───────────────────────────────────────────────────
   compactCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -816,7 +779,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
 
-  
+  // ── Data preview ──────────────────────────────────────────────
   dataPreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -833,7 +796,7 @@ const styles = StyleSheet.create({
   dataChipLabel: { fontSize: 11, fontWeight: '500' },
   dataChipValue: { fontSize: 12, fontWeight: '600', maxWidth: 140, marginLeft: 4 },
 
-  
+  // ── Notes & tags ──────────────────────────────────────────────
   notes: {
     marginTop: 10,
     lineHeight: 20,
@@ -852,7 +815,7 @@ const styles = StyleSheet.create({
   tagText: { fontWeight: '600' },
   moreTags: { fontWeight: '500', alignSelf: 'center' },
 
-  
+  // ── Photos & AI tags ──────────────────────────────────────────
   photoStrip: {
     flexDirection: 'row',
     gap: 8,

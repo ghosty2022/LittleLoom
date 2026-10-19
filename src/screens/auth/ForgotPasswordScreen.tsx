@@ -20,6 +20,7 @@ import Animated, { FadeInUp, FadeInDown, SlideInRight } from 'react-native-reani
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { useAuth } from '../../context/AuthContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -34,35 +35,43 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
   const [hasPin, setHasPin] = useState(false);
   const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
 
-  const { resetUnlockLock, settings: securitySettings } = useSecurity();
+  // PIN-based recovery state
+  const [pinMode, setPinMode] = useState(false);
+  const [pin, setPin] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [recoveryViaPin, setRecoveryViaPin] = useState(false);
+  const { resetUnlockLock, settings: securitySettings, rehydratePinStatus } = useSecurity();
+  const { forgotPassword, resetPasswordWithPin } = useAuth();
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const { toast, error: showError, success: showSuccess, info: showInfo } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     resetUnlockLock();
-
-    const unsubscribe = navigation.addListener('focus', () => {
-      resetUnlockLock();
-    });
+    const unsubscribe = navigation.addListener('focus', () => resetUnlockLock());
     return unsubscribe;
   }, [navigation, resetUnlockLock]);
 
   useEffect(() => {
     const checkSecurityStatus = async () => {
-      const pinSet = securitySettings.isPinEnabled;
-      setHasPin(pinSet);
+      // Re-read PIN hash directly from SecureStore so we never show stale
+      // "no PIN set up" when the user just created one.
+      const pinSet = await rehydratePinStatus().catch(() => securitySettings.isPinEnabled);
+      setHasPin(!!pinSet);
 
       try {
         const questionsStr = await AsyncStorage.getItem('littleloom_security_questions');
         setHasSecurityQuestions(!!questionsStr);
-      } catch (error) {
+      } catch {
         setHasSecurityQuestions(false);
       }
     };
     checkSecurityStatus();
-  }, [securitySettings.isPinEnabled]);
+  }, [securitySettings.isPinEnabled, rehydratePinStatus]);
 
+  // ── Email recovery (now actually hits Supabase) ────────────────────
   const handleReset = async () => {
     if (!email) {
       showError('Missing Email', 'Please enter your email address');
@@ -73,28 +82,66 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
     setIsLoading(true);
     triggerHaptic('medium');
 
-    
-    setTimeout(() => {
+    try {
+      const result = await forgotPassword(email);
+      if (result.success) {
+        setSent(true);
+        showSuccess('Email Sent!', result.message || 'Check your inbox for reset instructions');
+      } else {
+        showError('Reset Failed', result.message);
+      }
+    } catch {
+      showError('Reset Failed', 'Could not send reset email. Please try again.');
+    } finally {
       setIsLoading(false);
-      setSent(true);
-      showSuccess('Email Sent!', 'Check your inbox for reset instructions');
-    }, 1500);
+    }
   };
 
-  const handlePinReset = () => {
+  // ── PIN-based recovery ─────────────────────────────────────────────
+  const handlePinModeEnter = () => {
     if (!hasPin) {
-      showInfo('No PIN Set', 'You have not set up a PIN yet');
+      showInfo('No PIN Set', 'This device has no PIN yet. Use email recovery instead.');
       return;
     }
-    if (!hasSecurityQuestions) {
-      showInfo('No Recovery Set', 'Security questions not configured. Set them up first.');
+    setPinMode(true);
+  };
+
+  const handlePinReset = async () => {
+    if (!email) {
+      showError('Missing Email', 'Enter the account email you are recovering');
+      return;
+    }
+    if (pin.length < 4 || pin.length > 6) {
+      showError('Invalid PIN', 'PIN must be 4-6 digits');
+      return;
+    }
+    if (newPassword.length < 8) {
+      showError('Weak Password', 'New password must be at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showError('Password Mismatch', 'Passwords do not match');
       return;
     }
 
-    navigation.navigate('SecurityCenter', {
-      mode: 'forgot',
-      fromForgotPassword: true,
-    });
+    setIsLoading(true);
+    triggerHaptic('medium');
+    try {
+      const result = await resetPasswordWithPin(email, pin, newPassword);
+      if (result.success) {
+        showSuccess('Password Reset', result.message);
+        // Track that this was a PIN recovery so the success screen
+        // shows the right copy (no email was sent).
+        setRecoveryViaPin(true);
+        setSent(true);
+      } else {
+        showError('Recovery Failed', result.message);
+      }
+    } catch {
+      showError('Recovery Failed', 'Could not reset password. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -122,7 +169,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
           <Animated.View entering={FadeInDown} style={styles.header}>
             <TouchableOpacity
               style={[styles.backButton, isDark && styles.backButtonDark]}
-              onPress={() => navigation.goBack()}
+              onPress={() => (pinMode ? setPinMode(false) : navigation.goBack())}
             >
               <Ionicons name="chevron-back" size={24} color={isDark ? '#fff' : themeColors.primary} />
             </TouchableOpacity>
@@ -139,7 +186,9 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
                   />
                 </View>
                 <Text style={styles.logoText}>LittleLoom</Text>
-                <Text style={styles.logoTagline}>Account Recovery</Text>
+                <Text style={styles.logoTagline}>
+                  {pinMode ? 'PIN Recovery' : 'Account Recovery'}
+                </Text>
               </View>
 
               <View style={styles.formContainer}>
@@ -149,97 +198,200 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
                     style={StyleSheet.absoluteFill}
                   />
 
-                  {/* Email Recovery Section */}
-                  <View style={styles.recoverySection}>
-                    <View style={styles.sectionHeader}>
-                      <Ionicons name="mail-outline" size={24} color={themeColors.primary} />
-                      <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-                        Email Recovery
-                      </Text>
-                    </View>
-                    <Text style={[styles.sectionDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                      Reset your password via email
-                    </Text>
+                  {/* ── PIN RECOVERY MODE ─────────────────────────────── */}
+                  {pinMode ? (
+                    <>
+                      <View style={styles.recoverySection}>
+                        <View style={styles.sectionHeader}>
+                          <Ionicons name="keypad-outline" size={24} color={themeColors.secondary} />
+                          <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+                            Recover with PIN
+                          </Text>
+                        </View>
+                        <Text style={[styles.sectionDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          Verify your identity with the PIN you set up on this device.
+                        </Text>
 
-                    <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                      <Ionicons name="mail-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
-                      <TextInput
-                        style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
-                        placeholder="Email address"
-                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}99`}
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        editable={!isLoading}
-                      />
-                    </View>
+                        <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                          <Ionicons name="mail-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+                          <TextInput
+                            style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                            placeholder="Account email"
+                            placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}99`}
+                            value={email}
+                            onChangeText={setEmail}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            editable={!isLoading}
+                          />
+                        </View>
 
-                    <TouchableOpacity
-                      style={[styles.resetButton, isLoading && styles.resetButtonDisabled]}
-                      onPress={handleReset}
-                      disabled={isLoading}
-                      activeOpacity={0.8}
-                    >
-                      <LinearGradient
-                        colors={[themeColors.primary, themeColors.secondary]}
-                        style={styles.resetGradient}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                      >
-                        {isLoading ? (
-                          <ActivityIndicator color="white" size="small" />
-                        ) : (
-                          <Text style={styles.resetText}>Send Reset Link</Text>
-                        )}
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
+                        <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                          <Ionicons name="keypad-outline" size={20} color={themeColors.secondary} style={styles.inputIcon} />
+                          <TextInput
+                            style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 6 }]}
+                            placeholder="4-6 digit PIN"
+                            placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}99`}
+                            value={pin}
+                            onChangeText={(t) => setPin(t.replace(/[^0-9]/g, '').slice(0, 6))}
+                            keyboardType="number-pad"
+                            maxLength={6}
+                            secureTextEntry
+                            editable={!isLoading}
+                          />
+                        </View>
 
-                  {/* Divider */}
-                  <View style={styles.divider}>
-                    <View style={[styles.dividerLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
-                    <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>OR</Text>
-                    <View style={[styles.dividerLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
-                  </View>
+                        <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                          <Ionicons name="lock-closed-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+                          <TextInput
+                            style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                            placeholder="New password (min 8 chars)"
+                            placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}99`}
+                            value={newPassword}
+                            onChangeText={setNewPassword}
+                            secureTextEntry={!showPwd}
+                            editable={!isLoading}
+                          />
+                          <TouchableOpacity onPress={() => setShowPwd(!showPwd)} style={{ padding: 4 }}>
+                            <Ionicons name={showPwd ? 'eye-outline' : 'eye-off-outline'} size={20} color={themeColors.primary} />
+                          </TouchableOpacity>
+                        </View>
 
-                  {/* PIN Recovery Section */}
-                  <View style={styles.recoverySection}>
-                    <View style={styles.sectionHeader}>
-                      <Ionicons name="keypad-outline" size={24} color={themeColors.secondary} />
-                      <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-                        PIN Recovery
-                      </Text>
-                    </View>
-                    <Text style={[styles.sectionDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                      {hasPin
-                        ? hasSecurityQuestions
-                          ? 'Reset your PIN using security questions'
-                          : 'Security questions not set up — set them in Settings'
-                        : 'No PIN set up yet'}
-                    </Text>
+                        <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                          <Ionicons name="shield-checkmark-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+                          <TextInput
+                            style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                            placeholder="Confirm new password"
+                            placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}99`}
+                            value={confirmPassword}
+                            onChangeText={setConfirmPassword}
+                            secureTextEntry={!showPwd}
+                            editable={!isLoading}
+                          />
+                        </View>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.pinResetButton,
-                        (!hasPin || !hasSecurityQuestions) && styles.pinResetButtonDisabled,
-                        { borderColor: `${themeColors.secondary}4D` },
-                      ]}
-                      onPress={handlePinReset}
-                      disabled={!hasPin || !hasSecurityQuestions}
-                      activeOpacity={0.8}
-                    >
-                      <LinearGradient
-                        colors={hasPin && hasSecurityQuestions ? [themeColors.secondary, themeColors.accent || '#43e97b'] : ['#94a3b8', '#64748b']}
-                        style={styles.pinResetGradient}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                      >
-                        <Ionicons name="key-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                        <Text style={styles.pinResetText}>Reset PIN</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
+                        <TouchableOpacity
+                          style={[styles.resetButton, isLoading && styles.resetButtonDisabled]}
+                          onPress={handlePinReset}
+                          disabled={isLoading}
+                          activeOpacity={0.8}
+                        >
+                          <LinearGradient
+                            colors={[themeColors.secondary, themeColors.primary]}
+                            style={styles.resetGradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                          >
+                            {isLoading ? (
+                              <ActivityIndicator color="white" size="small" />
+                            ) : (
+                              <Text style={styles.resetText}>Recover Account</Text>
+                            )}
+                          </LinearGradient>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => setPinMode(false)}
+                          style={{ marginTop: 16, alignItems: 'center' }}
+                        >
+                          <Text style={{ color: themeColors.primary, fontWeight: '700' }}>
+                            Use email recovery instead
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      {/* ── EMAIL RECOVERY ──────────────────────────────── */}
+                      <View style={styles.recoverySection}>
+                        <View style={styles.sectionHeader}>
+                          <Ionicons name="mail-outline" size={24} color={themeColors.primary} />
+                          <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+                            Email Recovery
+                          </Text>
+                        </View>
+                        <Text style={[styles.sectionDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          Reset your password via email
+                        </Text>
+
+                        <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+                          <Ionicons name="mail-outline" size={20} color={themeColors.primary} style={styles.inputIcon} />
+                          <TextInput
+                            style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                            placeholder="Email address"
+                            placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}99`}
+                            value={email}
+                            onChangeText={setEmail}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            editable={!isLoading}
+                          />
+                        </View>
+
+                        <TouchableOpacity
+                          style={[styles.resetButton, isLoading && styles.resetButtonDisabled]}
+                          onPress={handleReset}
+                          disabled={isLoading}
+                          activeOpacity={0.8}
+                        >
+                          <LinearGradient
+                            colors={[themeColors.primary, themeColors.secondary]}
+                            style={styles.resetGradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                          >
+                            {isLoading ? (
+                              <ActivityIndicator color="white" size="small" />
+                            ) : (
+                              <Text style={styles.resetText}>Send Reset Link</Text>
+                            )}
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.divider}>
+                        <View style={[styles.dividerLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+                        <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>OR</Text>
+                        <View style={[styles.dividerLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+                      </View>
+
+                      {/* ── PIN RECOVERY ENTRYPOINT ─────────────────────── */}
+                      <View style={styles.recoverySection}>
+                        <View style={styles.sectionHeader}>
+                          <Ionicons name="keypad-outline" size={24} color={themeColors.secondary} />
+                          <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+                            PIN Recovery
+                          </Text>
+                        </View>
+                        <Text style={[styles.sectionDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          {hasPin
+                            ? 'Recover your account using the PIN set on this device'
+                            : 'No PIN is set up on this device — use email recovery'}
+                        </Text>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.pinResetButton,
+                            !hasPin && styles.pinResetButtonDisabled,
+                            { borderColor: `${themeColors.secondary}4D` },
+                          ]}
+                          onPress={handlePinModeEnter}
+                          disabled={!hasPin || isLoading}
+                          activeOpacity={0.8}
+                        >
+                          <LinearGradient
+                            colors={hasPin ? [themeColors.secondary, themeColors.accent || '#43e97b'] : ['#94a3b8', '#64748b']}
+                            style={styles.pinResetGradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                          >
+                            <Ionicons name="key-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                            <Text style={styles.pinResetText}>Recover with PIN</Text>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
                 </BlurView>
               </View>
             </Animated.View>
@@ -257,11 +409,20 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
                   </LinearGradient>
                 </View>
 
-                <Text style={[styles.successTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Check Your Email!</Text>
-                <Text style={styles.successText}>
-                  We've sent password reset instructions to{'\n'}
-                  <Text style={[styles.successEmail, { color: themeColors.primary }]}>{email}</Text>
+                <Text style={[styles.successTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+                  {recoveryViaPin ? 'Password Reset!' : 'Check Your Email!'}
                 </Text>
+                {recoveryViaPin ? (
+                  <Text style={styles.successText}>
+                    Your password has been changed.{'\n'}
+                    Sign in with your new password to continue.
+                  </Text>
+                ) : (
+                  <Text style={styles.successText}>
+                    We've sent recovery instructions to{'\n'}
+                    <Text style={[styles.successEmail, { color: themeColors.primary }]}>{email}</Text>
+                  </Text>
+                )}
 
                 <TouchableOpacity
                   style={[styles.backToLogin, { borderColor: `${themeColors.primary}4D` }]}
@@ -282,233 +443,76 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { ...StyleSheet.absoluteFill },
   keyboardView: { flex: 1 },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-  },
-  header: {
-    marginTop: 20,
-    marginBottom: 20,
-  },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 24 },
+  header: { marginTop: 20, marginBottom: 20 },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 44, height: 44, borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1, shadowRadius: 8, elevation: 5,
   },
-  backButtonDark: {
-    backgroundColor: 'rgba(30,41,59,0.8)',
-  },
-  titleContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
+  backButtonDark: { backgroundColor: 'rgba(30,41,59,0.8)' },
+  titleContainer: { alignItems: 'center', marginBottom: 30 },
   logoFloatWrap: {
     width: Math.min(Dimensions.get('window').width * 0.28, 120),
     height: Math.min(Dimensions.get('window').width * 0.28, 120),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   logoImage: {
     width: Math.min(Dimensions.get('window').width * 0.25, 100),
     height: Math.min(Dimensions.get('window').width * 0.25, 100),
   },
-  logoText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 1,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  logoTagline: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    textAlign: 'center',
-    paddingHorizontal: 20,
-    lineHeight: 22,
-  },
-  formContainer: {
-    width: '100%',
-    maxWidth: 400,
-    alignSelf: 'center',
-  },
+  logoText: { fontSize: 28, fontWeight: '800', color: '#fff', letterSpacing: 1, marginBottom: 4, textAlign: 'center' },
+  logoTagline: { fontSize: 14, color: 'rgba(255,255,255,0.8)', textAlign: 'center', paddingHorizontal: 20, lineHeight: 22 },
+  formContainer: { width: '100%', maxWidth: 400, alignSelf: 'center' },
   glassCard: {
-    borderRadius: 28,
-    padding: 28,
-    overflow: 'hidden',
-    borderWidth: 1,
+    borderRadius: 28, padding: 28, overflow: 'hidden', borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2, shadowRadius: 40, elevation: 20,
   },
-  recoverySection: {
-    marginBottom: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 10,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  sectionDesc: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
+  recoverySection: { marginBottom: 8 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 },
+  sectionTitle: { fontSize: 18, fontWeight: '700' },
+  sectionDesc: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(102,126,234,0.08)',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 56,
-    borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.15)',
-    marginBottom: 16,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(102,126,234,0.08)', borderRadius: 16,
+    paddingHorizontal: 16, height: 56, borderWidth: 1,
+    borderColor: 'rgba(102,126,234,0.15)', marginBottom: 16,
   },
-  inputContainerDark: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
+  inputContainerDark: { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' },
   inputIcon: { marginRight: 12 },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  resetButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  resetButtonDisabled: {
-    opacity: 0.6,
-  },
-  resetGradient: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  resetText: {
-    color: 'white',
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginHorizontal: 16,
-  },
-  pinResetButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-  },
-  pinResetButtonDisabled: {
-    opacity: 0.5,
-  },
-  pinResetGradient: {
-    paddingVertical: 16,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  pinResetText: {
-    color: 'white',
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  successContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 40,
-  },
+  input: { flex: 1, fontSize: 16, fontWeight: '500' },
+  resetButton: { borderRadius: 16, overflow: 'hidden' },
+  resetButtonDisabled: { opacity: 0.6 },
+  resetGradient: { paddingVertical: 16, alignItems: 'center' },
+  resetText: { color: 'white', fontSize: 17, fontWeight: '700', letterSpacing: 0.5 },
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
+  dividerLine: { flex: 1, height: 1 },
+  dividerText: { fontSize: 13, fontWeight: '600', marginHorizontal: 16 },
+  pinResetButton: { borderRadius: 16, overflow: 'hidden', borderWidth: 1 },
+  pinResetButtonDisabled: { opacity: 0.5 },
+  pinResetGradient: { paddingVertical: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  pinResetText: { color: 'white', fontSize: 17, fontWeight: '700', letterSpacing: 0.5 },
+  successContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 40 },
   successCard: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: 28,
-    padding: 40,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 20,
+    width: '100%', maxWidth: 400, borderRadius: 28, padding: 40, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2, shadowRadius: 40, elevation: 20,
     alignItems: 'center',
   },
-  successIconContainer: {
-    marginBottom: 24,
-  },
+  successIconContainer: { marginBottom: 24 },
   successIconBg: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#11998e',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
+    width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#11998e', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4, shadowRadius: 12, elevation: 10,
   },
-  successTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  successText: {
-    fontSize: 15,
-    color: '#64748b',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
-  },
-  successEmail: {
-    fontWeight: '700',
-  },
-  backToLogin: {
-    backgroundColor: 'rgba(102,126,234,0.1)',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  backToLoginText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  successTitle: { fontSize: 24, fontWeight: '800', marginBottom: 12, textAlign: 'center' },
+  successText: { fontSize: 15, color: '#64748b', textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  successEmail: { fontWeight: '700' },
+  backToLogin: { backgroundColor: 'rgba(102,126,234,0.1)', paddingVertical: 16, paddingHorizontal: 32, borderRadius: 16, borderWidth: 1 },
+  backToLoginText: { fontSize: 16, fontWeight: '700' },
 });

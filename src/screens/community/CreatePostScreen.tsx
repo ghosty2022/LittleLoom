@@ -1,29 +1,79 @@
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useCommunity } from '../../context/CommunityContext';
-import { Alert, Button, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
-import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
+import Animated, { FadeInUp } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 
+import { useCommunity, type Topic, type Poll, type PostMood } from '../../context/CommunityContext';
 import { useMedia } from '../../context/MediaContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { InlineSpinner, CommunitySpinner } from '../../components/UniversalSpinner';
+import { useCustomization } from '../../hooks/useCustomization';
 
-import { CommunityColors, CommunitySpacing, CommunityBorderRadius, CommunityShadows } from '../../theme/CommunityTheme';
+type Props = NativeStackScreenProps<CommunityStackParamList, 'CreatePost'>;
 
-type CreatePostScreenProps = NativeStackScreenProps<CommunityStackParamList, 'CreatePost'>;
+const { width: SCREEN_W } = Dimensions.get('window');
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+/* ── The Loom palette ─────────────────────────────────────── */
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  primaryGhost: 'rgba(99,102,241,0.08)',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+
+  darkBg: '#0c0a09',
+  darkCard: '#292524',
+  darkSurface: '#1c1917',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  lightBg: '#fafaf9',
+  lightBorder: '#e7e5e4',
+
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+  },
+};
 
 const COUNTRIES = [
   { code: 'US', name: 'United States', flag: '🇺🇸' },
@@ -49,13 +99,12 @@ const COUNTRIES = [
 ];
 
 const MOODS: { value: PostMood; emoji: string; label: string; color: string; bgColor: string }[] = [
-  { value: 'celebrating', emoji: '🎉', label: 'Celebrating', color: '#f59e0b', bgColor: '#f59e0b15' },
-  { value: 'support', emoji: '💙', label: 'Support', color: '#3b82f6', bgColor: '#3b82f615' },
-  { value: 'advice', emoji: '💡', label: 'Advice', color: '#8b5cf6', bgColor: '#8b5cf615' },
-  { value: 'milestone', emoji: '🏆', label: 'Milestone', color: '#10b981', bgColor: '#10b98115' },
-  { value: 'venting', emoji: '💨', label: 'Venting', color: '#ef4444', bgColor: '#ef444415' },
+  { value: 'celebrating', emoji: '🎉', label: 'Celebrating', color: '#f59e0b', bgColor: '#f59e0b20' },
+  { value: 'support', emoji: '💙', label: 'Support', color: '#3b82f6', bgColor: '#3b82f620' },
+  { value: 'advice', emoji: '💡', label: 'Advice', color: '#8b5cf6', bgColor: '#8b5cf620' },
+  { value: 'milestone', emoji: '🏆', label: 'Milestone', color: '#10b981', bgColor: '#10b98120' },
+  { value: 'venting', emoji: '💨', label: 'Venting', color: '#ef4444', bgColor: '#ef444420' },
 ];
-
 
 const SMART_SUGGESTIONS = [
   "Share a milestone your little one reached 🎉",
@@ -75,38 +124,70 @@ const SMART_SUGGESTIONS = [
   "Date night ideas for parents 💕",
 ];
 
-interface ImageGridProps {
+const KEYWORD_MAP: Record<string, string[]> = {
+  topic_health_fever: ['fever', 'temperature'],
+  topic_health_allergy: ['allergy', 'allergies', 'reaction'],
+  topic_health_teething: ['teething', 'tooth', 'teeth'],
+  topic_health_vaccines: ['vaccine', 'vaccination', 'immunization'],
+  topic_health_doctor: ['doctor', 'pediatrician', 'clinic'],
+  topic_nutrition_breastfeeding: ['breast', 'nursing', 'latch'],
+  topic_nutrition_solid_food: ['solid', 'blw', 'weaning'],
+  topic_nutrition_formula: ['formula', 'bottle'],
+  topic_sleep_baby: ['sleep', 'nap', 'bedtime', 'night'],
+  topic_sleep_toddler: ['toddler', 'sleep', 'regression'],
+  topic_sleep_night_waking: ['night', 'waking', 'awake'],
+  topic_dev_milestones: ['milestone', 'first', 'walk', 'talk'],
+  topic_dev_motor_skills: ['crawl', 'motor', 'skills'],
+  topic_dev_speech: ['speech', 'word', 'language'],
+  topic_dev_social: ['social', 'play', 'friends'],
+  topic_dev_emotional: ['emotion', 'feelings'],
+  topic_parenting_potty: ['potty', 'toilet', 'pee', 'poop'],
+  topic_parenting_tantrums: ['tantrum', 'meltdown', 'cry'],
+  topic_parenting_discipline: ['discipline', 'boundaries'],
+  topic_parenting_single: ['single', 'solo', 'alone'],
+  topic_parenting_special_needs: ['autism', 'adhd', 'special'],
+  topic_lifestyle_screen_time: ['screen', 'tablet', 'tv'],
+  topic_lifestyle_outdoor: ['outdoor', 'park', 'nature'],
+  topic_lifestyle_work_life: ['work', 'career', 'balance'],
+  topic_lifestyle_self_care: ['self-care', 'me-time'],
+  topic_community_stories: ['story', 'journey'],
+  topic_community_advice: ['advice', 'tip', 'trick'],
+  topic_community_support: ['support', 'help'],
+};
+
+/* ── Image grid ───────────────────────────────────────────── */
+const ImageGrid = ({
+  images,
+  onRemove,
+}: {
   images: string[];
-  onRemove: (index: number) => void;
-}
-
-const ImageGrid = ({ images, onRemove }: ImageGridProps) => {
+  onRemove: (i: number) => void;
+}) => {
   if (images.length === 0) return null;
-
   return (
-    <View style={styles.imageGridWrapper}>
+    <View style={s.imageGridWrapper}>
       {images.length === 1 ? (
-        <View style={styles.singleImageContainer}>
-          <Image source={{ uri: images[0] }} style={styles.singleImage} resizeMode="cover" />
-          <TouchableOpacity style={styles.imageRemoveBtn} onPress={() => onRemove(0)}>
-            <View style={styles.imageRemoveInner}>
-              <Ionicons name="close" size={16} color="#fff" />
+        <View style={s.singleImageContainer}>
+          <Image source={{ uri: images[0] }} style={s.singleImage} resizeMode="cover" />
+          <TouchableOpacity style={s.imageRemoveBtn} onPress={() => onRemove(0)}>
+            <View style={s.imageRemoveInner}>
+              <Ionicons name="close" size={16} color={DS.white} />
             </View>
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.multiImageGrid}>
+        <View style={s.multiImageGrid}>
           {images.slice(0, 4).map((uri, index) => (
-            <View key={index} style={styles.gridImageItem}>
-              <Image source={{ uri }} style={styles.gridImage} resizeMode="cover" />
-              <TouchableOpacity style={styles.imageRemoveBtn} onPress={() => onRemove(index)}>
-                <View style={styles.imageRemoveInner}>
-                  <Ionicons name="close" size={14} color="#fff" />
+            <View key={index} style={s.gridImageItem}>
+              <Image source={{ uri }} style={s.gridImage} resizeMode="cover" />
+              <TouchableOpacity style={s.imageRemoveBtn} onPress={() => onRemove(index)}>
+                <View style={s.imageRemoveInner}>
+                  <Ionicons name="close" size={14} color={DS.white} />
                 </View>
               </TouchableOpacity>
               {index === 3 && images.length > 4 && (
-                <View style={styles.gridMoreOverlay}>
-                  <Text style={styles.gridMoreText}>+{images.length - 4}</Text>
+                <View style={s.gridMoreOverlay}>
+                  <Text style={s.gridMoreText}>+{images.length - 4}</Text>
                 </View>
               )}
             </View>
@@ -117,52 +198,66 @@ const ImageGrid = ({ images, onRemove }: ImageGridProps) => {
   );
 };
 
-interface ToolButtonProps {
+/* ── Tool button ──────────────────────────────────────────── */
+const ToolButton = ({
+  icon,
+  label,
+  color,
+  onPress,
+  badge,
+  isDark,
+}: {
   icon: string;
   label: string;
   color: string;
-  bgColor: string;
   onPress: () => void;
   badge?: number;
-}
-
-const ToolButton = ({ icon, label, color, bgColor, onPress, badge }: ToolButtonProps) => (
-  <TouchableOpacity style={styles.toolButton} onPress={onPress} activeOpacity={0.7}>
-    <View style={[styles.toolIcon, { backgroundColor: bgColor }]}>
+  isDark: boolean;
+}) => (
+  <TouchableOpacity style={s.toolButton} onPress={onPress} activeOpacity={0.75}>
+    <View
+      style={[
+        s.toolIcon,
+        { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 },
+      ]}
+    >
       <Ionicons name={icon as any} size={22} color={color} />
       {badge !== undefined && badge > 0 && (
-        <View style={[styles.toolBadge, { backgroundColor: color }]}>
-          <Text style={styles.toolBadgeText}>{badge}</Text>
+        <View style={[s.toolBadge, { backgroundColor: color }]}>
+          <Text style={s.toolBadgeText}>{badge}</Text>
         </View>
       )}
     </View>
-    <Text style={styles.toolText}>{label}</Text>
+    <Text style={[s.toolText, { color: isDark ? DS.gray400 : DS.gray600 }]}>{label}</Text>
   </TouchableOpacity>
 );
 
-export default function CreatePostScreen({ navigation, route }: CreatePostScreenProps) {
-  const routeParams = route?.params ?? {};
-  const topicId = routeParams?.topicId;
-  const initialContent = routeParams?.initialContent;
+/* ════════════════════════════════════════════════════════════
+   Main
+   ════════════════════════════════════════════════════════════ */
+export default function CreatePostScreen({ navigation, route }: Props) {
+  const topicId = route?.params?.topicId;
+  const initialContent = route?.params?.initialContent;
 
-  const { 
-    topics, 
-    createPost, 
-    currentUser, 
-    updateUserLocation, 
+  const {
+    topics,
+    createPost,
+    currentUser,
+    updateUserLocation,
     getSelectedTopics,
-    updateSelectedTopics 
+    updateSelectedTopics,
   } = useCommunity();
 
-  const { 
-    pickImage: mediaPickImage, 
-    pickMultipleImages, 
+  const {
+    pickMultipleImages,
     takePhoto: mediaTakePhoto,
     compressImage,
     cacheImage,
     isValidImageUri,
   } = useMedia();
 
+  const { darkMode, triggerHaptic } = useCustomization();
+  const isDark = darkMode ?? false;
   const sweetAlert = useSweetAlert();
 
   const [content, setContent] = useState(initialContent || '');
@@ -178,178 +273,122 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   const [showTopicSelector, setShowTopicSelector] = useState(false);
   const [userSelectedTopics, setUserSelectedTopics] = useState<string[]>([]);
   const [isProcessingImages, setIsProcessingImages] = useState(false);
-  
+
   const [selectedMood, setSelectedMood] = useState<PostMood | undefined>(undefined);
   const [showPollCreator, setShowPollCreator] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
-  const [showMoodPicker, setShowMoodPicker] = useState(false);
-  
-  // ─── Smart Compose State ───
   const [showSmartCompose, setShowSmartCompose] = useState(false);
   const [smartPrompt, setSmartPrompt] = useState('');
-  const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>(SMART_SUGGESTIONS);
 
-  
+  /* Location detect */
   useEffect(() => {
-    let isMounted = true;
-    const detectLocation = async () => {
+    let mounted = true;
+    (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') return;
-        
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
         const addresses = await Location.reverseGeocodeAsync({
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         });
-        
-        if (addresses && addresses.length > 0 && isMounted) {
-          const country = addresses[0].country;
-          if (country) {
-            setSelectedCountry(country);
-            await updateUserLocation(country);
-          }
+        if (mounted && addresses[0]?.country) {
+          setSelectedCountry(addresses[0].country);
+          await updateUserLocation(addresses[0].country);
         }
       } catch (err) {
-        console.warn('Auto-location failed:', err);
+        if (__DEV__) console.warn('[CreatePost] location fail:', err);
       }
-    };
-    detectLocation();
-    return () => { isMounted = false; };
+    })();
+    return () => { mounted = false; };
   }, [updateUserLocation]);
 
-  
+  /* Auto-topic by keywords */
   useEffect(() => {
-    if (content.length > 10 && !selectedTopic) {
-      const lowerContent = content.toLowerCase();
-      const keywordMap: Record<string, string[]> = {
-        'topic_1': ['potty', 'toilet', 'pee', 'poop', 'diaper', 'training'],
-        'topic_2': ['sleep', 'nap', 'bedtime', 'night', 'insomnia', 'tired', 'awake'],
-        'topic_3': ['feed', 'food', 'eat', 'milk', 'breast', 'formula', 'solid', 'nutrition', 'meal'],
-        'topic_4': ['milestone', 'first', 'walk', 'talk', 'word', 'step', 'crawl', 'baby'],
-        'topic_5': ['sick', 'fever', 'doctor', 'health', 'medicine', 'vaccine', 'ill', 'wellness'],
-        'topic_6': ['hack', 'tip', 'trick', 'advice', 'idea', 'help', 'solution'],
-        'topic_7': ['name', 'baby name', 'naming', 'call', 'named'],
-        'topic_8': ['work', 'job', 'career', 'balance', 'office', 'working', 'professional'],
-        'topic_9': ['tantrum', 'cry', 'scream', 'meltdown', 'angry', 'behavior', 'toddler'],
-        'topic_10': ['school', 'learn', 'education', 'teach', 'read', 'homework', 'class'],
-        'topic_11': ['single', 'alone', 'divorce', 'solo', 'widow', 'co-parent'],
-        'topic_12': ['special', 'autism', 'adhd', 'disability', 'therapy', 'needs', 'support'],
-      };
-      
-      let matchedTopic: Topic | undefined;
-      for (const [topicId, keywords] of Object.entries(keywordMap)) {
-        if (keywords.some(kw => lowerContent.includes(kw))) {
-          const found = topics.find(t => t.id === topicId);
-          if (found) {
-            matchedTopic = found;
-            break;
-          }
-        }
+    if (content.length < 10 || selectedTopic) return;
+    const lower = content.toLowerCase();
+    let matched: Topic | undefined;
+    for (const [id, keywords] of Object.entries(KEYWORD_MAP)) {
+      if (keywords.some((k) => lower.includes(k))) {
+        matched = topics.find((t) => t.id === id);
+        if (matched) break;
       }
-      
-      if (matchedTopic && !selectedTopic) {
-        setSelectedTopic(matchedTopic);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+    }
+    if (matched) {
+      setSelectedTopic(matched);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   }, [content, topics, selectedTopic]);
 
-  
+  /* Load selected topics */
   useEffect(() => {
-    if (smartPrompt.trim().length > 0) {
-      const filtered = SMART_SUGGESTIONS.filter(s => 
-        s.toLowerCase().includes(smartPrompt.toLowerCase())
-      );
-      setFilteredSuggestions(filtered.length > 0 ? filtered : SMART_SUGGESTIONS.slice(0, 3));
+    if (topics.length === 0) return;
+    const saved = getSelectedTopics();
+    if (!saved || saved.length === 0) {
+      const fallback = topics.slice(0, 3).map((t) => t.id);
+      setUserSelectedTopics(fallback);
+      updateSelectedTopics(fallback);
     } else {
-      setFilteredSuggestions(SMART_SUGGESTIONS);
-    }
-  }, [smartPrompt]);
-
-  useEffect(() => {
-    const loadSelectedTopics = async () => {
-      try {
-        const savedTopics = getSelectedTopics();
-        if (!savedTopics || savedTopics.length === 0) {
-          const fallbackTopics = topics.slice(0, 3).map(t => t.id);
-          setUserSelectedTopics(fallbackTopics);
-          await updateSelectedTopics(fallbackTopics);
-        } else {
-          setUserSelectedTopics(savedTopics);
-        }
-      } catch (error) {
-        console.error('Error loading selected topics:', error);
-        setUserSelectedTopics(topics.map(t => t.id));
-      }
-    };
-    if (topics.length > 0) {
-      loadSelectedTopics();
+      setUserSelectedTopics(saved);
     }
   }, [topics, getSelectedTopics, updateSelectedTopics]);
 
+  /* Pick target topic */
   useEffect(() => {
-    if (topics.length > 0) {
-      let targetTopic: Topic | undefined;
-
-      if (topicId) {
-        targetTopic = topics.find(t => t.id === topicId);
-      }
-
-      if (!targetTopic && userSelectedTopics.length > 0) {
-        targetTopic = topics.find(t => userSelectedTopics.includes(t.id));
-      }
-
-      if (!targetTopic) {
-        targetTopic = topics[0];
-      }
-
-      setSelectedTopic(targetTopic || null);
-      setTopicsLoaded(true);
+    if (topics.length === 0) return;
+    let target: Topic | undefined;
+    if (topicId) target = topics.find((t) => t.id === topicId);
+    if (!target && userSelectedTopics.length > 0) {
+      target = topics.find((t) => userSelectedTopics.includes(t.id));
     }
+    if (!target) target = topics[0];
+    setSelectedTopic(target || null);
+    setTopicsLoaded(true);
   }, [topics, topicId, userSelectedTopics]);
 
+  /* Draft save (debounced) */
   useEffect(() => {
-    const saveDraft = async () => {
-      const draft = { 
-        content, 
-        images, 
-        selectedTopicId: selectedTopic?.id,
-        mood: selectedMood,
-        pollQuestion,
-        pollOptions,
-      };
-      await AsyncStorage.setItem('post_draft', JSON.stringify(draft));
+    const save = async () => {
+      try {
+        await AsyncStorage.setItem(
+          'post_draft',
+          JSON.stringify({
+            content,
+            images,
+            selectedTopicId: selectedTopic?.id,
+            mood: selectedMood,
+            pollQuestion,
+            pollOptions,
+          }),
+        );
+      } catch {}
     };
-
-    const timer = setTimeout(saveDraft, 1000);
-    return () => clearTimeout(timer);
+    const t = setTimeout(save, 1000);
+    return () => clearTimeout(t);
   }, [content, images, selectedTopic, selectedMood, pollQuestion, pollOptions]);
 
+  /* Draft restore (once) */
+  const draftLoadedRef = useRef(false);
   useEffect(() => {
-    const loadDraft = async () => {
+    if (draftLoadedRef.current) return;
+    draftLoadedRef.current = true;
+    (async () => {
       try {
-        const draftJson = await AsyncStorage.getItem('post_draft');
-        if (draftJson) {
-          const draft = JSON.parse(draftJson);
-          if (draft.content) setContent(draft.content);
-          if (draft.images) {
-            const validImages = draft.images.filter((uri: string) => isValidImageUri(uri));
-            setImages(validImages);
-          }
-          if (draft.mood) setSelectedMood(draft.mood);
-          if (draft.pollQuestion) setPollQuestion(draft.pollQuestion);
-          if (draft.pollOptions) setPollOptions(draft.pollOptions);
+        const raw = await AsyncStorage.getItem('post_draft');
+        if (!raw) return;
+        const draft = JSON.parse(raw);
+        if (draft.content) setContent(draft.content);
+        if (Array.isArray(draft.images)) {
+          setImages(draft.images.filter((u: string) => isValidImageUri(u)));
         }
-      } catch (error) {
-        console.warn('Failed to load draft:', error);
-      }
-    };
-    loadDraft();
+        if (draft.mood) setSelectedMood(draft.mood);
+        if (draft.pollQuestion) setPollQuestion(draft.pollQuestion);
+        if (Array.isArray(draft.pollOptions)) setPollOptions(draft.pollOptions);
+      } catch {}
+    })();
   }, [isValidImageUri]);
 
-  
   const applySmartSuggestion = (suggestion: string) => {
     setContent(suggestion);
     setShowSmartCompose(false);
@@ -357,32 +396,30 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
+  const filteredSuggestions = smartPrompt.trim()
+    ? SMART_SUGGESTIONS.filter((x) => x.toLowerCase().includes(smartPrompt.toLowerCase()))
+    : SMART_SUGGESTIONS.slice(0, 5);
+
+  /* ── Media handlers ──────────────────────────────────────── */
   const pickImage = async () => {
     try {
       setIsProcessingImages(true);
-      
-      const pickedUris = await pickMultipleImages(4);
-      
-      if (pickedUris && pickedUris.length > 0) {
-        const processedUris: string[] = [];
-        
-        for (const uri of pickedUris) {
+      const picked = await pickMultipleImages(4);
+      if (picked && picked.length > 0) {
+        const processed: string[] = [];
+        for (const uri of picked) {
           try {
             const compressed = await compressImage(uri, 0.8);
             const cached = await cacheImage(compressed);
-            processedUris.push(cached);
-          } catch (err) {
-            console.warn('Failed to process image:', err);
-            if (isValidImageUri(uri)) {
-              processedUris.push(uri);
-            }
+            processed.push(cached);
+          } catch {
+            if (isValidImageUri(uri)) processed.push(uri);
           }
         }
-
-        setImages(prev => [...prev, ...processedUris].slice(0, 4));
+        setImages((prev) => [...prev, ...processed].slice(0, 4));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-    } catch (error) {
+    } catch {
       sweetAlert.error('Image Error', 'Failed to pick images. Please try again.');
     } finally {
       setIsProcessingImages(false);
@@ -396,25 +433,19 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         sweetAlert.alert('Permission Required', 'Please allow camera access to take photos.', 'warning');
         return;
       }
-
       setIsProcessingImages(true);
-
       const photoUri = await mediaTakePhoto();
-      
       if (photoUri) {
         try {
           const compressed = await compressImage(photoUri, 0.8);
           const cached = await cacheImage(compressed);
-          setImages(prev => [...prev, cached].slice(0, 4));
+          setImages((prev) => [...prev, cached].slice(0, 4));
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } catch (err) {
-          console.warn('Failed to process photo:', err);
-          if (isValidImageUri(photoUri)) {
-            setImages(prev => [...prev, photoUri].slice(0, 4));
-          }
+        } catch {
+          if (isValidImageUri(photoUri)) setImages((prev) => [...prev, photoUri].slice(0, 4));
         }
       }
-    } catch (error) {
+    } catch {
       sweetAlert.error('Camera Error', 'Failed to take photo. Please try again.');
     } finally {
       setIsProcessingImages(false);
@@ -423,23 +454,22 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
   const removeImage = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setImages(images.filter((_, i) => i !== index));
+    setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const simulateProgress = async () => {
     const stages = [
-      { progress: 15, status: 'Preparing your post...', delay: 300 },
-      { progress: 35, status: 'Uploading images...', delay: 800 },
-      { progress: 55, status: 'Processing media...', delay: 600 },
-      { progress: 75, status: 'Almost there...', delay: 500 },
-      { progress: 90, status: 'Finalizing...', delay: 400 },
-      { progress: 100, status: 'Posted!', delay: 300 },
+      { progress: 15, status: 'Preparing your post...', delay: 250 },
+      { progress: 35, status: 'Uploading images...', delay: 600 },
+      { progress: 55, status: 'Processing media...', delay: 500 },
+      { progress: 75, status: 'Almost there...', delay: 400 },
+      { progress: 90, status: 'Finalizing...', delay: 300 },
+      { progress: 100, status: 'Posted!', delay: 250 },
     ];
-
-    for (const stage of stages) {
-      await new Promise(resolve => setTimeout(resolve, stage.delay));
-      setPostProgress(stage.progress);
-      setPostStatus(stage.status);
+    for (const st of stages) {
+      await new Promise((r) => setTimeout(r, st.delay));
+      setPostProgress(st.progress);
+      setPostStatus(st.status);
     }
   };
 
@@ -448,7 +478,6 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
       sweetAlert.error('Empty Post', 'Please add some content, images, or a poll to your post');
       return;
     }
-
     if (!selectedTopic) {
       sweetAlert.error('No Topic', 'Please select a topic');
       return;
@@ -456,7 +485,7 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
     let poll: Poll | undefined;
     if (showPollCreator && pollQuestion.trim()) {
-      const validOptions = pollOptions.filter(o => o.trim().length > 0);
+      const validOptions = pollOptions.filter((o) => o.trim().length > 0);
       if (validOptions.length < 2) {
         sweetAlert.error('Invalid Poll', 'Please add at least 2 poll options');
         return;
@@ -476,21 +505,16 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
 
     try {
       const progressPromise = simulateProgress();
-
       await createPost(content.trim(), selectedTopic.id, images, isAnonymous, selectedMood, poll);
-
       await progressPromise;
-
       await AsyncStorage.removeItem('post_draft');
-
       sweetAlert.success('Posted!', 'Your post has been created successfully.');
-
       setTimeout(() => {
         setIsPosting(false);
         navigation.goBack();
       }, 500);
-
-    } catch (error) {
+    } catch (err) {
+      console.error('[CreatePost] error:', err);
       setIsPosting(false);
       setPostProgress(0);
       sweetAlert.error('Post Failed', 'Failed to create post. Please try again.');
@@ -505,37 +529,24 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         () => navigation.goBack(),
         () => {},
         'Discard',
-        'Keep Editing'
+        'Keep Editing',
       );
     } else {
       navigation.goBack();
     }
   };
 
-  const handleCountrySelect = async (country: typeof COUNTRIES[0]) => {
+  const handleCountrySelect = async (country: (typeof COUNTRIES)[0]) => {
     setSelectedCountry(country.name);
     await updateUserLocation(country.name);
     setShowCountryPicker(false);
     sweetAlert.toast('Location Updated', `Set to ${country.flag} ${country.name}`, 'success');
   };
 
-  const handleTopicSelect = (topic: Topic) => {
-    setSelectedTopic(topic);
-    setShowTopicSelector(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const handleSaveSelectedTopics = async (newSelectedTopics: string[]) => {
-    await updateSelectedTopics(newSelectedTopics);
-    setUserSelectedTopics(newSelectedTopics);
+  const handleSaveSelectedTopics = async (next: string[]) => {
+    await updateSelectedTopics(next);
+    setUserSelectedTopics(next);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    sweetAlert.toast('Topics Updated', 'Your feed preferences have been saved', 'success');
-  };
-
-  const handleMoodSelect = (mood: PostMood) => {
-    setSelectedMood(mood);
-    setShowMoodPicker(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const addPollOption = () => {
@@ -544,58 +555,57 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
-
-  const removePollOption = (index: number) => {
+  const removePollOption = (i: number) => {
     if (pollOptions.length > 2) {
-      setPollOptions(pollOptions.filter((_, i) => i !== index));
+      setPollOptions(pollOptions.filter((_, idx) => idx !== i));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
-
-  const updatePollOption = (index: number, text: string) => {
-    const updated = [...pollOptions];
-    updated[index] = text;
-    setPollOptions(updated);
+  const updatePollOption = (i: number, text: string) => {
+    const next = [...pollOptions];
+    next[i] = text;
+    setPollOptions(next);
   };
 
   const characterCount = content.length;
   const maxCharacters = 1000;
   const hasContent = content.trim().length > 0 || images.length > 0 || pollQuestion.trim().length > 0;
+  const filteredTopics = userSelectedTopics.length
+    ? topics.filter((t) => userSelectedTopics.includes(t.id))
+    : topics;
+  const avatarSource = isAnonymous ? '🎭' : currentUser?.avatar;
 
-  const getFilteredTopics = () => {
-    if (!userSelectedTopics || userSelectedTopics.length === 0) return topics;
-    return topics.filter(t => userSelectedTopics.includes(t.id));
-  };
-
-  const filteredTopics = getFilteredTopics();
-
-  const avatarSource = isAnonymous 
-    ? '🎭' 
-    : (currentUser?.avatar || currentUser?.photoURL || undefined);
-
-  const selectedMoodConfig = selectedMood ? MOODS.find(m => m.value === selectedMood) : null;
-
+  /* ── Loading gate ────────────────────────────────────────── */
   if (!topicsLoaded || topics.length === 0 || !selectedTopic) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <StatusBar barStyle="dark-content" />
-        <LinearGradient colors={['#f8f9ff', '#fff5f8']} style={StyleSheet.absoluteFill} />
-        <CommunitySpinner 
-          visible={true} 
-          text="Loading topics..." 
-          size="medium"
-          overlay={false}
+      <View style={[s.container, { backgroundColor: isDark ? DS.darkBg : DS.lightBg, justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <LinearGradient
+          colors={isDark ? ['rgba(99,102,241,0.15)', 'rgba(236,72,153,0.08)'] : ['rgba(99,102,241,0.08)', 'rgba(236,72,153,0.04)']}
+          style={StyleSheet.absoluteFill}
         />
+        <CommunitySpinner visible={true} text="Loading topics..." size="medium" overlay={false} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <LinearGradient colors={['#f8f9ff', '#fff5f8']} style={StyleSheet.absoluteFill} />
+    <View style={[s.container, { backgroundColor: isDark ? DS.darkBg : DS.lightBg }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
-      {/* Posting Progress Overlay */}
+      {/* Aura background */}
+      <LinearGradient
+        colors={
+          isDark
+            ? ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.05)', 'transparent']
+            : ['rgba(99,102,241,0.06)', 'rgba(236,72,153,0.03)', 'transparent']
+        }
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        pointerEvents="none"
+      />
+
       <CommunitySpinner
         visible={isPosting}
         text={postStatus}
@@ -607,8 +617,6 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         progress={postProgress}
         variant="liquid"
       />
-
-      {/* Image Processing Spinner */}
       <CommunitySpinner
         visible={isProcessingImages}
         text="Processing images..."
@@ -618,25 +626,33 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         variant="nebula"
       />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.keyboardView}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleCancel} style={styles.headerBtn}>
-            <Ionicons name="close" size={24} color={CommunityColors.text.secondary} />
+        <View style={s.header}>
+          <TouchableOpacity onPress={handleCancel} style={[s.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.white }]}>
+            <Ionicons name="close" size={22} color={isDark ? DS.white : DS.gray900} />
           </TouchableOpacity>
-          <Text style={styles.title}>New Post</Text>
-          <TouchableOpacity 
-            style={[styles.postButton, hasContent && styles.postButtonActive]}
+          <Text style={[s.title, { color: isDark ? DS.white : DS.gray900 }]}>New Post</Text>
+          <TouchableOpacity
+            style={[s.postButton, hasContent && s.postButtonActive]}
             disabled={!hasContent || isPosting}
             onPress={handlePost}
           >
-            {isPosting ? (
-              <InlineSpinner size={20} color="#fff" section="community" variant="liquid" />
+            {hasContent ? (
+              <LinearGradient
+                colors={[DS.primary, DS.accent]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={s.postButtonGrad}
+              >
+                {isPosting ? (
+                  <InlineSpinner size={16} color={DS.white} section="community" variant="liquid" />
+                ) : (
+                  <Text style={s.postButtonTextActive}>Post</Text>
+                )}
+              </LinearGradient>
             ) : (
-              <Text style={[styles.postButtonText, hasContent && styles.postButtonTextActive]}>
+              <Text style={[s.postButtonText, { color: isDark ? DS.gray500 : DS.gray400 }]}>
                 Post
               </Text>
             )}
@@ -644,331 +660,336 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         </View>
 
         <Animated.ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-
-          {/* ─── SMART COMPOSE BANNER ─── */}
+          {/* Smart Compose */}
           <Animated.View entering={FadeInUp.delay(50).duration(400)}>
             <TouchableOpacity
-              style={[styles.smartComposeBanner, { backgroundColor: '#667eea08' }]}
+              style={[s.smartBanner, { backgroundColor: isDark ? 'rgba(99,102,241,0.10)' : DS.primaryGhost, borderColor: `${DS.primary}25` }]}
               onPress={() => setShowSmartCompose(!showSmartCompose)}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              <View style={styles.smartComposeBannerLeft}>
+              <View style={s.smartBannerLeft}>
                 <LinearGradient
-                  colors={['#667eea', '#764ba2']}
-                  style={styles.smartComposeIcon}
+                  colors={[DS.primary, DS.accent]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
+                  style={s.smartIcon}
                 >
-                  <Ionicons name="sparkles" size={18} color="#fff" />
+                  <Ionicons name="sparkles" size={18} color={DS.white} />
                 </LinearGradient>
                 <View>
-                  <Text style={styles.smartComposeTitle}>Smart Compose</Text>
-                  <Text style={styles.smartComposeSubtitle}>AI-powered writing assistant</Text>
+                  <Text style={[s.smartTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                    Smart Compose
+                  </Text>
+                  <Text style={[s.smartSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                    AI-powered writing assistant
+                  </Text>
                 </View>
               </View>
-              <Ionicons 
-                name={showSmartCompose ? 'chevron-up' : 'chevron-down'} 
-                size={20} 
-                color={CommunityColors.text.tertiary} 
+              <Ionicons
+                name={showSmartCompose ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={isDark ? DS.gray400 : DS.gray500}
               />
             </TouchableOpacity>
           </Animated.View>
 
-          {/* ─── SMART COMPOSE EXPANDED ─── */}
           {showSmartCompose && (
-            <Animated.View entering={FadeInUp.delay(100).duration(300)} style={styles.smartComposeExpanded}>
-              <View style={styles.smartComposeInputRow}>
-                <View style={[styles.smartComposeInputWrap, { backgroundColor: '#f8f9ff' }]}>
-                  <Ionicons name="search" size={18} color="#667eea" />
-                  <TextInput
-                    style={styles.smartComposeInput}
-                    placeholder="Describe what you want to post about..."
-                    placeholderTextColor={CommunityColors.text.tertiary}
-                    value={smartPrompt}
-                    onChangeText={setSmartPrompt}
-                    returnKeyType="done"
-                    onSubmitEditing={() => {
-                      if (filteredSuggestions.length > 0) {
-                        applySmartSuggestion(filteredSuggestions[0]);
-                      }
-                    }}
-                  />
-                  {smartPrompt.length > 0 && (
-                    <TouchableOpacity onPress={() => setSmartPrompt('')}>
-                      <Ionicons name="close-circle" size={18} color={CommunityColors.text.tertiary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
+            <Animated.View
+              entering={FadeInUp.delay(100).duration(300)}
+              style={[s.smartExpanded, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.lightBorder }]}
+            >
+              <View style={[s.smartInputWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray50, borderColor: isDark ? DS.darkBorder : DS.lightBorder }]}>
+                <Ionicons name="search" size={16} color={DS.primary} />
+                <TextInput
+                  style={[s.smartInput, { color: isDark ? DS.white : DS.gray900 }]}
+                  placeholder="Describe what you want to post about..."
+                  placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
+                  value={smartPrompt}
+                  onChangeText={setSmartPrompt}
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    if (filteredSuggestions[0]) applySmartSuggestion(filteredSuggestions[0]);
+                  }}
+                />
+                {smartPrompt.length > 0 && (
+                  <TouchableOpacity onPress={() => setSmartPrompt('')}>
+                    <Ionicons name="close-circle" size={16} color={isDark ? DS.gray400 : DS.gray500} />
+                  </TouchableOpacity>
+                )}
               </View>
 
-              <View style={styles.smartComposeSuggestions}>
-                {filteredSuggestions.slice(0, 5).map((suggestion, i) => (
+              <View style={s.smartSuggestions}>
+                {filteredSuggestions.slice(0, 5).map((sug, i) => (
                   <TouchableOpacity
                     key={i}
-                    style={[styles.smartComposeChip, { backgroundColor: '#667eea08' }]}
-                    onPress={() => applySmartSuggestion(suggestion)}
+                    style={[s.smartChip, { backgroundColor: isDark ? 'rgba(99,102,241,0.10)' : DS.primaryGhost, borderColor: `${DS.primary}20` }]}
+                    onPress={() => applySmartSuggestion(sug)}
                   >
-                    <Ionicons name="flash" size={12} color="#667eea" />
-                    <Text style={styles.smartComposeChipText} numberOfLines={2}>
-                      {suggestion}
+                    <Ionicons name="flash" size={12} color={DS.primary} />
+                    <Text style={[s.smartChipText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={2}>
+                      {sug}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
               {content.length > 0 && (
-                <View style={styles.smartComposeHelp}>
-                  <Ionicons name="information-circle-outline" size={14} color="#667eea" />
-                  <Text style={styles.smartComposeHelpText}>
-                    {content.length < 20 ? '💡 Try adding more detail to your post' :
-                     content.length < 50 ? '✨ Looking great! Add a question to engage others' :
-                     '🌟 Ready to post! Add images or a poll for more engagement'}
+                <View style={[s.smartHelp, { backgroundColor: isDark ? 'rgba(99,102,241,0.06)' : `${DS.primary}06` }]}>
+                  <Ionicons name="information-circle-outline" size={14} color={DS.primary} />
+                  <Text style={[s.smartHelpText, { color: isDark ? DS.gray400 : DS.gray600 }]}>
+                    {content.length < 20
+                      ? '💡 Try adding more detail to your post'
+                      : content.length < 50
+                      ? '✨ Looking great! Add a question to engage others'
+                      : '🌟 Ready to post! Add images or a poll for more engagement'}
                   </Text>
                 </View>
               )}
             </Animated.View>
           )}
 
-          {/* Author Card */}
+          {/* Author card */}
           <Animated.View entering={FadeInUp.delay(150).duration(400)}>
-            <View style={styles.authorCard}>
-              <View style={styles.authorRow}>
+            <View style={[s.authorCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.lightBorder }]}>
+              <View style={s.authorRow}>
                 <SafeAvatar
                   avatar={avatarSource}
                   size={48}
                   fallbackIcon={isAnonymous ? 'mask' : 'person'}
-                  fallbackColor={selectedTopic?.color || '#667eea'}
-                  borderWidth={2}
-                  borderColor="#fff"
-                  showEditBadge={false}
-                  animated={true}
+                  fallbackColor={selectedTopic.color}
+                  fallbackBgColor={`${selectedTopic.color}20`}
                 />
-                
-                <View style={styles.authorInfo}>
-                  <Text style={styles.authorName}>
-                    {isAnonymous ? 'Anonymous' : (currentUser?.displayName || 'You')}
+                <View style={s.authorInfo}>
+                  <Text style={[s.authorName, { color: isDark ? DS.white : DS.gray900 }]}>
+                    {isAnonymous ? 'Anonymous' : currentUser?.displayName || 'You'}
                   </Text>
-                  <View style={styles.authorMeta}>
+                  <View style={s.authorMeta}>
                     <TouchableOpacity
-                      style={[styles.topicBadge, { backgroundColor: (selectedTopic?.color || '#667eea') + '15' }]}
+                      style={[s.topicChip, { backgroundColor: `${selectedTopic.color}18` }]}
                       onPress={() => setShowTopicSelector(true)}
                     >
-                      <Text style={styles.topicBadgeEmoji}>{selectedTopic?.emoji}</Text>
-                      <Text style={[styles.topicBadgeText, { color: selectedTopic?.color || '#667eea' }]}>
-                        {selectedTopic?.name}
+                      <Text style={s.topicChipEmoji}>{selectedTopic.emoji}</Text>
+                      <Text style={[s.topicChipText, { color: selectedTopic.color }]}>
+                        {selectedTopic.name}
                       </Text>
-                      <Ionicons name="chevron-down" size={12} color={selectedTopic?.color || '#667eea'} />
+                      <Ionicons name="chevron-down" size={11} color={selectedTopic.color} />
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={styles.locationChip}
+                    <TouchableOpacity
+                      style={[s.locationChip, { backgroundColor: isDark ? 'rgba(99,102,241,0.10)' : `${DS.primary}10` }]}
                       onPress={() => setShowCountryPicker(true)}
                     >
-                      <Ionicons name="location-outline" size={12} color="#667eea" />
-                      <Text style={styles.locationChipText}>
+                      <Ionicons name="location-outline" size={11} color={DS.primary} />
+                      <Text style={[s.locationChipText, { color: DS.primary }]}>
                         {selectedCountry || 'Add location'}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-                <TouchableOpacity 
-                  style={styles.anonToggle}
+                <TouchableOpacity
+                  style={[s.anonToggle, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}
                   onPress={() => setIsAnonymous(!isAnonymous)}
                 >
-                  <Ionicons 
-                    name={isAnonymous ? "eye-off" : "eye-outline"} 
-                    size={20} 
-                    color={isAnonymous ? '#667eea' : CommunityColors.text.tertiary} 
+                  <Ionicons
+                    name={isAnonymous ? 'eye-off' : 'eye-outline'}
+                    size={18}
+                    color={isAnonymous ? DS.primary : isDark ? DS.gray400 : DS.gray500}
                   />
                 </TouchableOpacity>
               </View>
             </View>
           </Animated.View>
 
-          {/* Mood Selector */}
+          {/* Mood */}
           <Animated.View entering={FadeInUp.delay(200).duration(400)}>
-            <View style={styles.moodSection}>
-              <Text style={styles.sectionLabel}>How are you feeling?</Text>
-              <View style={styles.moodRow}>
-                {MOODS.map((mood) => (
-                  <TouchableOpacity
-                    key={mood.value}
-                    style={[
-                      styles.moodPill,
-                      selectedMood === mood.value && { 
-                        backgroundColor: mood.bgColor,
-                        borderColor: mood.color,
-                      },
-                    ]}
-                    onPress={() => {
-                      if (selectedMood === mood.value) {
-                        setSelectedMood(undefined);
-                      } else {
-                        setSelectedMood(mood.value);
-                      }
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                  >
-                    <Text style={styles.moodPillEmoji}>{mood.emoji}</Text>
-                    <Text style={[
-                      styles.moodPillLabel,
-                      selectedMood === mood.value && { color: mood.color, fontWeight: '800' },
-                    ]}>
-                      {mood.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            <View style={s.moodSection}>
+              <Text style={[s.sectionLabel, { color: isDark ? DS.gray400 : DS.gray600 }]}>
+                How are you feeling?
+              </Text>
+              <View style={s.moodRow}>
+                {MOODS.map((mood) => {
+                  const active = selectedMood === mood.value;
+                  return (
+                    <TouchableOpacity
+                      key={mood.value}
+                      style={[
+                        s.moodPill,
+                        { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.white, borderColor: 'transparent' },
+                        active && { backgroundColor: mood.bgColor, borderColor: mood.color },
+                      ]}
+                      onPress={() => {
+                        setSelectedMood(active ? undefined : mood.value);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Text style={s.moodPillEmoji}>{mood.emoji}</Text>
+                      <Text
+                        style={[
+                          s.moodPillLabel,
+                          { color: active ? mood.color : isDark ? DS.gray400 : DS.gray600 },
+                          active && { fontWeight: '800' },
+                        ]}
+                      >
+                        {mood.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           </Animated.View>
 
-          {/* Content Input */}
+          {/* Content */}
           <Animated.View entering={FadeInUp.delay(250).duration(400)}>
-            <View style={styles.contentArea}>
+            <View style={s.contentArea}>
               <TextInput
-                style={styles.textInput}
+                style={[s.textInput, { color: isDark ? DS.gray200 : DS.gray800 }]}
                 placeholder="What's on your mind? Share your experience, ask a question, or offer support..."
-                placeholderTextColor={CommunityColors.text.tertiary}
+                placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
                 value={content}
                 onChangeText={setContent}
                 multiline
                 textAlignVertical="top"
                 maxLength={maxCharacters}
               />
-              <Text style={styles.characterCount}>
+              <Text style={[s.characterCount, { color: characterCount > maxCharacters * 0.9 ? DS.danger : isDark ? DS.gray500 : DS.gray400 }]}>
                 {characterCount}/{maxCharacters}
               </Text>
             </View>
           </Animated.View>
 
-          {/* Image Grid Preview */}
+          {/* Images */}
           {images.length > 0 && (
             <Animated.View entering={FadeInUp.duration(300)}>
               <ImageGrid images={images} onRemove={removeImage} />
             </Animated.View>
           )}
 
-          {/* Poll Creator */}
+          {/* Poll */}
           {showPollCreator && (
             <Animated.View entering={FadeInUp.duration(300)}>
-              <View style={styles.pollCard}>
-                <View style={styles.pollHeader}>
-                  <View style={styles.pollHeaderLeft}>
-                    <Ionicons name="stats-chart" size={18} color="#667eea" />
-                    <Text style={styles.pollTitle}>Poll</Text>
+              <View style={[s.pollCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.lightBorder }]}>
+                <View style={s.pollHeader}>
+                  <View style={s.pollHeaderLeft}>
+                    <Ionicons name="stats-chart" size={18} color={DS.primary} />
+                    <Text style={[s.pollTitle, { color: isDark ? DS.white : DS.gray900 }]}>Poll</Text>
                   </View>
-                  <TouchableOpacity onPress={() => {
-                    setShowPollCreator(false);
-                    setPollQuestion('');
-                    setPollOptions(['', '']);
-                  }}>
-                    <Ionicons name="close" size={20} color={CommunityColors.text.tertiary} />
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowPollCreator(false);
+                      setPollQuestion('');
+                      setPollOptions(['', '']);
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={isDark ? DS.gray400 : DS.gray500} />
                   </TouchableOpacity>
                 </View>
-                
+
                 <TextInput
-                  style={styles.pollQuestionInput}
+                  style={[s.pollQuestionInput, { color: isDark ? DS.white : DS.gray900, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50, borderColor: isDark ? DS.darkBorder : DS.lightBorder }]}
                   placeholder="Ask a question..."
-                  placeholderTextColor={CommunityColors.text.tertiary}
+                  placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
                   value={pollQuestion}
                   onChangeText={setPollQuestion}
                   maxLength={200}
                 />
-                
-                <View style={styles.pollOptionsList}>
+
+                <View style={s.pollOptionsList}>
                   {pollOptions.map((option, index) => (
-                    <View key={index} style={styles.pollOptionRow}>
-                      <View style={styles.pollOptionInputWrap}>
-                        <Text style={styles.pollOptionBullet}>{String.fromCharCode(65 + index)}</Text>
+                    <View key={index} style={s.pollOptionRow}>
+                      <View style={[s.pollOptionInputWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50, borderColor: isDark ? DS.darkBorder : DS.lightBorder }]}>
+                        <Text style={s.pollBullet}>{String.fromCharCode(65 + index)}</Text>
                         <TextInput
-                          style={styles.pollOptionInput}
+                          style={[s.pollOptionInput, { color: isDark ? DS.white : DS.gray900 }]}
                           placeholder={`Option ${index + 1}`}
-                          placeholderTextColor={CommunityColors.text.tertiary}
+                          placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
                           value={option}
-                          onChangeText={(text) => updatePollOption(index, text)}
+                          onChangeText={(t) => updatePollOption(index, t)}
                           maxLength={100}
                         />
                       </View>
                       {pollOptions.length > 2 && (
-                        <TouchableOpacity 
-                          style={styles.pollOptionRemove}
-                          onPress={() => removePollOption(index)}
-                        >
-                          <Ionicons name="close-circle" size={22} color="#fc5c7d" />
+                        <TouchableOpacity onPress={() => removePollOption(index)} style={{ padding: 4 }}>
+                          <Ionicons name="close-circle" size={22} color={DS.danger} />
                         </TouchableOpacity>
                       )}
                     </View>
                   ))}
                 </View>
-                
+
                 {pollOptions.length < 4 && (
-                  <TouchableOpacity style={styles.addOptionBtn} onPress={addPollOption}>
-                    <Ionicons name="add-circle-outline" size={18} color="#667eea" />
-                    <Text style={styles.addOptionText}>Add option</Text>
+                  <TouchableOpacity
+                    style={[s.addOptionBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.10)' : DS.primaryGhost }]}
+                    onPress={addPollOption}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color={DS.primary} />
+                    <Text style={[s.addOptionText, { color: DS.primary }]}>Add option</Text>
                   </TouchableOpacity>
                 )}
               </View>
             </Animated.View>
           )}
 
-          {/* Topics Strip */}
+          {/* Topics strip */}
           <Animated.View entering={FadeInUp.delay(300).duration(400)}>
-            <View style={styles.topicsStripHeader}>
-              <Text style={styles.sectionLabel}>Your Topics</Text>
-              <TouchableOpacity 
-                style={styles.manageTopicsBtn}
+            <View style={s.topicsStripHeader}>
+              <Text style={[s.sectionLabel, { color: isDark ? DS.gray400 : DS.gray600 }]}>
+                Your Topics
+              </Text>
+              <TouchableOpacity
+                style={[s.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.10)' : DS.primaryGhost }]}
                 onPress={() => setShowTopicSelector(true)}
               >
-                <Ionicons name="options-outline" size={14} color="#667eea" />
-                <Text style={styles.manageTopicsText}>Manage</Text>
+                <Ionicons name="options-outline" size={13} color={DS.primary} />
+                <Text style={[s.manageTopicsText, { color: DS.primary }]}>Manage</Text>
               </TouchableOpacity>
             </View>
 
             {filteredTopics.length > 0 ? (
-              <Animated.ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.topicsStrip}
-              >
-                {filteredTopics.map((topic) => (
-                  <TouchableOpacity
-                    key={topic.id}
-                    style={[
-                      styles.topicPill,
-                      selectedTopic?.id === topic.id && { 
-                        backgroundColor: topic.color + '20',
-                        borderColor: topic.color,
-                      },
-                    ]}
-                    onPress={() => {
-                      setSelectedTopic(topic);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                  >
-                    <Text style={styles.topicPillEmoji}>{topic.emoji}</Text>
-                    <Text style={[
-                      styles.topicPillName,
-                      selectedTopic?.id === topic.id && { color: topic.color, fontWeight: '800' },
-                    ]}>
-                      {topic.name}
-                    </Text>
-                    {selectedTopic?.id === topic.id && (
-                      <Ionicons name="checkmark-circle" size={14} color={topic.color} />
-                    )}
-                  </TouchableOpacity>
-                ))}
+              <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.topicsStrip}>
+                {filteredTopics.map((topic) => {
+                  const active = selectedTopic.id === topic.id;
+                  return (
+                    <TouchableOpacity
+                      key={topic.id}
+                      style={[
+                        s.topicPill,
+                        { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.white, borderColor: 'transparent' },
+                        active && { backgroundColor: `${topic.color}20`, borderColor: topic.color },
+                      ]}
+                      onPress={() => {
+                        setSelectedTopic(topic);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Text style={s.topicPillEmoji}>{topic.emoji}</Text>
+                      <Text
+                        style={[
+                          s.topicPillName,
+                          { color: active ? topic.color : isDark ? DS.gray400 : DS.gray600 },
+                          active && { fontWeight: '800' },
+                        ]}
+                      >
+                        {topic.name}
+                      </Text>
+                      {active && <Ionicons name="checkmark-circle" size={14} color={topic.color} />}
+                    </TouchableOpacity>
+                  );
+                })}
               </Animated.ScrollView>
             ) : (
-              <TouchableOpacity 
-                style={styles.noTopicsBanner}
+              <TouchableOpacity
+                style={s.noTopicsBanner}
                 onPress={() => setShowTopicSelector(true)}
               >
                 <LinearGradient
-                  colors={['#667eea12', '#667eea04']}
-                  style={styles.noTopicsGradient}
+                  colors={[`${DS.primary}12`, `${DS.primary}04`]}
+                  style={s.noTopicsGradient}
                 >
-                  <Ionicons name="bookmark-outline" size={22} color="#667eea" />
-                  <Text style={styles.noTopicsTitle}>No topics selected yet</Text>
-                  <Text style={styles.noTopicsSubtext}>
+                  <Ionicons name="bookmark-outline" size={22} color={DS.primary} />
+                  <Text style={[s.noTopicsTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                    No topics selected yet
+                  </Text>
+                  <Text style={[s.noTopicsSubtext, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                     Tap here to choose topics you're interested in
                   </Text>
                 </LinearGradient>
@@ -976,110 +997,110 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
             )}
           </Animated.View>
 
-          {/* Media Tools */}
-          <Animated.View entering={FadeInUp.delay(350).duration(400)} style={styles.toolsSection}>
-            <Text style={styles.toolsLabel}>Add to your post</Text>
-            <View style={styles.toolsRow}>
-              <ToolButton 
-                icon="image-outline" 
-                label="Gallery" 
-                color="#667eea" 
-                bgColor="#667eea12"
+          {/* Media tools */}
+          <Animated.View entering={FadeInUp.delay(350).duration(400)} style={s.toolsSection}>
+            <Text style={[s.sectionLabel, { color: isDark ? DS.gray400 : DS.gray600 }]}>
+              Add to your post
+            </Text>
+            <View style={s.toolsRow}>
+              <ToolButton
+                icon="image-outline"
+                label="Gallery"
+                color={DS.primary}
                 onPress={pickImage}
                 badge={images.length > 0 ? images.length : undefined}
+                isDark={isDark}
               />
-              <ToolButton 
-                icon="camera-outline" 
-                label="Camera" 
-                color="#43e97b" 
-                bgColor="#43e97b12"
+              <ToolButton
+                icon="camera-outline"
+                label="Camera"
+                color={DS.success}
                 onPress={takePhoto}
+                isDark={isDark}
               />
-              <ToolButton 
-                icon="stats-chart-outline" 
-                label="Poll" 
-                color="#fa709a" 
-                bgColor="#fa709a12"
+              <ToolButton
+                icon="stats-chart-outline"
+                label="Poll"
+                color={DS.accent}
                 onPress={() => {
                   setShowPollCreator(!showPollCreator);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 }}
                 badge={showPollCreator ? 1 : undefined}
+                isDark={isDark}
               />
             </View>
           </Animated.View>
 
-          {/* Tips Card */}
-          <Animated.View entering={FadeInUp.delay(400).duration(400)} style={styles.tipsContainer}>
-            <LinearGradient 
-              colors={['#667eea10', '#667eea02']}
-              style={styles.tipsGradient}
+          {/* Tips */}
+          <Animated.View entering={FadeInUp.delay(400).duration(400)} style={s.tipsContainer}>
+            <LinearGradient
+              colors={isDark ? [`${DS.primary}12`, `${DS.primary}04`] : [`${DS.primary}08`, `${DS.primary}02`]}
+              style={s.tipsGradient}
             >
-              <View style={styles.tipsHeader}>
-                <Ionicons name="bulb-outline" size={18} color="#667eea" />
-                <Text style={styles.tipsTitle}>Tips for great posts</Text>
+              <View style={s.tipsHeader}>
+                <Ionicons name="bulb-outline" size={18} color={DS.primary} />
+                <Text style={[s.tipsTitle, { color: DS.primary }]}>Tips for great posts</Text>
               </View>
-              <View style={styles.tipsList}>
-                <View style={styles.tipItem}>
-                  <View style={[styles.tipDot, { backgroundColor: '#667eea' }]} />
-                  <Text style={styles.tipText}>Be kind and supportive</Text>
-                </View>
-                <View style={styles.tipItem}>
-                  <View style={[styles.tipDot, { backgroundColor: '#43e97b' }]} />
-                  <Text style={styles.tipText}>Share specific details</Text>
-                </View>
-                <View style={styles.tipItem}>
-                  <View style={[styles.tipDot, { backgroundColor: '#fa709a' }]} />
-                  <Text style={styles.tipText}>Use photos to tell your story</Text>
-                </View>
-                <View style={styles.tipItem}>
-                  <View style={[styles.tipDot, { backgroundColor: '#4facfe' }]} />
-                  <Text style={styles.tipText}>Ask questions to engage others</Text>
-                </View>
+              <View style={s.tipsList}>
+                {[
+                  { text: 'Be kind and supportive', color: DS.primary },
+                  { text: 'Share specific details', color: DS.success },
+                  { text: 'Use photos to tell your story', color: DS.accent },
+                  { text: 'Ask questions to engage others', color: DS.info },
+                ].map((tip, i) => (
+                  <View key={i} style={s.tipItem}>
+                    <View style={[s.tipDot, { backgroundColor: tip.color }]} />
+                    <Text style={[s.tipText, { color: isDark ? DS.gray400 : DS.gray600 }]}>
+                      {tip.text}
+                    </Text>
+                  </View>
+                ))}
               </View>
             </LinearGradient>
           </Animated.View>
         </Animated.ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Country Picker Modal */}
+      {/* Country picker */}
       <Modal
         visible={showCountryPicker}
         transparent
         animationType="slide"
         onRequestClose={() => setShowCountryPicker(false)}
       >
-        <View style={styles.modalOverlay}>
-          <BlurView intensity={95} style={styles.modalContent} tint="light">
-            <LinearGradient 
-              colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.95)']}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Location</Text>
+        <View style={s.modalOverlay}>
+          <BlurView intensity={90} style={[s.modalContent, { backgroundColor: isDark ? DS.darkSurface : DS.white }]} tint={isDark ? 'dark' : 'light'}>
+            <View style={s.modalHeader}>
+              <Text style={[s.modalTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                Select Location
+              </Text>
               <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
-                <Ionicons name="close" size={24} color={CommunityColors.text.secondary} />
+                <Ionicons name="close" size={22} color={isDark ? DS.gray400 : DS.gray500} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.countryList} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
               {COUNTRIES.map((country) => (
                 <TouchableOpacity
                   key={country.code}
                   style={[
-                    styles.countryItem,
-                    selectedCountry === country.name && styles.countryItemSelected
+                    s.countryItem,
+                    selectedCountry === country.name && { backgroundColor: isDark ? 'rgba(99,102,241,0.10)' : `${DS.primary}10` },
                   ]}
                   onPress={() => handleCountrySelect(country)}
                 >
-                  <Text style={styles.countryFlag}>{country.flag}</Text>
-                  <Text style={[
-                    styles.countryName,
-                    selectedCountry === country.name && styles.countryNameSelected
-                  ]}>
+                  <Text style={s.countryFlag}>{country.flag}</Text>
+                  <Text
+                    style={[
+                      s.countryName,
+                      { color: isDark ? DS.gray200 : DS.gray800 },
+                      selectedCountry === country.name && { color: DS.primary, fontWeight: '700' },
+                    ]}
+                  >
                     {country.name}
                   </Text>
                   {selectedCountry === country.name && (
-                    <Ionicons name="checkmark" size={20} color="#667eea" />
+                    <Ionicons name="checkmark" size={18} color={DS.primary} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -1088,79 +1109,74 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
         </View>
       </Modal>
 
-      {/* Topic Selector Modal */}
+      {/* Topic selector */}
       <Modal
         visible={showTopicSelector}
         transparent
         animationType="slide"
         onRequestClose={() => setShowTopicSelector(false)}
       >
-        <View style={styles.modalOverlay}>
-          <BlurView intensity={95} style={[styles.modalContent, { maxHeight: '85%' }]} tint="light">
-            <LinearGradient 
-              colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.95)']}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.modalHeader}>
+        <View style={s.modalOverlay}>
+          <BlurView intensity={90} style={[s.modalContent, { maxHeight: '85%', backgroundColor: isDark ? DS.darkSurface : DS.white }]} tint={isDark ? 'dark' : 'light'}>
+            <View style={s.modalHeader}>
               <View>
-                <Text style={styles.modalTitle}>Select Your Topics</Text>
-                <Text style={styles.modalSubtitle}>
+                <Text style={[s.modalTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                  Select Your Topics
+                </Text>
+                <Text style={[s.modalSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                   Choose up to 5 topics to personalize your feed
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowTopicSelector(false)}>
-                <Ionicons name="close" size={24} color={CommunityColors.text.secondary} />
+                <Ionicons name="close" size={22} color={isDark ? DS.gray400 : DS.gray500} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.topicCounter}>
+            <Text style={[s.topicCounter, { color: DS.primary }]}>
               {userSelectedTopics.length}/5 selected
             </Text>
 
-            <ScrollView style={styles.topicList} showsVerticalScrollIndicator={false}>
-              <View style={styles.topicGrid}>
+            <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+              <View style={s.topicGrid}>
                 {topics.map((topic) => {
                   const isSelected = userSelectedTopics.includes(topic.id);
                   const isMaxReached = userSelectedTopics.length >= 5 && !isSelected;
-
                   return (
                     <TouchableOpacity
                       key={topic.id}
                       style={[
-                        styles.topicGridItem,
-                        isSelected && { 
-                          borderColor: topic.color,
-                          backgroundColor: topic.color + '15',
-                        },
-                        isMaxReached && styles.topicGridItemDisabled
+                        s.topicGridItem,
+                        { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.white, borderColor: 'transparent' },
+                        isSelected && { borderColor: topic.color, backgroundColor: `${topic.color}15` },
+                        isMaxReached && { opacity: 0.4 },
                       ]}
                       onPress={() => {
                         if (isMaxReached) {
                           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                          sweetAlert.warning('Maximum Topics Reached', 'You can select up to 5 topics. Remove one to add another.');
+                          sweetAlert.warning('Maximum Topics Reached', 'You can select up to 5 topics.');
                           return;
                         }
-
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        const newTopics = isSelected
-                          ? userSelectedTopics.filter(id => id !== topic.id)
+                        const next = isSelected
+                          ? userSelectedTopics.filter((id) => id !== topic.id)
                           : [...userSelectedTopics, topic.id];
-
-                        handleSaveSelectedTopics(newTopics);
+                        handleSaveSelectedTopics(next);
                       }}
                       disabled={isMaxReached}
                     >
-                      <Text style={styles.topicGridEmoji}>{topic.emoji}</Text>
-                      <Text style={[
-                        styles.topicGridName,
-                        isSelected && { color: topic.color, fontWeight: '800' },
-                      ]}>
+                      <Text style={s.topicGridEmoji}>{topic.emoji}</Text>
+                      <Text
+                        style={[
+                          s.topicGridName,
+                          { color: isDark ? DS.gray200 : DS.gray800 },
+                          isSelected && { color: topic.color, fontWeight: '800' },
+                        ]}
+                      >
                         {topic.name}
                       </Text>
-
                       {isSelected && (
-                        <View style={[styles.topicGridCheck, { backgroundColor: topic.color }]}>
-                          <Ionicons name="checkmark" size={14} color="white" />
+                        <View style={[s.topicGridCheck, { backgroundColor: topic.color }]}>
+                          <Ionicons name="checkmark" size={14} color={DS.white} />
                         </View>
                       )}
                     </TouchableOpacity>
@@ -1169,16 +1185,15 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
               </View>
             </ScrollView>
 
-            <View style={styles.topicSelectorFooter}>
-              <TouchableOpacity 
-                style={styles.topicSelectorDoneButton}
-                onPress={() => setShowTopicSelector(false)}
-              >
+            <View style={[s.topicSelectorFooter, { borderTopColor: isDark ? DS.darkBorder : DS.lightBorder }]}>
+              <TouchableOpacity onPress={() => setShowTopicSelector(false)} style={s.doneBtn}>
                 <LinearGradient
-                  colors={['#667eea', '#764ba2']}
-                  style={styles.topicSelectorDoneGradient}
+                  colors={[DS.primary, DS.accent]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={s.doneBtnGradient}
                 >
-                  <Text style={styles.topicSelectorDoneText}>Done</Text>
+                  <Text style={s.doneBtnText}>Done</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1189,20 +1204,18 @@ export default function CreatePostScreen({ navigation, route }: CreatePostScreen
   );
 }
 
-const styles = StyleSheet.create({
-  container: { 
-    flex: 1,
-    backgroundColor: '#f8f9ff',
-  },
-  keyboardView: { 
-    flex: 1 
-  },
+/* ════════════════════════════════════════════════════════════
+   Styles
+   ════════════════════════════════════════════════════════════ */
+const s = StyleSheet.create({
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
 
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: CommunitySpacing.lg,
+    paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 56 : 40,
     paddingBottom: 12,
   },
@@ -1212,161 +1225,105 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
-    ...CommunityShadows.small,
+    ...DS.shadow.sm,
   },
-  title: { 
-    fontSize: 18, 
-    fontWeight: '800', 
-    color: CommunityColors.text.primary 
-  },
+  title: { fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
   postButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#667eea15',
+    minWidth: 76,
+    height: 38,
+    borderRadius: 19,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  postButtonActive: { 
-    backgroundColor: '#667eea',
-    ...CommunityShadows.medium,
+  postButtonActive: { ...DS.shadow.md },
+  postButtonGrad: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
   },
-  postButtonText: { 
-    fontSize: 15, 
-    fontWeight: '700', 
-    color: CommunityColors.text.tertiary 
-  },
-  postButtonTextActive: { 
-    color: 'white' 
-  },
+  postButtonText: { fontSize: 14, fontWeight: '700' },
+  postButtonTextActive: { fontSize: 14, fontWeight: '800', color: DS.white },
 
-  
-  smartComposeBanner: {
+  /* Smart banner */
+  smartBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: CommunitySpacing.md,
-    paddingHorizontal: CommunitySpacing.lg,
-    paddingVertical: CommunitySpacing.md,
-    borderRadius: CommunityBorderRadius.xl,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: DS.radius.xl,
     borderWidth: 1,
-    borderColor: '#667eea20',
   },
-  smartComposeBannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  smartComposeIcon: {
+  smartBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  smartIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  smartComposeTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-  },
-  smartComposeSubtitle: {
-    fontSize: 11,
-    color: CommunityColors.text.tertiary,
-    fontWeight: '500',
-  },
-  smartComposeExpanded: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: CommunitySpacing.md,
-    paddingHorizontal: CommunitySpacing.md,
-    paddingVertical: CommunitySpacing.md,
-    backgroundColor: '#fff',
-    borderRadius: CommunityBorderRadius.xl,
-    ...CommunityShadows.small,
-  },
-  smartComposeInputRow: {
-    marginBottom: CommunitySpacing.md,
-  },
-  smartComposeInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: CommunityBorderRadius.lg,
-    paddingHorizontal: CommunitySpacing.md,
-    paddingVertical: CommunitySpacing.sm,
-    borderWidth: 1,
-    borderColor: '#667eea20',
-    gap: 8,
-  },
-  smartComposeInput: {
-    flex: 1,
-    fontSize: 14,
-    color: CommunityColors.text.primary,
-    paddingVertical: 6,
-  },
-  smartComposeSuggestions: {
-    gap: 8,
-    marginBottom: CommunitySpacing.md,
-  },
-  smartComposeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: CommunitySpacing.md,
-    paddingVertical: CommunitySpacing.sm,
-    borderRadius: CommunityBorderRadius.lg,
-    borderWidth: 1,
-    borderColor: '#667eea15',
-  },
-  smartComposeChipText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-    color: CommunityColors.text.primary,
-  },
-  smartComposeHelp: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: CommunitySpacing.sm,
-    paddingVertical: CommunitySpacing.xs,
-    backgroundColor: '#667eea06',
-    borderRadius: CommunityBorderRadius.md,
-  },
-  smartComposeHelpText: {
-    flex: 1,
-    fontSize: 12,
-    color: CommunityColors.text.secondary,
-    fontWeight: '500',
-  },
+  smartTitle: { fontSize: 14, fontWeight: '800' },
+  smartSubtitle: { fontSize: 11, fontWeight: '500' },
 
-  authorCard: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginTop: 8,
+  smartExpanded: {
+    marginHorizontal: 16,
     marginBottom: 12,
-    borderRadius: CommunityBorderRadius.xl,
-    padding: 16,
-    backgroundColor: '#fff',
-    ...CommunityShadows.medium,
+    padding: 12,
+    borderRadius: DS.radius.xl,
+    borderWidth: 1,
+    ...DS.shadow.sm,
   },
-  authorRow: {
+  smartInputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: DS.radius.lg,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    gap: 8,
+    marginBottom: 12,
   },
-  authorInfo: { 
-    flex: 1,
-    marginLeft: 12,
-  },
-  authorName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-    marginBottom: 6,
-  },
-  authorMeta: {
+  smartInput: { flex: 1, fontSize: 14, paddingVertical: 6 },
+  smartSuggestions: { gap: 8, marginBottom: 12 },
+  smartChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: DS.radius.lg,
+    borderWidth: 1,
   },
-  topicBadge: {
+  smartChipText: { flex: 1, fontSize: 13, fontWeight: '500' },
+  smartHelp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: DS.radius.md,
+  },
+  smartHelpText: { flex: 1, fontSize: 12, fontWeight: '500' },
+
+  /* Author */
+  authorCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: DS.radius.xl,
+    padding: 16,
+    borderWidth: 1,
+    ...DS.shadow.sm,
+  },
+  authorRow: { flexDirection: 'row', alignItems: 'center' },
+  authorInfo: { flex: 1, marginLeft: 12 },
+  authorName: { fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  authorMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  topicChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -1374,154 +1331,92 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  topicBadgeEmoji: { 
-    fontSize: 12 
-  },
-  topicBadgeText: { 
-    fontSize: 12, 
-    fontWeight: '700' 
-  },
+  topicChipEmoji: { fontSize: 12 },
+  topicChipText: { fontSize: 12, fontWeight: '700' },
   locationChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#f0f0f5',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  locationChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#667eea',
-  },
+  locationChipText: { fontSize: 11, fontWeight: '700' },
   anonToggle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f0f0f5',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  moodSection: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: 16,
+  /* Mood */
+  moodSection: { marginHorizontal: 16, marginBottom: 16 },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
-  moodRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
-  },
+  moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   moodPill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: DS.radius.full,
+    borderWidth: 1.5,
     gap: 6,
-    ...CommunityShadows.small,
+    ...DS.shadow.sm,
   },
-  moodPillEmoji: {
-    fontSize: 16,
-  },
-  moodPillLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: CommunityColors.text.secondary,
-  },
+  moodPillEmoji: { fontSize: 15 },
+  moodPillLabel: { fontSize: 12.5, fontWeight: '700' },
 
-  contentArea: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: 16,
-  },
-  textInput: {
-    fontSize: 17,
-    color: CommunityColors.text.primary,
-    lineHeight: 26,
-    minHeight: 120,
-    paddingVertical: 8,
-  },
-  characterCount: {
-    fontSize: 12,
-    color: CommunityColors.text.tertiary,
-    textAlign: 'right',
-    marginTop: 4,
-    fontWeight: '600',
-  },
+  /* Content */
+  contentArea: { marginHorizontal: 16, marginBottom: 16 },
+  textInput: { fontSize: 16.5, lineHeight: 25, minHeight: 120, paddingVertical: 8 },
+  characterCount: { fontSize: 11.5, textAlign: 'right', marginTop: 4, fontWeight: '600' },
 
-  imageGridWrapper: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: 16,
-    borderRadius: CommunityBorderRadius.xl,
-    overflow: 'hidden',
-  },
-  singleImageContainer: {
-    position: 'relative',
-    borderRadius: CommunityBorderRadius.xl,
-    overflow: 'hidden',
-    ...CommunityShadows.medium,
-  },
-  singleImage: {
-    width: '100%',
-    height: 240,
-    borderRadius: CommunityBorderRadius.xl,
-  },
-  multiImageGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
+  /* Images */
+  imageGridWrapper: { marginHorizontal: 16, marginBottom: 16, borderRadius: DS.radius.xl, overflow: 'hidden' },
+  singleImageContainer: { position: 'relative', borderRadius: DS.radius.xl, overflow: 'hidden', ...DS.shadow.md },
+  singleImage: { width: '100%', height: 240, borderRadius: DS.radius.xl },
+  multiImageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   gridImageItem: {
-    width: (SCREEN_WIDTH - CommunitySpacing.lg * 2 - 4) / 2,
-    height: (SCREEN_WIDTH - CommunitySpacing.lg * 2 - 4) / 2,
-    borderRadius: CommunityBorderRadius.lg,
+    width: (SCREEN_W - 32 - 4) / 2,
+    height: (SCREEN_W - 32 - 4) / 2,
+    borderRadius: DS.radius.lg,
     overflow: 'hidden',
     position: 'relative',
-    ...CommunityShadows.small,
+    ...DS.shadow.sm,
   },
-  gridImage: {
-    width: '100%',
-    height: '100%',
-  },
-  imageRemoveBtn: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 10,
-  },
+  gridImage: { width: '100%', height: '100%' },
+  imageRemoveBtn: { position: 'absolute', top: 8, right: 8, zIndex: 10 },
   imageRemoveInner: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   gridMoreOverlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: CommunityBorderRadius.lg,
+    borderRadius: DS.radius.lg,
   },
-  gridMoreText: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-  },
+  gridMoreText: { color: DS.white, fontSize: 22, fontWeight: '800' },
 
+  /* Poll */
   pollCard: {
-    marginHorizontal: CommunitySpacing.lg,
+    marginHorizontal: 16,
     marginBottom: 16,
-    borderRadius: CommunityBorderRadius.xl,
+    borderRadius: DS.radius.xl,
     padding: 16,
-    backgroundColor: '#fff',
-    ...CommunityShadows.medium,
+    borderWidth: 1,
+    ...DS.shadow.sm,
   },
   pollHeader: {
     flexDirection: 'row',
@@ -1529,61 +1424,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  pollHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  pollTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-  },
+  pollHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pollTitle: { fontSize: 15, fontWeight: '800' },
   pollQuestionInput: {
-    fontSize: 16,
-    color: CommunityColors.text.primary,
+    fontSize: 15,
     fontWeight: '600',
     paddingVertical: 10,
     paddingHorizontal: 14,
-    backgroundColor: '#f8f9ff',
-    borderRadius: CommunityBorderRadius.lg,
+    borderRadius: DS.radius.lg,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e5',
   },
-  pollOptionsList: {
-    gap: 10,
-  },
-  pollOptionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  pollOptionsList: { gap: 10 },
+  pollOptionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   pollOptionInputWrap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9ff',
-    borderRadius: CommunityBorderRadius.lg,
+    borderRadius: DS.radius.lg,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e5',
   },
-  pollOptionBullet: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#667eea',
-    width: 24,
-  },
-  pollOptionInput: {
-    flex: 1,
-    fontSize: 14,
-    color: CommunityColors.text.primary,
-    paddingVertical: 10,
-  },
-  pollOptionRemove: {
-    padding: 4,
-  },
+  pollBullet: { fontSize: 13, fontWeight: '800', color: DS.primary, width: 24 },
+  pollOptionInput: { flex: 1, fontSize: 13.5, paddingVertical: 10 },
   addOptionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1591,30 +1454,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: '#667eea08',
     borderRadius: 12,
     alignSelf: 'flex-start',
   },
-  addOptionText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#667eea',
-  },
+  addOptionText: { fontSize: 12.5, fontWeight: '800' },
 
+  /* Topics strip */
   topicsStripHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: CommunitySpacing.lg,
+    paddingHorizontal: 16,
     marginBottom: 10,
     marginTop: 4,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: CommunityColors.text.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
   },
   manageTopicsBtn: {
     flexDirection: 'row',
@@ -1622,83 +1474,31 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    backgroundColor: '#667eea08',
     borderRadius: 12,
   },
-  manageTopicsText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#667eea',
-  },
-  topicsStrip: {
-    paddingHorizontal: CommunitySpacing.md,
-    gap: 10,
-    paddingBottom: 4,
-  },
+  manageTopicsText: { fontSize: 11.5, fontWeight: '800' },
+  topicsStrip: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
   topicPill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: DS.radius.full,
+    borderWidth: 1.5,
     gap: 6,
-    ...CommunityShadows.small,
+    ...DS.shadow.sm,
   },
-  topicPillEmoji: { 
-    fontSize: 16 
-  },
-  topicPillName: { 
-    fontSize: 13, 
-    fontWeight: '600', 
-    color: CommunityColors.text.secondary 
-  },
+  topicPillEmoji: { fontSize: 15 },
+  topicPillName: { fontSize: 12.5, fontWeight: '700' },
+  noTopicsBanner: { marginHorizontal: 16, marginBottom: 16, borderRadius: DS.radius.xl, overflow: 'hidden', ...DS.shadow.md },
+  noTopicsGradient: { padding: 20, alignItems: 'center', gap: 6 },
+  noTopicsTitle: { fontSize: 14, fontWeight: '800' },
+  noTopicsSubtext: { fontSize: 12, textAlign: 'center' },
 
-  noTopicsBanner: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: 16,
-    borderRadius: CommunityBorderRadius.xl,
-    overflow: 'hidden',
-    ...CommunityShadows.medium,
-  },
-  noTopicsGradient: {
-    padding: 20,
-    alignItems: 'center',
-    gap: 6,
-  },
-  noTopicsTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: CommunityColors.text.primary,
-  },
-  noTopicsSubtext: {
-    fontSize: 12,
-    color: CommunityColors.text.secondary,
-    textAlign: 'center',
-  },
-
-  toolsSection: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: 20,
-  },
-  toolsLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: CommunityColors.text.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 12,
-  },
-  toolsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  toolButton: { 
-    alignItems: 'center', 
-    gap: 6 
-  },
+  /* Tools */
+  toolsSection: { marginHorizontal: 16, marginBottom: 20 },
+  toolsRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  toolButton: { alignItems: 'center', gap: 6 },
   toolIcon: {
     width: 56,
     height: 56,
@@ -1717,71 +1517,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#f8f9ff',
+    borderColor: DS.white,
   },
-  toolBadgeText: {
-    color: 'white',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  toolText: { 
-    fontSize: 12, 
-    color: CommunityColors.text.secondary, 
-    fontWeight: '600' 
-  },
+  toolBadgeText: { color: DS.white, fontSize: 10, fontWeight: '800' },
+  toolText: { fontSize: 11.5, fontWeight: '700' },
 
-  tipsContainer: {
-    marginHorizontal: CommunitySpacing.lg,
-    marginBottom: 24,
-    borderRadius: CommunityBorderRadius.xl,
-    overflow: 'hidden',
-    ...CommunityShadows.small,
-  },
-  tipsGradient: {
-    padding: 20,
-  },
-  tipsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
-  },
-  tipsTitle: { 
-    fontSize: 14, 
-    fontWeight: '800', 
-    color: '#667eea' 
-  },
-  tipsList: {
-    gap: 10,
-  },
-  tipItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  tipDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  tipText: { 
-    fontSize: 13, 
-    color: CommunityColors.text.secondary, 
-    fontWeight: '500' 
-  },
+  /* Tips */
+  tipsContainer: { marginHorizontal: 16, marginBottom: 24, borderRadius: DS.radius.xl, overflow: 'hidden', ...DS.shadow.sm },
+  tipsGradient: { padding: 20 },
+  tipsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  tipsTitle: { fontSize: 14, fontWeight: '800' },
+  tipsList: { gap: 10 },
+  tipItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  tipDot: { width: 8, height: 8, borderRadius: 4 },
+  tipText: { fontSize: 12.5, fontWeight: '500' },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
+  /* Modals */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: {
-    maxHeight: '70%',
+    maxHeight: '85%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
     overflow: 'hidden',
-    backgroundColor: '#fff',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1789,19 +1547,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  modalTitle: { 
-    fontSize: 18, 
-    fontWeight: '800', 
-    color: CommunityColors.text.primary 
-  },
-  modalSubtitle: {
-    fontSize: 13,
-    color: CommunityColors.text.tertiary,
-    marginTop: 2,
-  },
-  countryList: { 
-    maxHeight: 400 
-  },
+  modalTitle: { fontSize: 17, fontWeight: '800' },
+  modalSubtitle: { fontSize: 12.5, marginTop: 2 },
   countryItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1810,62 +1557,22 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 12,
   },
-  countryItemSelected: { 
-    backgroundColor: '#667eea10' 
-  },
-  countryFlag: { 
-    fontSize: 24 
-  },
-  countryName: { 
-    flex: 1, 
-    fontSize: 16,
-    color: CommunityColors.text.primary,
-  },
-  countryNameSelected: { 
-    color: '#667eea', 
-    fontWeight: '700' 
-  },
+  countryFlag: { fontSize: 22 },
+  countryName: { flex: 1, fontSize: 15 },
 
-  topicCounter: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#667eea',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  topicList: { 
-    maxHeight: 500 
-  },
-  topicGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    justifyContent: 'center',
-    paddingBottom: 20,
-  },
+  topicCounter: { fontSize: 13, fontWeight: '800', marginBottom: 16, textAlign: 'center' },
+  topicGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', paddingBottom: 20 },
   topicGridItem: {
-    width: (SCREEN_WIDTH - 72) / 2,
+    width: (SCREEN_W - 72) / 2,
     padding: 16,
-    borderRadius: CommunityBorderRadius.xl,
-    backgroundColor: '#fff',
+    borderRadius: DS.radius.xl,
     borderWidth: 2,
-    borderColor: 'transparent',
     alignItems: 'center',
     gap: 8,
-    ...CommunityShadows.small,
+    ...DS.shadow.sm,
   },
-  topicGridItemDisabled: {
-    opacity: 0.4,
-  },
-  topicGridEmoji: { 
-    fontSize: 32 
-  },
-  topicGridName: { 
-    fontSize: 14, 
-    fontWeight: '700', 
-    color: CommunityColors.text.primary,
-    textAlign: 'center',
-  },
+  topicGridEmoji: { fontSize: 28 },
+  topicGridName: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
   topicGridCheck: {
     position: 'absolute',
     top: 8,
@@ -1876,23 +1583,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topicSelectorFooter: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e5',
-  },
-  topicSelectorDoneButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    ...CommunityShadows.medium,
-  },
-  topicSelectorDoneGradient: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  topicSelectorDoneText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  topicSelectorFooter: { paddingTop: 16, borderTopWidth: 1 },
+  doneBtn: { borderRadius: 16, overflow: 'hidden', ...DS.shadow.md },
+  doneBtnGradient: { paddingVertical: 16, alignItems: 'center' },
+  doneBtnText: { color: DS.white, fontSize: 15, fontWeight: '800' },
 });

@@ -1245,11 +1245,17 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const savedTopicsKey = `${STORAGE_KEYS.SELECTED_TOPICS}_${authProfile.id}`;
       const savedTopicsData = await AsyncStorage.getItem(savedTopicsKey);
-      const savedTopics = savedTopicsData ? JSON.parse(savedTopicsData) : [];
-      
-      const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
-      const globalTopics = globalTopicsData ? JSON.parse(globalTopicsData) : [];
-      let mergedTopics = savedTopics.length > 0 ? savedTopics : (authProfile.communitySelectedTopics || globalTopics);
+      let savedTopics: string[] = [];
+      if (savedTopicsData) {
+        try { savedTopics = JSON.parse(savedTopicsData); } catch {}
+      }
+
+      // NOTE: we intentionally do NOT fall back to the *global* topics key
+      // here — it may belong to a different user on this device.
+      let mergedTopics: string[] =
+        savedTopics.length > 0
+          ? savedTopics
+          : (authProfile.communitySelectedTopics || []);
       
       try {
         if (supabase) {
@@ -1284,14 +1290,44 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const existingStats = await AsyncStorage.getItem(`${STORAGE_KEYS.USER_STATS}_${authProfile.id}`);
       const parsedStats = existingStats ? JSON.parse(existingStats) : null;
 
+      // ── Read the authoritative verification flag from Supabase. ──
+      // `profiles.is_verified` is the single source of truth for the tick.
+      // Without this read, every auth-profile change rebuilds currentUser
+      // with `isVerified: false`, which is why the tick vanished on refresh.
+      let persistedIsVerified = false;
+      let persistedCover: string | undefined = undefined;
+      let persistedBio: string = authProfile.communityBio || '';
+      let persistedLocation: string = '';
+      try {
+        const { data: verificationRow, error: verificationErr } = await supabase
+          .from('profiles')
+          .select('is_verified, community_cover, community_bio')
+          .eq('id', authProfile.id)
+          .maybeSingle();
+
+        if (!verificationErr && verificationRow) {
+          persistedIsVerified = verificationRow.is_verified === true;
+          persistedCover = verificationRow.community_cover || undefined;
+          if (verificationRow.community_bio) {
+            persistedBio = verificationRow.community_bio;
+          }
+        }
+      } catch (e) {
+        if (__DEV__) {
+          console.warn('[syncWithAuthUser] failed to read is_verified:', e);
+        }
+      }
+
       const communityUser: CommunityUser = {
         id: authProfile.id,
         displayName: authProfile.communityDisplayName || authProfile.fullName || 'Parent',
         handle: authProfile.communityHandle || `@${(authProfile.fullName || 'parent').toLowerCase().replace(/\s+/g, '_')}`,
         avatar: authProfile.communityAvatar || authProfile.avatar || '👤',
-        isVerified: false,
-        bio: authProfile.communityBio || '',
-        location: '',
+        // FIX: use the value from Supabase, not a hard-coded `false`.
+        isVerified: persistedIsVerified,
+        coverPhoto: persistedCover,
+        bio: persistedBio,
+        location: persistedLocation,
         country: 'Unknown',
         onlineStatus: 'online',
         lastActive: new Date().toISOString(),
@@ -1487,8 +1523,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         AsyncStorage.getItem(STORAGE_KEYS.TRENDING_TOPICS),
       ]);
 
-      const globalTopicsData = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
-
       let loadedPosts: Post[] = postsData ? JSON.parse(postsData) : [];
       
       let loadedTopics: Topic[] = [];
@@ -1502,11 +1536,16 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         loadedTopics = topicsData ? JSON.parse(topicsData) : INITIAL_TOPICS;
       }
       
-      let loadedSelectedTopics: string[] = supabaseTopics.length > 0 
-        ? supabaseTopics
-        : (selectedTopicsData 
-          ? JSON.parse(selectedTopicsData) 
-          : (globalTopicsData ? JSON.parse(globalTopicsData) : []));
+      let loadedSelectedTopics: string[] = [];
+      if (supabaseTopics.length > 0) {
+        loadedSelectedTopics = supabaseTopics;
+      } else if (selectedTopicsData) {
+        try { loadedSelectedTopics = JSON.parse(selectedTopicsData); } catch {}
+      } else if (currentUserId && globalTopicsData) {
+        // Only fall back to the global key if we're authenticated —
+        // otherwise it's ambiguous whose topics these are.
+        try { loadedSelectedTopics = JSON.parse(globalTopicsData); } catch {}
+      }
           
       const loadedPopularPosts = popularPostsData ? JSON.parse(popularPostsData) : [];
       const loadedTrendingTopics = trendingTopicsData ? JSON.parse(trendingTopicsData) : [];
@@ -1538,6 +1577,28 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         await AsyncStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(loadedPosts));
       }
 
+      // ── Re-read verification flag from Supabase on every refresh. ──
+      // This makes the tick survive pull-to-refresh and app resumes, even
+      // if `syncWithAuthUser` hasn't run yet.
+      let freshIsVerified: boolean | null = null;
+      if (currentUserId) {
+        try {
+          const { data: verifyRow, error: verifyErr } = await supabase
+            .from('profiles')
+            .select('is_verified')
+            .eq('id', currentUserId)
+            .maybeSingle();
+
+          if (!verifyErr && verifyRow) {
+            freshIsVerified = verifyRow.is_verified === true;
+          }
+        } catch (e) {
+          if (__DEV__) {
+            console.warn('[loadPersistedData] failed to read is_verified:', e);
+          }
+        }
+      }
+
       setIsInitialized(true);
       
       setState(prev => ({
@@ -1551,6 +1612,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         trendingTopics: loadedTrendingTopics,
         isInitialized: true,
         isLoading: false,
+        // Only patch isVerified when we got a real answer — never flip a
+        // verified user back to false just because the read failed.
+        currentUser:
+          prev.currentUser && freshIsVerified !== null
+            ? { ...prev.currentUser, isVerified: freshIsVerified }
+            : prev.currentUser,
       }));
 
       updateTrendingData();
@@ -1570,15 +1637,60 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refreshTopicsData = useCallback(async (): Promise<Topic[]> => {
     try {
       const realTopics = await fetchRealTopicStats();
+
+      // Also re-read this user's selections so the context's
+      // `selectedTopics` state is authoritative after onboarding.
+      let freshSelected: string[] | null = null;
+      const currentUserId = stateRef.current.currentUser?.id;
+
+      if (currentUserId) {
+        // Prefer Supabase as the source of truth
+        try {
+          const { data: userTopics, error } = await supabase
+            .from('user_topics')
+            .select('topic_id')
+            .eq('user_id', currentUserId);
+
+          if (!error && userTopics && userTopics.length > 0) {
+            freshSelected = validateTopicIds(userTopics.map(t => t.topic_id));
+          }
+        } catch (supabaseError) {
+          console.log('[refreshTopicsData] Supabase unavailable, using local');
+        }
+
+        // Fallback: per-user AsyncStorage key
+        if (!freshSelected) {
+          const perUser = await AsyncStorage.getItem(
+            `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUserId}`
+          );
+          if (perUser) {
+            freshSelected = validateTopicIds(JSON.parse(perUser));
+          }
+        }
+      }
+
+      // Fallback: global AsyncStorage key
+      if (!freshSelected) {
+        const global = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS);
+        if (global) {
+          freshSelected = validateTopicIds(JSON.parse(global));
+        }
+      }
+
       setState(prev => ({
         ...prev,
         topics: realTopics,
+        selectedTopics: freshSelected ?? prev.selectedTopics,
+        currentUser: prev.currentUser && freshSelected
+          ? { ...prev.currentUser, selectedTopics: freshSelected }
+          : prev.currentUser,
       }));
+
       await AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(realTopics));
       return realTopics;
     } catch (error) {
       console.error('Error refreshing topics:', error);
-      return state.topics;
+      return stateRef.current.topics;
     }
   }, []);
 
@@ -3015,12 +3127,20 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   
 
+  // Use a ref so `refreshFeed` never captures a stale `loadPersistedData`.
+  const loadPersistedDataRef = useRef(loadPersistedData);
+  useEffect(() => {
+    loadPersistedDataRef.current = loadPersistedData;
+  }, [loadPersistedData]);
+
   const refreshFeed = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }));
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    await loadPersistedData();
+    await new Promise(resolve => setTimeout(resolve, 500));
+    await loadPersistedDataRef.current();
+    // Also re-read selected topics so the feed filter is current.
+    await refreshTopicsData();
     setState(prev => ({ ...prev, isLoading: false }));
-  }, []);
+  }, [refreshTopicsData]);
 
   
 
@@ -3086,29 +3206,47 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const checkOnboardingStatus = useCallback(async (): Promise<{ completed: boolean; hasTopics: boolean }> => {
     try {
-      const [onboardingData, selectedTopicsData, userTopicsData] = await Promise.all([
+      const userId = stateRef.current.currentUser?.id;
+
+      // Read every source we care about up front.
+      const [onboardingData, globalTopicsData, perUserTopicsData] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
         AsyncStorage.getItem(STORAGE_KEYS.SELECTED_TOPICS),
-        stateRef.current.currentUser?.id 
-          ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${stateRef.current.currentUser.id}`)
-          : null,
+        userId ? AsyncStorage.getItem(`${STORAGE_KEYS.SELECTED_TOPICS}_${userId}`) : null,
       ]);
 
       let completed = false;
       let rawTopics: string[] = [];
 
       if (onboardingData) {
-        const parsed = JSON.parse(onboardingData);
-        completed = parsed.completed === true;
-        rawTopics = parsed.selectedTopics || [];
+        try {
+          const parsed = JSON.parse(onboardingData);
+          completed = parsed.completed === true;
+          rawTopics = Array.isArray(parsed.selectedTopics) ? parsed.selectedTopics : [];
+        } catch {
+          completed = false;
+        }
       }
 
-      if (rawTopics.length === 0 && selectedTopicsData) {
-        rawTopics = JSON.parse(selectedTopicsData);
+      // ── Priority order: per-user > Supabase > global > in-memory ──
+      if (rawTopics.length === 0 && perUserTopicsData) {
+        try { rawTopics = JSON.parse(perUserTopicsData); } catch {}
       }
 
-      if (rawTopics.length === 0 && userTopicsData) {
-        rawTopics = JSON.parse(userTopicsData);
+      if (rawTopics.length === 0 && userId) {
+        try {
+          const { data: userTopics, error } = await supabase
+            .from('user_topics')
+            .select('topic_id')
+            .eq('user_id', userId);
+          if (!error && userTopics && userTopics.length > 0) {
+            rawTopics = userTopics.map(t => t.topic_id);
+          }
+        } catch {}
+      }
+
+      if (rawTopics.length === 0 && globalTopicsData) {
+        try { rawTopics = JSON.parse(globalTopicsData); } catch {}
       }
 
       if (rawTopics.length === 0 && stateRef.current.selectedTopics?.length > 0) {
@@ -3120,7 +3258,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const isTrulyComplete = completed && hasTopics;
 
       if (completed && !hasTopics) {
-        console.warn('[checkOnboardingStatus] Completed but no topics - resetting');
+        console.warn('[checkOnboardingStatus] Completed but no topics — resetting');
         await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
           completed: false,
           selectedTopics: [],
@@ -3129,7 +3267,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { completed: false, hasTopics: false };
       }
 
-      console.log(`[checkOnboardingStatus] completed: ${isTrulyComplete}, hasTopics: ${hasTopics}, count: ${validTopics.length}`);
+      console.log(
+        `[checkOnboardingStatus] completed: ${isTrulyComplete}, hasTopics: ${hasTopics}, count: ${validTopics.length}`
+      );
       return { completed: isTrulyComplete, hasTopics };
     } catch (error) {
       console.error('[checkOnboardingStatus] Error:', error);
@@ -3201,38 +3341,45 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
   }
 
   
-  await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validTopics));
-  await AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(validTopics));
+  // ── Write ALL keys atomically (parallel) so any concurrent read is consistent ──
+  const writes: Promise<void>[] = [
+    AsyncStorage.setItem(STORAGE_KEYS.SELECTED_TOPICS, JSON.stringify(validTopics)),
+    AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(validTopics)),
+  ];
 
   if (currentUser?.id) {
-    await AsyncStorage.setItem(
-      `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
-      JSON.stringify(validTopics)
+    writes.push(
+      AsyncStorage.setItem(
+        `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
+        JSON.stringify(validTopics)
+      )
     );
-    await AsyncStorage.setItem(
-      `@community_selected_topics_v2_${currentUser.id}`,
-      JSON.stringify(validTopics)
+    writes.push(
+      AsyncStorage.setItem(
+        `@community_selected_topics_v2_${currentUser.id}`,
+        JSON.stringify(validTopics)
+      )
     );
   }
 
-  
+  await Promise.all(writes);
+
+  // Merge the onboarding flag without a read-then-write race.
   const onboardingData = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
+  let parsed: any = null;
   if (onboardingData) {
-    const parsed = JSON.parse(onboardingData);
-    await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
-      ...parsed,
-      selectedTopics: validTopics,
-      completed: true,
-    }));
-  } else {
-    await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING, JSON.stringify({
+    try { parsed = JSON.parse(onboardingData); } catch { parsed = null; }
+  }
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.ONBOARDING,
+    JSON.stringify({
+      ...(parsed || {}),
       completed: true,
       selectedTopics: validTopics,
       timestamp: new Date().toISOString(),
-    }));
-  }
+    })
+  );
 
-  
   setState(prev => ({
     ...prev,
     selectedTopics: validTopics,

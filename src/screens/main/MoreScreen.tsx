@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -19,6 +15,8 @@ import {
   Platform,
   Linking,
   Pressable,
+  FlatList,
+  type ViewToken,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,49 +34,162 @@ import Animated, {
   Extrapolate,
   FadeInUp,
   FadeIn,
+  FadeInDown,
+  FadeInRight,
+  FadeOut,
   Layout,
   useAnimatedScrollHandler,
+  runOnJS,
 } from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../utils/supabase';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-
+// Hooks
 import { useSupabase } from '../../hooks/useSupabase';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useCustomization } from '../../hooks/useCustomization';
 
-
+// Contexts
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useActivity } from '../../context/ActivityContext';
 import { useUser } from '../../context/UserContext';
+import { useApp } from '../../context/AppContext';
+import { useCommunity } from '../../context/CommunityContext';
+import { useFamilyChat } from '../../context/FamilyChatContext';
+import { useAudio } from '../../context/AudioContext';
 
-
+// Components
 import { SafeAvatar, SafeBabyAvatar } from '../../components/SafeAvatar';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { AILearningStatus } from '../../components/AILearningStatus';
+import { useSweetAlert } from '../../components/SweetAlert';
 
-
+// Types
 import type { RootStackParamList } from '../../types/navigation';
 import type { FamilyMember } from '../../types/roles';
 
-
+// Services
 import backupService, { createBackup } from '../../utils/backupService';
-
-
-import { useSweetAlert } from '../../components/SweetAlert';
 
 type SettingsScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const littleLoomLogo = require('../../../assets/logo.png');
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Aligned with Community Screen
+   ═══════════════════════════════════════════════════════════════════════════ */
 
+const DS = {
+  // Primary palette
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  primaryGhost: 'rgba(99,102,241,0.08)',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
 
+  // Grays
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
 
+  // Dark mode
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+
+  // Spacing
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32, '4xl': 40, '5xl': 56 },
+
+  // Radius
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+
+  // Shadows
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
+};
+
+const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight || 0) + 14;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GRADIENT TEXT COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GradientText = React.memo(
+  ({
+    children,
+    style,
+    colors = ['#667eea', '#764ba2', '#f093fb'],
+    ...props
+  }: {
+    children: React.ReactNode;
+    style?: any;
+    colors?: string[];
+    [k: string]: any;
+  }) => {
+    const raw = typeof children === 'string' ? children : String(children ?? '');
+    const letters = raw.split('');
+
+    const interpolateColor = (c1: string, c2: string, t: number) => {
+      const r1 = parseInt(c1.slice(1, 3), 16);
+      const g1 = parseInt(c1.slice(3, 5), 16);
+      const b1 = parseInt(c1.slice(5, 7), 16);
+      const r2 = parseInt(c2.slice(1, 3), 16);
+      const g2 = parseInt(c2.slice(3, 5), 16);
+      const b2 = parseInt(c2.slice(5, 7), 16);
+      const r = Math.round(r1 + (r2 - r1) * t);
+      const g = Math.round(g1 + (g2 - g1) * t);
+      const b = Math.round(b1 + (b2 - b1) * t);
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+
+    return (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {letters.map((letter, index) => {
+          const position = index / Math.max(letters.length - 1, 1);
+          const colorIndex = position * (colors.length - 1);
+          const lowerIndex = Math.floor(colorIndex);
+          const upperIndex = Math.min(lowerIndex + 1, colors.length - 1);
+          const fraction = colorIndex - lowerIndex;
+          const startColor = colors[lowerIndex] || colors[0];
+          const endColor = colors[upperIndex] || colors[colors.length - 1];
+          const color = interpolateColor(startColor, endColor, fraction);
+          return (
+            <Text key={index} style={[style, { color }]} {...props}>
+              {letter}
+            </Text>
+          );
+        })}
+      </View>
+    );
+  },
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRESSABLE SCALE (springy touch feedback)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -137,9 +248,9 @@ const PressableScale = React.memo<PressableScaleProps>(({
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   CUSTOM MODAL
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface CustomModalProps {
   visible: boolean;
@@ -245,9 +356,9 @@ const CustomModal = React.memo<CustomModalProps>(({
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   PULSING DOT
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
   const pulse = useSharedValue(1);
@@ -301,9 +412,230 @@ const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA HERO BANNER — Matches Community Screen
+   ═══════════════════════════════════════════════════════════════════════════ */
 
+interface AuraSettingsBannerProps {
+  isDark: boolean;
+  userProfile: any;
+  currentBaby: any;
+  stats: { entries: number; streak: number; milestones: number };
+  cloudActive: boolean;
+  cloudColor: string;
+  cloudLabel: string;
+  isSyncing: boolean;
+  syncStatus: 'idle' | 'syncing' | 'success' | 'error';
+  onShare: () => void;
+  onSync: () => void;
+  onProfilePress: () => void;
+  onCommunityPress: () => void;
+  onTimelinePress: () => void;
+  onAchievementsPress: () => void;
+  onMilestonesPress: () => void;
+}
 
+const AuraSettingsBanner = React.memo<AuraSettingsBannerProps>(({
+  isDark,
+  userProfile,
+  currentBaby,
+  stats,
+  cloudActive,
+  cloudColor,
+  cloudLabel,
+  isSyncing,
+  syncStatus,
+  onShare,
+  onSync,
+  onProfilePress,
+  onCommunityPress,
+  onTimelinePress,
+  onAchievementsPress,
+  onMilestonesPress,
+}) => {
+  return (
+    <View
+      style={[
+        styles.heroBanner,
+        {
+          backgroundColor: isDark ? DS.darkCard : DS.white,
+          borderColor: isDark ? DS.darkBorder : DS.gray200,
+          borderWidth: 1,
+        },
+      ]}
+    >
+      {/* Base gradient */}
+      <LinearGradient
+        colors={
+          isDark
+            ? ['rgba(99,102,241,0.22)', 'rgba(236,72,153,0.12)', 'rgba(139,92,246,0.06)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']
+        }
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      {/* Aura glows */}
+      <LinearGradient
+        colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
+        style={styles.auraGlowTopLeft}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[`${DS.accent}${isDark ? '38' : '22'}`, 'transparent']}
+        style={styles.auraGlowTopRight}
+        start={{ x: 1, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        pointerEvents="none"
+      />
 
+      <View style={styles.heroContent}>
+        {/* Title row */}
+        <View style={styles.heroHeader}>
+          <View style={{ flex: 1 }}>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.heroTitle}>
+              SETTINGS
+            </GradientText>
+            <View style={styles.cloudRow}>
+              {isSyncing ? (
+                <UniversalSpinner size={10} color={cloudColor} variant="liquid" section="settings" />
+              ) : (
+                <PulsingDot color={cloudColor} size={7} />
+              )}
+              <Text style={[styles.cloudText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                {cloudLabel}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.heroActionsTop}>
+            <TouchableOpacity
+              onPress={onShare}
+              style={[
+                styles.headerIconBtn,
+                { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 },
+              ]}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="share-outline" size={18} color={isDark ? DS.white : DS.gray800} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onSync}
+              style={[
+                styles.headerIconBtn,
+                { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 },
+              ]}
+              disabled={isSyncing}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={
+                  syncStatus === 'success'
+                    ? 'checkmark-circle'
+                    : syncStatus === 'error'
+                    ? 'alert-circle'
+                    : 'cloud-upload-outline'
+                }
+                size={18}
+                color={
+                  syncStatus === 'success'
+                    ? DS.success
+                    : syncStatus === 'error'
+                    ? DS.danger
+                    : isDark
+                    ? DS.white
+                    : DS.gray800
+                }
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* User row */}
+        <View style={styles.heroUserRow}>
+          <PressableScale onPress={onProfilePress} activeScale={0.92}>
+            <SafeAvatar
+              avatar={userProfile?.avatar}
+              size={60}
+              fallbackIcon="person"
+              fallbackColor={DS.primary}
+              showEditBadge={true}
+              borderWidth={2.5}
+              borderColor={isDark ? 'rgba(255,255,255,0.15)' : DS.white}
+            />
+          </PressableScale>
+          <View style={styles.heroUserInfo}>
+            <Text style={[styles.heroUserName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+              {userProfile?.fullName || 'Parent'}
+            </Text>
+            <Text style={[styles.heroUserEmail, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+              {userProfile?.email || 'parent@littleloom.app'}
+            </Text>
+            {currentBaby && (
+              <View style={[styles.babyTagPill, { backgroundColor: isDark ? `${DS.accent}20` : `${DS.accent}12` }]}>
+                <Ionicons name="heart" size={10} color={DS.accent} />
+                <Text style={[styles.babyTagPillText, { color: DS.accent }]} numberOfLines={1}>
+                  {currentBaby.name} · {currentBaby.age}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Community profile link */}
+        <PressableScale onPress={onCommunityPress} activeScale={0.98}>
+          <View
+            style={[
+              styles.communityLinkRow,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)' },
+            ]}
+          >
+            <View style={[styles.communityLinkIcon, { backgroundColor: `${DS.primary}18` }]}>
+              <Ionicons name="globe-outline" size={16} color={DS.primary} />
+            </View>
+            <View style={styles.communityLinkText}>
+              <Text style={[styles.communityLinkTitle, { color: isDark ? DS.white : DS.gray800 }]}>
+                Community Profile
+              </Text>
+              <Text style={[styles.communityLinkSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                Edit your public profile & bio
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+          </View>
+        </PressableScale>
+
+        {/* Stats strip */}
+        <View
+          style={[
+            styles.heroStats,
+            { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' },
+          ]}
+        >
+          <TouchableOpacity style={styles.heroStat} onPress={onTimelinePress} activeOpacity={0.7}>
+            <Text style={[styles.heroStatValue, { color: DS.info }]}>{stats.entries}</Text>
+            <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Entries</Text>
+          </TouchableOpacity>
+          <View style={[styles.heroStatDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <TouchableOpacity style={styles.heroStat} onPress={onAchievementsPress} activeOpacity={0.7}>
+            <Text style={[styles.heroStatValue, { color: DS.warning }]}>{stats.streak}</Text>
+            <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Streak</Text>
+          </TouchableOpacity>
+          <View style={[styles.heroStatDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <TouchableOpacity style={styles.heroStat} onPress={onMilestonesPress} activeOpacity={0.7}>
+            <Text style={[styles.heroStatValue, { color: DS.success }]}>{stats.milestones}</Text>
+            <Text style={[styles.heroStatLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Milestones</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION HEADER — Pill-style with Chevron
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface SectionHeaderProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -364,7 +696,7 @@ const SectionHeader = React.memo<SectionHeaderProps>(({
           )}
           {rightAction}
           <Animated.View style={chevronStyle}>
-            <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#999'} />
+            <Ionicons name="chevron-forward" size={18} color={isDark ? DS.gray500 : DS.gray400} />
           </Animated.View>
         </View>
       </View>
@@ -372,9 +704,9 @@ const SectionHeader = React.memo<SectionHeaderProps>(({
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   MENU ITEM
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -424,15 +756,15 @@ const MenuItem = React.memo<MenuItemProps>(({
     }
   }, [disabled, loading, onToggle, onPress, isEnabled, hapticFeedback, triggerHaptic]);
 
-  const iconColor = isDestructive ? '#ef4444' : disabled ? '#999' : color;
+  const iconColor = isDestructive ? DS.danger : disabled ? DS.gray400 : color;
   const titleColor = isDestructive
-    ? '#ef4444'
+    ? DS.danger
     : disabled
-    ? '#999'
+    ? DS.gray400
     : isDark
-    ? '#fff'
-    : '#1a1a1a';
-  const subtitleColor = isDark ? '#888' : '#999';
+    ? DS.white
+    : DS.gray900;
+  const subtitleColor = isDark ? DS.gray400 : DS.gray500;
 
   return (
     <PressableScale
@@ -488,7 +820,7 @@ const MenuItem = React.memo<MenuItemProps>(({
                     }
               }
               trackColor={{
-                false: isDark ? '#333' : '#d1d5db',
+                false: isDark ? '#333' : DS.gray300,
                 true: `${color}50`,
               }}
               thumbColor={isEnabled ? color : isDark ? '#555' : '#f4f3f4'}
@@ -499,7 +831,7 @@ const MenuItem = React.memo<MenuItemProps>(({
             <Ionicons
               name="chevron-forward"
               size={16}
-              color={disabled ? '#555' : isDark ? '#666' : '#bbb'}
+              color={disabled ? DS.gray400 : isDark ? DS.gray500 : DS.gray300}
             />
           ) : value ? (
             <Text style={[styles.menuValue, isDark && styles.textMuted]}>{value}</Text>
@@ -510,9 +842,9 @@ const MenuItem = React.memo<MenuItemProps>(({
   );
 });
 
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   STAT CARD
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface StatCardProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -541,9 +873,9 @@ const StatCard = React.memo<StatCardProps>(
   )
 );
 
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   QUICK ACTION
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface QuickActionProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -564,9 +896,9 @@ const QuickAction = React.memo<QuickActionProps>(
   )
 );
 
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY MEMBER ITEM
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface FamilyMemberProps {
   avatar?: string | number;
@@ -613,9 +945,9 @@ const FamilyMemberItem = React.memo<FamilyMemberProps>(({
   </PressableScale>
 ));
 
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   BABY SELECTION MODAL
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface BabySelectionModalProps {
   visible: boolean;
@@ -623,6 +955,7 @@ interface BabySelectionModalProps {
   babies: any[];
   currentBabyId: string | null;
   onSelectBaby: (baby: any) => void;
+  onEditBaby: (baby: any) => void;
   isDark: boolean;
   primaryColor: string;
 }
@@ -633,6 +966,7 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
   babies,
   currentBabyId,
   onSelectBaby,
+  onEditBaby,
   isDark,
   primaryColor,
 }) => {
@@ -682,7 +1016,7 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
             </Text>
             <PressableScale onPress={onClose} hapticType="light">
               <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
-                <Ionicons name="close" size={20} color={isDark ? '#fff' : '#1a1a1a'} />
+                <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray900} />
               </View>
             </PressableScale>
           </View>
@@ -691,39 +1025,61 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
             {babies.map((baby) => {
               const isActive = baby.id === currentBabyId;
               return (
-                <PressableScale key={baby.id} onPress={() => onSelectBaby(baby)} activeScale={0.98}>
-                  <View
-                    style={[
-                      styles.babyOption,
-                      isDark && styles.babyOptionDark,
-                      isActive && [styles.babyOptionActive, { borderColor: primaryColor }],
-                      isActive && isDark && styles.babyOptionActiveDark,
-                    ]}
+                <View key={baby.id} style={styles.babyOptionRow}>
+                  <PressableScale
+                    onPress={() => onSelectBaby(baby)}
+                    activeScale={0.98}
+                    style={{ flex: 1 }}
                   >
-                    <SafeBabyAvatar avatar={baby.avatar} gender={baby.gender} size={52} />
-                    <View style={styles.babyOptionInfo}>
-                      <Text
-                        style={[
-                          styles.babyOptionName,
-                          isDark && styles.textLight,
-                          isActive && { color: primaryColor },
-                        ]}
-                      >
-                        {baby.name}
-                      </Text>
-                      <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
-                        {baby.age || 'Age unknown'} · {baby.gender || 'Unknown'}
-                      </Text>
-                    </View>
-                    {isActive ? (
-                      <View style={[styles.activeCheck, { backgroundColor: primaryColor }]}>
-                        <Ionicons name="checkmark" size={16} color="#fff" />
+                    <View
+                      style={[
+                        styles.babyOption,
+                        isDark && styles.babyOptionDark,
+                        isActive && [styles.babyOptionActive, { borderColor: primaryColor }],
+                        isActive && isDark && styles.babyOptionActiveDark,
+                      ]}
+                    >
+                      <SafeBabyAvatar avatar={baby.avatar} gender={baby.gender} size={52} />
+                      <View style={styles.babyOptionInfo}>
+                        <Text
+                          style={[
+                            styles.babyOptionName,
+                            isDark && styles.textLight,
+                            isActive && { color: primaryColor },
+                          ]}
+                        >
+                          {baby.name}
+                        </Text>
+                        <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
+                          {baby.age || 'Age unknown'} · {baby.gender || 'Unknown'}
+                        </Text>
                       </View>
-                    ) : (
-                      <Ionicons name="chevron-forward" size={18} color={isDark ? '#666' : '#ccc'} />
-                    )}
-                  </View>
-                </PressableScale>
+                      {isActive ? (
+                        <View style={[styles.activeCheck, { backgroundColor: primaryColor }]}>
+                          <Ionicons name="checkmark" size={16} color={DS.white} />
+                        </View>
+                      ) : (
+                        <Ionicons name="chevron-forward" size={18} color={isDark ? DS.gray500 : DS.gray300} />
+                      )}
+                    </View>
+                  </PressableScale>
+
+                  {/* Edit profile button — "the second option" */}
+                  <PressableScale
+                    onPress={() => onEditBaby(baby)}
+                    activeScale={0.9}
+                    hapticType="light"
+                  >
+                    <View
+                      style={[
+                        styles.babyEditBtn,
+                        { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                      ]}
+                    >
+                      <Ionicons name="create-outline" size={18} color={primaryColor} />
+                    </View>
+                  </PressableScale>
+                </View>
               );
             })}
           </ScrollView>
@@ -733,9 +1089,9 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
   );
 });
 
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   AI LEARNING PROGRESS BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface AILearningProgressBarProps {
   stats: {
@@ -764,12 +1120,12 @@ const AILearningProgressBar = React.memo<AILearningProgressBarProps>(({
 
   const scoreColor =
     stats.healthScore >= 80
-      ? '#10b981'
+      ? DS.success
       : stats.healthScore >= 60
-      ? '#f59e0b'
+      ? DS.warning
       : stats.healthScore >= 40
       ? '#f97316'
-      : '#ef4444';
+      : DS.danger;
 
   const scoreLabel =
     stats.healthScore >= 80
@@ -836,7 +1192,7 @@ const AILearningProgressBar = React.memo<AILearningProgressBarProps>(({
           </Text>
         </View>
         <View style={styles.aiLegendItem}>
-          <View style={[styles.aiLegendDot, { backgroundColor: '#f59e0b' }]} />
+          <View style={[styles.aiLegendDot, { backgroundColor: DS.warning }]} />
           <Text style={[styles.aiLegendText, isDark && styles.textMuted]}>
             {stats.partialCount} learning
           </Text>
@@ -845,14 +1201,14 @@ const AILearningProgressBar = React.memo<AILearningProgressBarProps>(({
           <View
             style={[
               styles.aiLegendDot,
-              { backgroundColor: isDark ? '#444' : '#cbd5e1' },
+              { backgroundColor: isDark ? DS.gray700 : '#cbd5e1' },
             ]}
           />
           <Text style={[styles.aiLegendText, isDark && styles.textMuted]}>
             {stats.notStartedCount} pending
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={16} color={isDark ? '#666' : '#bbb'} />
+        <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray300} />
       </View>
     </BlurView>
   );
@@ -867,9 +1223,9 @@ const AILearningProgressBar = React.memo<AILearningProgressBarProps>(({
   return body;
 });
 
-// ═════════════════════════════════════════════════════════════════════
-// HERO PROFILE CARD
-// ═════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROFILE HEADER (Family Scroll)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 interface ProfileHeaderProps {
   navigation: any;
@@ -949,202 +1305,98 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
     [hapticFeedback, triggerHaptic, navigation]
   );
 
-  const handleCommunityProfile = useCallback(() => {
-    if (hapticFeedback) triggerHaptic('medium').catch(() => {});
-    navigation.navigate('CommunityProfile', { userId: userProfile?.id });
-  }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
-
   return (
-    <View style={styles.profileCardWrap}>
-      {/* Gradient hero card */}
-      <LinearGradient
-        colors={
-          isDark
-            ? [`${primaryColor}30`, `${secondaryColor}18`]
-            : [`${primaryColor}15`, `${secondaryColor}08`]
-        }
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.profileCard, isDark && styles.profileCardDark]}
-      >
-        {/* User row */}
-        <View style={styles.profileTopRow}>
-          <PressableScale onPress={handleCurrentUserPress} activeScale={0.92}>
-            <SafeAvatar
-              avatar={userProfile?.avatar}
-              size={68}
-              fallbackIcon="person"
-              fallbackColor={primaryColor}
-              showEditBadge={true}
-              borderWidth={3}
-              borderColor={isDark ? 'rgba(255,255,255,0.15)' : '#fff'}
-            />
-          </PressableScale>
-
-          <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, isDark && styles.textLight]} numberOfLines={1}>
-              {userProfile?.fullName || 'Parent'}
-            </Text>
-            <Text style={[styles.profileEmail, isDark && styles.textMuted]} numberOfLines={1}>
-              {userProfile?.email || 'parent@littleloom.app'}
-            </Text>
-            {currentBaby && (
-              <View style={[styles.babyTag, { backgroundColor: `${secondaryColor}20` }]}>
-                <Ionicons name="heart" size={11} color={secondaryColor} />
-                <Text style={[styles.babyTagText, { color: secondaryColor }]}>
-                  {currentBaby.name} · {currentBaby.age}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <PressableScale onPress={handleCurrentUserPress} activeScale={0.85}>
-            <View style={[styles.settingsBtn, isDark && styles.settingsBtnDark]}>
-              <Ionicons name="settings-outline" size={20} color={isDark ? '#fff' : '#1a1a1a'} />
-            </View>
-          </PressableScale>
+    <View style={styles.familySection}>
+      <View style={styles.familySectionHeader}>
+        <Text style={[styles.familySectionTitle, isDark && styles.textMuted]}>FAMILY</Text>
+        <View style={[styles.familyCountBadge, { backgroundColor: `${primaryColor}15` }]}>
+          <Text style={[styles.familyCountText, { color: primaryColor }]}>
+            {safeBabies.length + (parent2Profile ? 1 : 0) + (guardians?.length || 0)}
+          </Text>
         </View>
-
-        {/* Community profile link */}
-        <PressableScale onPress={handleCommunityProfile} activeScale={0.98}>
-          <View
-            style={[
-              styles.communityLink,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)' },
-            ]}
-          >
-            <View style={[styles.communityIcon, { backgroundColor: `${primaryColor}18` }]}>
-              <Ionicons name="globe-outline" size={16} color={primaryColor} />
-            </View>
-            <View style={styles.communityLinkText}>
-              <Text style={[styles.communityLinkTitle, isDark && styles.textLight]}>
-                Community Profile
-              </Text>
-              <Text style={[styles.communityLinkSub, isDark && styles.textMuted]}>
-                Edit your public profile & bio
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={isDark ? '#666' : '#bbb'} />
-          </View>
-        </PressableScale>
-
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          <StatCard
-            icon="time-outline"
-            value={stats.entries}
-            label="Entries"
-            color="#4facfe"
-            isDark={isDark}
-            onPress={() => navigation.navigate('Timeline')}
-          />
-          <StatCard
-            icon="flame-outline"
-            value={stats.streak}
-            label="Streak"
-            color="#f59e0b"
-            isDark={isDark}
-            onPress={() => navigation.navigate('Achievements')}
-          />
-          <StatCard
-            icon="trophy-outline"
-            value={stats.milestones}
-            label="Milestones"
-            color={accentColor}
-            isDark={isDark}
-            onPress={() => navigation.navigate('Achievements', { highlightAchievement: 'milestones' })}
-          />
-        </View>
-      </LinearGradient>
-
-      {/* Family members scroll */}
-      <View style={styles.familySection}>
-        <Text style={[styles.familySectionTitle, isDark && styles.textMuted]}>
-          FAMILY
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.familyScroll}
-        >
-          <FamilyMemberItem
-            avatar={userProfile?.avatar}
-            name="You"
-            label="Parent"
-            color={primaryColor}
-            isDark={isDark}
-            onPress={handleCurrentUserPress}
-            badge={
-              <View
-                style={[
-                  styles.onlineIndicator,
-                  {
-                    backgroundColor: accentColor,
-                    borderColor: isDark ? '#1a1a2e' : '#fff',
-                  },
-                ]}
-              />
-            }
-          />
-
-          <FamilyMemberItem
-            avatar={currentBaby?.avatar}
-            name={currentBaby?.name || 'Baby'}
-            label="Baby"
-            color={secondaryColor}
-            isDark={isDark}
-            onPress={handleBabyPress}
-            isBaby={true}
-            gender={currentBaby?.gender}
-            badge={
-              hasMultipleBabies ? (
-                <View style={[styles.babyCountBadge, { backgroundColor: primaryColor }]}>
-                  <Text style={styles.babyCountText}>{safeBabies.length}</Text>
-                </View>
-              ) : undefined
-            }
-          />
-
-          {parent2Profile && (
-            <FamilyMemberItem
-              avatar={parent2Profile?.avatar}
-              name={parent2Profile?.fullName || 'Co-Parent'}
-              label="Co-Parent"
-              color="#11998e"
-              isDark={isDark}
-              onPress={handleParent2Press}
-            />
-          )}
-
-          {guardians?.map((guardian, index) => (
-            <FamilyMemberItem
-              key={guardian.id || index}
-              avatar={guardian?.avatar}
-              name={guardian.fullName || 'Guardian'}
-              label="Guardian"
-              color="#9b59b6"
-              isDark={isDark}
-              onPress={() => handleGuardianPress(guardian)}
-            />
-          ))}
-
-          <FamilyMemberItem
-            avatar={undefined}
-            name="Add"
-            label="Member"
-            color={primaryColor}
-            isDark={isDark}
-            onPress={() => navigation.navigate('FamilySharing')}
-            badge={
-              <View style={[styles.addBadge, isDark && styles.addBadgeDark]}>
-                <Ionicons name="add" size={16} color={primaryColor} />
-              </View>
-            }
-          />
-        </ScrollView>
       </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.familyScroll}
+      >
+        <FamilyMemberItem
+          avatar={userProfile?.avatar}
+          name="You"
+          label="Parent"
+          color={primaryColor}
+          isDark={isDark}
+          onPress={handleCurrentUserPress}
+          badge={
+            <View
+              style={[
+                styles.onlineIndicator,
+                {
+                  backgroundColor: accentColor,
+                  borderColor: isDark ? DS.darkSurface : DS.white,
+                },
+              ]}
+            />
+          }
+        />
 
-      {/* Quick actions */}
+        <FamilyMemberItem
+          avatar={currentBaby?.avatar}
+          name={currentBaby?.name || 'Baby'}
+          label="Baby"
+          color={secondaryColor}
+          isDark={isDark}
+          onPress={handleBabyPress}
+          isBaby={true}
+          gender={currentBaby?.gender}
+          badge={
+            hasMultipleBabies ? (
+              <View style={[styles.babyCountBadge, { backgroundColor: primaryColor }]}>
+                <Text style={styles.babyCountText}>{safeBabies.length}</Text>
+              </View>
+            ) : undefined
+          }
+        />
+
+        {parent2Profile && (
+          <FamilyMemberItem
+            avatar={parent2Profile?.avatar}
+            name={parent2Profile?.fullName || 'Co-Parent'}
+            label="Co-Parent"
+            color="#11998e"
+            isDark={isDark}
+            onPress={handleParent2Press}
+          />
+        )}
+
+        {guardians?.map((guardian, index) => (
+          <FamilyMemberItem
+            key={guardian.id || index}
+            avatar={guardian?.avatar}
+            name={guardian.fullName || 'Guardian'}
+            label="Guardian"
+            color="#9b59b6"
+            isDark={isDark}
+            onPress={() => handleGuardianPress(guardian)}
+          />
+        ))}
+
+        <FamilyMemberItem
+          avatar={undefined}
+          name="Add"
+          label="Member"
+          color={primaryColor}
+          isDark={isDark}
+          onPress={() => navigation.navigate('FamilySharing')}
+          badge={
+            <View style={[styles.addBadge, isDark && styles.addBadgeDark]}>
+              <Ionicons name="add" size={16} color={primaryColor} />
+            </View>
+          }
+        />
+      </ScrollView>
+
+      {/* Quick actions row */}
       <View style={styles.quickActionsRow}>
         <QuickAction
           icon="person-outline"
@@ -1170,7 +1422,7 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
         <QuickAction
           icon="notifications-outline"
           label="Alerts"
-          color="#f59e0b"
+          color={DS.warning}
           isDark={isDark}
           onPress={() => navigation.navigate('TrackerReminders')}
         />
@@ -1202,16 +1454,16 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ═════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
 
   // ─── Contexts ────────────────────────────────────────────────────
   const { signOut, userProfile } = useAuth();
-  const { babies, currentBaby, currentBabyId, getBabyStats, loadBabies } = useBaby();
+  const { babies, currentBaby, currentBabyId, getBabyStats, loadBabies, switchBaby } = useBaby();
   const {
     settings: securitySettings,
     isBiometricEnabled,
@@ -1226,6 +1478,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     getBiometricIcon,
     refreshBiometricStatus,
     readBiometricEnabledFromStorage,
+    rehydratePinStatus,
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
   const { guardians, parent2: parent2Profile } = useFamily();
@@ -1279,7 +1532,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const biometricToggleLockRef = useRef(false);
   const hasHydratedFromServerRef = useRef(false);
 
-  // Mount tracking
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -1289,9 +1541,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Computed ──────────────────────────────────────────────────
   const isDark = customizationIsDark;
-  const primary = themeColors?.primary || '#667eea';
-  const secondary = themeColors?.secondary || '#fa709a';
-  const accent = themeColors?.accent || '#43e97b';
+  const primary = themeColors?.primary || DS.primary;
+  const secondary = themeColors?.secondary || DS.accent;
+  const accent = themeColors?.accent || DS.success;
 
   const safeBabies = babies || [];
   const availableMethods = getAvailableAuthMethods();
@@ -1315,15 +1567,15 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const bgColors = useMemo(() => {
     if (isDark) {
       return [
-        fullThemeColors?.background || '#0f0f1e',
-        fullThemeColors?.surface || '#1a1a2e',
-        fullThemeColors?.card || '#16162a',
+        fullThemeColors?.background || DS.darkBg,
+        '#0c0c18',
+        '#12121e',
       ];
     }
     return [
-      fullThemeColors?.background || '#f8faff',
-      fullThemeColors?.surface || '#ffffff',
-      fullThemeColors?.card || '#f0f4ff',
+      fullThemeColors?.background || DS.gray50,
+      '#eef0f5',
+      '#e4e8f0',
     ];
   }, [isDark, fullThemeColors]);
 
@@ -1475,9 +1727,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         setSyncStatus('success');
         triggerHaptic('success');
 
-        // ─── Ensure the backup service knows who the user is ─────
-        //     MoreScreen might mount before AuthContext has hydrated
-        //     the profile, so push the ID explicitly.
         try {
           const uid = userProfile?.id;
           if (uid) {
@@ -1556,7 +1805,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           }
 
           const ok = await toggleBiometric(true);
-          if (ok) {
+          const storedAfter = await readBiometricEnabledFromStorage();
+          if (ok && storedAfter) {
             setLocalBiometricEnabled(true);
             await refreshBiometricStatus();
             triggerHaptic('success');
@@ -1565,7 +1815,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               'You can now unlock LittleLoom with biometrics.'
             );
           } else {
-            setLocalBiometricEnabled(false);
+            setLocalBiometricEnabled(storedAfter);
           }
         } else {
           setShowBiometricModal(true);
@@ -1597,37 +1847,70 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   const confirmDisableBiometric = useCallback(async () => {
     setShowBiometricModal(false);
+    if (biometricToggleLockRef.current) {
+      return;
+    }
+    biometricToggleLockRef.current = true;
+
     try {
       const ok = await toggleBiometric(false);
-      if (ok) {
+      const storedAfter = await readBiometricEnabledFromStorage();
+
+      if (ok && !storedAfter) {
         setLocalBiometricEnabled(false);
         await refreshBiometricStatus();
         triggerHaptic('success');
         sweetAlert.success('Biometric Disabled', 'Biometric authentication has been turned off.');
       } else {
-        setLocalBiometricEnabled(true);
-        sweetAlert.error('Error', 'Could not disable biometric authentication.');
+        setLocalBiometricEnabled(storedAfter);
+        if (storedAfter) {
+          sweetAlert.error('Error', 'Could not disable biometric authentication.');
+        } else {
+          triggerHaptic('success');
+          sweetAlert.success('Biometric Disabled', 'Biometric authentication has been turned off.');
+        }
       }
     } catch (error) {
       console.error('Disable biometric error:', error);
-      setLocalBiometricEnabled(true);
+      try {
+        const stored = await readBiometricEnabledFromStorage();
+        setLocalBiometricEnabled(stored);
+      } catch {
+        setLocalBiometricEnabled(false);
+      }
       sweetAlert.error('Error', 'An error occurred while disabling biometric authentication.');
+    } finally {
+      setTimeout(() => { biometricToggleLockRef.current = false; }, 500);
     }
-  }, [toggleBiometric, refreshBiometricStatus, triggerHaptic, sweetAlert]);
+  }, [
+    toggleBiometric,
+    refreshBiometricStatus,
+    triggerHaptic,
+    sweetAlert,
+    readBiometricEnabledFromStorage,
+  ]);
 
-  const cancelDisableBiometric = useCallback(() => {
+  const cancelDisableBiometric = useCallback(async () => {
     setShowBiometricModal(false);
-    setLocalBiometricEnabled(true);
-  }, []);
+    try {
+      const stored = await readBiometricEnabledFromStorage();
+      setLocalBiometricEnabled(stored);
+    } catch {
+      setLocalBiometricEnabled(isBiometricEnabled ?? false);
+    }
+  }, [readBiometricEnabledFromStorage, isBiometricEnabled]);
 
   const handlePinSetup = useCallback(() => {
     navigation.navigate('SecurityCenter', { mode: 'setup' });
   }, [navigation]);
 
   const handleLockNow = useCallback(async () => {
+    const hasPinFresh = await rehydratePinStatus();
+    const storedBio = await readBiometricEnabledFromStorage();
+
     const hasAnySecurity =
-      securitySettings.isPinEnabled ||
-      (isBiometricEnabled && biometricAvailable) ||
+      hasPinFresh ||
+      (storedBio && biometricAvailable) ||
       securitySettings.isAppLockEnabled;
 
     if (!hasAnySecurity) {
@@ -1645,9 +1928,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       sweetAlert.error('Error', 'Could not lock the app. Please try again.');
     }
   }, [
-    securitySettings.isPinEnabled,
+    rehydratePinStatus,
+    readBiometricEnabledFromStorage,
     securitySettings.isAppLockEnabled,
-    isBiometricEnabled,
     biometricAvailable,
     lockApp,
     navigation,
@@ -1668,6 +1951,23 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   );
 
   const handleSelectBabyFromModal = useCallback(
+    async (baby: any) => {
+      setShowBabyModal(false);
+      // Only switch if it's a different baby
+      if (baby.id !== currentBabyId) {
+        try {
+          await switchBaby(baby.id);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (err) {
+          console.error('[MoreScreen] switchBaby failed:', err);
+          sweetAlert.error('Switch Failed', 'Could not switch to the selected baby.');
+        }
+      }
+    },
+    [currentBabyId, switchBaby, sweetAlert]
+  );
+
+  const handleEditBabyFromModal = useCallback(
     (baby: any) => {
       setShowBabyModal(false);
       navigation.navigate('EditProfile', { mode: 'baby', babyId: baby.id });
@@ -1694,26 +1994,38 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
 
   // ─── Effects ───────────────────────────────────────────────────
 
-  // Sync local biometric state from context
-  useEffect(() => {
-    setLocalBiometricEnabled(isBiometricEnabled ?? false);
-  }, [isBiometricEnabled]);
+  const prevCtxBioRef = useRef(isBiometricEnabled);
 
-  // Read from storage on mount
   useEffect(() => {
     let mounted = true;
     (async () => {
+      if (biometricToggleLockRef.current) return;
       try {
         const stored = await readBiometricEnabledFromStorage();
-        if (mounted) setLocalBiometricEnabled(stored);
+        if (mounted && !biometricToggleLockRef.current) {
+          setLocalBiometricEnabled(stored);
+        }
       } catch {}
     })();
-    return () => {
-      mounted = false;
-    };
-  }, [readBiometricEnabledFromStorage]);
+    return () => { mounted = false; };
+  }, [readBiometricEnabledFromStorage, isBiometricEnabled]);
 
-  // Server hydration (once)
+  useEffect(() => {
+    if (prevCtxBioRef.current === isBiometricEnabled) return;
+    prevCtxBioRef.current = isBiometricEnabled;
+
+    if (biometricToggleLockRef.current) return;
+
+    (async () => {
+      try {
+        const stored = await readBiometricEnabledFromStorage();
+        if (!biometricToggleLockRef.current) {
+          setLocalBiometricEnabled(stored);
+        }
+      } catch {}
+    })();
+  }, [isBiometricEnabled, readBiometricEnabledFromStorage]);
+
   useEffect(() => {
     if (hasHydratedFromServerRef.current) return;
     hasHydratedFromServerRef.current = true;
@@ -1738,7 +2050,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     })();
   }, [userProfile?.id]);
 
-  // Flush cohort queue on foreground
   useEffect(() => {
     const { AppState } = require('react-native');
     const sub = AppState.addEventListener('change', async (state: string) => {
@@ -1756,7 +2067,6 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     return () => sub.remove();
   }, []);
 
-  // Load collaborative learning opt-in
   useEffect(() => {
     import('../../services/ai/CohortPriors')
       .then(({ isCollaborativeLearningEnabled }) => isCollaborativeLearningEnabled())
@@ -1764,12 +2074,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       .catch(() => {});
   }, []);
 
-  // Load AI stats on baby change
   useEffect(() => {
     loadAIStats();
   }, [loadAIStats]);
 
-  // Refresh biometric status on mount
   useEffect(() => {
     const timer = setTimeout(() => {
       refreshBiometricStatus().catch(() => {});
@@ -1783,11 +2091,16 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       focusLoadTimeout.current = setTimeout(async () => {
         loadBabies();
         loadEntries?.();
-        await refreshBiometricStatus();
-        try {
-          const stored = await readBiometricEnabledFromStorage();
-          setLocalBiometricEnabled(stored);
-        } catch {}
+        await Promise.all([
+          refreshBiometricStatus(),
+          rehydratePinStatus(),
+        ]);
+        if (!biometricToggleLockRef.current) {
+          try {
+            const stored = await readBiometricEnabledFromStorage();
+            setLocalBiometricEnabled(stored);
+          } catch {}
+        }
         loadAIStats();
       }, 300);
 
@@ -1798,6 +2111,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       loadBabies,
       loadEntries,
       refreshBiometricStatus,
+      rehydratePinStatus,
       readBiometricEnabledFromStorage,
       loadAIStats,
     ])
@@ -1829,9 +2143,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           title="Security & Privacy"
           subtitle={
             bioEnabled
-              ? `${biometricTypeName} enabled`
+              ? `${biometricTypeName} unlock is ON`
               : bioAvailable
-              ? `${biometricTypeName} available`
+              ? `${biometricTypeName} available — tap to enable`
               : 'Protect your data'
           }
           color={primary}
@@ -1849,7 +2163,11 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               icon={biometricIcon as any}
               title={`${biometricTypeName} Unlock`}
               subtitle={
-                bioEnabled ? 'Enabled' : bioAvailable ? 'Tap to enable' : 'Not Available'
+                bioEnabled
+                  ? 'Enabled'
+                  : bioAvailable
+                  ? 'Tap to enable'
+                  : 'Not Available'
               }
               isEnabled={bioEnabled}
               onToggle={(val) => {
@@ -1907,7 +2225,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               title="Lock Timeout"
               value={formatTimeout(securitySettings.autoLockTimeout)}
               onPress={handleAutoLockTimeout}
-              color="#f59e0b"
+              color={DS.warning}
               isDark={isDark}
               showArrow
               disabled={!securitySettings.isAppLockEnabled}
@@ -1917,7 +2235,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               title="Lock Now"
               subtitle="Immediately lock the app"
               onPress={handleLockNow}
-              color="#ef4444"
+              color={DS.danger}
               isDark={isDark}
               showArrow
               isLast
@@ -2206,7 +2524,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               title="Achievements"
               subtitle="View your parenting milestones"
               onPress={() => navigation.navigate('Achievements')}
-              color="#f59e0b"
+              color={DS.warning}
               isDark={isDark}
               showArrow
             />
@@ -2247,7 +2565,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           icon="shield-half"
           title="Safety"
           subtitle="Emergency contacts & first aid"
-          color="#ef4444"
+          color={DS.danger}
           isDark={isDark}
           isExpanded={isExpanded}
           onPress={() => toggleSection('safety')}
@@ -2263,7 +2581,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               title="Safety Corner"
               subtitle="Emergency contacts, first aid & safety tips"
               onPress={() => navigation.navigate('SafetyCorner')}
-              color="#ef4444"
+              color={DS.danger}
               isDark={isDark}
               showArrow
             />
@@ -2272,7 +2590,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               title="Emergency Info"
               subtitle="Quick access to emergency details"
               onPress={() => navigation.navigate('SafetyCorner')}
-              color="#f59e0b"
+              color={DS.warning}
               isDark={isDark}
               showArrow
               isLast
@@ -2354,18 +2672,19 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   // ═══════════════════════════════════════════════════════════════
 
   const cloudActive = isConnected && !isSyncing;
-  const cloudColor = isSyncing ? '#f59e0b' : cloudActive ? '#10b981' : '#94a3b8';
+  const cloudColor = isSyncing ? DS.warning : cloudActive ? DS.success : '#94a3b8';
   const cloudLabel = isSyncing ? 'Syncing…' : cloudActive ? 'Cloud sync active' : 'Offline';
 
   return (
-    <LinearGradient colors={bgColors} style={styles.container}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+    <View style={styles.container}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient colors={bgColors} style={styles.backgroundGradient} />
 
       <Animated.ScrollView
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + 12,
+            paddingTop: HEADER_TOP_PADDING + 8,
             paddingBottom: insets.bottom + 100,
           },
         ]}
@@ -2383,73 +2702,34 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {/* ═══ HEADER ═══ */}
-        <Animated.View entering={FadeInUp.duration(400)} style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={[styles.headerTitle, isDark && styles.textLight]}>Settings</Text>
-            <View style={styles.cloudRow}>
-              {isSyncing ? (
-                <UniversalSpinner size={10} color={cloudColor} variant="liquid" section="settings" />
-              ) : (
-                <PulsingDot color={cloudColor} size={7} />
-              )}
-              <Text style={[styles.cloudText, { color: isDark ? '#888' : '#999' }]}>
-                {cloudLabel}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={handleShare}
-              style={[
-                styles.headerBtn,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255,255,255,0.05)'
-                    : 'rgba(0,0,0,0.04)',
-                },
-              ]}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="share-outline" size={18} color={isDark ? '#fff' : '#1a1a1a'} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSync}
-              style={[
-                styles.headerBtn,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255,255,255,0.05)'
-                    : 'rgba(0,0,0,0.04)',
-                },
-              ]}
-              disabled={isSyncing}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={
-                  syncStatus === 'success'
-                    ? 'checkmark-circle'
-                    : syncStatus === 'error'
-                    ? 'alert-circle'
-                    : 'cloud-upload-outline'
-                }
-                size={18}
-                color={
-                  syncStatus === 'success'
-                    ? '#10b981'
-                    : syncStatus === 'error'
-                    ? '#ef4444'
-                    : isDark
-                    ? '#fff'
-                    : '#1a1a1a'
-                }
-              />
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
+        {/* ═══ AURA HERO BANNER ═══ */}
+        <AuraSettingsBanner
+          isDark={isDark}
+          userProfile={userProfile || userContextProfile}
+          currentBaby={currentBaby}
+          stats={activityStats}
+          cloudActive={cloudActive}
+          cloudColor={cloudColor}
+          cloudLabel={cloudLabel}
+          isSyncing={isSyncing}
+          syncStatus={syncStatus}
+          onShare={handleShare}
+          onSync={handleSync}
+          onProfilePress={() => {
+            const guardianId = userProfile?.id || userProfile?.uid || 'parent1';
+            navigation.navigate('EditGuardian', {
+              guardianId,
+              mode: 'parent2',
+              fromChat: false,
+            });
+          }}
+          onCommunityPress={() => navigation.navigate('CommunityProfile', { userId: userProfile?.id })}
+          onTimelinePress={() => navigation.navigate('Timeline')}
+          onAchievementsPress={() => navigation.navigate('Achievements')}
+          onMilestonesPress={() => navigation.navigate('Achievements', { highlightAchievement: 'milestones' })}
+        />
 
-        {/* ═══ PROFILE CARD ═══ */}
+        {/* ═══ FAMILY SCROLL + QUICK ACTIONS ═══ */}
         <Animated.View entering={FadeInUp.delay(50).duration(500)}>
           <ProfileHeader
             navigation={navigation}
@@ -2479,7 +2759,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         <Animated.View entering={FadeInUp.delay(400)} style={styles.appInfo}>
           <View style={styles.appLogoFloatWrap}>
             <Image
-              source={require('../../../assets/logo.png')}
+              source={littleLoomLogo}
               style={styles.appLogoImage}
               resizeMode="contain"
             />
@@ -2506,7 +2786,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               }
               size={13}
               color={
-                availableMethods.hasBiometric || availableMethods.hasPin ? accent : '#f59e0b'
+                availableMethods.hasBiometric || availableMethods.hasPin ? accent : DS.warning
               }
             />
             <Text
@@ -2516,7 +2796,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                 color:
                   availableMethods.hasBiometric || availableMethods.hasPin
                     ? accent
-                    : '#f59e0b',
+                    : DS.warning,
               }}
             >
               {availableMethods.hasBiometric || availableMethods.hasPin
@@ -2536,9 +2816,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               end={{ x: 1, y: 1 }}
             >
               <View style={styles.logoutContent}>
-                <Ionicons name="log-out-outline" size={22} color="#ef4444" />
+                <Ionicons name="log-out-outline" size={22} color={DS.danger} />
                 <Text style={styles.logoutText}>Sign Out</Text>
-                <Ionicons name="chevron-forward" size={18} color="#ef4444" />
+                <Ionicons name="chevron-forward" size={18} color={DS.danger} />
               </View>
             </LinearGradient>
           </PressableScale>
@@ -2568,7 +2848,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               </Text>
               <PressableScale onPress={() => setShowTimeoutModal(false)} hapticType="light">
                 <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
-                  <Ionicons name="close" size={20} color={isDark ? '#fff' : '#1a1a1a'} />
+                  <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray900} />
                 </View>
               </PressableScale>
             </View>
@@ -2609,7 +2889,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                         <Ionicons
                           name={isActive ? 'time' : 'time-outline'}
                           size={20}
-                          color={isActive ? primary : isDark ? '#666' : '#999'}
+                          color={isActive ? primary : isDark ? DS.gray500 : DS.gray400}
                         />
                       </View>
                       <Text
@@ -2623,7 +2903,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                       </Text>
                       {isActive && (
                         <View style={[styles.activeCheck, { backgroundColor: primary }]}>
-                          <Ionicons name="checkmark" size={14} color="#fff" />
+                          <Ionicons name="checkmark" size={14} color={DS.white} />
                         </View>
                       )}
                     </View>
@@ -2642,6 +2922,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         babies={safeBabies}
         currentBabyId={currentBabyId}
         onSelectBaby={handleSelectBabyFromModal}
+        onEditBaby={handleEditBabyFromModal}
         isDark={isDark}
         primaryColor={primary}
       />
@@ -2653,7 +2934,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         title="Sign Out"
         message="Are you sure you want to sign out? You will need to sign in again to access your account."
         icon="log-out-outline"
-        iconColor="#ef4444"
+        iconColor={DS.danger}
         isDark={isDark}
         primaryColor={primary}
         primaryAction={{ label: 'Sign Out', onPress: confirmLogout }}
@@ -2667,7 +2948,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         title="Disable Biometric?"
         message={`Are you sure you want to disable ${biometricTypeName}? You'll need to use your PIN or re-enable biometrics later.`}
         icon={biometricIcon as any}
-        iconColor="#f59e0b"
+        iconColor={DS.warning}
         isDark={isDark}
         primaryColor={primary}
         primaryAction={{ label: 'Disable', onPress: confirmDisableBiometric }}
@@ -2681,7 +2962,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         title="No Security Enabled"
         message="You haven't set up a PIN or biometric lock yet. You can still lock the app, but anyone can unlock it."
         icon="shield-outline"
-        iconColor="#f59e0b"
+        iconColor={DS.warning}
         isDark={isDark}
         primaryColor={primary}
         primaryAction={{
@@ -2715,131 +2996,90 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           secondaryAction={modalConfig.secondaryAction}
         />
       )}
-    </LinearGradient>
+    </View>
   );
 }
 
-// ═════════════════════════════════════════════════════════════════════
-// STYLES
-// ═════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingHorizontal: 16 },
+  backgroundGradient: { ...StyleSheet.absoluteFill },
+  content: { paddingHorizontal: DS.space.lg },
 
-  textLight: { color: '#ffffff' },
-  textMuted: { color: '#888' },
+  textLight: { color: DS.white },
+  textMuted: { color: DS.gray400 },
 
-  // ─── Header ─────────────────────────────────────────────────────
-  header: {
-    marginBottom: 20,
-    paddingHorizontal: 4,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+  /* ── Aura Hero Banner ── */
+  heroBanner: {
+    marginTop: DS.space.md,
+    marginBottom: DS.space.lg,
+    borderRadius: DS.radius.xl,
+    padding: DS.space.lg,
+    overflow: 'hidden',
+    ...DS.shadow.md,
   },
-  headerLeft: { flex: 1 },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    letterSpacing: -0.6,
+  auraGlowTopLeft: {
+    position: 'absolute',
+    top: -70,
+    left: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    opacity: 0.9,
   },
-  cloudRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
+  auraGlowTopRight: {
+    position: 'absolute',
+    top: -60,
+    right: -70,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    opacity: 0.8,
   },
-  cloudText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  headerBtn: {
+  heroContent: { zIndex: 1 },
+  heroHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: DS.space.md },
+  heroTitle: { fontSize: 26, fontWeight: '800', letterSpacing: 1, marginBottom: 2 },
+  cloudRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  cloudText: { fontSize: 12, fontWeight: '600' },
+  heroActionsTop: { flexDirection: 'row', gap: DS.space.sm },
+  headerIconBtn: {
     width: 38,
     height: 38,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // ─── Profile Card ───────────────────────────────────────────────
-  profileCardWrap: {
-    borderRadius: 28,
-    marginBottom: 20,
-  },
-  profileCard: {
-    borderRadius: 28,
-    padding: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  profileCardDark: {
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  profileTopRow: {
+  heroUserRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    gap: DS.space.md,
+    marginBottom: DS.space.md,
   },
-  profileInfo: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  profileName: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    marginBottom: 3,
-    letterSpacing: -0.3,
-  },
-  profileEmail: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 8,
-    fontWeight: '500',
-  },
-  babyTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+  heroUserInfo: { flex: 1 },
+  heroUserName: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4, marginBottom: 2 },
+  heroUserEmail: { fontSize: 13, fontWeight: '500', marginBottom: 8 },
+  babyTagPill: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
   },
-  babyTagText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  settingsBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingsBtnDark: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-
-  communityLink: {
+  babyTagPillText: { fontSize: 12, fontWeight: '700' },
+  communityLinkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     borderRadius: 16,
-    marginBottom: 16,
-    gap: 12,
+    gap: DS.space.md,
+    marginBottom: DS.space.md,
   },
-  communityIcon: {
+  communityLinkIcon: {
     width: 32,
     height: 32,
     borderRadius: 10,
@@ -2847,78 +3087,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   communityLinkText: { flex: 1 },
-  communityLinkTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 1,
-  },
-  communityLinkSub: {
-    fontSize: 12,
-    color: '#888',
-    fontWeight: '500',
-  },
-
-  statsRow: {
+  communityLinkTitle: { fontSize: 14, fontWeight: '700', marginBottom: 1 },
+  communityLinkSub: { fontSize: 12, fontWeight: '500' },
+  heroStats: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.65)',
-    borderRadius: 18,
-    padding: 14,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    overflow: 'hidden',
+    justifyContent: 'space-around',
+    paddingHorizontal: DS.space.md,
+    paddingVertical: DS.space.sm,
+    borderRadius: DS.radius.lg,
   },
-  statCardDark: {
-    backgroundColor: 'rgba(30,30,40,0.5)',
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  statIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    marginBottom: 2,
-    letterSpacing: -0.5,
-  },
-  statLabel: {
-    fontSize: 10,
-    color: '#666',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+  heroStat: { alignItems: 'center', flex: 1 },
+  heroStatValue: { fontSize: 20, fontWeight: '800' },
+  heroStatLabel: { fontSize: 11, fontWeight: '600' },
+  heroStatDivider: { width: 1, height: 24 },
 
-  familySection: { marginTop: 16 },
+  /* ── Family Section ── */
+  familySection: { marginBottom: DS.space.lg },
+  familySectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: DS.space.md,
+    paddingHorizontal: 4,
+  },
   familySectionTitle: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
-    color: '#888',
-    marginBottom: 10,
-    textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
-  familyScroll: {
-    paddingRight: 16,
-    gap: 12,
-    flexDirection: 'row',
+  familyCountBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
-  familyMember: {
-    alignItems: 'center',
-    minWidth: 64,
-  },
+  familyCountText: { fontSize: 11, fontWeight: '800' },
+  familyScroll: { gap: DS.space.md, paddingRight: DS.space.lg, flexDirection: 'row' },
+  familyMember: { alignItems: 'center', minWidth: 64 },
   familyAvatarWrap: {
     width: 54,
     height: 54,
@@ -2931,17 +3136,11 @@ const styles = StyleSheet.create({
   },
   familyName: {
     fontSize: 11,
-    color: '#1a1a1a',
     fontWeight: '700',
     maxWidth: 70,
     textAlign: 'center',
   },
-  familyLabel: {
-    fontSize: 10,
-    color: '#888',
-    fontWeight: '500',
-    marginTop: 1,
-  },
+  familyLabel: { fontSize: 10, fontWeight: '500', marginTop: 1 },
   onlineIndicator: {
     position: 'absolute',
     bottom: 2,
@@ -2961,13 +3160,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: DS.white,
   },
-  babyCountText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '800',
-  },
+  babyCountText: { color: DS.white, fontSize: 9, fontWeight: '800' },
   addBadge: {
     position: 'absolute',
     bottom: -2,
@@ -2975,29 +3170,26 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#fff',
+    backgroundColor: DS.white,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'rgba(102,126,234,0.2)',
   },
   addBadgeDark: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: DS.darkSurface,
     borderColor: 'rgba(255,255,255,0.1)',
   },
 
   quickActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingTop: 16,
-    marginTop: 16,
+    paddingTop: DS.space.lg,
+    marginTop: DS.space.lg,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.05)',
   },
-  quickAction: {
-    alignItems: 'center',
-    gap: 6,
-  },
+  quickAction: { alignItems: 'center', gap: 6 },
   quickActionIcon: {
     width: 44,
     height: 44,
@@ -3005,20 +3197,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickActionLabel: {
-    fontSize: 11,
-    color: '#666',
-    fontWeight: '600',
-  },
+  quickActionLabel: { fontSize: 11, fontWeight: '600' },
 
   switchBabyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 14,
-    paddingTop: 14,
+    marginTop: DS.space.md,
+    paddingTop: DS.space.md,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.05)',
-    gap: 12,
+    gap: DS.space.md,
   },
   switchBabyIcon: {
     width: 32,
@@ -3027,11 +3215,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  switchBabyText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  switchBabyText: { flex: 1, fontSize: 14, fontWeight: '700' },
   switchBabyBadge: {
     borderRadius: 10,
     minWidth: 22,
@@ -3040,13 +3224,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 7,
   },
-  switchBabyBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
-  },
+  switchBabyBadgeText: { color: DS.white, fontSize: 11, fontWeight: '800' },
 
-  // ─── Sections ───────────────────────────────────────────────────
+  /* ── Sections ── */
   section: { marginBottom: 4 },
 
   sectionHeader: {
@@ -3062,12 +3242,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    gap: 12,
+    gap: DS.space.md,
   },
   sectionHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: DS.space.sm,
   },
   sectionIconWrap: {
     width: 38,
@@ -3077,22 +3257,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sectionHeaderText: { flex: 1 },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 2,
-  },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: '#888',
-    fontWeight: '500',
-  },
+  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500' },
 
   menuContainer: {
     borderRadius: 22,
     overflow: 'hidden',
-    marginBottom: 16,
+    marginBottom: DS.space.lg,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
@@ -3102,7 +3273,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 13,
     paddingHorizontal: 14,
-    gap: 12,
+    gap: DS.space.md,
   },
   menuItemBorder: {
     borderBottomWidth: 1,
@@ -3116,36 +3287,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  menuTextContainer: {
-    flex: 1,
-    gap: 2,
-  },
-  menuTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  menuTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  menuSubtitle: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  menuRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  menuValue: {
-    fontSize: 13,
-    color: '#888',
-    fontWeight: '600',
-  },
-  switch: {
-    transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
-  },
+  menuTextContainer: { flex: 1, gap: 2 },
+  menuTitleRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.sm },
+  menuTitle: { fontSize: 14, fontWeight: '600' },
+  menuSubtitle: { fontSize: 12, fontWeight: '500' },
+  menuRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  menuValue: { fontSize: 13, fontWeight: '600' },
+  switch: { transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] },
 
   badge: {
     borderRadius: 10,
@@ -3155,11 +3303,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  badgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
-  },
+  badgeText: { color: DS.white, fontSize: 11, fontWeight: '800' },
   badgeSmall: {
     borderRadius: 8,
     minWidth: 16,
@@ -3168,17 +3312,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 5,
   },
-  badgeTextSmall: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '800',
-  },
+  badgeTextSmall: { color: DS.white, fontSize: 9, fontWeight: '800' },
 
-  // ─── App Info ───────────────────────────────────────────────────
+  /* ── App Info ── */
   appInfo: {
     alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 20,
+    marginTop: DS.space['2xl'],
+    marginBottom: DS.space.xl,
     gap: 10,
   },
   appLogoFloatWrap: {
@@ -3188,15 +3328,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 4,
   },
-  appLogoImage: {
-    width: 100,
-    height: 100,
-  },
-  appVersion: {
-    fontSize: 13,
-    color: '#888',
-    fontWeight: '600',
-  },
+  appLogoImage: { width: 100, height: 100 },
+  appVersion: { fontSize: 13, fontWeight: '600' },
   securityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3206,11 +3339,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
 
-  // ─── Logout ─────────────────────────────────────────────────────
+  /* ── Logout ── */
   logoutButton: {
     borderRadius: 18,
-    marginTop: 8,
-    marginBottom: 16,
+    marginTop: DS.space.sm,
+    marginBottom: DS.space.lg,
     overflow: 'hidden',
   },
   logoutContent: {
@@ -3220,65 +3353,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 10,
   },
-  logoutText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#ef4444',
-  },
+  logoutText: { fontSize: 15, fontWeight: '700', color: DS.danger },
 
-  // ─── Modal ──────────────────────────────────────────────────────
+  /* ── Modal Base ── */
   modalBackdrop: { backgroundColor: 'rgba(0,0,0,0.4)' },
-  modalSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    overflow: 'hidden',
-    maxHeight: SCREEN_HEIGHT * 0.7,
-  },
-  modalSheetBlur: {
-    paddingTop: 12,
-    paddingBottom: 24,
-  },
-  modalHandle: {
-    width: 40,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(150,150,150,0.3)',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  modalSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-  },
-  modalSheetTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1a1a1a',
-  },
-  modalCloseBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCloseBtnDark: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  modalSheetContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-
-  // ─── Custom Modal Styles ────────────────────────────────────────
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -3289,17 +3367,13 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 360,
-    borderRadius: 28,
+    borderRadius: DS.radius['2xl'],
     padding: 28,
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 20,
+    ...DS.shadow.lg,
   },
   modalContentDark: {
     backgroundColor: 'rgba(26,26,46,0.95)',
@@ -3311,29 +3385,23 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: DS.space.lg,
   },
   modalTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#1a1a1a',
-    marginBottom: 8,
+    marginBottom: DS.space.sm,
     textAlign: 'center',
     letterSpacing: -0.3,
   },
   modalDesc: {
     fontSize: 15,
-    color: '#666',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 24,
-    paddingHorizontal: 8,
+    marginBottom: DS.space['2xl'],
+    paddingHorizontal: DS.space.sm,
   },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
+  modalButtons: { flexDirection: 'row', gap: DS.space.md, width: '100%' },
   modalPrimaryBtn: {
     flex: 1,
     paddingVertical: 16,
@@ -3341,11 +3409,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalPrimaryBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  modalPrimaryBtnText: { color: DS.white, fontSize: 16, fontWeight: '700' },
   modalSecondaryBtn: {
     flex: 1,
     paddingVertical: 14,
@@ -3354,41 +3418,80 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
   },
-  modalSecondaryBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  modalSecondaryBtnText: { fontSize: 15, fontWeight: '600' },
 
+  /* ── Bottom Sheet ── */
+  modalSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: DS.radius['3xl'] || 32,
+    borderTopRightRadius: DS.radius['3xl'] || 32,
+    overflow: 'hidden',
+    maxHeight: SCREEN_HEIGHT * 0.7,
+  },
+  modalSheetBlur: {
+    paddingTop: DS.space.md,
+    paddingBottom: DS.space['2xl'],
+  },
+  modalHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(150,150,150,0.3)',
+    alignSelf: 'center',
+    marginBottom: DS.space.lg,
+  },
+  modalSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: DS.space.xl,
+    paddingBottom: DS.space.lg,
+  },
+  modalSheetTitle: { fontSize: 20, fontWeight: '800' },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseBtnDark: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  modalSheetContent: { paddingHorizontal: DS.space.lg, gap: DS.space.sm },
+
+  babyOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DS.space.sm,
+    marginBottom: DS.space.sm,
+  },
+  babyEditBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   babyOption: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
     borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.5)',
-    gap: 14,
+    gap: DS.space.md,
   },
-  babyOptionDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-  },
+  babyOptionDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
   babyOptionActive: {
     borderWidth: 2,
     backgroundColor: 'rgba(102,126,234,0.08)',
   },
-  babyOptionActiveDark: {
-    backgroundColor: 'rgba(102,126,234,0.15)',
-  },
+  babyOptionActiveDark: { backgroundColor: 'rgba(102,126,234,0.15)' },
   babyOptionInfo: { flex: 1 },
-  babyOptionName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 3,
-  },
-  babyOptionMeta: {
-    fontSize: 13,
-    color: '#888',
-    fontWeight: '500',
-  },
+  babyOptionName: { fontSize: 16, fontWeight: '700', marginBottom: 3 },
+  babyOptionMeta: { fontSize: 13, fontWeight: '500' },
   activeCheck: {
     width: 24,
     height: 24,
@@ -3397,40 +3500,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ─── Timeout Modal ──────────────────────────────────────────────
+  /* ── Timeout Modal ── */
   timeoutModal: {
     width: '100%',
     maxWidth: 360,
     backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 28,
-    padding: 20,
+    borderRadius: DS.radius['2xl'],
+    padding: DS.space.xl,
     maxHeight: SCREEN_HEIGHT * 0.6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 20,
+    ...DS.shadow.lg,
     overflow: 'hidden',
   },
-  timeoutModalDark: {
-    backgroundColor: 'rgba(26,26,46,0.95)',
-  },
+  timeoutModalDark: { backgroundColor: 'rgba(26,26,46,0.95)' },
   timeoutModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: DS.space.sm,
   },
-  timeoutModalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1a1a1a',
-  },
+  timeoutModalTitle: { fontSize: 20, fontWeight: '800' },
   timeoutModalSubtitle: {
     fontSize: 14,
-    color: '#888',
     fontWeight: '500',
-    marginBottom: 16,
+    marginBottom: DS.space.lg,
   },
   timeoutOption: {
     flexDirection: 'row',
@@ -3438,21 +3530,17 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.6)',
-    marginBottom: 8,
+    marginBottom: DS.space.sm,
     borderWidth: 1,
     borderColor: 'transparent',
-    gap: 12,
+    gap: DS.space.md,
   },
-  timeoutOptionDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-  },
+  timeoutOptionDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
   timeoutOptionActive: {
     backgroundColor: 'rgba(102,126,234,0.08)',
     borderWidth: 2,
   },
-  timeoutOptionActiveDark: {
-    backgroundColor: 'rgba(102,126,234,0.15)',
-  },
+  timeoutOptionActiveDark: { backgroundColor: 'rgba(102,126,234,0.15)' },
   timeoutOptionIcon: {
     width: 38,
     height: 38,
@@ -3460,14 +3548,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timeoutOptionLabel: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
+  timeoutOptionLabel: { flex: 1, fontSize: 15, fontWeight: '600' },
 
-  // ─── AI Learning Progress Bar ───────────────────────────────────
+  /* ── AI Progress Bar ── */
   aiProgressCard: {
     marginHorizontal: 12,
     marginTop: 12,
@@ -3478,15 +3561,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
     overflow: 'hidden',
   },
-  aiProgressCardDark: {
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  aiProgressHeader: { marginBottom: 12 },
-  aiProgressTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  aiProgressCardDark: { borderColor: 'rgba(255,255,255,0.06)' },
+  aiProgressHeader: { marginBottom: DS.space.md },
+  aiProgressTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   aiProgressIcon: {
     width: 34,
     height: 34,
@@ -3494,17 +3571,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  aiProgressTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  aiProgressSubtitle: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#888',
-    marginTop: 2,
-  },
+  aiProgressTitle: { fontSize: 14, fontWeight: '700' },
+  aiProgressSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   aiScoreBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -3512,11 +3580,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 52,
   },
-  aiScoreValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
+  aiScoreValue: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
   aiScoreLabel: {
     fontSize: 9,
     fontWeight: '700',
@@ -3551,23 +3615,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    marginTop: 10,
+    marginTop: DS.space.sm,
   },
-  aiLegendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  aiLegendDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  aiLegendText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#888',
-  },
+  aiLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  aiLegendDot: { width: 7, height: 7, borderRadius: 4 },
+  aiLegendText: { fontSize: 11, fontWeight: '600' },
 });
 
 export default React.memo(MoreScreen);

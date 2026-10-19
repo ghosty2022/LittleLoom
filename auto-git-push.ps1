@@ -12,7 +12,36 @@ param(
 # ────────────────────────────────────────────────────────────────
 
 $ErrorActionPreference = 'Continue'
-Set-Location $ProjectPath
+$OutputEncoding        = [System.Text.Encoding]::UTF8
+
+# -------- Sanity: project path --------------------------------
+if (-not (Test-Path -LiteralPath $ProjectPath)) {
+    Write-Host "❌ ProjectPath does not exist: $ProjectPath" -ForegroundColor Red
+    exit 1
+}
+try {
+    Set-Location -LiteralPath $ProjectPath -ErrorAction Stop
+} catch {
+    Write-Host "❌ Could not enter ProjectPath: $ProjectPath" -ForegroundColor Red
+    Write-Host "   $_" -ForegroundColor DarkRed
+    exit 1
+}
+
+# -------- Sanity: git ----------------------------------------
+$gitCmd = Get-Command git -ErrorAction SilentlyContinue
+if (-not $gitCmd) {
+    Write-Host "❌ git is not on PATH. Install Git or add it to PATH." -ForegroundColor Red
+    exit 1
+}
+Write-Host "ℹ  Using git: $($gitCmd.Source)" -ForegroundColor DarkGray
+
+# Verify this folder is a git repo
+$isRepo = (& git rev-parse --is-inside-work-tree 2>$null)
+if ($LASTEXITCODE -ne 0 -or $isRepo -ne 'true') {
+    Write-Host "❌ Not a git repository: $ProjectPath" -ForegroundColor Red
+    exit 1
+}
+Write-Host "ℹ  Repo OK: $ProjectPath" -ForegroundColor DarkGray
 
 # -------- Config: which files count as "code" -------------------
 $CodeExtensions = @(
@@ -45,10 +74,12 @@ function Get-CodeStats {
         [System.StringComparer]::OrdinalIgnoreCase
     )
 
-    Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+    $skipRx = ($SkipDirs | ForEach-Object { [regex]::Escape($_) }) -join '|'
+
+    Get-ChildItem -LiteralPath $Root -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object {
         $p = $_.FullName
-        if ($SkipDirs | Where-Object { $p -match "[\\/]$_\b" }) { return $false }
+        if ($skipRx -and $p -match "[\\/]($skipRx)([\\/]|$)") { return $false }
         $extSet.Contains($_.Extension)
     } |
     ForEach-Object {
@@ -60,12 +91,15 @@ function Get-CodeStats {
             $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction Stop
         } catch { return }
 
-        if ($null -eq $content) { return }
-        $lines = $content -split "`r?`n", -1
+        if ($null -eq $content -or $content -eq '') { return }
 
-        # last element after split can be empty if file ends with newline
+        # Robust split: handles CRLF, LF, CR, and single-line files
+        $lines = [regex]::Split($content, "\r\n|\n|\r")
+
+        # Drop trailing empty entry from final newline
         if ($lines.Length -gt 0 -and $lines[-1] -eq '') {
-            $lines = $lines[0..($lines.Length - 2)]
+            if ($lines.Length -eq 1) { $lines = @() }
+            else { $lines = $lines[0..($lines.Length - 2)] }
         }
 
         $fileLines = $lines.Length
@@ -103,9 +137,9 @@ function Format-Bytes {
 function Write-Header {
     param([string]$Text)
     Write-Host ""
-    Write-Host ("═" * 62) -ForegroundColor DarkGray
-    Write-Host "  $Text" -ForegroundColor Cyan
-    Write-Host ("═" * 62) -ForegroundColor DarkGray
+    Write-Host ("=" * 62) -ForegroundColor DarkGray
+    Write-Host "  $Text"     -ForegroundColor Cyan
+    Write-Host ("=" * 62) -ForegroundColor DarkGray
 }
 
 function Show-CodeStats {
@@ -122,23 +156,22 @@ function Show-CodeStats {
                  else { 'White' }
 
     Write-Host ""
-    Write-Host "  📊 CODEBASE" -ForegroundColor Cyan
-    Write-Host ("  ├─ Total lines : {0:N0}{1}" -f $Stats.Lines, $lineDeltaStr) -ForegroundColor $lineColor
-    Write-Host ("  ├─ Code lines  : {0:N0}" -f $Stats.Code)    -ForegroundColor Green
-    Write-Host ("  ├─ Comments    : {0:N0}" -f $Stats.Comment) -ForegroundColor DarkGreen
-    Write-Host ("  ├─ Blank lines : {0:N0}" -f $Stats.Blank)   -ForegroundColor DarkGray
-    Write-Host ("  ├─ Files       : {0:N0}" -f $Stats.Files)   -ForegroundColor White
-    Write-Host ("  └─ Size        : {0}"    -f (Format-Bytes $Stats.Bytes)) -ForegroundColor White
+    Write-Host "  CODEBASE" -ForegroundColor Cyan
+    Write-Host ("  |-- Total lines : {0:N0}{1}" -f $Stats.Lines, $lineDeltaStr) -ForegroundColor $lineColor
+    Write-Host ("  |-- Code lines  : {0:N0}" -f $Stats.Code)    -ForegroundColor Green
+    Write-Host ("  |-- Comments    : {0:N0}" -f $Stats.Comment) -ForegroundColor DarkGreen
+    Write-Host ("  |-- Blank lines : {0:N0}" -f $Stats.Blank)   -ForegroundColor DarkGray
+    Write-Host ("  |-- Files       : {0:N0}" -f $Stats.Files)   -ForegroundColor White
+    Write-Host ("  '-- Size        : {0}"    -f (Format-Bytes $Stats.Bytes)) -ForegroundColor White
 
-    # Top 5 extensions
     $top = $Stats.ByExt.GetEnumerator() |
            Sort-Object { $_.Value.Lines } -Descending |
            Select-Object -First 5
     if ($top) {
         Write-Host ""
-        Write-Host "  📁 TOP EXTENSIONS" -ForegroundColor Cyan
+        Write-Host "  TOP EXTENSIONS" -ForegroundColor Cyan
         foreach ($e in $top) {
-            $bar = '█' * [Math]::Min(30, [Math]::Max(1, [int]($e.Value.Lines / [Math]::Max(1, $Stats.Lines) * 30)))
+            $bar = '#' * [Math]::Min(30, [Math]::Max(1, [int]($e.Value.Lines / [Math]::Max(1, $Stats.Lines) * 30)))
             Write-Host ("  {0,-8} {1,8:N0} lines  {2}" -f $e.Key, $e.Value.Lines, $bar) `
                 -ForegroundColor DarkCyan
         }
@@ -148,18 +181,18 @@ function Show-CodeStats {
 function Show-GitSummary {
     $status   = git status --porcelain 2>$null
     $branch   = (git rev-parse --abbrev-ref HEAD 2>$null)
-    $lastMsg  = (git log -1 --pretty=format:"%s"       2>$null)
-    $lastHash = (git log -1 --pretty=format:"%h"       2>$null)
-    $lastWhen = (git log -1 --pretty=format:"%cr"      2>$null)
+    $lastMsg  = (git log -1 --pretty=format:"%s"  2>$null)
+    $lastHash = (git log -1 --pretty=format:"%h"  2>$null)
+    $lastWhen = (git log -1 --pretty=format:"%cr" 2>$null)
 
-    $changed  = if ($status) { ($status | Measure-Object).Count } else { 0 }
+    $changed  = if ($status) { @($status).Count } else { 0 }
 
     Write-Host ""
-    Write-Host "  🌿 GIT" -ForegroundColor Cyan
-    Write-Host ("  ├─ Branch      : {0}" -f $branch)  -ForegroundColor White
-    Write-Host ("  ├─ Changed     : {0} file(s)" -f $changed) `
+    Write-Host "  GIT" -ForegroundColor Cyan
+    Write-Host ("  |-- Branch      : {0}" -f $branch) -ForegroundColor White
+    Write-Host ("  |-- Changed     : {0} file(s)" -f $changed) `
         -ForegroundColor $(if ($changed -gt 0) { 'Yellow' } else { 'DarkGray' })
-    Write-Host ("  └─ Last commit : {0} {1} ({2})" -f $lastHash, $lastMsg, $lastWhen) `
+    Write-Host ("  '-- Last commit : {0} {1} ({2})" -f $lastHash, $lastMsg, $lastWhen) `
         -ForegroundColor DarkGray
 
     return [pscustomobject]@{ Status = $status; Changed = $changed }
@@ -172,62 +205,55 @@ $prevLines = $null
 $prevBytes = 0
 $session   = 1
 
-Write-Header "LittleLoom Auto-Commit  ·  every $IntervalMinutes min  ·  Ctrl+C to stop"
+Write-Header "LittleLoom Auto-Commit  |  every $IntervalMinutes min  |  Ctrl+C to stop"
 
 while ($true) {
     $startTime = Get-Date
-    Write-Header ("CYCLE #{0}  ·  {1}" -f $session, $startTime.ToString('yyyy-MM-dd HH:mm:ss'))
+    Write-Header ("CYCLE #{0}  |  {1}" -f $session, $startTime.ToString('yyyy-MM-dd HH:mm:ss'))
 
     try {
-        Set-Location $ProjectPath
+        Set-Location -LiteralPath $ProjectPath
 
-        # ── git status ────────────────────────────────────────
         $git = Show-GitSummary
 
-        # ── commit + push ─────────────────────────────────────
         if ($git.Changed -gt 0) {
             Write-Host ""
-            Write-Host "  ⏳ Staging and committing..." -ForegroundColor Cyan
+            Write-Host "  Staging and committing..." -ForegroundColor Cyan
 
             git add -A 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "  ❌ git add failed" -ForegroundColor Red
-                throw "git add failed"
-            }
+            if ($LASTEXITCODE -ne 0) { throw "git add failed" }
 
             $msg    = "auto: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
             $result = git commit -m $msg 2>&1
 
             if ($LASTEXITCODE -ne 0) {
-                Write-Host "  ❌ Commit failed:" -ForegroundColor Red
+                Write-Host "  Commit failed:" -ForegroundColor Red
                 Write-Host "     $result" -ForegroundColor DarkRed
             } else {
                 $short = ($result | Select-Object -First 1)
-                Write-Host "  ✅ Committed: $short" -ForegroundColor Green
+                Write-Host "  Committed: $short" -ForegroundColor Green
 
                 if (-not $NoPush) {
-                    Write-Host "  ⏳ Pushing to origin/$Branch..." -ForegroundColor Cyan
+                    Write-Host "  Pushing to origin/$Branch..." -ForegroundColor Cyan
                     $push = git push origin $Branch 2>&1
                     if ($LASTEXITCODE -eq 0) {
-                        Write-Host "  ✅ Pushed to origin/$Branch" -ForegroundColor Green
+                        Write-Host "  Pushed to origin/$Branch" -ForegroundColor Green
                     } else {
-                        Write-Host "  ❌ Push failed:" -ForegroundColor Red
+                        Write-Host "  Push failed:" -ForegroundColor Red
                         Write-Host "     $push" -ForegroundColor DarkRed
                     }
                 } else {
-                    Write-Host "  ⏭  Push skipped (-NoPush)" -ForegroundColor DarkGray
+                    Write-Host "  Push skipped (-NoPush)" -ForegroundColor DarkGray
                 }
             }
         } else {
             Write-Host ""
-            Write-Host "  ✓ No changes to commit" -ForegroundColor DarkGray
+            Write-Host "  No changes to commit" -ForegroundColor DarkGray
         }
 
-        # ── line stats ────────────────────────────────────────
         Write-Host ""
-        Write-Host "  🔢 Counting lines..." -ForegroundColor DarkCyan
+        Write-Host "  Counting lines..." -ForegroundColor DarkCyan
         $stats = Get-CodeStats -Root $ProjectPath
-
         Show-CodeStats -Stats $stats -PrevLineCount $prevLines -PrevBytes $prevBytes
 
         $prevLines = $stats.Lines
@@ -235,17 +261,18 @@ while ($true) {
 
     } catch {
         Write-Host ""
-        Write-Host "  ❌ ERROR: $_" -ForegroundColor Red
+        Write-Host "  ERROR: $_" -ForegroundColor Red
+        Write-Host "         $($_.ScriptStackTrace)" -ForegroundColor DarkRed
     }
 
     $elapsed = (Get-Date) - $startTime
     Write-Host ""
-    Write-Host ("  ⏱  Cycle took {0:N1}s" -f $elapsed.TotalSeconds) -ForegroundColor DarkGray
+    Write-Host ("  Cycle took {0:N1}s" -f $elapsed.TotalSeconds) -ForegroundColor DarkGray
 
     if ($Once) { break }
 
     $next = (Get-Date).AddMinutes($IntervalMinutes)
-    Write-Host ("  💤 Sleeping until {0} ({1} min)..." -f $next.ToString('HH:mm:ss'), $IntervalMinutes) `
+    Write-Host ("  Sleeping until {0} ({1} min)..." -f $next.ToString('HH:mm:ss'), $IntervalMinutes) `
         -ForegroundColor DarkGray
 
     Start-Sleep -Seconds ($IntervalMinutes * 60)

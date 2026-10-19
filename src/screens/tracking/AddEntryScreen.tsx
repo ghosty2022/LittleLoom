@@ -50,6 +50,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDateTimePicker } from '../../hooks/useDateTimePicker';
+import { isFieldVisible } from '../../utils/form';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -2498,10 +2499,59 @@ function TrackerContent({
   const confirmSave = useCallback(async () => {
     if (!tracker) return;
     try {
-      
+      // ── Start with a clean copy of what the user actually entered ──
       const finalData: Record<string, unknown> = { ...pendingData };
 
-      
+      // ── Ongoing Timer fix ──────────────────────────────────────────
+      // If the user tapped "Start Nap" / "Start Bedtime" / "Left Breast"
+      // from a quick action, `pendingData` has `status: 'started'` but
+      // no `startTime`. Without a persisted startTime, the Ongoing pill
+      // in TrackerEntryCard never renders because isOngoing() bails on
+      // the missing timestamp. Stamp `date` (the user-selected start)
+      // as the actual start now.
+      const ONGOING_TRACKERS = ['sleep', 'feed', 'dream_feed', 'nap'];
+      if (ONGOING_TRACKERS.includes(tracker.id)) {
+        const wantsStarted =
+          finalData.status === 'started' || finalData.status === 'ongoing';
+        const hasStart =
+          finalData.startTime && String(finalData.startTime).length > 0;
+
+        if (wantsStarted && !hasStart) {
+          finalData.startTime = date.toISOString();
+          finalData.status = 'started'; // canonical Ongoing marker
+        }
+      }
+
+      // ── Strip fields hidden by showIf for the FINAL pendingData ───
+      // Without this, stale values from an earlier branch (e.g. a bottle
+      // amount left over after switching to breast) get saved and then
+      // fail downstream validation in TrackerContext.addEntry().
+      try {
+        const visibleIds = new Set(
+          (tracker.fields || [])
+            .filter((f) => {
+              try {
+                return typeof isFieldVisible === 'function'
+                  ? isFieldVisible(f, finalData)
+                  : true;
+              } catch {
+                return true;
+              }
+            })
+            .map((f) => f.id)
+        );
+        Object.keys(finalData).forEach((key) => {
+          const isUnitCompanion = key.endsWith('_unit');
+          const baseId = isUnitCompanion ? key.slice(0, -5) : key;
+          if (!visibleIds.has(key) && !visibleIds.has(baseId)) {
+            delete finalData[key];
+          }
+        });
+      } catch {
+        // never let cleanup block the save
+      }
+
+      // ── Derive duration + status for duration-based trackers ──────
       const durationTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
       if (durationTrackers.includes(tracker.id)) {
         const hasStart = finalData.startTime && String(finalData.startTime).length > 0;
@@ -2512,26 +2562,27 @@ function TrackerContent({
           const endMs = new Date(String(finalData.endTime)).getTime();
           if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
             const durationSeconds = Math.round((endMs - startMs) / 1000);
-            
+
             if (durationSeconds >= 60) {
               finalData.duration = durationSeconds;
               finalData.status = 'completed';
             } else {
-              
               delete finalData.duration;
-              finalData.status = hasEnd ? 'completed' : 'ongoing';
+              finalData.status = 'completed';
             }
           } else {
-            
+            // Invalid range (end before start) → keep it Ongoing
             delete finalData.duration;
-            finalData.status = 'ongoing';
+            if (finalData.status !== 'started') {
+              finalData.status = 'ongoing';
+            }
           }
         } else if (hasStart && !hasEnd) {
-          
           delete finalData.duration;
-          finalData.status = 'ongoing';
+          if (finalData.status !== 'started') {
+            finalData.status = 'ongoing';
+          }
         } else if (hasEnd && !hasStart) {
-          
           delete finalData.duration;
           finalData.status = 'completed';
         }
@@ -2576,6 +2627,7 @@ function TrackerContent({
     navigation,
     buildTitle,
     setShowConfirm,
+    date,
   ]);
 
   const handleTemplateSelect = useCallback(

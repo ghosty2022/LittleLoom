@@ -1,20 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import {
   UnifiedTrackerConfig,
   FieldConfig,
@@ -24,8 +7,6 @@ import {
   WEIGHT_UNITS as CANONICAL_WEIGHT_UNITS,
   LENGTH_UNITS as CANONICAL_LENGTH_UNITS,
 } from '../types/trackers';
-
-
 
 const f = {
   text: (id: string, label: string, opts?: Partial<FieldConfig>): FieldConfig => ({
@@ -88,7 +69,6 @@ const f = {
   }),
 };
 
-
 const defaultPerms = {
   familyRoles: ['parent1', 'parent2', 'guardian'] as ('parent1' | 'parent2' | 'guardian')[],
   allowGuardiansCreate: true,
@@ -96,12 +76,10 @@ const defaultPerms = {
   allowGuardiansDeleteOwn: true,
 };
 
-
 const LIQUID_UNITS = CANONICAL_LIQUID_UNITS;
 const SOLID_UNITS = CANONICAL_SOLID_UNITS;
 const WEIGHT_UNITS = CANONICAL_WEIGHT_UNITS;
 const LENGTH_UNITS = CANONICAL_LENGTH_UNITS;
-
 
 const SEVERITY_5 = [
   { id: '1', label: 'Very Mild', emoji: '🟢' },
@@ -130,16 +108,8 @@ const MOOD_SCALE = [
   { id: '5', label: 'Very Happy', emoji: '😄' },
 ];
 
-
-
-
-
 export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
-  
-  
-  
-
-  
+  // ─── ESSENTIAL ──────────────────────────────────────────────────────
   {
     id: 'feed',
     name: 'Feeding',
@@ -178,7 +148,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { required: true }
       ),
 
-      
+      // Breast branch
       f.select(
         'side',
         'Side',
@@ -189,15 +159,10 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { showIf: { field: 'feedType', equals: 'breast' } }
       ),
-      f.select(
-        'status',
-        'Status',
-        DURATION_TRACKER_STATUS,
-        {
-          showIf: { field: 'feedType', equals: 'breast' },
-          defaultValue: 'ongoing',
-        }
-      ),
+      f.select('status', 'Status', DURATION_TRACKER_STATUS, {
+        showIf: { field: 'feedType', equals: 'breast' },
+        defaultValue: 'ongoing',
+      }),
       f.datetime('startTime', 'Start Time', {
         showIf: { field: 'feedType', equals: 'breast' },
         progressive: { timeBasedSuggestions: true },
@@ -212,7 +177,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         showIf: { field: 'feedType', equals: 'breast' },
       }),
 
-      
+      // Bottle branch
       f.quantity('bottleAmount', 'Amount', {
         showIf: { field: 'feedType', equals: 'bottle' },
         unitOptions: LIQUID_UNITS,
@@ -239,7 +204,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { showIf: { field: 'feedType', equals: 'bottle' } }
       ),
 
-      
+      // Solid branch
       f.text('food', 'Food Item', {
         placeholder: 'e.g., Sweet potato, Oatmeal',
         showIf: { field: 'feedType', equals: 'solid' },
@@ -264,7 +229,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         showIf: { field: 'feedType', equals: 'solid' },
       }),
 
-      
+      // Water branch
       f.quantity('waterAmount', 'Amount', {
         showIf: { field: 'feedType', equals: 'water' },
         unitOptions: LIQUID_UNITS,
@@ -281,7 +246,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         { showIf: { field: 'feedType', equals: 'water' } }
       ),
 
-      
+      // Common
       f.toggle('spitUp', 'Spit up after?'),
       f.select(
         'spitUpAmount',
@@ -311,12 +276,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.textarea('reactionNotes', 'Reaction Details', {
         showIf: { field: 'reaction', equals: true },
       }),
+      f.photo('photos', 'Feeding Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Cluster feed', 'Refused', 'Spit up', 'Gassy', 'Good feed'],
   },
 
-  
   {
     id: 'sleep',
     name: 'Sleep',
@@ -391,12 +356,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ],
         { showIf: { field: 'wokeUp', equals: true } }
       ),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Easy put-down', 'Fought sleep', 'Woke early', 'Long nap'],
   },
 
-  
   {
     id: 'diaper',
     name: 'Diaper',
@@ -460,12 +425,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.toggle('rash', 'Rash present?'),
       f.toggle('blowout', 'Blowout?'),
       f.toggle('bleeding', 'Any bleeding?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Blowout', 'Rash', 'Normal', 'Unusual color'],
   },
 
-  
   {
     id: 'potty',
     name: 'Potty',
@@ -509,12 +474,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       ),
       f.toggle('selfInitiated', 'Self-initiated?'),
       f.toggle('dryAfter', 'Stayed dry after?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First success!', 'Self-initiated', 'Accident', 'Dry night'],
   },
 
-  
   {
     id: 'bath',
     name: 'Bath',
@@ -548,12 +513,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.toggle('soap', 'Soap used?'),
       f.toggle('lotion', 'Lotion applied after?'),
       f.rating('enjoyment', 'Enjoyment', 5),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Splashed', 'Cried', 'Loved it', 'Hair wash'],
   },
 
-  
   {
     id: 'pumping',
     name: 'Pumping',
@@ -600,16 +565,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.rating('comfort', 'Comfort Level', 5),
       f.toggle('powerPump', 'Power pump session?'),
       f.toggle('clogged', 'Clogged duct?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['High output', 'Low output', 'Clogged duct', 'Power pump'],
   },
 
-  
-  
-  
-
-  
+  // ─── HEALTH ─────────────────────────────────────────────────────────
   {
     id: 'growth',
     name: 'Growth',
@@ -652,12 +614,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.text('measuredBy', 'Measured By', {
         placeholder: 'e.g., Dr. Smith, Home',
       }),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Percentile jump', 'Steady growth', 'Concern', 'Well visit'],
   },
 
-  
   {
     id: 'temperature',
     name: 'Temperature',
@@ -710,12 +672,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         placeholder: 'e.g., Acetaminophen',
         showIf: { field: 'medicated', equals: true },
       }),
+      f.photo('photos', 'Thermometer Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Fever', 'Normal', 'After vaccine', 'Teething'],
   },
 
-  
   {
     id: 'medication',
     name: 'Medication',
@@ -771,14 +733,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       ),
       f.toggle('given', 'Given successfully?', { defaultValue: true }),
       f.toggle('vomited', 'Vomited after?'),
-      f.photo('labelPhoto', 'Photo of Label'),
+      f.photo('photos', 'Photo of Label'),
       f.datetime('nextDose', 'Next Dose Due'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Fever reducer', 'Antibiotic', 'Vitamin', 'Reaction'],
   },
 
-  
   {
     id: 'symptom',
     name: 'Symptom',
@@ -818,12 +779,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.toggle('ongoing', 'Still ongoing?'),
       f.toggle('doctorCalled', 'Contacted doctor?'),
       f.toggle('erVisit', 'ER visit?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Getting worse', 'Improving', 'Called doctor', 'Emergency'],
   },
 
-  
   {
     id: 'vaccine',
     name: 'Vaccine',
@@ -870,12 +831,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ]
       ),
       f.datetime('nextDue', 'Next Dose Due'),
+      f.photo('photos', 'Photo of Record'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['On schedule', 'Delayed', 'Reaction', 'Complete'],
   },
 
-  
   {
     id: 'doctor_visit',
     name: 'Doctor Visit',
@@ -910,12 +871,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.datetime('followUpDate', 'Follow-up Date', {
         showIf: { field: 'followUpNeeded', equals: true },
       }),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Routine', 'Sick', 'Vaccines', 'Concern'],
   },
 
-  
   {
     id: 'teething',
     name: 'Teething',
@@ -965,12 +926,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ]
       ),
       f.rating('severity', 'Discomfort Level', 5),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First tooth!', 'Bad day', 'Relief helped', 'No sleep'],
   },
 
-  
   {
     id: 'allergy',
     name: 'Allergy',
@@ -1033,7 +994,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['New trigger', 'Emergency', 'Improving', 'Avoided'],
   },
 
-  
   {
     id: 'skin_condition',
     name: 'Skin Condition',
@@ -1106,11 +1066,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Flare up', 'Improving', 'New spot', 'Cleared up'],
   },
 
-  
-  
-  
-
-  
+  // ─── DEVELOPMENT ────────────────────────────────────────────────────
   {
     id: 'milestone',
     name: 'Milestone',
@@ -1147,13 +1103,11 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.toggle('firstTime', 'First time?', { defaultValue: true }),
       f.textarea('description', 'Description'),
       f.photo('photos', 'Photos'),
-      f.video('video', 'Video'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First time!', 'Early', 'On track', 'Late'],
   },
 
-  
   {
     id: 'tummy_time',
     name: 'Tummy Time',
@@ -1182,12 +1136,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.toggle('reached', 'Reached for toys?'),
       f.toggle('liftedHead', 'Lifted head?'),
       f.toggle('rolled', 'Rolled over?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Hated it', 'Loved it', 'Rolled!', 'Head up'],
   },
 
-  
   {
     id: 'play',
     name: 'Play',
@@ -1220,12 +1174,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.duration('duration', 'Duration'),
       f.rating('engagement', 'Engagement', 5),
       f.toggle('initiated', 'Self-initiated?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Loved it', 'New toy', 'Shared play', 'Independent'],
   },
 
-  
   {
     id: 'reading',
     name: 'Reading',
@@ -1247,12 +1201,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.rating('engagement', 'Engagement', 5),
       f.toggle('turnedPages', 'Turned pages?'),
       f.toggle('pointed', 'Pointed at pictures?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Favorite', 'New book', 'Interactive', 'Bedtime'],
   },
 
-  
   {
     id: 'speech',
     name: 'Speech',
@@ -1285,17 +1239,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       ),
       f.toggle('understood', 'Understood context?'),
       f.toggle('repeated', 'Repeated after you?'),
-      f.video('video', 'Video'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First word!', 'Mimic', 'Understood', 'Signed'],
   },
 
-  
-  
-  
-
-  
+  // ─── EMOTIONAL ──────────────────────────────────────────────────────
   {
     id: 'mood',
     name: 'Mood',
@@ -1334,12 +1284,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'routine_change', label: 'Routine change', emoji: '🔄' },
         ]
       ),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Happy day', 'Fussy', 'Teething', 'Off day'],
   },
 
-  
   {
     id: 'crying',
     name: 'Crying',
@@ -1382,16 +1332,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'none', label: 'Nothing worked', emoji: '😭' },
         ]
       ),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Colic', 'Teething', 'Overtired', 'Growth spurt'],
   },
 
-  
-  
-  
-
-  
+  // ─── PHYSICAL ───────────────────────────────────────────────────────
   {
     id: 'nail_care',
     name: 'Nail Care',
@@ -1418,12 +1365,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       ),
       f.toggle('cooperative', 'Cooperative?'),
       f.toggle('cut', 'Any accidental cut?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Easy', 'Fought', 'Cut skin', 'Slept through'],
   },
 
-  
   {
     id: 'oral_hygiene',
     name: 'Oral Hygiene',
@@ -1451,12 +1398,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       ),
       f.toggle('cooperative', 'Cooperative?'),
       f.rating('thoroughness', 'Thoroughness', 5),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First tooth!', 'Cooperative', 'Fought', 'Gum bleed'],
   },
 
-  
   {
     id: 'sunscreen',
     name: 'Sunscreen',
@@ -1495,12 +1442,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ]
       ),
       f.toggle('reapplied', 'Reapplied?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Beach day', 'Park', 'Reapplied', 'First time'],
   },
 
-  
   {
     id: 'skin_care',
     name: 'Skin Care',
@@ -1538,16 +1485,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ]
       ),
       f.toggle('reaction', 'Any reaction?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Dry skin', 'Eczema care', 'After bath', 'Daily routine'],
   },
 
-  
-  
-  
-
-  
+  // ─── NUTRITION ──────────────────────────────────────────────────────
   {
     id: 'solid_food',
     name: 'Solid Food',
@@ -1577,9 +1521,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'table', label: 'Table Food', emoji: '🍽️' },
         ]
       ),
-      f.quantity('amount', 'Amount', {
-        unitOptions: SOLID_UNITS,
-      }),
+      f.quantity('amount', 'Amount', { unitOptions: SOLID_UNITS }),
       f.rating('acceptance', 'Acceptance', 5),
       f.toggle('allergicReaction', 'Any reaction?'),
       f.multiselect(
@@ -1597,12 +1539,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.textarea('reactionDetails', 'Reaction Details', {
         showIf: { field: 'allergicReaction', equals: true },
       }),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Loved it', 'Refused', 'New food', 'Allergic reaction'],
   },
 
-  
   {
     id: 'water',
     name: 'Water',
@@ -1638,7 +1580,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Hot day', 'Sick', 'Requested', 'Refused'],
   },
 
-  
   {
     id: 'vitamin',
     name: 'Vitamin',
@@ -1675,7 +1616,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Daily routine', 'Missed', 'Refused', 'New supplement'],
   },
 
-  
   {
     id: 'allergen_intro',
     name: 'Allergen Intro',
@@ -1724,16 +1664,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       f.textarea('reactionDetails', 'Reaction Details', {
         showIf: { field: 'reaction', equals: true },
       }),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['First exposure', 'No reaction', 'Mild reaction', 'Cleared'],
   },
 
-  
-  
-  
-
-  
+  // ─── SAFETY ─────────────────────────────────────────────────────────
   {
     id: 'accident',
     name: 'Accident',
@@ -1778,13 +1715,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
       }),
       f.toggle('medicalAttention', 'Medical attention needed?'),
       f.textarea('injuryDetails', 'What happened?'),
-      f.photo('photos', 'Photos of Injury'),
+      f.photo('photos', 'Photo of Injury'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Minor', 'Doctor called', 'ER visit', 'Near miss'],
   },
 
-  
   {
     id: 'car_seat',
     name: 'Car Seat',
@@ -1828,7 +1764,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Installed', 'Adjusted', 'Expired', 'New seat'],
   },
 
-  
   {
     id: 'babyproofing',
     name: 'Babyproofing',
@@ -1878,11 +1813,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Updated', 'New hazard', 'All clear', 'Needs work'],
   },
 
-  
-  
-  
-
-  
+  // ─── SCHEDULE ───────────────────────────────────────────────────────
   {
     id: 'bedtime',
     name: 'Bedtime',
@@ -1926,7 +1857,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Easy', 'Fought', 'Routine complete', 'Skipped step'],
   },
 
-  
   {
     id: 'screen_time',
     name: 'Screen Time',
@@ -1970,11 +1900,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Educational', 'Limit reached', 'Co-viewing', 'Solo'],
   },
 
-  
-  
-  
-
-  
+  // ─── PARENTAL ───────────────────────────────────────────────────────
   {
     id: 'note',
     name: 'Note',
@@ -2008,11 +1934,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'todo', label: 'To-Do', emoji: '✅' },
         ]
       ),
+      f.photo('photos', 'Photo'),
+      f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Important', 'Funny', 'To remember', 'Question for doctor'],
   },
 
-  
   {
     id: 'photo',
     name: 'Photo',
@@ -2046,7 +1973,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['First!', 'Family', 'Silly', 'Professional'],
   },
 
-  
   {
     id: 'journal',
     name: 'Journal',
@@ -2084,11 +2010,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Milestone day', 'Hard day', 'Grateful', 'Funny moment'],
   },
 
-  
-  
-  
-
-  
+  // ─── TRAVEL ─────────────────────────────────────────────────────────
   {
     id: 'trip',
     name: 'Trip',
@@ -2127,7 +2049,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['First trip!', 'Went well', 'Hard travel', 'Packed light'],
   },
 
-  
   {
     id: 'daycare',
     name: 'Daycare',
@@ -2155,7 +2076,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Good day', 'Rough day', 'New teacher', 'Milestone'],
   },
 
-  
   {
     id: 'babysitter',
     name: 'Babysitter',
@@ -2183,11 +2103,7 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['New sitter', 'Regular', 'Went well', 'Issues'],
   },
 
-  
-  
-  
-
-  
+  // ─── SPECIAL NEEDS ──────────────────────────────────────────────────
   {
     id: 'reflux',
     name: 'Reflux',
@@ -2234,12 +2150,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'stress', label: 'Stress', emoji: '😰' },
         ]
       ),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['After feed', 'Projectile', 'Blood', 'Medication helped'],
   },
 
-  
   {
     id: 'colic',
     name: 'Colic',
@@ -2285,7 +2201,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Evening', 'Predictable', 'Nothing worked', 'Gas drops helped'],
   },
 
-  
   {
     id: 'constipation',
     name: 'Constipation',
@@ -2337,12 +2252,12 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
         ]
       ),
       f.toggle('relieved', 'Relieved?'),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Day 3+', 'Relieved', 'Prune helped', 'Doctor called'],
   },
 
-  
   {
     id: 'diarrhea',
     name: 'Diarrhea',
@@ -2382,16 +2297,13 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
           { id: 'water', label: 'Water', emoji: '💧' },
         ]
       ),
+      f.photo('photos', 'Photo'),
       f.textarea('notes', 'Notes'),
     ],
     quickTags: ['Mild', 'Severe', 'Dehydration concern', 'Improving'],
   },
 
-  
-  
-  
-
-  
+  // ─── HOUSEHOLD ──────────────────────────────────────────────────────
   {
     id: 'supply_inventory',
     name: 'Supplies',
@@ -2438,7 +2350,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Stocked up', 'Running low', 'Ordered', 'Out of stock'],
   },
 
-  
   {
     id: 'expenses',
     name: 'Expenses',
@@ -2478,7 +2389,6 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
     quickTags: ['Essential', 'Splurge', 'Sale', 'Subscription'],
   },
 
-  
   {
     id: 'cleaning',
     name: 'Cleaning',
@@ -2524,16 +2434,9 @@ export const DEFAULT_TRACKERS: UnifiedTrackerConfig[] = [
   },
 ];
 
-
-
-
-
-
-
 const LOCAL_DEFAULT_TRACKER_IDS: readonly string[] = DEFAULT_TRACKERS.map(
   (t) => t.id
 );
-
 
 export const createCustomTracker = (
   name: string,
@@ -2580,7 +2483,6 @@ export const createCustomTracker = (
   };
 };
 
-
 export const validateCustomTracker = (
   tracker: UnifiedTrackerConfig
 ): { valid: boolean; errors: string[] } => {
@@ -2615,7 +2517,6 @@ export const validateCustomTracker = (
 
   return { valid: errors.length === 0, errors };
 };
-
 
 export const getDefaultTracker = (id: string): UnifiedTrackerConfig | undefined => {
   return DEFAULT_TRACKERS.find((t) => t.id === id);
@@ -2664,9 +2565,5 @@ export const getCategorySummary = (): {
     }))
     .filter((c) => c.count > 0);
 };
-
-
-
-
 
 export { SOLID_UNITS, LIQUID_UNITS, WEIGHT_UNITS, LENGTH_UNITS };
