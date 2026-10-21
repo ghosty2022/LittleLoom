@@ -840,11 +840,11 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         </View>
       </View>
 
-      <SectionHeader title="AUTHENTICATION" icon="key-outline" isDark={isDark} />
+      <SectionHeader title="UNLOCK METHODS" icon="key-outline" isDark={isDark} />
 
       <SecurityCard
         icon="lock-closed-outline"
-        title="PIN Lock"
+        title="PIN Code"
         subtitle={securitySettings.isPinEnabled ? 'PIN is active' : 'No PIN set — tap to create'}
         status={securitySettings.isPinEnabled ? 'active' : 'inactive'}
         onPress={() => {
@@ -1636,7 +1636,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
                 SECURITY
               </GradientText>
               <Text style={[styles.dashSubtitle, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
-                Protect your account and data
+                Unlock methods, recovery & app lock
               </Text>
             </AnimatedRe.View>
           )}

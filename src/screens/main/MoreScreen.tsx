@@ -2184,9 +2184,13 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               isDark={isDark}
             />
             <MenuItem
-              icon="keypad"
-              title="PIN Code"
-              subtitle={securitySettings.isPinEnabled ? 'Change PIN' : 'Set up PIN'}
+              icon="key-outline"
+              title="Unlock Methods"
+              subtitle={
+                securitySettings.isPinEnabled
+                  ? 'PIN active · manage locks'
+                  : 'Set up PIN or biometrics'
+              }
               onPress={handlePinSetup}
               color={secondary}
               isDark={isDark}
