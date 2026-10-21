@@ -1,26 +1,28 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  StyleSheet,
+  ActivityIndicator,
+  Dimensions,
   Image,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
   Share,
+  StatusBar,
+  StyleSheet,
   Text,
   TouchableOpacity,
   useColorScheme,
-  StatusBar,
   View,
   LayoutAnimation,
   UIManager,
-  Platform,
-  RefreshControl,
-  ActivityIndicator,
-  useWindowDimensions,
-  FlatList,
-  Modal,
-  Pressable,
 } from 'react-native';
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
+  FadeIn,
   FadeInUp,
   FadeInDown,
   FadeInRight,
@@ -29,69 +31,66 @@ import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 import { CommunityUser, Post, useCommunity, INITIAL_TOPICS } from '../../context/CommunityContext';
-import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '@/utils/supabase';
 
-// Fabric detection — LayoutAnimation is a no-op there.
-const IS_FABRIC =
-  (global as any).nativeFabricUIManager != null ||
-  typeof (global as any).RN$Bridgeless !== 'undefined' ||
-  typeof (global as any).__turboModuleProxy !== 'undefined';
-
-if (
-  Platform.OS === 'android' &&
-  !IS_FABRIC &&
-  typeof UIManager.setLayoutAnimationEnabledExperimental === 'function'
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityMemberProfile'>;
 
-const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
-};
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-const TC = {
+const DS = {
   primary: '#6366f1',
-  primaryDark: '#8b5cf6',
-  secondary: '#ec4899',
-  accent: '#f59e0b',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
   success: '#10b981',
-  warning: '#fbbf24',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
   danger: '#ef4444',
-  info: '#3b82f6',
-  purple: '#8b5cf6',
-  teal: '#14b8a6',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
 };
 
 const TOPIC_COLORS: Record<string, string> = {
-  topic_1: '#6366f1',
-  topic_2: '#10b981',
-  topic_3: '#ec4899',
-  topic_4: '#f59e0b',
-  topic_5: '#fc5c7d',
-  topic_6: '#8b5cf6',
-  topic_7: '#f093fb',
-  topic_8: '#4facfe',
-  topic_9: '#ec4899',
-  topic_10: '#43e97b',
-  topic_11: '#ec4899',
-  topic_12: '#6366f1',
+  topic_1: '#6366f1', topic_2: '#10b981', topic_3: '#ec4899',
+  topic_4: '#f59e0b', topic_5: '#fc5c7d', topic_6: '#8b5cf6',
+  topic_7: '#f093fb', topic_8: '#4facfe', topic_9: '#ec4899',
+  topic_10: '#43e97b', topic_11: '#ec4899', topic_12: '#6366f1',
 };
 
 const ACHIEVEMENTS: Record<string, { emoji: string; name: string; color: string; desc: string }> = {
@@ -111,266 +110,278 @@ type ProfileTab = 'posts' | 'about' | 'achievements' | 'insights';
 
 const isEmojiAvatar = (avatar: string | undefined): boolean => {
   if (!avatar) return false;
-  const emojiRegex =
-    /[\u{1F000}-\u{1FFFF}]|[\u2600-\u27BF]|[\u{2700}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{1FB00}-\u{1FBFF}]|[\u{1FC00}-\u{1FCFF}]|[\u{1FD00}-\u{1FDFF}]|[\u{1FE00}-\u{1FEFF}]|[\u{1FF00}-\u{1FFFF}]/u;
+  const emojiRegex = /[\u{1F000}-\u{1FFFF}]|[\u2600-\u27BF]|[\u{2700}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{1FB00}-\u{1FBFF}]|[\u{1FC00}-\u{1FCFF}]|[\u{1FD00}-\u{1FDFF}]|[\u{1FE00}-\u{1FEFF}]|[\u{1FF00}-\u{1FFFF}]/u;
   return avatar.length <= 2 && (emojiRegex.test(avatar) || /^[\u{1F000}-\u{1FFFF}]$/u.test(avatar));
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SUBCOMPONENTS
+   GRADIENT TEXT
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: any) => {
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const Wrapper = onPress ? TouchableOpacity : View;
+const GradientText = React.memo(({
+  children, style, colors = ['#667eea', '#764ba2', '#f093fb'],
+}: {
+  children: React.ReactNode; style?: any; colors?: string[];
+}) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
   return (
-    <Animated.View
-      entering={FadeInUp.delay(delay).springify()}
-      style={[styles.glassCard, active && { borderColor: colors?.primary, borderWidth: 2 }, style]}
-    >
-      <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
-        <LinearGradient
-          colors={
-            isDark
-              ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']
-              : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']
-          }
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-        <View style={styles.glassBorder} />
-        <View style={styles.glassContent}>{children}</View>
-      </Wrapper>
-    </Animated.View>
-  );
-});
-
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark, colors }: any) => {
-  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  return (
-    <View style={styles.sectionHeader}>
-      <View>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
-      </View>
-      {action && (
-        <TouchableOpacity onPress={action} style={styles.sectionAction}>
-          <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
-          <Ionicons name="chevron-forward" size={14} color="#6366f1" />
-        </TouchableOpacity>
-      )}
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+      })}
     </View>
   );
 });
 
-const TabBar = React.memo(
-  ({
-    tabs,
-    activeTab,
-    onChange,
-    isDark,
-    colors,
-  }: {
-    tabs: { key: ProfileTab; label: string; icon: string }[];
-    activeTab: ProfileTab;
-    onChange: (t: ProfileTab) => void;
-    isDark?: boolean;
-    colors?: any;
-  }) => {
-    const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-    return (
-      <View style={styles.tabBar}>
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.key;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              onPress={() => onChange(tab.key)}
-              style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}
-            >
-              <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: isActive ? '#6366f1' : '#94a3b8' },
-                  isActive && { fontWeight: '700' },
-                ]}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  },
-);
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRESSABLE SCALE
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Post card — memoised on primitive props so it doesn't re-render on scroll/state changes */
-const PostCard = React.memo(
-  ({
-    post,
-    index,
-    onPressPost,
-    isDark,
-    colors,
-  }: {
-    post: Post;
-    index: number;
-    onPressPost: (postId: string) => void;
-    isDark: boolean;
-    colors: any;
-  }) => {
-    const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-    const topicColor = TOPIC_COLORS[post.topicId] || TC.primary;
-    const handlePress = useCallback(() => onPressPost(post.id), [onPressPost, post.id]);
-    return (
-      <Animated.View entering={FadeInUp.delay(Math.min(index, 6) * 40).springify()}>
-        <TouchableOpacity onPress={handlePress} activeOpacity={0.75} style={styles.postItem}>
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+
+const PressableScale = React.memo<{
+  children: React.ReactNode;
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
+  activeScale?: number;
+  hapticType?: 'light' | 'medium' | 'heavy' | 'success' | 'warning';
+}>(({ children, onPress, disabled = false, style, activeScale = 0.96, hapticType = 'light' }) => {
+  const scale = useSharedValue(1);
+  const { triggerHaptic, hapticFeedback } = useCustomization();
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const onPressIn = useCallback(() => { scale.value = withTiming(activeScale, { duration: 80 }); }, [activeScale, scale]);
+  const onPressOut = useCallback(() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }, [scale]);
+  const handlePress = useCallback(() => {
+    if (disabled) return;
+    if (hapticFeedback) triggerHaptic(hapticType).catch(() => {});
+    onPress?.();
+  }, [disabled, hapticFeedback, triggerHaptic, hapticType, onPress]);
+  return (
+    <AnimatedTouchable
+      style={[style, animStyle]}
+      onPress={handlePress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PULSE RING
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const PulseRing = React.memo(({
+  children, size, isOnline, roleColor, onPress,
+}: {
+  children: React.ReactNode;
+  size: number;
+  isOnline?: boolean;
+  roleColor: string;
+  onPress?: () => void;
+}) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.05, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 8000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.7, { duration: 1800 }), withTiming(0.3, { duration: 1800 })), -1, true);
+  }, [pulse, rotate, glow]);
+
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  const ringSize = size + 12;
+
+  return (
+    <PressableScale onPress={onPress} activeScale={0.95} disabled={!onPress}>
+      <View style={{ width: ringSize, height: ringSize, alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.View style={[{
+          position: 'absolute',
+          width: ringSize + 8,
+          height: ringSize + 8,
+          borderRadius: (ringSize + 8) / 2,
+          backgroundColor: `${roleColor}25`,
+        }, glowStyle]} />
+        <Animated.View style={[{
+          position: 'absolute',
+          width: ringSize,
+          height: ringSize,
+          borderRadius: ringSize / 2,
+          overflow: 'hidden',
+        }, ringStyle]}>
           <LinearGradient
-            colors={
-              isDark
-                ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']
-                : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']
-            }
-            style={StyleSheet.absoluteFill}
+            colors={[roleColor, '#ec4899', '#f59e0b', roleColor]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-          />
-          <View style={styles.postItemContent}>
-            <View style={styles.postItemHeader}>
-              <View style={[styles.postItemTopic, { backgroundColor: `${topicColor}15` }]}>
-                <View style={[styles.postItemTopicDot, { backgroundColor: topicColor }]} />
-                <Text style={[styles.postItemTopicText, { color: topicColor }]} numberOfLines={1}>
-                  {post.topic || 'General'}
-                </Text>
-              </View>
-              <Text style={styles.postItemTime}>{post.time}</Text>
-            </View>
-            <Text style={styles.postItemContentText} numberOfLines={3}>
-              {post.content}
-            </Text>
-            {post.images && post.images.length > 0 && (
-              <View style={styles.postItemImageWrap}>
-                <Image source={{ uri: post.images[0] }} style={styles.postItemImage} resizeMode="cover" />
-              </View>
-            )}
-            <View style={styles.postItemStats}>
-              <View style={styles.postItemStat}>
-                <Ionicons name="heart" size={14} color={post.isLiked ? TC.danger : '#94a3b8'} />
-                <Text style={[styles.postItemStatText, { color: post.isLiked ? TC.danger : '#94a3b8' }]}>
-                  {post.likes}
-                </Text>
-              </View>
-              <View style={styles.postItemStat}>
-                <Ionicons name="chatbubble" size={14} color="#94a3b8" />
-                <Text style={styles.postItemStatText}>{post.commentsCount}</Text>
-              </View>
-              <View style={styles.postItemStat}>
-                <Ionicons name="repeat" size={14} color="#94a3b8" />
-                <Text style={styles.postItemStatText}>{post.reposts || 0}</Text>
-              </View>
-              <View style={styles.postItemStat}>
-                <Ionicons name="eye" size={14} color="#94a3b8" />
-                <Text style={styles.postItemStatText}>{post.viewCount || 0}</Text>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  },
-);
-
-/* ── Skeleton placeholder for the hero (no blocking spinner) ───────────── */
-const HeroSkeleton = React.memo(
-  ({
-    isDark,
-    colors,
-    coverHeight,
-    avatarSize,
-    overlap,
-  }: {
-    isDark: boolean;
-    colors: any;
-    coverHeight: number;
-    avatarSize: number;
-    overlap: number;
-  }) => {
-    const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-    const barBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
-    const barSoft = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
-
-    return (
-      <View style={styles.profileHero}>
-        <View style={[styles.coverPhotoContainer, { height: coverHeight, opacity: 0.6 }]}>
-          <LinearGradient
-            colors={isDark ? ['#2d2d3c', '#232332'] : ['#e2e8f0', '#f1f5f9']}
             style={StyleSheet.absoluteFill}
           />
+        </Animated.View>
+        <View style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          overflow: 'hidden',
+          borderWidth: 3,
+          borderColor: '#fff',
+          backgroundColor: '#fff',
+        }}>
+          {children}
         </View>
-        <View style={[styles.profileHeroContent, { marginTop: -overlap }]}>
-          <View style={styles.avatarSection}>
-            <View
-              style={{
-                width: avatarSize,
-                height: avatarSize,
-                borderRadius: avatarSize / 2,
-                backgroundColor: barBg,
-                borderWidth: 4,
-                borderColor: '#fff',
-              }}
-            />
-          </View>
-          <View style={styles.profileInfo}>
-            <View
-              style={{
-                height: 24,
-                width: 160,
-                borderRadius: 8,
-                backgroundColor: barBg,
-                marginBottom: 8,
-              }}
-            />
-            <View
-              style={{
-                height: 14,
-                width: 100,
-                borderRadius: 6,
-                backgroundColor: barSoft,
-                marginBottom: 16,
-              }}
-            />
-            <View style={{ flexDirection: 'row', gap: 20 }}>
-              {[0, 1, 2].map((i) => (
-                <View key={i} style={{ alignItems: 'center' }}>
-                  <View
-                    style={{
-                      height: 18,
-                      width: 28,
-                      borderRadius: 6,
-                      backgroundColor: barBg,
-                      marginBottom: 4,
-                    }}
-                  />
-                  <View
-                    style={{
-                      height: 10,
-                      width: 44,
-                      borderRadius: 4,
-                      backgroundColor: barSoft,
-                    }}
-                  />
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
+        {isOnline && (
+          <View style={{
+            position: 'absolute',
+            bottom: 4,
+            right: 4,
+            width: 18,
+            height: 18,
+            borderRadius: 9,
+            backgroundColor: '#10b981',
+            borderWidth: 2,
+            borderColor: '#fff',
+          }} />
+        )}
       </View>
-    );
-  },
-);
+    </PressableScale>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION HEADER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SectionHeader = React.memo(({
+  title, subtitle, icon, color = DS.primary, action, actionLabel,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  color?: string;
+  action?: () => void;
+  actionLabel?: string;
+}) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && (
+        <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+      )}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Text style={[styles.sectionActionText, { color }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={13} color={color} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAB BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const TabBar = React.memo(({
+  tabs, activeTab, onChange, isDark,
+}: {
+  tabs: { key: ProfileTab; label: string; icon: keyof typeof Ionicons.glyphMap }[];
+  activeTab: ProfileTab;
+  onChange: (t: ProfileTab) => void;
+  isDark: boolean;
+}) => (
+  <View style={[styles.tabBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+    {tabs.map((tab) => {
+      const isActive = activeTab === tab.key;
+      return (
+        <TouchableOpacity
+          key={tab.key}
+          onPress={() => onChange(tab.key)}
+          style={[
+            styles.tabItem,
+            isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : DS.white, ...DS.shadow.sm },
+          ]}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={tab.icon} size={15} color={isActive ? DS.primary : isDark ? DS.gray400 : DS.gray500} />
+          <Text style={[
+            styles.tabLabel,
+            { color: isActive ? DS.primary : isDark ? DS.gray400 : DS.gray500 },
+            isActive && { fontWeight: '700' },
+          ]}>
+            {tab.label}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STAT PILL
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const StatPill = React.memo(({
+  icon, value, label, color, onPress,
+}: {
+  icon: string;
+  value: number | string;
+  label: string;
+  color: string;
+  onPress?: () => void;
+}) => (
+  <PressableScale onPress={onPress} activeScale={0.95} disabled={!onPress}>
+    <View style={[styles.statPill, { backgroundColor: `${color}10` }]}>
+      <Text style={styles.statPillIcon}>{icon}</Text>
+      <View>
+        <Text style={[styles.statPillValue, { color }]}>{value}</Text>
+        <Text style={styles.statPillLabel}>{label}</Text>
+      </View>
+    </View>
+  </PressableScale>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROFILE SKELETON
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const ProfileSkeleton = React.memo(({ isDark }: { isDark: boolean }) => {
+  const barBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  return (
+    <View style={{ paddingHorizontal: DS.space.lg, paddingTop: DS.space.lg }}>
+      <View style={{ alignItems: 'center', marginBottom: DS.space.xl }}>
+        <View style={{ width: 120, height: 120, borderRadius: 60, backgroundColor: barBg, marginBottom: 16 }} />
+        <View style={{ width: 160, height: 22, borderRadius: 8, backgroundColor: barBg, marginBottom: 8 }} />
+        <View style={{ width: 100, height: 14, borderRadius: 6, backgroundColor: barBg }} />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: DS.space.lg }}>
+        {[1, 2, 3, 4].map(i => (
+          <View key={i} style={{ flex: 1, height: 60, borderRadius: 16, backgroundColor: barBg }} />
+        ))}
+      </View>
+      <View style={{ height: 180, borderRadius: 18, backgroundColor: barBg, marginBottom: DS.space.lg }} />
+      <View style={{ height: 120, borderRadius: 18, backgroundColor: barBg }} />
+    </View>
+  );
+});
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN SCREEN
@@ -397,27 +408,13 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   const { themeColors, fullThemeColors, darkMode, triggerHaptic } = useCustomization();
   const colorScheme = useColorScheme();
   const isDark = darkMode ?? (colorScheme === 'dark');
-  const styles = useMemo(() => getStyles(isDark, fullThemeColors), [isDark, fullThemeColors]);
   const sweetAlert = useSweetAlert();
 
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_W } = useWindowDimensions();
   const scrollY = useSharedValue(0);
-
-  const isCompact = SCREEN_W < 360;
-  const isTablet = SCREEN_W >= 768;
-
-  const heroCoverHeight = isTablet ? 220 : Math.max(150, Math.min(180, SCREEN_W * 0.45));
-  const avatarSize = isTablet ? 128 : Math.max(84, Math.min(108, SCREEN_W * 0.26));
-  const avatarOverlap = Math.round(avatarSize * 0.5);
-  const actionIconSize = isCompact ? 40 : 44;
-  const actionIconRadius = Math.round(actionIconSize * 0.32);
-  const mutualCardWidth = isTablet ? 140 : Math.max(84, (SCREEN_W - 32 - 24) / 3.2);
-  const streakCellSize = Math.max(18, Math.min(26, (SCREEN_W - 32 - 20 - 5 * 6) / 12));
 
   const [user, setUser] = useState<CommunityUser | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
-  // NEW: never gate the whole screen on this. Paints immediately with skeleton.
   const [isHydrating, setIsHydrating] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isFollowingUser, setIsFollowingUser] = useState(false);
@@ -434,8 +431,6 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   const initialLoadDone = useRef(false);
   const isMountedRef = useRef(true);
 
-  // Sync canonical UserContext community profile into CommunityContext so
-  // avatars edited on CommunityProfileScreen propagate here.
   useEffect(() => {
     if (!currentUser?.id || !communityProfile) return;
     const hasChanges =
@@ -463,25 +458,25 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     transform: [{ translateY: interpolate(scrollY.value, [0, 100], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
-  const bannerGradient = useMemo(() => {
-    if (!user) return ['#6366f1', '#8b5cf6'] as [string, string];
-    const colors = user.selectedTopics?.map((t) => TOPIC_COLORS[t] || TC.primary) || [TC.primary];
-    return [colors[0] || TC.primary, colors[1] || TC.primaryDark] as [string, string];
-  }, [user]);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      scrollY.value = event.contentOffset.y;
+    },
+  });
 
   const userPostList = useMemo(() => getUserPosts(userId), [userId, getUserPosts]);
 
-  /* ── Derived data ─────────────────────────────────────────────────── */
-
+  /* Derived data */
   const engagementInsights = useMemo(() => {
     const totalLikes = userPostList.reduce((sum, p) => sum + p.likes, 0);
     const totalComments = userPostList.reduce((sum, p) => sum + p.commentsCount, 0);
-    const totalViews = userPostList.reduce((sum, p) => sum + p.viewCount, 0);
+    const totalViews = userPostList.reduce((sum, p) => sum + (p.viewCount || 0), 0);
 
     return [
-      { icon: '❤️', label: 'Likes', value: totalLikes, color: TC.danger },
-      { icon: '💬', label: 'Comments', value: totalComments, color: TC.info },
-      { icon: '👁️', label: 'Views', value: totalViews, color: TC.primary },
+      { icon: '❤️', label: 'Likes', value: totalLikes, color: DS.danger },
+      { icon: '💬', label: 'Comments', value: totalComments, color: DS.info },
+      { icon: '👁️', label: 'Views', value: totalViews, color: DS.primary },
     ];
   }, [userPostList]);
 
@@ -492,17 +487,16 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     const totalHelpful = userPostList.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
     const totalViews = userPostList.reduce((sum, p) => sum + (p.viewCount || 0), 0);
 
-    const avgEngagement =
-      totalPosts > 0 ? Math.min(100, Math.round(((totalLikes + totalComments * 2) / totalPosts) * 2)) : 0;
+    const avgEngagement = totalPosts > 0 ? Math.min(100, Math.round(((totalLikes + totalComments * 2) / totalPosts) * 2)) : 0;
     const consistency = Math.min(100, Math.round((totalPosts / Math.max(1, 30)) * 100));
     const helpful = Math.min(100, Math.round((totalHelpful / Math.max(1, totalPosts)) * 15));
     const reach = Math.min(100, Math.round((totalViews / Math.max(1, totalPosts * 10)) * 100));
 
     return [
-      { label: 'Engagement', value: avgEngagement, color: TC.primary, icon: 'flash' },
-      { label: 'Consistency', value: consistency, color: TC.secondary, icon: 'calendar' },
-      { label: 'Helpful', value: helpful, color: TC.success, icon: 'heart' },
-      { label: 'Reach', value: reach, color: TC.accent, icon: 'eye' },
+      { label: 'Engagement', value: avgEngagement, color: DS.primary, icon: 'flash' },
+      { label: 'Consistency', value: consistency, color: DS.accent, icon: 'calendar' },
+      { label: 'Helpful', value: helpful, color: DS.success, icon: 'heart' },
+      { label: 'Reach', value: reach, color: DS.warning, icon: 'eye' },
     ];
   }, [userPostList]);
 
@@ -515,132 +509,13 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
 
     const totalEngagement = userPostList.reduce((sum, p) => sum + p.likes + p.commentsCount * 2, 0);
     let rankLabel = 'New Parent';
-    if (userPostCount > 100 && totalEngagement > 500) rankLabel = 'Legendary Parent';
+    if (userPostCount > 100 && totalEngagement > 500) rankLabel = 'Legendary';
     else if (userPostCount > 50 && totalEngagement > 200) rankLabel = 'Gold Parent';
     else if (userPostCount > 20 && totalEngagement > 50) rankLabel = 'Silver Parent';
     else if (userPostCount > 5) rankLabel = 'Bronze Parent';
 
-    const topContributors = allUsers
-      .filter((u) => u.id !== userId && getUserPosts(u.id).length > 0)
-      .sort((a, b) => getUserPosts(b.id).length - getUserPosts(a.id).length)
-      .slice(0, 3)
-      .map((u) => ({ id: u.id, name: u.displayName, avatar: u.avatar }));
-
-    return { score: Math.min(100, Math.round(percentile + 20)), rank: rankLabel, percentile, topContributors };
-  }, [userPostList, allUsers, getUserPosts, userId]);
-
-  const contentHighlights = useMemo(() => {
-    const sorted = [...userPostList].sort((a, b) => b.likes - a.likes);
-    const mostLiked = sorted[0]?.likes || 0;
-    const mostCommented = Math.max(...userPostList.map((p) => p.commentsCount), 0);
-    // Real engagement rate: (likes + comments) / total views.
-    const totalViews = userPostList.reduce((s, p) => s + (p.viewCount || 0), 0);
-    const totalInteractions = userPostList.reduce((s, p) => s + p.likes + p.commentsCount, 0);
-    const avgEngagement =
-      totalViews > 0 ? Math.min(100, Math.round((totalInteractions / totalViews) * 100)) : 0;
-    return { topPost: sorted[0] || null, mostLiked, mostCommented, avgEngagement };
-  }, [userPostList]);
-
-  const activityPattern = useMemo(() => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const now = new Date();
-    return days.map((day, i) => {
-      const date = new Date(now);
-      date.setDate(date.getDate() - (6 - i));
-      const dayPosts = userPostList.filter((p) => {
-        const postDate = new Date(p.timestamp);
-        return postDate.toDateString() === date.toDateString();
-      });
-      const activity = dayPosts.length + dayPosts.reduce((sum, p) => sum + p.likes * 0.3, 0);
-      return { day: day.slice(0, 1), activity: Math.round(activity), posts: dayPosts.length };
-    });
-  }, [userPostList]);
-
-  const contentBreakdown = useMemo(
-    () => ({
-      posts: userPostList.length,
-      comments: userPostList.reduce((sum, p) => sum + (p.commentsCount || 0), 0),
-      reactions: userPostList.reduce((sum, p) => sum + (p.likes || 0), 0),
-      shares: userPostList.reduce((sum, p) => sum + (p.reposts || 0), 0),
-    }),
-    [userPostList],
-  );
-
-  const mutualConnections = useMemo(() => {
-    if (!currentUser) return [];
-    const currentUserFollowing = currentUser.following || [];
-    const targetUserFollowing = user?.following || [];
-    const mutuals = currentUserFollowing.filter(
-      (id) => targetUserFollowing.includes(id) && id !== currentUser.id,
-    );
-    return mutuals.slice(0, 4).map((id) => {
-      const u = allUsers.find((a) => a.id === id);
-      return {
-        id,
-        name: u?.displayName || 'Unknown',
-        avatar: u?.avatar || '',
-      };
-    });
-  }, [currentUser, user, allUsers]);
-
-  const parentingTips = useMemo(() => {
-    const tips: any[] = [];
-    const topicCounts: Record<string, number> = {};
-    userPostList.forEach((p) => {
-      topicCounts[p.topicId] = (topicCounts[p.topicId] || 0) + 1;
-    });
-    const topTopic = Object.entries(topicCounts).sort(([, a], [, b]) => b - a)[0]?.[0];
-
-    if (topTopic === 'topic_1')
-      tips.push({
-        id: '1',
-        emoji: '📚',
-        title: 'Learning Focus',
-        tip: 'They share lots of educational content. Great resource for learning tips!',
-        color: '#6366f1',
-      });
-    if (topTopic === 'topic_3')
-      tips.push({
-        id: '2',
-        emoji: '💤',
-        title: 'Sleep Expert',
-        tip: 'Their sleep tips are popular! Check out their bedtime routine posts.',
-        color: '#8b5cf6',
-      });
-    if (topTopic === 'topic_5')
-      tips.push({
-        id: '3',
-        emoji: '🍼',
-        title: 'Nutrition Guide',
-        tip: 'Their feeding posts get great engagement. Valuable nutrition advice!',
-        color: '#ec4899',
-      });
-    if (userPostList.length > 20)
-      tips.push({
-        id: '4',
-        emoji: '🌟',
-        title: 'Top Contributor',
-        tip: "They're a pillar of the community! Follow for quality content.",
-        color: '#f59e0b',
-      });
-    if (userPostList.length < 3)
-      tips.push({
-        id: '5',
-        emoji: '💡',
-        title: 'New Parent',
-        tip: 'Welcome them to the community! Show some love on their posts.',
-        color: '#10b981',
-      });
-    if (tips.length === 0)
-      tips.push({
-        id: '6',
-        emoji: '💬',
-        title: 'Engaged Parent',
-        tip: 'They actively participate in discussions. Great person to connect with!',
-        color: '#3b82f6',
-      });
-    return tips.slice(0, 2);
-  }, [userPostList]);
+    return { score: Math.min(100, Math.round(percentile + 20)), rank: rankLabel, percentile };
+  }, [userPostList, allUsers, getUserPosts]);
 
   const topicBreakdown = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -652,136 +527,20 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       .map(([topicId, count]) => ({
         topicId,
         count,
-        color: TOPIC_COLORS[topicId] || TC.primary,
-        label: INITIAL_TOPICS.find((t) => t.id === topicId)?.name || topicId.replace('topic_', 'Topic '),
+        color: TOPIC_COLORS[topicId] || DS.primary,
+        label: INITIAL_TOPICS.find((t) => t.id === topicId)?.name || topicId,
         percentage: Math.round((count / total) * 100),
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 4);
   }, [userPostList]);
 
-  const contributionStreak = useMemo(() => {
-    const now = new Date();
-    const weeks: boolean[] = [];
-    for (let i = 11; i >= 0; i--) {
-      const weekStart = new Date(now);
-      weekStart.setDate(weekStart.getDate() - i * 7);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-      const hasActivity = userPostList.some((p) => {
-        const d = new Date(p.timestamp);
-        return d >= weekStart && d < weekEnd;
-      });
-      weeks.push(hasActivity);
-    }
-    let current = 0;
-    for (let i = weeks.length - 1; i >= 0 && weeks[i]; i--) current++;
-    let longest = 0;
-    let temp = 0;
-    for (let i = 0; i < weeks.length; i++) {
-      if (weeks[i]) temp++;
-      else {
-        longest = Math.max(longest, temp);
-        temp = 0;
-      }
-    }
-    longest = Math.max(longest, temp);
-    return { current, longest, weeks };
-  }, [userPostList]);
-
-  const socialGraph = useMemo(() => {
-    const likes = userPostList.reduce((s, p) => s + p.likes, 0);
-    const comments = userPostList.reduce((s, p) => s + p.commentsCount, 0);
-    const views = userPostList.reduce((s, p) => s + p.viewCount, 0);
-    const posts = userPostList.length;
-    const maxVal = Math.max(likes, comments, views, posts, 1);
-    return [
-      { name: 'Posts', value: Math.round((posts / maxVal) * 100), color: TC.primary },
-      { name: 'Likes', value: Math.round((likes / maxVal) * 100), color: TC.secondary },
-      { name: 'Comments', value: Math.round((comments / maxVal) * 100), color: TC.info },
-      { name: 'Views', value: Math.round((views / maxVal) * 100), color: TC.success },
-    ];
-  }, [userPostList]);
-
-  const interactionHeatMap = useMemo(() => {
-    const hours: Record<number, number> = {};
-    for (let i = 0; i < 24; i++) hours[i] = 0;
-    userPostList.forEach((p) => {
-      const hour = new Date(p.timestamp).getHours();
-      hours[hour] = (hours[hour] || 0) + 1;
-    });
-    const maxVal = Math.max(...Object.values(hours), 1);
-    return Object.entries(hours)
-      .map(([hour, count]) => ({
-        hour: parseInt(hour),
-        activity: count,
-        intensity: count / maxVal,
-      }))
-      .slice(6, 22);
-  }, [userPostList]);
-
-  const contentStreaks = useMemo(() => {
-    const postDates = userPostList.map((p) => new Date(p.timestamp).toDateString());
-    const uniquePostDays = [...new Set(postDates)];
-
-    let currentStreakCount = 0;
-    for (let i = uniquePostDays.length - 1; i >= 0; i--) {
-      const day = new Date(uniquePostDays[i]);
-      const expectedDay = new Date();
-      expectedDay.setDate(expectedDay.getDate() - currentStreakCount);
-      if (day.toDateString() === expectedDay.toDateString()) {
-        currentStreakCount++;
-      } else {
-        break;
-      }
-    }
-
-    return [
-      {
-        type: 'Posting',
-        current: currentStreakCount,
-        best: Math.min(userPostList.length, 30),
-        color: TC.primary,
-        icon: 'document-text',
-      },
-      {
-        type: 'Helpful',
-        current: Math.min(
-          5,
-          Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0) / 2),
-        ),
-        best: Math.min(10, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0))),
-        color: TC.success,
-        icon: 'heart',
-      },
-      {
-        type: 'Active',
-        current: userPostList.length > 0 ? Math.min(30, userPostList.length) : 0,
-        best: Math.min(30, userPostList.length * 2),
-        color: TC.accent,
-        icon: 'flame',
-      },
-    ];
-  }, [userPostList]);
-
-  const tabs = useMemo(
-    () => [
-      { key: 'posts' as ProfileTab, label: 'Posts', icon: 'document-text-outline' },
-      { key: 'about' as ProfileTab, label: 'About', icon: 'information-circle-outline' },
-      { key: 'achievements' as ProfileTab, label: 'Badges', icon: 'trophy-outline' },
-      { key: 'insights' as ProfileTab, label: 'Insights', icon: 'analytics-outline' },
-    ],
-    [],
-  );
-
-  /* ── Lifecycle ─────────────────────────────────────────────────────── */
-
+  /* Lifecycle */
   useEffect(() => {
     if (userId && !initialLoadDone.current) {
       loadUserData();
       initialLoadDone.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   useFocusEffect(
@@ -790,7 +549,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
         loadUserData();
       }
       return () => {};
-    }, [userId]),
+    }, [userId])
   );
 
   const loadUserData = async () => {
@@ -799,12 +558,8 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     setIsHydrating(true);
 
     try {
-      // 1) Try the in-memory community context first (fast path).
       let targetUser = getUserById(userId);
 
-      // 2) Fall back to Supabase `profiles` — this makes the eye button work
-      //    for the *current* user before CommunityContext has re-synced after
-      //    a profile edit, AND (critically) picks up `is_verified`.
       if (userId) {
         try {
           const { data: profileRow, error: profileErr } = await supabase
@@ -812,7 +567,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
             .select(
               'id, full_name, community_display_name, community_handle, community_username, ' +
                 'community_bio, community_avatar, avatar_url, community_cover, is_verified, ' +
-                'community_selected_topics, created_at',
+                'community_selected_topics, created_at'
             )
             .eq('id', userId)
             .maybeSingle();
@@ -835,18 +590,9 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
               country: 'Unknown',
               onlineStatus: 'offline',
               lastActive: new Date().toISOString(),
-              stats: targetUser?.stats || {
-                posts: 0,
-                followers: 0,
-                following: 0,
-                helpful: 0,
-                streakDays: 0,
-                lastStreakDate: new Date().toISOString(),
-              },
+              stats: targetUser?.stats || { posts: 0, followers: 0, following: 0, helpful: 0, streakDays: 0, lastStreakDate: new Date().toISOString() },
               achievements: targetUser?.achievements || [],
-              selectedTopics: Array.isArray(profileRow.community_selected_topics)
-                ? profileRow.community_selected_topics
-                : targetUser?.selectedTopics || [],
+              selectedTopics: Array.isArray(profileRow.community_selected_topics) ? profileRow.community_selected_topics : targetUser?.selectedTopics || [],
               isFollowing: targetUser?.isFollowing,
               following: targetUser?.following,
               followers: targetUser?.followers,
@@ -855,8 +601,6 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
             if (!targetUser) {
               targetUser = fromDb;
             } else {
-              // Merge: keep context stats/follows, but ALWAYS take DB's
-              // authoritative is_verified / avatar / bio / coverPhoto.
               targetUser = {
                 ...targetUser,
                 displayName: fromDb.displayName || targetUser.displayName,
@@ -865,17 +609,12 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
                 coverPhoto: fromDb.coverPhoto || targetUser.coverPhoto,
                 bio: fromDb.bio || targetUser.bio,
                 isVerified: fromDb.isVerified,
-                selectedTopics:
-                  fromDb.selectedTopics && fromDb.selectedTopics.length > 0
-                    ? fromDb.selectedTopics
-                    : targetUser.selectedTopics,
+                selectedTopics: fromDb.selectedTopics && fromDb.selectedTopics.length > 0 ? fromDb.selectedTopics : targetUser.selectedTopics,
               };
             }
           }
         } catch (fallbackErr) {
-          if (__DEV__) {
-            console.warn('[CommunityMemberProfile] Supabase fallback failed:', fallbackErr);
-          }
+          if (__DEV__) console.warn('[CommunityMemberProfile] Supabase fallback failed:', fallbackErr);
         }
       }
 
@@ -942,28 +681,6 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     navigation.navigate('Chat' as never, { userId } as never);
   }, [user, isBlocked, navigation, triggerHaptic, userId]);
 
-  const handleMoreOptions = useCallback(() => {
-    if (!user) return;
-    sweetAlert.confirm(
-      user.displayName || 'User',
-      'What would you like to do?',
-      () => {
-        blockUser(userId);
-        if (isBlocked) {
-          setIsBlocked(false);
-          sweetAlert.success('Unblocked', `${user.displayName} has been unblocked`);
-        } else {
-          setIsBlocked(true);
-          setIsFollowingUser(false);
-          sweetAlert.alert('Blocked', `${user.displayName} has been blocked`, 'warning');
-        }
-      },
-      () => handleShareProfile(),
-      isBlocked ? 'Unblock' : 'Block',
-      'Share Profile',
-    );
-  }, [user, isBlocked, blockUser, userId, sweetAlert]);
-
   const handleShareProfile = useCallback(async () => {
     if (!user) return;
     try {
@@ -978,1340 +695,447 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   }, [user, triggerHaptic]);
 
   const handleTabChange = useCallback((tab: ProfileTab) => {
-    if (!IS_FABRIC) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      'worklet';
-      scrollY.value = event.contentOffset.y;
-    },
-  });
+  const roleColor = user?.isVerified ? DS.success : DS.primary;
 
-  /* ── RENDER: Sticky header ─────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER: PROFILE HEADER
+     ═══════════════════════════════════════════════════════════════════════ */
 
-  const renderStickyHeader = () => (
-    <Animated.View
-      style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}
-      pointerEvents="none"
-    >
-      <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-      <Text style={styles.stickyTitle}>{user?.displayName || 'Member Profile'}</Text>
-      <Text style={styles.stickySubtitle}>{user?.handle || ''}</Text>
-    </Animated.View>
-  );
-
-  /* ── RENDER: Profile hero ─────────────────────────────────────────── */
-
-  const renderProfileHero = () => {
+  const renderProfileHeader = () => {
     if (!user) return null;
+
     const isOnline = user.onlineStatus === 'online';
-    const coverPhoto = user.coverPhoto;
     const avatarSource = user.avatar;
     const isAvatarEmoji = isEmojiAvatar(avatarSource);
 
     return (
-      <Animated.View entering={FadeInUp.springify()} style={styles.profileHero}>
-        <View style={[styles.coverPhotoContainer, { height: heroCoverHeight }]}>
-          {coverPhoto ? (
-            <Image source={{ uri: coverPhoto }} style={styles.coverPhoto} resizeMode="cover" />
+      <Animated.View entering={FadeInUp.springify()} style={styles.profileHeader}>
+        {/* Avatar with pulse ring */}
+        <PulseRing
+          size={100}
+          isOnline={isOnline}
+          roleColor={roleColor}
+          onPress={() => setShowAvatarPreview(true)}
+        >
+          {avatarSource && !isAvatarEmoji ? (
+            <Image source={{ uri: avatarSource }} style={styles.avatarImage} resizeMode="cover" />
           ) : (
-            <LinearGradient
-              colors={bannerGradient}
-              style={styles.coverPhoto}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
+            <View style={[styles.avatarContent, { backgroundColor: `${roleColor}15` }]}>
+              <Text style={styles.avatarEmoji}>
+                {isAvatarEmoji ? avatarSource : user.displayName?.charAt(0)?.toUpperCase() || '?'}
+              </Text>
+            </View>
           )}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.65)']}
-            style={styles.coverPhotoOverlay}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            pointerEvents="none"
-          />
-        </View>
+        </PulseRing>
 
-        <View style={[styles.profileHeroContent, { marginTop: -avatarOverlap }]}>
-          {/* Avatar — tappable to preview */}
-          <View style={styles.avatarSection}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => {
-                triggerHaptic('light');
-                setShowAvatarPreview(true);
-              }}
-              style={[
-                styles.avatarWrapper,
-                { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 },
-              ]}
-            >
-              {avatarSource && !isAvatarEmoji ? (
-                <Image
-                  source={{ uri: avatarSource }}
-                  style={[
-                    styles.avatarImage,
-                    { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 },
-                  ]}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.avatarImage,
-                    styles.avatarPlaceholder,
-                    {
-                      width: avatarSize,
-                      height: avatarSize,
-                      borderRadius: avatarSize / 2,
-                      backgroundColor: `${TC.primary}25`,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.avatarPlaceholderText, { fontSize: avatarSize * 0.36 }]}>
-                    {isAvatarEmoji ? avatarSource : user.displayName?.charAt(0)?.toUpperCase() || '?'}
-                  </Text>
-                </View>
-              )}
-              {isOnline && (
-                <View style={styles.onlineIndicator} pointerEvents="none">
-                  <View style={styles.onlineDot} />
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* Info */}
-          <View style={styles.profileInfo}>
-            <View style={styles.nameRow}>
-              <Text style={styles.profileName} numberOfLines={1}>
-                {user.displayName}
-              </Text>
-              {user.isVerified && (
-                <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark" size={12} color="#fff" />
-                </View>
-              )}
-            </View>
-            <Text style={styles.profileHandle}>{user.handle}</Text>
-            {user.bio && (
-              <Text style={styles.profileBio} numberOfLines={3}>
-                {user.bio}
-              </Text>
-            )}
-            {user.country && (
-              <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={14} color="#94a3b8" />
-                <Text style={styles.locationText}>{user.country}</Text>
+        {/* Name & Handle */}
+        <View style={styles.nameSection}>
+          <View style={styles.nameRow}>
+            <Text style={styles.displayName} numberOfLines={1}>{user.displayName}</Text>
+            {user.isVerified && (
+              <View style={[styles.verifiedBadge, { backgroundColor: roleColor }]}>
+                <Ionicons name="checkmark" size={11} color="#fff" />
               </View>
             )}
-
-            <View style={styles.statsRow}>
-              <View style={styles.statsItem}>
-                <Text style={styles.statsValue}>{userPostList.length}</Text>
-                <Text style={styles.statsLabel}>Posts</Text>
-              </View>
-              <View style={styles.statsDivider} />
-              <TouchableOpacity
-                style={styles.statsItem}
-                activeOpacity={0.7}
-                onPress={() => {
-                  triggerHaptic('light');
-                  navigation.navigate('Followers', { userId });
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`${followerCount} followers, tap to view list`}
-              >
-                <Text style={styles.statsValue}>{followerCount}</Text>
-                <Text style={styles.statsLabel}>Followers</Text>
-              </TouchableOpacity>
-              <View style={styles.statsDivider} />
-              <TouchableOpacity
-                style={styles.statsItem}
-                activeOpacity={0.7}
-                onPress={() => {
-                  triggerHaptic('light');
-                  navigation.navigate('Following', { userId });
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`${followingCount} following, tap to view list`}
-              >
-                <Text style={styles.statsValue}>{followingCount}</Text>
-                <Text style={styles.statsLabel}>Following</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.actionBar}>
-              {!isOwnProfile ? (
-                <>
-                  <TouchableOpacity
-                    style={styles.actionBarItem}
-                    onPress={handleFollowToggle}
-                    disabled={isBlocked}
-                    activeOpacity={0.75}
-                  >
-                    <LinearGradient
-                      colors={isFollowingUser ? ['#f1f5f9', '#e2e8f0'] : ['#6366f1', '#8b5cf6']}
-                      style={[
-                        styles.actionBarIcon,
-                        { width: actionIconSize, height: actionIconSize, borderRadius: actionIconRadius },
-                      ]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                    >
-                      <Ionicons
-                        name={isFollowingUser ? 'checkmark' : 'person-add'}
-                        size={18}
-                        color={isFollowingUser ? '#64748b' : '#fff'}
-                      />
-                    </LinearGradient>
-                    <Text
-                      style={[styles.actionBarLabel, isFollowingUser && styles.actionBarLabelActive]}
-                      numberOfLines={1}
-                    >
-                      {isBlocked ? 'Blocked' : isFollowingUser ? 'Following' : 'Follow'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.actionBarItem}
-                    onPress={handleMessage}
-                    disabled={isBlocked}
-                    activeOpacity={0.75}
-                  >
-                    <View
-                      style={[
-                        styles.actionBarIcon,
-                        styles.actionBarIconSecondary,
-                        { width: actionIconSize, height: actionIconSize, borderRadius: actionIconRadius },
-                      ]}
-                    >
-                      <Ionicons name="chatbubbles" size={18} color={isBlocked ? '#94a3b8' : '#6366f1'} />
-                    </View>
-                    <Text style={[styles.actionBarLabel, isBlocked && { color: '#94a3b8' }]} numberOfLines={1}>
-                      Message
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.actionBarItem} onPress={handleShareProfile} activeOpacity={0.75}>
-                    <View
-                      style={[
-                        styles.actionBarIcon,
-                        styles.actionBarIconSecondary,
-                        { width: actionIconSize, height: actionIconSize, borderRadius: actionIconRadius },
-                      ]}
-                    >
-                      <Ionicons name="share-outline" size={18} color="#6366f1" />
-                    </View>
-                    <Text style={styles.actionBarLabel} numberOfLines={1}>
-                      Share
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.actionBarItem} onPress={handleMoreOptions} activeOpacity={0.75}>
-                    <View
-                      style={[
-                        styles.actionBarIcon,
-                        styles.actionBarIconSecondary,
-                        { width: actionIconSize, height: actionIconSize, borderRadius: actionIconRadius },
-                      ]}
-                    >
-                      <Ionicons name="ellipsis-horizontal" size={18} color="#6366f1" />
-                    </View>
-                    <Text style={styles.actionBarLabel} numberOfLines={1}>
-                      More
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={styles.actionBarItem}
-                    onPress={() => navigation.navigate('ChatList' as never)}
-                    activeOpacity={0.75}
-                  >
-                    <View
-                      style={[
-                        styles.actionBarIcon,
-                        styles.actionBarIconSecondary,
-                        { width: actionIconSize, height: actionIconSize, borderRadius: actionIconRadius },
-                      ]}
-                    >
-                      <Ionicons name="chatbubbles" size={18} color="#6366f1" />
-                    </View>
-                    <Text style={styles.actionBarLabel} numberOfLines={1}>
-                      Messages
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.actionBarItem} onPress={handleShareProfile} activeOpacity={0.75}>
-                    <View
-                      style={[
-                        styles.actionBarIcon,
-                        styles.actionBarIconSecondary,
-                        { width: actionIconSize, height: actionIconSize, borderRadius: actionIconRadius },
-                      ]}
-                    >
-                      <Ionicons name="share-outline" size={18} color="#6366f1" />
-                    </View>
-                    <Text style={styles.actionBarLabel} numberOfLines={1}>
-                      Share
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.actionBarItem}
-                    onPress={() => navigation.navigate('CommunityProfile' as never)}
-                    activeOpacity={0.75}
-                  >
-                    <View
-                      style={[
-                        styles.actionBarIcon,
-                        {
-                          width: actionIconSize,
-                          height: actionIconSize,
-                          borderRadius: actionIconRadius,
-                          backgroundColor: 'rgba(245,158,11,0.12)',
-                        },
-                      ]}
-                    >
-                      <Ionicons name="settings-outline" size={18} color="#f59e0b" />
-                    </View>
-                    <Text style={styles.actionBarLabel} numberOfLines={1}>
-                      Settings
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
           </View>
+          <Text style={styles.handle}>{user.handle}</Text>
         </View>
+
+        {/* Bio */}
+        {user.bio && (
+          <Text style={styles.bio} numberOfLines={3}>{user.bio}</Text>
+        )}
+
+        {/* Location */}
+        {user.country && user.country !== 'Unknown' && (
+          <View style={styles.locationRow}>
+            <Ionicons name="location-outline" size={13} color={DS.gray500} />
+            <Text style={styles.locationText}>{user.country}</Text>
+          </View>
+        )}
+
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <StatPill icon="📝" value={userPostList.length} label="Posts" color={DS.primary} />
+          <StatPill icon="👥" value={followerCount} label="Followers" color={DS.accent} onPress={() => navigation.navigate('Followers', { userId })} />
+          <StatPill icon="➕" value={followingCount} label="Following" color={DS.success} onPress={() => navigation.navigate('Following', { userId })} />
+          <StatPill icon="🔥" value={user.stats?.streakDays || 0} label="Streak" color={DS.warning} />
+        </View>
+
+        {/* Action Buttons */}
+        {!isOwnProfile && (
+          <View style={styles.actionRow}>
+            <PressableScale onPress={handleFollowToggle} activeScale={0.95} disabled={isBlocked} hapticType="medium">
+              <LinearGradient
+                colors={isFollowingUser ? [DS.gray200, DS.gray300] : [DS.primary, DS.accent]}
+                style={styles.followBtn}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Ionicons name={isFollowingUser ? 'checkmark' : 'person-add'} size={18} color={isFollowingUser ? DS.gray600 : '#fff'} />
+                <Text style={[styles.followBtnText, { color: isFollowingUser ? DS.gray600 : '#fff' }]}>
+                  {isBlocked ? 'Blocked' : isFollowingUser ? 'Following' : 'Follow'}
+                </Text>
+              </LinearGradient>
+            </PressableScale>
+            <PressableScale onPress={handleMessage} activeScale={0.95} disabled={isBlocked}>
+              <View style={[styles.actionBtnSecondary, { backgroundColor: `${DS.primary}12` }]}>
+                <Ionicons name="chatbubbles" size={18} color={DS.primary} />
+              </View>
+            </PressableScale>
+            <PressableScale onPress={handleShareProfile} activeScale={0.95}>
+              <View style={[styles.actionBtnSecondary, { backgroundColor: `${DS.info}12` }]}>
+                <Ionicons name="share-outline" size={18} color={DS.info} />
+              </View>
+            </PressableScale>
+          </View>
+        )}
       </Animated.View>
     );
   };
 
-  /* ── RENDER: Memoized cards ───────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER: POSTS TAB
+     ═══════════════════════════════════════════════════════════════════════ */
 
-  const renderEngagementInsights = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(80).springify()}>
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.insightsHeader}>
-            <View style={[styles.insightsIconBg, { backgroundColor: `${TC.primary}15` }]}>
-              <Ionicons name="analytics" size={20} color={TC.primary} />
-            </View>
-            <View style={styles.insightsTitleWrap}>
-              <Text style={styles.insightsTitle}>Engagement</Text>
-              <Text style={styles.insightsSubtitle}>Based on {userPostList.length} posts</Text>
-            </View>
+  const renderPostsTab = () => {
+    if (userPostList.length === 0) {
+      return (
+        <Animated.View entering={FadeInUp.springify()} style={styles.emptyCard}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="document-text-outline" size={36} color={DS.primary} />
           </View>
-          <View style={styles.insightsGrid}>
-            {engagementInsights.map((insight, i) => (
-              <View
-                key={insight.label}
-                style={[
-                  styles.insightItem,
-                  i < engagementInsights.length - 1 && {
-                    borderRightWidth: 1,
-                    borderRightColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                  },
-                ]}
-              >
-                <Text style={styles.insightItemIcon}>{insight.icon}</Text>
-                <Text style={[styles.insightItemValue, { color: insight.color }]}>{insight.value}</Text>
-                <Text style={styles.insightItemLabel}>{insight.label}</Text>
-              </View>
-            ))}
-          </View>
-        </GlassCard>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, engagementInsights, userPostList.length],
-  );
+          <Text style={styles.emptyTitle}>No posts yet</Text>
+          <Text style={styles.emptyText}>This parent hasn't shared any stories yet.</Text>
+        </Animated.View>
+      );
+    }
 
-  const renderInfluenceMetrics = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(120).springify()}>
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.influenceHeader}>
-            <View style={[styles.influenceIconBg, { backgroundColor: `${TC.primary}15` }]}>
-              <Ionicons name="analytics" size={20} color={TC.primary} />
-            </View>
-            <View style={styles.influenceTitleWrap}>
-              <Text style={styles.influenceTitle}>Influence Score</Text>
-              <Text style={styles.influenceSubtitle}>Community impact metrics</Text>
-            </View>
-            <View style={[styles.influenceOverallBadge, { backgroundColor: `${TC.primary}12` }]}>
-              <Text style={[styles.influenceOverallText, { color: TC.primary }]}>
-                {Math.round(influenceMetrics.reduce((a, b) => a + b.value, 0) / influenceMetrics.length)}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.influenceGrid}>
-            {influenceMetrics.map((metric, i) => (
-              <View key={metric.label} style={styles.influenceItem}>
-                <View style={styles.influenceItemTop}>
-                  <View style={[styles.influenceItemIconBg, { backgroundColor: `${metric.color}12` }]}>
-                    <Ionicons name={metric.icon as any} size={14} color={metric.color} />
-                  </View>
-                  <Text style={[styles.influenceItemLabel, { color: metric.color }]}>{metric.label}</Text>
-                  <Text style={[styles.influenceItemValue, { color: metric.color }]}>{metric.value}%</Text>
-                </View>
-                <View
-                  style={[
-                    styles.influenceBarBg,
-                    { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
-                  ]}
-                >
-                  <Animated.View
-                    entering={FadeInRight.delay(200 + i * 80).springify()}
-                    style={[
-                      styles.influenceBarFill,
-                      { width: `${metric.value}%`, backgroundColor: metric.color },
-                    ]}
-                  />
-                </View>
-              </View>
-            ))}
-          </View>
-        </GlassCard>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, influenceMetrics],
-  );
-
-  const renderCommunityInfluence = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(160).springify()}>
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.communityInfluenceHeader}>
-            <View style={[styles.communityInfluenceIconBg, { backgroundColor: `${TC.purple}15` }]}>
-              <Ionicons name="trophy" size={20} color={TC.purple} />
-            </View>
-            <View style={styles.communityInfluenceTitleWrap}>
-              <Text style={styles.communityInfluenceTitle}>Community Standing</Text>
-              <Text style={styles.communityInfluenceSubtitle}>
-                Top {communityInfluence.percentile}% of {allUsers.length} members
-              </Text>
-            </View>
-            <View style={[styles.communityInfluenceScoreBadge, { backgroundColor: `${TC.purple}12` }]}>
-              <Text style={[styles.communityInfluenceScoreText, { color: TC.purple }]}>
-                {communityInfluence.score}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.communityInfluenceRankRow}>
-            <View style={[styles.communityInfluenceRankBadge, { backgroundColor: `${TC.purple}12` }]}>
-              <Text style={[styles.communityInfluenceRankText, { color: TC.purple }]}>
-                {communityInfluence.rank}
-              </Text>
-            </View>
-            <View style={styles.communityInfluenceProgressWrap}>
-              <View style={styles.communityInfluenceProgressLabelRow}>
-                <Text style={styles.communityInfluenceProgressLabel}>Next rank</Text>
-                <Text style={[styles.communityInfluenceProgressValue, { color: TC.purple }]}>
-                  {communityInfluence.percentile}%
-                </Text>
-              </View>
-              <View style={styles.communityInfluenceProgressBarBg}>
-                <Animated.View
-                  entering={FadeInRight.delay(300).springify()}
-                  style={[
-                    styles.communityInfluenceProgressBarFill,
-                    { width: `${communityInfluence.percentile}%`, backgroundColor: TC.purple },
-                  ]}
-                />
-              </View>
-            </View>
-          </View>
-          {communityInfluence.topContributors.length > 0 && (
-            <View style={styles.communityInfluenceContributors}>
-              <Text style={styles.communityInfluenceContributorsLabel}>Top contributors</Text>
-              <View style={styles.communityInfluenceAvatarStack}>
-                {communityInfluence.topContributors.map((c, i) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => navigation.push('CommunityMemberProfile', { userId: c.id })}
-                    activeOpacity={0.8}
-                  >
-                    <View
-                      style={[
-                        styles.communityInfluenceAvatar,
-                        { marginLeft: i > 0 ? -10 : 0, zIndex: communityInfluence.topContributors.length - i },
-                      ]}
-                    >
-                      {c.avatar && !isEmojiAvatar(c.avatar) ? (
-                        <Image source={{ uri: c.avatar }} style={{ width: 28, height: 28, borderRadius: 14 }} />
-                      ) : (
-                        <View
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 14,
-                            backgroundColor: `${TC.purple}20`,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <Text style={{ fontSize: 14 }}>
-                            {isEmojiAvatar(c.avatar) ? c.avatar : c.name?.charAt(0) || '?'}
-                          </Text>
-                        </View>
-                      )}
+    return (
+      <Animated.View entering={FadeInUp.springify()} style={{ gap: 10 }}>
+        {userPostList.slice(0, 20).map((post, index) => {
+          const topicColor = TOPIC_COLORS[post.topicId] || DS.primary;
+          return (
+            <Animated.View key={post.id} entering={FadeInUp.delay(index * 40).springify()}>
+              <PressableScale onPress={() => navigation.navigate('PostDetail', { postId: post.id })} activeScale={0.98}>
+                <View style={styles.postCard}>
+                  <View style={styles.postHeader}>
+                    <View style={[styles.postTopic, { backgroundColor: `${topicColor}12` }]}>
+                      <View style={[styles.postTopicDot, { backgroundColor: topicColor }]} />
+                      <Text style={[styles.postTopicText, { color: topicColor }]} numberOfLines={1}>{post.topic}</Text>
                     </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-        </GlassCard>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, communityInfluence, allUsers.length, navigation],
-  );
-
-  const renderContentHighlights = useCallback(() => {
-    if (!contentHighlights.topPost) return null;
-    const post = contentHighlights.topPost;
-    const topicColor = TOPIC_COLORS[post.topicId] || TC.primary;
-    return (
-      <Animated.View entering={FadeInUp.delay(200).springify()}>
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.highlightsHeader}>
-            <Text style={styles.highlightsTitle}>Content Highlights</Text>
-            <View style={[styles.highlightsBadge, { backgroundColor: `${topicColor}12` }]}>
-              <Text style={[styles.highlightsBadgeText, { color: topicColor }]}>Top Post</Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('PostDetail' as never, { postId: post.id } as never)}
-            style={styles.highlightsPostCard}
-            activeOpacity={0.75}
-          >
-            <View style={styles.highlightsPostHeader}>
-              <View style={[styles.highlightsTopicDot, { backgroundColor: topicColor }]} />
-              <Text style={[styles.highlightsTopicText, { color: topicColor }]} numberOfLines={1}>
-                {post.topic}
-              </Text>
-              <Text style={styles.highlightsPostTime}>{post.time}</Text>
-            </View>
-            <Text style={styles.highlightsPostContent} numberOfLines={2}>
-              {post.content}
-            </Text>
-            <View style={styles.highlightsPostStats}>
-              <View style={styles.highlightsPostStat}>
-                <Ionicons name="heart" size={14} color={post.isLiked ? TC.danger : '#94a3b8'} />
-                <Text
-                  style={[styles.highlightsPostStatText, { color: post.isLiked ? TC.danger : '#94a3b8' }]}
-                >
-                  {post.likes}
-                </Text>
-              </View>
-              <View style={styles.highlightsPostStat}>
-                <Ionicons name="chatbubble" size={14} color="#94a3b8" />
-                <Text style={styles.highlightsPostStatText}>{post.commentsCount}</Text>
-              </View>
-              <View style={styles.highlightsPostStat}>
-                <Ionicons name="eye" size={14} color="#94a3b8" />
-                <Text style={styles.highlightsPostStatText}>{post.viewCount}</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-          <View style={styles.highlightsDivider} />
-          <View style={styles.highlightsMetrics}>
-            <View style={styles.highlightsMetric}>
-              <Text style={[styles.highlightsMetricValue, { color: TC.secondary }]}>
-                {contentHighlights.mostLiked}
-              </Text>
-              <Text style={styles.highlightsMetricLabel}>Most Liked</Text>
-            </View>
-            <View style={styles.highlightsMetric}>
-              <Text style={[styles.highlightsMetricValue, { color: TC.primary }]}>
-                {contentHighlights.mostCommented}
-              </Text>
-              <Text style={styles.highlightsMetricLabel}>Most Comments</Text>
-            </View>
-            <View style={styles.highlightsMetric}>
-              <Text style={[styles.highlightsMetricValue, { color: TC.success }]}>
-                {contentHighlights.avgEngagement}%
-              </Text>
-              <Text style={styles.highlightsMetricLabel}>Engagement Rate</Text>
-            </View>
-          </View>
-        </GlassCard>
-      </Animated.View>
-    );
-  }, [isDark, fullThemeColors, styles, contentHighlights, navigation]);
-
-  const renderContentBreakdown = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(220).springify()}>
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.breakdownHeader}>
-            <Text style={styles.breakdownTitle}>Content Breakdown</Text>
-            <Text style={styles.breakdownTotal}>
-              {contentBreakdown.posts +
-                contentBreakdown.comments +
-                contentBreakdown.reactions +
-                contentBreakdown.shares}{' '}
-              total
-            </Text>
-          </View>
-          <View style={styles.breakdownGrid}>
-            {[
-              { label: 'Posts', value: contentBreakdown.posts, color: TC.primary, icon: 'document-text' },
-              { label: 'Comments', value: contentBreakdown.comments, color: TC.info, icon: 'chatbubble' },
-              { label: 'Reactions', value: contentBreakdown.reactions, color: TC.secondary, icon: 'heart' },
-              { label: 'Shares', value: contentBreakdown.shares, color: TC.success, icon: 'share' },
-            ].map((item) => (
-              <View key={item.label} style={styles.breakdownItem}>
-                <View style={[styles.breakdownIconBg, { backgroundColor: `${item.color}12` }]}>
-                  <Ionicons name={item.icon as any} size={16} color={item.color} />
-                </View>
-                <Text style={[styles.breakdownValue, { color: item.color }]}>{item.value}</Text>
-                <Text style={styles.breakdownLabel}>{item.label}</Text>
-              </View>
-            ))}
-          </View>
-        </GlassCard>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, contentBreakdown],
-  );
-
-  const renderActivityPattern = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(250).springify()}>
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.patternHeader}>
-            <Text style={styles.patternTitle}>Activity Pattern</Text>
-            <View style={styles.patternLiveBadge}>
-              <View style={styles.patternLiveDot} />
-              <Text style={styles.patternLiveText}>Weekly</Text>
-            </View>
-          </View>
-          <View style={styles.patternBars}>
-            {activityPattern.map((point, i) => {
-              const maxVal = Math.max(...activityPattern.map((d) => d.activity), 1);
-              const height = Math.max(4, (point.activity / maxVal) * 60);
-              return (
-                <View key={i} style={styles.patternBarWrap}>
-                  <View
-                    style={[
-                      styles.patternBar,
-                      {
-                        height,
-                        backgroundColor:
-                          point.activity > maxVal * 0.7
-                            ? TC.primary
-                            : point.activity > maxVal * 0.3
-                            ? `${TC.primary}80`
-                            : `${TC.primary}40`,
-                      },
-                    ]}
-                  />
-                  <Text style={styles.patternBarLabel}>{point.day}</Text>
-                </View>
-              );
-            })}
-          </View>
-        </GlassCard>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, activityPattern],
-  );
-
-  const renderMutualConnections = useCallback(() => {
-    if (mutualConnections.length === 0) return null;
-    return (
-      <Animated.View entering={FadeInUp.delay(300).springify()}>
-        <SectionHeader
-          title="Mutual Connections"
-          subtitle="Parents you both know"
-          isDark={isDark}
-          colors={fullThemeColors}
-        />
-        <View style={styles.mutualScroll}>
-          {mutualConnections.map((conn) => (
-            <TouchableOpacity
-              key={conn.id}
-              onPress={() => navigation.push('CommunityMemberProfile', { userId: conn.id })}
-              style={[styles.mutualCard, { width: mutualCardWidth }]}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={[TC.primary + '08', TC.primary + '02']}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              />
-              {conn.avatar && !isEmojiAvatar(conn.avatar) ? (
-                <Image source={{ uri: conn.avatar }} style={styles.mutualAvatar} />
-              ) : (
-                <View
-                  style={[
-                    styles.mutualAvatar,
-                    { backgroundColor: `${TC.primary}20`, justifyContent: 'center', alignItems: 'center' },
-                  ]}
-                >
-                  <Text style={{ fontSize: 20 }}>
-                    {isEmojiAvatar(conn.avatar) ? conn.avatar : conn.name?.charAt(0) || '?'}
-                  </Text>
-                </View>
-              )}
-              <Text style={styles.mutualName} numberOfLines={1}>
-                {conn.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </Animated.View>
-    );
-  }, [isDark, fullThemeColors, styles, mutualConnections, mutualCardWidth, navigation]);
-
-  const renderParentingTips = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(400).springify()}>
-        <SectionHeader
-          title="Parenting Insights"
-          subtitle="Personalized for this parent"
-          isDark={isDark}
-          colors={fullThemeColors}
-        />
-        <View style={styles.tipsList}>
-          {parentingTips.map((tip) => (
-            <View key={tip.id} style={[styles.tipCard, { borderLeftColor: tip.color }]}>
-              <View style={[styles.tipIconBg, { backgroundColor: `${tip.color}12` }]}>
-                <Text style={styles.tipEmoji}>{tip.emoji}</Text>
-              </View>
-              <View style={styles.tipContent}>
-                <Text style={styles.tipTitle}>{tip.title}</Text>
-                <Text style={styles.tipText}>{tip.tip}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, parentingTips],
-  );
-
-  const renderTopicBreakdown = useCallback(() => {
-    if (topicBreakdown.length === 0) return null;
-    return (
-      <Animated.View entering={FadeInUp.delay(450).springify()}>
-        <SectionHeader
-          title="Topic Breakdown"
-          subtitle="What they talk about most"
-          isDark={isDark}
-          colors={fullThemeColors}
-        />
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.topicBreakdown}>
-            {topicBreakdown.map((topic) => (
-              <View key={topic.topicId} style={styles.topicBreakdownRow}>
-                <View style={styles.topicBreakdownLeft}>
-                  <View style={[styles.topicBreakdownDot, { backgroundColor: topic.color }]} />
-                  <Text style={styles.topicBreakdownLabel} numberOfLines={1}>
-                    {topic.label}
-                  </Text>
-                </View>
-                <View style={styles.topicBreakdownRight}>
-                  <View style={styles.topicBreakdownBarBg}>
-                    <View
-                      style={[
-                        styles.topicBreakdownBarFill,
-                        { width: `${topic.percentage}%`, backgroundColor: topic.color },
-                      ]}
-                    />
+                    <Text style={styles.postTime}>{post.time}</Text>
                   </View>
-                  <Text style={[styles.topicBreakdownCount, { color: topic.color }]}>{topic.count}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </GlassCard>
-      </Animated.View>
-    );
-  }, [isDark, fullThemeColors, styles, topicBreakdown]);
-
-  const renderInteractionHeatMap = useCallback(() => {
-    if (interactionHeatMap.length === 0 || userPostList.length === 0) return null;
-    return (
-      <Animated.View entering={FadeInUp.delay(500).springify()}>
-        <SectionHeader
-          title="Active Hours"
-          subtitle="When they engage most"
-          isDark={isDark}
-          colors={fullThemeColors}
-        />
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.heatMapContainer}>
-            <View style={styles.heatMapRow}>
-              {interactionHeatMap.map((item) => (
-                <View key={item.hour} style={styles.heatMapCell}>
-                  <View
-                    style={[
-                      styles.heatMapBar,
-                      {
-                        height: Math.max(4, item.intensity * 50),
-                        backgroundColor:
-                          item.intensity > 0.7
-                            ? TC.primary
-                            : item.intensity > 0.3
-                            ? `${TC.primary}80`
-                            : `${TC.primary}30`,
-                      },
-                    ]}
-                  />
-                  <Text style={styles.heatMapLabel}>
-                    {item.hour % 12 || 12}
-                    {item.hour >= 12 ? 'p' : 'a'}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <View style={styles.heatMapLegend}>
-              <Text style={styles.heatMapLegendText}>Low</Text>
-              <View style={[styles.heatMapLegendDot, { backgroundColor: `${TC.primary}30` }]} />
-              <View style={[styles.heatMapLegendDot, { backgroundColor: `${TC.primary}80` }]} />
-              <View style={[styles.heatMapLegendDot, { backgroundColor: TC.primary }]} />
-              <Text style={styles.heatMapLegendText}>High</Text>
-            </View>
-          </View>
-        </GlassCard>
-      </Animated.View>
-    );
-  }, [isDark, fullThemeColors, styles, interactionHeatMap, userPostList.length]);
-
-  const renderContributionStreak = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(550).springify()}>
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.streakHeader}>
-            <View>
-              <Text style={styles.streakTitle}>Contribution Streak</Text>
-              <Text style={styles.streakSubtitle}>Last 12 weeks</Text>
-            </View>
-            <View style={styles.streakNumbers}>
-              <View style={styles.streakNumberItem}>
-                <Text style={styles.streakNumberValue}>{contributionStreak.current}</Text>
-                <Text style={styles.streakNumberLabel}>Current</Text>
-              </View>
-              <View style={styles.streakNumberItem}>
-                <Text style={styles.streakNumberValue}>{contributionStreak.longest}</Text>
-                <Text style={styles.streakNumberLabel}>Best</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.streakGrid}>
-            {contributionStreak.weeks.map((active, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.streakCell,
-                  { width: streakCellSize, height: streakCellSize },
-                  active && { backgroundColor: TC.primary },
-                ]}
-              />
-            ))}
-          </View>
-        </GlassCard>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, contributionStreak, streakCellSize],
-  );
-
-  const renderContentStreaks = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(580).springify()}>
-        <SectionHeader title="Streaks" subtitle="Consistency tracking" isDark={isDark} colors={fullThemeColors} />
-        <View style={styles.streaksRow}>
-          {contentStreaks.map((streak) => (
-            <View key={streak.type} style={[styles.streakCard, { borderColor: `${streak.color}30` }]}>
-              <View style={[styles.streakIconBg, { backgroundColor: `${streak.color}12` }]}>
-                <Ionicons name={streak.icon as any} size={18} color={streak.color} />
-              </View>
-              <Text style={[styles.streakValue, { color: streak.color }]}>{streak.current}</Text>
-              <Text style={styles.streakLabel}>{streak.type}</Text>
-              <Text style={styles.streakBest}>Best: {streak.best}</Text>
-            </View>
-          ))}
-        </View>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, contentStreaks],
-  );
-
-  const renderSocialGraph = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.delay(600).springify()}>
-        <SectionHeader
-          title="Social Graph"
-          subtitle="Engagement distribution"
-          isDark={isDark}
-          colors={fullThemeColors}
-        />
-        <GlassCard isDark={isDark} colors={fullThemeColors}>
-          <View style={styles.socialGraph}>
-            {socialGraph.map((item) => (
-              <View key={item.name} style={styles.socialGraphItem}>
-                <View style={styles.socialGraphBarWrap}>
-                  <View style={styles.socialGraphBarBg}>
-                    <View
-                      style={[
-                        styles.socialGraphBarFill,
-                        { height: `${item.value}%`, backgroundColor: item.color },
-                      ]}
-                    />
+                  <Text style={styles.postContent} numberOfLines={3}>{post.content}</Text>
+                  {post.images && post.images.length > 0 && (
+                    <Image source={{ uri: post.images[0] }} style={styles.postImage} resizeMode="cover" />
+                  )}
+                  <View style={styles.postStats}>
+                    <View style={styles.postStat}>
+                      <Ionicons name="heart" size={14} color={post.isLiked ? DS.danger : DS.gray400} />
+                      <Text style={styles.postStatText}>{post.likes}</Text>
+                    </View>
+                    <View style={styles.postStat}>
+                      <Ionicons name="chatbubble" size={14} color={DS.gray400} />
+                      <Text style={styles.postStatText}>{post.commentsCount}</Text>
+                    </View>
+                    <View style={styles.postStat}>
+                      <Ionicons name="repeat" size={14} color={DS.gray400} />
+                      <Text style={styles.postStatText}>{post.reposts || 0}</Text>
+                    </View>
+                    <View style={styles.postStat}>
+                      <Ionicons name="eye" size={14} color={DS.gray400} />
+                      <Text style={styles.postStatText}>{post.viewCount || 0}</Text>
+                    </View>
                   </View>
                 </View>
-                <Text style={styles.socialGraphLabel}>{item.name}</Text>
-                <Text style={[styles.socialGraphValue, { color: item.color }]}>{item.value}%</Text>
-              </View>
-            ))}
-          </View>
-        </GlassCard>
-      </Animated.View>
-    ),
-    [isDark, fullThemeColors, styles, socialGraph],
-  );
-
-  const renderRecentInteractions = useCallback(() => {
-    const recent = userPostList.slice(0, 3);
-    if (recent.length === 0) return null;
-    return (
-      <Animated.View entering={FadeInUp.delay(650).springify()}>
-        <SectionHeader
-          title="Recent Interactions"
-          subtitle="Latest activity"
-          isDark={isDark}
-          colors={fullThemeColors}
-        />
-        <View style={styles.recentList}>
-          {recent.map((post) => {
-            const topicColor = TOPIC_COLORS[post.topicId] || TC.primary;
-            return (
-              <TouchableOpacity
-                key={post.id}
-                onPress={() => navigation.navigate('PostDetail' as never, { postId: post.id } as never)}
-                style={styles.recentItem}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={[`${topicColor}08`, `${topicColor}02`]}
-                  style={StyleSheet.absoluteFill}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                />
-                <View style={[styles.recentDot, { backgroundColor: topicColor }]} />
-                <View style={styles.recentContent}>
-                  <Text style={styles.recentTopic} numberOfLines={1}>
-                    {post.topic}
-                  </Text>
-                  <Text style={styles.recentText} numberOfLines={1}>
-                    {post.content}
-                  </Text>
-                </View>
-                <View style={styles.recentStats}>
-                  <Ionicons name="heart" size={12} color={post.isLiked ? TC.danger : '#64748b'} />
-                  <Text style={styles.recentStatText}>{post.likes}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+              </PressableScale>
+            </Animated.View>
+          );
+        })}
       </Animated.View>
     );
-  }, [isDark, fullThemeColors, styles, userPostList, navigation]);
+  };
 
-  const handlePressPost = useCallback(
-    (postId: string) => {
-      navigation.navigate('PostDetail' as never, { postId } as never);
-    },
-    [navigation],
-  );
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER: ABOUT TAB
+     ═══════════════════════════════════════════════════════════════════════ */
 
-  /* ── TABS ──────────────────────────────────────────────────────────── */
-
-  const renderPostsTab = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-        {renderEngagementInsights()}
-        {renderInfluenceMetrics()}
-        {renderCommunityInfluence()}
-        {renderContentHighlights()}
-        {renderContentBreakdown()}
-        {renderActivityPattern()}
-
-        <View style={styles.allThreadsHeader}>
-          <View style={styles.allThreadsHeaderLeft}>
-            <Ionicons name="document-text" size={20} color={TC.primary} />
-            <Text style={styles.allThreadsTitle}>All Threads</Text>
-          </View>
-          <View style={[styles.badge, { backgroundColor: `${themeColors.primary}20` }]}>
-            <Text style={[styles.badgeText, { color: themeColors.primary }]}>
-              {userPostList.length} posts
-            </Text>
-          </View>
-        </View>
-
-        {userPostList.length === 0 ? (
-          <GlassCard style={styles.emptyCard} delay={100} isDark={isDark} colors={fullThemeColors}>
-            <View style={styles.emptyStateIcon}>
-              <Ionicons name="document-text-outline" size={32} color={TC.primary} />
-            </View>
-            <Text style={styles.emptyStateTitle}>No threads yet</Text>
-            <Text style={styles.emptyText}>This parent has not shared any stories yet.</Text>
-          </GlassCard>
-        ) : (
-          <FlatList
-            data={userPostList}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item, index }) => (
-              <PostCard
-                post={item}
-                index={index}
-                onPressPost={handlePressPost}
-                isDark={isDark}
-                colors={fullThemeColors}
-              />
-            )}
-            scrollEnabled={false}
-            contentContainerStyle={styles.postsList}
-            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-            initialNumToRender={5}
-            maxToRenderPerBatch={5}
-            windowSize={3}
-            removeClippedSubviews={Platform.OS === 'android'}
-          />
-        )}
-      </Animated.View>
-    ),
-    [
-      styles,
-      renderEngagementInsights,
-      renderInfluenceMetrics,
-      renderCommunityInfluence,
-      renderContentHighlights,
-      renderContentBreakdown,
-      renderActivityPattern,
-      userPostList,
-      themeColors.primary,
-      isDark,
-      fullThemeColors,
-      handlePressPost,
-    ],
-  );
-
-  const renderAboutTab = useCallback(() => {
+  const renderAboutTab = () => {
     if (!user) return null;
     const totalComments = userPostList.reduce((s, p) => s + p.commentsCount, 0);
-    return (
-      <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-        <GlassCard style={styles.formCard} delay={80} isDark={isDark} colors={fullThemeColors}>
-          <Text style={styles.sectionLabel}>About</Text>
-          <View style={styles.infoItem}>
-            <View style={[styles.infoIcon, { backgroundColor: `${TC.primary}20` }]}>
-              <Ionicons name="time-outline" size={20} color={TC.primary} />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Member Since</Text>
-              <Text style={styles.infoValue}>
-                {(user as any).addedAt
-                  ? new Date((user as any).addedAt).toLocaleDateString('en-US', {
-                      month: 'long',
-                      year: 'numeric',
-                    })
-                  : '2024'}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.infoDivider} />
-          <View style={styles.infoItem}>
-            <View style={[styles.infoIcon, { backgroundColor: 'rgba(245,158,11,0.12)' }]}>
-              <Ionicons name="flame-outline" size={20} color="#f59e0b" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Active Streak</Text>
-              <Text style={styles.infoValue}>{user.stats?.streakDays || 0} days</Text>
-            </View>
-          </View>
-          <View style={styles.infoDivider} />
-          <View style={styles.infoItem}>
-            <View style={[styles.infoIcon, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
-              <Ionicons name="heart-outline" size={20} color="#10b981" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Total Likes Received</Text>
-              <Text style={styles.infoValue}>{userPostList.reduce((s, p) => s + p.likes, 0)}</Text>
-            </View>
-          </View>
-          <View style={styles.infoDivider} />
-          <View style={styles.infoItem}>
-            <View style={[styles.infoIcon, { backgroundColor: 'rgba(139,92,246,0.12)' }]}>
-              <Ionicons name="chatbubble-outline" size={20} color="#8b5cf6" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Total Comments</Text>
-              <Text style={styles.infoValue}>{totalComments}</Text>
-            </View>
-          </View>
-        </GlassCard>
+    const totalLikes = userPostList.reduce((s, p) => s + p.likes, 0);
 
+    return (
+      <Animated.View entering={FadeInUp.springify()} style={{ gap: DS.space.lg }}>
+        {/* Info Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>About</Text>
+          {[
+            { icon: 'calendar-outline', label: 'Member Since', value: (user as any).addedAt ? new Date((user as any).addedAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '2024', color: DS.primary },
+            { icon: 'flame-outline', label: 'Active Streak', value: `${user.stats?.streakDays || 0} days`, color: DS.warning },
+            { icon: 'heart-outline', label: 'Total Likes', value: totalLikes.toString(), color: DS.danger },
+            { icon: 'chatbubble-outline', label: 'Total Comments', value: totalComments.toString(), color: DS.info },
+          ].map((item, i, arr) => (
+            <View key={item.label}>
+              <View style={styles.infoRow}>
+                <View style={[styles.infoIcon, { backgroundColor: `${item.color}12` }]}>
+                  <Ionicons name={item.icon as any} size={18} color={item.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.infoLabel}>{item.label}</Text>
+                  <Text style={styles.infoValue}>{item.value}</Text>
+                </View>
+              </View>
+              {i < arr.length - 1 && <View style={styles.divider} />}
+            </View>
+          ))}
+        </View>
+
+        {/* Topics */}
         {user.selectedTopics && user.selectedTopics.length > 0 && (
-          <GlassCard style={styles.formCard} delay={160} isDark={isDark} colors={fullThemeColors}>
-            <Text style={styles.sectionLabel}>Interested In</Text>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Interested In</Text>
             <View style={styles.topicsWrap}>
               {user.selectedTopics.map((topicId) => {
                 const topic = INITIAL_TOPICS.find((t) => t.id === topicId);
-                const color = topic?.color || TOPIC_COLORS[topicId] || TC.primary;
-                const name = topic?.name || topicId.replace('topic_', 'Topic ');
+                const color = topic?.color || TOPIC_COLORS[topicId] || DS.primary;
+                const name = topic?.name || topicId;
                 return (
-                  <View key={topicId} style={[styles.topicChip, { backgroundColor: `${color}20` }]}>
-                    <Text style={[styles.topicChipText, { color }]} numberOfLines={1}>
-                      {topic?.emoji ? `${topic.emoji} ${name}` : name}
-                    </Text>
+                  <View key={topicId} style={[styles.topicChip, { backgroundColor: `${color}12` }]}>
+                    <Text style={[styles.topicChipText, { color }]}>{topic?.emoji ? `${topic.emoji} ${name}` : name}</Text>
                   </View>
                 );
               })}
             </View>
-          </GlassCard>
+          </View>
         )}
       </Animated.View>
     );
-  }, [styles, isDark, fullThemeColors, user, userPostList]);
+  };
 
-  const renderAchievementsTab = useCallback(() => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER: ACHIEVEMENTS TAB
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  const renderAchievementsTab = () => {
     const achievements = user?.achievements || [];
-    return (
-      <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-        <View style={styles.achievementsHeader}>
-          <View style={styles.achievementsHeaderLeft}>
-            <Ionicons name="trophy" size={20} color={TC.primary} />
-            <Text style={styles.achievementsTitle}>Achievements</Text>
+
+    if (achievements.length === 0) {
+      return (
+        <Animated.View entering={FadeInUp.springify()} style={styles.emptyCard}>
+          <View style={[styles.emptyIcon, { backgroundColor: `${DS.warning}10` }]}>
+            <Ionicons name="trophy-outline" size={36} color={DS.warning} />
           </View>
-          <View style={[styles.achievementsBadge, { backgroundColor: `${themeColors.primary}20` }]}>
-            <Text style={[styles.achievementsBadgeText, { color: themeColors.primary }]}>
-              {achievements.length} earned
+          <Text style={styles.emptyTitle}>No achievements yet</Text>
+          <Text style={styles.emptyText}>This parent is just getting started!</Text>
+        </Animated.View>
+      );
+    }
+
+    return (
+      <Animated.View entering={FadeInUp.springify()} style={{ gap: 8 }}>
+        {achievements.map((id, index) => {
+          const badge = ACHIEVEMENTS[id] || { emoji: '🏅', name: id, color: DS.primary, desc: '' };
+          return (
+            <Animated.View key={id} entering={FadeInUp.delay(index * 50).springify()}>
+              <View style={[styles.achievementBadge, { backgroundColor: `${badge.color}08`, borderColor: `${badge.color}25` }]}>
+                <Text style={styles.achievementEmoji}>{badge.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.achievementName, { color: badge.color }]}>{badge.name}</Text>
+                  <Text style={styles.achievementDesc} numberOfLines={1}>{badge.desc}</Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={16} color={badge.color} style={{ opacity: 0.6 }} />
+              </View>
+            </Animated.View>
+          );
+        })}
+      </Animated.View>
+    );
+  };
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER: INSIGHTS TAB
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  const renderInsightsTab = () => (
+    <Animated.View entering={FadeInUp.springify()} style={{ gap: DS.space.lg }}>
+      {/* Engagement Stats */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Engagement</Text>
+        <View style={styles.engagementGrid}>
+          {engagementInsights.map((insight, i) => (
+            <View key={insight.label} style={styles.engagementItem}>
+              <Text style={styles.engagementEmoji}>{insight.icon}</Text>
+              <Text style={[styles.engagementValue, { color: insight.color }]}>{insight.value}</Text>
+              <Text style={styles.engagementLabel}>{insight.label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Influence Score */}
+      <View style={styles.card}>
+        <View style={styles.influenceHeader}>
+          <View>
+            <Text style={styles.cardTitle}>Influence Score</Text>
+            <Text style={styles.influenceSub}>Community impact metrics</Text>
+          </View>
+          <View style={[styles.influenceScore, { backgroundColor: `${DS.primary}12` }]}>
+            <Text style={[styles.influenceScoreText, { color: DS.primary }]}>
+              {Math.round(influenceMetrics.reduce((a, b) => a + b.value, 0) / influenceMetrics.length)}
             </Text>
           </View>
         </View>
-
-        <GlassCard style={styles.achievementsCard} delay={100} isDark={isDark} colors={fullThemeColors}>
-          {achievements.length > 0 ? (
-            achievements.map((achievement) => {
-              const badge = ACHIEVEMENTS[achievement] || {
-                emoji: '🏅',
-                name: achievement,
-                color: TC.primary,
-                desc: '',
-              };
-              return (
-                <View
-                  key={achievement}
-                  style={[styles.achievementBadge, { backgroundColor: `${badge.color}08` }]}
-                >
-                  <View style={[styles.achievementIconBg, { backgroundColor: `${badge.color}12` }]}>
-                    <Text style={styles.achievementEmoji}>{badge.emoji}</Text>
-                  </View>
-                  <View style={styles.achievementInfo}>
-                    <Text style={[styles.achievementName, { color: badge.color }]}>{badge.name}</Text>
-                    <Text style={styles.achievementDesc} numberOfLines={1}>
-                      {badge.desc}
-                    </Text>
-                  </View>
-                  <Ionicons name="checkmark-circle" size={18} color={badge.color} style={{ opacity: 0.5 }} />
-                </View>
-              );
-            })
-          ) : (
-            <View style={styles.emptyAchievements}>
-              <Ionicons name="trophy-outline" size={40} color={TC.primary} />
-              <Text style={styles.emptyAchievementsTitle}>No achievements yet</Text>
-              <Text style={styles.emptyAchievementsText}>This parent is just getting started!</Text>
-            </View>
-          )}
-        </GlassCard>
-
-        {achievements.length > 0 && (
-          <GlassCard delay={160} isDark={isDark} colors={fullThemeColors}>
-            <Text style={styles.progressTitle}>Progress</Text>
-            <View style={styles.progressRow}>
-              <View style={styles.progressItem}>
-                <View style={styles.progressItemHeader}>
-                  <Text style={styles.progressItemValue}>{userPostList.length}</Text>
-                  <Text style={styles.progressItemLabel}>of 50 posts</Text>
-                </View>
-                <View style={styles.progressBar}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${Math.min((userPostList.length / 50) * 100, 100)}%`,
-                        backgroundColor: TC.primary,
-                      },
-                    ]}
-                  />
-                </View>
+        <View style={{ gap: DS.space.sm, marginTop: DS.space.md }}>
+          {influenceMetrics.map((metric, i) => (
+            <View key={metric.label} style={styles.influenceItem}>
+              <View style={styles.influenceItemTop}>
+                <Ionicons name={metric.icon as any} size={13} color={metric.color} />
+                <Text style={styles.influenceItemLabel}>{metric.label}</Text>
+                <Text style={[styles.influenceItemValue, { color: metric.color }]}>{metric.value}%</Text>
               </View>
-              <View style={styles.progressItem}>
-                <View style={styles.progressItemHeader}>
-                  <Text style={styles.progressItemValue}>{user?.stats?.helpful || 0}</Text>
-                  <Text style={styles.progressItemLabel}>of 50 helpful</Text>
-                </View>
-                <View style={styles.progressBar}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${Math.min(((user?.stats?.helpful || 0) / 50) * 100, 100)}%`,
-                        backgroundColor: TC.success,
-                      },
-                    ]}
-                  />
-                </View>
+              <View style={styles.influenceBar}>
+                <Animated.View
+                  entering={FadeInRight.delay(200 + i * 60).springify()}
+                  style={[styles.influenceBarFill, { width: `${metric.value}%`, backgroundColor: metric.color }]}
+                />
               </View>
             </View>
-          </GlassCard>
-        )}
-      </Animated.View>
-    );
-  }, [styles, isDark, fullThemeColors, user, userPostList, themeColors.primary]);
+          ))}
+        </View>
+      </View>
 
-  const renderInsightsTab = useCallback(
-    () => (
-      <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
-        {renderParentingTips()}
-        {renderTopicBreakdown()}
-        {renderInteractionHeatMap()}
-        {renderContributionStreak()}
-        {renderContentStreaks()}
-        {renderSocialGraph()}
-        {renderRecentInteractions()}
-      </Animated.View>
-    ),
-    [
-      styles,
-      renderParentingTips,
-      renderTopicBreakdown,
-      renderInteractionHeatMap,
-      renderContributionStreak,
-      renderContentStreaks,
-      renderSocialGraph,
-      renderRecentInteractions,
-    ],
+      {/* Community Standing */}
+      <View style={styles.card}>
+        <View style={styles.standingHeader}>
+          <View style={[styles.standingIcon, { backgroundColor: `${DS.warning}12` }]}>
+            <Ionicons name="trophy" size={18} color={DS.warning} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Community Standing</Text>
+            <Text style={styles.influenceSub}>Top {communityInfluence.percentile}% of {allUsers.length} members</Text>
+          </View>
+          <View style={[styles.standingBadge, { backgroundColor: `${DS.warning}12` }]}>
+            <Text style={[styles.standingBadgeText, { color: DS.warning }]}>{communityInfluence.rank}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Topic Breakdown */}
+      {topicBreakdown.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Topic Breakdown</Text>
+          <View style={{ gap: DS.space.sm, marginTop: DS.space.sm }}>
+            {topicBreakdown.map((topic) => (
+              <View key={topic.topicId} style={styles.topicBreakdownRow}>
+                <View style={styles.topicBreakdownLeft}>
+                  <View style={[styles.topicBreakdownDot, { backgroundColor: topic.color }]} />
+                  <Text style={styles.topicBreakdownLabel} numberOfLines={1}>{topic.label}</Text>
+                </View>
+                <View style={styles.topicBreakdownBar}>
+                  <View style={[styles.topicBreakdownFill, { width: `${topic.percentage}%`, backgroundColor: topic.color }]} />
+                </View>
+                <Text style={[styles.topicBreakdownCount, { color: topic.color }]}>{topic.count}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+    </Animated.View>
   );
 
-  /* ── Guards ────────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════
+     GUARDS
+     ═══════════════════════════════════════════════════════════════════════ */
 
-  // Only show "not found" AFTER hydration completes. No flash of "User
-  // not found" while the Supabase fallback is still resolving.
   if (!user && !isHydrating) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-        <LinearGradient colors={['#0a0a0a', '#1a1a2e', '#16213e']} style={StyleSheet.absoluteFill} />
-        <Ionicons name="person-outline" size={64} color="#64748b" />
-        <Text
-          style={{ marginTop: 16, color: fullThemeColors.textSecondary, fontSize: 16, fontWeight: '600' }}
-        >
-          User not found
-        </Text>
-        <TouchableOpacity
-          style={[styles.retryButton, { backgroundColor: '#6366f1' }]}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.retryButtonText}>Go Back</Text>
-        </TouchableOpacity>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <Ionicons name="person-outline" size={64} color={DS.gray400} />
+        <Text style={{ marginTop: 16, fontSize: 16, fontWeight: '600', color: DS.gray500 }}>User not found</Text>
+        <PressableScale onPress={() => navigation.goBack()} activeScale={0.97} style={{ marginTop: 20 }}>
+          <LinearGradient colors={[DS.primary, DS.accent]} style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 }}>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
+          </LinearGradient>
+        </PressableScale>
       </View>
     );
   }
 
-  /* ── Main render — paints immediately, skeleton only for the hero ─── */
+  const tabs: { key: ProfileTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+    { key: 'posts', label: 'Posts', icon: 'document-text-outline' },
+    { key: 'about', label: 'About', icon: 'information-circle-outline' },
+    { key: 'achievements', label: 'Badges', icon: 'trophy-outline' },
+    { key: 'insights', label: 'Insights', icon: 'analytics-outline' },
+  ];
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     MAIN RENDER
+     ═══════════════════════════════════════════════════════════════════════ */
 
   return (
-    <View style={[styles.container, { flex: 1 }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors.background }]} />
-      {renderStickyHeader()}
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient
+        colors={isDark ? [DS.darkBg, '#12121e', DS.darkBg] : ['#f8faff', '#eef0f5', '#e4e8f0']}
+        style={StyleSheet.absoluteFill}
+      />
 
-      <Animated.View
-        entering={FadeInDown.springify()}
-        style={[styles.topHeader, { paddingTop: insets.top + 12 }]}
-        pointerEvents="box-none"
-      >
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-          activeOpacity={0.75}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="arrow-back" size={22} color="#fff" />
+      {/* Sticky Header */}
+      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
+        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <Text style={[styles.stickyTitle, { color: isDark ? DS.white : DS.gray900 }]}>{user?.displayName || 'Profile'}</Text>
+        <Text style={styles.stickySub}>{user?.handle || ''}</Text>
+      </Animated.View>
+
+      {/* Top Nav */}
+      <Animated.View entering={FadeInDown.springify()} style={[styles.topNav, { paddingTop: insets.top + 8 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.navBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+          <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+        </TouchableOpacity>
+        <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.navTitle}>MEMBER</GradientText>
+        <TouchableOpacity onPress={handleShareProfile} style={[styles.navBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+          <Ionicons name="share-outline" size={20} color={isDark ? DS.white : DS.gray800} />
         </TouchableOpacity>
       </Animated.View>
 
       <Animated.ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
-        showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
+        contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: insets.bottom + 100 }}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={themeColors.spinnerColor}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} />
         }
       >
-        {/* Hero — skeleton on first frame, real content once hydrated */}
         {isHydrating && !user ? (
-          <HeroSkeleton
-            isDark={isDark}
-            colors={fullThemeColors}
-            coverHeight={heroCoverHeight}
-            avatarSize={avatarSize}
-            overlap={avatarOverlap}
-          />
+          <ProfileSkeleton isDark={isDark} />
         ) : (
-          renderProfileHero()
-        )}
+          <>
+            {renderProfileHeader()}
 
-        {/* Tabs paint as soon as we have tabs (not gated on user) */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={fullThemeColors} />
+            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
+              <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} />
+            </View>
 
-        <View style={styles.tabPanelsWrap}>
-          {user ? (
-            <>
+            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
               {activeTab === 'posts' && renderPostsTab()}
               {activeTab === 'about' && renderAboutTab()}
               {activeTab === 'achievements' && renderAchievementsTab()}
               {activeTab === 'insights' && renderInsightsTab()}
-            </>
-          ) : (
-            // Inline secondary skeleton for the tab body while user loads.
-            <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-              {[0, 1, 2].map((i) => (
-                <View
-                  key={i}
-                  style={{
-                    height: 92,
-                    borderRadius: DESIGN.radius.lg,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                    marginBottom: 12,
-                  }}
-                />
-              ))}
             </View>
-          )}
-        </View>
+          </>
+        )}
       </Animated.ScrollView>
 
-      {/* Avatar preview modal — tap on avatar opens this */}
+      {/* Avatar Preview Modal */}
       <Modal
         visible={showAvatarPreview && !!user}
         transparent
@@ -2319,22 +1143,20 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
         onRequestClose={() => setShowAvatarPreview(false)}
         statusBarTranslucent
       >
-        <Pressable style={styles.avatarPreviewOverlay} onPress={() => setShowAvatarPreview(false)}>
+        <Pressable style={styles.avatarModalOverlay} onPress={() => setShowAvatarPreview(false)}>
           <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
-          <Animated.View entering={FadeInUp.springify()} style={styles.avatarPreviewCard}>
+          <Animated.View entering={FadeInUp.springify()} style={styles.avatarModalCard}>
             {user?.avatar && !isEmojiAvatar(user.avatar) ? (
-              <Image source={{ uri: user.avatar }} style={styles.avatarPreviewImage} resizeMode="cover" />
+              <Image source={{ uri: user.avatar }} style={styles.avatarModalImage} resizeMode="cover" />
             ) : (
-              <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.avatarPreviewImage}>
-                <Text style={{ fontSize: 96, textAlign: 'center', lineHeight: 280 }}>
-                  {isEmojiAvatar(user?.avatar)
-                    ? user?.avatar
-                    : user?.displayName?.charAt(0)?.toUpperCase() || '?'}
+              <LinearGradient colors={[DS.primary, DS.accent]} style={styles.avatarModalImage}>
+                <Text style={{ fontSize: 96, textAlign: 'center', lineHeight: 240 }}>
+                  {isEmojiAvatar(user?.avatar) ? user?.avatar : user?.displayName?.charAt(0)?.toUpperCase() || '?'}
                 </Text>
               </LinearGradient>
             )}
-            <Text style={styles.avatarPreviewName}>{user?.displayName}</Text>
-            <Text style={styles.avatarPreviewHandle}>{user?.handle}</Text>
+            <Text style={styles.avatarModalName}>{user?.displayName}</Text>
+            <Text style={styles.avatarModalHandle}>{user?.handle}</Text>
           </Animated.View>
         </Pressable>
       </Modal>
@@ -2346,590 +1168,145 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
    STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const getStyles = (isDarkMode: boolean, colors: any = {}) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    centered: { justifyContent: 'center', alignItems: 'center' },
-    scrollContent: { flexGrow: 1 },
+const styles = StyleSheet.create({
+  container: { flex: 1 },
 
-    stickyHeader: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 100,
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingBottom: 10,
-    },
-    stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
-    stickySubtitle: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  /* Sticky Header */
+  stickyHeader: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
+    alignItems: 'center', paddingHorizontal: DS.space.xl, paddingBottom: DS.space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.15)',
+  },
+  stickyTitle: { fontSize: 16, fontWeight: '800' },
+  stickySub: { fontSize: 11, fontWeight: '500', color: DS.gray400, marginTop: 2 },
 
-    topHeader: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 50,
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-    },
-    backBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'rgba(15, 15, 30, 0.55)',
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.15)',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.22,
-      shadowRadius: 10,
-      elevation: 6,
-    },
+  /* Top Nav */
+  topNav: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: DS.space.lg, paddingBottom: DS.space.md,
+  },
+  navBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  navTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
 
-    profileHero: { paddingBottom: 12 },
-    coverPhotoContainer: { width: '100%', overflow: 'hidden', position: 'relative' },
-    coverPhoto: { width: '100%', height: '100%' },
-    coverPhotoOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 90 },
-    profileHeroContent: { position: 'relative', zIndex: 2, paddingHorizontal: 16 },
-    avatarSection: { alignItems: 'center', zIndex: 20 },
-    avatarWrapper: {
-      position: 'relative',
-      zIndex: 20,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.28,
-      shadowRadius: 12,
-      elevation: 10,
-    },
-    avatarImage: { borderWidth: 4, borderColor: '#fff' },
-    avatarPlaceholder: { justifyContent: 'center', alignItems: 'center' },
-    avatarPlaceholderText: { fontWeight: '800', color: '#fff' },
-    onlineIndicator: {
-      position: 'absolute',
-      bottom: 4,
-      right: 4,
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: '#fff',
-      justifyContent: 'center',
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.2,
-      shadowRadius: 4,
-      elevation: 4,
-    },
-    onlineDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#10b981' },
+  /* Profile Header */
+  profileHeader: { alignItems: 'center', paddingHorizontal: DS.space.lg, paddingTop: DS.space.md },
+  avatarContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  avatarImage: { width: '100%', height: '100%' },
+  avatarEmoji: { fontSize: 48 },
 
-    profileInfo: { alignItems: 'center', marginTop: 8 },
-    nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '100%' },
-    profileName: {
-      fontSize: 24,
-      fontWeight: '800',
-      color: colors.text,
-      letterSpacing: -0.5,
-      textAlign: 'center',
-    },
-    verifiedBadge: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      backgroundColor: '#6366f1',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    profileHandle: { fontSize: 14, color: colors.textSecondary, marginTop: 4, fontWeight: '600' },
-    profileBio: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      marginTop: 8,
-      paddingHorizontal: 8,
-      lineHeight: 20,
-      fontWeight: '500',
-    },
-    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
-    locationText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
+  nameSection: { alignItems: 'center', marginTop: DS.space.md },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  displayName: { fontSize: 24, fontWeight: '800', color: DS.gray900, letterSpacing: -0.5 },
+  verifiedBadge: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  handle: { fontSize: 14, fontWeight: '500', color: DS.gray500, marginTop: 4 },
 
-    statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 14, gap: 20 },
-  statsItem: {
-  alignItems: 'center',
-  paddingVertical: 4,
-  paddingHorizontal: 6,
-  borderRadius: 8,
-},
-    statsValue: { fontSize: 18, fontWeight: '800', color: colors.text },
-    statsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-    statsDivider: {
-      width: 1,
-      height: 24,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
+  bio: { fontSize: 14, fontWeight: '500', color: DS.gray600, textAlign: 'center', marginTop: DS.space.md, lineHeight: 20, paddingHorizontal: DS.space.lg },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: DS.space.sm },
+  locationText: { fontSize: 12, fontWeight: '500', color: DS.gray500 },
 
-    // Action bar spans full padded width — negative margin cancels parent padding
-    actionBar: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      paddingHorizontal: 8,
-      paddingVertical: 12,
-      marginTop: 16,
-      marginHorizontal: -16,
-      width: 'auto',
-      alignSelf: 'stretch',
-      borderRadius: 0,
-      backgroundColor: 'transparent',
-    },
-    actionBarItem: { alignItems: 'center', gap: 4, flex: 1 },
-    actionBarIcon: { justifyContent: 'center', alignItems: 'center' },
-    actionBarIconSecondary: {
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(99,102,241,0.08)',
-    },
-    actionBarLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' },
-    actionBarLabelActive: { color: '#64748b' },
+  statsRow: { flexDirection: 'row', gap: 8, marginTop: DS.space.lg, width: '100%' },
+  statPill: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 14 },
+  statPillIcon: { fontSize: 18, marginBottom: 4 },
+  statPillValue: { fontSize: 18, fontWeight: '800' },
+  statPillLabel: { fontSize: 10, fontWeight: '600', color: DS.gray500, textTransform: 'uppercase' },
 
-    tabBar: {
-      flexDirection: 'row',
-      marginHorizontal: 16,
-      marginBottom: 16,
-      marginTop: 8,
-      padding: 4,
-      borderRadius: 16,
-      gap: 2,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    tabItem: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      paddingVertical: 10,
-      borderRadius: 12,
-    },
-    tabLabel: { fontSize: 12, fontWeight: '600' },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: DS.space.lg, width: '100%' },
+  followBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 14 },
+  followBtnText: { fontSize: 14, fontWeight: '700' },
+  actionBtnSecondary: { width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
 
-    glassCard: {
-      borderRadius: DESIGN.radius.lg,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border || (isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
-      marginHorizontal: 16,
-      marginBottom: DESIGN.spacing.lg,
-    },
-    glassBorder: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 1,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    glassContent: { flex: 1 },
+  /* Tab Bar */
+  tabBar: { flexDirection: 'row', padding: 4, borderRadius: DS.radius.full, gap: 2 },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 9, borderRadius: DS.radius.full },
+  tabLabel: { fontSize: 11, fontWeight: '600' },
 
-    sectionHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginHorizontal: 16,
-      marginBottom: 12,
-      marginTop: 8,
-    },
-    sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
-    sectionSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
-    sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-    sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
+  /* Section Header */
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: DS.space.sm },
+  sectionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: DS.gray900, letterSpacing: -0.3 },
+  sectionSub: { fontSize: 11, fontWeight: '500', color: DS.gray500, marginTop: 1 },
+  sectionActionText: { fontSize: 12, fontWeight: '700' },
 
-    allThreadsHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      marginBottom: 12,
-      marginTop: 8,
-    },
-    allThreadsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    allThreadsTitle: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
-    badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-    badgeText: { fontSize: 12, fontWeight: '700' },
+  /* Card */
+  card: { borderRadius: DS.radius.lg, padding: DS.space.lg, borderWidth: 1, borderColor: DS.gray200, backgroundColor: DS.white },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: DS.gray900, marginBottom: DS.space.md },
 
-    insightsHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
-    insightsIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    insightsTitleWrap: { flex: 1 },
-    insightsTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
-    insightsSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
-    insightsGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16 },
-    insightItem: { flex: 1, alignItems: 'center', gap: 4 },
-    insightItemIcon: { fontSize: 20 },
-    insightItemValue: { fontSize: 20, fontWeight: '800' },
-    insightItemLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
+  /* Info Row */
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  infoIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  infoLabel: { fontSize: 11, fontWeight: '600', color: DS.gray500 },
+  infoValue: { fontSize: 15, fontWeight: '700', color: DS.gray900, marginTop: 1 },
+  divider: { height: 1, backgroundColor: DS.gray100, marginLeft: 48 },
 
-    influenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
-    influenceIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    influenceTitleWrap: { flex: 1 },
-    influenceTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
-    influenceSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
-    influenceOverallBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-    influenceOverallText: { fontSize: 20, fontWeight: '800' },
-    influenceGrid: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
-    influenceItem: { gap: 6 },
-    influenceItemTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    influenceItemIconBg: { width: 24, height: 24, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-    influenceItemLabel: { fontSize: 12, fontWeight: '600', flex: 1 },
-    influenceItemValue: { fontSize: 12, fontWeight: '700' },
-    influenceBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-    influenceBarFill: { height: '100%', borderRadius: 3 },
+  /* Topics */
+  topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  topicChipText: { fontSize: 12, fontWeight: '700' },
 
-    communityInfluenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
-    communityInfluenceIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    communityInfluenceTitleWrap: { flex: 1 },
-    communityInfluenceTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
-    communityInfluenceSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, marginTop: 2 },
-    communityInfluenceScoreBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-    communityInfluenceScoreText: { fontSize: 20, fontWeight: '800' },
-    communityInfluenceRankRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingBottom: 16,
-    },
-    communityInfluenceRankBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-    communityInfluenceRankText: { fontSize: 13, fontWeight: '800' },
-    communityInfluenceProgressWrap: { flex: 1, gap: 6 },
-    communityInfluenceProgressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    communityInfluenceProgressLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-    communityInfluenceProgressValue: { fontSize: 12, fontWeight: '700' },
-    communityInfluenceProgressBarBg: {
-      height: 6,
-      borderRadius: 3,
-      overflow: 'hidden',
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    communityInfluenceProgressBarFill: { height: '100%', borderRadius: 3 },
-    communityInfluenceContributors: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingBottom: 16,
-    },
-    communityInfluenceContributorsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-    communityInfluenceAvatarStack: { flexDirection: 'row', alignItems: 'center' },
-    communityInfluenceAvatar: { borderRadius: 14, borderWidth: 2, borderColor: colors.background || '#0f0f1a' },
+  /* Post Card */
+  postCard: { padding: DS.space.md, borderRadius: 16, borderWidth: 1, borderColor: DS.gray200, backgroundColor: DS.white },
+  postHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  postTopic: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, maxWidth: '70%' },
+  postTopicDot: { width: 5, height: 5, borderRadius: 3 },
+  postTopicText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  postTime: { fontSize: 10, fontWeight: '500', color: DS.gray400 },
+  postContent: { fontSize: 14, fontWeight: '500', lineHeight: 20, marginBottom: 10, color: DS.gray900 },
+  postImage: { width: '100%', height: 160, borderRadius: 12, marginBottom: 10 },
+  postStats: { flexDirection: 'row', gap: 16 },
+  postStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  postStatText: { fontSize: 12, fontWeight: '600', color: DS.gray500 },
 
-    highlightsHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: 16,
-      paddingBottom: 12,
-    },
-    highlightsTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
-    highlightsBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
-    highlightsBadgeText: { fontSize: 12, fontWeight: '700' },
-    highlightsPostCard: { paddingHorizontal: 16, paddingBottom: 16 },
-    highlightsPostHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-    highlightsTopicDot: { width: 8, height: 8, borderRadius: 4 },
-    highlightsTopicText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 },
-    highlightsPostTime: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
-    highlightsPostContent: { fontSize: 14, fontWeight: '600', color: colors.text, lineHeight: 20, marginBottom: 10 },
-    highlightsPostStats: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-    highlightsPostStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    highlightsPostStatText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
-    highlightsDivider: {
-      height: 1,
-      marginHorizontal: 16,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    highlightsMetrics: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 16 },
-    highlightsMetric: { flex: 1, alignItems: 'center', gap: 2 },
-    highlightsMetricValue: { fontSize: 18, fontWeight: '800' },
-    highlightsMetricLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
+  /* Empty */
+  emptyCard: { alignItems: 'center', padding: DS.space['3xl'], borderRadius: 18, borderWidth: 1, borderColor: DS.gray200, backgroundColor: DS.white },
+  emptyIcon: { width: 72, height: 72, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: `${DS.primary}10`, marginBottom: DS.space.md },
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: DS.gray900, marginBottom: 6 },
+  emptyText: { fontSize: 13, fontWeight: '500', color: DS.gray500, textAlign: 'center' },
 
-    breakdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
-    breakdownTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
-    breakdownTotal: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-    breakdownGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16 },
-    breakdownItem: { flex: 1, alignItems: 'center', gap: 6 },
-    breakdownIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    breakdownValue: { fontSize: 18, fontWeight: '800' },
-    breakdownLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
+  /* Achievement */
+  achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1 },
+  achievementEmoji: { fontSize: 22 },
+  achievementName: { fontSize: 13, fontWeight: '700' },
+  achievementDesc: { fontSize: 11, fontWeight: '500', color: DS.gray500, marginTop: 1 },
 
-    patternHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
-    patternTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
-    patternLiveBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 8,
-      backgroundColor: 'rgba(16,185,129,0.12)',
-    },
-    patternLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10b981' },
-    patternLiveText: { fontSize: 10, fontWeight: '700', color: '#10b981' },
-    patternBars: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      alignItems: 'flex-end',
-      paddingHorizontal: 16,
-      paddingBottom: 16,
-      height: 100,
-    },
-    patternBarWrap: { alignItems: 'center', gap: 4, flex: 1 },
-    patternBar: { width: 20, borderRadius: 6 },
-    patternBarLabel: { fontSize: 10, fontWeight: '600', color: colors.textSecondary },
+  /* Engagement */
+  engagementGrid: { flexDirection: 'row', gap: 8 },
+  engagementItem: { flex: 1, alignItems: 'center', gap: 4 },
+  engagementEmoji: { fontSize: 20 },
+  engagementValue: { fontSize: 20, fontWeight: '800' },
+  engagementLabel: { fontSize: 10, fontWeight: '600', color: DS.gray500 },
 
-    mutualScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-    mutualCard: { padding: 12, borderRadius: 16, overflow: 'hidden', alignItems: 'center', gap: 6 },
-    mutualAvatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: TC.primary },
-    mutualName: { fontSize: 12, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  /* Influence */
+  influenceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  influenceSub: { fontSize: 11, fontWeight: '500', color: DS.gray500, marginTop: 1 },
+  influenceScore: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  influenceScoreText: { fontSize: 20, fontWeight: '800' },
+  influenceItem: { gap: 4 },
+  influenceItemTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  influenceItemLabel: { fontSize: 11, fontWeight: '600', color: DS.gray600, flex: 1 },
+  influenceItemValue: { fontSize: 11, fontWeight: '700' },
+  influenceBar: { height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: DS.gray100 },
+  influenceBarFill: { height: '100%', borderRadius: 3 },
 
-    tipsList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-    tipCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 14,
-      borderRadius: 16,
-      backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)',
-      borderLeftWidth: 3,
-    },
-    tipIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    tipEmoji: { fontSize: 20 },
-    tipContent: { flex: 1, marginLeft: 12, gap: 3 },
-    tipTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
-    tipText: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: colors.textSecondary },
+  /* Standing */
+  standingHeader: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  standingIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  standingBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  standingBadgeText: { fontSize: 11, fontWeight: '700' },
 
-    topicBreakdown: { padding: 16, gap: 12 },
-    topicBreakdownRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    topicBreakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0, maxWidth: '40%' },
-    topicBreakdownDot: { width: 8, height: 8, borderRadius: 4 },
-    topicBreakdownLabel: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
-    topicBreakdownRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-    topicBreakdownBarBg: {
-      flex: 1,
-      height: 6,
-      borderRadius: 3,
-      overflow: 'hidden',
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    topicBreakdownBarFill: { height: '100%', borderRadius: 3 },
-    topicBreakdownCount: { fontSize: 13, fontWeight: '700', width: 28, textAlign: 'right' },
+  /* Topic Breakdown */
+  topicBreakdownRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  topicBreakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '40%' },
+  topicBreakdownDot: { width: 7, height: 7, borderRadius: 4 },
+  topicBreakdownLabel: { fontSize: 12, fontWeight: '600', color: DS.gray600 },
+  topicBreakdownBar: { flex: 1, height: 5, borderRadius: 3, backgroundColor: DS.gray100, overflow: 'hidden' },
+  topicBreakdownFill: { height: '100%', borderRadius: 3 },
+  topicBreakdownCount: { fontSize: 12, fontWeight: '700', width: 24, textAlign: 'right' },
 
-    heatMapContainer: { padding: 16, paddingBottom: 12 },
-    heatMapRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 70 },
-    heatMapCell: { alignItems: 'center', gap: 4, flex: 1 },
-    heatMapBar: { width: 12, borderRadius: 6 },
-    heatMapLabel: { fontSize: 9, fontWeight: '600', color: colors.textMuted || '#94a3b8' },
-    heatMapLegend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
-    heatMapLegendText: { fontSize: 10, fontWeight: '600', color: colors.textMuted || '#94a3b8' },
-    heatMapLegendDot: { width: 8, height: 8, borderRadius: 4 },
-
-    streakHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
-    streakTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
-    streakSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary },
-    streakNumbers: { flexDirection: 'row', gap: 16 },
-    streakNumberItem: { alignItems: 'center' },
-    streakNumberValue: { fontSize: 20, fontWeight: '800', color: colors.text },
-    streakNumberLabel: { fontSize: 10, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-    streakGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 16, paddingBottom: 16 },
-    streakCell: {
-      borderRadius: 6,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-
-    streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-    streakCard: {
-      flex: 1,
-      borderRadius: 20,
-      padding: 14,
-      alignItems: 'center',
-      borderWidth: 1,
-      backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)',
-    },
-    streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    streakValue: { fontSize: 22, fontWeight: '800' },
-    streakLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
-    streakBest: { fontSize: 10, fontWeight: '500', color: colors.textMuted || '#94a3b8', marginTop: 2 },
-
-    socialGraph: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      alignItems: 'flex-end',
-      paddingHorizontal: 16,
-      paddingBottom: 16,
-      height: 120,
-    },
-    socialGraphItem: { alignItems: 'center', gap: 6, flex: 1 },
-    socialGraphBarWrap: { height: 80, justifyContent: 'flex-end' },
-    socialGraphBarBg: {
-      width: 24,
-      height: 80,
-      borderRadius: 12,
-      overflow: 'hidden',
-      justifyContent: 'flex-end',
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    socialGraphBarFill: { width: '100%', borderRadius: 12 },
-    socialGraphLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
-    socialGraphValue: { fontSize: 13, fontWeight: '800' },
-
-    recentList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
-    recentItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 14,
-      borderRadius: 16,
-      overflow: 'hidden',
-      backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)',
-    },
-    recentDot: { width: 8, height: 8, borderRadius: 4, marginRight: 12 },
-    recentContent: { flex: 1, gap: 2 },
-    recentTopic: { fontSize: 13, fontWeight: '700', color: colors.text },
-    recentText: { fontSize: 12, fontWeight: '500', color: colors.textSecondary },
-    recentStats: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    recentStatText: { fontSize: 12, fontWeight: '600', color: colors.textMuted || '#94a3b8' },
-
-    postItem: {
-      borderRadius: 18,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    postItemContent: { padding: 16 },
-    postItemHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-    postItemTopic: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 8,
-      maxWidth: '70%',
-    },
-    postItemTopicDot: { width: 6, height: 6, borderRadius: 3 },
-    postItemTopicText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-    postItemTime: { fontSize: 11, fontWeight: '500', color: colors.textMuted || '#94a3b8' },
-    postItemContentText: { fontSize: 15, fontWeight: '600', color: colors.text, lineHeight: 22 },
-    postItemImageWrap: { marginTop: 12, borderRadius: 12, overflow: 'hidden', height: 160 },
-    postItemImage: { width: '100%', height: '100%' },
-    postItemStats: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 12 },
-    postItemStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    postItemStatText: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
-
-    postsList: { paddingHorizontal: 16 },
-
-    formCard: { marginHorizontal: 16, marginBottom: 16 },
-    sectionLabel: {
-      fontSize: 18,
-      fontWeight: '800',
-      color: colors.text,
-      letterSpacing: -0.3,
-      paddingHorizontal: 20,
-      paddingTop: 20,
-      marginBottom: 16,
-    },
-    infoItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
-    infoIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
-    infoContent: { flex: 1, gap: 2 },
-    infoLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-    infoValue: { fontSize: 15, fontWeight: '700', color: colors.text },
-    infoDivider: {
-      height: 1,
-      marginHorizontal: 20,
-      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 20, paddingBottom: 20 },
-    topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, maxWidth: '100%' },
-    topicChipText: { fontSize: 13, fontWeight: '700' },
-
-    tabPanel: { paddingBottom: 20 },
-    tabPanelsWrap: { flex: 1 },
-
-    achievementsHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      marginBottom: 16,
-    },
-    achievementsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    achievementsTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
-    achievementsBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-    achievementsBadgeText: { fontSize: 12, fontWeight: '700' },
-
-    achievementsCard: { padding: 16 },
-    achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 6 },
-    achievementIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    achievementEmoji: { fontSize: 22 },
-    achievementInfo: { flex: 1, gap: 2 },
-    achievementName: { fontSize: 14, fontWeight: '700' },
-    achievementDesc: { fontSize: 12, fontWeight: '500', color: colors.textSecondary },
-
-    emptyAchievements: { padding: 32, alignItems: 'center' },
-    emptyAchievementsTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginTop: 12, marginBottom: 4 },
-    emptyAchievementsText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary, textAlign: 'center' },
-
-    progressTitle: {
-      fontSize: 18,
-      fontWeight: '800',
-      color: colors.text,
-      paddingHorizontal: 20,
-      paddingTop: 20,
-      marginBottom: 16,
-    },
-    progressRow: { flexDirection: 'row', gap: 16, paddingHorizontal: 20, paddingBottom: 20 },
-    progressItem: { flex: 1 },
-    progressItemHeader: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 6 },
-    progressItemValue: { fontSize: 20, fontWeight: '800', color: colors.text },
-    progressItemLabel: { fontSize: 12, fontWeight: '500', color: colors.textSecondary },
-    progressBar: { height: 6, borderRadius: 3, backgroundColor: 'rgba(100,116,139,0.15)', overflow: 'hidden' },
-    progressFill: { height: '100%', borderRadius: 3 },
-
-    emptyCard: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-    emptyStateIcon: {
-      width: 64,
-      height: 64,
-      borderRadius: 20,
-      backgroundColor: 'rgba(99,102,241,0.1)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 16,
-    },
-    emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 },
-    emptyText: { fontSize: 14, color: colors.textMuted || '#94a3b8', fontWeight: '500', textAlign: 'center' },
-
-    retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
-    retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-
-    avatarPreviewOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-    avatarPreviewCard: {
-      alignItems: 'center',
-      padding: 24,
-      borderRadius: 28,
-      backgroundColor: 'rgba(15,15,30,0.75)',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.12)',
-      maxWidth: 400,
-    },
-    avatarPreviewImage: {
-      width: 240,
-      height: 240,
-      borderRadius: 120,
-      borderWidth: 4,
-      borderColor: '#fff',
-      justifyContent: 'center',
-      alignItems: 'center',
-      overflow: 'hidden',
-      marginBottom: 16,
-    },
-    avatarPreviewName: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-    avatarPreviewHandle: { fontSize: 14, fontWeight: '500', color: 'rgba(255,255,255,0.7)', marginTop: 4 },
-  });
+  /* Avatar Modal */
+  avatarModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  avatarModalCard: { alignItems: 'center', padding: 24, borderRadius: 28, backgroundColor: 'rgba(15,15,30,0.75)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', maxWidth: 400 },
+  avatarModalImage: { width: 200, height: 200, borderRadius: 100, borderWidth: 4, borderColor: '#fff', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', marginBottom: 16 },
+  avatarModalName: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+  avatarModalHandle: { fontSize: 14, fontWeight: '500', color: 'rgba(255,255,255,0.7)', marginTop: 4 },
+});
