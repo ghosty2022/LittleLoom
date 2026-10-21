@@ -20,8 +20,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  withRepeat,
-  withSequence,
   interpolate,
   Extrapolation,
   Easing,
@@ -77,51 +75,11 @@ const icons = {
    TAB CONFIG
    ═══════════════════════════════════════════════════════════════════════════ */
 const TABS = [
-  {
-    name: 'Home',
-    route: 'Home',
-    color: '#6366f1',
-    gradient: ['#6366f1', '#8b5cf6'] as const,
-    haptic: Haptics.ImpactFeedbackStyle.Light,
-    Icon: icons.Home,
-    IconActive: icons.HomeActive,
-  },
-  {
-    name: 'Track',
-    route: 'Track',
-    color: '#10b981',
-    gradient: ['#10b981', '#34d399'] as const,
-    haptic: Haptics.ImpactFeedbackStyle.Medium,
-    Icon: icons.Track,
-    IconActive: icons.TrackActive,
-  },
-  {
-    name: 'Timeline',
-    route: 'Timeline',
-    color: '#8b5cf6',
-    gradient: ['#8b5cf6', '#a78bfa'] as const,
-    haptic: Haptics.ImpactFeedbackStyle.Light,
-    Icon: icons.Timeline,
-    IconActive: icons.TimelineActive,
-  },
-  {
-    name: 'Grow',
-    route: 'Grow',
-    color: '#ec4899',
-    gradient: ['#ec4899', '#f472b6'] as const,
-    haptic: Haptics.ImpactFeedbackStyle.Medium,
-    Icon: icons.Grow,
-    IconActive: icons.GrowActive,
-  },
-  {
-    name: 'Connect',
-    route: 'Connect',
-    color: '#f59e0b',
-    gradient: ['#f59e0b', '#fbbf24'] as const,
-    haptic: Haptics.ImpactFeedbackStyle.Light,
-    Icon: icons.Connect,
-    IconActive: icons.ConnectActive,
-  },
+  { name: 'Home', route: 'Home', color: '#6366f1', haptic: Haptics.ImpactFeedbackStyle.Light, Icon: icons.Home, IconActive: icons.HomeActive },
+  { name: 'Track', route: 'Track', color: '#10b981', haptic: Haptics.ImpactFeedbackStyle.Medium, Icon: icons.Track, IconActive: icons.TrackActive },
+  { name: 'Timeline', route: 'Timeline', color: '#8b5cf6', haptic: Haptics.ImpactFeedbackStyle.Light, Icon: icons.Timeline, IconActive: icons.TimelineActive },
+  { name: 'Grow', route: 'Grow', color: '#ec4899', haptic: Haptics.ImpactFeedbackStyle.Medium, Icon: icons.Grow, IconActive: icons.GrowActive },
+  { name: 'Connect', route: 'Connect', color: '#f59e0b', haptic: Haptics.ImpactFeedbackStyle.Light, Icon: icons.Connect, IconActive: icons.ConnectActive },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -255,17 +213,13 @@ const ActiveColorWash = memo(({ activeIndex, isDark }: { activeIndex: number; is
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SLIDING INDICATOR — subtle ghost ring, no shadow
+   SLIDING INDICATOR
    ═══════════════════════════════════════════════════════════════════════════ */
 const SlidingIndicator = memo(({ activeIndex, isDark }: { activeIndex: number; isDark: boolean }) => {
   const translateX = useSharedValue(0);
 
   useEffect(() => {
-    translateX.value = withSpring(activeIndex * SEGMENT_WIDTH, {
-      damping: 26,
-      stiffness: 450,
-      mass: 0.55,
-    });
+    translateX.value = withSpring(activeIndex * SEGMENT_WIDTH, { damping: 26, stiffness: 450, mass: 0.55 });
   }, [activeIndex]);
 
   const indicatorStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
@@ -298,7 +252,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
   const translateY = useSharedValue(0);
   const opacity = useSharedValue(1);
   const pillScale = useSharedValue(1);
-  const auraOpacity = useSharedValue(1);
 
   const visibilityRef = useRef(false);
 
@@ -310,12 +263,10 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
       translateY.value = withTiming(HIDDEN_TRANSLATE_Y, { duration: 250, easing: Easing.out(Easing.ease) });
       opacity.value = withTiming(0, { duration: 200 });
       pillScale.value = withTiming(0.92, { duration: 250 });
-      auraOpacity.value = withTiming(0, { duration: 200 });
     } else {
       translateY.value = withSpring(0, { damping: 25, stiffness: 500, mass: 0.4 });
       opacity.value = withTiming(1, { duration: 200 });
       pillScale.value = withSpring(1, { damping: 25, stiffness: 500, mass: 0.4 });
-      auraOpacity.value = withTiming(1, { duration: 300 });
     }
   }, [isFullyHidden]);
 
@@ -323,8 +274,6 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
     transform: [{ translateY: translateY.value }, { scale: pillScale.value }],
     opacity: opacity.value,
   }));
-
-  const auraStyle = useAnimatedStyle(() => ({ opacity: auraOpacity.value }));
 
   const handlePress = useCallback((route: string, tab: typeof TABS[0]) => {
     Haptics.impactAsync(tab.haptic).catch(() => {});
@@ -396,93 +345,57 @@ const LiquidGlassNavigation: React.FC<BottomTabBarProps> = ({ state, descriptors
         </TouchableOpacity>
       )}
 
-      {/* ─── MAIN PILL NAV ─── */}
+      {/* ─── MAIN PILL NAV (clean, no aura halo) ─── */}
       <Animated.View style={[styles.container, containerStyle]}>
-        {/*
-          Shadow-free floating effect:
-          1. Outer aura ring (blurred gradient) sits *behind* the pill
-          2. Inner top highlight
-          3. Inner bottom edge for depth
-          4. Sliding indicator + color wash inside
-        */}
-        <View style={styles.pillStack}>
-          {/* Outer aura — the "shadow" replacement */}
-          <Animated.View style={[styles.auraRing, auraStyle]} pointerEvents="none">
-            <LinearGradient
-              colors={
-                isDark
-                  ? ['rgba(99,102,241,0.18)', 'rgba(139,92,246,0.10)', 'rgba(0,0,0,0)']
-                  : ['rgba(99,102,241,0.10)', 'rgba(139,92,246,0.05)', 'rgba(0,0,0,0)']
-              }
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-          </Animated.View>
+        <View style={[styles.pillContainer, { backgroundColor: pillBackground, borderColor: pillBorderColor }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 60 : 80}
+            style={StyleSheet.absoluteFill}
+            tint={isDark ? 'dark' : 'light'}
+          />
 
-          {/* Aura floor glow (subtle lift beneath) */}
-          <Animated.View style={[styles.auraFloor, auraStyle]} pointerEvents="none">
-            <LinearGradient
-              colors={
-                isDark
-                  ? ['rgba(99,102,241,0.14)', 'rgba(0,0,0,0)']
-                  : ['rgba(99,102,241,0.10)', 'rgba(0,0,0,0)']
-              }
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-          </Animated.View>
+          <SlidingIndicator activeIndex={activeIndex} isDark={isDark} />
+          <ActiveColorWash activeIndex={activeIndex} isDark={isDark} />
 
-          {/* Main pill */}
-          <View style={[styles.pillContainer, { backgroundColor: pillBackground }]}>
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 60 : 80}
-              style={StyleSheet.absoluteFill}
-              tint={isDark ? 'dark' : 'light'}
-            />
+          {/* Inner top highlight — gives the pill its inner "glass edge" */}
+          <LinearGradient
+            colors={
+              isDark
+                ? ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.02)', 'transparent']
+                : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.30)', 'transparent']
+            }
+            style={styles.topHighlight}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            pointerEvents="none"
+          />
 
-            <SlidingIndicator activeIndex={activeIndex} isDark={isDark} />
-            <ActiveColorWash activeIndex={activeIndex} isDark={isDark} />
+          {/* Inner bottom shade — subtle depth edge inside the pill */}
+          <LinearGradient
+            colors={
+              isDark
+                ? ['transparent', 'rgba(0,0,0,0.10)']
+                : ['transparent', 'rgba(0,0,0,0.02)']
+            }
+            style={styles.bottomShade}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            pointerEvents="none"
+          />
 
-            {/* Inner top highlight */}
-            <LinearGradient
-              colors={
-                isDark
-                  ? ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.02)', 'transparent']
-                  : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.30)', 'transparent']
-              }
-              style={styles.topHighlight}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
+          {/* Hairline border */}
+          <View style={[styles.pillBorder, { borderColor: pillBorderColor }]} pointerEvents="none" />
 
-            {/* Inner bottom shade */}
-            <LinearGradient
-              colors={
-                isDark
-                  ? ['transparent', 'rgba(0,0,0,0.10)']
-                  : ['transparent', 'rgba(0,0,0,0.02)']
-              }
-              style={styles.bottomShade}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-
-            {/* Hairline border */}
-            <View style={[styles.pillBorder, { borderColor: pillBorderColor }]} pointerEvents="none" />
-
-            <View style={styles.tabsContainer}>
-              {TABS.map((tab, index) => (
-                <TabButton
-                  key={tab.name}
-                  tab={tab}
-                  isActive={index === activeIndex}
-                  onPress={() => handlePress(tab.route, tab)}
-                  isDark={isDark}
-                />
-              ))}
-            </View>
+          <View style={styles.tabsContainer}>
+            {TABS.map((tab, index) => (
+              <TabButton
+                key={tab.name}
+                tab={tab}
+                isActive={index === activeIndex}
+                onPress={() => handlePress(tab.route, tab)}
+                isDark={isDark}
+              />
+            ))}
           </View>
         </View>
       </Animated.View>
@@ -509,41 +422,14 @@ const styles = StyleSheet.create({
     width: '100%',
   } as ViewStyle,
 
-  pillStack: {
-    width: PILL_WIDTH,
-    height: PILL_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  } as ViewStyle,
-
-  /* Aura "shadow" — soft glow behind pill (top + bottom) */
-  auraRing: {
-    position: 'absolute',
-    top: -6,
-    left: -4,
-    right: -4,
-    bottom: -6,
-    borderRadius: PILL_HEIGHT / 2 + 6,
-  } as ViewStyle,
-
-  /* Floor lift — a small blurred strip beneath the pill */
-  auraFloor: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: -10,
-    height: 20,
-    borderRadius: 12,
-  } as ViewStyle,
-
   pillContainer: {
     width: PILL_WIDTH,
     height: PILL_HEIGHT,
     borderRadius: PILL_HEIGHT / 2,
     overflow: 'hidden',
     position: 'relative',
-    /* No shadows — visual lift comes from the aura ring behind */
+    borderWidth: StyleSheet.hairlineWidth,
+    /* No shadows, no outer aura — the pill is fully self-contained */
   } as ViewStyle,
 
   pillBorder: {
@@ -624,6 +510,7 @@ const styles = StyleSheet.create({
     marginTop: -26,
     borderRadius: 22,
     zIndex: 0,
+    overflow: 'hidden',
   } as ViewStyle,
 
   tabLabel: {
@@ -665,7 +552,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     minWidth: 96,
     minHeight: 44,
-    /* No shadows — relies on the surrounding aura glow from the pill area */
   } as ViewStyle,
 
   addLogContent: {
