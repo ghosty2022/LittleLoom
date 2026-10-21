@@ -65,6 +65,8 @@ const NON_RESTORABLE_ROUTES = new Set([
   'SecurityLock', 'Login', 'SignUp', 'ForgotPassword', 'Onboarding',
 ]);
 
+const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
+
 /* ═══════════════════════════════════════════════════════════════════════════
    GradientText
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -135,7 +137,7 @@ const SPLASH_THEMES = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Animated Aura Splash — glowing ring + gradient text
+   CustomSplashScreen — the ONLY startup splash
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface CustomSplashScreenProps {
@@ -171,7 +173,6 @@ const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrue
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      {/* Aura glows */}
       <LinearGradient
         colors={[colors.glow, 'transparent']}
         style={styles.splashGlowTopLeft}
@@ -188,8 +189,7 @@ const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrue
       />
 
       <StatusBar style={colors.statusBar} />
-      <Animated.View entering={FadeIn.duration(600)} style={styles.splashContent}>
-        {/* Animated logo ring */}
+      <Animated.View entering={FadeIn.duration(400)} style={styles.splashContent}>
         <View style={styles.splashLogoWrap}>
           <Animated.View style={[styles.splashGlowRing, { backgroundColor: colors.glow }, glowStyle]} />
           <Animated.View style={[styles.splashLogoRing, { borderColor: colors.ring }, ringStyle]}>
@@ -209,19 +209,19 @@ const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrue
           </View>
         </View>
 
-        <Animated.View entering={FadeInDown.delay(200).duration(500)}>
+        <Animated.View entering={FadeInDown.delay(100).duration(350)}>
           <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.splashBrand}>
             LittleLoom
           </GradientText>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(350).duration(500)}>
+        <Animated.View entering={FadeInDown.delay(180).duration(350)}>
           <Text style={[styles.splashTagline, { color: colors.subtext }]}>
             Gentle Care, Happy Baby
           </Text>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(500).duration(500)} style={{ marginTop: 40 }}>
+        <Animated.View entering={FadeIn.delay(200).duration(300)} style={{ marginTop: 32 }}>
           <InlineSpinner size={28} color={colors.spinner} />
         </Animated.View>
       </Animated.View>
@@ -230,15 +230,16 @@ const CustomSplashScreen = React.memo<CustomSplashScreenProps>(({ isDark, isTrue
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   InnerApp — unchanged logic
+   InnerApp
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface InnerAppProps {
   initialState: object | undefined;
   onStateChange: (state: object | undefined) => void;
+  initialRouteName?: 'Login' | 'Onboarding' | 'Main' | 'Splash';
 }
 
-const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateChange }) => {
+const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateChange, initialRouteName }) => {
   const { isDark, colors: themeColors } = useTheme();
   useAppLock();
 
@@ -261,7 +262,11 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
       <ModalProvider>
         <View style={styles.container}>
           <AIBootstrapGate />
-          <AppNavigator initialState={initialState} onStateChange={onStateChange} />
+          <AppNavigator
+            initialState={initialState}
+            onStateChange={onStateChange}
+            initialRouteName={initialRouteName}
+          />
           <GlobalAudioPlayer />
         </View>
         <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -286,6 +291,7 @@ export default function App(): React.ReactElement | null {
   const [ready, setReady] = useState(false);
   const [initialState, setInitialState] = useState<object | undefined>(undefined);
   const [initError, setInitError] = useState<string | null>(null);
+  const [initialRouteName, setInitialRouteName] = useState<'Login' | 'Onboarding' | 'Main' | 'Splash'>('Splash');
 
   const lastStateRef = useRef<object | undefined>(undefined);
   const lastStateKeyRef = useRef<string>('');
@@ -295,7 +301,7 @@ export default function App(): React.ReactElement | null {
   const notificationInitRef = useRef(false);
   const sessionCleanupDoneRef = useRef(false);
 
-  /* ── Session cleanup (unchanged) ── */
+  /* ── Session cleanup ── */
   useEffect(() => {
     if (sessionCleanupDoneRef.current) return;
     sessionCleanupDoneRef.current = true;
@@ -341,19 +347,33 @@ export default function App(): React.ReactElement | null {
     clearCorruptedSession();
   }, []);
 
-  /* ── Theme load (unchanged) ── */
+  /* ── Theme load + initial route pre-check ── */
   useEffect(() => {
     let mounted = true;
     const loadTheme = async () => {
       try {
-        const saved = await getAppSetting('appearance');
+        // Both reads in parallel — shaves 30-80ms off cold boot.
+        const [saved, seenOnboarding] = await Promise.all([
+          getAppSetting('appearance').catch(() => null),
+          AsyncStorage.getItem(ONBOARDING_SEEN_KEY).catch(() => null),
+        ]);
         if (!mounted) return;
+
         const isDark =
           saved === 'dark' || saved === 'trueBlack' || (!saved && systemScheme === 'dark');
         const isTrueBlack = saved === 'trueBlack';
         setInitialTheme({ isDark, isTrueBlack });
+
+        // Pre-compute initial route so the Splash route never has to mount.
+        if (seenOnboarding === 'true') {
+          setInitialRouteName('Login');
+        } else {
+          setInitialRouteName('Onboarding');
+        }
       } catch {
+        if (!mounted) return;
         setInitialTheme({ isDark: systemScheme === 'dark', isTrueBlack: false });
+        setInitialRouteName('Login');
       } finally {
         if (mounted) setThemeLoaded(true);
       }
@@ -362,7 +382,7 @@ export default function App(): React.ReactElement | null {
     return () => { mounted = false; };
   }, [systemScheme]);
 
-  /* ── Main init (unchanged) ── */
+  /* ── Main init ── */
   useEffect(() => {
     if (!themeLoaded || initStartedRef.current) return;
     initStartedRef.current = true;
@@ -379,7 +399,7 @@ export default function App(): React.ReactElement | null {
         await Promise.race([
           essentialTasks,
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Essential init timeout')), 2000)
+            setTimeout(() => reject(new Error('Essential init timeout')), 1500)
           ),
         ]).catch((e) => {
           console.warn('[App] Essential tasks timed out, continuing...', e);
@@ -494,7 +514,7 @@ export default function App(): React.ReactElement | null {
     }
   };
 
-  /* ── AppState persistence (unchanged) ── */
+  /* ── AppState persistence ── */
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       if (next === 'active') {
@@ -578,7 +598,11 @@ export default function App(): React.ReactElement | null {
           <SafeAreaProvider>
             <AppProvider>
               <ContextProvider>
-                <InnerApp initialState={initialState} onStateChange={onStateChange} />
+                <InnerApp
+                  initialState={initialState}
+                  onStateChange={onStateChange}
+                  initialRouteName={initialRouteName}
+                />
               </ContextProvider>
             </AppProvider>
           </SafeAreaProvider>
@@ -596,7 +620,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   container: { flex: 1 },
 
-  /* Splash */
   splashContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -664,7 +687,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  /* Error */
   errorContainer: {
     flex: 1,
     justifyContent: 'center',

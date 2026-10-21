@@ -1,6 +1,21 @@
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Animated,
+  ActivityIndicator,
+  Dimensions,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +30,10 @@ import AnimatedRe, {
   useSharedValue,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
   interpolate,
+  Easing,
 } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSecurity } from '../../context/SecurityContext';
@@ -68,6 +86,71 @@ interface SecurityQuestion {
 
 const ReanimatedView = AnimatedRe.View;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GradientText
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GradientText = React.memo(({
+  children, style, colors = ['#667eea', '#764ba2', '#f093fb'],
+}: {
+  children: React.ReactNode; style?: any; colors?: string[];
+}) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return (
+          <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>
+            {l}
+          </Text>
+        );
+      })}
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Aura Card
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const SecurityCard: React.FC<{
   icon: string;
   title: string;
@@ -79,46 +162,127 @@ const SecurityCard: React.FC<{
   themeColors: any;
 }> = ({ icon, title, subtitle, status, onPress, delay = 0, isDark, themeColors }) => {
   const statusColors = {
-    active: { bg: '#10b981', icon: '#10b981', glow: 'rgba(16,185,129,0.3)' },
-    inactive: { bg: '#ef4444', icon: '#ef4444', glow: 'rgba(239,68,68,0.3)' },
-    warning: { bg: '#f59e0b', icon: '#f59e0b', glow: 'rgba(245,158,11,0.3)' },
-    neutral: { bg: '#6b7280', icon: '#6b7280', glow: 'rgba(107,114,128,0.3)' },
+    active: { bg: AURA.success, icon: AURA.success, glow: 'rgba(16,185,129,0.25)' },
+    inactive: { bg: AURA.danger, icon: AURA.danger, glow: 'rgba(239,68,68,0.25)' },
+    warning: { bg: AURA.warning, icon: AURA.warning, glow: 'rgba(245,158,11,0.25)' },
+    neutral: { bg: AURA.gray500, icon: AURA.gray500, glow: 'rgba(107,114,128,0.25)' },
   };
   const s = statusColors[status];
 
   return (
-    <AnimatedRe.View entering={FadeInUp.delay(delay).duration(600)} layout={Layout.springify()}>
+    <AnimatedRe.View entering={FadeInUp.delay(delay).duration(500).springify()} layout={Layout.springify()}>
       <TouchableOpacity
-        style={[styles.card, isDark && styles.cardDark, { shadowColor: s.glow }]}
+        style={[
+          styles.card,
+          {
+            backgroundColor: isDark ? AURA.darkCard : AURA.white,
+            borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+            shadowColor: s.glow,
+          },
+        ]}
         onPress={onPress}
         activeOpacity={0.85}
       >
-        <BlurView intensity={isDark ? 30 : 60} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-        <View style={[styles.cardGlow, { backgroundColor: s.glow }]} />
+        <LinearGradient
+          colors={[`${s.bg}08`, `${s.bg}02`, 'transparent']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
         <View style={styles.cardContent}>
-          <View style={[styles.cardIconWrap, { backgroundColor: s.glow }]}>
+          <View style={[styles.cardIconWrap, { backgroundColor: `${s.bg}18` }]}>
             <Ionicons name={icon as any} size={22} color={s.icon} />
           </View>
           <View style={styles.cardText}>
-            <Text style={[styles.cardTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>{title}</Text>
-            <Text style={[styles.cardSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>{subtitle}</Text>
+            <Text style={[styles.cardTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>{title}</Text>
+            <Text
+              style={[styles.cardSubtitle, { color: isDark ? AURA.gray400 : AURA.gray500 }]}
+              numberOfLines={2}
+            >
+              {subtitle}
+            </Text>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: s.bg + '20' }]}>
+          <View style={[styles.statusBadge, { backgroundColor: `${s.bg}15` }]}>
             <View style={[styles.statusDot, { backgroundColor: s.bg }]} />
             <Text style={[styles.statusText, { color: s.bg }]}>
               {status === 'active' ? 'On' : status === 'inactive' ? 'Off' : status === 'warning' ? 'Setup' : '—'}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={isDark ? '#475569' : '#94a3b8'} />
+          <Ionicons name="chevron-forward" size={18} color={isDark ? AURA.gray500 : AURA.gray400} />
         </View>
       </TouchableOpacity>
     </AnimatedRe.View>
   );
 };
 
-const SectionHeader: React.FC<{ title: string; isDark: boolean }> = ({ title, isDark }) => (
-  <Text style={[styles.sectionHeader, { color: isDark ? '#94a3b8' : '#64748b' }]}>{title}</Text>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Section Header
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SectionHeader: React.FC<{ title: string; icon?: keyof typeof Ionicons.glyphMap; isDark: boolean }> = ({
+  title, icon, isDark,
+}) => (
+  <View style={styles.sectionHeaderRow}>
+    {icon && (
+      <View style={[styles.sectionIcon, { backgroundColor: `${AURA.primary}12` }]}>
+        <Ionicons name={icon} size={14} color={AURA.primary} />
+      </View>
+    )}
+    <Text style={[styles.sectionHeader, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
+      {title}
+    </Text>
+  </View>
 );
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Animated Score Ring
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const ScoreRing = React.memo(({ score, color, size = 90 }: { score: number; color: string; size?: number }) => {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withTiming(score, { duration: 900, easing: Easing.out(Easing.ease) });
+  }, [score]);
+
+  const strokeWidth = 6;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  const progressStyle = useAnimatedStyle(() => ({
+    strokeDashoffset: circumference * (1 - progress.value / 100),
+  }));
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={[StyleSheet.absoluteFill, { borderRadius: size / 2, borderWidth: strokeWidth, borderColor: `${color}20` }]} />
+      {/* SVG-free approximation using rotating border trick isn't ideal; use layered views for a clean ring */}
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: strokeWidth,
+          borderColor: color,
+          borderTopColor: 'transparent',
+          borderRightColor: progress.value > 25 ? color : 'transparent',
+          borderBottomColor: progress.value > 50 ? color : 'transparent',
+          borderLeftColor: progress.value > 75 ? color : 'transparent',
+          transform: [{ rotate: '-45deg' }],
+        }}
+      />
+      <View style={{ position: 'absolute', alignItems: 'center' }}>
+        <Text style={{ fontSize: 22, fontWeight: '800', color }}>{score}</Text>
+        <Text style={{ fontSize: 9, fontWeight: '700', color, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+          score
+        </Text>
+      </View>
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function SecurityCenterScreen({ navigation, route }: SecurityCenterScreenProps) {
   const { mode, fromForgotPassword } = route.params || {};
@@ -149,9 +313,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   } = useSecurity();
 
   const { userProfile } = useAuth();
-  const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
+  const { darkMode: isDark, themeColors, fullThemeColors, triggerHaptic } = useCustomization();
   const insets = useSafeAreaInsets();
-  
   const sweetAlert = useSweetAlert();
 
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
@@ -174,13 +337,11 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const [activeQuestionSlot, setActiveQuestionSlot] = useState(0);
 
   const [biometricLoading, setBiometricLoading] = useState(false);
-
   const [selectedTimeout, setSelectedTimeout] = useState(securitySettings.autoLockTimeout);
 
   const isMounted = useRef(true);
   const biometricCheckTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // ─── Cleanup ──────────────────────────────────────────────────────
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -192,17 +353,11 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     };
   }, []);
 
-  
   const [forceUpdate, setForceUpdate] = useState(false);
   const [localBioEnabled, setLocalBioEnabled] = useState<boolean>(false);
 
-  
-  // Mirror context → local ONLY when no toggle is in-flight.
-  // The toggle is the authority during its own operation.
   useEffect(() => {
     if (biometricLoading) return;
-    // Re-read storage rather than trusting `isBiometricEnabled` from
-    // context — context can lag behind disk by one render.
     let mounted = true;
     (async () => {
       try {
@@ -219,14 +374,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     return () => { mounted = false; };
   }, [isBiometricEnabled, biometricLoading]);
 
-  
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', async () => {
       if (!isMounted.current) return;
       await refreshBiometricStatus();
-
-      // If a toggle is mid-flight, do not stomp localBioEnabled — the
-      // toggle itself will write the correct value once storage settles.
       if (biometricLoading) return;
 
       let enabledFromStorage = false;
@@ -236,8 +387,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       } catch {}
 
       if (!isMounted.current) return;
-      // Re-check after the await — toggle may have started while we were
-      // reading storage.
       if (biometricLoading) return;
       setLocalBioEnabled(enabledFromStorage);
       setForceUpdate(prev => !prev);
@@ -246,8 +395,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   }, [navigation, refreshBiometricStatus, biometricLoading]);
 
   useEffect(() => {
-    
-    
     const checkBiometrics = async () => {
       try {
         await checkBiometricCapabilities();
@@ -262,9 +409,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       clearTimeout(biometricCheckTimer.current);
     }
     biometricCheckTimer.current = setTimeout(() => {
-      if (isMounted.current) {
-        checkBiometrics();
-      }
+      if (isMounted.current) checkBiometrics();
     }, 500);
 
     return () => {
@@ -298,10 +443,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   const loadStoredQuestions = async () => {
     try {
       const loaded = await loadSecurityQuestions();
-      if (loaded && loaded.length > 0) {
-        setStoredQuestions(loaded);
-      }
-    } catch (e) {
+      if (loaded && loaded.length > 0) setStoredQuestions(loaded);
+    } catch {
       console.log('No security questions loaded');
     }
   };
@@ -504,7 +647,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       if (valid) {
         sweetAlert.success('Verified', 'You can now update your questions');
         setQuestionStep('edit');
-        setSelectedQuestionIndices(storedQuestions.map((q, i) => SECURITY_QUESTIONS_POOL.indexOf(q.question)));
+        setSelectedQuestionIndices(storedQuestions.map((q) => SECURITY_QUESTIONS_POOL.indexOf(q.question)));
         setQuestionAnswers(['', '', '']);
       } else {
         shake();
@@ -516,14 +659,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     }
   };
 
-  
   const navigateToBiometricSetup = useCallback(() => {
-    
     navigation.navigate('BiometricSetup');
   }, [navigation]);
 
-  
-  // Hard guard that survives double-taps even when React state hasn't flushed
   const biometricToggleInFlightRef = useRef(false);
 
   const handleToggleBiometric = useCallback(async (targetValue?: boolean) => {
@@ -532,11 +671,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
     const newState = typeof targetValue === 'boolean' ? targetValue : !localBioEnabled;
 
-    
     if (newState) {
       await refreshBiometricStatus();
-
-      
       const hasHardwareNow = isBiometricHardwareAvailable;
       const isEnrolledNow = isBiometricEnrolled;
 
@@ -566,10 +702,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     try {
       const result = await toggleBiometric(newState);
 
-      // Read storage — the ONLY authority for what the switch should show.
-      // toggleBiometric's boolean return can be `true` from the "already in
-      // target state" short-circuit even when AsyncStorage was NOT updated
-      // by this call, so we cannot trust it alone.
       let storedAfter = newState;
       try {
         const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
@@ -586,7 +718,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           newState ? 'Biometric unlock enabled' : 'Biometric unlock disabled'
         );
       } else {
-        // Trust storage, not the boolean return
         setLocalBioEnabled(storedAfter);
         if (!result) {
           sweetAlert.error(
@@ -597,7 +728,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       }
     } catch (error) {
       console.error('Biometric toggle error:', error);
-      // Don't assume — re-read storage
       try {
         const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
         setLocalBioEnabled(stored === 'true');
@@ -607,8 +737,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       sweetAlert.error('Error', 'An error occurred while changing biometric settings.');
     } finally {
       setBiometricLoading(false);
-      // Small delay to let any concurrent effects (focus handler, context
-      // mirror) settle before allowing the next toggle.
       setTimeout(() => { biometricToggleInFlightRef.current = false; }, 300);
     }
   }, [
@@ -645,58 +773,83 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   }, [securitySettings.isPinEnabled, isBiometricEnabled, securitySettings.hasSecurityQuestions, securitySettings.isAppLockEnabled]);
 
   const getScoreLabel = useCallback((score: number) => {
-    if (score >= 80) return { text: 'Excellent', color: '#10b981' };
-    if (score >= 50) return { text: 'Good', color: '#f59e0b' };
-    return { text: 'Weak', color: '#ef4444' };
+    if (score >= 80) return { text: 'Excellent', color: AURA.success };
+    if (score >= 50) return { text: 'Good', color: AURA.warning };
+    return { text: 'Weak', color: AURA.danger };
   }, []);
 
   const score = useMemo(() => getSecurityScore(), [getSecurityScore]);
   const scoreLabel = useMemo(() => getScoreLabel(score), [score, getScoreLabel]);
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER — Dashboard
+     ═══════════════════════════════════════════════════════════════════════ */
+
   const renderDashboard = () => (
     <AnimatedRe.View entering={FadeInUp.duration(500)} style={styles.section}>
-      <View style={[styles.scoreCard, isDark && styles.scoreCardDark]}>
-        <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+      {/* Score Card */}
+      <View
+        style={[
+          styles.scoreCard,
+          {
+            backgroundColor: isDark ? AURA.darkCard : AURA.white,
+            borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+          },
+        ]}
+      >
         <LinearGradient
-          colors={isDark ? ['rgba(16,185,129,0.1)', 'rgba(59,130,246,0.1)'] : ['rgba(102,126,234,0.15)', 'rgba(118,75,162,0.15)']}
+          colors={
+            isDark
+              ? ['rgba(99,102,241,0.18)', 'rgba(236,72,153,0.08)']
+              : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.04)']
+          }
           style={StyleSheet.absoluteFill}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         />
-        <View style={styles.scoreHeader}>
-          <Text style={[styles.scoreTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
-            Security Score
-          </Text>
-          <View style={[styles.scoreBadge, { backgroundColor: scoreLabel.color + '20' }]}>
-            <Text style={[styles.scoreBadgeText, { color: scoreLabel.color }]}>{scoreLabel.text}</Text>
+        <LinearGradient
+          colors={[`${AURA.primary}30`, 'transparent']}
+          style={styles.scoreGlow}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          pointerEvents="none"
+        />
+        <View style={styles.scoreContent}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.scoreTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>
+              Security Score
+            </Text>
+            <View style={[styles.scoreBadge, { backgroundColor: `${scoreLabel.color}18`, marginTop: 8 }]}>
+              <View style={[styles.scoreDot, { backgroundColor: scoreLabel.color }]} />
+              <Text style={[styles.scoreBadgeText, { color: scoreLabel.color }]}>{scoreLabel.text}</Text>
+            </View>
+            <Text style={[styles.scoreHint, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
+              {score < 100
+                ? 'Enable more features to strengthen protection'
+                : 'Your security is fully configured'}
+            </Text>
+            <View style={styles.scoreBarWrap}>
+              <View style={[styles.scoreBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : AURA.gray100 }]}>
+                <View style={[styles.scoreBarFill, { width: `${score}%`, backgroundColor: scoreLabel.color }]} />
+              </View>
+            </View>
+          </View>
+          <View style={{ marginLeft: 16 }}>
+            <ScoreRing score={score} color={scoreLabel.color} size={88} />
           </View>
         </View>
-        <View style={styles.scoreBarContainer}>
-          <View style={[styles.scoreBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-            <AnimatedRe.View style={[styles.scoreBarFill, { backgroundColor: scoreLabel.color }, progressStyle]} />
-          </View>
-          <Text style={[styles.scorePercent, { color: scoreLabel.color }]}>{score}%</Text>
-        </View>
-        <Text style={[styles.scoreHint, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-          {score < 100 ? 'Enable more security features to strengthen protection' : 'Your security is fully configured'}
-        </Text>
       </View>
 
-      <SectionHeader title="Authentication Methods" isDark={isDark} />
+      <SectionHeader title="AUTHENTICATION" icon="key-outline" isDark={isDark} />
 
       <SecurityCard
         icon="lock-closed-outline"
         title="PIN Lock"
-        subtitle={securitySettings.isPinEnabled ? 'PIN is active' : 'No PIN set'}
+        subtitle={securitySettings.isPinEnabled ? 'PIN is active' : 'No PIN set — tap to create'}
         status={securitySettings.isPinEnabled ? 'active' : 'inactive'}
         onPress={() => {
           setActiveSection('pin');
-          if (securitySettings.isPinEnabled) {
-            setPinMode('verify');
-          } else {
-            setPinMode('create');
-          }
+          setPinMode(securitySettings.isPinEnabled ? 'verify' : 'create');
           setPinStep('input');
           resetPinState();
         }}
@@ -726,13 +879,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         }
         onPress={() => {
           if (!isBiometricHardwareAvailable || !isBiometricEnrolled) {
-            
             sweetAlert.confirm(
               'Biometric Not Available',
               'Please set up biometrics in your device settings first, or continue to setup.',
-              () => {
-                navigateToBiometricSetup();
-              },
+              () => navigateToBiometricSetup(),
               undefined,
               'Go to Setup',
               'Cancel',
@@ -747,7 +897,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         themeColors={themeColors}
       />
 
-      <SectionHeader title="Recovery & Settings" isDark={isDark} />
+      <SectionHeader title="RECOVERY & SETTINGS" icon="shield-outline" isDark={isDark} />
 
       <SecurityCard
         icon="help-circle-outline"
@@ -795,7 +945,6 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             const newValue = !securitySettings.isAppLockEnabled;
             await toggleAppLock(newValue);
             triggerHaptic(newValue ? 'success' : 'light');
-            
             setForceUpdate(prev => !prev);
             sweetAlert.success(
               newValue ? 'App Lock On' : 'App Lock Off',
@@ -813,7 +962,10 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     </AnimatedRe.View>
   );
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER — PIN section
+     ═══════════════════════════════════════════════════════════════════════ */
+
   const renderPinSection = () => {
     const isSetup = pinMode === 'create';
     const isChange = pinMode === 'change';
@@ -831,37 +983,67 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
       ? 'Enter PIN to confirm deactivation'
       : 'Enter your PIN to view details';
 
-    const stepColor = isSetup ? themeColors.primary : isChange ? '#f59e0b' : isDeactivate ? '#ef4444' : '#10b981';
+    const stepColor = isSetup ? AURA.primary : isChange ? AURA.warning : isDeactivate ? AURA.danger : AURA.success;
 
     return (
       <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
         <View style={styles.pinHeader}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => { setActiveSection('dashboard'); resetPinState(); }}>
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#f1f5f9' : '#1e293b'} />
+          <TouchableOpacity
+            style={[styles.backBtn, {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : AURA.gray100,
+            }]}
+            onPress={() => { setActiveSection('dashboard'); resetPinState(); }}
+          >
+            <Ionicons name="arrow-back" size={22} color={isDark ? AURA.white : AURA.gray800} />
           </TouchableOpacity>
-          <Text style={[styles.pinHeaderTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>{title}</Text>
+          <Text style={[styles.pinHeaderTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>{title}</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        <View style={[styles.pinCard, isDark && styles.pinCardDark]}>
-          <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-          <Text style={[styles.pinSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>{subtitle}</Text>
+        <View
+          style={[
+            styles.pinCard,
+            {
+              backgroundColor: isDark ? AURA.darkCard : AURA.white,
+              borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[`${stepColor}10`, `${stepColor}02`, 'transparent']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <Text style={[styles.pinSubtitle, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>{subtitle}</Text>
 
           <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
             <View style={styles.pinDots}>
-              {[...Array(PIN_LENGTH)].map((_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.pinDot,
-                    {
-                      borderColor: stepColor,
-                      backgroundColor: i < pinInput.length ? stepColor : 'transparent',
-                    },
-                    isDark && !(i < pinInput.length) && { borderColor: 'rgba(255,255,255,0.3)' },
-                  ]}
-                />
-              ))}
+              {[...Array(PIN_LENGTH)].map((_, i) => {
+                const filled = i < pinInput.length;
+                return (
+                  <View key={i} style={styles.pinDotWrap}>
+                    {filled && (
+                      <LinearGradient
+                        colors={[stepColor, stepColor + 'CC']}
+                        style={styles.pinDotGlow}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                    )}
+                    <View
+                      style={[
+                        styles.pinDot,
+                        {
+                          borderColor: stepColor,
+                          backgroundColor: filled ? stepColor : 'transparent',
+                        },
+                        isDark && !filled && { borderColor: 'rgba(255,255,255,0.3)' },
+                      ]}
+                    />
+                  </View>
+                );
+              })}
             </View>
           </Animated.View>
 
@@ -869,8 +1051,8 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
           {pinStep === 'success' && showPinHint && (
             <AnimatedRe.View entering={FadeInUp.delay(200)} style={styles.hintBox}>
-              <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-              <Text style={[styles.hintText, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
+              <Ionicons name="checkmark-circle" size={20} color={AURA.success} />
+              <Text style={[styles.hintText, { color: isDark ? AURA.white : AURA.gray900 }]}>
                 PIN verified successfully
               </Text>
             </AnimatedRe.View>
@@ -881,33 +1063,51 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
             <TouchableOpacity
               key={digit}
-              style={[styles.keypadBtn, isDark && styles.keypadBtnDark]}
+              style={[
+                styles.keypadBtn,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : AURA.white,
+                  borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+                },
+              ]}
               onPress={() => handlePinDigit(digit)}
               disabled={isLoading}
-              activeOpacity={0.7}
+              activeOpacity={0.75}
             >
-              <Text style={[styles.keypadBtnText, isDark && styles.keypadBtnTextDark]}>{digit}</Text>
+              <Text style={[styles.keypadBtnText, { color: isDark ? AURA.white : AURA.gray900 }]}>{digit}</Text>
             </TouchableOpacity>
           ))}
           <View style={styles.keypadBtn} />
           <TouchableOpacity
-            style={[styles.keypadBtn, isDark && styles.keypadBtnDark]}
+            style={[
+              styles.keypadBtn,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : AURA.white,
+                borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+              },
+            ]}
             onPress={() => handlePinDigit('0')}
             disabled={isLoading}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
           >
-            <Text style={[styles.keypadBtnText, isDark && styles.keypadBtnTextDark]}>0</Text>
+            <Text style={[styles.keypadBtnText, { color: isDark ? AURA.white : AURA.gray900 }]}>0</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.keypadBtn, isDark && styles.keypadBtnDark]}
+            style={[
+              styles.keypadBtn,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : AURA.white,
+                borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+              },
+            ]}
             onPress={handlePinDelete}
             disabled={pinInput.length === 0 || isLoading}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
           >
             <Ionicons
               name="backspace-outline"
               size={22}
-              color={pinInput.length > 0 ? (isDark ? '#f1f5f9' : '#1e293b') : '#cbd5e1'}
+              color={pinInput.length > 0 ? (isDark ? AURA.white : AURA.gray900) : AURA.gray400}
             />
           </TouchableOpacity>
         </View>
@@ -915,18 +1115,18 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
         {isVerify && pinStep === 'success' && (
           <AnimatedRe.View entering={FadeInUp.delay(300)} style={styles.pinActions}>
             <TouchableOpacity
-              style={[styles.pinActionBtn, { backgroundColor: '#f59e0b' }]}
+              style={[styles.pinActionBtn, { backgroundColor: AURA.warning }]}
               onPress={() => {
                 setPinMode('change');
                 setPinStep('input');
                 resetPinState();
               }}
             >
-              <Ionicons name="refresh-outline" size={18} color="#fff" />
+              <Ionicons name="refresh-outline" size={18} color={AURA.white} />
               <Text style={styles.pinActionText}>Change PIN</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.pinActionBtn, { backgroundColor: '#ef4444' }]}
+              style={[styles.pinActionBtn, { backgroundColor: AURA.danger }]}
               onPress={() => {
                 if (isBiometricEnabled) {
                   setPinMode('deactivate');
@@ -937,7 +1137,7 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
                 }
               }}
             >
-              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Ionicons name="trash-outline" size={18} color={AURA.white} />
               <Text style={styles.pinActionText}>Deactivate PIN</Text>
             </TouchableOpacity>
           </AnimatedRe.View>
@@ -946,14 +1146,22 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     );
   };
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER — Questions section
+     ═══════════════════════════════════════════════════════════════════════ */
+
   const renderQuestionsSection = () => (
     <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
       <View style={styles.pinHeader}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setActiveSection('dashboard')}>
-          <Ionicons name="arrow-back" size={24} color={isDark ? '#f1f5f9' : '#1e293b'} />
+        <TouchableOpacity
+          style={[styles.backBtn, {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : AURA.gray100,
+          }]}
+          onPress={() => setActiveSection('dashboard')}
+        >
+          <Ionicons name="arrow-back" size={22} color={isDark ? AURA.white : AURA.gray800} />
         </TouchableOpacity>
-        <Text style={[styles.pinHeaderTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
+        <Text style={[styles.pinHeaderTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>
           {questionStep === 'verify' ? 'Verify Identity' : questionStep === 'edit' ? 'Update Questions' : 'Security Questions'}
         </Text>
         <View style={{ width: 40 }} />
@@ -961,19 +1169,35 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
 
       {questionStep === 'verify' && storedQuestions.length > 0 && (
         <View style={styles.questionsContainer}>
-          <Text style={[styles.questionsInfo, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+          <Text style={[styles.questionsInfo, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
             Answer your current questions to make changes
           </Text>
           {storedQuestions.map((sq, index) => (
-            <View key={index} style={[styles.questionCard, isDark && styles.questionCardDark]}>
-              <Text style={[styles.questionLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+            <View
+              key={index}
+              style={[
+                styles.questionCard,
+                {
+                  backgroundColor: isDark ? AURA.darkCard : AURA.white,
+                  borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+                },
+              ]}
+            >
+              <Text style={[styles.questionLabel, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                 Question {index + 1}
               </Text>
-              <Text style={[styles.questionText, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>{sq.question}</Text>
+              <Text style={[styles.questionText, { color: isDark ? AURA.white : AURA.gray900 }]}>{sq.question}</Text>
               <TextInput
-                style={[styles.questionInput, isDark && styles.questionInputDark, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : `${themeColors.primary}40` }]}
+                style={[
+                  styles.questionInput,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : AURA.gray50,
+                    color: isDark ? AURA.white : AURA.gray900,
+                    borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+                  },
+                ]}
                 placeholder="Your answer"
-                placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}80`}
+                placeholderTextColor={isDark ? AURA.gray500 : AURA.gray400}
                 value={verifyAnswers[index]}
                 onChangeText={(text) => {
                   const next = [...verifyAnswers];
@@ -986,43 +1210,79 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             </View>
           ))}
           <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: themeColors.primary }]}
+            style={[styles.actionBtn]}
             onPress={handleVerifyAndEdit}
             disabled={isLoading}
           >
-            {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>Verify & Continue</Text>}
+            <LinearGradient
+              colors={[AURA.primary, AURA.accent]}
+              style={styles.actionBtnGrad}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              {isLoading ? <ActivityIndicator color={AURA.white} /> : <Text style={styles.actionBtnText}>Verify & Continue</Text>}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       )}
 
       {(questionStep === 'select' || questionStep === 'edit') && (
         <View style={styles.questionsContainer}>
-          <Text style={[styles.questionsInfo, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+          <Text style={[styles.questionsInfo, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
             {questionStep === 'edit' ? 'Update your security questions' : 'Set up 3 questions for account recovery'}
           </Text>
           {[0, 1, 2].map((slot) => (
-            <View key={slot} style={[styles.questionCard, isDark && styles.questionCardDark]}>
+            <View
+              key={slot}
+              style={[
+                styles.questionCard,
+                {
+                  backgroundColor: isDark ? AURA.darkCard : AURA.white,
+                  borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+                },
+              ]}
+            >
               <TouchableOpacity
-                style={[styles.questionSelector, isDark && styles.questionSelectorDark, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : `${themeColors.primary}40` }]}
+                style={[
+                  styles.questionSelector,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : AURA.gray50,
+                    borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+                  },
+                ]}
                 onPress={() => {
                   setActiveQuestionSlot(slot);
                   setShowQuestionPicker(true);
                 }}
               >
                 <Text
-                  style={[styles.questionSelectorText, { color: selectedQuestionIndices[slot] !== -1 ? (isDark ? '#f1f5f9' : '#1e293b') : isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}80` }]}
+                  style={[
+                    styles.questionSelectorText,
+                    {
+                      color: selectedQuestionIndices[slot] !== -1
+                        ? (isDark ? AURA.white : AURA.gray900)
+                        : (isDark ? AURA.gray500 : AURA.gray400),
+                    },
+                  ]}
                   numberOfLines={2}
                 >
                   {selectedQuestionIndices[slot] !== -1
                     ? SECURITY_QUESTIONS_POOL[selectedQuestionIndices[slot]]
                     : `Select Question ${slot + 1}`}
                 </Text>
-                <Ionicons name="chevron-down" size={18} color={themeColors.primary} />
+                <Ionicons name="chevron-down" size={18} color={AURA.primary} />
               </TouchableOpacity>
               <TextInput
-                style={[styles.questionInput, isDark && styles.questionInputDark, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : `${themeColors.primary}40` }]}
+                style={[
+                  styles.questionInput,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : AURA.gray50,
+                    color: isDark ? AURA.white : AURA.gray900,
+                    borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+                  },
+                ]}
                 placeholder={`Answer ${slot + 1}`}
-                placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : `${themeColors.primary}80`}
+                placeholderTextColor={isDark ? AURA.gray500 : AURA.gray400}
                 value={questionAnswers[slot]}
                 onChangeText={(text) => {
                   const next = [...questionAnswers];
@@ -1035,51 +1295,79 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
             </View>
           ))}
           <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: themeColors.primary }]}
+            style={[styles.actionBtn]}
             onPress={handleSaveQuestions}
             disabled={isLoading}
           >
-            {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>Save Questions</Text>}
+            <LinearGradient
+              colors={[AURA.primary, AURA.accent]}
+              style={styles.actionBtnGrad}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              {isLoading ? <ActivityIndicator color={AURA.white} /> : <Text style={styles.actionBtnText}>Save Questions</Text>}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       )}
 
       <Modal visible={showQuestionPicker} transparent animationType="fade" onRequestClose={() => setShowQuestionPicker(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowQuestionPicker(false)}>
-          <View style={[styles.pickerSheet, isDark && styles.pickerSheetDark]}>
-            <Text style={[styles.pickerTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
+          <Pressable
+            style={[
+              styles.pickerSheet,
+              { backgroundColor: isDark ? AURA.darkCard : AURA.white },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.pickerHandle} />
+            <Text style={[styles.pickerTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>
               Select Question {activeQuestionSlot + 1}
             </Text>
             <ScrollView showsVerticalScrollIndicator={false} style={styles.pickerScroll}>
-              {SECURITY_QUESTIONS_POOL.filter((_, idx) => !selectedQuestionIndices.includes(idx) || selectedQuestionIndices[activeQuestionSlot] === idx).map((q, idx) => {
-                const originalIndex = SECURITY_QUESTIONS_POOL.indexOf(q);
-                const isSelected = selectedQuestionIndices[activeQuestionSlot] === originalIndex;
-                return (
-                  <TouchableOpacity
-                    key={originalIndex}
-                    style={[styles.pickerItem, isSelected && { backgroundColor: `${themeColors.primary}20` }]}
-                    onPress={() => {
-                      const next = [...selectedQuestionIndices];
-                      next[activeQuestionSlot] = originalIndex;
-                      setSelectedQuestionIndices(next);
-                      setShowQuestionPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.pickerItemText, { color: isDark ? '#f1f5f9' : '#1e293b' }, isSelected && { color: themeColors.primary, fontWeight: '700' }]}>
-                      {q}
-                    </Text>
-                    {isSelected && <Ionicons name="checkmark" size={20} color={themeColors.primary} />}
-                  </TouchableOpacity>
-                );
-              })}
+              {SECURITY_QUESTIONS_POOL
+                .filter((_, idx) => !selectedQuestionIndices.includes(idx) || selectedQuestionIndices[activeQuestionSlot] === idx)
+                .map((q) => {
+                  const originalIndex = SECURITY_QUESTIONS_POOL.indexOf(q);
+                  const isSelected = selectedQuestionIndices[activeQuestionSlot] === originalIndex;
+                  return (
+                    <TouchableOpacity
+                      key={originalIndex}
+                      style={[
+                        styles.pickerItem,
+                        isSelected && { backgroundColor: `${AURA.primary}15` },
+                      ]}
+                      onPress={() => {
+                        const next = [...selectedQuestionIndices];
+                        next[activeQuestionSlot] = originalIndex;
+                        setSelectedQuestionIndices(next);
+                        setShowQuestionPicker(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.pickerItemText,
+                          { color: isDark ? AURA.white : AURA.gray900 },
+                          isSelected && { color: AURA.primary, fontWeight: '700' },
+                        ]}
+                      >
+                        {q}
+                      </Text>
+                      {isSelected && <Ionicons name="checkmark" size={20} color={AURA.primary} />}
+                    </TouchableOpacity>
+                  );
+                })}
             </ScrollView>
-          </View>
+          </Pressable>
         </Pressable>
       </Modal>
     </AnimatedRe.View>
   );
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER — Biometric section
+     ═══════════════════════════════════════════════════════════════════════ */
+
   const renderBiometricSection = () => {
     const bioName = getBiometricTypeName();
     const bioConfig = availableBiometricTypes[0];
@@ -1090,44 +1378,72 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     return (
       <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
         <View style={styles.pinHeader}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => { setActiveSection('dashboard'); }}>
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#f1f5f9' : '#1e293b'} />
+          <TouchableOpacity
+            style={[styles.backBtn, {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : AURA.gray100,
+            }]}
+            onPress={() => setActiveSection('dashboard')}
+          >
+            <Ionicons name="arrow-back" size={22} color={isDark ? AURA.white : AURA.gray800} />
           </TouchableOpacity>
-          <Text style={[styles.pinHeaderTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>{bioName} Settings</Text>
+          <Text style={[styles.pinHeaderTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>{bioName} Settings</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        <View style={[styles.bioCard, isDark && styles.bioCardDark]}>
-          <BlurView intensity={isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-          <View style={[styles.bioIconCircle, { backgroundColor: bioConfig?.color + '20' || 'rgba(102,126,234,0.2)' }]}>
-            <Ionicons name={(bioConfig?.iconFilled || bioConfig?.icon || 'finger-print') as any} size={36} color={bioConfig?.color || themeColors.primary} />
+        <View
+          style={[
+            styles.bioCard,
+            {
+              backgroundColor: isDark ? AURA.darkCard : AURA.white,
+              borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[`${AURA.primary}10`, `${AURA.accent}04`, 'transparent']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+
+          <View
+            style={[
+              styles.bioIconCircle,
+              { backgroundColor: `${bioConfig?.color || AURA.primary}18` },
+            ]}
+          >
+            <Ionicons
+              name={(bioConfig?.iconFilled || bioConfig?.icon || 'finger-print') as any}
+              size={36}
+              color={bioConfig?.color || AURA.primary}
+            />
           </View>
-          <Text style={[styles.bioTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>{bioName}</Text>
-          <Text style={[styles.bioDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+          <Text style={[styles.bioTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>{bioName}</Text>
+          <Text style={[styles.bioDesc, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
             {bioConfig?.description || 'Use biometric authentication to unlock the app'}
           </Text>
 
-          {/* FIXED: Show proper status message with Setup link */}
           {!hasHardware ? (
-            <Text style={[styles.bioStatusText, { color: '#ef4444' }]}>
-              ⚠️ Biometric hardware not available on this device
-            </Text>
+            <View style={[styles.bioStatusBanner, { backgroundColor: `${AURA.danger}15` }]}>
+              <Ionicons name="alert-circle" size={16} color={AURA.danger} />
+              <Text style={[styles.bioStatusBannerText, { color: AURA.danger }]}>
+                Biometric hardware not available
+              </Text>
+            </View>
           ) : !isEnrolled ? (
-            <TouchableOpacity 
-              style={styles.bioStatusLink}
-              onPress={navigateToBiometricSetup}
-            >
-              <Text style={[styles.bioStatusText, { color: '#f59e0b' }]}>
-                ⚠️ Please set up biometrics in your device settings 
-              </Text>
-              <Text style={[styles.bioStatusLinkText, { color: themeColors.primary }]}>
-                Tap here to set up →
-              </Text>
+            <TouchableOpacity style={styles.bioStatusBanner} onPress={navigateToBiometricSetup}>
+              <View style={[styles.bioStatusBanner, { backgroundColor: `${AURA.warning}15` }]}>
+                <Ionicons name="alert-circle" size={16} color={AURA.warning} />
+                <Text style={[styles.bioStatusBannerText, { color: AURA.warning, flex: 1 }]}>
+                  Set up in device settings first
+                </Text>
+                <Ionicons name="arrow-forward" size={14} color={AURA.warning} />
+              </View>
             </TouchableOpacity>
           ) : null}
 
-          <View style={styles.bioToggleRow}>
-            <Text style={[styles.bioToggleLabel, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
+          <View style={[styles.bioToggleRow, { borderTopColor: isDark ? AURA.darkBorder : AURA.gray200 }]}>
+            <Text style={[styles.bioToggleLabel, { color: isDark ? AURA.white : AURA.gray900 }]}>
               Enable {bioName} Unlock
             </Text>
             <Switch
@@ -1137,126 +1453,171 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
                 handleToggleBiometric(value);
               }}
               disabled={biometricLoading || !hasHardware || !isEnrolled}
-              trackColor={{ false: '#d1d5db', true: themeColors.primary + '80' }}
-              thumbColor={bioEnabled ? themeColors.primary : '#f9fafb'}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : AURA.gray300, true: `${AURA.primary}80` }}
+              thumbColor={bioEnabled ? AURA.primary : AURA.white}
             />
           </View>
 
           {biometricLoading && (
             <View style={styles.bioLoadingContainer}>
-              <ActivityIndicator size="small" color={themeColors.primary} />
-              <Text style={[styles.bioLoadingText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+              <ActivityIndicator size="small" color={AURA.primary} />
+              <Text style={[styles.bioLoadingText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                 {bioEnabled ? 'Disabling...' : 'Enabling...'}
               </Text>
             </View>
           )}
 
           {bioEnabled && securitySettings.isPinEnabled && (
-            <AnimatedRe.View entering={FadeInUp.duration(400)} style={styles.bioPriorityBox}>
-              <Ionicons name="information-circle-outline" size={18} color={themeColors.primary} />
-              <Text style={[styles.bioPriorityText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                {bioName} is now your primary unlock method. PIN will be used as fallback.
+            <AnimatedRe.View entering={FadeInUp.duration(400)} style={[styles.bioPriorityBox, { backgroundColor: `${AURA.primary}10` }]}>
+              <Ionicons name="information-circle-outline" size={16} color={AURA.primary} />
+              <Text style={[styles.bioPriorityText, { color: isDark ? AURA.gray300 : AURA.gray700 }]}>
+                {bioName} is now your primary unlock method. PIN is fallback.
               </Text>
             </AnimatedRe.View>
           )}
 
           {bioEnabled && !securitySettings.isPinEnabled && (
-            <AnimatedRe.View entering={FadeInUp.duration(400)} style={[styles.bioPriorityBox, { backgroundColor: '#fef3c7' }]}>
-              <Ionicons name="warning-outline" size={18} color="#f59e0b" />
-              <Text style={[styles.bioPriorityText, { color: '#92400e' }]}>
-                No fallback method! If {bioName} fails, you may be locked out. Set a PIN for safety.
+            <AnimatedRe.View
+              entering={FadeInUp.duration(400)}
+              style={[styles.bioPriorityBox, { backgroundColor: `${AURA.warning}15` }]}
+            >
+              <Ionicons name="warning-outline" size={16} color={AURA.warning} />
+              <Text style={[styles.bioPriorityText, { color: AURA.warning }]}>
+                No fallback method! Set a PIN for safety.
               </Text>
             </AnimatedRe.View>
           )}
 
-          {/* FIXED: Setup button when not enrolled */}
           {!bioEnabled && !isEnrolled && hasHardware && (
             <TouchableOpacity
-              style={[styles.bioSetupButton, { backgroundColor: themeColors.primary }]}
+              style={styles.bioSetupBtn}
               onPress={navigateToBiometricSetup}
+              activeOpacity={0.85}
             >
-              <Ionicons name="finger-print" size={20} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={styles.bioSetupButtonText}>Set Up {bioName}</Text>
+              <LinearGradient
+                colors={[AURA.primary, AURA.accent]}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              <Ionicons name="finger-print" size={18} color={AURA.white} />
+              <Text style={styles.bioSetupBtnText}>Set Up {bioName}</Text>
             </TouchableOpacity>
           )}
 
           {!bioEnabled && !hasHardware && (
-            <TouchableOpacity
-              style={[styles.bioSetupButton, { backgroundColor: '#64748b' }]}
-              onPress={() => {
-                sweetAlert.info(
-                  'Not Supported',
-                  'This device does not support biometric authentication. You can use PIN instead.'
-                );
-              }}
-            >
-              <Text style={styles.bioSetupButtonText}>Device Not Supported</Text>
-            </TouchableOpacity>
+            <View style={[styles.bioSetupBtn, { backgroundColor: AURA.gray500 }]}>
+              <Text style={styles.bioSetupBtnText}>Device Not Supported</Text>
+            </View>
           )}
         </View>
       </AnimatedRe.View>
     );
   };
 
-  // ─── Render Timeout Section ────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════════════
+     RENDER — Timeout section
+     ═══════════════════════════════════════════════════════════════════════ */
+
   const renderTimeoutSection = () => (
     <AnimatedRe.View entering={SlideInRight.duration(400)} exiting={SlideOutLeft.duration(300)} style={styles.section}>
       <View style={styles.pinHeader}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setActiveSection('dashboard')}>
-          <Ionicons name="arrow-back" size={24} color={isDark ? '#f1f5f9' : '#1e293b'} />
+        <TouchableOpacity
+          style={[styles.backBtn, {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : AURA.gray100,
+          }]}
+          onPress={() => setActiveSection('dashboard')}
+        >
+          <Ionicons name="arrow-back" size={22} color={isDark ? AURA.white : AURA.gray800} />
         </TouchableOpacity>
-        <Text style={[styles.pinHeaderTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>Auto-Lock Timeout</Text>
+        <Text style={[styles.pinHeaderTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>Auto-Lock Timeout</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <Text style={[styles.timeoutDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+      <Text style={[styles.timeoutDesc, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
         Automatically lock the app after a period of inactivity
       </Text>
 
       <View style={styles.timeoutGrid}>
-        {AUTO_LOCK_OPTIONS.map((minutes) => (
-          <TouchableOpacity
-            key={minutes}
-            style={[
-              styles.timeoutOption,
-              selectedTimeout === minutes && { backgroundColor: themeColors.primary, borderColor: themeColors.primary },
-              isDark && selectedTimeout !== minutes && styles.timeoutOptionDark,
-            ]}
-            onPress={() => handleTimeoutChange(minutes)}
-            activeOpacity={0.8}
-          >
-            <Text
+        {AUTO_LOCK_OPTIONS.map((minutes) => {
+          const active = selectedTimeout === minutes;
+          return (
+            <TouchableOpacity
+              key={minutes}
               style={[
-                styles.timeoutOptionText,
-                selectedTimeout === minutes && { color: '#fff', fontWeight: '700' },
-                isDark && selectedTimeout !== minutes && { color: '#f1f5f9' },
+                styles.timeoutOption,
+                {
+                  backgroundColor: active ? AURA.primary : (isDark ? AURA.darkCard : AURA.white),
+                  borderColor: active ? AURA.primary : (isDark ? AURA.darkBorder : AURA.gray200),
+                },
               ]}
+              onPress={() => handleTimeoutChange(minutes)}
+              activeOpacity={0.8}
             >
-              {formatTimeout(minutes)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.timeoutOptionText,
+                  {
+                    color: active ? AURA.white : (isDark ? AURA.white : AURA.gray900),
+                    fontWeight: active ? '800' : '600',
+                  },
+                ]}
+              >
+                {formatTimeout(minutes)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      <View style={[styles.timeoutPreview, isDark && styles.timeoutPreviewDark]}>
-        <Ionicons name="time-outline" size={20} color={themeColors.primary} />
-        <Text style={[styles.timeoutPreviewText, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
-          App will lock after <Text style={{ fontWeight: '700', color: themeColors.primary }}>{formatTimeoutLabel(selectedTimeout)}</Text> of inactivity
+      <View
+        style={[
+          styles.timeoutPreview,
+          {
+            backgroundColor: isDark ? AURA.darkCard : AURA.white,
+            borderColor: isDark ? AURA.darkBorder : AURA.gray200,
+          },
+        ]}
+      >
+        <View style={[styles.timeoutIcon, { backgroundColor: `${AURA.primary}15` }]}>
+          <Ionicons name="time-outline" size={18} color={AURA.primary} />
+        </View>
+        <Text style={[styles.timeoutPreviewText, { color: isDark ? AURA.gray300 : AURA.gray700 }]}>
+          App will lock after{' '}
+          <Text style={{ fontWeight: '800', color: AURA.primary }}>{formatTimeoutLabel(selectedTimeout)}</Text>{' '}
+          of inactivity
         </Text>
       </View>
     </AnimatedRe.View>
   );
 
-  
+  /* ═══════════════════════════════════════════════════════════════════════
+     MAIN RENDER
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  const bgColors = isDark
+    ? [AURA.darkBg, '#12121e', AURA.darkBg]
+    : ['#f8faff', '#eef0f5', '#e4e8f0'];
 
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
+    <View style={[styles.container, { backgroundColor: isDark ? AURA.darkBg : AURA.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <LinearGradient colors={bgColors} style={StyleSheet.absoluteFill} />
+
+      {/* Aura glows */}
       <LinearGradient
-        colors={isDark ? ['#0f172a', '#1e293b', '#0f172a'] : [themeColors.primary, themeColors.secondary, '#f093fb']}
-        style={styles.gradient}
+        colors={[`${AURA.primary}${isDark ? '28' : '14'}`, 'transparent']}
+        style={styles.auraGlowTopLeft}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
+        pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[`${AURA.accent}${isDark ? '24' : '12'}`, 'transparent']}
+        style={styles.auraGlowBottomRight}
+        start={{ x: 1, y: 1 }}
+        end={{ x: 0, y: 0 }}
+        pointerEvents="none"
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
@@ -1268,6 +1629,18 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Title */}
+          {activeSection === 'dashboard' && (
+            <AnimatedRe.View entering={FadeInDown.duration(500).springify()} style={styles.dashHeader}>
+              <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.dashTitle}>
+                SECURITY
+              </GradientText>
+              <Text style={[styles.dashSubtitle, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
+                Protect your account and data
+              </Text>
+            </AnimatedRe.View>
+          )}
+
           {activeSection === 'dashboard' && renderDashboard()}
           {activeSection === 'pin' && renderPinSection()}
           {activeSection === 'questions' && renderQuestionsSection()}
@@ -1279,102 +1652,390 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  gradient: { ...StyleSheet.absoluteFill, opacity: 0.15 },
+  container: { flex: 1, overflow: 'hidden' },
   flex: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: 20 },
+
+  auraGlowTopLeft: {
+    position: 'absolute',
+    top: -120,
+    left: -100,
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+  },
+  auraGlowBottomRight: {
+    position: 'absolute',
+    bottom: -140,
+    right: -120,
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+  },
+
   section: { paddingTop: 8 },
-  sectionHeader: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 24, marginBottom: 12, marginLeft: 4 },
 
-  scoreCard: { borderRadius: 24, padding: 24, marginBottom: 8, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  scoreCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  scoreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  scoreTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
-  scoreBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  scoreBadgeText: { fontSize: 13, fontWeight: '700' },
-  scoreBarContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  scoreBar: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden' },
-  scoreBarFill: { height: '100%', borderRadius: 4 },
-  scorePercent: { fontSize: 16, fontWeight: '800', minWidth: 40 },
-  scoreHint: { fontSize: 13, marginTop: 12, lineHeight: 18 },
+  /* Dashboard header */
+  dashHeader: { alignItems: 'center', marginBottom: 20, marginTop: 4 },
+  dashTitle: { fontSize: 24, fontWeight: '900', letterSpacing: 1.4 },
+  dashSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 4 },
 
-  card: { borderRadius: 20, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 8 },
-  cardDark: { borderColor: 'rgba(255,255,255,0.06)' },
-  cardGlow: { ...StyleSheet.absoluteFill, opacity: 0.4 },
-  cardContent: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 14 },
-  cardIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  cardText: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 3 },
-  cardSubtitle: { fontSize: 13, lineHeight: 18 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, marginRight: 4 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 12, fontWeight: '700' },
+  /* Section headers */
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 24,
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  sectionIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
 
-  pinHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, paddingTop: 8 },
-  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  pinHeaderTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  pinCard: { borderRadius: 28, padding: 32, alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
-  pinCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  pinSubtitle: { fontSize: 15, textAlign: 'center', marginBottom: 28, lineHeight: 22 },
+  /* Score card */
+  scoreCard: {
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    ...Platform.select({
+      ios: { shadowColor: AURA.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 20 },
+      android: { elevation: 5 },
+    }),
+  },
+  scoreGlow: {
+    position: 'absolute',
+    top: -60,
+    left: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+  },
+  scoreContent: { flexDirection: 'row', alignItems: 'center', zIndex: 1 },
+  scoreTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  scoreBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  scoreDot: { width: 6, height: 6, borderRadius: 3 },
+  scoreBadgeText: { fontSize: 12, fontWeight: '700' },
+  scoreHint: { fontSize: 12, marginTop: 10, lineHeight: 17 },
+  scoreBarWrap: { marginTop: 10 },
+  scoreBar: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  scoreBarFill: { height: '100%', borderRadius: 3 },
+
+  /* Card */
+  card: {
+    borderRadius: 18,
+    marginBottom: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 18 },
+      android: { elevation: 4 },
+    }),
+  },
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
+  },
+  cardIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardText: { flex: 1, gap: 2 },
+  cardTitle: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
+  cardSubtitle: { fontSize: 12, lineHeight: 17 },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginRight: 2,
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+
+  /* PIN header */
+  pinHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    paddingTop: 8,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinHeaderTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+
+  /* PIN card */
+  pinCard: {
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  pinSubtitle: { fontSize: 14, textAlign: 'center', marginBottom: 24, lineHeight: 20 },
   pinDots: { flexDirection: 'row', justifyContent: 'center', gap: 18 },
+  pinDotWrap: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pinDotGlow: { position: 'absolute', width: 24, height: 24, borderRadius: 12, opacity: 0.4 },
   pinDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2.5 },
-  hintBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 20, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: 12 },
-  hintText: { fontSize: 14, fontWeight: '600' },
-  keypad: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16, paddingHorizontal: 20 },
-  keypadBtn: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.95)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
-  keypadBtnDark: { backgroundColor: 'rgba(40,40,50,0.9)' },
-  keypadBtnText: { fontSize: 26, fontWeight: '600', color: '#1e293b' },
-  keypadBtnTextDark: { color: '#f1f5f9' },
-  pinActions: { flexDirection: 'row', gap: 12, marginTop: 28, paddingHorizontal: 20 },
-  pinActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 4 },
-  pinActionText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  questionsContainer: { gap: 14 },
-  questionsInfo: { fontSize: 14, textAlign: 'center', marginBottom: 8, lineHeight: 20 },
-  questionCard: { backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
-  questionCardDark: { backgroundColor: 'rgba(30,41,59,0.8)', borderColor: 'rgba(255,255,255,0.06)' },
-  questionLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
-  questionText: { fontSize: 15, fontWeight: '600', marginBottom: 10, lineHeight: 20 },
-  questionSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, marginBottom: 8 },
-  questionSelectorDark: { backgroundColor: 'rgba(30,41,59,0.8)' },
-  questionSelectorText: { fontSize: 14, fontWeight: '500', flex: 1, marginRight: 8, lineHeight: 20 },
-  questionInput: { backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontWeight: '500', borderWidth: 1, color: '#1e293b' },
-  questionInputDark: { backgroundColor: 'rgba(30,41,59,0.8)', color: '#f1f5f9' },
-  actionBtn: { borderRadius: 18, paddingVertical: 16, alignItems: 'center', marginTop: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 5 },
-  actionBtnText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
+  hintBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: `${AURA.success}15`,
+    borderRadius: 12,
+  },
+  hintText: { fontSize: 13, fontWeight: '600' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  pickerSheet: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: height * 0.6 },
-  pickerSheetDark: { backgroundColor: '#1e293b' },
-  pickerTitle: { fontSize: 18, fontWeight: '800', marginBottom: 16, textAlign: 'center' },
-  pickerScroll: { maxHeight: 300 },
-  pickerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, marginBottom: 4 },
-  pickerItemText: { fontSize: 15, fontWeight: '500', flex: 1, marginRight: 8, lineHeight: 20 },
+  /* Keypad */
+  keypad: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 14,
+    paddingHorizontal: 20,
+  },
+  keypadBtn: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  keypadBtnText: { fontSize: 24, fontWeight: '700' },
 
-  bioCard: { borderRadius: 28, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
-  bioCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  bioIconCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  bioTitle: { fontSize: 22, fontWeight: '800', marginBottom: 6 },
-  bioDesc: { fontSize: 14, textAlign: 'center', marginBottom: 24, lineHeight: 20, paddingHorizontal: 20 },
-  bioStatusText: { fontSize: 14, textAlign: 'center', marginBottom: 16, paddingHorizontal: 10, fontWeight: '600' },
-  bioStatusLink: { alignItems: 'center', marginBottom: 16 },
-  bioStatusLinkText: { fontSize: 14, fontWeight: '700', marginTop: 4, textDecorationLine: 'underline' },
-  bioToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingVertical: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
-  bioToggleLabel: { fontSize: 16, fontWeight: '600' },
-  bioLoadingContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
-  bioLoadingText: { fontSize: 14, fontWeight: '500' },
-  bioPriorityBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 16, padding: 14, backgroundColor: 'rgba(102,126,234,0.08)', borderRadius: 14, width: '100%' },
-  bioPriorityText: { fontSize: 13, lineHeight: 18, flex: 1 },
-  bioSetupButton: { borderRadius: 16, paddingVertical: 14, paddingHorizontal: 24, marginTop: 16, width: '100%', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
-  bioSetupButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  pinActions: { flexDirection: 'row', gap: 12, marginTop: 24, paddingHorizontal: 20 },
+  pinActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 14,
+  },
+  pinActionText: { color: AURA.white, fontSize: 14, fontWeight: '700' },
 
-  timeoutDesc: { fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20, paddingHorizontal: 20 },
-  timeoutGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginBottom: 24 },
-  timeoutOption: { width: (width - 72) / 3, paddingVertical: 16, borderRadius: 16, alignItems: 'center', borderWidth: 2, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: 'rgba(255,255,255,0.9)' },
-  timeoutOptionDark: { backgroundColor: 'rgba(30,41,59,0.8)', borderColor: 'rgba(255,255,255,0.1)' },
-  timeoutOptionText: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
-  timeoutPreview: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 18, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
-  timeoutPreviewDark: { backgroundColor: 'rgba(30,41,59,0.8)', borderColor: 'rgba(255,255,255,0.06)' },
-  timeoutPreviewText: { fontSize: 14, lineHeight: 20, flex: 1 },
+  /* Questions */
+  questionsContainer: { gap: 12 },
+  questionsInfo: { fontSize: 13, textAlign: 'center', marginBottom: 6, lineHeight: 19 },
+  questionCard: {
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+  },
+  questionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  questionText: { fontSize: 14, fontWeight: '600', marginBottom: 10, lineHeight: 20 },
+  questionSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  questionSelectorText: { fontSize: 13, fontWeight: '500', flex: 1, marginRight: 8, lineHeight: 19 },
+  questionInput: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    fontWeight: '500',
+    borderWidth: 1,
+  },
+  actionBtn: {
+    borderRadius: 16,
+    marginTop: 8,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: AURA.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 14 },
+      android: { elevation: 6 },
+    }),
+  },
+  actionBtnGrad: { alignItems: 'center', paddingVertical: 15 },
+  actionBtnText: { color: AURA.white, fontSize: 15, fontWeight: '700', letterSpacing: 0.3 },
+
+  /* Picker modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 20,
+    paddingBottom: 40,
+    maxHeight: height * 0.65,
+  },
+  pickerHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: AURA.gray400,
+    alignSelf: 'center',
+    marginBottom: 14,
+    opacity: 0.5,
+  },
+  pickerTitle: { fontSize: 16, fontWeight: '800', marginBottom: 14, textAlign: 'center' },
+  pickerScroll: { maxHeight: 320 },
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  pickerItemText: { fontSize: 14, fontWeight: '500', flex: 1, marginRight: 8, lineHeight: 19 },
+
+  /* Biometric */
+  bioCard: {
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  bioIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  bioTitle: { fontSize: 20, fontWeight: '800', marginBottom: 6 },
+  bioDesc: { fontSize: 13, textAlign: 'center', marginBottom: 20, lineHeight: 19, paddingHorizontal: 16 },
+  bioStatusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 14,
+    width: '100%',
+  },
+  bioStatusBannerText: { fontSize: 12, fontWeight: '600', flex: 1 },
+  bioToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+  },
+  bioToggleLabel: { fontSize: 15, fontWeight: '600' },
+  bioLoadingContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  bioLoadingText: { fontSize: 13, fontWeight: '500' },
+  bioPriorityBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 12,
+    width: '100%',
+  },
+  bioPriorityText: { fontSize: 12, lineHeight: 17, flex: 1, fontWeight: '500' },
+  bioSetupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 24,
+    marginTop: 14,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  bioSetupBtnText: { color: AURA.white, fontSize: 14, fontWeight: '700' },
+
+  /* Timeout */
+  timeoutDesc: { fontSize: 13, textAlign: 'center', marginBottom: 20, lineHeight: 19, paddingHorizontal: 20 },
+  timeoutGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  timeoutOption: {
+    width: (width - 72) / 3,
+    paddingVertical: 15,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  timeoutOptionText: { fontSize: 15, fontWeight: '600' },
+  timeoutPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  timeoutIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeoutPreviewText: { fontSize: 13, lineHeight: 19, flex: 1 },
 });

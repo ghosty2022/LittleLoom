@@ -1,20 +1,5 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useAuth } from '../../context/AuthContext';
 import { ActivityIndicator, Dimensions, Image, Keyboard, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,10 +24,30 @@ const { width } = Dimensions.get('window');
 
 WebBrowser.maybeCompleteAuthSession();
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
 
 const REMEMBER_ME_EMAIL_KEY = '@littleloom_remember_me_email';
 const REMEMBER_ME_FLAG_KEY = '@littleloom_remember_me_enabled';
-
 
 const GOOGLE_CLIENT_ID = Platform.select({
   ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
@@ -56,7 +61,6 @@ const redirectUri = AuthSession.makeRedirectUri({
   scheme: 'littleloom',
   useProxy: true,
 });
-
 
 const isValidEmail = (email: string): boolean => {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -73,19 +77,101 @@ const isValidUsername = (username: string): boolean => {
   return trimmed.length >= 3 && /^[a-zA-Z0-9_.]+$/.test(trimmed);
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   GradientText
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GradientText = React.memo(({
+  children, style, colors = ['#ffffff', '#fbcfe8', '#c7d2fe'],
+}: {
+  children: React.ReactNode; style?: any; colors?: string[];
+}) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return (
+          <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>
+            {l}
+          </Text>
+        );
+      })}
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Pulsing Biometric Button
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const PulsingBiometric = React.memo(({
+  onPress, disabled, isDark,
+}: {
+  onPress: () => void; disabled?: boolean; isDark: boolean;
+}) => {
+  const pulse = useSharedValue(1);
+  const glow = useSharedValue(0.4);
+
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    glow.value = withRepeat(withSequence(withTiming(0.85, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, [pulse, glow]);
+
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: glow.value,
+    transform: [{ scale: pulse.value }],
+  }));
+
+  return (
+    <TouchableOpacity
+      style={styles.biometricButton}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.85}
+    >
+      <View style={styles.biometricIconWrap}>
+        <Animated.View style={[styles.biometricGlow, glowStyle]} pointerEvents="none" />
+        <LinearGradient
+          colors={['rgba(99,102,241,0.25)', 'rgba(236,72,153,0.15)']}
+          style={styles.biometricIconBg}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <Ionicons name="finger-print" size={30} color={AURA.primary} />
+        </LinearGradient>
+      </View>
+      <Text style={[styles.biometricTitle, { color: isDark ? AURA.primaryLight : AURA.primary }]}>
+        Use Biometrics
+      </Text>
+      <Text style={[styles.biometricSubtitle, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
+        Tap to unlock instantly
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function LoginScreen({ navigation, route }: LoginScreenProps) {
-  
   const [activeTab, setActiveTab] = useState<'signin' | 'join'>('signin');
 
-  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [rememberMeLoaded, setRememberMeLoaded] = useState(false);
 
-  
   const [inviteCode, setInviteCode] = useState('');
   const [joinFullName, setJoinFullName] = useState('');
   const [joinEmail, setJoinEmail] = useState('');
@@ -133,7 +219,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     findUserByEmailOrUsernameOrPhone,
   } = useAuth();
 
-  
   const {
     validateInviteCode: validateInviteCodeFromFamily,
     getInviteCodeById,
@@ -146,7 +231,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
   const customization = useCustomization();
   const isDark = customization?.darkMode ?? false;
-  const themeColors = customization?.themeColors ?? { primary: '#667eea', secondary: '#764ba2' };
+  const themeColors = customization?.themeColors ?? { primary: '#6366f1', secondary: '#8b5cf6' };
   const triggerHaptic = customization?.triggerHaptic ?? (() => {});
 
   const {
@@ -172,13 +257,11 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   const socialAuthInProgress = useRef(false);
   const navigationAttemptedRef = useRef(false);
 
-  
   const isAuthenticatedRef = useRef(isAuthenticated);
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
 
-  
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -202,7 +285,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     return () => { cancelled = true; };
   }, []);
 
-  
   const persistRememberMe = useCallback(
     async (enabled: boolean, emailToSave?: string) => {
       try {
@@ -224,7 +306,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     []
   );
 
-  
   const [googleRequest, googleResponse, googlePromptAsync] = AuthSession.useAuthRequest(
     {
       clientId: GOOGLE_CLIENT_ID,
@@ -251,7 +332,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   );
 
-  
   useEffect(() => {
     const code = (route.params as any)?.inviteCode;
     if (code) {
@@ -262,7 +342,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
   const userName = userProfile?.fullName || 'there';
 
-  
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { authentication } = googleResponse;
@@ -279,7 +358,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   }, [googleResponse]);
 
-  
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { authentication } = fbResponse;
@@ -296,7 +374,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   }, [fbResponse]);
 
-  
   const handleGoogleUserInfo = async (accessToken: string) => {
     try {
       const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
@@ -317,7 +394,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  
   const handleFacebookUserInfo = async (accessToken: string) => {
     try {
       const response = await fetch(
@@ -343,7 +419,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  
   const handleSocialLogin = async (
     provider: 'google' | 'apple' | 'facebook',
     email: string,
@@ -381,7 +456,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  
   useEffect(() => {
     return () => {
       isMounted.current = false;
@@ -393,28 +467,20 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     };
   }, []);
 
-  
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) return;
     if (isProcessing) return;
     if (navigationAttemptedRef.current) return;
-
-    
-    
     if (loginAttempted.current) return;
 
     navigationAttemptedRef.current = true;
 
-    const parent2Addressed =
-      hasParent2 === true || hasParent2 === 'skipped';
-    const babyAddressed =
-      hasBaby === true || hasBaby === 'skipped';
+    const parent2Addressed = hasParent2 === true || hasParent2 === 'skipped';
+    const babyAddressed = hasBaby === true || hasBaby === 'skipped';
 
     const timer = setTimeout(() => {
       if (!isMounted.current) return;
-
-      
       if (loginAttempted.current) return;
 
       forceUnlock().catch(() => {});
@@ -457,7 +523,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     );
   }, []);
 
-  
   useEffect(() => {
     if (activeTab !== 'join') return;
     if (codeDebounceTimer.current) clearTimeout(codeDebounceTimer.current);
@@ -476,7 +541,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     codeDebounceTimer.current = setTimeout(async () => {
       try {
         console.log('[Login] 🔍 Validating invite code:', trimmed);
-
         const partialInfo = await getPartialSignupInfo(trimmed);
         console.log('[Login] 📊 Partial signup info:', partialInfo);
 
@@ -562,7 +626,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }, 500);
   }, [inviteCode, activeTab, validateInviteCodeFromFamily, getInviteCodeById, getPartialSignupInfo, showInfo, showAlert]);
 
-  
   const handlePartialSignupRecovery = useCallback(async () => {
     if (isProcessing || authLoading) return;
 
@@ -670,7 +733,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     forceUnlock,
   ]);
 
-  
   const handleLogin = useCallback(async () => {
     loginAttempted.current = false;
 
@@ -712,9 +774,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('medium');
 
     try {
-      // signIn() resolves email | username | phone → canonical email internally.
-      // We only do a pre-resolve so we can show a helpful error and so the
-      // biometric credentials get saved with the canonical email.
       let userIdentifier = trimmedIdentifier;
 
       if (!isEmail) {
@@ -735,15 +794,12 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           }
         } catch (e) {
           if (__DEV__) console.warn('[Login] Identifier resolve failed:', e);
-          // Fall through: signIn() will also try to resolve internally.
-          // If it can't, it returns { success: false } with a helpful message.
         }
       }
 
       const success = await signIn(userIdentifier, password);
 
       if (success && isMounted.current) {
-        
         await persistRememberMe(rememberMe, userIdentifier);
 
         showSuccess(
@@ -752,9 +808,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         );
         forceUnlock().catch(() => {});
 
-        // Offer biometric enrollment with the canonical email, NOT the
-        // identifier the user typed. loginWithBiometric() must be able to
-        // hand a real email to Supabase.
         if (
           isBiometricAvailable &&
           !(await hasBiometricLoginCredentials()) &&
@@ -762,19 +815,11 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         ) {
           promptEnableBiometricLogin(userIdentifier, password);
         }
-
-        
-        
       } else if (isMounted.current) {
-        
-        
-        
-        
         try {
           await supabase.auth.signOut({ scope: 'local' });
         } catch {}
 
-        
         showError(
           'Login Failed',
           'Invalid credentials. Please try again.'
@@ -813,7 +858,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     showSuccess,
   ]);
 
-  
   const handleJoinFamily = useCallback(async () => {
     joinAttempted.current = false;
 
@@ -924,7 +968,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           await markSignupComplete(trimmedCode, userProfile.id);
         }
 
-        
         await persistRememberMe(rememberMe, joinEmail.trim());
 
         showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
@@ -941,7 +984,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   }, [inviteCode, codeValidated, joinFullName, joinEmail, joinPassword, joinConfirmPassword, signUpWithInviteCode, findUserByEmail, getPartialSignupInfo, markSignupComplete, userProfile, isProcessing, authLoading, isAuthenticated, setupComplete, triggerHaptic, showError, showSuccess, showInfo, confirm, forceUnlock, navigation, rememberMe, persistRememberMe]);
 
-  
   const handleBiometricLogin = useCallback(async () => {
     loginAttempted.current = false;
 
@@ -1019,7 +1061,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     );
   };
 
-  
   useEffect(() => {
     if (biometricCheckComplete.current) return;
 
@@ -1057,7 +1098,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     transform: [{ translateY: formTranslateY.value }],
   }));
 
-  
   const handleGoogleLogin = async () => {
     if (socialAuthInProgress.current) return;
     socialAuthInProgress.current = true;
@@ -1091,24 +1131,20 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     }
   };
 
-  
   const handleScanQR = useCallback(() => {
     triggerHaptic('light');
     navigation.navigate('QRScanner' as never);
   }, [navigation, triggerHaptic]);
 
-  
   const handleGoToSignUp = useCallback(() => {
     triggerHaptic('light');
     navigation.navigate('SignUp');
   }, [navigation, triggerHaptic]);
 
-  
   const handleToggleRememberMe = useCallback(() => {
     triggerHaptic('light');
     setRememberMe((prev) => {
       const next = !prev;
-      
       if (!next) {
         persistRememberMe(false).catch(() => {});
       }
@@ -1116,9 +1152,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     });
   }, [persistRememberMe, triggerHaptic]);
 
-  
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8faff' }]}>
+    <View style={[styles.container, { backgroundColor: isDark ? AURA.darkBg : '#f8faff' }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <UniversalSpinner
@@ -1130,11 +1165,30 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         blur={true}
       />
 
+      {/* Aura gradient */}
       <LinearGradient
-        colors={isDark ? ['#0f172a', '#1e293b', '#334155'] : ['#667eea', '#764ba2', '#f093fb']}
-        style={styles.gradient}
+        colors={isDark
+          ? ['#0c0a09', '#1a1428', '#0c0a09']
+          : ['#6366f1', '#8b5cf6', '#ec4899']}
+        style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
+      />
+
+      {/* Aura glows */}
+      <LinearGradient
+        colors={['rgba(255,255,255,0.22)', 'transparent']}
+        style={styles.auraGlowTopLeft}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        pointerEvents="none"
+      />
+      <LinearGradient
+        colors={['rgba(255,255,255,0.14)', 'transparent']}
+        style={styles.auraGlowBottomRight}
+        start={{ x: 1, y: 1 }}
+        end={{ x: 0, y: 0 }}
+        pointerEvents="none"
       />
 
       <KeyboardAvoidingView
@@ -1149,50 +1203,53 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ─── Logo ─── */}
+          {/* Logo */}
           <Animated.View style={[styles.logoContainer, logoStyle]}>
             <View style={styles.logoFloatWrap}>
+              <View style={styles.logoGlow} />
               <Image
                 source={require('../../../assets/logo.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.logoText}>LittleLoom</Text>
+            <GradientText colors={['#ffffff', '#fbcfe8', '#c7d2fe']} style={styles.logoText}>
+              LittleLoom
+            </GradientText>
             <Text style={styles.logoTagline}>Track every precious moment</Text>
           </Animated.View>
 
-          {/* ─── Form Card - Glass UI ─── */}
+          {/* Form card */}
           <Animated.View style={[styles.formContainer, formStyle]}>
             <BlurView intensity={isDark ? 40 : 80} style={styles.glassCard} tint={isDark ? 'dark' : 'light'}>
               <LinearGradient
                 colors={
                   isDark
-                    ? ['rgba(30,41,59,0.9)', 'rgba(51,65,85,0.8)']
-                    : ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.85)']
+                    ? ['rgba(30,30,40,0.92)', 'rgba(50,50,60,0.85)']
+                    : ['rgba(255,255,255,0.96)', 'rgba(255,255,255,0.88)']
                 }
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               />
 
-              <Text style={[styles.welcomeText, { color: isDark ? '#fff' : '#1e293b' }]}>
+              <Text style={[styles.welcomeText, { color: isDark ? AURA.white : AURA.gray900 }]}>
                 {activeTab === 'signin' ? `Welcome Back${userName !== 'there' ? `, ${userName}` : ''}` : 'Join Family'}
               </Text>
 
-              {/* ─── TAB SWITCHER ─── */}
-              <View style={[styles.tabContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(102,126,234,0.08)' }]}>
+              {/* Tab Switcher */}
+              <View style={[styles.tabContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(99,102,241,0.08)' }]}>
                 <TouchableOpacity
                   style={[
                     styles.tabButton,
-                    activeTab === 'signin' && [styles.tabButtonActive, { backgroundColor: isDark ? 'rgba(102,126,234,0.4)' : '#667eea' }],
+                    activeTab === 'signin' && { backgroundColor: AURA.primary },
                   ]}
                   onPress={() => setActiveTab('signin')}
                   disabled={isLoading}
                 >
                   <Text style={[
                     styles.tabText,
-                    { color: activeTab === 'signin' ? '#fff' : isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }
+                    { color: activeTab === 'signin' ? AURA.white : isDark ? 'rgba(255,255,255,0.6)' : AURA.gray500 },
                   ]}>
                     Sign In
                   </Text>
@@ -1200,14 +1257,14 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                 <TouchableOpacity
                   style={[
                     styles.tabButton,
-                    activeTab === 'join' && [styles.tabButtonActive, { backgroundColor: isDark ? 'rgba(34,197,94,0.4)' : '#22c55e' }],
+                    activeTab === 'join' && { backgroundColor: AURA.success },
                   ]}
                   onPress={() => setActiveTab('join')}
                   disabled={isLoading}
                 >
                   <Text style={[
                     styles.tabText,
-                    { color: activeTab === 'join' ? '#fff' : isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }
+                    { color: activeTab === 'join' ? AURA.white : isDark ? 'rgba(255,255,255,0.6)' : AURA.gray500 },
                   ]}>
                     Join Family
                   </Text>
@@ -1215,9 +1272,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
               </View>
 
               {activeTab === 'signin' ? (
-                // ─── SIGN IN FORM ──────────────────────────────────────
                 <>
-                  {/* ─── Social Login Options ─── */}
+                  {/* Social */}
                   <View style={styles.socialIconsContainer}>
                     <TouchableOpacity
                       style={[styles.socialIconButton, { borderColor: 'rgba(219,68,55,0.2)' }]}
@@ -1235,7 +1291,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         disabled={isLoading}
                         activeOpacity={0.8}
                       >
-                        <Image source={require('../../../assets/social/apple.png')} style={[styles.socialIcon, isDark && { tintColor: '#FFFFFF' }]} resizeMode="contain" />
+                        <Image source={require('../../../assets/social/apple.png')} style={[styles.socialIcon, isDark && { tintColor: AURA.white }]} resizeMode="contain" />
                       </TouchableOpacity>
                     )}
 
@@ -1251,42 +1307,32 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
                   <View style={styles.divider}>
                     <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-                    <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                    <Text style={[styles.dividerText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                       or sign in with email
                     </Text>
                     <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
                   </View>
 
-                  {/* ─── Biometric Login Button ─── */}
+                  {/* Biometric */}
                   {showBiometricButton && (
                     <Animated.View entering={FadeInUp.delay(200)} style={styles.biometricSection}>
-                      <TouchableOpacity
-                        style={styles.biometricButton}
-                        onPress={handleBiometricLogin}
-                        disabled={isLoading}
-                        activeOpacity={0.8}
-                      >
-                        <View style={styles.biometricIconWrapper}>
-                          <LinearGradient
-                            colors={['rgba(102,126,234,0.2)', 'rgba(118,75,162,0.1)']}
-                            style={styles.biometricIconBg}
-                          >
-                            <Ionicons name="finger-print" size={28} color="#667eea" />
-                          </LinearGradient>
-                        </View>
-                        <Text style={styles.biometricTitle}>Use Biometrics</Text>
-                        <Text style={styles.biometricSubtitle}>Tap to unlock instantly</Text>
-                      </TouchableOpacity>
+                      <PulsingBiometric onPress={handleBiometricLogin} disabled={isLoading} isDark={isDark} />
                     </Animated.View>
                   )}
 
-                  {/* ─── Email/Username/Phone Input ─── */}
-                  <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                    <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                  {/* Identifier input */}
+                  <View style={[
+                    styles.inputContainer,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)',
+                    },
+                  ]}>
+                    <Ionicons name="person-outline" size={20} color={AURA.primary} style={styles.inputIcon} />
                     <TextInput
-                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                      style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                       placeholder="Email, username, or phone"
-                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.5)'}
                       value={email}
                       onChangeText={setEmail}
                       autoCapitalize="none"
@@ -1296,13 +1342,19 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     />
                   </View>
 
-                  {/* ─── Password Input ─── */}
-                  <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                    <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                  {/* Password input */}
+                  <View style={[
+                    styles.inputContainer,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)',
+                    },
+                  ]}>
+                    <Ionicons name="lock-closed-outline" size={20} color={AURA.primary} style={styles.inputIcon} />
                     <TextInput
-                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                      style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                       placeholder="Password"
-                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.5)'}
                       value={password}
                       onChangeText={setPassword}
                       secureTextEntry={!showPassword}
@@ -1320,12 +1372,12 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                       <Ionicons
                         name={showPassword ? 'eye-outline' : 'eye-off-outline'}
                         size={20}
-                        color="#667eea"
+                        color={AURA.primary}
                       />
                     </TouchableOpacity>
                   </View>
 
-                  {/* ─── Remember Me & Forgot Password ─── */}
+                  {/* Remember / Forgot */}
                   <View style={styles.rowContainer}>
                     <TouchableOpacity
                       style={styles.rememberMeContainer}
@@ -1333,10 +1385,10 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                       disabled={isLoading || !rememberMeLoaded}
                       activeOpacity={0.7}
                     >
-                      <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                        {rememberMe && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      <View style={[styles.checkbox, rememberMe && { backgroundColor: AURA.primary, borderColor: AURA.primary }]}>
+                        {rememberMe && <Ionicons name="checkmark" size={14} color={AURA.white} />}
                       </View>
-                      <Text style={[styles.rememberMeText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                      <Text style={[styles.rememberMeText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                         Remember me
                       </Text>
                     </TouchableOpacity>
@@ -1345,82 +1397,92 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                       onPress={() => navigation.navigate('ForgotPassword')}
                       disabled={isLoading}
                     >
-                      <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                      <Text style={[styles.forgotPasswordText, { color: isDark ? AURA.primaryLight : AURA.primary }]}>
+                        Forgot Password?
+                      </Text>
                     </TouchableOpacity>
                   </View>
 
-                  {/* ─── Login Button ─── */}
+                  {/* Login button */}
                   <TouchableOpacity
                     style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
                     onPress={handleLogin}
                     disabled={isLoading}
-                    activeOpacity={0.8}
+                    activeOpacity={0.85}
                   >
                     <LinearGradient
-                      colors={['#667eea', '#764ba2']}
+                      colors={[AURA.primary, AURA.accent]}
                       style={styles.loginGradient}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                     >
                       {isLoading ? (
-                        <ActivityIndicator color="white" size="small" />
+                        <ActivityIndicator color={AURA.white} size="small" />
                       ) : (
                         <Text style={styles.loginText}>Sign In</Text>
                       )}
                     </LinearGradient>
                   </TouchableOpacity>
 
-                  {/* ─── Sign up link ─── */}
                   <View style={styles.signupLinkContainer}>
-                    <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                    <Text style={[styles.signupLinkText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                       Don't have an account?
                     </Text>
                     <TouchableOpacity onPress={() => navigation.navigate('SignUp')} disabled={isLoading}>
-                      <Text style={[styles.signupLink, { color: '#667eea' }]}>Sign Up</Text>
+                      <Text style={[styles.signupLink, { color: isDark ? AURA.primaryLight : AURA.primary }]}>
+                        Sign Up
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </>
               ) : (
-                // ─── JOIN FAMILY FORM ──────────────────────────────────
                 <>
                   <View style={styles.joinHeader}>
-                    <Ionicons name="people-outline" size={28} color="#22c55e" />
-                    <Text style={[styles.joinTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
+                    <View style={[styles.joinIconWrap, { backgroundColor: `${AURA.success}18` }]}>
+                      <Ionicons name="people-outline" size={26} color={AURA.success} />
+                    </View>
+                    <Text style={[styles.joinTitle, { color: isDark ? AURA.white : AURA.gray900 }]}>
                       Join Your Family
                     </Text>
-                    <Text style={[styles.joinSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                    <Text style={[styles.joinSubtitle, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                       Enter the invite code shared by your family member
                     </Text>
                   </View>
 
-                  {/* ─── QR SCAN BUTTON ─── */}
+                  {/* QR button */}
                   <TouchableOpacity
-                    style={[styles.qrButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(102,126,234,0.05)' }]}
+                    style={[
+                      styles.qrButton,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)',
+                      },
+                    ]}
                     onPress={handleScanQR}
                     disabled={isLoading}
                     activeOpacity={0.8}
                   >
-                    <Ionicons name="qr-code-outline" size={22} color="#667eea" />
-                    <Text style={[styles.qrButtonText, { color: isDark ? '#fff' : '#1e293b' }]}>
+                    <Ionicons name="qr-code-outline" size={22} color={AURA.primary} />
+                    <Text style={[styles.qrButtonText, { color: isDark ? AURA.white : AURA.gray900 }]}>
                       Scan QR Code Instead
                     </Text>
                   </TouchableOpacity>
 
-                  {/* ─── Partial Sign-up Warning ─── */}
+                  {/* Partial warning */}
                   {codeInfo?.isPartial && showPartialRecovery && (
-                    <View style={[styles.partialWarning, { backgroundColor: '#f59e0b15', borderColor: '#f59e0b30' }]}>
-                      <Ionicons name="warning" size={18} color="#f59e0b" />
+                    <View style={[styles.partialWarning, { backgroundColor: `${AURA.warning}15`, borderColor: `${AURA.warning}30` }]}>
+                      <Ionicons name="warning" size={18} color={AURA.warning} />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.partialWarningText, { color: '#f59e0b' }]}>
+                        <Text style={[styles.partialWarningText, { color: AURA.warning }]}>
                           Resume your sign-up
                         </Text>
                         {codeInfo.partialEmail && (
-                          <Text style={[styles.partialWarningSubtext, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          <Text style={[styles.partialWarningSubtext, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                             Email: {codeInfo.partialEmail}
                           </Text>
                         )}
                         {codeInfo.partialPhone && (
-                          <Text style={[styles.partialWarningSubtext, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          <Text style={[styles.partialWarningSubtext, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                             Phone: {codeInfo.partialPhone}
                           </Text>
                         )}
@@ -1428,22 +1490,42 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </View>
                   )}
 
-                  {/* ─── Invite Code Input ─── */}
+                  {/* Invite code */}
                   <View style={[
                     styles.inputContainer,
-                    isDark && styles.inputContainerDark,
-                    codeValidated && !codeInfo?.isPartial && styles.inputContainerSuccess,
-                    codeInfo?.isPartial && styles.inputContainerPartial,
-                    !codeValidated && inviteCode.length === 6 && !isValidatingCode && styles.inputContainerError,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                      borderColor: codeInfo?.isPartial
+                        ? AURA.warning
+                        : codeValidated
+                        ? AURA.success
+                        : (inviteCode.length === 6 && !isValidatingCode)
+                        ? AURA.danger
+                        : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)'),
+                    },
                   ]}>
-                    <Ionicons name="key-outline" size={20} color={
-                      codeInfo?.isPartial ? '#f59e0b' :
-                      codeValidated ? '#22c55e' : '#667eea'
-                    } style={styles.inputIcon} />
+                    <Ionicons
+                      name="key-outline"
+                      size={20}
+                      color={
+                        codeInfo?.isPartial
+                          ? AURA.warning
+                          : codeValidated
+                          ? AURA.success
+                          : AURA.primary
+                      }
+                      style={styles.inputIcon}
+                    />
                     <TextInput
-                      style={[styles.input, { color: isDark ? '#fff' : '#1e293b', letterSpacing: 3, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
+                      style={[styles.input, {
+                        color: isDark ? AURA.white : AURA.gray900,
+                        letterSpacing: 3,
+                        fontWeight: '700',
+                        fontSize: 18,
+                        textAlign: 'center',
+                      }]}
                       placeholder="Enter 6-digit code"
-                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.5)'}
                       value={inviteCode}
                       onChangeText={(text) => setInviteCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
                       autoCapitalize="characters"
@@ -1453,19 +1535,19 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                       maxLength={6}
                     />
                     {isValidatingCode && (
-                      <ActivityIndicator size="small" color="#667eea" style={{ marginLeft: 8 }} />
+                      <ActivityIndicator size="small" color={AURA.primary} style={{ marginLeft: 8 }} />
                     )}
                     {codeValidated && !isValidatingCode && !codeInfo?.isPartial && (
-                      <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+                      <Ionicons name="checkmark-circle" size={22} color={AURA.success} />
                     )}
                     {codeInfo?.isPartial && !isValidatingCode && (
-                      <Ionicons name="warning" size={22} color="#f59e0b" />
+                      <Ionicons name="warning" size={22} color={AURA.warning} />
                     )}
                   </View>
 
                   {codeValidated && codeInfo && !codeInfo.isPartial && (
-                    <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)' }]}>
-                      <Ionicons name="shield-checkmark" size={18} color="#22c55e" />
+                    <View style={[styles.codeInfoCard, { backgroundColor: `${AURA.success}15` }]}>
+                      <Ionicons name="shield-checkmark" size={18} color={AURA.success} />
                       <Text style={[styles.codeInfoText, { color: isDark ? '#86efac' : '#15803d' }]}>
                         You'll join as <Text style={{ fontWeight: '700' }}>{codeInfo.role === 'parent2' ? 'Parent 2' : codeInfo.role === 'guardian' ? 'Guardian' : 'Viewer'}</Text>
                         {codeInfo.relationship ? ` (${codeInfo.relationship})` : ''}
@@ -1474,8 +1556,8 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                   )}
 
                   {!codeValidated && inviteCode.length >= 6 && !isValidatingCode && (
-                    <View style={[styles.codeInfoCard, { backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)' }]}>
-                      <Ionicons name="alert-circle" size={18} color="#ef4444" />
+                    <View style={[styles.codeInfoCard, { backgroundColor: `${AURA.danger}15` }]}>
+                      <Ionicons name="alert-circle" size={18} color={AURA.danger} />
                       <Text style={[styles.codeInfoText, { color: isDark ? '#fca5a5' : '#b91c1c' }]}>
                         Invalid or expired code. Please check and try again.
                       </Text>
@@ -1486,18 +1568,21 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     <>
                       <View style={styles.divider}>
                         <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-                        <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                        <Text style={[styles.dividerText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                           set up your account
                         </Text>
                         <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="person-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)',
+                      }]}>
+                        <Ionicons name="person-outline" size={20} color={AURA.primary} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Full name"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.5)'}
                           value={joinFullName}
                           onChangeText={setJoinFullName}
                           autoCapitalize="words"
@@ -1508,12 +1593,15 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         />
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="mail-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)',
+                      }]}>
+                        <Ionicons name="mail-outline" size={20} color={AURA.primary} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Email address"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.5)'}
                           value={joinEmail}
                           onChangeText={setJoinEmail}
                           keyboardType="email-address"
@@ -1525,12 +1613,15 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         />
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="call-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)',
+                      }]}>
+                        <Ionicons name="call-outline" size={20} color={AURA.primary} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Phone number (optional)"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.5)'}
                           value={joinPhone}
                           onChangeText={setJoinPhone}
                           keyboardType="phone-pad"
@@ -1541,12 +1632,15 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         />
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="lock-closed-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)',
+                      }]}>
+                        <Ionicons name="lock-closed-outline" size={20} color={AURA.primary} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Password (min 8 characters)"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.5)'}
                           value={joinPassword}
                           onChangeText={setJoinPassword}
                           secureTextEntry={!showJoinPassword}
@@ -1563,17 +1657,20 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                           <Ionicons
                             name={showJoinPassword ? 'eye-outline' : 'eye-off-outline'}
                             size={20}
-                            color="#667eea"
+                            color={AURA.primary}
                           />
                         </TouchableOpacity>
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="shield-checkmark-outline" size={20} color="#667eea" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(99,102,241,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(99,102,241,0.15)',
+                      }]}>
+                        <Ionicons name="shield-checkmark-outline" size={20} color={AURA.primary} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Confirm password"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.5)'}
                           value={joinConfirmPassword}
                           onChangeText={setJoinConfirmPassword}
                           secureTextEntry={!showJoinConfirmPassword}
@@ -1591,12 +1688,11 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                           <Ionicons
                             name={showJoinConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
                             size={20}
-                            color="#667eea"
+                            color={AURA.primary}
                           />
                         </TouchableOpacity>
                       </View>
 
-                      {/* ─── Remember Me on Join Form ─── */}
                       <View style={styles.rowContainer}>
                         <TouchableOpacity
                           style={styles.rememberMeContainer}
@@ -1604,10 +1700,10 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                           disabled={isLoading || !rememberMeLoaded}
                           activeOpacity={0.7}
                         >
-                          <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                            {rememberMe && <Ionicons name="checkmark" size={14} color="#fff" />}
+                          <View style={[styles.checkbox, rememberMe && { backgroundColor: AURA.primary, borderColor: AURA.primary }]}>
+                            {rememberMe && <Ionicons name="checkmark" size={14} color={AURA.white} />}
                           </View>
-                          <Text style={[styles.rememberMeText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          <Text style={[styles.rememberMeText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                             Remember me
                           </Text>
                         </TouchableOpacity>
@@ -1617,16 +1713,16 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
                         onPress={handleJoinFamily}
                         disabled={isLoading}
-                        activeOpacity={0.8}
+                        activeOpacity={0.85}
                       >
                         <LinearGradient
-                          colors={['#22c55e', '#16a34a']}
+                          colors={[AURA.success, '#059669']}
                           style={styles.loginGradient}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 1 }}
                         >
                           {isLoading ? (
-                            <ActivityIndicator color="white" size="small" />
+                            <ActivityIndicator color={AURA.white} size="small" />
                           ) : (
                             <Text style={styles.loginText}>Join Family</Text>
                           )}
@@ -1634,33 +1730,38 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                       </TouchableOpacity>
 
                       <View style={styles.signupLinkContainer}>
-                        <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                        <Text style={[styles.signupLinkText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                           Don't have an invite code?
                         </Text>
                         <TouchableOpacity onPress={handleGoToSignUp} disabled={isLoading}>
-                          <Text style={[styles.signupLink, { color: '#22c55e' }]}>Sign Up Instead</Text>
+                          <Text style={[styles.signupLink, { color: AURA.success }]}>
+                            Sign Up Instead
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </>
                   )}
 
-                  {/* ─── Partial Sign-up Completion Form ─── */}
+                  {/* Partial recovery form */}
                   {codeInfo?.isPartial && showPartialRecovery && (
                     <>
                       <View style={styles.divider}>
                         <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-                        <Text style={[styles.dividerText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                        <Text style={[styles.dividerText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                           complete your registration
                         </Text>
                         <View style={[styles.dividerLine, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="person-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(245,158,11,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(245,158,11,0.15)',
+                      }]}>
+                        <Ionicons name="person-outline" size={20} color={AURA.warning} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Full name"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(245,158,11,0.5)'}
                           value={joinFullName}
                           onChangeText={setJoinFullName}
                           autoCapitalize="words"
@@ -1671,12 +1772,15 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         />
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="mail-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(245,158,11,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(245,158,11,0.15)',
+                      }]}>
+                        <Ionicons name="mail-outline" size={20} color={AURA.warning} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Email address"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(245,158,11,0.5)'}
                           value={joinEmail}
                           onChangeText={setJoinEmail}
                           keyboardType="email-address"
@@ -1688,12 +1792,15 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         />
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="call-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(245,158,11,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(245,158,11,0.15)',
+                      }]}>
+                        <Ionicons name="call-outline" size={20} color={AURA.warning} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Phone number (optional)"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(245,158,11,0.5)'}
                           value={joinPhone}
                           onChangeText={setJoinPhone}
                           keyboardType="phone-pad"
@@ -1704,12 +1811,15 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         />
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="lock-closed-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(245,158,11,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(245,158,11,0.15)',
+                      }]}>
+                        <Ionicons name="lock-closed-outline" size={20} color={AURA.warning} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Password (min 8 characters)"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(245,158,11,0.5)'}
                           value={joinPassword}
                           onChangeText={setJoinPassword}
                           secureTextEntry={!showJoinPassword}
@@ -1726,17 +1836,20 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                           <Ionicons
                             name={showJoinPassword ? 'eye-outline' : 'eye-off-outline'}
                             size={20}
-                            color="#f59e0b"
+                            color={AURA.warning}
                           />
                         </TouchableOpacity>
                       </View>
 
-                      <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-                        <Ionicons name="shield-checkmark-outline" size={20} color="#f59e0b" style={styles.inputIcon} />
+                      <View style={[styles.inputContainer, {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(245,158,11,0.06)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(245,158,11,0.15)',
+                      }]}>
+                        <Ionicons name="shield-checkmark-outline" size={20} color={AURA.warning} style={styles.inputIcon} />
                         <TextInput
-                          style={[styles.input, { color: isDark ? '#fff' : '#1e293b' }]}
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
                           placeholder="Confirm password"
-                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(245,158,11,0.5)'}
                           value={joinConfirmPassword}
                           onChangeText={setJoinConfirmPassword}
                           secureTextEntry={!showJoinConfirmPassword}
@@ -1754,7 +1867,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                           <Ionicons
                             name={showJoinConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
                             size={20}
-                            color="#f59e0b"
+                            color={AURA.warning}
                           />
                         </TouchableOpacity>
                       </View>
@@ -1763,16 +1876,16 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                         style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
                         onPress={handlePartialSignupRecovery}
                         disabled={isLoading}
-                        activeOpacity={0.8}
+                        activeOpacity={0.85}
                       >
                         <LinearGradient
-                          colors={['#f59e0b', '#d97706']}
+                          colors={[AURA.warning, '#d97706']}
                           style={styles.loginGradient}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 1 }}
                         >
                           {isLoading ? (
-                            <ActivityIndicator color="white" size="small" />
+                            <ActivityIndicator color={AURA.white} size="small" />
                           ) : (
                             <Text style={styles.loginText}>Complete Sign-up</Text>
                           )}
@@ -1780,24 +1893,27 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                       </TouchableOpacity>
 
                       <View style={styles.signupLinkContainer}>
-                        <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                        <Text style={[styles.signupLinkText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                           Already have an account?
                         </Text>
                         <TouchableOpacity onPress={() => { setActiveTab('signin'); setEmail(joinEmail); }} disabled={isLoading}>
-                          <Text style={[styles.signupLink, { color: '#f59e0b' }]}>Sign In</Text>
+                          <Text style={[styles.signupLink, { color: AURA.warning }]}>
+                            Sign In
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </>
                   )}
 
-                  {/* ─── SHOW SIGN UP LINK EVEN WITHOUT CODE ─── */}
                   {!codeValidated && inviteCode.length < 6 && (
                     <View style={styles.signupLinkContainer}>
-                      <Text style={[styles.signupLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                      <Text style={[styles.signupLinkText, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
                         Don't have an invite code?
                       </Text>
                       <TouchableOpacity onPress={handleGoToSignUp} disabled={isLoading}>
-                        <Text style={[styles.signupLink, { color: '#22c55e' }]}>Sign Up Instead</Text>
+                        <Text style={[styles.signupLink, { color: AURA.success }]}>
+                          Sign Up Instead
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -1811,25 +1927,54 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  gradient: { ...StyleSheet.absoluteFill },
+  container: { flex: 1, overflow: 'hidden' },
   keyboardView: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+
+  auraGlowTopLeft: {
+    position: 'absolute',
+    top: -120,
+    left: -100,
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+  },
+  auraGlowBottomRight: {
+    position: 'absolute',
+    bottom: -140,
+    right: -120,
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+  },
+
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 32,
   },
   logoFloatWrap: {
     width: Math.min(width * 0.38, 160),
     height: Math.min(width * 0.38, 160),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+    position: 'relative',
+  },
+  logoGlow: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   logoImage: {
     width: Math.min(width * 0.35, 140),
@@ -1838,14 +1983,16 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#fff',
     letterSpacing: 1,
+    textAlign: 'center',
   },
   logoTagline: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 4,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 6,
+    fontWeight: '500',
   },
+
   formContainer: {
     width: '100%',
     maxWidth: 400,
@@ -1853,27 +2000,24 @@ const styles = StyleSheet.create({
   },
   glassCard: {
     borderRadius: 28,
-    padding: 28,
+    padding: 24,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
   },
   welcomeText: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
-    marginBottom: 20,
+    marginBottom: 18,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
+
   tabContainer: {
     flexDirection: 'row',
     borderRadius: 14,
     padding: 4,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   tabButton: {
     flex: 1,
@@ -1881,22 +2025,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
   },
-  tabButtonActive: {
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
   tabText: {
     fontSize: 14,
     fontWeight: '700',
   },
+
   socialIconsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 16,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   socialIconButton: {
     width: 56,
@@ -1906,29 +2044,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
   },
   socialIcon: {
     width: 28,
     height: 28,
   },
+
   biometricSection: {
-    marginBottom: 20,
+    marginBottom: 18,
     alignItems: 'center',
   },
   biometricButton: {
     alignItems: 'center',
-    padding: 16,
+    padding: 12,
     width: '100%',
   },
-  biometricIconWrapper: {
+  biometricIconWrap: {
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
+    position: 'relative',
+  },
+  biometricGlow: {
+    position: 'absolute',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: 'rgba(99,102,241,0.2)',
   },
   biometricIconBg: {
     width: 72,
@@ -1937,83 +2079,57 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.3)',
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
+    borderColor: 'rgba(99,102,241,0.35)',
   },
   biometricTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#667eea',
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 3,
   },
   biometricSubtitle: {
-    fontSize: 13,
-    color: '#64748b',
+    fontSize: 12,
+    fontWeight: '500',
   },
+
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
     width: '100%',
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(102,126,234,0.2)',
+    backgroundColor: 'rgba(99,102,241,0.2)',
   },
   dividerText: {
     marginHorizontal: 12,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
+
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(102,126,234,0.08)',
     borderRadius: 16,
     paddingHorizontal: 16,
-    marginBottom: 16,
-    height: 56,
+    marginBottom: 14,
+    height: 54,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.15)',
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-  inputContainerDark: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  inputContainerSuccess: {
-    borderColor: '#22c55e',
-    backgroundColor: 'rgba(34,197,94,0.05)',
-  },
-  inputContainerError: {
-    borderColor: '#ef4444',
-    backgroundColor: 'rgba(239,68,68,0.05)',
-  },
-  inputContainerPartial: {
-    borderColor: '#f59e0b',
-    backgroundColor: 'rgba(245,158,11,0.05)',
   },
   inputIcon: { marginRight: 12 },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
   },
   eyeButton: { padding: 4 },
+
   rowContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   rememberMeContainer: {
     flexDirection: 'row',
@@ -2025,117 +2141,106 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#667eea',
+    borderColor: AURA.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-  checkboxChecked: {
-    backgroundColor: '#667eea',
   },
   rememberMeText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   forgotPasswordText: {
-    color: '#667eea',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
+
   loginButton: {
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
   },
   loginButtonDisabled: {
     opacity: 0.6,
   },
   loginGradient: {
-    paddingVertical: 16,
+    paddingVertical: 15,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   loginText: {
-    color: 'white',
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    color: AURA.white,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
+
   signupLinkContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 4,
-    marginTop: 16,
+    marginTop: 14,
   },
   signupLinkText: {
-    fontSize: 14,
+    fontSize: 13,
   },
   signupLink: {
-    color: '#667eea',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
   },
+
   joinHeader: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
+  },
+  joinIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
   },
   joinTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    marginTop: 12,
+    fontWeight: '800',
+    marginBottom: 4,
   },
   joinSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
-    marginTop: 4,
     paddingHorizontal: 20,
+    lineHeight: 18,
   },
+
   codeInfoCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     padding: 12,
     borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
+    marginBottom: 14,
   },
   codeInfoText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
     flex: 1,
+    lineHeight: 17,
   },
+
   qrButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 14,
+    padding: 13,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.15)',
-    backgroundColor: 'rgba(102,126,234,0.05)',
-    marginBottom: 16,
+    marginBottom: 14,
     gap: 8,
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
   },
   qrButtonText: {
-    fontWeight: '600',
-    fontSize: 15,
+    fontWeight: '700',
+    fontSize: 14,
   },
+
   partialWarning: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2143,22 +2248,17 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 16,
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
+    marginBottom: 14,
   },
   partialWarningText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     flex: 1,
     lineHeight: 18,
   },
   partialWarningSubtext: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     marginTop: 2,
   },
 });

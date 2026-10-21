@@ -10,7 +10,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 
-
 import CommunityProfileScreen from '../screens/community/CommunityProfileScreen';
 import CommunityMemberProfileScreen from '../screens/community/CommunityMemberProfileScreen';
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
@@ -77,7 +76,6 @@ const ONBOARDING_COMPLETE_KEY = '@littleloom_onboarding_complete_v3';
 const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
 const NAV_INITIALIZED_KEY = '@littleloom_nav_initialized_v1';
 
-
 const MAIN_FLOW_SCREENS = new Set([
   'Main', 'Home', 'Track', 'Timeline', 'Grow', 'Connect', 'More',
   'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile',
@@ -100,7 +98,6 @@ const MAIN_FLOW_SCREENS = new Set([
 const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword']);
 const SETUP_FLOW_SCREENS = new Set(['CoParentInviteScreen', 'BabyOptional', 'CreateBabyProfile']);
 const SECURITY_SCREENS = new Set(['SecurityLock', 'BiometricSetup', 'SecurityCenter']);
-
 
 const CustomLightTheme = {
   ...DefaultTheme,
@@ -128,11 +125,8 @@ const CustomDarkTheme = {
   },
 };
 
-
 function MainTabs() {
   const { isDark, colors } = useSafeApp();
-  // Hides the liquid-glass tab bar while the community module is showing
-  // full-screen onboarding / splash phases.
   const [hideTabBar, setHideTabBar] = React.useState(false);
 
   return (
@@ -169,9 +163,6 @@ function MainTabs() {
   );
 }
 
-// ─── TIMELINE PICKER ROUTE WRAPPER ──────────────────────────────────
-
-
 const TimelinePickerRoute = React.memo(({ navigation }: any) => {
   const { currentBaby } = useSafeBaby();
   const handleClose = useCallback(() => {
@@ -195,7 +186,6 @@ const TimelinePickerRoute = React.memo(({ navigation }: any) => {
 });
 TimelinePickerRoute.displayName = 'TimelinePickerRoute';
 
-// ─── LOADING SCREEN ─────────────────────────────────────────────────
 const AppLoadingScreen = React.memo(() => {
   const { isDark } = useSafeApp();
   return (
@@ -216,7 +206,6 @@ const AppLoadingScreen = React.memo(() => {
   );
 });
 
-// ─── VALIDATE SESSION ──────────────────────────────────────────────
 async function validateSupabaseSession(): Promise<boolean> {
   try {
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -227,15 +216,6 @@ async function validateSupabaseSession(): Promise<boolean> {
   }
 }
 
-
-// ═══════════════════════════════════════════════════════════════════
-// getNavState
-//
-// KEY RULE: if the user already has a baby in the context, they
-// belong in MAIN. Setup flags are fallbacks for the very-first-launch
-// case — never a reason to bounce a returning user back into the
-// CoParentInviteScreen.
-// ═══════════════════════════════════════════════════════════════════
 function getNavState(
   authLoading: boolean,
   isAuth: boolean,
@@ -259,32 +239,26 @@ function getNavState(
 
   if (isLocked && securityOn) return 'SECURITY_LOCK';
 
-  // ─────────────────────────────────────────────────────────────
-  // Returning user? Baby exists, setup is done, or baby step has
-  // already been addressed → they go to MAIN immediately.
-  // ─────────────────────────────────────────────────────────────
   if (babyCount > 0) return 'MAIN';
   if (setupDone) return 'MAIN';
   if (hasBaby === true || hasBaby === 'skipped') return 'MAIN';
 
-  // Only reach SETUP_PARENT2 when nothing above applied.
-  // setupComplete ALWAYS implies the setup wizard was finished — never
-  // bounce the user back into CoParentInviteScreen.
   if (setupDone) return 'MAIN';
   const p2Addressed = hasP2 === true || hasP2 === 'skipped';
   if (!p2Addressed) return 'SETUP_PARENT2';
   return 'MAIN';
 }
 
-
 function NavigationContent({
   isDark: propIsDark,
   initialState,
   onStateChange,
+  initialRouteName: propInitialRoute,
 }: {
   isDark?: boolean;
   initialState?: any;
   onStateChange?: (state: any) => void;
+  initialRouteName?: 'Login' | 'Onboarding' | 'Main' | 'Splash';
 }) {
   const { isDark: ctxDark, colors } = useSafeApp();
   const isDark = propIsDark ?? ctxDark;
@@ -324,7 +298,6 @@ function NavigationContent({
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
 
-  
   const securityOn = useMemo(() =>
     !!(secSettings?.isPinEnabled || secSettings?.isBiometricEnabled || secSettings?.isAppLockEnabled),
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled, secSettings?.isAppLockEnabled]
@@ -340,20 +313,12 @@ function NavigationContent({
     if (currentRoute === 'SecurityLock') return;
     if (currentRoute === 'Login' || currentRoute === 'SignUp' || currentRoute === 'Onboarding') return;
 
-    // Cooldown: if we just transitioned out of SECURITY_LOCK (< 2s ago),
-    // do NOT re-lock immediately. This breaks the flip-flop loop seen when
-    // lockApp/forceUnlock race against the navigator state effect.
     const now = Date.now();
     if (now - lastNavTime.current < 2000) {
-      console.log('[Navigation] 🔒 Lock ignored (transition cooldown)');
       return;
     }
 
-    console.log('[Navigation] 🔒 Locking — pushing SecurityLock');
     lastNavTime.current = now;
-    // Do NOT call resetUnlockLock() here — it clears the biometric auto-prompt
-    // in-flight flag and prevents SecurityLockScreen from ever showing the
-    // native biometric prompt on mount.
     navRef.current?.reset({
       index: 0,
       routes: [{ name: 'SecurityLock' as any }],
@@ -381,7 +346,7 @@ function NavigationContent({
     checkFirstOpen();
   }, []);
 
-  // ── Session sanity check (trusts AuthContext) ─────────────────
+  // ── Session sanity check ─────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -400,9 +365,7 @@ function NavigationContent({
         const { data: { session } } = await supabase.auth.getSession();
         if (!cancelled && !session?.user) {
           if (__DEV__) {
-            console.warn(
-              '[Navigation] AuthContext says auth=true, but local session is empty. Trusting AuthContext.'
-            );
+            console.warn('[Navigation] AuthContext says auth=true, but local session is empty.');
           }
         }
       } catch (e) {
@@ -416,7 +379,7 @@ function NavigationContent({
     return () => { cancelled = true; };
   }, [isAuthenticated]);
 
-  // ── Baby count / skipped-baby tracking ────────────────────────
+  // ── Baby count tracking ───────────────────────────────────────
   useEffect(() => {
     const newCount = babies?.length || 0;
     babyCountRef.current = newCount;
@@ -468,7 +431,7 @@ function NavigationContent({
     babiesReady,
   ]);
 
-  // ── Load babies once after auth+session are ready ─────────────
+  // ── Load babies once ──────────────────────────────────────────
   useEffect(() => {
     if (!isAuthenticated || !isValidSession || authLoading) return;
     if (babiesLoaded.current) return;
@@ -588,10 +551,7 @@ function NavigationContent({
 
       const safeNavigate = (target: string, navParams?: object) => {
         if (!KNOWN_SCREENS.has(target)) {
-          console.warn(
-            `[Navigation] Refusing to navigate to unknown screen: "${target}". ` +
-            `Known: ${[...KNOWN_SCREENS].join(', ')}`,
-          );
+          console.warn(`[Navigation] Refusing unknown screen: "${target}".`);
           try {
             navRef.current?.navigate('Main' as any, navParams);
           } catch {}
@@ -656,9 +616,7 @@ function NavigationContent({
         if (lastResponse) {
           setTimeout(() => navigateFromNotification(lastResponse), 1000);
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
     })();
 
     return () => {
@@ -685,7 +643,7 @@ function NavigationContent({
       if (now - lastNavTime.current < 250) return;
       lastNavTime.current = now;
 
-      console.log(`[Navigation] → ${routeName}${useReset ? ' (reset)' : ''}`);
+      if (__DEV__) console.log(`[Navigation] → ${routeName}${useReset ? ' (reset)' : ''}`);
 
       if (useReset) {
         navRef.current?.reset({ index: 0, routes: [{ name: routeName }] as any });
@@ -696,8 +654,6 @@ function NavigationContent({
 
     switch (navState) {
       case 'LOGIN':
-        // Wipe the persisted lock flag so the next sign-in doesn't land on
-        // SecurityLockScreen with no PIN/biometric configured.
         (async () => {
           try {
             await AsyncStorage.removeItem('littleloom_security_lock');
@@ -729,11 +685,6 @@ function NavigationContent({
         break;
       }
 
-      // ───────────────────────────────────────────────────────────
-      // FIX: if a baby exists in context, push through to Main.
-      // The user should never be forced back into the invite flow
-      // once their baby has been loaded.
-      // ───────────────────────────────────────────────────────────
       case 'SETUP_PARENT2': {
         if (babyCountRef.current > 0) {
           if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) return;
@@ -753,12 +704,6 @@ function NavigationContent({
           return;
         }
         if (currentRoute === 'SecurityLock') {
-          // Only force-unlock if isSecurityLocked is already false — meaning
-          // SecurityLockScreen successfully unlocked and navState switched to
-          // MAIN. Do NOT call forceUnlock() unconditionally, or we'll flip
-          // isSecurityLocked → false while still on SecurityLock, and the
-          // state effect above will immediately re-lock (the exact loop in
-          // the logs).
           if (!isSecurityLocked) {
             safeNavigateTo('Main', true);
           }
@@ -787,6 +732,14 @@ function NavigationContent({
     return <AppLoadingScreen />;
   }
 
+  // Resolve the navigator's initial route:
+  // - If App.tsx passed one, use it (skips Splash route entirely on cold boot).
+  // - Otherwise fall back to a sensible default.
+  const resolvedInitialRoute =
+    propInitialRoute && propInitialRoute !== 'Splash'
+      ? propInitialRoute
+      : (navState === 'ONBOARDING' ? 'Onboarding' : 'Login');
+
   return (
     <NavigationContainer
       ref={navRef}
@@ -798,7 +751,10 @@ function NavigationContent({
     >
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ flex: 1 }} collapsable={false}>
-        <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+        <Stack.Navigator
+          initialRouteName={resolvedInitialRoute as any}
+          screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+        >
           {/* AUTH FLOW */}
           <Stack.Screen
             name="Onboarding"
@@ -840,17 +796,13 @@ function NavigationContent({
           {/* MAIN TAB */}
           <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade', gestureEnabled: false }} />
 
-          {/* MAIN FLOW SCREENS */}
+          {/* MAIN FLOW */}
           <Stack.Screen name="Timeline" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="EntryDetail" component={EntryDetailScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="PottyTracker" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="FeedTracker" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="SleepTracker" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="CommunityProfile" component={CommunityProfileScreen} options={{ animation: 'slide_from_bottom' }} />
-          {/* Root-stack safety net: the community stack owns this screen, but the
-              root stack type declares it too. Registering it here means a
-              `navigate('CommunityMemberProfile', …)` that resolves to the root
-              navigator (e.g. from a notification) doesn't throw. */}
           <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
           <Stack.Screen name="Profile" component={FamilyDashboardScreen} options={{ animation: 'none' }} />
           <Stack.Screen
@@ -899,13 +851,11 @@ function NavigationContent({
             />
           </Stack.Group>
 
-          {/* TRACKER HUB SCREENS */}
           <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
           <Stack.Screen name="AllTrackers" component={AllTrackersScreen} options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
           <Stack.Screen name="More" component={MoreScreen} options={{ animation: 'none' }} />
 
-          {/* TRACKER PICKER (full-screen) */}
           <Stack.Screen
             name="TimelinePicker"
             component={TimelinePickerRoute}
@@ -917,13 +867,18 @@ function NavigationContent({
   );
 }
 
-
-export default function AppNavigator({ isDark, initialState, onStateChange }: {
+export default function AppNavigator({ isDark, initialState, onStateChange, initialRouteName }: {
   isDark?: boolean;
   initialState?: any;
   onStateChange?: (state: any) => void;
+  initialRouteName?: 'Login' | 'Onboarding' | 'Main' | 'Splash';
 }) {
   return (
-    <NavigationContent isDark={isDark} initialState={initialState} onStateChange={onStateChange} />
+    <NavigationContent
+      isDark={isDark}
+      initialState={initialState}
+      onStateChange={onStateChange}
+      initialRouteName={initialRouteName}
+    />
   );
 }
