@@ -1,17 +1,4 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -30,6 +17,8 @@ import {
   Platform,
   Clipboard,
   Linking,
+  Pressable,
+  StatusBar,
 } from 'react-native';
 import { File, Directory, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
@@ -45,20 +34,27 @@ import { useAuth } from '@/context/AuthContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Animated, {
+  FadeIn,
   FadeInUp,
+  FadeInDown,
   useSharedValue,
   useAnimatedStyle,
   interpolate,
   Extrapolation,
   useAnimatedScrollHandler,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, differenceInMonths, subDays } from 'date-fns';
+import * as Haptics from 'expo-haptics';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════
-   CLINICAL DATA — Canonical WHO LMS tables from useWHOGrowthCalculator
+   CLINICAL DATA
    ═══════════════════════════════════════════════════════════════════════ */
 import {
   WHO_BOY_LMS,
@@ -70,14 +66,12 @@ import {
   zScoreToValue,
 } from '@/hooks/useWHOGrowthCalculator';
 
-
 const getGrowthRef = (
   gender: string,
   type: 'weight' | 'height' | 'head',
   ageMonths: number
 ): { med: number; sd: number } => {
-  const g: 'boy' | 'girl' =
-    gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
+  const g: 'boy' | 'girl' = gender === 'girl' || gender === 'female' ? 'girl' : 'boy';
   const clampedAge = Math.max(0, Math.min(24, Math.round(ageMonths)));
   const table = g === 'girl' ? WHO_GIRL_LMS : WHO_BOY_LMS;
   const lms = table[clampedAge]?.[type];
@@ -88,6 +82,51 @@ const getGrowthRef = (
 };
 
 const zToPercentile = (z: number): number => zScoreToPercentile(z);
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Aura
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
+};
+
+const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight || 0) + 14;
+const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
+
+const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
 /* ═══════════════════════════════════════════════════════════════════════
    TYPES
@@ -328,222 +367,341 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
    THEME
    ═══════════════════════════════════════════════════════════════════════ */
 const useReportTheme = () => {
-  const { isDark, colors, fullThemeColors, borderRadiusValue } = useCustomization();
-  return useMemo(() => ({
-    primary: colors?.primary || '#667eea',
-    secondary: colors?.secondary || '#764ba2',
-    isDark: !!isDark,
-    bg: fullThemeColors?.background || (isDark ? '#0a0a1a' : '#f8faff'),
-    surface: fullThemeColors?.surface || (isDark ? 'rgba(30,30,45,0.8)' : 'rgba(255,255,255,0.9)'),
-    card: fullThemeColors?.card || (isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)'),
-    border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
-    text: {
-      primary: fullThemeColors?.text || (isDark ? '#ffffff' : '#1a1a1a'),
-      secondary: fullThemeColors?.textSecondary || (isDark ? '#94a3b8' : '#64748b'),
-      muted: fullThemeColors?.textMuted || (isDark ? '#64748b' : '#94a3b8'),
-    },
-    radius: borderRadiusValue || 16,
-  }), [isDark, colors, fullThemeColors, borderRadiusValue]);
+  const { isDark } = useCustomization();
+  return useMemo(() => ({ isDark: !!isDark }), [isDark]);
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
    UI PRIMITIVES
    ═══════════════════════════════════════════════════════════════════════ */
-const GlassCard = ({ children, style, onPress, active }: any) => {
-  const theme = useReportTheme();
-  const Wrapper = onPress ? TouchableOpacity : View;
-  return (
-    <Wrapper onPress={onPress} activeOpacity={0.85} style={[styles.glassCard, { borderRadius: theme.radius, borderColor: active ? theme.primary : 'rgba(255,255,255,0.1)' }, active && { borderWidth: 2 }, style]}>
-      <LinearGradient colors={theme.isDark ? ['rgba(45,45,60,0.9)', 'rgba(35,35,50,0.7)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-      <View style={[styles.glassBorder, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' }]} />
-      <View style={styles.glassContent}>{children}</View>
-    </Wrapper>
-  );
-};
 
-const SectionHeader = ({ title, subtitle, icon }: any) => {
-  const theme = useReportTheme();
+const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
+  children: React.ReactNode; style?: any; colors?: string[];
+}) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
   return (
-    <View style={styles.sectionHeader}>
-      {icon && <View style={[styles.sectionIcon, { backgroundColor: `${theme.primary}12` }]}><Ionicons name={icon} size={16} color={theme.primary} /></View>}
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
-        {subtitle && <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>}
-      </View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+      })}
     </View>
   );
-};
+});
 
-const Badge = ({ text, color, bg }: any) => (
-  <View style={[styles.badge, { backgroundColor: bg || `${color}15` }]}><Text style={[styles.badgeText, { color }]}>{text}</Text></View>
-);
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = React.memo<{
+  children: React.ReactNode; onPress?: () => void; disabled?: boolean; style?: any; activeScale?: number;
+}>(({ children, onPress, disabled, style, activeScale = 0.96 }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={() => { if (!disabled) { HAPTIC_LIGHT(); onPress?.(); } }}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+const SectionHeader = React.memo(({ title, subtitle, icon, color = DS.primary, action, actionLabel }: {
+  title: string; subtitle?: string; icon?: keyof typeof Ionicons.glyphMap; color?: string;
+  action?: () => void; actionLabel?: string;
+}) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && (
+        <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+      )}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Text style={[styles.sectionActionText, { color }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={13} color={color} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
 
 /* ═══════════════════════════════════════════════════════════════════════
-   BABY PROFILE HEADER
+   Report Pulse — compact animated header (no big hero card)
    ═══════════════════════════════════════════════════════════════════════ */
-const BabyProfileHeader = ({ baby }: { baby: any }) => {
-  const theme = useReportTheme();
-  const ageMo = getBabyAgeMonths(baby?.birthDate);
-  const ageDisplay = baby?.birthDate ? (() => {
-    const y = Math.floor(ageMo / 12);
-    const m = ageMo % 12;
-    return y > 0 ? `${y}y ${m}m` : `${m} mo`;
-  })() : 'Unknown';
 
-  const initials = (baby?.name || 'B').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+const ReportPulse = React.memo<{
+  isDark: boolean;
+  baby: any;
+  ageMonths: number;
+  stats: { total: number; trackers: number; reports: number; pending: number };
+  onBabyPress: () => void;
+  onSwitchMode: (mode: ReportMode) => void;
+}>(({ isDark, baby, ageMonths, stats, onBabyPress, onSwitchMode }) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.8, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, [pulse, rotate, glow]);
+
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  const hasAttention = stats.pending > 0;
+  const statusColor = hasAttention ? DS.warning : stats.reports > 0 ? DS.success : DS.primary;
+  const statusLabel = !baby
+    ? 'Add baby profile to start'
+    : hasAttention
+    ? `${stats.pending} report${stats.pending === 1 ? '' : 's'} pending review`
+    : stats.reports > 0
+    ? `${stats.reports} report${stats.reports === 1 ? '' : 's'} saved · ready to share`
+    : 'Ready to generate your first report';
 
   return (
-    <Animated.View entering={FadeInUp.springify()}>
-      <GlassCard style={styles.profileCard}>
-        <LinearGradient colors={['#667eea', '#764ba2']} style={styles.profileGradient}>
-          <View style={styles.profileRow}>
-            <View style={styles.avatarWrap}>
-              {baby?.avatar ? (
-                <Image source={{ uri: baby.avatar }} style={styles.avatarImage} resizeMode="cover" />
-              ) : (
-                <View style={[styles.avatarFallback, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
-                  <Text style={styles.avatarInitials}>{initials}</Text>
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.pulseWrap, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient
+          colors={isDark
+            ? ['rgba(99,102,241,0.20)', 'rgba(236,72,153,0.10)', 'rgba(139,92,246,0.05)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        />
+        <LinearGradient colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
+          style={styles.pulseGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${DS.accent}${isDark ? '35' : '22'}`, 'transparent']}
+          style={styles.pulseGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
+
+        <View style={styles.pulseRow}>
+          <PressableScale onPress={onBabyPress} activeScale={0.94}>
+            <View style={styles.pulseAvatarWrap}>
+              <Animated.View style={[styles.pulseAvatarGlow, glowStyle]} />
+              <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
+                <LinearGradient colors={[DS.primary, DS.accent, DS.warning, DS.primary]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+              </Animated.View>
+              <View style={[styles.pulseAvatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+                {baby?.avatar ? (
+                  <Image source={{ uri: baby.avatar }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+                ) : (
+                  <Ionicons name="person" size={22} color={DS.primary} />
+                )}
+              </View>
+            </View>
+          </PressableScale>
+
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[styles.pulseName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                {baby?.name || 'Add Baby'}
+              </Text>
+              {baby && (
+                <View style={[styles.pulseAgePill, { backgroundColor: `${DS.primary}18` }]}>
+                  <Text style={[styles.pulseAgeText, { color: DS.primary }]}>{ageMonths}mo</Text>
                 </View>
               )}
-              <View style={styles.avatarRing} />
             </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{baby?.name || 'Baby'}</Text>
-              <Text style={styles.profileMeta}>{ageDisplay} old • {baby?.gender || 'Unknown gender'}</Text>
-              <View style={styles.profileChips}>
-                {baby?.bloodType && <Badge text={`🩸 ${baby.bloodType}`} color="#fff" bg="rgba(255,255,255,0.2)" />}
-                {baby?.allergies?.length > 0 && <Badge text={`⚠️ ${baby.allergies.length} Allergies`} color="#fef2f2" bg="rgba(239,68,68,0.3)" />}
-                {ageMo < 6 && <Badge text="🍼 Infant" color="#fff" bg="rgba(255,255,255,0.2)" />}
-              </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <View style={[styles.pulseLiveDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.pulseSubText, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                {statusLabel}
+              </Text>
             </View>
           </View>
-        </LinearGradient>
-      </GlassCard>
+
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <PressableScale onPress={() => onSwitchMode('upload')} activeScale={0.9}>
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name="cloud-upload-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
+              </View>
+            </PressableScale>
+            <PressableScale onPress={() => onSwitchMode('generate')} activeScale={0.9}>
+              <LinearGradient colors={[DS.primary, DS.accent]} style={styles.pulseAddBtn}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                <Ionicons name="add" size={22} color={DS.white} />
+              </LinearGradient>
+            </PressableScale>
+          </View>
+        </View>
+
+        <View style={[styles.pulseStats, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.primary }]}>{stats.total}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>entries</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.accent }]}>{stats.trackers}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>trackers</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.success }]}>{stats.reports}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>reports</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: stats.pending > 0 ? DS.warning : DS.gray400 }]}>{stats.pending}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>pending</Text>
+          </View>
+        </View>
+      </View>
     </Animated.View>
   );
-};
+});
 
 /* ═══════════════════════════════════════════════════════════════════════
-   GROWTH PERCENTILE CARD
-   Reads canonical tracker_entries shape: { measurementType, value, unit }
+   Aura Ribbon
    ═══════════════════════════════════════════════════════════════════════ */
-const GrowthPercentileCard = ({ entries, baby }: { entries: TrackerEntry[]; baby: any }) => {
-  const theme = useReportTheme();
+
+const AuraRibbon = React.memo<{
+  isDark: boolean; icon: keyof typeof Ionicons.glyphMap; color: string;
+  label: string; text: string; onPress?: () => void;
+}>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(80).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={2}>{text}</Text>
+        </View>
+        {onPress && <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />}
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Mode Switcher
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const ModeSwitcher = React.memo<{
+  mode: ReportMode;
+  onChange: (m: ReportMode) => void;
+  isDark: boolean;
+  counts: { generate?: number; templates?: number; upload?: number; share?: number };
+}>(({ mode, onChange, isDark, counts }) => {
+  const opts: { key: ReportMode; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+    { key: 'generate', label: 'Generate', icon: 'create-outline' },
+    { key: 'templates', label: 'Templates', icon: 'document-text-outline' },
+    { key: 'share', label: 'Share', icon: 'share-social-outline' },
+    { key: 'upload', label: 'Upload', icon: 'cloud-upload-outline' },
+  ];
+  return (
+    <View style={[styles.modeBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+      {opts.map((o) => {
+        const active = mode === o.key;
+        const count = counts[o.key as keyof typeof counts];
+        return (
+          <TouchableOpacity
+            key={o.key}
+            onPress={() => onChange(o.key)}
+            style={[styles.modeItem, active && { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : DS.white, ...DS.shadow.sm }]}
+            activeOpacity={0.85}
+          >
+            <Ionicons name={o.icon} size={15} color={active ? DS.primary : isDark ? DS.gray400 : DS.gray500} />
+            <Text style={[styles.modeLabel, { color: active ? DS.primary : isDark ? DS.gray400 : DS.gray500 }, active && { fontWeight: '700' }]}>
+              {o.label}
+            </Text>
+            {!!count && count > 0 && !active && (
+              <View style={styles.modeBadge}>
+                <Text style={styles.modeBadgeText}>{count > 9 ? '9+' : count}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Baby Ribbon — slim profile instead of big gradient card
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const BabyRibbon = React.memo<{ baby: any; isDark: boolean }>(({ baby, isDark }) => {
   const ageMo = getBabyAgeMonths(baby?.birthDate);
-  const gender = genderToLMS(baby?.gender);
-
-  const percentiles = useMemo(() => {
-    const growth = entries
-      .filter((e) => e.trackerId === 'growth')
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    if (!growth.length || ageMo < 0) return null;
-
-    
-    const byType: Record<string, TrackerEntry> = {};
-    for (const e of growth) {
-      const t = String(e.data?.measurementType ?? '').toLowerCase();
-      const normalized =
-        t === 'length' ? 'height' :
-        t === 'hc' || t === 'headcircumference' ? 'head' :
-        t;
-      if (['weight', 'height', 'head'].includes(normalized) && !byType[normalized]) {
-        byType[normalized] = e;
-      }
-    }
-
-    const result: any[] = [];
-    (['weight', 'height', 'head'] as const).forEach((type) => {
-      let val: number | null = null;
-      let unit = type === 'weight' ? 'kg' : 'cm';
-
-      const entry = byType[type];
-      if (entry) {
-        const parsed = parseFloat(String(entry.data?.value ?? ''));
-        if (Number.isFinite(parsed) && parsed > 0) {
-          val = parsed;
-          if (entry.data?.unit) unit = String(entry.data.unit);
-        }
-      }
-      
-      if (val === null) {
-        const legacy = growth.find((e) => {
-          const v = parseFloat(String(e.data?.[type] ?? ''));
-          return Number.isFinite(v) && v > 0;
-        });
-        if (legacy) {
-          val = parseFloat(String(legacy.data[type]));
-          if (legacy.data?.unit) unit = String(legacy.data.unit);
-        }
-      }
-      if (val === null || !Number.isFinite(val) || val <= 0) return;
-
-      const percentile = calculatePercentilePrecise(val, ageMo, type, gender);
-      const status =
-        percentile < 3 || percentile > 97 ? 'concern' :
-        percentile < 16 || percentile > 84 ? 'watch' :
-        'normal';
-
-      result.push({
-        type,
-        value: val,
-        unit,
-        percentile,
-        status,
-      });
-    });
-
-    return result.length > 0 ? result : null;
-  }, [entries, ageMo, gender]);
-
-  if (!percentiles?.length) return null;
+  const ageDisplay = baby?.birthDate
+    ? (() => {
+        const y = Math.floor(ageMo / 12);
+        const m = ageMo % 12;
+        return y > 0 ? `${y}y ${m}m` : `${m}mo`;
+      })()
+    : '—';
 
   return (
-    <Animated.View entering={FadeInUp.delay(80).springify()}>
-      <SectionHeader title="Clinical Growth Percentiles" icon="analytics-outline" subtitle="WHO reference curves" />
-      <GlassCard>
-        <View style={styles.percGrid}>
-          {percentiles.map((p: any) => (
-            <View key={p.type} style={styles.percItem}>
-              <View style={styles.percTop}>
-                <Text style={[styles.percLabel, { color: theme.text.muted }]}>{p.type.toUpperCase()}</Text>
-                <Badge
-                  text={p.status === 'normal' ? '✓ Normal' : p.status === 'watch' ? '👀 Watch' : '⚠️ Concern'}
-                  color={p.status === 'normal' ? '#10b981' : p.status === 'watch' ? '#f59e0b' : '#ef4444'}
-                  bg={`${p.status === 'normal' ? '#10b981' : p.status === 'watch' ? '#f59e0b' : '#ef4444'}12`}
-                />
-              </View>
-              <Text style={[styles.percValue, { color: theme.text.primary }]}>
-                {p.value} <Text style={{ fontSize: 13, color: theme.text.muted }}>{p.unit}</Text>
-              </Text>
-              <View style={styles.percBarWrap}>
-                <View style={[styles.percBarTrack, { backgroundColor: `${theme.primary}10` }]}>
-                  <View style={[styles.percBarFill, { width: `${p.percentile}%`, backgroundColor: p.status === 'normal' ? '#10b981' : p.status === 'watch' ? '#f59e0b' : '#ef4444' }]} />
-                </View>
-                <Text style={[styles.percNum, { color: theme.text.secondary }]}>{p.percentile}th %ile</Text>
-              </View>
-            </View>
-          ))}
+    <Animated.View entering={FadeInUp.delay(60).springify()}>
+      <View style={[styles.babyRibbon, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.babyRibbonAvatar, { backgroundColor: `${DS.primary}15` }]}>
+          {baby?.avatar ? (
+            <Image source={{ uri: baby.avatar }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+          ) : (
+            <Ionicons name="person" size={22} color={DS.primary} />
+          )}
         </View>
-        <Text style={[styles.percDisclaimer, { color: theme.text.muted }]}>Percentiles use WHO LMS reference data. Consult your pediatrician for clinical interpretation.</Text>
-      </GlassCard>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.babyRibbonName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+            {baby?.name || 'Baby'}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+            <Text style={[styles.babyRibbonMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {ageDisplay} · {baby?.gender || 'Unknown'}
+            </Text>
+            {baby?.bloodType && (
+              <View style={[styles.chipTiny, { backgroundColor: `${DS.danger}15` }]}>
+                <Text style={[styles.chipTinyText, { color: DS.danger }]}>🩸 {baby.bloodType}</Text>
+              </View>
+            )}
+            {baby?.allergies?.length > 0 && (
+              <View style={[styles.chipTiny, { backgroundColor: `${DS.warning}15` }]}>
+                <Text style={[styles.chipTinyText, { color: DS.warning }]}>⚠️ {baby.allergies.length}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
     </Animated.View>
   );
-};
+});
 
 /* ═══════════════════════════════════════════════════════════════════════
-   TEMPLATE FIELD COMPONENT
+   Template Field Component (preserved, restyled)
    ═══════════════════════════════════════════════════════════════════════ */
+
 const TemplateFieldComponent = ({
   field,
   value,
   onChange,
-  theme,
+  isDark,
   readonly = false,
 }: {
   field: TemplateField;
   value: string;
   onChange: (id: string, value: string) => void;
-  theme: any;
+  isDark: boolean;
   readonly?: boolean;
 }) => {
   const [isFocused, setIsFocused] = useState(false);
@@ -551,29 +709,28 @@ const TemplateFieldComponent = ({
   const renderField = () => {
     if (readonly) {
       return (
-        <View style={[styles.templateReadonlyValue, { borderColor: theme.border }]}>
-          <Text style={[styles.templateReadonlyText, { color: value ? theme.text.primary : theme.text.muted }]}>
+        <View style={[styles.templateReadonlyValue, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+          <Text style={[styles.templateReadonlyText, { color: value ? (isDark ? DS.white : DS.gray900) : DS.gray400 }]}>
             {value || '—'}
           </Text>
         </View>
       );
     }
 
+    const inputBg = isDark ? 'rgba(255,255,255,0.05)' : DS.gray50;
+    const borderClr = isFocused ? DS.primary : isDark ? DS.darkBorder : DS.gray200;
+    const textClr = isDark ? DS.white : DS.gray900;
+
     switch (field.type) {
       case 'textarea':
         return (
           <TextInput
-            style={[styles.templateTextArea, {
-              color: theme.text.primary,
-              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-              borderColor: isFocused ? theme.primary : theme.border,
-            }]}
+            style={[styles.templateTextArea, { color: textClr, backgroundColor: inputBg, borderColor: borderClr }]}
             placeholder={field.placeholder || ''}
-            placeholderTextColor={theme.text.muted}
+            placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
             value={value}
             onChangeText={(text) => onChange(field.id, text)}
             multiline
-            numberOfLines={4}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
             textAlignVertical="top"
@@ -582,78 +739,59 @@ const TemplateFieldComponent = ({
 
       case 'select':
         return (
-          <View style={[styles.templateSelectContainer, {
-            borderColor: isFocused ? theme.primary : theme.border,
-            backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-          }]}>
+          <View style={[styles.templateSelectContainer, { borderColor: borderClr, backgroundColor: inputBg }]}>
             <TextInput
-              style={[styles.templateSelect, { color: theme.text.primary }]}
+              style={[styles.templateSelect, { color: textClr }]}
               placeholder={field.placeholder || 'Select option...'}
-              placeholderTextColor={theme.text.muted}
+              placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
               value={value}
               onChangeText={(text) => onChange(field.id, text)}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
             />
-            <Ionicons name="chevron-down" size={18} color={theme.text.muted} style={{ position: 'absolute', right: 12, top: 14 }} />
+            <Ionicons name="chevron-down" size={18} color={isDark ? DS.gray400 : DS.gray500} style={{ position: 'absolute', right: 12, top: 14 }} />
           </View>
         );
 
       case 'date':
         return (
           <TouchableOpacity
-            style={[styles.templateDateInput, {
-              borderColor: isFocused ? theme.primary : theme.border,
-              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-            }]}
-            onPress={() => {
-              const today = new Date().toISOString().split('T')[0];
-              onChange(field.id, today);
-            }}
+            style={[styles.templateDateInput, { borderColor: borderClr, backgroundColor: inputBg }]}
+            onPress={() => onChange(field.id, new Date().toISOString().split('T')[0])}
+            activeOpacity={0.8}
           >
-            <Text style={[styles.templateDateText, { color: value ? theme.text.primary : theme.text.muted }]}>
+            <Text style={[styles.templateDateText, { color: value ? textClr : isDark ? DS.gray500 : DS.gray400 }]}>
               {value || field.placeholder || 'Select date...'}
             </Text>
-            <Ionicons name="calendar-outline" size={18} color={theme.text.muted} />
+            <Ionicons name="calendar-outline" size={18} color={isDark ? DS.gray400 : DS.gray500} />
           </TouchableOpacity>
         );
 
       case 'signature':
         return (
           <TouchableOpacity
-            style={[styles.templateSignatureInput, {
-              borderColor: isFocused ? theme.primary : theme.border,
-              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-            }]}
+            style={[styles.templateDateInput, { borderColor: borderClr, backgroundColor: inputBg }]}
             onPress={() => {
-              Alert.alert('Signature', 'Please enter your signature:', [
+              Alert.alert('Signature', 'Enter your signature:', [
                 { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    onChange(field.id, `Dr. ${Date.now().toString().slice(-4)}`);
-                  },
-                },
+                { text: 'OK', onPress: () => onChange(field.id, `Dr. ${Date.now().toString().slice(-4)}`) },
               ]);
             }}
+            activeOpacity={0.8}
           >
-            <Text style={[styles.templateSignatureText, { color: value ? theme.text.primary : theme.text.muted }]}>
+            <Text style={[styles.templateDateText, { color: value ? textClr : isDark ? DS.gray500 : DS.gray400 }]}>
               {value || field.placeholder || 'Tap to sign...'}
             </Text>
-            <Ionicons name="create-outline" size={18} color={theme.text.muted} />
+            <Ionicons name="create-outline" size={18} color={isDark ? DS.gray400 : DS.gray500} />
           </TouchableOpacity>
         );
 
       default:
         return (
           <TextInput
-            style={[styles.templateInput, {
-              color: theme.text.primary,
-              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-              borderColor: isFocused ? theme.primary : theme.border,
-            }]}
+            style={[styles.templateInput, { color: textClr, backgroundColor: inputBg, borderColor: borderClr }]}
             placeholder={field.placeholder || ''}
-            placeholderTextColor={theme.text.muted}
+            placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
             value={value}
             onChangeText={(text) => onChange(field.id, text)}
             onFocus={() => setIsFocused(true)}
@@ -666,13 +804,13 @@ const TemplateFieldComponent = ({
 
   return (
     <View style={styles.templateFieldContainer}>
-      <View style={styles.templateFieldLabel}>
-        <Text style={[styles.templateFieldLabelText, { color: theme.text.secondary }]}>
+      <View style={{ marginBottom: 6 }}>
+        <Text style={[styles.templateFieldLabelText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
           {field.label}
-          {field.required && <Text style={{ color: '#ef4444' }}> *</Text>}
+          {field.required && <Text style={{ color: DS.danger }}> *</Text>}
         </Text>
         {field.helpText && (
-          <Text style={[styles.templateHelpText, { color: theme.text.muted }]}>
+          <Text style={[styles.templateHelpText, { color: isDark ? DS.gray500 : DS.gray400 }]}>
             {field.helpText}
           </Text>
         )}
@@ -683,7 +821,7 @@ const TemplateFieldComponent = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — Four Modes
+   MAIN SCREEN
    ═══════════════════════════════════════════════════════════════════════ */
 export const PediatricianPDFExport: React.FC = () => {
   const theme = useReportTheme();
@@ -693,6 +831,7 @@ export const PediatricianPDFExport: React.FC = () => {
   const { parent1, parent2, guardians } = useFamily();
   const { userProfile } = useAuth();
   const sweetAlert = useSweetAlert();
+  const isDark = theme.isDark;
 
   // ─── State ──────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<ReportMode>('generate');
@@ -705,7 +844,6 @@ export const PediatricianPDFExport: React.FC = () => {
   const [selectedReport, setSelectedReport] = useState<DoctorReport | null>(null);
   const [showReportDetail, setShowReportDetail] = useState(false);
 
-  
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const [showTemplateForm, setShowTemplateForm] = useState(false);
@@ -734,12 +872,10 @@ export const PediatricianPDFExport: React.FC = () => {
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
-  const headerOpacity = useAnimatedStyle(() => ({
+  const headerAnim = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
-  
   useEffect(() => {
     loadReports();
     loadShareableTemplates();
@@ -749,10 +885,7 @@ export const PediatricianPDFExport: React.FC = () => {
   const loadReports = async () => {
     try {
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
-      if (!reportsDir.exists) {
-        reportsDir.create();
-        return;
-      }
+      if (!reportsDir.exists) { reportsDir.create(); return; }
       const files = reportsDir.list();
       const reports: DoctorReport[] = [];
       for (const file of files) {
@@ -775,10 +908,7 @@ export const PediatricianPDFExport: React.FC = () => {
   const loadShareableTemplates = async () => {
     try {
       const templatesDir = new Directory(Paths.document, 'ShareableTemplates');
-      if (!templatesDir.exists) {
-        templatesDir.create();
-        return;
-      }
+      if (!templatesDir.exists) { templatesDir.create(); return; }
       const files = templatesDir.list();
       const templates: ReportTemplate[] = [];
       for (const file of files) {
@@ -801,10 +931,7 @@ export const PediatricianPDFExport: React.FC = () => {
   const loadShareResponses = async () => {
     try {
       const responsesDir = new Directory(Paths.document, 'ShareResponses');
-      if (!responsesDir.exists) {
-        responsesDir.create();
-        return;
-      }
+      if (!responsesDir.exists) { responsesDir.create(); return; }
       const files = responsesDir.list();
       const responses: ShareableTemplateResponse[] = [];
       for (const file of files) {
@@ -874,7 +1001,6 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   };
 
-  
   const toggleSection = (id: string) =>
     setSections(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
 
@@ -890,7 +1016,6 @@ export const PediatricianPDFExport: React.FC = () => {
     setSections(prev => prev.map(s => ({ ...s, enabled: presets[preset].includes(s.id) })));
   };
 
-  
   const filteredEntries = useMemo(() => {
     if (dateRange === 'all') return entries as TrackerEntry[];
     const days = { '7d': 7, '30d': 30, '90d': 90 };
@@ -902,20 +1027,68 @@ export const PediatricianPDFExport: React.FC = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayEntries = filteredEntries.filter((e) => new Date(e.timestamp) >= today);
+    const pending = reportHistory.filter(r => r.status === 'pending').length;
     return {
       total: filteredEntries.length,
       today: todayEntries.length,
       trackers: new Set(filteredEntries.map((e) => e.trackerId)).size,
+      reports: reportHistory.length,
+      pending,
     };
-  }, [filteredEntries]);
+  }, [filteredEntries, reportHistory]);
 
-  
+  const pulseStats = useMemo(() => ({
+    total: filteredEntries.length,
+    trackers: new Set(filteredEntries.map((e) => e.trackerId)).size,
+    reports: reportHistory.length,
+    pending: reportHistory.filter(r => r.status === 'pending').length,
+  }), [filteredEntries, reportHistory]);
+
+  const ageMonths = getBabyAgeMonths(currentBaby?.birthDate);
+
+  /* ── Ribbon ── */
+  const topRibbon = useMemo(() => {
+    if (!currentBaby) {
+      return {
+        icon: 'information-circle-outline' as const,
+        color: DS.info,
+        label: 'Baby profile needed',
+        text: 'Add a baby profile to start generating reports',
+      };
+    }
+    if (pulseStats.pending > 0) {
+      return {
+        icon: 'time-outline' as const,
+        color: DS.warning,
+        label: `${pulseStats.pending} pending`,
+        text: `${pulseStats.pending} report${pulseStats.pending === 1 ? '' : 's'} awaiting review — tap to view`,
+        onPress: () => setMode('upload'),
+      };
+    }
+    if (shareResponses.filter(r => r.status === 'pending').length > 0) {
+      const count = shareResponses.filter(r => r.status === 'pending').length;
+      return {
+        icon: 'chatbubbles-outline' as const,
+        color: DS.success,
+        label: `${count} new ${count === 1 ? 'response' : 'responses'}`,
+        text: 'Your shared templates received new responses',
+        onPress: () => setMode('share'),
+      };
+    }
+    return {
+      icon: 'sparkles-outline' as const,
+      color: DS.primary,
+      label: 'Ready',
+      text: `${pulseStats.total} entries · ${pulseStats.trackers} trackers ready to report`,
+      onPress: () => setMode('generate'),
+    };
+  }, [currentBaby, pulseStats, shareResponses]);
+
+  /* ── Template handler ── */
   const handleTemplateSelect = (template: ReportTemplate) => {
     setSelectedTemplate(template);
     const initialValues: Record<string, string> = {};
-    template.sections.forEach(field => {
-      initialValues[field.id] = '';
-    });
+    template.sections.forEach(field => { initialValues[field.id] = ''; });
     setTemplateValues(initialValues);
     setShowTemplateForm(true);
   };
@@ -969,6 +1142,7 @@ export const PediatricianPDFExport: React.FC = () => {
 
       await saveReport(report);
       setShowTemplateForm(false);
+      HAPTIC_SUCCESS();
       sweetAlert?.success('Template Generated!', `${selectedTemplate.name} report created successfully.`);
     } catch (err) {
       console.error(err);
@@ -978,16 +1152,18 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   };
 
-  
   const generateTemplateHTML = (template: ReportTemplate, values: Record<string, string>) => {
     const baby = currentBaby;
     const babyName = baby?.name || 'Baby';
     const babyDob = baby?.birthDate ? format(new Date(baby.birthDate), 'MMM d, yyyy') : 'N/A';
     const ageMo = getBabyAgeMonths(baby?.birthDate);
-    const ageText = baby?.birthDate ? (() => {
-      const y = Math.floor(ageMo / 12); const m = ageMo % 12;
-      return y > 0 ? `${y}y ${m}m` : `${m} months`;
-    })() : 'N/A';
+    const ageText = baby?.birthDate
+      ? (() => {
+          const y = Math.floor(ageMo / 12);
+          const m = ageMo % 12;
+          return y > 0 ? `${y}y ${m}m` : `${m} months`;
+        })()
+      : 'N/A';
 
     const fieldsHTML = template.sections.map(field => {
       const value = values[field.id] || '';
@@ -1055,24 +1231,25 @@ export const PediatricianPDFExport: React.FC = () => {
 </html>`;
   };
 
-  
   const generateFullReportHTML = useCallback(() => {
     const baby = currentBaby;
     const babyName = baby?.name || 'Baby';
     const babyDob = baby?.birthDate ? format(new Date(baby.birthDate), 'MMM d, yyyy') : 'N/A';
     const ageMo = getBabyAgeMonths(baby?.birthDate);
-    const ageText = baby?.birthDate ? (() => {
-      const y = Math.floor(ageMo / 12); const m = ageMo % 12;
-      return y > 0 ? `${y}y ${m}m` : `${m} months`;
-    })() : 'N/A';
+    const ageText = baby?.birthDate
+      ? (() => {
+          const y = Math.floor(ageMo / 12);
+          const m = ageMo % 12;
+          return y > 0 ? `${y}y ${m}m` : `${m} months`;
+        })()
+      : 'N/A';
     const gender = genderToLMS(baby?.gender);
     const enabledIds = new Set(sections.filter(s => s.enabled).map(s => s.id));
     const rangeLabel =
-      dateRange === '7d' ? 'Last 7 Days' :
-      dateRange === '30d' ? 'Last 30 Days' :
-      dateRange === '90d' ? 'Last 90 Days' : 'All Time';
+      dateRange === '7d' ? 'Last 7 Days'
+      : dateRange === '30d' ? 'Last 30 Days'
+      : dateRange === '90d' ? 'Last 90 Days' : 'All Time';
 
-    
     const familyHTML = () => {
       const contacts: string[] = [];
       if (parent1) contacts.push(`<div class="contact-card"><strong>${escapeHtml(parent1.fullName || 'Parent 1')}</strong><br/>${escapeHtml(parent1.relationship || 'Parent')}${parent1.phoneNumber ? `<br/>📞 ${escapeHtml(parent1.phoneNumber)}` : ''}${parent1.email ? `<br/>✉️ ${escapeHtml(parent1.email)}` : ''}</div>`);
@@ -1085,29 +1262,18 @@ export const PediatricianPDFExport: React.FC = () => {
         : '<p class="muted">No family contacts recorded.</p>';
     };
 
-    
     const growthPercentileHTML = () => {
       if (!baby?.birthDate) return '<p class="muted">No birth date on file — percentiles cannot be computed.</p>';
-
       const growthEntries = filteredEntries
         .filter((e) => e.trackerId === 'growth')
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      if (growthEntries.length === 0) return '<p class="muted">No growth measurements in this period.</p>';
 
-      if (growthEntries.length === 0) {
-        return '<p class="muted">No growth measurements in this period.</p>';
-      }
-
-      
       const byType: Record<string, TrackerEntry> = {};
       for (const e of growthEntries) {
         const t = String(e.data?.measurementType ?? '').toLowerCase();
-        const normalized =
-          t === 'length' ? 'height' :
-          t === 'hc' || t === 'headcircumference' ? 'head' :
-          t;
-        if (['weight', 'height', 'head'].includes(normalized) && !byType[normalized]) {
-          byType[normalized] = e;
-        }
+        const normalized = t === 'length' ? 'height' : t === 'hc' || t === 'headcircumference' ? 'head' : t;
+        if (['weight', 'height', 'head'].includes(normalized) && !byType[normalized]) byType[normalized] = e;
       }
 
       const rows: string[] = [];
@@ -1135,9 +1301,7 @@ export const PediatricianPDFExport: React.FC = () => {
         if (raw === null) return;
 
         const p = calculatePercentilePrecise(raw, ageMo, metric, gender);
-        const status =
-          p < 3 || p > 97 ? '⚠️ Concern' :
-          p < 16 || p > 84 ? '👀 Watch' : '✓ Normal';
+        const status = p < 3 || p > 97 ? '⚠️ Concern' : p < 16 || p > 84 ? '👀 Watch' : '✓ Normal';
 
         rows.push(
           `<tr>` +
@@ -1172,7 +1336,6 @@ export const PediatricianPDFExport: React.FC = () => {
       `;
     };
 
-    
     const babyProfileHTML = () => `
       <div class="grid-3">
         <div class="metric"><div class="metric-value">${escapeHtml(babyName)}</div><div class="metric-label">Name</div></div>
@@ -1185,15 +1348,10 @@ export const PediatricianPDFExport: React.FC = () => {
       ${baby?.medicalNotes ? `<div class="info-box"><strong>Medical Notes:</strong> ${escapeHtml(baby.medicalNotes)}</div>` : ''}
     `;
 
-    
     const summaryHTML = () => {
-      const recentVisits = filteredEntries.filter((e) => 
-        ['doctor_visit', 'dental_visit', 'therapy', 'vaccine'].includes(e.trackerId)
-      );
+      const recentVisits = filteredEntries.filter((e) => ['doctor_visit', 'dental_visit', 'therapy', 'vaccine'].includes(e.trackerId));
       const recentMeds = filteredEntries.filter((e) => e.trackerId === 'medication');
-      const recentSymptoms = filteredEntries.filter((e) => 
-        ['symptom', 'temperature', 'allergy', 'symptom'].includes(e.trackerId)
-      );
+      const recentSymptoms = filteredEntries.filter((e) => ['symptom', 'temperature', 'allergy'].includes(e.trackerId));
       return `<div class="section"><h2>📋 Visit Summary</h2><p style="color:#64748b;font-size:13px;margin-bottom:16px;">Report period: <strong>${rangeLabel}</strong> | Generated: ${format(new Date(), 'MMM d, yyyy h:mm a')}</p><div class="grid-2"><div class="card"><strong>Total Entries</strong><br/><span style="font-size:24px;font-weight:800;color:#667eea;">${filteredEntries.length}</span></div><div class="card"><strong>Health Events</strong><br/><span style="font-size:24px;font-weight:800;color:#ef4444;">${recentVisits.length}</span></div><div class="card"><strong>Medications</strong><br/><span style="font-size:24px;font-weight:800;color:#f59e0b;">${recentMeds.length}</span></div><div class="card"><strong>Symptoms</strong><br/><span style="font-size:24px;font-weight:800;color:#8b5cf6;">${recentSymptoms.length}</span></div></div></div>`;
     };
 
@@ -1205,9 +1363,7 @@ export const PediatricianPDFExport: React.FC = () => {
       enabledIds.has('summary') ? summaryHTML() : '',
       enabledIds.has('babyInfo') ? `<div class="section"><h2>👶 Child Profile</h2>${babyProfileHTML()}</div>` : '',
       enabledIds.has('family') ? `<div class="section"><h2>👨‍👩‍👧 Family Contacts</h2>${familyHTML()}</div>` : '',
-      (enabledIds.has('growth') || enabledIds.has('percentiles'))
-        ? `<div class="section"><h2>📈 Growth & WHO Percentiles</h2>${growthPercentileHTML()}</div>`
-        : '',
+      (enabledIds.has('growth') || enabledIds.has('percentiles')) ? `<div class="section"><h2>📈 Growth & WHO Percentiles</h2>${growthPercentileHTML()}</div>` : '',
       enabledIds.has('notes') ? notesHTML : '',
     ].filter(Boolean).join('');
 
@@ -1258,7 +1414,6 @@ export const PediatricianPDFExport: React.FC = () => {
     </div>
   </div>
   ${sectionsHTML}
-  <!-- Doctor's Notes Section -->
   <div class="doctor-section">
     <h3>👨‍⚕️ Pediatrician's Notes</h3>
     <p style="color:#065f46;font-size:13px;">This section is intended for the pediatrician to fill out during the visit.</p>
@@ -1283,7 +1438,6 @@ export const PediatricianPDFExport: React.FC = () => {
 </html>`;
   }, [currentBaby, filteredEntries, sections, dateRange, customNotes, parent1, parent2, guardians]);
 
-  
   const generateFullReportPDF = useCallback(async () => {
     const enabledCount = sections.filter(s => s.enabled).length;
     if (!enabledCount) { sweetAlert?.alert?.('No Sections', 'Enable at least one section.'); return; }
@@ -1315,6 +1469,7 @@ export const PediatricianPDFExport: React.FC = () => {
       };
 
       await saveReport(report);
+      HAPTIC_SUCCESS();
       sweetAlert?.success('Report Ready!', 'Your PDF report has been generated and saved.');
 
       sweetAlert?.confirm?.('Share Report?', 'Would you like to share this report with your pediatrician?',
@@ -1333,7 +1488,6 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   }, [generateFullReportHTML, sections, currentBaby, sweetAlert, presetId]);
 
-  
   const uploadDoctorReport = useCallback(async () => {
     if (!currentBaby) {
       sweetAlert?.alert?.('No Baby', 'Select a baby profile first.');
@@ -1353,7 +1507,6 @@ export const PediatricianPDFExport: React.FC = () => {
       }
 
       const asset = result.assets[0];
-
       const reportsDir = new Directory(Paths.document, 'DoctorReports');
       if (!reportsDir.exists) reportsDir.create();
 
@@ -1376,14 +1529,13 @@ export const PediatricianPDFExport: React.FC = () => {
 
       await saveReport(report);
       setUploading(false);
+      HAPTIC_SUCCESS();
       sweetAlert?.success('Uploaded!', 'Doctor-filled report uploaded successfully.');
     } catch (error) {
       setUploading(false);
       sweetAlert?.alert?.('Error', 'Failed to upload report. Please try again.');
     }
   }, [currentBaby, sweetAlert]);
-
-  
 
   const createShareableTemplate = useCallback(async (template: ReportTemplate) => {
     if (!userProfile) {
@@ -1400,6 +1552,7 @@ export const PediatricianPDFExport: React.FC = () => {
     };
 
     await saveShareableTemplate(shareableTemplate);
+    HAPTIC_SUCCESS();
     sweetAlert?.success('Shareable Link Created!', 'Your template is now ready to share.');
   }, [userProfile, sweetAlert]);
 
@@ -1422,10 +1575,7 @@ export const PediatricianPDFExport: React.FC = () => {
   const shareViaNative = useCallback(async (link: string, templateName: string) => {
     try {
       const message = `📋 ${templateName} Template\n\nPlease fill out this template at:\n${link}\n\nThis is a secure, shareable form for pediatric records.`;
-      await Share.share({
-        message: message,
-        title: `Share ${templateName} Template`,
-      });
+      await Share.share({ message, title: `Share ${templateName} Template` });
     } catch (error) {
       console.error('Error sharing:', error);
     }
@@ -1447,96 +1597,6 @@ export const PediatricianPDFExport: React.FC = () => {
     );
   }, [shareResponses, sweetAlert]);
 
-  
-  const ShareModal = () => (
-    <Modal visible={showShareModal} transparent animationType="slide" onRequestClose={() => setShowShareModal(false)}>
-      <View style={styles.shareModalOverlay}>
-        <View style={[styles.shareModalContent, { backgroundColor: theme.bg }]}>
-          <View style={styles.shareModalHeader}>
-            <Text style={[styles.shareModalTitle, { color: theme.text.primary }]}>Share Template</Text>
-            <TouchableOpacity onPress={() => setShowShareModal(false)} style={styles.shareModalClose}>
-              <Ionicons name="close" size={24} color={theme.text.primary} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.shareModalBody} showsVerticalScrollIndicator={false}>
-            <View style={styles.shareLinkContainer}>
-              <Text style={[styles.shareLinkLabel, { color: theme.text.secondary }]}>Shareable Link</Text>
-              <View style={[styles.shareLinkRow, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: theme.border }]}>
-                <Text style={[styles.shareLinkText, { color: theme.text.primary }]} numberOfLines={1}>
-                  {shareLink}
-                </Text>
-                <TouchableOpacity onPress={() => copyLinkToClipboard(shareLink)} style={styles.shareLinkCopyBtn}>
-                  <Ionicons name="copy-outline" size={20} color={theme.primary} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.shareActions}>
-              <TouchableOpacity
-                style={[styles.shareActionBtn, { backgroundColor: theme.primary }]}
-                onPress={() => {
-                  if (selectedTemplateForShare) {
-                    shareViaNative(shareLink, selectedTemplateForShare.name);
-                  }
-                }}
-              >
-                <Ionicons name="share-social-outline" size={20} color="#fff" />
-                <Text style={styles.shareActionBtnText}>Share via App</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.shareActionBtn, { backgroundColor: '#10b981' }]}
-                onPress={() => {
-                  sweetAlert?.alert(
-                    'Share via Email/SMS',
-                    'You can share this link via your preferred messaging app using the Share button above.',
-                  );
-                }}
-              >
-                <Ionicons name="mail-outline" size={20} color="#fff" />
-                <Text style={styles.shareActionBtnText}>Email/SMS</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.shareInstructions}>
-              <Text style={[styles.shareInstructionsTitle, { color: theme.text.secondary }]}>How it works:</Text>
-              <Text style={[styles.shareInstructionsText, { color: theme.text.muted }]}>
-                1. Share this link with your pediatrician or specialist
-              </Text>
-              <Text style={[styles.shareInstructionsText, { color: theme.text.muted }]}>
-                2. They fill out the template on their device
-              </Text>
-              <Text style={[styles.shareInstructionsText, { color: theme.text.muted }]}>
-                3. You'll receive the completed report back automatically
-              </Text>
-              <Text style={[styles.shareInstructionsText, { color: theme.text.muted }]}>
-                4. Review and save the filled report
-              </Text>
-            </View>
-
-            {selectedTemplateForShare && (
-              <View style={styles.shareTemplateInfo}>
-                <Text style={[styles.shareTemplateName, { color: theme.text.primary }]}>
-                  📋 {selectedTemplateForShare.name}
-                </Text>
-                <Text style={[styles.shareTemplateDesc, { color: theme.text.muted }]}>
-                  {selectedTemplateForShare.description}
-                </Text>
-                <Badge
-                  text={`${selectedTemplateForShare.sections.length} fields`}
-                  color={selectedTemplateForShare.color}
-                  bg={`${selectedTemplateForShare.color}15`}
-                />
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  // ─── View Report ──────────────────────────────────────────────────────
   const viewReport = useCallback(async (report: DoctorReport) => {
     try {
       const file = new File(report.uri);
@@ -1551,7 +1611,6 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   }, [sweetAlert]);
 
-  // ─── Delete Report ────────────────────────────────────────────────────
   const deleteReport = useCallback((report: DoctorReport) => {
     sweetAlert?.confirm?.('Delete Report', `Delete "${report.name}"?`,
       async () => {
@@ -1568,7 +1627,6 @@ export const PediatricianPDFExport: React.FC = () => {
     );
   }, [sweetAlert]);
 
-  // ─── Share Report ─────────────────────────────────────────────────────
   const shareReport = useCallback(async (report: DoctorReport) => {
     try {
       const file = new File(report.uri);
@@ -1584,485 +1642,533 @@ export const PediatricianPDFExport: React.FC = () => {
     }
   }, [sweetAlert]);
 
-  // ─── Render ────────────────────────────────────────────────────────────
-
+  /* ─── RENDER ─── */
   if (!currentBaby) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center', padding: 40 }]}>
-        <Ionicons name="document-text-outline" size={64} color={theme.text.muted} />
-        <Text style={[styles.emptyTitle, { color: theme.text.primary, marginTop: 16 }]}>No Baby Profile</Text>
-        <Text style={[styles.emptySub, { color: theme.text.muted, textAlign: 'center', marginTop: 8 }]}>Select a baby profile to generate or upload reports.</Text>
+      <View style={{ flex: 1, backgroundColor: isDark ? DS.darkBg : DS.gray50, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+        <LinearGradient
+          colors={isDark ? [DS.darkBg, '#12121e'] : ['#f8faff', '#eef0f5']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+          <Ionicons name="document-text-outline" size={56} color={isDark ? DS.gray500 : DS.gray400} />
+        </View>
+        <Text style={{ fontSize: 20, fontWeight: '800', color: isDark ? DS.white : DS.gray900, marginTop: 16, letterSpacing: -0.3 }}>
+          No Baby Profile
+        </Text>
+        <Text style={{ fontSize: 13, color: isDark ? DS.gray400 : DS.gray500, textAlign: 'center', marginTop: 8, lineHeight: 19 }}>
+          Select a baby profile to generate or upload reports.
+        </Text>
       </View>
     );
   }
 
+  const bgColors = isDark ? [DS.darkBg, '#12121e', DS.darkBg] : ['#f8faff', '#eef0f5', '#e4e8f0'];
+
+  const modeCounts = {
+    generate: undefined,
+    templates: REPORT_TEMPLATES.length,
+    share: shareableTemplates.length,
+    upload: reportHistory.length,
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
-        <BlurView intensity={theme.isDark ? 40 : 80} tint={theme.isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-        <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby.name}'s Reports</Text>
-        <Text style={[styles.stickySubtitle, { color: theme.text.muted }]}>Pediatric Documents</Text>
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient colors={bgColors as any} style={StyleSheet.absoluteFill} />
+
+      {/* Sticky Header */}
+      <Animated.View
+        entering={FadeIn.duration(400)}
+        style={[
+          styles.stickyHeader,
+          {
+            paddingTop: HEADER_TOP_PADDING,
+            backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)',
+            borderBottomColor: isDark ? DS.darkBorder : DS.gray200,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+          },
+          headerAnim,
+        ]}
+      >
+        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerInner}>
+          <TouchableOpacity
+            onPress={() => {
+              try {
+                const { navigation } = require('@react-navigation/native');
+                // Use window nav fallback if navigation not provided as prop
+              } catch {}
+            }}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+          >
+            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>
+              REPORTS
+            </GradientText>
+            <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {currentBaby.name} · {ageMonths}mo
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setMode('upload')}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+          >
+            <Ionicons name="cloud-upload-outline" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+        </View>
       </Animated.View>
 
       <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ paddingTop: HEADER_TOTAL_HEIGHT + 12, paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
       >
-        <BabyProfileHeader baby={currentBaby} />
+        {/* Pulse */}
+        <ReportPulse
+          isDark={isDark}
+          baby={currentBaby}
+          ageMonths={ageMonths}
+          stats={pulseStats}
+          onBabyPress={() => { /* navigate to switch baby */ }}
+          onSwitchMode={setMode}
+        />
 
-        {/* ─── Mode Selector ────────────────────────────────────────────── */}
-        <Animated.View entering={FadeInUp.delay(40).springify()}>
-          <View style={styles.modeSelector}>
-            {([
-              { id: 'generate' as ReportMode, label: 'Generate', icon: 'create-outline' },
-              { id: 'templates' as ReportMode, label: 'Templates', icon: 'document-text-outline' },
-              { id: 'share' as ReportMode, label: 'Share', icon: 'share-social-outline' },
-              { id: 'upload' as ReportMode, label: 'Upload', icon: 'cloud-upload-outline' },
-            ]).map((m) => {
-              const active = mode === m.id;
-              return (
-                <TouchableOpacity
-                  key={m.id}
-                  style={[styles.modeBtn, active && { backgroundColor: theme.primary }]}
-                  onPress={() => setMode(m.id)}
-                >
-                  <Ionicons name={m.icon as any} size={18} color={active ? '#fff' : theme.text.primary} />
-                  <Text style={[styles.modeBtnText, { color: active ? '#fff' : theme.text.primary }]}>{m.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </Animated.View>
+        {/* Baby ribbon (slim profile) */}
+        <View style={{ marginTop: DS.space.md }}>
+          <BabyRibbon baby={currentBaby} isDark={isDark} />
+        </View>
 
-        {/* ─── GENERATE MODE ────────────────────────────────────────────── */}
+        {/* Ribbon */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <AuraRibbon isDark={isDark} {...topRibbon} />
+        </View>
+
+        {/* Mode switcher */}
+        <View style={{ marginTop: DS.space.md }}>
+          <ModeSwitcher mode={mode} onChange={setMode} isDark={isDark} counts={modeCounts} />
+        </View>
+
+        {/* ═══ GENERATE MODE ═══ */}
         {mode === 'generate' && (
           <>
-            <Animated.View entering={FadeInUp.delay(60).springify()}>
-              <GlassCard style={styles.heroCard}>
-                <LinearGradient colors={['#667eea', '#764ba2']} style={styles.heroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                  <Ionicons name="document-text" size={36} color="#fff" />
-                  <Text style={styles.heroTitle}>Generate Full Report</Text>
-                  <Text style={styles.heroSub}>Create a comprehensive pediatric report</Text>
-                  <View style={styles.heroStats}>
-                    <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.total}</Text><Text style={styles.heroStatLabel}>Entries</Text></View>
-                    <View style={styles.heroStatDivider} />
-                    <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.trackers}</Text><Text style={styles.heroStatLabel}>Trackers</Text></View>
-                    <View style={styles.heroStatDivider} />
-                    <View style={styles.heroStat}><Text style={styles.heroStatNum}>{stats.today}</Text><Text style={styles.heroStatLabel}>Today</Text></View>
-                  </View>
-                </LinearGradient>
-              </GlassCard>
-            </Animated.View>
-
-            <Animated.View entering={FadeInUp.delay(80).springify()}>
-              <SectionHeader title="Report Template" icon="layers-outline" subtitle="Choose a starting preset" />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateScroll}>
+            <View style={{ marginTop: DS.space.lg }}>
+              <SectionHeader title="Report Preset" subtitle="Choose a starting template" icon="layers-outline" color={DS.primary} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8, paddingVertical: 4 }}>
                 {([
-                  { id: 'full' as PresetId, label: 'Full Report', icon: 'document-text', desc: 'Everything' },
-                  { id: 'visit' as PresetId, label: 'Visit Summary', icon: 'medical', desc: 'Essentials' },
-                  { id: 'growth' as PresetId, label: 'Growth Focus', icon: 'trending-up', desc: 'Charts & %iles' },
-                  { id: 'development' as PresetId, label: 'Development', icon: 'body', desc: 'Milestones' },
-                  { id: 'emergency' as PresetId, label: 'Emergency', icon: 'warning', desc: 'Health & contacts' },
+                  { id: 'full' as PresetId, label: 'Full', icon: 'document-text' as const, desc: 'Everything' },
+                  { id: 'visit' as PresetId, label: 'Visit', icon: 'medical' as const, desc: 'Essentials' },
+                  { id: 'growth' as PresetId, label: 'Growth', icon: 'trending-up' as const, desc: 'Charts' },
+                  { id: 'development' as PresetId, label: 'Dev', icon: 'body' as const, desc: 'Milestones' },
+                  { id: 'emergency' as PresetId, label: 'ER', icon: 'warning' as const, desc: 'Urgent' },
                 ]).map(t => {
                   const active = presetId === t.id;
                   return (
                     <TouchableOpacity
                       key={t.id}
                       onPress={() => applyTemplate(t.id)}
-                      style={[styles.templateChip, active && { borderColor: theme.primary, backgroundColor: `${theme.primary}15` }]}
+                      style={[
+                        styles.presetPill,
+                        {
+                          backgroundColor: active ? DS.primary : isDark ? DS.darkCard : DS.white,
+                          borderColor: active ? DS.primary : isDark ? DS.darkBorder : DS.gray200,
+                        },
+                      ]}
+                      activeOpacity={0.85}
                     >
-                      <Ionicons name={t.icon as any} size={20} color={active ? theme.primary : theme.text.muted} />
-                      <Text style={[styles.templateLabel, { color: active ? theme.primary : theme.text.primary }]}>{t.label}</Text>
-                      <Text style={[styles.templateDesc, { color: theme.text.muted }]}>{t.desc}</Text>
+                      <Ionicons name={t.icon} size={16} color={active ? DS.white : DS.primary} />
+                      <Text style={[styles.presetPillLabel, { color: active ? DS.white : isDark ? DS.gray200 : DS.gray800 }, active && { fontWeight: '700' }]}>
+                        {t.label}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}
               </ScrollView>
-            </Animated.View>
+            </View>
 
-            <Animated.View entering={FadeInUp.delay(100).springify()}>
-              <SectionHeader title="Date Range" icon="calendar-outline" />
-              <View style={styles.rangeRow}>
-                {(['7d', '30d', '90d', 'all'] as const).map(r => (
-                  <TouchableOpacity key={r} onPress={() => setDateRange(r)} style={[styles.rangeBtn, dateRange === r && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
-                    <Text style={[styles.rangeBtnText, { color: dateRange === r ? '#fff' : theme.text.primary }]}>
-                      {r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : r === '90d' ? '90 Days' : 'All Time'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            <View style={{ marginTop: DS.space.lg }}>
+              <SectionHeader title="Date Range" icon="calendar-outline" color={DS.info} />
+              <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: DS.space.lg }}>
+                {(['7d', '30d', '90d', 'all'] as const).map(r => {
+                  const active = dateRange === r;
+                  return (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => setDateRange(r)}
+                      style={[styles.rangePill, {
+                        backgroundColor: active ? DS.primary : isDark ? DS.darkCard : DS.white,
+                        borderColor: active ? DS.primary : isDark ? DS.darkBorder : DS.gray200,
+                      }]}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.rangePillText, { color: active ? DS.white : isDark ? DS.gray300 : DS.gray700 }, active && { fontWeight: '700' }]}>
+                        {r === '7d' ? '7d' : r === '30d' ? '30d' : r === '90d' ? '90d' : 'All'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            </Animated.View>
+            </View>
 
-            {/* ─── Sections Toggle ──────────────────────────────────────── */}
-            <Animated.View entering={FadeInUp.delay(120).springify()}>
-              <SectionHeader title="Report Sections" icon="list-outline" subtitle="Toggle what to include" />
-              <GlassCard style={styles.sectionsCard}>
-                {sections.map((sec, idx) => (
-                  <View key={sec.id} style={[styles.sectionRow, idx !== sections.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
-                    <View style={styles.sectionRowLeft}>
-                      <Text style={styles.sectionEmoji}>{sec.emoji}</Text>
+            <View style={{ marginTop: DS.space.lg }}>
+              <SectionHeader title="Sections" subtitle={`${sections.filter(s => s.enabled).length}/${sections.length} enabled`} icon="list-outline" color={DS.accent} />
+              <View style={{ paddingHorizontal: DS.space.lg }}>
+                <View style={[styles.sectionsCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                  {sections.map((sec, idx) => (
+                    <View key={sec.id} style={[
+                      styles.sectionRow,
+                      idx !== sections.length - 1 && {
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderBottomColor: isDark ? DS.darkBorder : DS.gray200,
+                      },
+                    ]}>
+                      <Text style={{ fontSize: 18 }}>{sec.emoji}</Text>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.sectionRowLabel, { color: theme.text.primary }]}>{sec.label}</Text>
-                        <Text style={[styles.sectionRowDesc, { color: theme.text.muted }]}>{sec.description}</Text>
+                        <Text style={[styles.sectionRowLabel, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                          {sec.label}
+                        </Text>
+                        <Text style={[styles.sectionRowDesc, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
+                          {sec.description}
+                        </Text>
                       </View>
+                      <Switch
+                        value={sec.enabled}
+                        onValueChange={() => toggleSection(sec.id)}
+                        trackColor={{ false: isDark ? DS.gray700 : DS.gray300, true: `${DS.primary}80` }}
+                        thumbColor={sec.enabled ? DS.primary : isDark ? DS.gray500 : DS.white}
+                      />
                     </View>
-                    <Switch
-                      value={sec.enabled}
-                      onValueChange={() => toggleSection(sec.id)}
-                      trackColor={{ false: '#767577', true: `${theme.primary}80` }}
-                      thumbColor={sec.enabled ? theme.primary : '#f4f3f4'}
-                    />
-                  </View>
-                ))}
-              </GlassCard>
-            </Animated.View>
+                  ))}
+                </View>
+              </View>
+            </View>
 
-            {/* ─── Notes ────────────────────────────────────────────────── */}
-            <Animated.View entering={FadeInUp.delay(140).springify()}>
-              <SectionHeader title="Notes for Doctor" icon="create-outline" subtitle="Concerns or questions" />
-              <GlassCard style={styles.notesCard}>
-                <TextInput
-                  value={customNotes}
-                  onChangeText={setCustomNotes}
-                  placeholder="e.g., Fussy after feeds, rash on neck..."
-                  placeholderTextColor={theme.text.muted}
-                  multiline
-                  numberOfLines={4}
-                  style={[styles.notesInput, { color: theme.text.primary }]}
-                  textAlignVertical="top"
-                />
-              </GlassCard>
-            </Animated.View>
+            <View style={{ marginTop: DS.space.lg }}>
+              <SectionHeader title="Notes for Doctor" icon="create-outline" color={DS.warning} />
+              <View style={{ paddingHorizontal: DS.space.lg }}>
+                <View style={[styles.notesBox, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                  <TextInput
+                    value={customNotes}
+                    onChangeText={setCustomNotes}
+                    placeholder="e.g., Fussy after feeds, rash on neck..."
+                    placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
+                    multiline
+                    numberOfLines={4}
+                    style={[styles.notesInput, { color: isDark ? DS.white : DS.gray900 }]}
+                    textAlignVertical="top"
+                  />
+                </View>
+              </View>
+            </View>
 
-            {/* ─── Generate Button ──────────────────────────────────────── */}
-            <Animated.View entering={FadeInUp.delay(160).springify()}>
-              <TouchableOpacity
-                onPress={generateFullReportPDF}
-                disabled={generating}
-                style={[styles.generateBtn, { backgroundColor: generating ? theme.text.muted : theme.primary }]}
-              >
-                {generating
-                  ? <ActivityIndicator color="#fff" />
-                  : <>
-                      <Ionicons name="download-outline" size={22} color="#fff" />
+            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
+              <PressableScale onPress={generateFullReportPDF} disabled={generating} activeScale={0.97}>
+                <LinearGradient
+                  colors={generating ? [DS.gray400, DS.gray500] : [DS.primary, DS.accent]}
+                  style={styles.generateBtn}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                >
+                  {generating ? <ActivityIndicator color="#fff" /> : (
+                    <>
+                      <Ionicons name="download-outline" size={20} color="#fff" />
                       <Text style={styles.generateBtnText}>Generate PDF Report</Text>
-                    </>}
-              </TouchableOpacity>
-              <Text style={[styles.disclaimer, { color: theme.text.muted }]}>Reports are generated locally. No data leaves your device.</Text>
-            </Animated.View>
+                      <Ionicons name="arrow-forward" size={18} color="#fff" />
+                    </>
+                  )}
+                </LinearGradient>
+              </PressableScale>
+              <Text style={[styles.disclaimer, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                Reports are generated locally · no data leaves your device
+              </Text>
+            </View>
           </>
         )}
 
-        {/* ─── TEMPLATES MODE ───────────────────────────────────────────── */}
+        {/* ═══ TEMPLATES MODE ═══ */}
         {mode === 'templates' && (
-          <>
-            <Animated.View entering={FadeInUp.delay(60).springify()}>
-              <GlassCard style={styles.uploadHeroCard}>
-                <LinearGradient colors={['#8b5cf6', '#6366f1']} style={styles.templateHeroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                  <Ionicons name="document-text" size={36} color="#fff" />
-                  <Text style={styles.uploadHeroTitle}>Fillable Report Templates</Text>
-                  <Text style={styles.uploadHeroSub}>Choose a template, fill it out, and generate a professional PDF</Text>
-                </LinearGradient>
-              </GlassCard>
-            </Animated.View>
-
-            <View style={styles.templateGrid}>
-              {REPORT_TEMPLATES.map((t, index) => (
-                <Animated.View key={t.id} entering={FadeInUp.delay(80 + index * 60).springify()} style={styles.templateGridItem}>
-                  <TouchableOpacity
-                    style={[styles.templateCard, { borderColor: `${t.color}30` }]}
-                    onPress={() => handleTemplateSelect(t)}
-                    activeOpacity={0.85}
-                  >
-                    <View style={[styles.templateCardIcon, { backgroundColor: `${t.color}15` }]}>
-                      <Ionicons name={t.icon as any} size={28} color={t.color} />
+          <View style={{ marginTop: DS.space.lg }}>
+            <SectionHeader title="Report Templates" subtitle="Fill out and generate professional PDFs" icon="document-text-outline" color="#8b5cf6" />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: DS.space.lg, gap: 10 }}>
+              {REPORT_TEMPLATES.map((t, i) => (
+                <Animated.View key={t.id} entering={FadeInUp.delay(i * 40).springify()} style={{ width: (SCREEN_W - 40 - 10) / 2 }}>
+                  <PressableScale onPress={() => handleTemplateSelect(t)} activeScale={0.96}>
+                    <View style={[styles.templateCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: `${t.color}40` }]}>
+                      <LinearGradient
+                        colors={[`${t.color}15`, `${t.color}03`]}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                      />
+                      <View style={[styles.templateIcon, { backgroundColor: `${t.color}18` }]}>
+                        <Ionicons name={t.icon as any} size={22} color={t.color} />
+                      </View>
+                      <Text style={[styles.templateName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={2}>
+                        {t.name}
+                      </Text>
+                      <Text style={[styles.templateDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>
+                        {t.description}
+                      </Text>
+                      <View style={[styles.templateBadge, { backgroundColor: `${t.color}18` }]}>
+                        <Text style={[styles.templateBadgeText, { color: t.color }]}>{t.sections.length} fields</Text>
+                      </View>
                     </View>
-                    <Text style={[styles.templateCardName, { color: theme.text.primary }]}>{t.name}</Text>
-                    <Text style={[styles.templateCardDesc, { color: theme.text.muted }]}>{t.description}</Text>
-                    <View style={[styles.templateCardBadge, { backgroundColor: `${t.color}10` }]}>
-                      <Text style={[styles.templateCardBadgeText, { color: t.color }]}>{t.sections.length} fields</Text>
-                    </View>
-                  </TouchableOpacity>
+                  </PressableScale>
                 </Animated.View>
               ))}
             </View>
-          </>
+          </View>
         )}
 
-        {/* ─── SHARE MODE ────────────────────────────────────────────────── */}
+        {/* ═══ SHARE MODE ═══ */}
         {mode === 'share' && (
           <>
-            <Animated.View entering={FadeInUp.delay(60).springify()}>
-              <GlassCard style={styles.shareHeroCard}>
-                <LinearGradient colors={['#f59e0b', '#fbbf24']} style={styles.shareHeroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                  <Ionicons name="share-social" size={36} color="#fff" />
-                  <Text style={styles.shareHeroTitle}>Shareable Templates</Text>
-                  <Text style={styles.shareHeroSub}>Send templates to doctors and receive filled reports</Text>
-                </LinearGradient>
-              </GlassCard>
-            </Animated.View>
-
-            <SectionHeader
-              title="Your Shareable Templates"
-              icon="share-social-outline"
-              subtitle={`${shareableTemplates.length} templates shared`}
-            />
-
-            {shareableTemplates.length === 0 ? (
-              <GlassCard>
-                <View style={styles.emptyShareContainer}>
-                  <Ionicons name="share-social-outline" size={48} color={theme.text.muted} />
-                  <Text style={[styles.emptyShareText, { color: theme.text.muted }]}>No shareable templates yet</Text>
-                  <Text style={[styles.emptyShareSub, { color: theme.text.muted }]}>
-                    Generate a template and create a shareable link
-                  </Text>
-                </View>
-              </GlassCard>
-            ) : (
-              shareableTemplates.map((t) => (
-                <GlassCard key={t.id} style={styles.shareTemplateCard}>
-                  <View style={styles.shareTemplateRow}>
-                    <View style={styles.shareTemplateLeft}>
-                      <View style={[styles.shareTemplateIcon, { backgroundColor: `${t.color}15` }]}>
-                        <Ionicons name={t.icon as any} size={22} color={t.color} />
-                      </View>
-                      <View style={styles.shareTemplateInfo}>
-                        <Text style={[styles.shareTemplateName, { color: theme.text.primary }]}>{t.name}</Text>
-                        <Text style={[styles.shareTemplateMeta, { color: theme.text.muted }]}>
-                          {t.sections.length} fields • {t.responseCount || 0} responses
-                        </Text>
-                      </View>
+            <View style={{ marginTop: DS.space.lg }}>
+              <SectionHeader
+                title="Shared Templates"
+                subtitle={`${shareableTemplates.length} shared · ${shareResponses.length} responses`}
+                icon="share-social-outline"
+                color="#f59e0b"
+              />
+              <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+                {shareableTemplates.length === 0 ? (
+                  <View style={[styles.emptyState, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                    <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+                      <Ionicons name="share-social-outline" size={32} color={isDark ? DS.gray500 : DS.gray400} />
                     </View>
-                    <View style={styles.shareTemplateActions}>
-                      <TouchableOpacity
-                        onPress={() => createShareableTemplate(t)}
-                        style={[styles.shareTemplateAction, { backgroundColor: `${t.color}15` }]}
-                      >
-                        <Ionicons name="link-outline" size={16} color={t.color} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => shareTemplateLink(t)}
-                        style={[styles.shareTemplateAction, { backgroundColor: `${theme.primary}15` }]}
-                      >
-                        <Ionicons name="share-outline" size={16} color={theme.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => viewResponses(t.id)}
-                        style={[styles.shareTemplateAction, { backgroundColor: '#10b98115' }]}
-                      >
-                        <Ionicons name="chatbubbles-outline" size={16} color="#10b981" />
-                      </TouchableOpacity>
-                    </View>
+                    <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No shared templates</Text>
+                    <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                      Generate a template and create a shareable link
+                    </Text>
                   </View>
-                </GlassCard>
-              ))
-            )}
-
-            {/* ─── Recent Responses ─────────────────────────────────────── */}
-            {shareResponses.length > 0 && (
-              <>
-                <SectionHeader
-                  title="Recent Responses"
-                  icon="chatbubbles-outline"
-                  subtitle={`${shareResponses.length} total responses`}
-                />
-                {shareResponses.slice(0, 5).map((response) => {
-                  const tpl = shareableTemplates.find(t => t.id === response.templateId);
-                  return (
-                    <GlassCard key={response.id} style={styles.responseCard}>
-                      <View style={styles.responseRow}>
-                        <View style={styles.responseInfo}>
-                          <Text style={[styles.responseName, { color: theme.text.primary }]}>
-                            {response.respondentName}
+                ) : (
+                  shareableTemplates.map((t) => (
+                    <PressableScale key={t.id} activeScale={0.98}>
+                      <View style={[styles.shareRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                        <View style={[styles.shareRowIcon, { backgroundColor: `${t.color}18` }]}>
+                          <Ionicons name={t.icon as any} size={20} color={t.color} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.shareRowName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                            {t.name}
                           </Text>
-                          <Text style={[styles.responseMeta, { color: theme.text.muted }]}>
-                            {tpl?.name || 'Unknown template'} • {new Date(response.submittedAt).toLocaleDateString()}
+                          <Text style={[styles.shareRowMeta, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                            {t.sections.length} fields · {t.responseCount || 0} responses
                           </Text>
                         </View>
-                        <View style={[styles.responseStatusBadge, {
-                          backgroundColor:
-                            response.status === 'approved' ? '#10b98115' :
-                            response.status === 'reviewed' ? '#3b82f615' : '#f59e0b15',
+                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                          <TouchableOpacity
+                            onPress={() => createShareableTemplate(t)}
+                            style={[styles.shareRowBtn, { backgroundColor: `${t.color}15` }]}
+                          >
+                            <Ionicons name="link-outline" size={14} color={t.color} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => shareTemplateLink(t)}
+                            style={[styles.shareRowBtn, { backgroundColor: `${DS.primary}15` }]}
+                          >
+                            <Ionicons name="share-outline" size={14} color={DS.primary} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => viewResponses(t.id)}
+                            style={[styles.shareRowBtn, { backgroundColor: `${DS.success}15` }]}
+                          >
+                            <Ionicons name="chatbubbles-outline" size={14} color={DS.success} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </PressableScale>
+                  ))
+                )}
+              </View>
+            </View>
+
+            {shareResponses.length > 0 && (
+              <View style={{ marginTop: DS.space.lg }}>
+                <SectionHeader title="Recent Responses" subtitle={`${shareResponses.length} total`} icon="chatbubbles-outline" color={DS.success} />
+                <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+                  {shareResponses.slice(0, 5).map((r) => {
+                    const tpl = shareableTemplates.find(t => t.id === r.templateId);
+                    return (
+                      <View key={r.id} style={[styles.responseRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.responseName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                            {r.respondentName}
+                          </Text>
+                          <Text style={[styles.responseMeta, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
+                            {tpl?.name || 'Unknown'} · {new Date(r.submittedAt).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <View style={[styles.statusPill, {
+                          backgroundColor: r.status === 'approved' ? `${DS.success}15` : r.status === 'reviewed' ? `${DS.info}15` : `${DS.warning}15`,
                         }]}>
-                          <Text style={[styles.responseStatusText, {
-                            color:
-                              response.status === 'approved' ? '#10b981' :
-                              response.status === 'reviewed' ? '#3b82f6' : '#f59e0b',
+                          <Text style={[styles.statusPillText, {
+                            color: r.status === 'approved' ? DS.success : r.status === 'reviewed' ? DS.info : DS.warning,
                           }]}>
-                            {response.status === 'approved' ? 'Approved' :
-                             response.status === 'reviewed' ? 'Reviewed' : 'Pending'}
+                            {r.status === 'approved' ? 'Approved' : r.status === 'reviewed' ? 'Reviewed' : 'Pending'}
                           </Text>
                         </View>
                       </View>
-                    </GlassCard>
-                  );
-                })}
-              </>
+                    );
+                  })}
+                </View>
+              </View>
             )}
           </>
         )}
 
-        {/* ─── UPLOAD MODE ──────────────────────────────────────────────── */}
+        {/* ═══ UPLOAD MODE ═══ */}
         {mode === 'upload' && (
           <>
-            <Animated.View entering={FadeInUp.delay(60).springify()}>
-              <GlassCard style={styles.uploadHeroCard}>
-                <LinearGradient colors={['#10b981', '#34d399']} style={styles.uploadHeroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                  <Ionicons name="cloud-upload" size={36} color="#fff" />
-                  <Text style={styles.uploadHeroTitle}>Upload Completed Report</Text>
-                  <Text style={styles.uploadHeroSub}>Upload the PDF report filled out by your pediatrician</Text>
-
-                  <TouchableOpacity
-                    onPress={uploadDoctorReport}
-                    disabled={uploading}
-                    style={[styles.uploadHeroBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+            <View style={{ marginTop: DS.space.lg }}>
+              <PressableScale onPress={uploadDoctorReport} disabled={uploading} activeScale={0.97}>
+                <View style={{ paddingHorizontal: DS.space.lg }}>
+                  <LinearGradient
+                    colors={[DS.success, '#34d399']}
+                    style={styles.uploadHero}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                   >
-                    {uploading
-                      ? <ActivityIndicator color="#fff" />
-                      : <>
-                          <Ionicons name="cloud-upload-outline" size={20} color="#fff" />
-                          <Text style={styles.uploadHeroBtnText}>Upload Report</Text>
-                        </>}
-                  </TouchableOpacity>
-                </LinearGradient>
-              </GlassCard>
-            </Animated.View>
+                    <View style={styles.uploadIconCircle}>
+                      {uploading ? <ActivityIndicator color="#fff" /> : <Ionicons name="cloud-upload" size={28} color="#fff" />}
+                    </View>
+                    <Text style={styles.uploadHeroTitle}>{uploading ? 'Uploading...' : 'Upload Doctor Report'}</Text>
+                    <Text style={styles.uploadHeroSub}>Choose a PDF or image from your device</Text>
+                  </LinearGradient>
+                </View>
+              </PressableScale>
+            </View>
 
-            <Animated.View entering={FadeInUp.delay(80).springify()}>
+            <View style={{ marginTop: DS.space.lg }}>
               <SectionHeader
                 title="All Reports"
+                subtitle={`${reportHistory.length} saved`}
                 icon="document-text-outline"
-                subtitle={`${reportHistory.length} reports saved`}
+                color={DS.primary}
               />
-
-              {reportHistory.length === 0 ? (
-                <GlassCard>
-                  <View style={styles.emptyReportsContainer}>
-                    <Ionicons name="document-text-outline" size={48} color={theme.text.muted} />
-                    <Text style={[styles.emptyReportsText, { color: theme.text.muted }]}>No reports yet</Text>
-                    <Text style={[styles.emptyReportsSub, { color: theme.text.muted }]}>Generate or upload your first report</Text>
+              <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+                {reportHistory.length === 0 ? (
+                  <View style={[styles.emptyState, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                    <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+                      <Ionicons name="document-text-outline" size={32} color={isDark ? DS.gray500 : DS.gray400} />
+                    </View>
+                    <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No reports yet</Text>
+                    <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                      Generate or upload your first report
+                    </Text>
                   </View>
-                </GlassCard>
-              ) : (
-                reportHistory.map((report) => (
-                  <GlassCard key={report.id} style={styles.reportCard}>
-                    <View style={styles.reportCardRow}>
-                      <View style={styles.reportCardLeft}>
-                        <View style={[styles.reportCardIcon, {
-                          backgroundColor: report.isDoctorFilled ? '#10b98115' : '#667eea15',
-                        }]}>
-                          <Ionicons
-                            name={report.isDoctorFilled ? 'medical-outline' : 'document-text'}
-                            size={24}
-                            color={report.isDoctorFilled ? '#10b981' : '#667eea'}
-                          />
-                        </View>
-                        <View style={styles.reportCardInfo}>
-                          <Text style={[styles.reportCardName, { color: theme.text.primary }]} numberOfLines={1}>
-                            {report.name}
-                          </Text>
-                          <Text style={[styles.reportCardMeta, { color: theme.text.muted }]}>
-                            {new Date(report.uploadedAt).toLocaleDateString()} •
-                            {report.isDoctorFilled ? ' 👨‍⚕️ Filled' : ' 📄 Generated'}
-                          </Text>
-                          <View style={styles.reportCardStatus}>
-                            <View style={[styles.reportStatusDot, {
-                              backgroundColor:
-                                report.status === 'approved' ? '#10b981' :
-                                report.status === 'reviewed' ? '#3b82f6' : '#f59e0b',
-                            }]} />
-                            <Text style={[styles.reportCardStatusText, { color: theme.text.muted }]}>
-                              {report.status === 'approved' ? 'Approved' :
-                               report.status === 'reviewed' ? 'Reviewed' : 'Pending'}
+                ) : (
+                  reportHistory.map((report, index) => (
+                    <Animated.View key={report.id} entering={FadeInUp.delay(index * 50).springify()}>
+                      <PressableScale onPress={() => viewReport(report)} activeScale={0.98}>
+                        <View style={[styles.reportRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200, borderLeftColor: report.isDoctorFilled ? DS.success : DS.primary }]}>
+                          <View style={[styles.reportRowIcon, { backgroundColor: report.isDoctorFilled ? `${DS.success}15` : `${DS.primary}15` }]}>
+                            <Ionicons
+                              name={report.isDoctorFilled ? 'medical-outline' : 'document-text'}
+                              size={20}
+                              color={report.isDoctorFilled ? DS.success : DS.primary}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.reportRowName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                              {report.name}
                             </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                              <View style={[styles.statusDot, {
+                                backgroundColor: report.status === 'approved' ? DS.success : report.status === 'reviewed' ? DS.info : DS.warning,
+                              }]} />
+                              <Text style={[styles.reportRowMeta, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
+                                {new Date(report.uploadedAt).toLocaleDateString()} · {report.status}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 4 }}>
+                            <TouchableOpacity onPress={() => viewReport(report)} style={styles.reportRowBtn}>
+                              <Ionicons name="eye-outline" size={16} color={DS.primary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => shareReport(report)} style={styles.reportRowBtn}>
+                              <Ionicons name="share-outline" size={16} color={DS.accent} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => deleteReport(report)} style={styles.reportRowBtn}>
+                              <Ionicons name="trash-outline" size={16} color={DS.danger} />
+                            </TouchableOpacity>
                           </View>
                         </View>
-                      </View>
-                      <View style={styles.reportCardActions}>
-                        <TouchableOpacity onPress={() => viewReport(report)} style={styles.reportCardAction}>
-                          <Ionicons name="eye-outline" size={18} color={theme.primary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => shareReport(report)} style={styles.reportCardAction}>
-                          <Ionicons name="share-outline" size={18} color={theme.secondary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => deleteReport(report)} style={styles.reportCardAction}>
-                          <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </GlassCard>
-                ))
-              )}
-            </Animated.View>
+                      </PressableScale>
+                    </Animated.View>
+                  ))
+                )}
+              </View>
+            </View>
           </>
         )}
 
-        <View style={{ height: insets.bottom + 20 }} />
+        <View style={{ height: 40 }} />
       </Animated.ScrollView>
 
-      {/* ─── Template Form Modal ────────────────────────────────────────── */}
+      {/* ═══ Template Form Modal ═══ */}
       <Modal visible={showTemplateForm} transparent animationType="slide" onRequestClose={() => setShowTemplateForm(false)}>
-        <KeyboardAvoidingView
-          style={styles.templateFormOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={[styles.templateFormContent, { backgroundColor: theme.bg }]}>
-            <View style={styles.templateFormHeader}>
-              <Text style={[styles.templateFormTitle, { color: theme.text.primary }]}>
-                {selectedTemplate?.name || 'Template'}
-              </Text>
-              <TouchableOpacity onPress={() => setShowTemplateForm(false)} style={styles.templateFormClose}>
-                <Ionicons name="close" size={24} color={theme.text.primary} />
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={[styles.modalSheet, { backgroundColor: isDark ? DS.darkBg : DS.white, maxHeight: '90%' }]}>
+            <View style={[styles.modalSheetHeader, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalSheetTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                  {selectedTemplate?.name || 'Template'}
+                </Text>
+                <Text style={[styles.modalSheetSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                  {selectedTemplate?.description}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowTemplateForm(false)} style={[styles.modalCloseBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray800} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.templateFormBody} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ padding: DS.space.lg }} showsVerticalScrollIndicator={false}>
               {selectedTemplate && (
                 <>
-                  <Text style={[styles.templateFormDesc, { color: theme.text.muted }]}>
-                    {selectedTemplate.description}
-                  </Text>
-
                   {selectedTemplate.sections.map((field) => (
                     <TemplateFieldComponent
                       key={field.id}
                       field={field}
                       value={templateValues[field.id] || ''}
                       onChange={handleTemplateFieldChange}
-                      theme={theme}
+                      isDark={isDark}
                     />
                   ))}
 
-                  <TouchableOpacity
-                    style={[styles.templateFormSubmit, { backgroundColor: selectedTemplate.color }]}
-                    onPress={handleGenerateTemplatePDF}
-                    disabled={generating}
-                  >
-                    {generating ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <>
-                        <Ionicons name="download-outline" size={20} color="#fff" />
-                        <Text style={styles.templateFormSubmitText}>Generate Template PDF</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                  <PressableScale onPress={handleGenerateTemplatePDF} disabled={generating} activeScale={0.97} style={{ marginTop: 8 }}>
+                    <LinearGradient
+                      colors={generating ? [DS.gray400, DS.gray500] : [selectedTemplate.color, selectedTemplate.color + 'CC']}
+                      style={styles.modalPrimaryBtn}
+                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                    >
+                      {generating ? <ActivityIndicator color="#fff" /> : (
+                        <>
+                          <Ionicons name="download-outline" size={18} color="#fff" />
+                          <Text style={styles.modalPrimaryBtnText}>Generate Template PDF</Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </PressableScale>
 
-                  <TouchableOpacity
-                    style={[styles.templateFormShareBtn, { borderColor: selectedTemplate.color }]}
+                  <PressableScale
                     onPress={async () => {
                       setShowTemplateForm(false);
                       await createShareableTemplate(selectedTemplate);
                       setMode('share');
                     }}
+                    activeScale={0.97}
+                    style={{ marginTop: 10 }}
                   >
-                    <Ionicons name="share-social-outline" size={20} color={selectedTemplate.color} />
-                    <Text style={[styles.templateFormShareText, { color: selectedTemplate.color }]}>
-                      Make Shareable
-                    </Text>
-                  </TouchableOpacity>
+                    <View style={[styles.modalOutlineBtn, { borderColor: selectedTemplate.color }]}>
+                      <Ionicons name="share-social-outline" size={18} color={selectedTemplate.color} />
+                      <Text style={[styles.modalOutlineBtnText, { color: selectedTemplate.color }]}>
+                        Make Shareable
+                      </Text>
+                    </View>
+                  </PressableScale>
                 </>
               )}
             </ScrollView>
@@ -2070,111 +2176,175 @@ export const PediatricianPDFExport: React.FC = () => {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ─── Share Modal ────────────────────────────────────────────────── */}
-      <ShareModal />
+      {/* ═══ Share Modal ═══ */}
+      <Modal visible={showShareModal} transparent animationType="slide" onRequestClose={() => setShowShareModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowShareModal(false)} />
+          <View style={[styles.shareModal, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+            <View style={[styles.modalSheetHeader, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <Text style={[styles.modalSheetTitle, { color: isDark ? DS.white : DS.gray900 }]}>Share Template</Text>
+              <TouchableOpacity onPress={() => setShowShareModal(false)} style={[styles.modalCloseBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray800} />
+              </TouchableOpacity>
+            </View>
 
-      {/* ─── Report Detail Modal ───────────────────────────────────────── */}
+            <ScrollView style={{ padding: DS.space.lg }} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.shareLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>SHAREABLE LINK</Text>
+              <View style={[styles.shareLinkBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray50, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <Text style={[styles.shareLinkText, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                  {shareLink}
+                </Text>
+                <TouchableOpacity onPress={() => copyLinkToClipboard(shareLink)} style={{ padding: 4 }}>
+                  <Ionicons name="copy-outline" size={20} color={DS.primary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: DS.space.lg }}>
+                <PressableScale
+                  onPress={() => { if (selectedTemplateForShare) shareViaNative(shareLink, selectedTemplateForShare.name); }}
+                  activeScale={0.96}
+                  style={{ flex: 1 }}
+                >
+                  <LinearGradient colors={[DS.primary, DS.accent]} style={styles.shareModalBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                    <Ionicons name="share-social-outline" size={18} color="#fff" />
+                    <Text style={styles.shareModalBtnText}>Share</Text>
+                  </LinearGradient>
+                </PressableScale>
+                <PressableScale
+                  onPress={() => sweetAlert?.alert('Share via Email/SMS', 'Use the Share button to send via your preferred app.')}
+                  activeScale={0.96}
+                  style={{ flex: 1 }}
+                >
+                  <LinearGradient colors={[DS.success, '#059669']} style={styles.shareModalBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                    <Ionicons name="mail-outline" size={18} color="#fff" />
+                    <Text style={styles.shareModalBtnText}>Email/SMS</Text>
+                  </LinearGradient>
+                </PressableScale>
+              </View>
+
+              <View style={[styles.shareInfoBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.gray50 }]}>
+                <Text style={[styles.shareInfoTitle, { color: isDark ? DS.white : DS.gray900 }]}>How it works</Text>
+                {[
+                  '1. Share this link with your pediatrician',
+                  '2. They fill out the template on their device',
+                  '3. You receive the completed report back',
+                  '4. Review and save the filled report',
+                ].map((line, i) => (
+                  <Text key={i} style={[styles.shareInfoLine, { color: isDark ? DS.gray400 : DS.gray500 }]}>{line}</Text>
+                ))}
+              </View>
+
+              {selectedTemplateForShare && (
+                <View style={[styles.shareTemplatePreview, { backgroundColor: `${selectedTemplateForShare.color}10`, borderColor: `${selectedTemplateForShare.color}30` }]}>
+                  <Text style={[styles.shareTemplatePreviewName, { color: selectedTemplateForShare.color }]}>
+                    📋 {selectedTemplateForShare.name}
+                  </Text>
+                  <Text style={[styles.shareTemplatePreviewDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>
+                    {selectedTemplateForShare.description}
+                  </Text>
+                  <View style={[styles.templateBadge, { backgroundColor: `${selectedTemplateForShare.color}18` }]}>
+                    <Text style={[styles.templateBadgeText, { color: selectedTemplateForShare.color }]}>
+                      {selectedTemplateForShare.sections.length} fields
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ═══ Report Detail Modal ═══ */}
       <Modal visible={showReportDetail} transparent animationType="slide" onRequestClose={() => setShowReportDetail(false)}>
-        <View style={styles.detailModalOverlay}>
-          <View style={[styles.detailModalContent, { backgroundColor: theme.bg }]}>
-            <View style={styles.detailModalHeader}>
-              <Text style={[styles.detailModalTitle, { color: theme.text.primary }]}>Report Details</Text>
-              <TouchableOpacity onPress={() => setShowReportDetail(false)} style={styles.detailModalClose}>
-                <Ionicons name="close" size={24} color={theme.text.primary} />
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowReportDetail(false)} />
+          <View style={[styles.shareModal, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+            <View style={[styles.modalSheetHeader, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <Text style={[styles.modalSheetTitle, { color: isDark ? DS.white : DS.gray900 }]}>Report Details</Text>
+              <TouchableOpacity onPress={() => setShowReportDetail(false)} style={[styles.modalCloseBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray800} />
               </TouchableOpacity>
             </View>
 
             {selectedReport && (
-              <ScrollView style={styles.detailModalBody} showsVerticalScrollIndicator={false}>
-                <View style={[styles.detailIconWrap, {
-                  backgroundColor: selectedReport.isDoctorFilled ? '#10b98115' : '#667eea15',
+              <ScrollView style={{ padding: DS.space.lg }} showsVerticalScrollIndicator={false}>
+                <View style={[styles.reportDetailIcon, {
+                  backgroundColor: selectedReport.isDoctorFilled ? `${DS.success}15` : `${DS.primary}15`,
                 }]}>
                   <Ionicons
                     name={selectedReport.isDoctorFilled ? 'medical-outline' : 'document-text'}
-                    size={48}
-                    color={selectedReport.isDoctorFilled ? '#10b981' : '#667eea'}
+                    size={40}
+                    color={selectedReport.isDoctorFilled ? DS.success : DS.primary}
                   />
                 </View>
 
-                <Text style={[styles.detailFileName, { color: theme.text.primary }]}>{selectedReport.name}</Text>
+                <Text style={[styles.reportDetailName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={2}>
+                  {selectedReport.name}
+                </Text>
 
-                <View style={styles.detailMetaGrid}>
-                  <View style={styles.detailMetaItem}>
-                    <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Uploaded</Text>
-                    <Text style={[styles.detailMetaValue, { color: theme.text.primary }]}>
-                      {new Date(selectedReport.uploadedAt).toLocaleString()}
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: DS.space.md }}>
+                  <View style={[styles.reportMetaBlock, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.gray50 }]}>
+                    <Text style={[styles.reportMetaLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>UPLOADED</Text>
+                    <Text style={[styles.reportMetaValue, { color: isDark ? DS.white : DS.gray900 }]}>
+                      {new Date(selectedReport.uploadedAt).toLocaleDateString()}
                     </Text>
                   </View>
-                  <View style={styles.detailMetaItem}>
-                    <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Status</Text>
-                    <View style={[styles.detailStatusBadge, {
-                      backgroundColor:
-                        selectedReport.status === 'approved' ? '#10b98115' :
-                        selectedReport.status === 'reviewed' ? '#3b82f615' : '#f59e0b15',
-                    }]}>
-                      <Text style={[styles.detailStatusText, {
-                        color:
-                          selectedReport.status === 'approved' ? '#10b981' :
-                          selectedReport.status === 'reviewed' ? '#3b82f6' : '#f59e0b',
+                  <View style={[styles.reportMetaBlock, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.gray50 }]}>
+                    <Text style={[styles.reportMetaLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>STATUS</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <View style={[styles.statusDot, {
+                        backgroundColor: selectedReport.status === 'approved' ? DS.success : selectedReport.status === 'reviewed' ? DS.info : DS.warning,
+                      }]} />
+                      <Text style={[styles.reportMetaValue, {
+                        color: selectedReport.status === 'approved' ? DS.success : selectedReport.status === 'reviewed' ? DS.info : DS.warning,
+                        textTransform: 'capitalize',
                       }]}>
-                        {selectedReport.status === 'approved' ? '✅ Approved' :
-                         selectedReport.status === 'reviewed' ? '📋 Reviewed' : '⏳ Pending'}
+                        {selectedReport.status}
                       </Text>
                     </View>
                   </View>
                 </View>
 
-                <View style={[styles.detailMetaItem, { marginTop: 8 }]}>
-                  <Text style={[styles.detailMetaLabel, { color: theme.text.muted }]}>Type</Text>
-                  <Text style={[styles.detailMetaValue, { color: theme.text.primary }]}>
-                    {selectedReport.isDoctorFilled ? '👨‍⚕️ Doctor-Filled Report' : '📄 Generated Report'}
-                  </Text>
-                </View>
-
                 {selectedReport.doctorNotes && (
-                  <View style={styles.detailNotes}>
-                    <Text style={[styles.detailNotesLabel, { color: theme.text.muted }]}>Doctor's Notes</Text>
-                    <Text style={[styles.detailNotesText, { color: theme.text.primary }]}>
+                  <View style={[styles.doctorNotesBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.gray50 }]}>
+                    <Text style={[styles.reportMetaLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>NOTES</Text>
+                    <Text style={[styles.doctorNotesText, { color: isDark ? DS.gray200 : DS.gray700 }]}>
                       {selectedReport.doctorNotes}
                     </Text>
                   </View>
                 )}
 
-                <View style={styles.detailActions}>
-                  <TouchableOpacity
-                    style={[styles.detailActionBtn, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      if (selectedReport) shareReport(selectedReport);
-                    }}
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: DS.space.lg }}>
+                  <PressableScale
+                    onPress={() => shareReport(selectedReport)}
+                    activeScale={0.96}
+                    style={{ flex: 1 }}
                   >
-                    <Ionicons name="share-outline" size={18} color="#fff" />
-                    <Text style={styles.detailActionBtnText}>Share</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.detailActionBtn, { backgroundColor: selectedReport.isDoctorFilled ? theme.secondary : '#667eea' }]}
-                    onPress={() => {
-                      if (selectedReport) {
-                        Linking.openURL(selectedReport.uri);
-                      }
-                    }}
+                    <LinearGradient colors={[DS.primary, DS.accent]} style={styles.reportActionBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                      <Ionicons name="share-outline" size={16} color="#fff" />
+                      <Text style={styles.reportActionBtnText}>Share</Text>
+                    </LinearGradient>
+                  </PressableScale>
+                  <PressableScale
+                    onPress={() => Linking.openURL(selectedReport.uri)}
+                    activeScale={0.96}
+                    style={{ flex: 1 }}
                   >
-                    <Ionicons name="eye-outline" size={18} color="#fff" />
-                    <Text style={styles.detailActionBtnText}>Open</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.detailActionBtn, { backgroundColor: '#ef4444' }]}
-                    onPress={() => {
-                      if (selectedReport) {
-                        deleteReport(selectedReport);
-                        setShowReportDetail(false);
-                      }
-                    }}
+                    <LinearGradient colors={[DS.success, '#059669']} style={styles.reportActionBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                      <Ionicons name="eye-outline" size={16} color="#fff" />
+                      <Text style={styles.reportActionBtnText}>Open</Text>
+                    </LinearGradient>
+                  </PressableScale>
+                  <PressableScale
+                    onPress={() => { deleteReport(selectedReport); setShowReportDetail(false); }}
+                    activeScale={0.96}
+                    style={{ flex: 1 }}
                   >
-                    <Ionicons name="trash-outline" size={18} color="#fff" />
-                    <Text style={styles.detailActionBtnText}>Delete</Text>
-                  </TouchableOpacity>
+                    <LinearGradient colors={[DS.danger, '#dc2626']} style={styles.reportActionBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                      <Ionicons name="trash-outline" size={16} color="#fff" />
+                      <Text style={styles.reportActionBtnText}>Delete</Text>
+                    </LinearGradient>
+                  </PressableScale>
                 </View>
               </ScrollView>
             )}
@@ -2191,238 +2361,280 @@ export const PediatricianPDFExport: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  /* Sticky Header */
-  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 8 },
-  stickyTitle: { fontSize: 17, fontWeight: '800' },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  /* Header */
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, paddingBottom: DS.space.md },
+  headerInner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: DS.space.lg, height: 48,
+  },
+  headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
 
-  /* Glass Card */
-  glassCard: { marginHorizontal: 16, marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
-  glassContent: { flex: 1 },
+  /* Pulse */
+  pulseWrap: {
+    marginHorizontal: DS.space.lg, marginTop: DS.space.md,
+    borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden',
+    borderWidth: 1, ...DS.shadow.md,
+  },
+  pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  pulseAvatarWrap: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseAvatarGlow: { position: 'absolute', width: 66, height: 66, borderRadius: 33, backgroundColor: `${DS.primary}35` },
+  pulseAvatarRing: { position: 'absolute', width: 62, height: 62, borderRadius: 31, overflow: 'hidden' },
+  pulseAvatarInner: { width: 54, height: 54, borderRadius: 27, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  pulseName: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, maxWidth: '75%' },
+  pulseAgePill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  pulseAgeText: { fontSize: 11, fontWeight: '700' },
+  pulseLiveDot: { width: 6, height: 6, borderRadius: 3 },
+  pulseSubText: { fontSize: 12, fontWeight: '500', flex: 1 },
+  pulseIconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  pulseAddBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  pulseStats: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: DS.space.md, paddingVertical: DS.space.sm,
+    borderRadius: DS.radius.lg, marginTop: DS.space.md,
+  },
+  pulseStat: { alignItems: 'center', flex: 1 },
+  pulseStatVal: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  pulseStatLbl: { fontSize: 10, fontWeight: '600', marginTop: 1 },
+  pulseStatDiv: { width: 1, height: 22 },
 
-  /* Section Header */
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, marginTop: 20, gap: 10 },
-  sectionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  /* Baby ribbon */
+  babyRibbon: {
+    flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
+    marginHorizontal: DS.space.lg, padding: DS.space.md,
+    borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm,
+  },
+  babyRibbonAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  babyRibbonName: { fontSize: 15, fontWeight: '800' },
+  babyRibbonMeta: { fontSize: 11, fontWeight: '500' },
+  chipTiny: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  chipTinyText: { fontSize: 9, fontWeight: '700' },
 
-  /* Mode Selector */
-  modeSelector: { flexDirection: 'row', gap: 6, marginHorizontal: 16, marginBottom: 16, flexWrap: 'wrap' },
-  modeBtn: { flex: 1, minWidth: (SCREEN_W - 56) / 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
-  modeBtnText: { fontSize: 11, fontWeight: '700' },
+  /* Ribbon */
+  ribbon: {
+    flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
+    paddingVertical: DS.space.md, paddingHorizontal: DS.space.md,
+    borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm,
+  },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1, lineHeight: 16 },
 
-  /* Hero Cards */
-  heroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
-  heroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
-  heroTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 10 },
-  heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 3, textAlign: 'center' },
-  heroStats: { flexDirection: 'row', alignItems: 'center', marginTop: 18, gap: 20 },
-  heroStat: { alignItems: 'center', minWidth: 60 },
-  heroStatNum: { fontSize: 22, fontWeight: '800', color: '#fff' },
-  heroStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '600', marginTop: 2 },
-  heroStatDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.3)' },
+  /* Section header */
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginHorizontal: DS.space.lg, marginBottom: DS.space.md, marginTop: DS.space.sm,
+  },
+  sectionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  sectionActionText: { fontSize: 12, fontWeight: '700' },
 
-  /* Share Hero */
-  shareHeroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
-  shareHeroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
-  shareHeroTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 10 },
-  shareHeroSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 3, textAlign: 'center' },
+  /* Mode switcher */
+  modeBar: {
+    flexDirection: 'row', marginHorizontal: DS.space.lg,
+    padding: 4, borderRadius: DS.radius.full, gap: 2,
+  },
+  modeItem: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, paddingVertical: 9, borderRadius: DS.radius.full, position: 'relative',
+  },
+  modeLabel: { fontSize: 10, fontWeight: '600' },
+  modeBadge: {
+    position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, borderRadius: 7,
+    backgroundColor: DS.accent, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  modeBadgeText: { color: DS.white, fontSize: 8, fontWeight: '800' },
 
-  /* Template Hero */
-  templateHeroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
+  /* Preset pills */
+  presetPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 9, borderRadius: DS.radius.full, borderWidth: 1,
+  },
+  presetPillLabel: { fontSize: 12, fontWeight: '600' },
 
-  /* Upload Hero */
-  uploadHeroCard: { marginHorizontal: 16, marginBottom: 20, overflow: 'hidden' },
-  uploadHeroGradient: { padding: 22, alignItems: 'center', borderRadius: 16 },
-  uploadHeroTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 10 },
-  uploadHeroSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 3, textAlign: 'center' },
-  uploadHeroBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, marginTop: 16 },
-  uploadHeroBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  /* Range pills */
+  rangePill: {
+    flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: DS.radius.md, borderWidth: 1,
+  },
+  rangePillText: { fontSize: 12, fontWeight: '600' },
 
-  /* Templates */
-  templateScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
-  templateChip: { width: 100, paddingVertical: 14, paddingHorizontal: 10, borderRadius: 14, alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(255,255,255,0.5)' },
-  templateLabel: { fontSize: 12, fontWeight: '700', marginTop: 8 },
-  templateDesc: { fontSize: 10, fontWeight: '600', marginTop: 2 },
-
-  /* Template Grid */
-  templateGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginHorizontal: 16, marginBottom: 16 },
-  templateGridItem: { width: (SCREEN_W - 56) / 2 },
-  templateCard: { padding: 16, borderRadius: 16, borderWidth: 1.5, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.5)' },
-  templateCardIcon: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  templateCardName: { fontSize: 15, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
-  templateCardDesc: { fontSize: 11, fontWeight: '500', textAlign: 'center', marginBottom: 8, opacity: 0.7 },
-  templateCardBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  templateCardBadgeText: { fontSize: 10, fontWeight: '700' },
-
-  /* Template Form */
-  templateFormOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  templateFormContent: { width: '100%', maxHeight: '90%', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
-  templateFormHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
-  templateFormTitle: { fontSize: 18, fontWeight: '800' },
-  templateFormClose: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
-  templateFormBody: { padding: 20 },
-  templateFormDesc: { fontSize: 14, fontWeight: '500', marginBottom: 20, opacity: 0.7 },
-  templateFormSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 14, marginTop: 12 },
-  templateFormSubmitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  templateFormShareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, marginTop: 10 },
-  templateFormShareText: { fontSize: 14, fontWeight: '700' },
-
-  /* Template Fields */
-  templateFieldContainer: { marginBottom: 16 },
-  templateFieldLabel: { marginBottom: 6 },
-  templateFieldLabelText: { fontSize: 13, fontWeight: '600' },
-  templateHelpText: { fontSize: 11, fontWeight: '500', marginTop: 2 },
-  templateInput: { height: 48, borderRadius: 10, paddingHorizontal: 14, fontSize: 15, borderWidth: 1 },
-  templateTextArea: { height: 100, borderRadius: 10, paddingHorizontal: 14, paddingTop: 12, fontSize: 15, borderWidth: 1, textAlignVertical: 'top' },
-  templateSelectContainer: { height: 48, borderRadius: 10, paddingHorizontal: 14, borderWidth: 1, justifyContent: 'center' },
-  templateSelect: { fontSize: 15, paddingVertical: 12 },
-  templateDateInput: { height: 48, borderRadius: 10, paddingHorizontal: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  templateDateText: { fontSize: 15 },
-  templateSignatureInput: { height: 48, borderRadius: 10, paddingHorizontal: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  templateSignatureText: { fontSize: 15 },
-  templateReadonlyValue: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1 },
-  templateReadonlyText: { fontSize: 15 },
-
-  /* Date Range */
-  rangeRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 16 },
-  rangeBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: 'rgba(255,255,255,0.6)' },
-  rangeBtnText: { fontSize: 13, fontWeight: '700' },
-
-  /* Badge */
-  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, alignSelf: 'flex-start' },
-  badgeText: { fontSize: 11, fontWeight: '700' },
-
-  /* Profile Header */
-  profileCard: { marginHorizontal: 16, marginBottom: 16, overflow: 'hidden' },
-  profileGradient: { padding: 20, borderRadius: 16 },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  avatarWrap: { position: 'relative' },
-  avatarImage: { width: 72, height: 72, borderRadius: 36 },
-  avatarFallback: { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center' },
-  avatarInitials: { fontSize: 24, fontWeight: '800', color: '#fff' },
-  avatarRing: { position: 'absolute', top: -3, left: -3, right: -3, bottom: -3, borderRadius: 42, borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.4)' },
-  profileInfo: { flex: 1 },
-  profileName: { fontSize: 20, fontWeight: '800', color: '#fff' },
-  profileMeta: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '500' },
-  profileChips: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
-
-  /* Percentiles */
-  percGrid: { padding: 16, gap: 14 },
-  percItem: { gap: 6 },
-  percTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  percLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  percValue: { fontSize: 20, fontWeight: '800' },
-  percBarWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
-  percBarTrack: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
-  percBarFill: { height: '100%', borderRadius: 3 },
-  percNum: { fontSize: 11, fontWeight: '700', width: 50, textAlign: 'right' },
-  percDisclaimer: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
-
-  /* Sections Toggle */
-  sectionsCard: { paddingVertical: 4 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },
-  sectionRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, paddingRight: 12 },
-  sectionEmoji: { fontSize: 20 },
-  sectionRowLabel: { fontSize: 15, fontWeight: '700' },
-  sectionRowDesc: { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  /* Sections card */
+  sectionsCard: {
+    borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden',
+  },
+  sectionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
+    paddingHorizontal: DS.space.md, paddingVertical: DS.space.md,
+  },
+  sectionRowLabel: { fontSize: 13, fontWeight: '700' },
+  sectionRowDesc: { fontSize: 10, fontWeight: '500', marginTop: 1 },
 
   /* Notes */
-  notesCard: { padding: 12 },
-  notesInput: { fontSize: 14, lineHeight: 20, minHeight: 80, fontWeight: '500' },
+  notesBox: { borderRadius: DS.radius.lg, borderWidth: 1, padding: DS.space.md },
+  notesInput: { fontSize: 13, lineHeight: 19, minHeight: 80, fontWeight: '500' },
 
-  /* Generate Button */
-  generateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 18, borderRadius: 18, marginHorizontal: 16, marginTop: 8 },
-  generateBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  disclaimer: { textAlign: 'center', fontSize: 12, marginTop: 14, lineHeight: 18, marginHorizontal: 30 },
+  /* Generate */
+  generateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 16, borderRadius: DS.radius.lg,
+    ...DS.shadow.md,
+  },
+  generateBtnText: { color: DS.white, fontSize: 15, fontWeight: '800' },
+  disclaimer: { textAlign: 'center', fontSize: 11, fontWeight: '500', marginTop: 10, paddingHorizontal: DS.space.md },
 
-  /* Report Cards */
-  reportCard: { padding: 0, overflow: 'hidden' },
-  reportCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
-  reportCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  reportCardIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  reportCardInfo: { flex: 1 },
-  reportCardName: { fontSize: 14, fontWeight: '700' },
-  reportCardMeta: { fontSize: 11, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  reportCardStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  reportStatusDot: { width: 6, height: 6, borderRadius: 3 },
-  reportCardStatusText: { fontSize: 10, fontWeight: '600', opacity: 0.7 },
-  reportCardActions: { flexDirection: 'row', gap: 6 },
-  reportCardAction: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
+  /* Template cards */
+  templateCard: {
+    padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1.5,
+    overflow: 'hidden', minHeight: 160,
+  },
+  templateIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.sm },
+  templateName: { fontSize: 13, fontWeight: '800', marginBottom: 3 },
+  templateDesc: { fontSize: 10, fontWeight: '500', lineHeight: 14, flex: 1 },
+  templateBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: DS.space.sm },
+  templateBadgeText: { fontSize: 9, fontWeight: '700' },
 
-  /* Empty State */
-  emptyReportsContainer: { alignItems: 'center', paddingVertical: 40, gap: 12 },
-  emptyReportsText: { fontSize: 16, fontWeight: '600' },
-  emptyReportsSub: { fontSize: 13, fontWeight: '500', opacity: 0.7 },
-  emptyShareContainer: { alignItems: 'center', paddingVertical: 40, gap: 12 },
-  emptyShareText: { fontSize: 16, fontWeight: '600' },
-  emptyShareSub: { fontSize: 13, fontWeight: '500', opacity: 0.7, textAlign: 'center' },
+  /* Share row */
+  shareRow: {
+    flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
+    padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1,
+  },
+  shareRowIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  shareRowName: { fontSize: 13, fontWeight: '700' },
+  shareRowMeta: { fontSize: 10, fontWeight: '500', marginTop: 1 },
+  shareRowBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
 
-  /* Share Templates */
-  shareTemplateCard: { padding: 0, overflow: 'hidden' },
-  shareTemplateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, gap: 10 },
-  shareTemplateLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  shareTemplateIcon: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  shareTemplateName: { fontSize: 14, fontWeight: '700' },
-  shareTemplateMeta: { fontSize: 11, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  shareTemplateActions: { flexDirection: 'row', gap: 6 },
-  shareTemplateAction: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  /* Response row */
+  responseRow: {
+    flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
+    padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1,
+  },
+  responseName: { fontSize: 13, fontWeight: '700' },
+  responseMeta: { fontSize: 10, fontWeight: '500', marginTop: 1 },
+  statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  statusPillText: { fontSize: 10, fontWeight: '700' },
 
-  /* Responses */
-  responseCard: { padding: 0, overflow: 'hidden' },
-  responseRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
-  responseInfo: { flex: 1 },
-  responseName: { fontSize: 14, fontWeight: '700' },
-  responseMeta: { fontSize: 11, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  responseStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  responseStatusText: { fontSize: 10, fontWeight: '700' },
+  /* Upload hero */
+  uploadHero: {
+    padding: DS.space.lg, borderRadius: DS.radius.xl,
+    alignItems: 'center', gap: DS.space.sm, ...DS.shadow.md,
+  },
+  uploadIconCircle: {
+    width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+  },
+  uploadHeroTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  uploadHeroSub: { fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.85)', textAlign: 'center' },
 
-  /* Share Modal */
-  shareModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  shareModalContent: { width: '100%', maxWidth: 400, maxHeight: '80%', borderRadius: 24, overflow: 'hidden' },
-  shareModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
-  shareModalTitle: { fontSize: 18, fontWeight: '800' },
-  shareModalClose: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
-  shareModalBody: { padding: 20 },
-  shareLinkContainer: { marginBottom: 20 },
-  shareLinkLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-  shareLinkRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1, paddingHorizontal: 12 },
-  shareLinkText: { fontSize: 13, fontWeight: '500', flex: 1, paddingVertical: 12 },
-  shareLinkCopyBtn: { padding: 8 },
-  shareActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  shareActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 12 },
-  shareActionBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  shareInstructions: { backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 16, gap: 6 },
-  shareInstructionsTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  shareInstructionsText: { fontSize: 12, fontWeight: '500', lineHeight: 20, opacity: 0.8 },
-  shareTemplateInfo: { marginTop: 16, padding: 14, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, alignItems: 'center', gap: 4 },
-
-  /* Detail Modal */
-  detailModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  detailModalContent: { width: '100%', maxWidth: 400, maxHeight: '80%', borderRadius: 24, overflow: 'hidden' },
-  detailModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
-  detailModalTitle: { fontSize: 18, fontWeight: '800' },
-  detailModalClose: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.04)' },
-  detailModalBody: { padding: 20 },
-  detailIconWrap: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
-  detailFileName: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 16 },
-  detailMetaGrid: { flexDirection: 'row', gap: 16, marginBottom: 16 },
-  detailMetaItem: { flex: 1, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 12 },
-  detailMetaLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.7 },
-  detailMetaValue: { fontSize: 14, fontWeight: '700', marginTop: 4 },
-  detailStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, alignSelf: 'flex-start', marginTop: 4 },
-  detailStatusText: { fontSize: 12, fontWeight: '700' },
-  detailNotes: { backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 12, marginTop: 8 },
-  detailNotesLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.7 },
-  detailNotesText: { fontSize: 14, fontWeight: '500', marginTop: 4, lineHeight: 20 },
-  detailActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
-  detailActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12 },
-  detailActionBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  /* Report row */
+  reportRow: {
+    flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
+    padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, borderLeftWidth: 3,
+  },
+  reportRowIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  reportRowName: { fontSize: 13, fontWeight: '700' },
+  reportRowMeta: { fontSize: 10, fontWeight: '500' },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  reportRowBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
 
   /* Empty */
-  emptyTitle: { fontSize: 20, fontWeight: '800' },
-  emptySub: { fontSize: 14, lineHeight: 20 },
+  emptyState: {
+    alignItems: 'center', paddingVertical: DS.space['3xl'], paddingHorizontal: DS.space.lg,
+    borderRadius: DS.radius.lg, borderWidth: 1,
+  },
+  emptyIcon: { width: 72, height: 72, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  emptyTitle: { fontSize: 15, fontWeight: '800', marginBottom: 4 },
+  emptySub: { fontSize: 12, fontWeight: '500', textAlign: 'center' },
+
+  /* Modal */
+  modalBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  modalSheet: {
+    width: '100%', maxWidth: 440,
+    borderTopLeftRadius: DS.radius['2xl'], borderTopRightRadius: DS.radius['2xl'],
+    ...DS.shadow.lg,
+  },
+  modalSheetHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: DS.space.lg, borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalSheetTitle: { fontSize: 17, fontWeight: '800' },
+  modalSheetSub: { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  modalCloseBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+
+  /* Template field */
+  templateFieldContainer: { marginBottom: DS.space.md },
+  templateFieldLabelText: { fontSize: 12, fontWeight: '700' },
+  templateHelpText: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+  templateInput: { height: 46, borderRadius: DS.radius.md, paddingHorizontal: 14, fontSize: 14, borderWidth: 1 },
+  templateTextArea: { height: 100, borderRadius: DS.radius.md, paddingHorizontal: 14, paddingTop: 12, fontSize: 14, borderWidth: 1, textAlignVertical: 'top' },
+  templateSelectContainer: { height: 46, borderRadius: DS.radius.md, paddingHorizontal: 14, borderWidth: 1, justifyContent: 'center' },
+  templateSelect: { fontSize: 14, paddingVertical: 12 },
+  templateDateInput: { height: 46, borderRadius: DS.radius.md, paddingHorizontal: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  templateDateText: { fontSize: 14 },
+  templateReadonlyValue: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: DS.radius.md, borderWidth: 1 },
+  templateReadonlyText: { fontSize: 14 },
+
+  /* Modal buttons */
+  modalPrimaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: DS.radius.md, ...DS.shadow.md,
+  },
+  modalPrimaryBtnText: { color: DS.white, fontSize: 14, fontWeight: '800' },
+  modalOutlineBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 12, borderRadius: DS.radius.md, borderWidth: 1.5,
+  },
+  modalOutlineBtnText: { fontSize: 13, fontWeight: '700' },
+
+  /* Share modal */
+  shareModal: {
+    width: '100%', maxWidth: 440, borderRadius: DS.radius['2xl'], overflow: 'hidden',
+    ...DS.shadow.lg,
+  },
+  shareLabel: {
+    fontSize: 10, fontWeight: '800', textTransform: 'uppercase',
+    letterSpacing: 0.6, marginBottom: 8,
+  },
+  shareLinkBox: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 10, borderRadius: DS.radius.md, borderWidth: 1,
+  },
+  shareLinkText: { flex: 1, fontSize: 12, fontWeight: '500', marginRight: 8 },
+  shareModalBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 12, borderRadius: DS.radius.md,
+  },
+  shareModalBtnText: { color: DS.white, fontSize: 13, fontWeight: '700' },
+  shareInfoBox: { padding: DS.space.md, borderRadius: DS.radius.md, marginTop: DS.space.md },
+  shareInfoTitle: { fontSize: 13, fontWeight: '800', marginBottom: 6 },
+  shareInfoLine: { fontSize: 12, fontWeight: '500', lineHeight: 20 },
+  shareTemplatePreview: {
+    padding: DS.space.md, borderRadius: DS.radius.md, borderWidth: 1,
+    marginTop: DS.space.md,
+  },
+  shareTemplatePreviewName: { fontSize: 14, fontWeight: '800', marginBottom: 2 },
+  shareTemplatePreviewDesc: { fontSize: 11, fontWeight: '500', marginBottom: 8 },
+
+  /* Report detail */
+  reportDetailIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: DS.space.md },
+  reportDetailName: { fontSize: 16, fontWeight: '800', textAlign: 'center', marginBottom: DS.space.sm },
+  reportMetaBlock: { flex: 1, padding: DS.space.md, borderRadius: DS.radius.md },
+  reportMetaLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 3 },
+  reportMetaValue: { fontSize: 13, fontWeight: '700' },
+  doctorNotesBox: { padding: DS.space.md, borderRadius: DS.radius.md, marginTop: DS.space.md },
+  doctorNotesText: { fontSize: 12, fontWeight: '500', lineHeight: 18, marginTop: 4 },
+  reportActionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 12, borderRadius: DS.radius.md,
+  },
+  reportActionBtnText: { color: DS.white, fontSize: 12, fontWeight: '700' },
 });
 
 export default PediatricianPDFExport;
