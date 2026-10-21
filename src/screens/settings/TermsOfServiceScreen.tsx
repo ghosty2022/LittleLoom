@@ -4,7 +4,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  FadeInUp,
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withSpring,
+  interpolate,
+  Extrapolation,
+  useAnimatedScrollHandler,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -12,409 +24,319 @@ import type { RootStackParamList } from '../../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TermsOfService'>;
 
-/* ─── AURA DS ────────────────────────────────────────────────────── */
-const AURA = {
-  primary: '#6366f1',
-  primaryLight: '#818cf8',
-  accent: '#ec4899',
-  secondary: '#8b5cf6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  info: '#0ea5e9',
-  danger: '#ef4444',
-  white: '#ffffff',
-  gray300: '#d6d3d1',
-  gray400: '#a8a29e',
-  gray500: '#78716c',
-  gray700: '#44403c',
-  gray900: '#1c1917',
-  darkBg: '#0c0a09',
-  darkSurface: '#1c1917',
-  darkCard: '#292524',
-  darkBorder: 'rgba(255,255,255,0.06)',
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DS = {
+  primary: '#6366f1', primaryLight: '#818cf8', primaryDark: '#4f46e5',
+  accent: '#ec4899', accentLight: '#f472b6', secondary: '#8b5cf6',
+  success: '#10b981', warning: '#f59e0b', info: '#0ea5e9', danger: '#ef4444',
+  white: '#ffffff', gray50: '#fafaf9', gray100: '#f5f5f4', gray200: '#e7e5e4',
+  gray300: '#d6d3d1', gray400: '#a8a29e', gray500: '#78716c',
+  gray600: '#57534e', gray700: '#44403c', gray800: '#292524', gray900: '#1c1917',
+  darkBg: '#0c0a09', darkSurface: '#1c1917', darkCard: '#292524', darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
 };
 
 const SECTIONS = [
-  {
-    title: '1. Acceptance of Terms',
-    content: `By downloading, installing, or using LittleLoom ("the App"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the App.
-
-These terms apply to all users, including parents, guardians, and any family members invited to use the App through Family Dashboard features.`,
-  },
-  {
-    title: '2. Description of Service',
-    content: `LittleLoom is a baby tracking and family coordination application designed to help parents and caregivers:
-
-• Track feeding, sleep, potty, and growth milestones
-• Manage baby profiles and health records
-• Coordinate care schedules with family members
-• Share updates through secure family chat
-• Store memories and photos in a private gallery
-
-The App is intended for personal, non-commercial use by families and caregivers.`,
-  },
-  {
-    title: '3. User Accounts & Eligibility',
-    content: `To use LittleLoom, you must:
-
-• Be at least 18 years old or the legal age of majority in your jurisdiction
-• Be a parent, legal guardian, or authorized caregiver of the child(ren) being tracked
-• Provide accurate and complete information during registration
-• Maintain the security of your account credentials
-
-You are responsible for all activity that occurs under your account. Notify us immediately of any unauthorized use.`,
-  },
-  {
-    title: '4. Family Dashboard & Permissions',
-    content: `When you invite family members or guardians to access your baby's data:
-
-• You control what data each person can view and edit
-• You can revoke access at any time through the app settings
-• Invited members must accept the invitation and comply with these terms
-• You are responsible for ensuring invited members are appropriate caregivers
-
-LittleLoom is not responsible for disputes between family members regarding data access or sharing permissions.`,
-  },
-  {
-    title: '5. Data Ownership & Privacy',
-    content: `You retain ownership of all data you enter into LittleLoom. We respect your privacy:
-
-• All baby tracking data is stored locally on your device by default
-• We do not sell, rent, or share your personal data with third parties
-• We do not use your data for advertising purposes
-• Cloud features (if enabled) use encrypted transmission and storage
-
-For complete details, please review our Privacy Policy.`,
-  },
-  {
-    title: '6. Acceptable Use',
-    content: `You agree not to use LittleLoom to:
-
-• Harass, abuse, or harm other users
-• Share content that is illegal, offensive, or inappropriate for children
-• Attempt to access other users' accounts without authorization
-• Reverse engineer, decompile, or modify the App
-• Use the App for any commercial purpose without our consent
-• Upload viruses, malware, or other harmful code
-
-Violation of these rules may result in termination of your account.`,
-  },
-  {
-    title: '7. Intellectual Property',
-    content: `LittleLoom and all associated content, features, and functionality are owned by LittleLoom Inc. and are protected by copyright, trademark, and other intellectual property laws.
-
-You may not:
-• Copy, modify, or create derivative works of the App
-• Remove any copyright or proprietary notices
-• Use our trademarks without prior written permission
-• Distribute or publicly display the App without authorization`,
-  },
-  {
-    title: '8. Disclaimer of Warranties',
-    content: `LittleLoom is provided "as is" and "as available" without warranties of any kind, either express or implied.
-
-We do not guarantee that:
-• The App will be error-free or uninterrupted
-• Data will be completely secure or never lost
-• The App will meet your specific requirements
-• Medical or health information is accurate for your situation
-
-Always consult qualified healthcare professionals for medical advice. LittleLoom is not a substitute for professional medical care.`,
-  },
-  {
-    title: '9. Limitation of Liability',
-    content: `To the maximum extent permitted by law, LittleLoom Inc. shall not be liable for:
-
-• Indirect, incidental, special, or consequential damages
-• Loss of data, profits, or goodwill
-• Damages arising from your use or inability to use the App
-• Issues arising from Family Dashboard disputes or unauthorized access by invited members
-• Any medical decisions made based on information tracked in the App
-
-Our total liability shall not exceed the amount you paid for the App (if any) in the twelve months preceding the claim.`,
-  },
-  {
-    title: '10. Subscription & Payments',
-    content: `Some features of LittleLoom may require a subscription:
-
-• Subscription fees are charged through your device's app store
-• Subscriptions automatically renew unless cancelled 24 hours before renewal
-• You can manage or cancel subscriptions in your device settings
-• Refunds are handled according to your app store's policies
-• Prices are subject to change with notice
-
-Free features remain available even if you cancel your subscription.`,
-  },
-  {
-    title: '11. Termination',
-    content: `You may terminate your account at any time by:
-• Deleting the App from your device
-• Requesting account deletion through the app settings
-• Contacting support@littleloom.app
-
-We may suspend or terminate your account if you violate these terms. Upon termination, your data will be deleted according to our data retention policy.`,
-  },
-  {
-    title: '12. Changes to Terms',
-    content: `We may update these Terms of Service from time to time. We will notify you of significant changes by:
-
-• Updating the "Last Updated" date below
-• Displaying a notice in the App
-• Sending an email to registered users
-
-Continued use of LittleLoom after changes constitutes acceptance of the updated terms.`,
-  },
-  {
-    title: '13. Governing Law',
-    content: `These Terms shall be governed by and construed in accordance with the laws of the State of California, United States, without regard to its conflict of law provisions.
-
-Any disputes arising from these terms shall be resolved through binding arbitration in San Francisco, California, except that either party may seek injunctive relief in court.`,
-  },
-  {
-    title: '14. Contact Information',
-    content: `If you have questions about these Terms of Service, please contact us:
-
-Email: legal@littleloom.app
-Support: support@littleloom.app
-Website: www.littleloom.app
-
-We aim to respond to all inquiries within 48 business hours.`,
-  },
+  { title: '1. Acceptance of Terms', content: `By downloading, installing, or using LittleLoom ("the App"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the App.\n\nThese terms apply to all users, including parents, guardians, and any family members invited through Family Dashboard features.` },
+  { title: '2. Description of Service', content: `LittleLoom is a baby tracking and family coordination application designed to help parents and caregivers:\n\n• Track feeding, sleep, potty, and growth milestones\n• Manage baby profiles and health records\n• Coordinate care schedules with family members\n• Share updates through secure family chat\n• Store memories and photos in a private gallery\n\nThe App is intended for personal, non-commercial use.` },
+  { title: '3. User Accounts & Eligibility', content: `To use LittleLoom, you must:\n\n• Be at least 18 years old or legal age of majority\n• Be a parent, legal guardian, or authorized caregiver\n• Provide accurate information during registration\n• Maintain the security of your credentials\n\nYou are responsible for all activity under your account.` },
+  { title: '4. Family Dashboard & Permissions', content: `When you invite family members or guardians:\n\n• You control what data each person can view and edit\n• You can revoke access at any time\n• Invited members must accept the invitation\n• You are responsible for who you invite\n\nLittleLoom is not responsible for disputes between family members.` },
+  { title: '5. Data Ownership & Privacy', content: `You retain ownership of all data you enter. We respect your privacy:\n\n• All baby tracking data is stored locally by default\n• We do not sell, rent, or share your data\n• We do not use your data for advertising\n• Cloud features use encrypted transmission\n\nFor details, see our Privacy Policy.` },
+  { title: '6. Acceptable Use', content: `You agree not to use LittleLoom to:\n\n• Harass, abuse, or harm other users\n• Share illegal or inappropriate content\n• Access accounts without authorization\n• Reverse engineer the App\n• Use the App commercially without consent\n• Upload viruses or malware\n\nViolations may result in account termination.` },
+  { title: '7. Intellectual Property', content: `LittleLoom and all associated content are owned by LittleLoom Inc. and protected by copyright, trademark, and IP laws.\n\nYou may not copy, modify, create derivative works, remove notices, use trademarks without permission, or distribute the App without authorization.` },
+  { title: '8. Disclaimer of Warranties', content: `LittleLoom is provided "as is" and "as available" without warranties of any kind.\n\nWe do not guarantee the App will be error-free, data always secure, or that medical info is accurate for your situation.\n\nAlways consult qualified healthcare professionals. LittleLoom is not a substitute for medical care.` },
+  { title: '9. Limitation of Liability', content: `To the maximum extent permitted by law, LittleLoom Inc. shall not be liable for indirect, incidental, or consequential damages, including loss of data, profits, or goodwill.\n\nOur total liability shall not exceed the amount you paid for the App in the twelve months preceding the claim.` },
+  { title: '10. Subscription & Payments', content: `Some features may require a subscription:\n\n• Fees are charged through your app store\n• Subscriptions auto-renew unless cancelled 24 hours prior\n• Manage subscriptions in device settings\n• Refunds follow app store policies\n• Prices subject to change with notice\n\nFree features remain available.` },
+  { title: '11. Termination', content: `You may terminate your account at any time by deleting the App, using in-app settings, or contacting support@littleloom.app.\n\nWe may suspend or terminate accounts that violate these terms. Upon termination, data is deleted per our retention policy.` },
+  { title: '12. Changes to Terms', content: `We may update these Terms. We will notify you by:\n\n• Updating the "Last Updated" date\n• Displaying a notice in the App\n• Sending an email to registered users\n\nContinued use after changes constitutes acceptance.` },
+  { title: '13. Governing Law', content: `These Terms are governed by the laws of the State of California, United States, without regard to conflict of law provisions.\n\nDisputes shall be resolved through binding arbitration in San Francisco, California, except for injunctive relief in court.` },
+  { title: '14. Contact Information', content: `For questions about these Terms:\n\nEmail: legal@littleloom.app\nSupport: support@littleloom.app\nWebsite: www.littleloom.app\n\nWe aim to respond within 48 business hours.` },
 ];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA SUB-COMPONENTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = React.memo<any>(({ children, onPress, disabled, style, activeScale = 0.96 }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={() => { if (!disabled) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onPress?.(); } }}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+const TermsCapsule = React.memo<any>(({ isDark, lastUpdated }) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+  React.useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.8, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, []);
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.capsule, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient
+          colors={isDark
+            ? ['rgba(99,102,241,0.20)', 'rgba(236,72,153,0.10)', 'rgba(139,92,246,0.05)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        />
+        <LinearGradient colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']} style={styles.capsuleGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${DS.accent}${isDark ? '35' : '22'}`, 'transparent']} style={styles.capsuleGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
+
+        <View style={styles.capsuleRow}>
+          <View style={styles.avatarWrap}>
+            <Animated.View style={[styles.avatarGlow, glowStyle]} />
+            <Animated.View style={[styles.avatarRing, ringStyle]}>
+              <LinearGradient colors={[DS.primary, DS.accent, DS.warning, DS.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+            </Animated.View>
+            <View style={[styles.avatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+              <Ionicons name="document-text" size={30} color={DS.primary} />
+            </View>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.capsuleName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+              Terms of Service
+            </Text>
+            <Text style={[styles.capsuleSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+              Your agreement with LittleLoom
+            </Text>
+            <View style={[styles.statusPill, { backgroundColor: `${DS.primary}15`, marginTop: 6 }]}>
+              <View style={[styles.statusDot, { backgroundColor: DS.primary }]} />
+              <Text style={[styles.statusText, { color: DS.primary }]}>Updated {lastUpdated}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+const InsightRibbon = React.memo<any>(({ isDark, icon, color, label, text }) => (
+  <Animated.View entering={FadeInUp.delay(80).springify()}>
+    <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+      <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+        <Ionicons name={icon} size={15} color={color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+        <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={2}>{text}</Text>
+      </View>
+    </View>
+  </Animated.View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN SCREEN
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function TermsOfServiceScreen({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion } = useCustomization();
   const insets = useSafeAreaInsets();
-
   const isDark = darkMode;
-  const primary = themeColors?.primary || AURA.primary;
-  const success = themeColors?.accent || AURA.success;
+  const primary = themeColors?.primary || DS.primary;
+
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: e => { 'worklet'; scrollY.value = e.contentOffset.y; },
+  });
+  const headerOpacity = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
+  }));
 
   const handleHaptic = () => {
-    if (!reduceMotion) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
+    if (!reduceMotion) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
   const openEmail = async () => {
-    try {
-      await Linking.openURL('mailto:legal@littleloom.app');
-    } catch (e) {
-      console.warn('Failed to open email:', e);
-    }
+    try { await Linking.openURL('mailto:legal@littleloom.app'); } catch (e) { console.warn('Failed to open email:', e); }
   };
 
-  const bgColors = isDark
-    ? [themeColors?.colors?.[0] || AURA.darkBg, themeColors?.colors?.[1] || '#1a1428', themeColors?.colors?.[2] || AURA.darkBg]
-    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#eef0ff', themeColors?.colors?.[2] || '#e2e5ff'];
+  const topRibbon = {
+    icon: 'shield-checkmark-outline' as const,
+    color: DS.success,
+    label: 'Legal agreement',
+    text: 'Read carefully before using the app',
+  };
 
   return (
-    <LinearGradient colors={bgColors} style={styles.container}>
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <LinearGradient
+        colors={isDark ? [DS.darkBg, '#12121e', DS.darkBg] : ['#f8faff', '#eef0f5', '#e4e8f0']}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]} pointerEvents="none">
+        <BlurView intensity={40} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <Text style={[styles.stickyTitle, { color: isDark ? DS.white : DS.gray900 }]}>Terms of Service</Text>
+        <Text style={[styles.stickySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Updated June 7, 2026</Text>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.springify()} style={[styles.topHeader, { paddingTop: insets.top + 12 }]} pointerEvents="box-none">
+        <PressableScale onPress={() => navigation.goBack()} activeScale={0.92}>
+          <View style={[styles.backBtn, { backgroundColor: isDark ? 'rgba(15,15,30,0.55)' : 'rgba(255,255,255,0.85)', borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)' }]}>
+            <Ionicons name="arrow-back" size={22} color={isDark ? DS.white : DS.gray800} />
+          </View>
+        </PressableScale>
+      </Animated.View>
+
       <Animated.ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
-        ]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + 68, paddingBottom: insets.bottom + 40 }}
       >
-        <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(100)} style={styles.header}>
-          <TouchableOpacity
-            style={[
-              styles.backButton,
-              { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
-            ]}
-            onPress={() => {
-              handleHaptic();
-              navigation.goBack();
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={24} color={isDark ? AURA.white : AURA.gray900} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Terms of Service</Text>
-          <Text style={[styles.headerSubtitle, isDark && styles.headerSubtitleDark]}>
-            Last Updated: June 7, 2026
-          </Text>
-        </Animated.View>
+        <View style={{ paddingHorizontal: DS.space.lg }}>
+          <TermsCapsule isDark={isDark} lastUpdated="June 7, 2026" />
+        </View>
 
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeInUp.delay(200)}
-          style={styles.sectionWrapper}
-        >
-          <BlurView
-            intensity={isDark ? 30 : 70}
-            style={[styles.introCard, { borderColor: `${AURA.primary}26` }]}
-            tint={isDark ? 'dark' : 'light'}
-          >
-            <View style={[styles.introIcon, { backgroundColor: `${AURA.primary}15` }]}>
-              <Ionicons name="document-text" size={28} color={AURA.primary} />
-            </View>
-            <Text style={[styles.introTitle, isDark && styles.introTitleDark]}>
-              Your Agreement with LittleLoom
-            </Text>
-            <Text style={[styles.introText, isDark && styles.introTextDark]}>
-              These Terms of Service govern your use of LittleLoom. By using our app, you agree to these terms. Please read them carefully.
-            </Text>
-          </BlurView>
-        </Animated.View>
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <InsightRibbon isDark={isDark} {...topRibbon} />
+        </View>
 
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeInUp.delay(250)}
-          style={styles.sectionWrapper}
-        >
-          <TouchableOpacity
-            style={styles.acceptButton}
-            onPress={() => {
-              handleHaptic();
-              navigation.navigate('SignUp');
-            }}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={[AURA.primary, AURA.accent]}
-              style={styles.acceptGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="checkmark-circle" size={22} color={AURA.white} />
-              <Text style={styles.acceptButtonText}>I Accept the Terms of Service</Text>
+        {/* Intro note */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <View style={[styles.introCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+            <LinearGradient colors={[`${DS.primary}10`, `${DS.accent}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <Ionicons name="information-circle" size={18} color={DS.primary} />
+            <Text style={[styles.introText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
+              These Terms govern your use of LittleLoom. By continuing, you accept them.
+            </Text>
+          </View>
+        </View>
+
+        {/* Accept CTA */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <PressableScale onPress={() => { handleHaptic(); navigation.navigate('SignUp'); }} activeScale={0.97}>
+            <LinearGradient colors={[DS.primary, DS.accent]} style={styles.acceptBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              <Ionicons name="checkmark-circle" size={18} color={DS.white} />
+              <Text style={styles.acceptText}>I Accept the Terms</Text>
             </LinearGradient>
-          </TouchableOpacity>
-        </Animated.View>
+          </PressableScale>
+        </View>
 
-        {SECTIONS.map((section, index) => (
-          <Animated.View
-            key={index}
-            entering={reduceMotion ? undefined : FadeInUp.delay(300 + index * 80)}
-            style={styles.sectionWrapper}
-          >
-            <BlurView
-              intensity={isDark ? 30 : 70}
-              style={[styles.sectionCard, isDark && styles.sectionCardDark]}
-              tint={isDark ? 'dark' : 'light'}
-            >
-              <Text style={[styles.sectionCardTitle, isDark && styles.sectionCardTitleDark]}>
-                {section.title}
-              </Text>
-              <Text style={[styles.sectionText, isDark && styles.sectionTextDark]}>
-                {section.content}
-              </Text>
-            </BlurView>
-          </Animated.View>
-        ))}
+        {/* Sections */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg, gap: 8 }}>
+          {SECTIONS.map((section, i) => (
+            <Animated.View key={i} entering={FadeInUp.delay(100 + i * 30).springify()}>
+              <View style={[styles.sectionCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm, marginBottom: DS.space.sm }}>
+                  <View style={[styles.sectionNumBadge, { backgroundColor: `${DS.primary}15` }]}>
+                    <Text style={[styles.sectionNum, { color: DS.primary }]}>{i + 1}</Text>
+                  </View>
+                  <Text style={[styles.sectionTitle, { color: isDark ? DS.white : DS.gray900, flex: 1 }]}>
+                    {section.title.replace(/^\d+\.\s*/, '')}
+                  </Text>
+                </View>
+                <Text style={[styles.sectionBody, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  {section.content}
+                </Text>
+              </View>
+            </Animated.View>
+          ))}
+        </View>
 
-        <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(900)} style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.footerCard, isDark && styles.footerCardDark]}
-            onPress={() => {
-              handleHaptic();
-              openEmail();
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="mail-outline" size={20} color={AURA.primary} />
-            <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
-              Legal questions?{' '}
-              <Text style={{ color: AURA.primary, fontWeight: '700' }}>legal@littleloom.app</Text>
-            </Text>
-            <Ionicons name="open-outline" size={16} color={isDark ? AURA.gray500 : AURA.gray400} />
-          </TouchableOpacity>
+        {/* Footer */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg, gap: 8 }}>
+          <PressableScale onPress={() => { handleHaptic(); openEmail(); }} activeScale={0.98}>
+            <View style={[styles.footerCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <View style={[styles.footerIcon, { backgroundColor: `${DS.primary}15` }]}>
+                <Ionicons name="mail-outline" size={18} color={DS.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.footerLabel, { color: isDark ? DS.white : DS.gray900 }]}>Legal questions?</Text>
+                <Text style={[styles.footerValue, { color: DS.primary }]} numberOfLines={1}>legal@littleloom.app</Text>
+              </View>
+              <Ionicons name="open-outline" size={15} color={isDark ? DS.gray500 : DS.gray400} />
+            </View>
+          </PressableScale>
 
-          <TouchableOpacity
-            style={[styles.footerCard, isDark && styles.footerCardDark, { marginTop: 12 }]}
-            onPress={() => {
-              handleHaptic();
-              navigation.navigate('PrivacyPolicy');
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="shield-checkmark" size={20} color={AURA.success} />
-            <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
-              View our{' '}
-              <Text style={{ color: AURA.success, fontWeight: '700' }}>Privacy Policy</Text>
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={isDark ? AURA.gray500 : AURA.gray400} />
-          </TouchableOpacity>
-        </Animated.View>
+          <PressableScale onPress={() => { handleHaptic(); navigation.navigate('PrivacyPolicy'); }} activeScale={0.98}>
+            <View style={[styles.footerCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <View style={[styles.footerIcon, { backgroundColor: `${DS.success}15` }]}>
+                <Ionicons name="shield-checkmark" size={18} color={DS.success} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.footerLabel, { color: isDark ? DS.white : DS.gray900 }]}>View our</Text>
+                <Text style={[styles.footerValue, { color: DS.success }]} numberOfLines={1}>Privacy Policy</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={15} color={isDark ? DS.gray500 : DS.gray400} />
+            </View>
+          </PressableScale>
+        </View>
       </Animated.ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingHorizontal: 20 },
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
+  stickyTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  stickySub: { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  topHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: DS.space.lg },
+  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.22, shadowRadius: 10, elevation: 6 },
 
-  header: { marginBottom: 24 },
-  backButton: {
-    width: 40, height: 40, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 32, fontWeight: '800', color: AURA.gray900,
-    letterSpacing: -0.5, marginBottom: 6,
-  },
-  headerTitleDark: { color: AURA.white },
-  headerSubtitle: { fontSize: 15, color: AURA.gray500, fontWeight: '500' },
-  headerSubtitleDark: { color: AURA.gray400 },
+  capsule: { borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.md },
+  capsuleGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  capsuleGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  capsuleRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  avatarWrap: { width: 68, height: 68, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  avatarGlow: { position: 'absolute', width: 76, height: 76, borderRadius: 38, backgroundColor: `${DS.primary}35` },
+  avatarRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, overflow: 'hidden' },
+  avatarInner: { width: 62, height: 62, borderRadius: 31, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  capsuleName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, maxWidth: '80%' },
+  capsuleSub: { fontSize: 12, fontWeight: '500', marginTop: 3 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, alignSelf: 'flex-start' },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
 
-  sectionWrapper: { marginBottom: 12 },
+  ribbon: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: DS.space.md, paddingHorizontal: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1, lineHeight: 16 },
 
-  introCard: {
-    borderRadius: 24, padding: 24, alignItems: 'center',
-    overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
-  },
-  introIcon: {
-    width: 56, height: 56, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-  },
-  introTitle: {
-    fontSize: 18, fontWeight: '700', color: AURA.gray900,
-    marginBottom: 8, textAlign: 'center',
-  },
-  introTitleDark: { color: AURA.white },
-  introText: {
-    fontSize: 14, color: AURA.gray500, textAlign: 'center',
-    lineHeight: 22, fontWeight: '500',
-  },
-  introTextDark: { color: AURA.gray400 },
+  introCard: { flexDirection: 'row', alignItems: 'flex-start', gap: DS.space.sm + 2, padding: DS.space.md, borderRadius: DS.radius.md, borderWidth: 1, overflow: 'hidden' },
+  introText: { flex: 1, fontSize: 12, fontWeight: '600', lineHeight: 17 },
 
-  acceptButton: {
-    borderRadius: 20, overflow: 'hidden',
-    shadowColor: AURA.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 12, elevation: 6,
-  },
-  acceptGradient: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 18, gap: 10,
-  },
-  acceptButtonText: { color: AURA.white, fontSize: 16, fontWeight: '800' },
+  acceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14 },
+  acceptText: { color: DS.white, fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
 
-  sectionCard: {
-    borderRadius: 24, padding: 20, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
-  },
-  sectionCardDark: { borderColor: AURA.darkBorder },
-  sectionCardTitle: {
-    fontSize: 16, fontWeight: '700', color: AURA.gray900, marginBottom: 12,
-  },
-  sectionCardTitleDark: { color: AURA.white },
-  sectionText: { fontSize: 14, color: AURA.gray500, lineHeight: 22, fontWeight: '500' },
-  sectionTextDark: { color: AURA.gray400 },
+  sectionCard: { borderRadius: DS.radius.lg, padding: DS.space.md, borderWidth: 1, ...DS.shadow.sm },
+  sectionNumBadge: { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  sectionNum: { fontSize: 12, fontWeight: '800' },
+  sectionTitle: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
+  sectionBody: { fontSize: 12, fontWeight: '500', lineHeight: 18 },
 
-  footer: { marginTop: 20, marginBottom: 20 },
-  footerCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 20, padding: 20, gap: 14,
-    borderWidth: 1, borderColor: 'rgba(99,102,241,0.08)',
-  },
-  footerCardDark: {
-    backgroundColor: 'rgba(41,37,36,0.4)',
-    borderColor: AURA.darkBorder,
-  },
-  footerText: { flex: 1, fontSize: 14, color: AURA.gray500, lineHeight: 22, fontWeight: '500' },
-  footerTextDark: { color: AURA.gray400 },
+  footerCard: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1 },
+  footerIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  footerLabel: { fontSize: 12, fontWeight: '700' },
+  footerValue: { fontSize: 11, fontWeight: '600', marginTop: 1 },
 });
